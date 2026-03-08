@@ -30,7 +30,7 @@ Web-панель управления для [Telemt](https://github.com/telemt/
 ### Установка скриптом
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amirotin/telemt-panel/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amirotin/telemt_panel/main/install.sh | bash
 ```
 
 Скрипт скачает бинарник, создаст конфиг, настроит systemd-сервис и запустит панель.
