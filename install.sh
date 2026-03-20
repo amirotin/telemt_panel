@@ -4,6 +4,7 @@ set -euo pipefail
 REPO="amirotin/telemt_panel"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/telemt-panel"
+DATA_DIR="/var/lib/telemt-panel"
 SERVICE_FILE="/etc/systemd/system/telemt-panel.service"
 
 echo "=== Telemt Panel Installer ==="
@@ -52,6 +53,9 @@ else
 fi
 
 echo "Installed to $INSTALL_DIR/telemt-panel"
+
+# Create data directory
+sudo mkdir -p "$DATA_DIR"
 
 # Config directory
 sudo mkdir -p "$CONFIG_DIR"
@@ -105,6 +109,10 @@ ExecStart=/usr/local/bin/telemt-panel --config /etc/telemt-panel/config.toml
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
+
+# Hardening (compatible with update and config editing features)
+NoNewPrivileges=true
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target

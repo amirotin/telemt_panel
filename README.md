@@ -143,9 +143,12 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 | `[telemt]` | `binary_path` | Путь к бинарнику telemt (для обновлений) | `/bin/telemt` |
 | `[telemt]` | `service_name` | Имя systemd-сервиса | `telemt` |
 | `[telemt]` | `github_repo` | GitHub-репозиторий для проверки обновлений | `telemt/telemt` |
+| `[telemt]` | `config_path` | Путь к конфигу Telemt (для Docker / нестандартных путей) | автоматически из API |
 | `[panel]` | `binary_path` | Путь к бинарнику панели (для самообновления) | `/usr/local/bin/telemt-panel` |
 | `[panel]` | `service_name` | Имя systemd-сервиса панели | `telemt-panel` |
 | `[panel]` | `github_repo` | GitHub-репозиторий панели | `amirotin/telemt_panel` |
+| `[panel]` | `max_newer_releases` | Макс. кол-во новых версий в списке обновлений | `10` |
+| `[panel]` | `max_older_releases` | Макс. кол-во старых версий в списке обновлений | `10` |
 | `[auth]` | `username` | Логин администратора | **обязательный** |
 | `[auth]` | `password_hash` | Bcrypt-хеш пароля | **обязательный** |
 | `[auth]` | `jwt_secret` | Секрет для подписи JWT | **обязательный** |
@@ -154,6 +157,7 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 | `[tls]` | `acme_domain` | Домен для Let's Encrypt | — |
 | `[tls]` | `acme_cache_dir` | Директория кеша сертификатов | `/var/lib/telemt-panel/certs` |
 | `[geoip]` | `db_path` | Путь к MaxMind GeoLite2 City (.mmdb) | — |
+| `[geoip]` | `asn_db_path` | Путь к MaxMind GeoLite2 ASN (.mmdb) | — |
 
 ## Systemd
 
@@ -162,6 +166,14 @@ sudo cp telemt-panel.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now telemt-panel
 ```
+
+> **Важно:** сервис работает от root. Это необходимо для:
+> - обновления бинарников в `/usr/local/bin` и `/bin`
+> - редактирования конфига Telemt в `/etc/telemt/`
+> - перезапуска systemd-сервисов (`telemt`, `telemt-panel`)
+>
+> Если вам не нужны функции обновления и редактирования конфига, можно запустить от
+> отдельного пользователя — создайте его и добавьте `User=telemt-panel` в секцию `[Service]`.
 
 Логи:
 
