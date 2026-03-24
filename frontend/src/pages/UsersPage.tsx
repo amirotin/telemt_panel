@@ -361,7 +361,7 @@ export function UsersPage() {
               {search ? 'No users found' : 'No users configured'}
             </div>
           ) : (
-            sortedUsers.map((u) => {
+            pagedUsers.map((u) => {
               const allLinks = collectLinks(u.links);
               const hasConns = u.current_connections > 0;
 
