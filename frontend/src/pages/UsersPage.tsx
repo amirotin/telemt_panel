@@ -11,7 +11,7 @@ import {
 import { usePolling } from '@/hooks/usePolling';
 import { telemt, ApiError } from '@/lib/api';
 import { Link } from 'react-router-dom';
-import { Copy, Plus, Pencil, Trash2, Check, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Check, ArrowUp, ArrowDown, ArrowUpDown, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatBytes } from '@/lib/utils';
 
 type SortKey = 'username' | 'current_connections' | 'active_unique_ips' | 'total_octets' | 'expiration_rfc3339';
@@ -104,6 +104,9 @@ export function UsersPage() {
 
   const [sortKey, setSortKey] = useState<SortKey>('username');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
 
   const toggleSort = useCallback((key: SortKey) => {
     setSortKey((prev) => {
@@ -116,9 +119,15 @@ export function UsersPage() {
     });
   }, []);
 
-  const sortedUsers = useMemo(() => {
+  const filteredUsers = useMemo(() => {
     if (!users) return [];
-    return [...users].sort((a, b) => {
+    if (!search.trim()) return users;
+    const q = search.trim().toLowerCase();
+    return users.filter((u) => u.username.toLowerCase().includes(q));
+  }, [users, search]);
+
+  const sortedUsers = useMemo(() => {
+    return [...filteredUsers].sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
         case 'username':
@@ -142,7 +151,25 @@ export function UsersPage() {
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [users, sortKey, sortDir]);
+  }, [filteredUsers, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedUsers.length / perPage));
+  const safePage = Math.min(page, totalPages);
+  const pagedUsers = useMemo(() => {
+    const start = (safePage - 1) * perPage;
+    return sortedUsers.slice(start, start + perPage);
+  }, [sortedUsers, safePage, perPage]);
+
+  // Reset page when search or perPage changes
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setPage(1);
+  }, []);
+
+  const handlePerPageChange = useCallback((value: number) => {
+    setPerPage(value);
+    setPage(1);
+  }, []);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserInfo | null>(null);
@@ -184,7 +211,17 @@ export function UsersPage() {
         {error && <ErrorAlert message={error.message} onRetry={refresh} />}
         {actionError && <ErrorAlert message={actionError} />}
 
-        <div className="flex justify-end">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent/50"
+            />
+          </div>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus size={16} className="mr-1.5" />
             <span className="hidden sm:inline">Create User</span>
@@ -234,14 +271,14 @@ export function UsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedUsers.length === 0 ? (
+                {pagedUsers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-text-secondary py-8">
-                      No users configured
+                      {search ? 'No users found' : 'No users configured'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedUsers.map((u) => {
+                  pagedUsers.map((u) => {
                     const allLinks = collectLinks(u.links);
                     const hasConns = u.current_connections > 0;
 
@@ -319,9 +356,9 @@ export function UsersPage() {
 
         {/* Mobile Cards */}
         <div className="lg:hidden space-y-3">
-          {sortedUsers.length === 0 ? (
+          {pagedUsers.length === 0 ? (
             <div className="text-center text-text-secondary py-8 bg-surface border border-border rounded-lg">
-              No users configured
+              {search ? 'No users found' : 'No users configured'}
             </div>
           ) : (
             sortedUsers.map((u) => {
@@ -402,6 +439,42 @@ export function UsersPage() {
             })
           )}
         </div>
+
+        {/* Pagination */}
+        {sortedUsers.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-text-secondary">
+            <div className="flex items-center gap-2">
+              <span>Show</span>
+              <select
+                value={perPage}
+                onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                className="rounded border border-border bg-surface px-2 py-1 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+              >
+                {[10, 25, 50, 100].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <span>of {sortedUsers.length}{search && ` (filtered from ${users?.length ?? 0})`}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="p-1.5 rounded border border-border bg-surface hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span>{safePage} / {totalPages}</span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="p-1.5 rounded border border-border bg-surface hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <UserFormDialog
