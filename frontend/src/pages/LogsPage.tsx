@@ -9,14 +9,58 @@ interface LogSourceStatus {
   error?: string;
 }
 
-const LOG_TOKEN_REGEX = new RegExp(
+const ANSI_RE = /\x1b\[([0-9;]*)m/g;
+
+const ANSI_FG: Record<number, string> = {
+  30: '#6b7280', 31: '#f87171', 32: '#4ade80', 33: '#facc15',
+  34: '#60a5fa', 35: '#c084fc', 36: '#22d3ee', 37: '#d1d5db',
+  90: '#4b5563', 91: '#f87171', 92: '#4ade80', 93: '#fde047',
+  94: '#93c5fd', 95: '#d8b4fe', 96: '#67e8f9', 97: '#f9fafb',
+};
+
+interface AnsiSpan {
+  text: string;
+  color?: string;
+  dim?: boolean;
+  italic?: boolean;
+  bold?: boolean;
+}
+
+function parseAnsi(raw: string): AnsiSpan[] {
+  const spans: AnsiSpan[] = [];
+  let lastIndex = 0;
+  let color: string | undefined;
+  let dim = false, italic = false, bold = false;
+
+  const flush = (text: string) => {
+    if (text) spans.push({ text, color, dim, italic, bold });
+  };
+
+  ANSI_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = ANSI_RE.exec(raw)) !== null) {
+    flush(raw.slice(lastIndex, m.index));
+    lastIndex = m.index + m[0].length;
+    for (const code of m[1].split(';').map(Number)) {
+      if (code === 0)  { color = undefined; dim = false; italic = false; bold = false; }
+      else if (code === 1) bold   = true;
+      else if (code === 2) dim    = true;
+      else if (code === 3) italic = true;
+      else if (ANSI_FG[code]) color = ANSI_FG[code];
+    }
+  }
+  flush(raw.slice(lastIndex));
+  return spans;
+}
+
+const OUTER_TS_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+/;
+
+function stripOuterTimestamp(raw: string): string {
+  return raw.replace(OUTER_TS_RE, '');
+}
+
+const TOKEN_RE = new RegExp(
   [
-    '(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?)',
-    '(\\b(?:ERROR|ERR)\\b|\\[(?:ERROR|ERR)\\])',
-    '(\\b(?:WARN|WARNING)\\b|\\[(?:WARN|WARNING)\\])',
-    '(\\bINFO\\b|\\[INFO\\])',
-    '(\\bDEBUG\\b|\\[DEBUG\\])',
-    '(\\bTRACE\\b|\\[TRACE\\])',
     '(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(?::\\d+)?)',
     '(\\w+=)',
   ].join('|'),
@@ -24,47 +68,50 @@ const LOG_TOKEN_REGEX = new RegExp(
 );
 
 const TOKEN_COLORS: Record<number, string> = {
-  1: 'text-zinc-500',
-  2: 'text-red-400',
-  3: 'text-yellow-400',
-  4: 'text-green-400',
-  5: 'text-zinc-500',
-  6: 'text-zinc-600',
-  7: 'text-cyan-400',
-  8: 'text-purple-400',
+  1: '#22d3ee',
+  2: '#c084fc',
 };
 
-function renderLogLine(text: string): React.ReactNode {
+function tokenizeText(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let key = 0;
-
-  LOG_TOKEN_REGEX.lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = LOG_TOKEN_REGEX.exec(text)) !== null) {
-    let color = '';
-    for (let g = 1; g <= 8; g++) {
-      if (match[g] !== undefined) {
-        color = TOKEN_COLORS[g];
-        break;
-      }
+  let last = 0, key = 0;
+  TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_RE.exec(text)) !== null) {
+    let col = '';
+    for (let g = 1; g <= 2; g++) {
+      if (m[g] !== undefined) { col = TOKEN_COLORS[g]; break; }
     }
-    if (!color) continue;
-
-    if (match.index > lastIndex) {
-      parts.push(<span key={key++} className="text-zinc-300">{text.slice(lastIndex, match.index)}</span>);
-    }
-
-    parts.push(<span key={key++} className={color}>{match[0]}</span>);
-    lastIndex = match.index + match[0].length;
+    if (!col) continue;
+    if (m.index > last) parts.push(<span key={key++}>{text.slice(last, m.index)}</span>);
+    parts.push(<span key={key++} style={{ color: col }}>{m[0]}</span>);
+    last = m.index + m[0].length;
   }
+  if (last < text.length) parts.push(<span key={key++}>{text.slice(last)}</span>);
+  return parts.length ? parts : [<span key={0}>{text}</span>];
+}
 
-  if (lastIndex < text.length) {
-    parts.push(<span key={key++} className="text-zinc-300">{text.slice(lastIndex)}</span>);
-  }
+function renderLogLine(raw: string): React.ReactNode {
+  const cleaned = stripOuterTimestamp(raw);
+  const spans = parseAnsi(cleaned);
 
-  return parts.length > 0 ? <>{parts}</> : <span className="text-zinc-300">{text}</span>;
+  return (
+    <>
+      {spans.map((s, i) => {
+        const style: React.CSSProperties = {};
+        if (s.color)  style.color      = s.color;
+        if (s.dim)    style.opacity    = 0.45;
+        if (s.italic) style.fontStyle  = 'italic';
+        if (s.bold)   style.fontWeight = 600;
+
+        return (
+          <span key={i} style={style}>
+            {tokenizeText(s.text)}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 const LINE_OPTIONS = [100, 200, 500, 1000];
@@ -91,19 +138,15 @@ export function LogsPage() {
     clear,
   } = useLogStream();
 
-  // Fetch log source status
   useEffect(() => {
     const base = (window as any).__BASE_PATH__ || '';
     fetch(`${base}/api/logs/status`, { credentials: 'same-origin' })
       .then((r) => r.json())
-      .then((json) => {
-        if (json.ok) setStatus(json.data);
-      })
+      .then((json) => { if (json.ok) setStatus(json.data); })
       .catch(() => {})
       .finally(() => setStatusLoading(false));
   }, []);
 
-  // Auto-scroll
   useEffect(() => {
     if (autoScrollRef.current && logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
@@ -212,9 +255,7 @@ export function LogsPage() {
           className="px-2 py-1.5 text-sm bg-surface-secondary text-text-primary rounded border border-border"
         >
           {LINE_OPTIONS.map((n) => (
-            <option key={n} value={n}>
-              {n} lines
-            </option>
+            <option key={n} value={n}>{n} lines</option>
           ))}
         </select>
 
