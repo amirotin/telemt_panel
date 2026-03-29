@@ -328,10 +328,10 @@ export function UpdatePage() {
 
   const handleAutoUpdateConfig = async (component: 'panel' | 'telemt', cfg: AutoUpdateConfig) => {
     try {
-      const current = autoStatus?.[component]?.config || { enabled: false, check_interval: '1h', auto_apply: false };
+      const fallback: AutoUpdateConfig = { enabled: false, check_interval: '1h', auto_apply: false };
       const payload = {
-        panel: component === 'panel' ? cfg : current,
-        telemt: component === 'telemt' ? cfg : current,
+        panel: component === 'panel' ? cfg : (autoStatus?.panel?.config || fallback),
+        telemt: component === 'telemt' ? cfg : (autoStatus?.telemt?.config || fallback),
       };
       const res = await panelApi.put<AutoUpdateStatus>('/auto-update/config', payload);
       setAutoStatus(res);

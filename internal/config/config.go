@@ -37,6 +37,7 @@ func (c AutoUpdateConfig) Interval() time.Duration {
 }
 
 type Config struct {
+	Path     string       `toml:"-"` // config file path, set after loading
 	Listen   string       `toml:"listen"`
 	BasePath string       `toml:"base_path"`
 	Telemt   TelemtConfig `toml:"telemt"`
@@ -197,5 +198,6 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	cfg.Path = path
 	return cfg, nil
 }

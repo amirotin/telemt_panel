@@ -376,6 +376,22 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		}
 		autoMgr.UpdateConfig("panel", req.Panel)
 		autoMgr.UpdateConfig("telemt", req.Telemt)
+
+		// Persist auto-update settings to config file
+		if s.cfg.Path != "" {
+			updates := map[string]interface{}{
+				"panel.auto_update.enabled":        req.Panel.Enabled,
+				"panel.auto_update.check_interval":  req.Panel.CheckInterval,
+				"panel.auto_update.auto_apply":      req.Panel.AutoApply,
+				"telemt.auto_update.enabled":        req.Telemt.Enabled,
+				"telemt.auto_update.check_interval":  req.Telemt.CheckInterval,
+				"telemt.auto_update.auto_apply":      req.Telemt.AutoApply,
+			}
+			if _, err := telemt_config.QuickUpdate(s.cfg.Path, updates); err != nil {
+				log.Printf("WARNING: failed to persist auto-update config: %s", err)
+			}
+		}
+
 		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: autoMgr.GetStatus()})
 	})))
 
