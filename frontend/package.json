@@ -12,7 +12,7 @@
     "@iarna/toml": "^2.2.5",
     "@monaco-editor/react": "^4.7.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.460.0",
+    "lucide-react": "^1.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.13.2",
