@@ -1,15 +1,13 @@
 version: "2"
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - govet
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 50
   max-same-issues: 3
