@@ -44,6 +44,27 @@ func EnsureStagingDir(dataDir string) (string, error) {
 	return dir, nil
 }
 
+// CheckSudoAccess verifies that the current process can use passwordless sudo.
+// Returns nil if sudo is not needed, or if passwordless sudo is working.
+// Returns an error with actionable guidance if sudo is needed but not configured.
+func CheckSudoAccess(binaryPath string) error {
+	if !NeedsSudo(binaryPath) {
+		return nil
+	}
+	// Test passwordless sudo with a harmless command
+	cmd := exec.Command("sudo", "-n", "true")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("passwordless sudo is required to replace %s but is not configured for the panel user.\n"+
+			"Fix options:\n"+
+			"  1. Re-run the install script to regenerate the sudoers drop-in\n"+
+			"  2. Verify /etc/sudoers.d/telemt-panel exists and has paths matching config.toml\n"+
+			"  3. Or change binary_path to a directory the panel user can write to\n"+
+			"Diagnostic: %s",
+			binaryPath, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // InstallBinary copies src to dst, preserving mode 0755.
 // Uses sudo cp if the current process cannot write to the destination directory.
 func InstallBinary(src, dst string) error {

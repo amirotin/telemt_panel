@@ -239,6 +239,12 @@ func (u *Updater) applyAsync(version string) {
 	u.appendLog(fmt.Sprintf("config: binary_path=%s, service=%s, repo=%s", u.binaryPath, u.serviceName, u.githubRepo))
 	u.appendLog(fmt.Sprintf("arch: asset=%s, variant=%s, sudo=%v", AssetName(), Variant(), sysutil.NeedsSudo(u.binaryPath)))
 
+	// Pre-flight: verify passwordless sudo works before downloading
+	if err := sysutil.CheckSudoAccess(u.binaryPath); err != nil {
+		u.setError(err)
+		return
+	}
+
 	u.setStatus(PhaseChecking, "fetching current version")
 
 	currentVersion, err := u.fetchCurrentVersion()
