@@ -137,12 +137,20 @@ func ExtractBinary(tarGzPath, destPath string) error {
 			return err
 		}
 
-		// Install to destination (uses sudo if we can't write to dest dir)
-		if err := sysutil.InstallBinary(tmpName, destPath); err != nil {
+		// Rename to the expected basename so the path matches the sudoers rule
+		// (sudoers expects e.g. staging/telemt-panel, not a random temp name)
+		expectedPath := filepath.Join(extractDir, filepath.Base(destPath))
+		if err := os.Rename(tmpName, expectedPath); err != nil {
 			os.Remove(tmpName)
+			return fmt.Errorf("rename extracted binary to %s: %w", expectedPath, err)
+		}
+
+		// Install to destination (uses sudo if we can't write to dest dir)
+		if err := sysutil.InstallBinary(expectedPath, destPath); err != nil {
+			os.Remove(expectedPath)
 			return err
 		}
-		os.Remove(tmpName)
+		os.Remove(expectedPath)
 		return nil
 	}
 }
@@ -153,7 +161,16 @@ func BackupBinary(binaryPath string) (string, error) {
 }
 
 // RestoreBackup restores binaryPath from the given backup file.
+// It renames the backup to the expected basename so the sudo command
+// matches the sudoers rule (e.g. staging/telemt-panel instead of staging/telemt-panel.bak).
 func RestoreBackup(backupPath, binaryPath string) error {
+	expectedPath := filepath.Join(filepath.Dir(backupPath), filepath.Base(binaryPath))
+	if backupPath != expectedPath {
+		if err := os.Rename(backupPath, expectedPath); err != nil {
+			return sysutil.RestoreBackup(backupPath, binaryPath)
+		}
+		backupPath = expectedPath
+	}
 	return sysutil.RestoreBackup(backupPath, binaryPath)
 }
 
