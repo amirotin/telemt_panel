@@ -12,20 +12,20 @@
     "@iarna/toml": "^2.2.5",
     "@monaco-editor/react": "^4.7.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.460.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "lucide-react": "^1.7.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-router-dom": "^7.13.2",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
-    "typescript": "^5.6.3",
+    "typescript": "^6.0.2",
     "vite": "^6.0.3"
   }
 }
