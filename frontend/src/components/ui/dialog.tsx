@@ -32,47 +32,35 @@ function Dialog({ open, onClose, children }: DialogProps) {
   )
 }
 
-const DialogContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(
-        'relative z-50 w-full max-w-md rounded-lg border border-border bg-surface p-6 shadow-xl',
-        className,
-      )}
-      {...props}
-    />
-  ),
+const DialogContent = ({ className, ref, ...props }: React.HTMLAttributes<HTMLDivElement> & { ref?: React.Ref<HTMLDivElement> }) => (
+  <div
+    ref={ref}
+    className={cn(
+      'relative z-50 w-full max-w-md rounded-lg border border-border bg-surface p-6 shadow-xl',
+      className,
+    )}
+    {...props}
+  />
 )
-DialogContent.displayName = 'DialogContent'
 
-const DialogHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('mb-4 flex flex-col space-y-1.5', className)} {...props} />
-  ),
+const DialogHeader = ({ className, ref, ...props }: React.HTMLAttributes<HTMLDivElement> & { ref?: React.Ref<HTMLDivElement> }) => (
+  <div ref={ref} className={cn('mb-4 flex flex-col space-y-1.5', className)} {...props} />
 )
-DialogHeader.displayName = 'DialogHeader'
 
-const DialogTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h2
-      ref={ref}
-      className={cn('text-lg font-semibold leading-none tracking-tight text-text-primary', className)}
-      {...props}
-    />
-  ),
+const DialogTitle = ({ className, ref, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { ref?: React.Ref<HTMLHeadingElement> }) => (
+  <h2
+    ref={ref}
+    className={cn('text-lg font-semibold leading-none tracking-tight text-text-primary', className)}
+    {...props}
+  />
 )
-DialogTitle.displayName = 'DialogTitle'
 
-const DialogFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn('mt-6 flex justify-end space-x-2', className)}
-      {...props}
-    />
-  ),
+const DialogFooter = ({ className, ref, ...props }: React.HTMLAttributes<HTMLDivElement> & { ref?: React.Ref<HTMLDivElement> }) => (
+  <div
+    ref={ref}
+    className={cn('mt-6 flex justify-end space-x-2', className)}
+    {...props}
+  />
 )
-DialogFooter.displayName = 'DialogFooter'
 
 export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter }

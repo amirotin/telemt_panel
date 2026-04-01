@@ -35,7 +35,7 @@ export function useWsProvider(): WsContextValue {
   const [errors, setErrors] = useState<ErrorMap>({});
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const subscribers = useRef<Map<string, Subscriber>>(new Map());
 
   const getAggregated = useCallback(() => {
