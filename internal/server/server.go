@@ -591,6 +591,12 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		mux.Handle("/api/ws/logs", auth.RequireAuth(jwtSecret, logsWsHandler))
 	}
 
+	// Telemt connectivity check (diagnostic endpoint)
+	mux.Handle("GET /api/telemt/connectivity", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result := telemtProxy.ConnectivityCheck()
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: result})
+	})))
+
 	// Telemt API proxy (kept for direct REST calls like user CRUD)
 	mux.Handle("/api/telemt/", auth.RequireAuth(jwtSecret, telemtProxy))
 
