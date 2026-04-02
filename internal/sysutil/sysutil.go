@@ -200,11 +200,16 @@ func isValidServiceName(name string) bool {
 		return false
 	}
 	for _, c := range name {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
+		if !isServiceChar(c) {
 			return false
 		}
 	}
 	return true
+}
+
+func isServiceChar(c rune) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+		c == '-' || c == '_' || c == '.'
 }
 
 // DetectVariant determines whether the system should use "musl" or "gnu" binaries.
