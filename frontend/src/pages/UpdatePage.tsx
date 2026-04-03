@@ -4,7 +4,7 @@ import { MetricCard } from '@/components/MetricCard';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { panelApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { RefreshCw, Download, CheckCircle2, XCircle, Loader2, ArrowRight } from 'lucide-react';
+import { RefreshCw, Download, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
 interface UpdateStatus {
   phase: string;
@@ -32,6 +32,21 @@ interface ReleasesResult {
 }
 
 const PHASE_STEPS = ['checking', 'downloading', 'verifying', 'replacing', 'restarting'];
+const PHASE_LABELS: Record<string, string> = {
+  checking: 'Проверка',
+  downloading: 'Загрузка',
+  verifying: 'Верификация',
+  replacing: 'Установка',
+  restarting: 'Перезапуск',
+};
+
+function getLogLineColor(line: string): string {
+  if (line.includes('error') || line.includes('failed') || line.includes('rollback')) return 'text-danger';
+  if (line.includes('verified OK') || line.includes('healthy') || line.includes('complete')) return 'text-success';
+  if (line.startsWith('[')) return 'text-accent';
+  return 'text-text-secondary';
+}
+
 interface AutoUpdateConfig {
   enabled: boolean;
   check_interval: string;
@@ -234,11 +249,90 @@ function VersionSelect({
       {releases.map((r) => (
         <option key={r.version} value={r.version}>
           {r.version}
-          {r.prerelease ? ' ⚠ pre-release' : ''}
-          {r.is_downgrade ? ' ↓ downgrade' : ''}
+          {r.prerelease ? ' \u26A0 pre-release' : ''}
+          {r.is_downgrade ? ' \u2193 downgrade' : ''}
         </option>
       ))}
     </select>
+  );
+}
+
+function ProgressSteps({ phase, currentStep }: { phase: string; currentStep: number }) {
+  return (
+    <div className="flex items-center mb-4">
+      {PHASE_STEPS.map((step, i) => {
+        const isActive = step === phase;
+        const isCompleted = currentStep > i;
+        const isFailed = phase === 'error' && currentStep === i;
+
+        return (
+          <div key={step} className="flex items-center flex-1 min-w-0">
+            <div className="flex flex-col items-center flex-1 min-w-0">
+              <div
+                className={cn(
+                  'w-8 h-8 rounded-full flex items-center justify-center text-xs border-2 transition-all shrink-0',
+                  isCompleted && 'bg-success/20 border-success text-success',
+                  isActive && !isFailed && 'bg-accent/20 border-accent text-accent',
+                  isFailed && 'bg-danger/20 border-danger text-danger',
+                  !isCompleted && !isActive && !isFailed && 'border-border text-text-secondary'
+                )}
+              >
+                {isCompleted ? (
+                  <CheckCircle2 size={16} />
+                ) : isActive && !isFailed ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : isFailed ? (
+                  <XCircle size={16} />
+                ) : (
+                  i + 1
+                )}
+              </div>
+              <span className={cn(
+                'text-[10px] mt-1.5 truncate max-w-full text-center px-0.5',
+                isActive && 'text-accent font-medium',
+                isCompleted && 'text-success',
+                isFailed && 'text-danger',
+                !isCompleted && !isActive && !isFailed && 'text-text-secondary'
+              )}>
+                {PHASE_LABELS[step]}
+              </span>
+            </div>
+            {i < PHASE_STEPS.length - 1 && (
+              <div className={cn(
+                'h-0.5 w-full mx-1 shrink-0 rounded-full transition-colors',
+                isCompleted ? 'bg-success' : 'bg-border'
+              )} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function UpdateLog({ log, defaultOpen }: { log: string[]; defaultOpen?: boolean }) {
+  const logRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logRef.current && defaultOpen) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [log, defaultOpen]);
+
+  return (
+    <details className="mt-3" open={defaultOpen}>
+      <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
+        Журнал ({log.length} записей)
+      </summary>
+      <div
+        ref={logRef}
+        className="mt-2 max-h-56 overflow-y-auto bg-background rounded-md p-3 font-mono text-[11px] leading-relaxed space-y-px"
+      >
+        {log.map((line, i) => (
+          <div key={i} className={getLogLineColor(line)}>{line}</div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -517,8 +611,8 @@ export function UpdatePage() {
               )}
             >
               <RefreshCw size={12} className={cn('lg:w-3.5 lg:h-3.5', panelReleasesLoading && 'animate-spin')} />
-              <span className="hidden sm:inline">Refresh releases</span>
-              <span className="sm:hidden">Refresh</span>
+              <span className="hidden sm:inline">Обновить список</span>
+              <span className="sm:hidden">Обновить</span>
             </button>
           </div>
 
@@ -526,7 +620,7 @@ export function UpdatePage() {
 
           <div className="space-y-3 lg:space-y-4">
             <div className="grid grid-cols-2 gap-2 lg:gap-3">
-              <MetricCard label="Current Version" value={panelCurrentVersion || '—'} />
+              <MetricCard label="Текущая версия" value={panelCurrentVersion || '—'} />
               <div className="flex items-center">
                 <VersionSelect
                   releases={panelReleases}
@@ -548,7 +642,7 @@ export function UpdatePage() {
                       {panelSelectedRelease.name}
                     </p>
                     <p className="text-xs text-text-secondary mt-1">
-                      Published {new Date(panelSelectedRelease.published_at).toLocaleDateString()}
+                      Опубликовано {new Date(panelSelectedRelease.published_at).toLocaleDateString('ru-RU')}
                       {' · '}
                       <a
                         href={panelSelectedRelease.html_url}
@@ -556,7 +650,7 @@ export function UpdatePage() {
                         rel="noopener noreferrer"
                         className="text-accent hover:underline"
                       >
-                        Release notes
+                        заметки о релизе
                       </a>
                     </p>
                   </div>
@@ -570,14 +664,14 @@ export function UpdatePage() {
                     )}
                   >
                     <Download size={14} className="lg:w-4 lg:h-4" />
-                    Update
+                    Обновить
                   </button>
                 </div>
 
                 {panelSelectedRelease.changelog && (
                   <details className="mt-3">
                     <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
-                      Changelog
+                      Список изменений
                     </summary>
                     <pre className="mt-2 text-xs text-text-secondary whitespace-pre-wrap bg-background rounded p-2 lg:p-3 max-h-48 overflow-y-auto">
                       {panelSelectedRelease.changelog}
@@ -590,7 +684,7 @@ export function UpdatePage() {
             {!panelSelectedRelease && !panelReleasesLoading && panelReleases.length === 0 && !panelReleasesError && (
               <div className="flex items-center gap-2 text-xs lg:text-sm text-success">
                 <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
-                You are running the latest version
+                Установлена последняя версия
               </div>
             )}
           </div>
@@ -599,62 +693,22 @@ export function UpdatePage() {
         {/* Panel Update Progress */}
         {panelStatus && panelStatus.phase !== 'idle' && (
           <div className="bg-surface rounded-lg p-4 lg:p-5 border border-border">
-            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">Panel Update Progress</h2>
+            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">Ход обновления Panel</h2>
 
-            {/* Step indicators */}
-            <div className="flex items-center gap-0.5 lg:gap-1 mb-3 lg:mb-4 overflow-x-auto">
-              {PHASE_STEPS.map((step, i) => {
-                const isActive = step === panelStatus.phase;
-                const isCompleted = panelCurrentStep > i;
-                const isFailed = panelStatus.phase === 'error' && panelCurrentStep === i;
+            <ProgressSteps phase={panelStatus.phase} currentStep={panelCurrentStep} />
 
-                return (
-                  <div key={step} className="flex items-center gap-0.5 lg:gap-1 flex-1 min-w-0">
-                    <div className="flex flex-col items-center flex-1 min-w-0">
-                      <div
-                        className={cn(
-                          'w-7 h-7 lg:w-8 lg:h-8 rounded-full flex items-center justify-center text-xs border-2 transition-colors shrink-0',
-                          isCompleted && 'bg-success/15 border-success text-success',
-                          isActive && !isFailed && 'bg-accent/15 border-accent text-accent',
-                          isFailed && 'bg-danger/15 border-danger text-danger',
-                          !isCompleted && !isActive && !isFailed && 'border-border text-text-secondary'
-                        )}
-                      >
-                        {isCompleted ? (
-                          <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
-                        ) : isActive && !isFailed ? (
-                          <Loader2 size={14} className="lg:w-4 lg:h-4 animate-spin" />
-                        ) : isFailed ? (
-                          <XCircle size={14} className="lg:w-4 lg:h-4" />
-                        ) : (
-                          i + 1
-                        )}
-                      </div>
-                      <span className="text-[9px] lg:text-[10px] text-text-secondary mt-1 capitalize truncate max-w-full text-center px-1">{step}</span>
-                    </div>
-                    {i < PHASE_STEPS.length - 1 && (
-                      <ArrowRight size={10} className="lg:w-3 lg:h-3 text-border mb-4 shrink-0" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Status message */}
             {panelStatus.message && (
-              <p className="text-xs text-text-secondary bg-background rounded p-2">
+              <p className="text-xs text-text-secondary bg-background rounded p-2.5">
                 {panelStatus.message}
               </p>
             )}
 
-            {/* Error */}
             {panelStatus.phase === 'error' && panelStatus.error && (
-              <div className="mt-2">
+              <div className="mt-3">
                 <ErrorAlert message={panelStatus.error} />
               </div>
             )}
 
-            {/* Done */}
             {panelStatus.phase === 'done' && (
               <div className="flex items-center gap-2 text-xs lg:text-sm text-success mt-2">
                 <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
@@ -662,18 +716,8 @@ export function UpdatePage() {
               </div>
             )}
 
-            {/* Debug Log */}
             {panelStatus.log && panelStatus.log.length > 0 && (
-              <details className="mt-3" open={panelStatus.phase === 'error'}>
-                <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
-                  Log ({panelStatus.log.length} entries)
-                </summary>
-                <div className="mt-2 max-h-48 overflow-y-auto bg-background rounded p-2 font-mono text-[10px] lg:text-[11px] text-text-secondary space-y-0.5">
-                  {panelStatus.log.map((line, i) => (
-                    <div key={i}>{line}</div>
-                  ))}
-                </div>
-              </details>
+              <UpdateLog log={panelStatus.log} defaultOpen={panelStatus.phase === 'error'} />
             )}
           </div>
         )}
@@ -694,14 +738,14 @@ export function UpdatePage() {
               )}
             >
               <RefreshCw size={12} className={cn('lg:w-3.5 lg:h-3.5', releasesLoading && 'animate-spin')} />
-              <span className="hidden sm:inline">Refresh releases</span>
-              <span className="sm:hidden">Refresh</span>
+              <span className="hidden sm:inline">Обновить список</span>
+              <span className="sm:hidden">Обновить</span>
             </button>
           </div>
 
           <div className="space-y-3 lg:space-y-4">
             <div className="grid grid-cols-2 gap-2 lg:gap-3">
-              <MetricCard label="Current Version" value={currentVersion || '—'} />
+              <MetricCard label="Текущая версия" value={currentVersion || '—'} />
               <div className="flex items-center">
                 <VersionSelect
                   releases={releases}
@@ -723,7 +767,7 @@ export function UpdatePage() {
                       {selectedRelease.name}
                     </p>
                     <p className="text-xs text-text-secondary mt-1">
-                      Published {new Date(selectedRelease.published_at).toLocaleDateString()}
+                      Опубликовано {new Date(selectedRelease.published_at).toLocaleDateString('ru-RU')}
                       {' · '}
                       <a
                         href={selectedRelease.html_url}
@@ -731,7 +775,7 @@ export function UpdatePage() {
                         rel="noopener noreferrer"
                         className="text-accent hover:underline"
                       >
-                        Release notes
+                        заметки о релизе
                       </a>
                     </p>
                   </div>
@@ -745,14 +789,14 @@ export function UpdatePage() {
                     )}
                   >
                     <Download size={14} className="lg:w-4 lg:h-4" />
-                    Update
+                    Обновить
                   </button>
                 </div>
 
                 {selectedRelease.changelog && (
                   <details className="mt-3">
                     <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
-                      Changelog
+                      Список изменений
                     </summary>
                     <pre className="mt-2 text-xs text-text-secondary whitespace-pre-wrap bg-background rounded p-2 lg:p-3 max-h-48 overflow-y-auto">
                       {selectedRelease.changelog}
@@ -765,7 +809,7 @@ export function UpdatePage() {
             {!selectedRelease && !releasesLoading && releases.length === 0 && !releasesError && (
               <div className="flex items-center gap-2 text-xs lg:text-sm text-success">
                 <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
-                You are running the latest version
+                Установлена последняя версия
               </div>
             )}
           </div>
@@ -774,62 +818,22 @@ export function UpdatePage() {
         {/* Update Progress */}
         {status && status.phase !== 'idle' && (
           <div className="bg-surface rounded-lg p-4 lg:p-5 border border-border">
-            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">Telemt Update Progress</h2>
+            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">Ход обновления Telemt</h2>
 
-            {/* Step indicators */}
-            <div className="flex items-center gap-0.5 lg:gap-1 mb-3 lg:mb-4 overflow-x-auto">
-              {PHASE_STEPS.map((step, i) => {
-                const isActive = step === status.phase;
-                const isCompleted = currentStep > i;
-                const isFailed = status.phase === 'error' && currentStep === i;
+            <ProgressSteps phase={status.phase} currentStep={currentStep} />
 
-                return (
-                  <div key={step} className="flex items-center gap-0.5 lg:gap-1 flex-1 min-w-0">
-                    <div className="flex flex-col items-center flex-1 min-w-0">
-                      <div
-                        className={cn(
-                          'w-7 h-7 lg:w-8 lg:h-8 rounded-full flex items-center justify-center text-xs border-2 transition-colors shrink-0',
-                          isCompleted && 'bg-success/15 border-success text-success',
-                          isActive && !isFailed && 'bg-accent/15 border-accent text-accent',
-                          isFailed && 'bg-danger/15 border-danger text-danger',
-                          !isCompleted && !isActive && !isFailed && 'border-border text-text-secondary'
-                        )}
-                      >
-                        {isCompleted ? (
-                          <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
-                        ) : isActive && !isFailed ? (
-                          <Loader2 size={14} className="lg:w-4 lg:h-4 animate-spin" />
-                        ) : isFailed ? (
-                          <XCircle size={14} className="lg:w-4 lg:h-4" />
-                        ) : (
-                          i + 1
-                        )}
-                      </div>
-                      <span className="text-[9px] lg:text-[10px] text-text-secondary mt-1 capitalize truncate max-w-full text-center px-1">{step}</span>
-                    </div>
-                    {i < PHASE_STEPS.length - 1 && (
-                      <ArrowRight size={10} className="lg:w-3 lg:h-3 text-border mb-4 shrink-0" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Status message */}
             {status.message && (
-              <p className="text-xs text-text-secondary bg-background rounded p-2">
+              <p className="text-xs text-text-secondary bg-background rounded p-2.5">
                 {status.message}
               </p>
             )}
 
-            {/* Error */}
             {status.phase === 'error' && status.error && (
-              <div className="mt-2">
+              <div className="mt-3">
                 <ErrorAlert message={status.error} />
               </div>
             )}
 
-            {/* Done */}
             {status.phase === 'done' && (
               <div className="flex items-center gap-2 text-xs lg:text-sm text-success mt-2">
                 <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
@@ -837,18 +841,8 @@ export function UpdatePage() {
               </div>
             )}
 
-            {/* Debug Log */}
             {status.log && status.log.length > 0 && (
-              <details className="mt-3" open={status.phase === 'error'}>
-                <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
-                  Log ({status.log.length} entries)
-                </summary>
-                <div className="mt-2 max-h-48 overflow-y-auto bg-background rounded p-2 font-mono text-[10px] lg:text-[11px] text-text-secondary space-y-0.5">
-                  {status.log.map((line, i) => (
-                    <div key={i}>{line}</div>
-                  ))}
-                </div>
-              </details>
+              <UpdateLog log={status.log} defaultOpen={status.phase === 'error'} />
             )}
           </div>
         )}

@@ -51,7 +51,7 @@ export function RuntimePage() {
     <div>
       <Header title="Runtime" refreshing={!connected} onRefresh={refresh} />
 
-      <div className="p-6 space-y-4">
+      <div className="p-4 lg:p-6 space-y-4">
         {firstError && <ErrorAlert message={firstError} onRetry={refresh} />}
 
         <GatesSection gates={gates} />

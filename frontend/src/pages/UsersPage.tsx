@@ -3,6 +3,7 @@ import { Header } from '@/components/layout/Header';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { UserFormDialog } from '@/components/UserFormDialog';
+import { UserCard } from '@/components/UserCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -243,7 +244,7 @@ export function UsersPage() {
               placeholder="Search users..."
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent/50"
+              className="w-full pl-9 pr-3 py-2 min-h-[44px] rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent/50"
             />
           </div>
           <Button onClick={() => setCreateOpen(true)}>
@@ -261,7 +262,7 @@ export function UsersPage() {
               value={sortKey}
               onChange={(e) => toggleSort(e.target.value as SortKey)}
               aria-label="Sort by"
-              className="flex-1 min-w-0 bg-background text-text-primary rounded-md px-2 py-1.5 text-sm border border-border focus:border-accent focus:outline-none"
+              className="flex-1 min-w-0 min-h-[44px] bg-background text-text-primary rounded-md px-2 py-1.5 text-sm border border-border focus:border-accent focus:outline-none"
             >
               <option value="username">Username</option>
               <option value="current_connections">Connections</option>
@@ -274,7 +275,7 @@ export function UsersPage() {
             onClick={() => toggleSort(sortKey)}
             aria-label={sortDir === 'asc' ? 'Sort Descending' : 'Sort Ascending'}
             title={sortDir === 'asc' ? 'Sort Descending' : 'Sort Ascending'}
-            className="p-1.5 rounded-md border border-border bg-background hover:bg-surface-hover text-text-secondary transition-colors flex-shrink-0"
+            className="p-2.5 rounded-md border border-border bg-background hover:bg-surface-hover text-text-secondary transition-colors flex-shrink-0"
           >
             {sortDir === 'asc' ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
           </button>
@@ -413,79 +414,23 @@ export function UsersPage() {
             </div>
           ) : (
             pagedUsers.map((u) => {
+              const linkCount = (u.links?.classic?.length ?? 0) + (u.links?.secure?.length ?? 0) + (u.links?.tls?.length ?? 0);
               const allLinks = collectLinks(u.links, u.username);
-              const hasConns = u.current_connections > 0;
+              const firstLink = allLinks.length > 0 ? allLinks[0].url.replace('tg://proxy', 'https://t.me/proxy') : undefined;
 
               return (
-                <div key={u.username} className={`bg-surface border rounded-lg p-3 space-y-3 ${hasConns ? 'border-success/40 bg-success/5' : 'border-border'}`}>
-                  <div className="flex items-center justify-between">
-                    <Link to={`/users/${u.username}`} className="font-medium text-accent hover:underline">{u.username}</Link>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setEditUser(u)}
-                        className="p-1.5 rounded text-text-secondary hover:text-accent hover:bg-surface-hover"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => setDeleteUser(u.username)}
-                        className="p-1.5 rounded text-text-secondary hover:text-danger hover:bg-surface-hover"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {allLinks.length > 0 && (
-                    <div className="space-y-1">
-                      <div className="text-xs text-text-secondary">Proxy Links</div>
-                      {allLinks.map((link, i) => (
-                        <div key={i} className="flex items-center gap-1">
-                          <CopyButton text={link.url.replace('tg://proxy', 'https://t.me/proxy')} label={link.label} />
-                          <CopyButton text={link.url} label="t.me" />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <div className="text-text-secondary">Connections</div>
-                      <Badge variant={u.current_connections > 0 ? 'default' : 'outline'} className="mt-1">
-                        {u.current_connections}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="text-text-secondary">Active IPs</div>
-                      <div className="mt-1">
-                        {u.active_unique_ips}
-                        {u.max_unique_ips != null && u.max_unique_ips > 0 && (
-                          <span className="text-text-secondary ml-1">/ {u.max_unique_ips}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-text-secondary">Traffic</div>
-                      <Badge variant="outline" className="mt-1">{formatBytes(u.total_octets)}</Badge>
-                    </div>
-                    <div>
-                      <div className="text-text-secondary">Quota</div>
-                      <div className="mt-1">
-                        {u.data_quota_bytes ? (
-                          <Badge variant="outline">{formatBytes(u.data_quota_bytes)}</Badge>
-                        ) : (
-                          <span className="text-text-secondary">-</span>
-                        )}
-                      </div>
-                    </div>
-                    {u.expiration_rfc3339 && (
-                      <div className="col-span-2">
-                        <div className="text-text-secondary">Expiration</div>
-                        <div className="mt-1">{new Date(u.expiration_rfc3339).toLocaleDateString()}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <UserCard
+                  key={u.username}
+                  username={u.username}
+                  connections={u.current_connections}
+                  activeUniqueIps={u.active_unique_ips}
+                  totalTraffic={u.total_octets}
+                  online={u.current_connections > 0}
+                  linkCount={linkCount > 0 ? linkCount : undefined}
+                  onCopyLink={firstLink ? () => navigator.clipboard.writeText(firstLink) : undefined}
+                  onEdit={() => setEditUser(u)}
+                  onDelete={() => setDeleteUser(u.username)}
+                />
               );
             })
           )}
@@ -511,7 +456,7 @@ export function UsersPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={safePage <= 1}
-                className="p-1.5 rounded border border-border bg-surface hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                className="p-2.5 rounded border border-border bg-surface hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <ChevronLeft size={16} />
               </button>
@@ -519,7 +464,7 @@ export function UsersPage() {
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage >= totalPages}
-                className="p-1.5 rounded border border-border bg-surface hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                className="p-2.5 rounded border border-border bg-surface hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <ChevronRight size={16} />
               </button>
