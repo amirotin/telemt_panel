@@ -55,7 +55,7 @@ export function SecurityPage() {
     <div>
       <Header title="Security" refreshing={!connected} onRefresh={refresh} />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 lg:p-6 space-y-6">
         {firstError && <ErrorAlert message={firstError} onRetry={refresh} />}
 
         {posture && (
@@ -122,9 +122,9 @@ export function SecurityPage() {
             <h3 className="text-sm font-medium text-text-secondary mb-3">Effective Limits</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {Object.entries(flatLimits).map(([key, value]) => (
-                <div key={key} className="flex justify-between items-center py-1.5 px-2 rounded hover:bg-surface-hover">
-                  <span className="text-xs text-text-secondary font-mono">{key}</span>
-                  <span className="text-sm text-text-primary font-medium">
+                <div key={key} className="min-w-0 flex justify-between items-center gap-2 py-1.5 px-2 rounded hover:bg-surface-hover">
+                  <span className="text-xs text-text-secondary font-mono truncate">{key}</span>
+                  <span className="text-sm text-text-primary font-medium shrink-0">
                     {typeof value === 'boolean' ? (
                       <StatusBadge status={value} />
                     ) : (

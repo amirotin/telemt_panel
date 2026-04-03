@@ -1,13 +1,15 @@
 import { Header } from '@/components/layout/Header';
 import { MetricCard } from '@/components/MetricCard';
+import { StatusDot } from '@/components/StatusDot';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ErrorAlert } from '@/components/ErrorAlert';
+import { CollapsibleSection } from '@/components/CollapsibleSection';
 import { StartupStatus } from '@/components/StartupStatus';
 import { useWsSubscription, useEndpoint } from '@/hooks/useWebSocket';
 import { usePolling } from '@/hooks/usePolling';
 import { telemt } from '@/lib/api';
 import { formatUptime, formatNumber, formatBytes } from '@/lib/utils';
-import { Activity, Wifi, WifiOff, Clock, Users, ArrowUpDown, Globe } from 'lucide-react';
+import { Activity, Clock, Users, ArrowUpDown, Globe } from 'lucide-react';
 import { useMemo } from 'react';
 
 interface HealthData {
@@ -82,11 +84,11 @@ export function DashboardPage() {
               : 'bg-danger/10 border-danger/30'
           }`}
         >
-          {isHealthy ? (
-            <Wifi size={18} className="text-success shrink-0" />
-          ) : (
-            <WifiOff size={18} className="text-danger shrink-0" />
-          )}
+          <StatusDot
+            status={isHealthy ? 'ok' : 'error'}
+            size="md"
+            animated={!connected}
+          />
           <span className={`font-medium ${isHealthy ? 'text-success' : 'text-danger'}`}>
             {isHealthy ? 'Telemt is running' : 'Telemt is unreachable'}
           </span>
@@ -129,6 +131,7 @@ export function DashboardPage() {
               label="Bad Connections"
               value={formatNumber(summary.connections_bad_total)}
               variant={summary.connections_bad_total > 0 ? 'warning' : 'default'}
+              status={summary.connections_bad_total > 0 ? 'warn' : 'ok'}
             />
             <MetricCard
               label="Configured Users"
@@ -150,8 +153,7 @@ export function DashboardPage() {
 
         {/* System Info */}
         {system && (
-          <div className="bg-surface border border-border rounded-lg p-3 lg:p-4">
-            <h3 className="text-xs lg:text-sm font-medium text-text-secondary mb-2 lg:mb-3">System Info</h3>
+          <CollapsibleSection title="System Info" description="Информация о системе">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 lg:gap-3">
               {Object.entries(system).map(([key, value]) => (
                 <div key={key}>
@@ -166,7 +168,7 @@ export function DashboardPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </CollapsibleSection>
         )}
 
       </div>

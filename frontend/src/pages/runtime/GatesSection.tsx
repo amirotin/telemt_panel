@@ -19,7 +19,7 @@ export function GatesSection({ gates }: GatesSectionProps) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {Object.entries(filtered).map(([key, value]) => (
-        <div key={key} className="bg-surface border border-border rounded-lg p-3 flex flex-col items-center gap-2">
+        <div key={key} className="bg-surface border border-border rounded-lg p-3 min-h-[44px] flex flex-col items-center justify-center gap-2">
           <span className="text-xs text-text-secondary text-center leading-tight">{key.replace(/_/g, ' ')}</span>
           {typeof value === 'boolean' ? (
             <StatusBadge status={value} />

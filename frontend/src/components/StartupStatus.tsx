@@ -34,7 +34,6 @@ export function StartupStatus({ status, stage, progressPct }: StartupStatusProps
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-text-primary">Service Status</h3>
           <Button
-            size="sm"
             variant="outline"
             onClick={() => setShowConfirm(true)}
             disabled={restarting}

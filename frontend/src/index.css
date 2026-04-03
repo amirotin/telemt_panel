@@ -7,6 +7,7 @@
   --color-surface: 22 27 34;
   --color-surface-hover: 28 35 51;
   --color-border: 45 51 59;
+  --color-border-hi: 255 255 255;
   --color-primary: 59 130 246;
   --color-accent: 59 130 246;
   --color-accent-hover: 37 99 235;
@@ -15,6 +16,9 @@
   --color-success: 34 197 94;
   --color-warning: 234 179 8;
   --color-danger: 239 68 68;
+  --color-status-ok: 52 211 153;
+  --color-status-warn: 245 158 11;
+  --color-status-error: 239 68 68;
 }
 
 .theme-light {
@@ -30,6 +34,14 @@
   --color-success: 22 163 74;
   --color-warning: 202 138 4;
   --color-danger: 220 38 38;
+
+  /* Status colors */
+  --color-status-ok: 34 197 94;
+  --color-status-warn: 245 158 11;
+  --color-status-error: 239 68 68;
+
+  /* Border highlight */
+  --color-border-hi: 216 221 228;
 }
 
 @layer base {
@@ -60,4 +72,14 @@
   .checkbox {
     @apply w-4 h-4 rounded border-border bg-surface text-primary focus:ring-2 focus:ring-primary focus:ring-opacity-50 cursor-pointer;
   }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes led-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
