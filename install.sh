@@ -394,7 +394,7 @@ do_install() {
     [ -n "${TELEMT_PATH:-}" ] || TELEMT_PATH=$(detect_telemt)
     [ -n "${TELEMT_SERVICE:-}" ] || TELEMT_SERVICE="telemt"
     $SUDO chown "$SYSTEM_USER:$SYSTEM_USER" "$CONFIG_FILE"
-    $SUDO chmod 640 "$CONFIG_FILE"
+    $SUDO chmod 755 "$CONFIG_FILE"
   else
     say "Setting up initial configuration..."
     echo ""
