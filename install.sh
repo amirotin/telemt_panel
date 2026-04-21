@@ -394,7 +394,7 @@ do_install() {
     [ -n "${TELEMT_PATH:-}" ] || TELEMT_PATH=$(detect_telemt)
     [ -n "${TELEMT_SERVICE:-}" ] || TELEMT_SERVICE="telemt"
     $SUDO chown "$SYSTEM_USER:$SYSTEM_USER" "$CONFIG_FILE"
-    $SUDO chmod 600 "$CONFIG_FILE"
+    $SUDO chmod 640 "$CONFIG_FILE"
   else
     say "Setting up initial configuration..."
     echo ""
@@ -446,7 +446,7 @@ session_ttl = \"24h\""
 
     printf '%s\n' "$_cfg" | write_root "$CONFIG_FILE"
     $SUDO chown "$SYSTEM_USER:$SYSTEM_USER" "$CONFIG_FILE"
-    $SUDO chmod 600 "$CONFIG_FILE"
+    $SUDO chmod 640 "$CONFIG_FILE"
     say "Config saved to $CONFIG_FILE"
   fi
 
