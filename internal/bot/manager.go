@@ -103,18 +103,30 @@ func (m *Manager) Status() Status {
 // ensureDeps runs pip install for the bot's requirements.txt once before the
 // restart loop starts. Errors are non-fatal — the bot may still work if the
 // packages are already installed system-wide (common in Docker images).
+// ensureDeps installs the bot's Python dependencies before the first start.
+// Tries pip install strategies in order until one succeeds. Errors are
+// non-fatal — the bot may still work if packages are already installed
+// system-wide (e.g. pre-installed in a Docker image).
 func (m *Manager) ensureDeps(ctx context.Context) {
 	reqPath := filepath.Join(filepath.Dir(m.scriptPath), "requirements.txt")
 	if _, err := os.Stat(reqPath); os.IsNotExist(err) {
 		return
 	}
 	log.Printf("Bot: installing Python dependencies from %s", reqPath)
-	cmd := exec.CommandContext(ctx, m.pythonPath, "-m", "pip", "install", "-r", reqPath, "--quiet")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Printf("Bot: pip install warning (will try starting anyway): %v", err)
+	strategies := [][]string{
+		{"-m", "pip", "install", "-r", reqPath, "--quiet"},
+		{"-m", "pip", "install", "-r", reqPath, "--quiet", "--user"},
+		{"-m", "pip", "install", "-r", reqPath, "--quiet", "--break-system-packages"},
 	}
+	for _, args := range strategies {
+		cmd := exec.CommandContext(ctx, m.pythonPath, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err == nil {
+			return
+		}
+	}
+	log.Printf("Bot: pip install failed with all strategies (bot may still work if deps are installed system-wide)")
 }
 
 func (m *Manager) loop(ctx context.Context) {

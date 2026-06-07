@@ -18,9 +18,15 @@ COPY --from=frontend /app/dist/ ./dist/
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w -X main.version=${VERSION}" -o telemt-panel .
 
-# Stage 3: Minimal runtime (static binary — no libc dependency)
+# Stage 3: Runtime image with Python for the embedded Telegram bot
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=backend /app/bot/requirements.txt /tmp/bot-requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages \
+    -r /tmp/bot-requirements.txt \
+    && rm /tmp/bot-requirements.txt
 COPY --from=backend /app/telemt-panel /usr/local/bin/
 EXPOSE 8080
 ENTRYPOINT ["telemt-panel"]
