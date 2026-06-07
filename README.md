@@ -17,6 +17,7 @@ Web-панель управления для [Telemt](https://github.com/telemt/
 - [Быстрый старт](#быстрый-старт)
 - [Сборка](#сборка)
 - [Конфигурация](#конфигурация)
+- [Telegram Bot](#telegram-bot)
 - [Systemd](#systemd)
 - [CLI](#cli)
 - [Стек](#стек)
@@ -40,6 +41,7 @@ Web-панель управления для [Telemt](https://github.com/telemt/
 - **GeoIP** — определение геолокации по IP через MaxMind GeoLite2
 - **WebSocket** — реалтайм обновление данных без перезагрузки страницы
 - **Base Path** — поддержка запуска за reverse proxy на подпути
+- **Telegram Bot** — управление токеном и списком администраторов бота прямо из панели; Python-бот в директории `bot/` умеет читать конфиг панели автоматически
 
 ## Требования
 
@@ -179,6 +181,55 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 | `[tls]` | `acme_cache_dir` | Директория кеша сертификатов | `/var/lib/telemt-panel/certs` |
 | `[geoip]` | `db_path` | Путь к MaxMind GeoLite2 City (.mmdb) | — |
 | `[geoip]` | `asn_db_path` | Путь к MaxMind GeoLite2 ASN (.mmdb) | — |
+| `[telegram]` | `bot_token` | Токен Telegram-бота (получить у `@botfather`) | — |
+| `[telegram]` | `admin_ids` | Массив Telegram User ID администраторов бота | — |
+
+## Telegram Bot
+
+В директории `bot/` находится Python-бот для управления доступом пользователей через Telegram.
+
+### Что умеет бот
+
+- Регистрация пользователей по заявкам (администратор одобряет / отклоняет)
+- Выдача персональной MTProxy-ссылки с QR-кодом
+- Статистика трафика и активных IP для каждого пользователя
+- Администраторское меню: статистика всех клиентов, рассылка, чёрный список, бэкап БД
+- Пересылка сообщений пользователей администраторам с возможностью ответить через Reply
+- Мониторинг доступности API Telemt с уведомлениями в Telegram
+
+### Настройка токена и администраторов
+
+Откройте раздел **Telegram Bot** в боковом меню панели:
+
+- **Bot Token** — вставьте токен, полученный у `@botfather`
+- **Admin User IDs** — укажите Telegram User ID администраторов (по одному на строку); узнать свой ID можно через `@userinfobot` или командой `/id` в боте
+
+После сохранения настройки записываются в `config.toml` в секцию `[telegram]`.
+
+### Запуск
+
+```bash
+cd bot
+
+# Зависимости (один раз)
+pip install -r requirements.txt
+
+# Бот читает токен и admin_ids из config.toml панели
+PANEL_CONFIG_PATH=/etc/telemt-panel/config.toml python bot.py
+```
+
+Дополнительные переменные окружения (переопределяют значения из config.toml):
+
+| Переменная | Описание |
+|------------|----------|
+| `PANEL_CONFIG_PATH` | Путь к `config.toml` панели — бот читает из него `[telegram]` и `[telemt]` |
+| `BOT_TOKEN` | Токен бота (если не задан в config.toml) |
+| `ADMIN_IDS` | Список ID через запятую (если не заданы в config.toml) |
+| `PROXY_DOMAIN` | Домен MTProxy для генерации ссылок |
+| `PROXY_PORT` | Порт MTProxy (по умолчанию `4448`) |
+| `API_URL` | URL Telemt API (по умолчанию из `telemt.url` в config.toml) |
+
+Пример конфига среды: [`bot/.env.example`](bot/.env.example).
 
 ## Systemd
 

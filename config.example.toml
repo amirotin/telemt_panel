@@ -99,3 +99,13 @@ session_ttl = "24h"
 # data_quota_bytes = 1073741824
 # max_unique_ips = 3
 # expiration = "2027-12-31T23:59:59Z"
+
+[telegram]
+# Telegram bot token.
+# Необходимо получить токен у менеджера ботов Telegram @botfather
+# bot_token = "123456789:AABBCCDDEEFFaabbccddeeff-1234567890"
+
+# Telegram User IDs of bot administrators.
+# Один или несколько User ID администратора(-ов) Telegram-бота.
+# Для получения User ID используйте @userinfobot или команду '/id' в боте.
+# admin_ids = [123456789]

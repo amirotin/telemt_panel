@@ -1,0 +1,4 @@
+pyTelegramBotAPI>=4.18.0
+requests>=2.31.0
+qrcode[pil]>=7.4.2
+tomli>=2.0.1; python_version < "3.11"

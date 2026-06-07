@@ -602,6 +602,51 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 	// Telemt API proxy (kept for direct REST calls like user CRUD)
 	mux.Handle("/api/telemt/", auth.RequireAuth(jwtSecret, telemtProxy))
 
+	// Telegram bot config endpoints
+	mux.Handle("GET /api/telegram/config", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminIDs := s.cfg.Telegram.AdminIDs
+		if adminIDs == nil {
+			adminIDs = []int64{}
+		}
+		writeJSON(w, http.StatusOK, jsonResponse{
+			OK: true,
+			Data: map[string]interface{}{
+				"bot_token": s.cfg.Telegram.BotToken,
+				"admin_ids": adminIDs,
+			},
+		})
+	})))
+
+	mux.Handle("POST /api/telegram/config", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			BotToken string  `json:"bot_token"`
+			AdminIDs []int64 `json:"admin_ids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+			return
+		}
+
+		s.cfg.Telegram.BotToken = req.BotToken
+		s.cfg.Telegram.AdminIDs = req.AdminIDs
+
+		if s.cfg.Path != "" {
+			ids := make([]interface{}, len(req.AdminIDs))
+			for i, id := range req.AdminIDs {
+				ids[i] = id
+			}
+			updates := map[string]interface{}{
+				"telegram.bot_token": req.BotToken,
+				"telegram.admin_ids": ids,
+			}
+			if _, err := telemt_config.QuickUpdate(s.cfg.Path, updates); err != nil {
+				log.Printf("WARNING: failed to persist telegram config: %s", err)
+			}
+		}
+
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true})
+	})))
+
 	// SPA
 	mux.Handle("/", spa.NewHandler(distFS, s.cfg.BasePath))
 
