@@ -1,20 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Activity, Shield, Network, Settings, ArrowUpCircle, ScrollText, LogOut, X, Sun, Moon, Bot } from 'lucide-react';
+import { LayoutDashboard, Users, Activity, Shield, Network, Settings, ArrowUpCircle, ScrollText, LogOut, X, Sun, Moon, Bot, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
-
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/users', icon: Users, label: 'Users' },
-  { to: '/runtime', icon: Activity, label: 'Runtime' },
-  { to: '/security', icon: Shield, label: 'Security' },
-  { to: '/upstreams', icon: Network, label: 'Upstreams & DCs' },
-  { to: '/config', icon: Settings, label: 'Configuration' },
-  { to: '/telegram', icon: Bot, label: 'Telegram Bot' },
-  { to: '/update', icon: ArrowUpCircle, label: 'Update' },
-  { to: '/logs', icon: ScrollText, label: 'Logs' },
-];
+import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -24,6 +14,25 @@ interface SidebarProps {
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { logout, username } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
+  const { t } = useTranslation();
+
+  const navItems = [
+    { to: '/', icon: LayoutDashboard, label: t('nav.dashboard') },
+    { to: '/users', icon: Users, label: t('nav.users') },
+    { to: '/runtime', icon: Activity, label: t('nav.runtime') },
+    { to: '/security', icon: Shield, label: t('nav.security') },
+    { to: '/upstreams', icon: Network, label: t('nav.upstreams') },
+    { to: '/config', icon: Settings, label: t('nav.config') },
+    { to: '/telegram', icon: Bot, label: t('nav.telegramBot') },
+    { to: '/update', icon: ArrowUpCircle, label: t('nav.update') },
+    { to: '/logs', icon: ScrollText, label: t('nav.logs') },
+  ];
+
+  const toggleLang = () => {
+    const next = i18n.language === 'en' ? 'ru' : 'en';
+    i18n.changeLanguage(next);
+    localStorage.setItem('lang', next);
+  };
 
   return (
     <>
@@ -84,7 +93,14 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover w-full transition-colors"
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            {theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
+          </button>
+          <button
+            onClick={toggleLang}
+            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover w-full transition-colors"
+          >
+            <Globe size={18} />
+            {i18n.language === 'en' ? 'RU' : 'EN'}
           </button>
           <a
             href="https://github.com/amirotin/telemt_panel"
@@ -100,7 +116,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-text-secondary hover:text-danger hover:bg-surface-hover w-full transition-colors"
           >
             <LogOut size={18} />
-            Logout
+            {t('sidebar.logout')}
           </button>
         </div>
       </aside>
@@ -110,11 +126,13 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
 // Mobile bottom navigation
 export function BottomNav() {
+  const { t } = useTranslation();
+
   const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/users', icon: Users, label: 'Users' },
-    { to: '/runtime', icon: Activity, label: 'Runtime' },
-    { to: '/upstreams', icon: Network, label: 'More' },
+    { to: '/', icon: LayoutDashboard, label: t('nav.dashboard') },
+    { to: '/users', icon: Users, label: t('nav.users') },
+    { to: '/runtime', icon: Activity, label: t('nav.runtime') },
+    { to: '/upstreams', icon: Network, label: t('nav.upstreams') },
   ];
 
   return (

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Bot, Save, Play, Square, AlertCircle, CheckCircle2, Circle } from 'lucide-react';
 import { panelApi } from '@/lib/api';
+import { useTranslation, Trans } from 'react-i18next';
 
 interface TelegramConfig {
   bot_token: string;
@@ -20,13 +21,15 @@ interface BotStatus {
 }
 
 function StatusBadge({ status }: { status: BotStatus | null }) {
+  const { t } = useTranslation();
+
   if (!status) return null;
 
   if (!status.script_found) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-500/15 text-yellow-500">
         <AlertCircle className="w-3.5 h-3.5" />
-        bot.py не найден
+        {t('telegram.botNotFound')}
       </span>
     );
   }
@@ -35,7 +38,7 @@ function StatusBadge({ status }: { status: BotStatus | null }) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-surface text-text-secondary border border-border">
         <Circle className="w-3.5 h-3.5" />
-        Не настроен
+        {t('telegram.notConfigured')}
       </span>
     );
   }
@@ -44,7 +47,7 @@ function StatusBadge({ status }: { status: BotStatus | null }) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/15 text-green-500">
         <CheckCircle2 className="w-3.5 h-3.5" />
-        Запущен {status.pid ? `(PID ${status.pid})` : ''}
+        {status.pid ? t('telegram.runningPid', { pid: status.pid }) : t('telegram.running')}
       </span>
     );
   }
@@ -53,7 +56,7 @@ function StatusBadge({ status }: { status: BotStatus | null }) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/15 text-red-500">
         <AlertCircle className="w-3.5 h-3.5" />
-        Ошибка
+        {t('telegram.errorStatus')}
       </span>
     );
   }
@@ -61,12 +64,13 @@ function StatusBadge({ status }: { status: BotStatus | null }) {
   return (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-surface text-text-secondary border border-border">
       <Circle className="w-3.5 h-3.5" />
-      Остановлен
+      {t('telegram.stopped')}
     </span>
   );
 }
 
 export function TelegramPage() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -100,7 +104,7 @@ export function TelegramPage() {
       setMaxTcpConns(data.default_max_tcp_conns || 50);
       setMaxUniqueIps(data.default_max_unique_ips || 5);
     } catch (err: any) {
-      setError(err.message || 'Ошибка загрузки конфигурации');
+      setError(err.message || t('telegram.loadError'));
     } finally {
       setLoading(false);
     }
@@ -139,7 +143,7 @@ export function TelegramPage() {
       setTimeout(() => setSaveSuccess(false), 3000);
       await pollStatus();
     } catch (err: any) {
-      setError(err.message || 'Ошибка сохранения');
+      setError(err.message || t('telegram.saveError'));
     } finally {
       setSaving(false);
     }
@@ -157,7 +161,7 @@ export function TelegramPage() {
       }
       await pollStatus();
     } catch (err: any) {
-      setError(err.message || 'Ошибка управления ботом');
+      setError(err.message || t('telegram.toggleError'));
     } finally {
       setToggling(false);
     }
@@ -168,7 +172,7 @@ export function TelegramPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-text-secondary">Загрузка...</div>
+        <div className="text-text-secondary">{t('common.loading')}</div>
       </div>
     );
   }
@@ -191,12 +195,12 @@ export function TelegramPage() {
             disabled={toggling || !isConfigured || !status?.script_found}
             title={
               !status?.script_found
-                ? 'bot.py не найден по пути <config_dir>/bot/bot.py'
+                ? t('telegram.botNotFoundPath')
                 : !isConfigured
-                ? 'Сначала укажите токен и ID администраторов'
+                ? t('telegram.requiresToken')
                 : botIsOn
-                ? 'Остановить бота'
-                : 'Запустить бота'
+                ? t('telegram.stopBot')
+                : t('telegram.startBot')
             }
             className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed
               ${botIsOn
@@ -204,7 +208,7 @@ export function TelegramPage() {
                 : 'bg-green-600 text-white hover:bg-green-700'}`}
           >
             {botIsOn ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {toggling ? '...' : botIsOn ? 'Остановить' : 'Запустить'}
+            {toggling ? '...' : botIsOn ? t('telegram.stop') : t('telegram.start')}
           </button>
 
           <button
@@ -213,7 +217,7 @@ export function TelegramPage() {
             className="px-3 py-1.5 text-sm rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
-            {saving ? 'Сохранение...' : 'Сохранить'}
+            {saving ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </div>
@@ -232,14 +236,14 @@ export function TelegramPage() {
           {saveSuccess && (
             <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-500 text-sm flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              Настройки сохранены. Бот перезапустится автоматически.
+              {t('telegram.settingsSaved')}
             </div>
           )}
 
           {/* Error details from process */}
           {status?.last_error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm">
-              <p className="font-medium mb-1">Ошибка процесса бота:</p>
+              <p className="font-medium mb-1">{t('telegram.botProcessError')}</p>
               <code className="text-xs break-all">{status.last_error}</code>
             </div>
           )}
@@ -247,21 +251,23 @@ export function TelegramPage() {
           {/* Config */}
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-surface">
-              <span className="font-semibold text-text-primary">Конфигурация</span>
+              <span className="font-semibold text-text-primary">{t('telegram.configSection')}</span>
             </div>
             <div className="p-4 space-y-5 bg-background">
 
               <div className="space-y-1.5">
                 <label className="block text-sm font-medium text-text-primary">Bot Token</label>
                 <p className="text-xs text-text-secondary">
-                  Необходимо получить токен у менеджера ботов Telegram{' '}
-                  <span className="font-mono text-text-primary">@botfather</span>
+                  <Trans
+                    i18nKey="telegram.botTokenHint"
+                    components={{ mono: <span className="font-mono text-text-primary" /> }}
+                  />
                 </p>
                 <input
                   type="text"
                   value={botToken}
                   onChange={(e) => setBotToken(e.target.value)}
-                  placeholder="Вставьте токен бота"
+                  placeholder={t('telegram.botTokenPlaceholder')}
                   className="input w-full font-mono text-sm"
                   autoComplete="off"
                   spellCheck={false}
@@ -271,23 +277,22 @@ export function TelegramPage() {
               <div className="space-y-1.5">
                 <label className="block text-sm font-medium text-text-primary">Admin User IDs</label>
                 <p className="text-xs text-text-secondary">
-                  Один или несколько User ID администратора(-ов) Telegram-бота.
-                  Для получения User ID используйте{' '}
-                  <span className="font-mono text-text-primary">@userinfobot</span> или команду{' '}
-                  <span className="font-mono text-text-primary">/id</span> в боте.
-                  Каждый ID с новой строки.
+                  <Trans
+                    i18nKey="telegram.adminIdsHint"
+                    components={{ mono: <span className="font-mono text-text-primary" /> }}
+                  />
                 </p>
                 <textarea
                   value={adminIdsText}
                   onChange={(e) => setAdminIdsText(e.target.value)}
-                  placeholder="Вставьте User ID (по одному на строку)"
+                  placeholder={t('telegram.adminIdsPlaceholder')}
                   rows={4}
                   className="input w-full font-mono text-sm resize-none"
                   spellCheck={false}
                 />
                 {adminIdsText.trim() !== '' && (
                   <p className="text-xs text-text-secondary">
-                    Распознано ID: {parseAdminIds().join(', ') || '—'}
+                    {t('telegram.recognizedIds')} {parseAdminIds().join(', ') || '—'}
                   </p>
                 )}
               </div>
@@ -295,10 +300,10 @@ export function TelegramPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="block text-sm font-medium text-text-primary">
-                    Макс. сессий на клиента
+                    {t('telegram.maxTcpConnsLabel')}
                   </label>
                   <p className="text-xs text-text-secondary">
-                    Лимит TCP-подключений при создании нового клиента
+                    {t('telegram.maxTcpConnsHint')}
                   </p>
                   <input
                     type="number"
@@ -311,10 +316,10 @@ export function TelegramPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-sm font-medium text-text-primary">
-                    Макс. уникальных IP на клиента
+                    {t('telegram.maxUniqueIpsLabel')}
                   </label>
                   <p className="text-xs text-text-secondary">
-                    При превышении бот уведомит администратора
+                    {t('telegram.maxUniqueIpsHint')}
                   </p>
                   <input
                     type="number"
@@ -332,32 +337,32 @@ export function TelegramPage() {
           {/* Bot status card */}
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-surface">
-              <span className="font-semibold text-text-primary">Статус и запуск</span>
+              <span className="font-semibold text-text-primary">{t('telegram.statusSection')}</span>
             </div>
             <div className="p-4 bg-background space-y-3">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <span className="text-text-secondary">Процесс:</span>{' '}
+                  <span className="text-text-secondary">{t('telegram.processLabel')}</span>{' '}
                   <span className={status?.running ? 'text-green-500' : 'text-text-secondary'}>
-                    {status?.running ? `запущен (PID ${status.pid})` : 'остановлен'}
+                    {status?.running
+                      ? t('telegram.processRunning', { pid: status.pid })
+                      : t('telegram.processStopped')}
                   </span>
                 </div>
                 <div>
                   <span className="text-text-secondary">bot.py:</span>{' '}
                   <span className={status?.script_found ? 'text-green-500' : 'text-yellow-500'}>
-                    {status?.script_found ? 'найден' : 'не найден'}
+                    {status?.script_found ? t('telegram.botPyFound') : t('telegram.botPyNotFound')}
                   </span>
                 </div>
               </div>
               {!status?.script_found && (
                 <p className="text-xs text-yellow-500">
-                  bot.py не найден — перезапустите панель, чтобы извлечь файл из бинарника.
+                  {t('telegram.botPyMissingHint')}
                 </p>
               )}
               <p className="text-xs text-text-secondary">
-                Зависимости Python устанавливаются автоматически при первом запуске бота.
-                Если токен и ID администраторов заданы, бот стартует автоматически при следующем
-                запуске панели. При сохранении настроек запущенный бот перезапускается.
+                {t('telegram.autoStartHint')}
               </p>
             </div>
           </div>

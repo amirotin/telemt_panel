@@ -5,6 +5,7 @@ import { ErrorAlert } from '@/components/ErrorAlert';
 import { panelApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { RefreshCw, Download, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface UpdateStatus {
   phase: string;
@@ -32,13 +33,6 @@ interface ReleasesResult {
 }
 
 const PHASE_STEPS = ['checking', 'downloading', 'verifying', 'replacing', 'restarting'];
-const PHASE_LABELS: Record<string, string> = {
-  checking: 'Проверка',
-  downloading: 'Загрузка',
-  verifying: 'Верификация',
-  replacing: 'Установка',
-  restarting: 'Перезапуск',
-};
 
 function getLogLineColor(line: string): string {
   if (line.includes('error') || line.includes('failed') || line.includes('rollback')) return 'text-danger';
@@ -64,17 +58,6 @@ interface AutoUpdateStatus {
   telemt: AutoUpdateComponentState;
 }
 
-const INTERVAL_OPTIONS = [
-  { value: '5m', label: '5 минут' },
-  { value: '15m', label: '15 минут' },
-  { value: '30m', label: '30 минут' },
-  { value: '1h', label: '1 час' },
-  { value: '3h', label: '3 часа' },
-  { value: '6h', label: '6 часов' },
-  { value: '12h', label: '12 часов' },
-  { value: '24h', label: '24 часа' },
-];
-
 function AutoUpdateCard({
   title,
   state,
@@ -84,10 +67,22 @@ function AutoUpdateCard({
   state: AutoUpdateComponentState;
   onSave: (config: AutoUpdateConfig) => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
   const [enabled, setEnabled] = useState(state.config.enabled);
   const [interval, setInterval] = useState(state.config.check_interval || '1h');
   const [autoApply, setAutoApply] = useState(state.config.auto_apply);
   const [saving, setSaving] = useState(false);
+
+  const intervalOptions = [
+    { value: '5m', label: t('update.interval5m') },
+    { value: '15m', label: t('update.interval15m') },
+    { value: '30m', label: t('update.interval30m') },
+    { value: '1h', label: t('update.interval1h') },
+    { value: '3h', label: t('update.interval3h') },
+    { value: '6h', label: t('update.interval6h') },
+    { value: '12h', label: t('update.interval12h') },
+    { value: '24h', label: t('update.interval24h') },
+  ];
 
   useEffect(() => {
     setEnabled(state.config.enabled);
@@ -105,6 +100,7 @@ function AutoUpdateCard({
   };
 
   const hasChanges = enabled !== state.config.enabled || interval !== (state.config.check_interval || '1h') || autoApply !== state.config.auto_apply;
+  const dateLocale = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
 
   return (
     <div className="bg-surface rounded-lg p-4 lg:p-5 border border-border">
@@ -112,14 +108,14 @@ function AutoUpdateCard({
         <h3 className="text-xs lg:text-sm font-semibold text-text-primary">{title}</h3>
         {state.last_check_at && (
           <span className="text-[10px] lg:text-xs text-text-secondary">
-            Последняя проверка: {new Date(state.last_check_at).toLocaleString('ru-RU')}
+            {t('update.lastCheck')} {new Date(state.last_check_at).toLocaleString(dateLocale)}
           </span>
         )}
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-text-secondary">{enabled ? "Вкл" : "Выкл"}</span>
+          <span className="text-sm text-text-secondary">{enabled ? t('update.enabled') : t('update.disabled')}</span>
           <button
             onClick={() => setEnabled(!enabled)}
             className={cn(
@@ -137,20 +133,20 @@ function AutoUpdateCard({
         {enabled && (
           <>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-secondary">Интервал проверки</span>
+              <span className="text-sm text-text-secondary">{t('update.checkInterval')}</span>
               <select
                 value={interval}
                 onChange={(e) => setInterval(e.target.value)}
                 className="bg-background text-text-primary rounded px-2 py-1 text-sm border border-border focus:border-accent focus:outline-none"
               >
-                {INTERVAL_OPTIONS.map((o) => (
+                {intervalOptions.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text-secondary">Автоустановка</span>
+              <span className="text-sm text-text-secondary">{t('update.autoApply')}</span>
               <button
                 onClick={() => setAutoApply(!autoApply)}
                 className={cn(
@@ -171,11 +167,11 @@ function AutoUpdateCard({
           <div className="flex items-center gap-2 text-xs">
             {state.last_check.update_available ? (
               <span className="text-accent">
-                Доступно: {state.last_check.latest_version}
+                {t('update.available')} {state.last_check.latest_version}
               </span>
             ) : (
               <span className="text-success">
-                Актуально ({state.last_check.current_version})
+                {t('update.upToDate')} ({state.last_check.current_version})
               </span>
             )}
           </div>
@@ -187,7 +183,7 @@ function AutoUpdateCard({
             disabled={saving}
             className="px-3 py-1.5 text-sm rounded-lg bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors"
           >
-            {saving ? 'Сохранение...' : 'Сохранить'}
+            {saving ? t('common.saving') : t('common.save')}
           </button>
         )}
       </div>
@@ -213,21 +209,23 @@ function VersionSelect({
   onRetry: () => void;
   currentVersion: string;
 }) {
+  const { t } = useTranslation();
+
   if (loading) {
-    return <div className="text-sm text-text-secondary">Загрузка релизов...</div>;
+    return <div className="text-sm text-text-secondary">{t('update.loadingReleases')}</div>;
   }
   if (error) {
     return (
       <div className="text-sm text-red-400">
         {error}{' '}
         <button onClick={onRetry} className="underline hover:text-red-300">
-          Повторить
+          {t('update.retry')}
         </button>
       </div>
     );
   }
   if (releases.length === 0) {
-    return <div className="text-sm text-text-secondary">Нет доступных версий</div>;
+    return <div className="text-sm text-text-secondary">{t('update.noVersions')}</div>;
   }
   return (
     <select
@@ -239,18 +237,18 @@ function VersionSelect({
       }}
     >
       <option value="" disabled>
-        Выберите версию
+        {t('update.selectVersion')}
       </option>
       {currentVersion && (
         <option value="__current__" disabled>
-          {currentVersion} (текущая)
+          {currentVersion} ({t('update.currentLabel')})
         </option>
       )}
       {releases.map((r) => (
         <option key={r.version} value={r.version}>
           {r.version}
-          {r.prerelease ? ' \u26A0 pre-release' : ''}
-          {r.is_downgrade ? ' \u2193 downgrade' : ''}
+          {r.prerelease ? ' ⚠ pre-release' : ''}
+          {r.is_downgrade ? ' ↓ downgrade' : ''}
         </option>
       ))}
     </select>
@@ -258,6 +256,15 @@ function VersionSelect({
 }
 
 function ProgressSteps({ phase, currentStep }: { phase: string; currentStep: number }) {
+  const { t } = useTranslation();
+  const phaseLabels: Record<string, string> = {
+    checking: t('update.checking'),
+    downloading: t('update.downloading'),
+    verifying: t('update.verifying'),
+    replacing: t('update.replacing'),
+    restarting: t('update.restarting'),
+  };
+
   return (
     <div className="flex items-center mb-4">
       {PHASE_STEPS.map((step, i) => {
@@ -294,7 +301,7 @@ function ProgressSteps({ phase, currentStep }: { phase: string; currentStep: num
                 isFailed && 'text-danger',
                 !isCompleted && !isActive && !isFailed && 'text-text-secondary'
               )}>
-                {PHASE_LABELS[step]}
+                {phaseLabels[step]}
               </span>
             </div>
             {i < PHASE_STEPS.length - 1 && (
@@ -311,6 +318,7 @@ function ProgressSteps({ phase, currentStep }: { phase: string; currentStep: num
 }
 
 function UpdateLog({ log, defaultOpen }: { log: string[]; defaultOpen?: boolean }) {
+  const { t } = useTranslation();
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -322,7 +330,7 @@ function UpdateLog({ log, defaultOpen }: { log: string[]; defaultOpen?: boolean 
   return (
     <details className="mt-3" open={defaultOpen}>
       <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
-        Журнал ({log.length} записей)
+        {t('update.logEntries', { count: log.length })}
       </summary>
       <div
         ref={logRef}
@@ -345,34 +353,35 @@ function ConfirmModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const warnings: string[] = [];
   if (release.prerelease) {
-    warnings.push(`Это pre-release версия ${release.version}. Она может быть нестабильной.`);
+    warnings.push(t('update.preReleaseWarning', { version: release.version }));
   }
   if (release.is_downgrade) {
-    warnings.push(`Вы собираетесь откатиться на более старую версию ${release.version}.`);
+    warnings.push(t('update.downgradeWarning', { version: release.version }));
   }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-surface rounded-lg p-6 max-w-md mx-4 border border-border">
-        <h3 className="text-lg font-semibold text-text-primary mb-4">Подтверждение</h3>
+        <h3 className="text-lg font-semibold text-text-primary mb-4">{t('update.confirmTitle')}</h3>
         {warnings.map((w, i) => (
           <p key={i} className="text-warning text-sm mb-2">{w}</p>
         ))}
-        <p className="text-text-secondary text-sm mt-4">Продолжить установку?</p>
+        <p className="text-text-secondary text-sm mt-4">{t('update.proceedQuestion')}</p>
         <div className="flex gap-3 mt-6 justify-end">
           <button
             onClick={onCancel}
             className="px-4 py-2 rounded bg-surface-hover text-text-primary hover:bg-border text-sm"
           >
-            Отмена
+            {t('update.cancel')}
           </button>
           <button
             onClick={onConfirm}
             className="px-4 py-2 rounded bg-warning text-white hover:opacity-90 text-sm"
           >
-            Продолжить
+            {t('update.proceed')}
           </button>
         </div>
       </div>
@@ -381,6 +390,9 @@ function ConfirmModal({
 }
 
 export function UpdatePage() {
+  const { t, i18n } = useTranslation();
+  const dateLocale = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
+
   // Telemt update state
   const [currentVersion, setCurrentVersion] = useState('');
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -430,7 +442,7 @@ export function UpdatePage() {
       const res = await panelApi.put<AutoUpdateStatus>('/auto-update/config', payload);
       setAutoStatus(res);
     } catch (e: any) {
-      alert('Ошибка: ' + (e.message || 'Не удалось сохранить настройки'));
+      alert(t('update.settingsError') + (e.message || ''));
     }
   };
 
@@ -448,7 +460,7 @@ export function UpdatePage() {
       const defaultRelease = (res.releases || []).find(r => !r.prerelease && !r.is_downgrade);
       setSelectedRelease(defaultRelease || null);
     } catch (e: any) {
-      setReleasesError(e.message || 'Ошибка загрузки релизов');
+      setReleasesError(e.message || t('update.loadingReleases'));
     } finally {
       setReleasesLoading(false);
     }
@@ -464,7 +476,7 @@ export function UpdatePage() {
       const defaultRelease = (res.releases || []).find(r => !r.prerelease && !r.is_downgrade);
       setPanelSelectedRelease(defaultRelease || null);
     } catch (e: any) {
-      setPanelReleasesError(e.message || 'Ошибка загрузки релизов');
+      setPanelReleasesError(e.message || t('update.loadingReleases'));
     } finally {
       setPanelReleasesLoading(false);
     }
@@ -581,7 +593,7 @@ export function UpdatePage() {
         {/* Auto-update settings */}
         {autoStatus && (
           <div className="bg-surface rounded-lg p-4 lg:p-5 border border-border">
-            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">Автообновление</h2>
+            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">{t('update.autoUpdateSection')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:gap-4">
               <AutoUpdateCard
                 title="Panel"
@@ -611,8 +623,8 @@ export function UpdatePage() {
               )}
             >
               <RefreshCw size={12} className={cn('lg:w-3.5 lg:h-3.5', panelReleasesLoading && 'animate-spin')} />
-              <span className="hidden sm:inline">Обновить список</span>
-              <span className="sm:hidden">Обновить</span>
+              <span className="hidden sm:inline">{t('update.refreshList')}</span>
+              <span className="sm:hidden">{t('update.refresh')}</span>
             </button>
           </div>
 
@@ -620,7 +632,7 @@ export function UpdatePage() {
 
           <div className="space-y-3 lg:space-y-4">
             <div className="grid grid-cols-2 gap-2 lg:gap-3">
-              <MetricCard label="Текущая версия" value={panelCurrentVersion || '—'} />
+              <MetricCard label={t('update.currentVersionLabel')} value={panelCurrentVersion || '—'} />
               <div className="flex items-center">
                 <VersionSelect
                   releases={panelReleases}
@@ -642,7 +654,7 @@ export function UpdatePage() {
                       {panelSelectedRelease.name}
                     </p>
                     <p className="text-xs text-text-secondary mt-1">
-                      Опубликовано {new Date(panelSelectedRelease.published_at).toLocaleDateString('ru-RU')}
+                      {t('update.publishedAt')} {new Date(panelSelectedRelease.published_at).toLocaleDateString(dateLocale)}
                       {' · '}
                       <a
                         href={panelSelectedRelease.html_url}
@@ -650,7 +662,7 @@ export function UpdatePage() {
                         rel="noopener noreferrer"
                         className="text-accent hover:underline"
                       >
-                        заметки о релизе
+                        {t('update.releaseNotes')}
                       </a>
                     </p>
                   </div>
@@ -664,14 +676,14 @@ export function UpdatePage() {
                     )}
                   >
                     <Download size={14} className="lg:w-4 lg:h-4" />
-                    Обновить
+                    {t('update.update')}
                   </button>
                 </div>
 
                 {panelSelectedRelease.changelog && (
                   <details className="mt-3">
                     <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
-                      Список изменений
+                      {t('update.changelog')}
                     </summary>
                     <pre className="mt-2 text-xs text-text-secondary whitespace-pre-wrap bg-background rounded p-2 lg:p-3 max-h-48 overflow-y-auto">
                       {panelSelectedRelease.changelog}
@@ -684,7 +696,7 @@ export function UpdatePage() {
             {!panelSelectedRelease && !panelReleasesLoading && panelReleases.length === 0 && !panelReleasesError && (
               <div className="flex items-center gap-2 text-xs lg:text-sm text-success">
                 <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
-                Установлена последняя версия
+                {t('update.latestInstalled')}
               </div>
             )}
           </div>
@@ -693,7 +705,7 @@ export function UpdatePage() {
         {/* Panel Update Progress */}
         {panelStatus && panelStatus.phase !== 'idle' && (
           <div className="bg-surface rounded-lg p-4 lg:p-5 border border-border">
-            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">Ход обновления Panel</h2>
+            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">{t('update.progressPanel')}</h2>
 
             <ProgressSteps phase={panelStatus.phase} currentStep={panelCurrentStep} />
 
@@ -738,14 +750,14 @@ export function UpdatePage() {
               )}
             >
               <RefreshCw size={12} className={cn('lg:w-3.5 lg:h-3.5', releasesLoading && 'animate-spin')} />
-              <span className="hidden sm:inline">Обновить список</span>
-              <span className="sm:hidden">Обновить</span>
+              <span className="hidden sm:inline">{t('update.refreshList')}</span>
+              <span className="sm:hidden">{t('update.refresh')}</span>
             </button>
           </div>
 
           <div className="space-y-3 lg:space-y-4">
             <div className="grid grid-cols-2 gap-2 lg:gap-3">
-              <MetricCard label="Текущая версия" value={currentVersion || '—'} />
+              <MetricCard label={t('update.currentVersionLabel')} value={currentVersion || '—'} />
               <div className="flex items-center">
                 <VersionSelect
                   releases={releases}
@@ -767,7 +779,7 @@ export function UpdatePage() {
                       {selectedRelease.name}
                     </p>
                     <p className="text-xs text-text-secondary mt-1">
-                      Опубликовано {new Date(selectedRelease.published_at).toLocaleDateString('ru-RU')}
+                      {t('update.publishedAt')} {new Date(selectedRelease.published_at).toLocaleDateString(dateLocale)}
                       {' · '}
                       <a
                         href={selectedRelease.html_url}
@@ -775,7 +787,7 @@ export function UpdatePage() {
                         rel="noopener noreferrer"
                         className="text-accent hover:underline"
                       >
-                        заметки о релизе
+                        {t('update.releaseNotes')}
                       </a>
                     </p>
                   </div>
@@ -789,14 +801,14 @@ export function UpdatePage() {
                     )}
                   >
                     <Download size={14} className="lg:w-4 lg:h-4" />
-                    Обновить
+                    {t('update.update')}
                   </button>
                 </div>
 
                 {selectedRelease.changelog && (
                   <details className="mt-3">
                     <summary className="text-xs text-text-secondary cursor-pointer hover:text-text-primary">
-                      Список изменений
+                      {t('update.changelog')}
                     </summary>
                     <pre className="mt-2 text-xs text-text-secondary whitespace-pre-wrap bg-background rounded p-2 lg:p-3 max-h-48 overflow-y-auto">
                       {selectedRelease.changelog}
@@ -809,7 +821,7 @@ export function UpdatePage() {
             {!selectedRelease && !releasesLoading && releases.length === 0 && !releasesError && (
               <div className="flex items-center gap-2 text-xs lg:text-sm text-success">
                 <CheckCircle2 size={14} className="lg:w-4 lg:h-4" />
-                Установлена последняя версия
+                {t('update.latestInstalled')}
               </div>
             )}
           </div>
@@ -818,7 +830,7 @@ export function UpdatePage() {
         {/* Update Progress */}
         {status && status.phase !== 'idle' && (
           <div className="bg-surface rounded-lg p-4 lg:p-5 border border-border">
-            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">Ход обновления Telemt</h2>
+            <h2 className="text-xs lg:text-sm font-semibold text-text-primary mb-3 lg:mb-4">{t('update.progressTelemt')}</h2>
 
             <ProgressSteps phase={status.phase} currentStep={currentStep} />
 
