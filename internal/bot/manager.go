@@ -115,8 +115,8 @@ func (m *Manager) ensureDeps(ctx context.Context) {
 	log.Printf("Bot: installing Python dependencies from %s", reqPath)
 	strategies := [][]string{
 		{"-m", "pip", "install", "-r", reqPath, "--quiet"},
-		{"-m", "pip", "install", "-r", reqPath, "--quiet", "--user"},
 		{"-m", "pip", "install", "-r", reqPath, "--quiet", "--break-system-packages"},
+		{"-m", "pip", "install", "-r", reqPath, "--quiet", "--user"},
 	}
 	for _, args := range strategies {
 		cmd := exec.CommandContext(ctx, m.pythonPath, args...)

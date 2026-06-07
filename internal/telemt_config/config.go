@@ -84,9 +84,16 @@ func SaveConfig(configPath, content string) (newHash string, err error) {
 		preserveFileOwnership(tmpPath, origStat)
 	}
 
-	// Atomic rename
+	// Atomic rename. Falls back to direct overwrite when the destination is a
+	// bind-mounted file (Docker file-mount), where rename fails with EBUSY.
 	if err := os.Rename(tmpPath, configPath); err != nil {
-		return "", fmt.Errorf("rename temp file: %w", err)
+		data, readErr := os.ReadFile(tmpPath)
+		if readErr != nil {
+			return "", fmt.Errorf("rename temp file: %w", err)
+		}
+		if writeErr := os.WriteFile(configPath, data, 0644); writeErr != nil {
+			return "", fmt.Errorf("rename temp file: %w (fallback write also failed: %v)", err, writeErr)
+		}
 	}
 
 	// Touch the file to trigger Telemt config hot-reload
