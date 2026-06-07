@@ -41,7 +41,7 @@ Web-панель управления для [Telemt](https://github.com/telemt/
 - **GeoIP** — определение геолокации по IP через MaxMind GeoLite2
 - **WebSocket** — реалтайм обновление данных без перезагрузки страницы
 - **Base Path** — поддержка запуска за reverse proxy на подпути
-- **Telegram Bot** — управление токеном и списком администраторов бота прямо из панели; Python-бот в директории `bot/` умеет читать конфиг панели автоматически
+- **Telegram Bot** — встроенный менеджер Python-бота: автозапуск при старте панели, кнопка «Запустить / Остановить» с индикатором статуса и PID, конфигурация токена и admin IDs через UI с сохранением в config.toml
 
 ## Требования
 
@@ -181,12 +181,15 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 | `[tls]` | `acme_cache_dir` | Директория кеша сертификатов | `/var/lib/telemt-panel/certs` |
 | `[geoip]` | `db_path` | Путь к MaxMind GeoLite2 City (.mmdb) | — |
 | `[geoip]` | `asn_db_path` | Путь к MaxMind GeoLite2 ASN (.mmdb) | — |
+| `[telegram]` | `enabled` | Автозапуск бота при старте панели | `false` |
 | `[telegram]` | `bot_token` | Токен Telegram-бота (получить у `@botfather`) | — |
 | `[telegram]` | `admin_ids` | Массив Telegram User ID администраторов бота | — |
+| `[telegram]` | `bot_script` | Путь к `bot.py` | `<config_dir>/bot/bot.py` |
+| `[telegram]` | `python_path` | Путь к интерпретатору Python | авто (`python3`) |
 
 ## Telegram Bot
 
-В директории `bot/` находится Python-бот для управления доступом пользователей через Telegram.
+Python-бот (`bot/bot.py`) запускается и управляется панелью как дочерний процесс — никакой ручной работы после первоначальной настройки не требуется.
 
 ### Что умеет бот
 
@@ -197,39 +200,61 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 - Пересылка сообщений пользователей администраторам с возможностью ответить через Reply
 - Мониторинг доступности API Telemt с уведомлениями в Telegram
 
-### Настройка токена и администраторов
+### Первоначальная настройка
 
-Откройте раздел **Telegram Bot** в боковом меню панели:
-
-- **Bot Token** — вставьте токен, полученный у `@botfather`
-- **Admin User IDs** — укажите Telegram User ID администраторов (по одному на строку); узнать свой ID можно через `@userinfobot` или командой `/id` в боте
-
-После сохранения настройки записываются в `config.toml` в секцию `[telegram]`.
-
-### Запуск
+1. Установите зависимости Python (один раз):
 
 ```bash
-cd bot
-
-# Зависимости (один раз)
+cd /etc/telemt-panel/bot   # или туда, куда положили bot/
 pip install -r requirements.txt
-
-# Бот читает токен и admin_ids из config.toml панели
-PANEL_CONFIG_PATH=/etc/telemt-panel/config.toml python bot.py
 ```
 
-Дополнительные переменные окружения (переопределяют значения из config.toml):
+2. Откройте раздел **Telegram Bot** в боковом меню панели:
+   - **Bot Token** — вставьте токен, полученный у `@botfather`
+   - **Admin User IDs** — Telegram User ID администраторов (по одному на строку); узнать ID можно через `@userinfobot` или командой `/id` в боте
+   - Нажмите **Сохранить**, затем **Запустить**
+
+Настройки сохраняются в секцию `[telegram]` файла `config.toml`. При следующем запуске панели бот стартует автоматически.
+
+### Управление из панели
+
+| Действие | Описание |
+|----------|----------|
+| **Запустить** | Запускает процесс бота, устанавливает `enabled = true` в config.toml |
+| **Остановить** | Завершает процесс, устанавливает `enabled = false` |
+| **Сохранить** | Обновляет токен и admin IDs; если бот запущен — перезапускает его |
+| Статус-бейдж | Обновляется каждые 3 с; показывает «Запущен (PID …)», «Остановлен» или «Ошибка» |
+
+Если бот завершается аварийно — панель автоматически перезапустит его через 15 секунд.
+
+### Размещение bot.py
+
+По умолчанию панель ищет `bot.py` рядом с `config.toml` в поддиректории `bot/`:
+
+```
+/etc/telemt-panel/
+├── config.toml
+└── bot/
+    ├── bot.py
+    └── requirements.txt
+```
+
+Нестандартный путь задаётся в конфиге: `telegram.bot_script = "/path/to/bot.py"`.
+
+### Переменные окружения бота
+
+Переменные среды позволяют переопределить значения из `config.toml`:
 
 | Переменная | Описание |
 |------------|----------|
-| `PANEL_CONFIG_PATH` | Путь к `config.toml` панели — бот читает из него `[telegram]` и `[telemt]` |
+| `PANEL_CONFIG_PATH` | Путь к `config.toml` панели (подставляется автоматически при запуске через панель) |
 | `BOT_TOKEN` | Токен бота (если не задан в config.toml) |
-| `ADMIN_IDS` | Список ID через запятую (если не заданы в config.toml) |
+| `ADMIN_IDS` | ID через запятую (если не заданы в config.toml) |
 | `PROXY_DOMAIN` | Домен MTProxy для генерации ссылок |
 | `PROXY_PORT` | Порт MTProxy (по умолчанию `4448`) |
 | `API_URL` | URL Telemt API (по умолчанию из `telemt.url` в config.toml) |
 
-Пример конфига среды: [`bot/.env.example`](bot/.env.example).
+Пример: [`bot/.env.example`](bot/.env.example).
 
 ## Systemd
 
