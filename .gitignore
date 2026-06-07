@@ -5,6 +5,7 @@ release/
 
 # Frontend build output
 dist/
+*.tsbuildinfo
 
 # Dependencies
 frontend/node_modules/
