@@ -15,6 +15,7 @@ Web-панель управления для [Telemt](https://github.com/telemt/
 - [Возможности](#возможности)
 - [Требования](#требования)
 - [Быстрый старт](#быстрый-старт)
+- [Docker](#docker)
 - [Сборка](#сборка)
 - [Конфигурация](#конфигурация)
 - [Telegram Bot](#telegram-bot)
@@ -92,7 +93,7 @@ openssl rand -hex 32
 listen = "0.0.0.0:8080"
 
 [telemt]
-url = "http://127.0.0.1:2398"
+url = "http://127.0.0.1:9091"
 auth_header = ""
 
 [auth]
@@ -110,16 +111,96 @@ session_ttl = "24h"
 
 Панель будет доступна на `http://ваш_сервер:8080`.
 
-### Docker
+## Docker
 
-```bash
-cp config.example.toml config.toml
-# отредактируйте config.toml
+Панель поставляется с готовым `docker-compose.yml`, который запускает telemt и telemt-panel вместе. Python и зависимости Telegram-бота уже включены в образ.
 
-docker compose up -d
+### Структура файлов
+
+```
+/opt/telemt/
+├── docker-compose.yml
+├── panel-config/
+│   └── config.toml          # конфиг панели (должен быть доступен на запись)
+└── telemt-config/
+    └── telemt.toml          # конфиг Telemt (читается ботом для автоопределения домена)
 ```
 
-> **Важно:** `config.toml` монтируется в контейнер с правом записи — панель сохраняет в него настройки бота через UI. Данные панели (бот-скрипты и др.) хранятся в именованном томе `telemt-panel-data` и переживают пересоздание контейнера. Python и зависимости бота включены в образ — ничего дополнительно устанавливать не нужно.
+### docker-compose.yml
+
+```yaml
+services:
+  telemt:
+    build: .   # или image: whn0thacked/telemt-docker:latest
+    container_name: telemt
+    restart: unless-stopped
+    volumes:
+      - ./telemt-config:/etc/telemt:rw
+    network_mode: host
+
+  telemt-panel:
+    build: https://github.com/mrAntonD/telemt_panel.git#main
+    container_name: telemt-panel
+    restart: unless-stopped
+    volumes:
+      - ./panel-config/config.toml:/etc/telemt-panel/config.toml   # без :ro — панель пишет настройки бота
+      - ./telemt-config/telemt.toml:/etc/telemt/config.toml:ro     # бот читает домен отсюда
+      - telemt-panel-data:/var/lib/telemt-panel                     # данные переживают пересоздание контейнера
+    depends_on:
+      - telemt
+    networks:
+      - traefik
+
+volumes:
+  telemt-panel-data:
+
+networks:
+  traefik:
+    external: true
+```
+
+> **Важно:**
+> - `panel-config/config.toml` монтируется **без `:ro`** — панель обновляет его при сохранении настроек бота через UI.
+> - `telemt-config/telemt.toml` монтируется в контейнер панели для чтения: бот автоматически извлекает из него домен прокси (`general.links.public_host`), порт и TLS-домен — дополнительных настроек не требуется.
+> - Том `telemt-panel-data` сохраняет базу данных бота и извлечённые файлы при `docker compose down` / пересоздании контейнера.
+
+### Конфиг панели (panel-config/config.toml)
+
+```toml
+listen = "0.0.0.0:8080"
+
+[telemt]
+url = "http://172.18.0.1:9091"      # IP Docker-хоста (host.docker.internal или gateway)
+config_path = "/etc/telemt/config.toml"  # путь к telemt.toml внутри контейнера
+
+[auth]
+username = "admin"
+password_hash = "$2a$10$..."
+jwt_secret = "ваш_секрет"
+```
+
+> `telemt.config_path` — ключевой параметр для Docker: без него бот не сможет прочитать домен прокси из `telemt.toml`.
+
+### Запуск
+
+```bash
+docker compose up -d --build
+```
+
+### Обновление
+
+```bash
+docker compose up -d --build telemt-panel
+```
+
+Образ собирается напрямую из GitHub — при каждом запуске `--build` подтягивается последний коммит из `main`.
+
+### Логи
+
+```bash
+docker logs telemt-panel -f
+docker logs telemt -f
+```
 
 ## Сборка
 
@@ -168,7 +249,7 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 | `[telemt]` | `binary_path` | Путь к бинарнику telemt (для обновлений) | `/bin/telemt` |
 | `[telemt]` | `service_name` | Имя systemd-сервиса | `telemt` |
 | `[telemt]` | `github_repo` | GitHub-репозиторий для проверки обновлений | `telemt/telemt` |
-| `[telemt]` | `config_path` | Путь к конфигу Telemt (для Docker / нестандартных путей) | автоматически из API |
+| `[telemt]` | `config_path` | Путь к конфигу Telemt внутри контейнера (Docker) | — |
 | `[panel]` | `binary_path` | Путь к бинарнику панели (для самообновления) | `/usr/local/bin/telemt-panel` |
 | `[panel]` | `service_name` | Имя systemd-сервиса панели | `telemt-panel` |
 | `[panel]` | `github_repo` | GitHub-репозиторий панели | `amirotin/telemt_panel` |
@@ -217,6 +298,29 @@ Python-бот встроен в бинарник панели и запуска�
 > - **Docker:** Python и все зависимости бота включены в образ — никаких дополнительных действий не требуется.
 > - **Bare metal:** необходим Python 3.8+ с pip. `bot.py` и `requirements.txt` извлекаются из бинарника автоматически в `<data_dir>/bot/`. Зависимости устанавливаются через `pip` автоматически при первом запуске бота.
 
+### Автоопределение домена прокси
+
+Бот автоматически читает домен, порт и TLS-домен из конфига Telemt. Путь к конфигу Telemt задаётся в панельном `config.toml` через параметр `telemt.config_path`.
+
+**Docker:** убедитесь, что `telemt.toml` смонтирован в контейнер панели и `config_path` указывает на него:
+
+```toml
+[telemt]
+config_path = "/etc/telemt/config.toml"
+```
+
+**Bare metal:** если Telemt и панель на одной машине, укажите путь к `telemt.toml`:
+
+```toml
+[telemt]
+config_path = "/etc/telemt/telemt.toml"
+```
+
+Бот извлекает из конфига Telemt:
+- `general.links.public_host` → домен для MTProxy-ссылок
+- `general.links.public_port` → порт (по умолчанию `4448`)
+- `censorship.tls_domain` → TLS-домен для Fake-TLS ссылок (`ee`-формат)
+
 ### Управление из панели
 
 | Действие | Описание |
@@ -236,18 +340,17 @@ Python-бот встроен в бинарник панели и запуска�
 
 ### Переменные окружения бота
 
-Переменные среды позволяют переопределить значения из `config.toml`:
+Позволяют переопределить автоматически определённые значения:
 
 | Переменная | Описание |
 |------------|----------|
 | `PANEL_CONFIG_PATH` | Путь к `config.toml` панели (подставляется автоматически при запуске через панель) |
 | `BOT_TOKEN` | Токен бота (если не задан в config.toml) |
 | `ADMIN_IDS` | ID через запятую (если не заданы в config.toml) |
-| `PROXY_DOMAIN` | Домен MTProxy для генерации ссылок |
-| `PROXY_PORT` | Порт MTProxy (по умолчанию `4448`) |
+| `PROXY_DOMAIN` | Переопределить домен MTProxy (по умолчанию — из `telemt.config_path`) |
+| `PROXY_PORT` | Переопределить порт MTProxy (по умолчанию — из `telemt.config_path`) |
+| `PROXY_TLS_DOMAIN` | Переопределить TLS-домен (по умолчанию — из `telemt.config_path`) |
 | `API_URL` | URL Telemt API (по умолчанию из `telemt.url` в config.toml) |
-
-Пример: [`bot/.env.example`](bot/.env.example).
 
 ## Systemd
 
@@ -300,6 +403,17 @@ sudo systemctl enable --now telemt-panel
 > Если вы устанавливаете вручную, создайте пользователя и настройте права,
 > эквивалентные installer-managed `sudoers`-drop-in, или отредактируйте unit
 > под свою модель запуска.
+
+### Для Telegram-бота (bare metal)
+
+Если Telemt установлен на той же машине, укажите путь к его конфигу в `config.toml` панели:
+
+```toml
+[telemt]
+config_path = "/etc/telemt/telemt.toml"
+```
+
+Бот прочитает домен, порт и TLS-домен из этого файла автоматически.
 
 ### Удаление
 

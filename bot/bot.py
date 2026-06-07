@@ -52,9 +52,16 @@ API_URL = os.getenv("API_URL") or _telemt_section.get("url", "http://localhost:9
 if not API_URL.endswith("/v1"):
     API_URL = API_URL.rstrip("/") + "/v1"
 
-DOMAIN = os.getenv("PROXY_DOMAIN", "")
-PORT = int(os.getenv("PROXY_PORT", "4448"))
-TLS_DOMAIN = os.getenv("PROXY_TLS_DOMAIN", DOMAIN)
+# Auto-detect proxy domain from telemt config (via panel's telemt.config_path).
+# Falls back to env vars so manual override is still possible.
+_telemt_config_path = _telemt_section.get("config_path", "")
+_telemt_cfg = _load_panel_config(_telemt_config_path)
+_links_cfg = _telemt_cfg.get("general", {}).get("links", {})
+_censorship_cfg = _telemt_cfg.get("censorship", {})
+
+DOMAIN = (os.getenv("PROXY_DOMAIN") or _links_cfg.get("public_host", ""))
+PORT = int(os.getenv("PROXY_PORT") or _links_cfg.get("public_port", 4448))
+TLS_DOMAIN = (os.getenv("PROXY_TLS_DOMAIN") or _censorship_cfg.get("tls_domain", "") or DOMAIN)
 
 TIMEOUT = 10
 MONITOR_INTERVAL = 60
