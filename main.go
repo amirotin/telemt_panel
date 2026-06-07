@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/term"
@@ -16,6 +17,27 @@ import (
 )
 
 var version = "0.1.0"
+
+// extractBotAssets writes the embedded bot files into <dataDir>/bot/ on every startup,
+// keeping the deployed bot.py in sync with the panel binary automatically.
+func extractBotAssets(dataDir string) error {
+	botDir := filepath.Join(dataDir, "bot")
+	if err := os.MkdirAll(botDir, 0755); err != nil {
+		return err
+	}
+	for _, name := range []string{"bot/bot.py", "bot/requirements.txt"} {
+		data, err := botFS.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(botDir, filepath.Base(name))
+		if err := os.WriteFile(dst, data, 0644); err != nil {
+			return err
+		}
+	}
+	log.Printf("Bot assets extracted to %s", botDir)
+	return nil
+}
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
@@ -56,6 +78,11 @@ func main() {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Extract embedded bot files to data dir so the panel always has bot.py available.
+	if err := extractBotAssets(cfg.DataDir); err != nil {
+		log.Printf("WARNING: failed to extract bot assets: %v", err)
 	}
 
 	srv := server.New(cfg)

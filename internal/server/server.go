@@ -607,10 +607,10 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 
 	// ── Telegram bot ──────────────────────────────────────────────────────────
 
-	// Resolve bot script path: use configured value, or <config_dir>/bot/bot.py
+	// Resolve bot script path: use configured value, or <data_dir>/bot/bot.py (extracted from binary on startup).
 	botScriptPath := s.cfg.Telegram.BotScript
-	if botScriptPath == "" && s.cfg.Path != "" {
-		candidate := filepath.Join(filepath.Dir(s.cfg.Path), "bot", "bot.py")
+	if botScriptPath == "" {
+		candidate := filepath.Join(s.cfg.DataDir, "bot", "bot.py")
 		if _, err := os.Stat(candidate); err == nil {
 			botScriptPath = candidate
 		}
