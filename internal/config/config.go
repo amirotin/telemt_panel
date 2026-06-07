@@ -44,11 +44,13 @@ type UsersConfig struct {
 }
 
 type TelegramConfig struct {
-	BotToken   string  `toml:"bot_token"`
-	AdminIDs   []int64 `toml:"admin_ids"`
-	Enabled    bool    `toml:"enabled"`
-	BotScript  string  `toml:"bot_script"`  // path to bot.py; default: <config_dir>/bot/bot.py
-	PythonPath string  `toml:"python_path"` // python interpreter; default: auto-detect
+	BotToken           string  `toml:"bot_token"`
+	AdminIDs           []int64 `toml:"admin_ids"`
+	Enabled            bool    `toml:"enabled"`
+	BotScript          string  `toml:"bot_script"`           // path to bot.py; default: <config_dir>/bot/bot.py
+	PythonPath         string  `toml:"python_path"`          // python interpreter; default: auto-detect
+	DefaultMaxTcpConns int     `toml:"default_max_tcp_conns"` // default max sessions per client
+	DefaultMaxUniqueIps int    `toml:"default_max_unique_ips"` // default max unique IPs per client
 }
 
 type Config struct {

@@ -639,10 +639,12 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 			ids[i] = id
 		}
 		updates := map[string]interface{}{
-			"telegram.bot_token":   s.cfg.Telegram.BotToken,
-			"telegram.admin_ids":   ids,
-			"telegram.enabled":     s.cfg.Telegram.Enabled,
-			"telegram.python_path": s.cfg.Telegram.PythonPath,
+			"telegram.bot_token":             s.cfg.Telegram.BotToken,
+			"telegram.admin_ids":             ids,
+			"telegram.enabled":               s.cfg.Telegram.Enabled,
+			"telegram.python_path":           s.cfg.Telegram.PythonPath,
+			"telegram.default_max_tcp_conns": s.cfg.Telegram.DefaultMaxTcpConns,
+			"telegram.default_max_unique_ips": s.cfg.Telegram.DefaultMaxUniqueIps,
 		}
 		if _, err := telemt_config.QuickUpdate(s.cfg.Path, updates); err != nil {
 			log.Printf("WARNING: failed to persist telegram config: %s", err)
@@ -657,20 +659,24 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		writeJSON(w, http.StatusOK, jsonResponse{
 			OK: true,
 			Data: map[string]interface{}{
-				"bot_token":   s.cfg.Telegram.BotToken,
-				"admin_ids":   adminIDs,
-				"enabled":     s.cfg.Telegram.Enabled,
-				"python_path": s.cfg.Telegram.PythonPath,
-				"python_resolved": bot.FindPython(s.cfg.Telegram.PythonPath),
+				"bot_token":               s.cfg.Telegram.BotToken,
+				"admin_ids":               adminIDs,
+				"enabled":                 s.cfg.Telegram.Enabled,
+				"python_path":             s.cfg.Telegram.PythonPath,
+				"python_resolved":         bot.FindPython(s.cfg.Telegram.PythonPath),
+				"default_max_tcp_conns":   s.cfg.Telegram.DefaultMaxTcpConns,
+				"default_max_unique_ips":  s.cfg.Telegram.DefaultMaxUniqueIps,
 			},
 		})
 	})))
 
 	mux.Handle("POST /api/telegram/config", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			BotToken   string  `json:"bot_token"`
-			AdminIDs   []int64 `json:"admin_ids"`
-			PythonPath string  `json:"python_path"`
+			BotToken            string  `json:"bot_token"`
+			AdminIDs            []int64 `json:"admin_ids"`
+			PythonPath          string  `json:"python_path"`
+			DefaultMaxTcpConns  int     `json:"default_max_tcp_conns"`
+			DefaultMaxUniqueIps int     `json:"default_max_unique_ips"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "bad_request", "invalid request body")
@@ -680,6 +686,8 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		s.cfg.Telegram.BotToken = req.BotToken
 		s.cfg.Telegram.AdminIDs = req.AdminIDs
 		s.cfg.Telegram.PythonPath = req.PythonPath
+		s.cfg.Telegram.DefaultMaxTcpConns = req.DefaultMaxTcpConns
+		s.cfg.Telegram.DefaultMaxUniqueIps = req.DefaultMaxUniqueIps
 
 		// Stop existing manager, rebuild with updated python path, restart if needed.
 		botMgr.Stop()

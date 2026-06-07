@@ -6,6 +6,8 @@ interface TelegramConfig {
   bot_token: string;
   admin_ids: number[];
   enabled: boolean;
+  default_max_tcp_conns: number;
+  default_max_unique_ips: number;
 }
 
 interface BotStatus {
@@ -73,6 +75,8 @@ export function TelegramPage() {
 
   const [botToken, setBotToken] = useState('');
   const [adminIdsText, setAdminIdsText] = useState('');
+  const [maxTcpConns, setMaxTcpConns] = useState(50);
+  const [maxUniqueIps, setMaxUniqueIps] = useState(5);
   const [status, setStatus] = useState<BotStatus | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -93,6 +97,8 @@ export function TelegramPage() {
       const data = await panelApi.get<TelegramConfig>('/telegram/config');
       setBotToken(data.bot_token || '');
       setAdminIdsText((data.admin_ids || []).join('\n'));
+      setMaxTcpConns(data.default_max_tcp_conns || 50);
+      setMaxUniqueIps(data.default_max_unique_ips || 5);
     } catch (err: any) {
       setError(err.message || 'Ошибка загрузки конфигурации');
     } finally {
@@ -126,6 +132,8 @@ export function TelegramPage() {
       await panelApi.post('/telegram/config', {
         bot_token: botToken.trim(),
         admin_ids: parseAdminIds(),
+        default_max_tcp_conns: maxTcpConns,
+        default_max_unique_ips: maxUniqueIps,
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -282,6 +290,41 @@ export function TelegramPage() {
                     Распознано ID: {parseAdminIds().join(', ') || '—'}
                   </p>
                 )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-text-primary">
+                    Макс. сессий на клиента
+                  </label>
+                  <p className="text-xs text-text-secondary">
+                    Лимит TCP-подключений при создании нового клиента
+                  </p>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={maxTcpConns}
+                    onChange={(e) => setMaxTcpConns(Math.max(1, parseInt(e.target.value) || 50))}
+                    className="input w-full"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-text-primary">
+                    Макс. уникальных IP на клиента
+                  </label>
+                  <p className="text-xs text-text-secondary">
+                    При превышении бот уведомит администратора
+                  </p>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={maxUniqueIps}
+                    onChange={(e) => setMaxUniqueIps(Math.max(1, parseInt(e.target.value) || 5))}
+                    className="input w-full"
+                  />
+                </div>
               </div>
             </div>
           </div>

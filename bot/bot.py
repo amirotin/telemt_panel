@@ -70,8 +70,8 @@ POLLING_RESTART_DELAY = 15
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
-MAX_TCP_CONNS = 50
-MAX_UNIQUE_IPS_ALERT = 5
+MAX_TCP_CONNS = _tg_section.get("default_max_tcp_conns", 0) or 50
+MAX_UNIQUE_IPS_ALERT = _tg_section.get("default_max_unique_ips", 0) or 5
 
 BAN_WARNING = (
     "\n\n⚠️ <b>ВАЖНО:</b> Ссылка персональная. Запрещено передавать её другим людям. При нарушении доступ блокируется."
@@ -886,6 +886,11 @@ def run_bot():
     init_db(); sync_api_to_db()
     threading.Thread(target=ip_monitor_task, daemon=True).start()
     logger.info(f"Bot started | API: {API_URL} | Admins: {ADMIN_IDS} | Domain: {DOMAIN}")
+    for admin in ADMIN_IDS:
+        try:
+            bot.send_message(admin, "🔄 <b>Панель перезапущена.</b> Бот снова в сети.", parse_mode="HTML")
+        except Exception as e:
+            logger.warning(f"Не удалось отправить уведомление о рестарте админу {admin}: {e}")
     while True:
         try: bot.polling(none_stop=True, timeout=60)
         except Exception as e: logger.error(f"Polling: {e}"); time.sleep(POLLING_RESTART_DELAY)
