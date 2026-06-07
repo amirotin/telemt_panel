@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/telemt/telemt-panel/internal/auth"
 	"github.com/telemt/telemt-panel/internal/auto_update"
+	"github.com/telemt/telemt-panel/internal/bot"
 	"github.com/telemt/telemt-panel/internal/config"
 	"github.com/telemt/telemt-panel/internal/geoip"
 	"github.com/telemt/telemt-panel/internal/logs"
@@ -602,7 +605,49 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 	// Telemt API proxy (kept for direct REST calls like user CRUD)
 	mux.Handle("/api/telemt/", auth.RequireAuth(jwtSecret, telemtProxy))
 
-	// Telegram bot config endpoints
+	// ── Telegram bot ──────────────────────────────────────────────────────────
+
+	// Resolve bot script path: use configured value, or <config_dir>/bot/bot.py
+	botScriptPath := s.cfg.Telegram.BotScript
+	if botScriptPath == "" && s.cfg.Path != "" {
+		candidate := filepath.Join(filepath.Dir(s.cfg.Path), "bot", "bot.py")
+		if _, err := os.Stat(candidate); err == nil {
+			botScriptPath = candidate
+		}
+	}
+
+	pythonPath := bot.FindPython(s.cfg.Telegram.PythonPath)
+	botMgr := bot.New(pythonPath, botScriptPath, s.cfg.Path)
+
+	// Auto-start if enabled and properly configured
+	if s.cfg.Telegram.Enabled && s.cfg.Telegram.BotToken != "" && len(s.cfg.Telegram.AdminIDs) > 0 && botScriptPath != "" {
+		botMgr.Start()
+	}
+
+	// isConfigured reports whether token + admin IDs are present.
+	isConfigured := func() bool {
+		return s.cfg.Telegram.BotToken != "" && len(s.cfg.Telegram.AdminIDs) > 0
+	}
+
+	// persistTelegramConfig writes current in-memory telegram settings to config file.
+	persistTelegramConfig := func() {
+		if s.cfg.Path == "" {
+			return
+		}
+		ids := make([]interface{}, len(s.cfg.Telegram.AdminIDs))
+		for i, id := range s.cfg.Telegram.AdminIDs {
+			ids[i] = id
+		}
+		updates := map[string]interface{}{
+			"telegram.bot_token": s.cfg.Telegram.BotToken,
+			"telegram.admin_ids": ids,
+			"telegram.enabled":   s.cfg.Telegram.Enabled,
+		}
+		if _, err := telemt_config.QuickUpdate(s.cfg.Path, updates); err != nil {
+			log.Printf("WARNING: failed to persist telegram config: %s", err)
+		}
+	}
+
 	mux.Handle("GET /api/telegram/config", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		adminIDs := s.cfg.Telegram.AdminIDs
 		if adminIDs == nil {
@@ -613,6 +658,7 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 			Data: map[string]interface{}{
 				"bot_token": s.cfg.Telegram.BotToken,
 				"admin_ids": adminIDs,
+				"enabled":   s.cfg.Telegram.Enabled,
 			},
 		})
 	})))
@@ -630,21 +676,56 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		s.cfg.Telegram.BotToken = req.BotToken
 		s.cfg.Telegram.AdminIDs = req.AdminIDs
 
-		if s.cfg.Path != "" {
-			ids := make([]interface{}, len(req.AdminIDs))
-			for i, id := range req.AdminIDs {
-				ids[i] = id
-			}
-			updates := map[string]interface{}{
-				"telegram.bot_token": req.BotToken,
-				"telegram.admin_ids": ids,
-			}
-			if _, err := telemt_config.QuickUpdate(s.cfg.Path, updates); err != nil {
-				log.Printf("WARNING: failed to persist telegram config: %s", err)
+		// Restart bot if it's running (new settings take effect immediately)
+		if botMgr.IsStarted() {
+			botMgr.Stop()
+			if s.cfg.Telegram.Enabled && isConfigured() && botScriptPath != "" {
+				botMgr.Start()
 			}
 		}
 
+		persistTelegramConfig()
 		writeJSON(w, http.StatusOK, jsonResponse{OK: true})
+	})))
+
+	mux.Handle("GET /api/telegram/status", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		st := botMgr.Status()
+		writeJSON(w, http.StatusOK, jsonResponse{
+			OK: true,
+			Data: map[string]interface{}{
+				"running":      st.Running,
+				"enabled":      s.cfg.Telegram.Enabled,
+				"pid":          st.PID,
+				"last_error":   st.LastError,
+				"configured":   isConfigured(),
+				"script_found": botScriptPath != "",
+			},
+		})
+	})))
+
+	mux.Handle("POST /api/telegram/start", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isConfigured() {
+			writeError(w, http.StatusBadRequest, "not_configured", "bot_token and admin_ids are required")
+			return
+		}
+		if botScriptPath == "" {
+			writeError(w, http.StatusBadRequest, "script_not_found", "bot.py not found; set telegram.bot_script in config")
+			return
+		}
+
+		s.cfg.Telegram.Enabled = true
+		botMgr.Start()
+		persistTelegramConfig()
+
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: botMgr.Status()})
+	})))
+
+	mux.Handle("POST /api/telegram/stop", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.cfg.Telegram.Enabled = false
+		botMgr.Stop()
+		persistTelegramConfig()
+
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: botMgr.Status()})
 	})))
 
 	// SPA

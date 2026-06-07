@@ -101,11 +101,20 @@ session_ttl = "24h"
 # expiration = "2027-12-31T23:59:59Z"
 
 [telegram]
+# Set to true to auto-start the bot when the panel starts.
+# enabled = false
+
 # Telegram bot token.
 # Необходимо получить токен у менеджера ботов Telegram @botfather
-# bot_token = "123456789:AABBCCDDEEFFaabbccddeeff-1234567890"
+# bot_token = ""
 
 # Telegram User IDs of bot administrators.
 # Один или несколько User ID администратора(-ов) Telegram-бота.
 # Для получения User ID используйте @userinfobot или команду '/id' в боте.
-# admin_ids = [123456789]
+# admin_ids = []
+
+# Path to bot.py. Defaults to <config_dir>/bot/bot.py (i.e. next to this file).
+# bot_script = "/etc/telemt-panel/bot/bot.py"
+
+# Python interpreter. Defaults to auto-detect (python3, then python).
+# python_path = "python3"

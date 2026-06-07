@@ -44,8 +44,11 @@ type UsersConfig struct {
 }
 
 type TelegramConfig struct {
-	BotToken string  `toml:"bot_token"`
-	AdminIDs []int64 `toml:"admin_ids"`
+	BotToken   string  `toml:"bot_token"`
+	AdminIDs   []int64 `toml:"admin_ids"`
+	Enabled    bool    `toml:"enabled"`
+	BotScript  string  `toml:"bot_script"`  // path to bot.py; default: <config_dir>/bot/bot.py
+	PythonPath string  `toml:"python_path"` // python interpreter; default: auto-detect
 }
 
 type Config struct {
