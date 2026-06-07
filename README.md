@@ -149,7 +149,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./panel-config/config.toml:/etc/telemt-panel/config.toml   # no :ro — panel writes bot settings
-      - ./telemt-config/telemt.toml:/etc/telemt/config.toml:ro     # bot reads proxy domain from here
+      - ./telemt-config/telemt.toml:/etc/telemt/config.toml        # no :ro — panel can edit Telemt config via Advanced Editor
       - telemt-panel-data:/var/lib/telemt-panel                     # data survives container recreation
     depends_on:
       - telemt
@@ -165,8 +165,8 @@ networks:
 ```
 
 > **Important:**
-> - `panel-config/config.toml` is mounted **without `:ro`** — the panel updates it when saving bot settings via the UI.
-> - `telemt-config/telemt.toml` is mounted into the panel container for reading: the bot automatically extracts the proxy domain (`general.links.public_host`), port and TLS domain — no extra configuration needed.
+> - Both config files are mounted **without `:ro`** — the panel writes bot settings to its own config and can edit the Telemt config via the Configuration → Advanced Editor. Mounting a single file as read-only (`:ro`) would break saving: Docker's bind-mount prevents atomic rename, and the read-only flag blocks the fallback write.
+> - The bot automatically extracts the proxy domain (`general.links.public_host`), port and TLS domain from the Telemt config — no extra configuration needed.
 > - The `telemt-panel-data` volume preserves the bot database and extracted files across `docker compose down` / container recreation.
 
 ### Panel config (panel-config/config.toml)

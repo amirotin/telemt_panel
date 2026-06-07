@@ -148,7 +148,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./panel-config/config.toml:/etc/telemt-panel/config.toml   # без :ro — панель пишет настройки бота
-      - ./telemt-config/telemt.toml:/etc/telemt/config.toml:ro     # бот читает домен отсюда
+      - ./telemt-config/telemt.toml:/etc/telemt/config.toml        # без :ro — панель может редактировать конфиг Telemt через Advanced Editor
       - telemt-panel-data:/var/lib/telemt-panel                     # данные переживают пересоздание контейнера
     depends_on:
       - telemt
@@ -164,8 +164,8 @@ networks:
 ```
 
 > **Важно:**
-> - `panel-config/config.toml` монтируется **без `:ro`** — панель обновляет его при сохранении настроек бота через UI.
-> - `telemt-config/telemt.toml` монтируется в контейнер панели для чтения: бот автоматически извлекает из него домен прокси (`general.links.public_host`), порт и TLS-домен — дополнительных настроек не требуется.
+> - Оба конфига монтируются **без `:ro`** — панель пишет настройки бота в свой конфиг и может редактировать конфиг Telemt через Configuration → Advanced Editor. Монтирование одного файла с флагом `:ro` ломает сохранение: Docker блокирует атомарный rename, а флаг read-only запрещает fallback-запись.
+> - Бот автоматически извлекает домен прокси (`general.links.public_host`), порт и TLS-домен из конфига Telemt — дополнительных настроек не требуется.
 > - Том `telemt-panel-data` сохраняет базу данных бота и извлечённые файлы при `docker compose down` / пересоздании контейнера.
 
 ### Конфиг панели (panel-config/config.toml)
