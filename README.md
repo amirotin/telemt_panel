@@ -144,7 +144,7 @@ services:
     network_mode: host
 
   telemt-panel:
-    build: https://github.com/mrAntonD/telemt_panel.git#main
+    image: ghcr.io/mrantond/telemt_panel:latest   # pre-built image — no build needed
     container_name: telemt-panel
     restart: unless-stopped
     volumes:
@@ -189,16 +189,16 @@ jwt_secret = "your_secret"
 ### Start
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 ### Update
 
 ```bash
-docker compose up -d --build telemt-panel
+docker compose pull telemt-panel && docker compose up -d telemt-panel
 ```
 
-The image is built directly from GitHub — every `--build` pull pulls the latest commit from `main`.
+The image is published automatically to `ghcr.io/mrantond/telemt_panel:latest` on every push to `main` via GitHub Actions — no local build needed.
 
 ### Logs
 
