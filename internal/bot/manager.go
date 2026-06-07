@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -99,7 +100,26 @@ func (m *Manager) Status() Status {
 	}
 }
 
+// ensureDeps runs pip install for the bot's requirements.txt once before the
+// restart loop starts. Errors are non-fatal — the bot may still work if the
+// packages are already installed system-wide (common in Docker images).
+func (m *Manager) ensureDeps(ctx context.Context) {
+	reqPath := filepath.Join(filepath.Dir(m.scriptPath), "requirements.txt")
+	if _, err := os.Stat(reqPath); os.IsNotExist(err) {
+		return
+	}
+	log.Printf("Bot: installing Python dependencies from %s", reqPath)
+	cmd := exec.CommandContext(ctx, m.pythonPath, "-m", "pip", "install", "-r", reqPath, "--quiet")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("Bot: pip install warning (will try starting anyway): %v", err)
+	}
+}
+
 func (m *Manager) loop(ctx context.Context) {
+	m.ensureDeps(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -163,12 +183,28 @@ func (m *Manager) loop(ctx context.Context) {
 }
 
 // FindPython returns the first available Python interpreter path.
+// Searches PATH first, then falls back to common installation directories
+// so the bot works correctly when launched from a systemd service with a minimal PATH.
 func FindPython(configured string) string {
 	if configured != "" {
 		return configured
 	}
+	// Try names via PATH
 	for _, name := range []string{"python3", "python"} {
 		if p, err := exec.LookPath(name); err == nil {
+			return p
+		}
+	}
+	// Fall back to well-known absolute paths (common on Linux/macOS)
+	candidates := []string{
+		"/usr/bin/python3",
+		"/usr/local/bin/python3",
+		"/usr/bin/python",
+		"/usr/local/bin/python",
+		"/opt/homebrew/bin/python3",
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 	}

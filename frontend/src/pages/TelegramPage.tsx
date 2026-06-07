@@ -308,15 +308,13 @@ export function TelegramPage() {
               </div>
               {!status?.script_found && (
                 <p className="text-xs text-yellow-500">
-                  Поместите директорию <span className="font-mono">bot/</span> рядом с{' '}
-                  <span className="font-mono">config.toml</span> панели или укажите путь через{' '}
-                  <span className="font-mono">telegram.bot_script</span> в конфиге.
+                  bot.py не найден — перезапустите панель, чтобы извлечь файл из бинарника.
                 </p>
               )}
               <p className="text-xs text-text-secondary">
-                Бот запускается автоматически при старте панели, если задан токен, администраторы
-                и включён флаг <span className="font-mono">enabled = true</span> в config.toml.
-                При сохранении настроек запущенный бот перезапускается автоматически.
+                Зависимости Python устанавливаются автоматически при первом запуске бота.
+                Если токен и ID администраторов заданы, бот стартует автоматически при следующем
+                запуске панели. При сохранении настроек запущенный бот перезапускается.
               </p>
             </div>
           </div>
