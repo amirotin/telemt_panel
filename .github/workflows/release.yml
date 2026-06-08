@@ -72,7 +72,7 @@ jobs:
           sha256sum telemt-panel-aarch64-linux-musl.tar.gz > telemt-panel-aarch64-linux-musl.sha256
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
