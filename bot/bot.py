@@ -73,9 +73,100 @@ DB_FILE = os.path.join(BASE_DIR, "users.db")
 MAX_TCP_CONNS = _tg_section.get("default_max_tcp_conns", 0) or 50
 MAX_UNIQUE_IPS_ALERT = _tg_section.get("default_max_unique_ips", 0) or 5
 
-BAN_WARNING = (
-    "\n\n⚠️ <b>ВАЖНО:</b> Ссылка персональная. Запрещено передавать её другим людям. При нарушении доступ блокируется."
-)
+# =========================================================
+# LOCALIZATION
+# =========================================================
+
+STRINGS = {
+    "ru": {
+        "btn_register":        "📝 Регистрация",
+        "btn_stats":           "📊 Моя статистика",
+        "btn_link":            "🔗 Моя ссылка",
+        "welcome_user":        "👋 Добро пожаловать!\nИспользуйте меню ниже.",
+        "welcome_new":         "👋 Добро пожаловать!\nДля получения доступа к прокси подайте заявку.",
+        "banned":              "🚫 Вам отказано в доступе. Ваш аккаунт заблокирован.",
+        "req_pending":         "⏳ Ваша заявка находится на рассмотрении. Ожидайте решения администратора.",
+        "req_already_pending": "⏳ Ваша заявка уже на рассмотрении.",
+        "req_access_denied":   "🚫 Доступ запрещен. Аккаунт заблокирован.",
+        "req_sent":            "✅ Заявка отправлена!",
+        "api_unavailable":     "❌ Сервер временно недоступен.",
+        "data_not_found":      "❌ Данные не найдены.",
+        "ip_none":             "нет",
+        "link_error":          "❌ Ошибка генерации ссылки.",
+        "link_caption":        "🚀 Ваша ссылка для подключения:",
+        "req_approved":        "🎉 Ваша заявка одобрена! Вам доступно меню.",
+        "req_rejected":        "❌ Ваша заявка отклонена.",
+        "access_blocked":      "🚫 Ваш доступ заблокирован.",
+        "proxy_ready":         "🚀 Ваш прокси готов!",
+        "ban_warning":         "\n\n⚠️ <b>ВАЖНО:</b> Ссылка персональная. Запрещено передавать её другим людям. При нарушении доступ блокируется.",
+        "action_cancelled":    "❌ Действие отменено.",
+        "cancel_btn":          "Отмена",
+        "user_stats":          "👤 Логин: <code>{name}</code>\n📊 Трафик: <code>{traffic}</code>\n📍 IP: <code>{ips}</code>",
+        "broadcast_msg":       "📢 <b>Уведомление:</b>\n\n{text}",
+    },
+    "en": {
+        "btn_register":        "📝 Register",
+        "btn_stats":           "📊 My Statistics",
+        "btn_link":            "🔗 My Link",
+        "welcome_user":        "👋 Welcome!\nUse the menu below.",
+        "welcome_new":         "👋 Welcome!\nTo get proxy access, please submit a request.",
+        "banned":              "🚫 Access denied. Your account is blocked.",
+        "req_pending":         "⏳ Your request is under review. Please wait for the administrator's decision.",
+        "req_already_pending": "⏳ Your request is already under review.",
+        "req_access_denied":   "🚫 Access denied. Account blocked.",
+        "req_sent":            "✅ Request submitted!",
+        "api_unavailable":     "❌ Server temporarily unavailable.",
+        "data_not_found":      "❌ Data not found.",
+        "ip_none":             "none",
+        "link_error":          "❌ Link generation error.",
+        "link_caption":        "🚀 Your connection link:",
+        "req_approved":        "🎉 Your request has been approved! The menu is now available.",
+        "req_rejected":        "❌ Your request has been rejected.",
+        "access_blocked":      "🚫 Your access has been blocked.",
+        "proxy_ready":         "🚀 Your proxy is ready!",
+        "ban_warning":         "\n\n⚠️ <b>IMPORTANT:</b> This link is personal. Do not share it with others. Violations result in access being blocked.",
+        "action_cancelled":    "❌ Action cancelled.",
+        "cancel_btn":          "Cancel",
+        "user_stats":          "👤 Login: <code>{name}</code>\n📊 Traffic: <code>{traffic}</code>\n📍 IPs: <code>{ips}</code>",
+        "broadcast_msg":       "📢 <b>Announcement:</b>\n\n{text}",
+    },
+}
+
+# All button texts per key across all languages — used in handler func= matchers
+_BTN = {key: {STRINGS[lang][key] for lang in STRINGS} for key in STRINGS["ru"]}
+# Cancel texts (lowercase) for FSM cancel check
+_CANCEL_TEXTS = {s.lower() for s in _BTN["cancel_btn"]}
+
+
+def detect_lang(language_code):
+    """Map Telegram language_code to a supported lang key. Defaults to 'en'."""
+    if language_code and language_code.startswith("ru"):
+        return "ru"
+    return "en"
+
+
+def get_lang(tg_id):
+    res = db_query("SELECT lang FROM user_lang WHERE tg_id=?", (tg_id,), fetch=True)
+    return res[0][0] if res else "ru"
+
+
+def set_lang(tg_id, lang):
+    db_query("INSERT OR REPLACE INTO user_lang VALUES (?, ?)", (tg_id, lang))
+
+
+def t(tg_id, key, **kwargs):
+    """Return a translated string for tg_id's language."""
+    lang = get_lang(tg_id)
+    s = STRINGS.get(lang, STRINGS["ru"]).get(key, STRINGS["ru"].get(key, key))
+    return s.format(**kwargs) if kwargs else s
+
+
+def user_menu_markup(tg_id):
+    """Build the client ReplyKeyboardMarkup in the user's language."""
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(t(tg_id, "btn_stats"), t(tg_id, "btn_link"))
+    return markup
+
 
 # =========================================================
 # LOGGING
@@ -139,6 +230,7 @@ def init_db():
     db_query("CREATE TABLE IF NOT EXISTS requests (tg_id INTEGER PRIMARY KEY, tg_username TEXT, desired_name TEXT)")
     db_query("CREATE TABLE IF NOT EXISTS banned_users (tg_id INTEGER PRIMARY KEY, proxy_name TEXT, reason TEXT)")
     db_query("CREATE TABLE IF NOT EXISTS reply_map (admin_msg_id INTEGER PRIMARY KEY, client_uid INTEGER, created_at INTEGER)")
+    db_query("CREATE TABLE IF NOT EXISTS user_lang (tg_id INTEGER PRIMARY KEY, lang TEXT)")
     db_query("ALTER TABLE known_ips ADD COLUMN last_seen INTEGER", silent=True)
 
 def get_user_by_tg_id(tg_id):
@@ -241,6 +333,10 @@ def cmd_start(message):
     uid = message.from_user.id
     clear_state(uid)
 
+    # Detect and store language on first contact
+    if not db_query("SELECT 1 FROM user_lang WHERE tg_id=?", (uid,), fetch=True):
+        set_lang(uid, detect_lang(message.from_user.language_code))
+
     if uid in ADMIN_IDS:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
         markup.add("📊 Статистика", "📥 Заявки", "➕ Добавить", "📢 Рассылка", "⚫️ Черный список", "💾 Бэкап")
@@ -271,31 +367,29 @@ def cmd_start(message):
         return
 
     if db_query("SELECT 1 FROM banned_users WHERE tg_id=?", (uid,), fetch=True):
-        return bot.send_message(message.chat.id, "🚫 Вам отказано в доступе. Ваш аккаунт заблокирован.")
+        return bot.send_message(message.chat.id, t(uid, "banned"))
 
     user = get_user_by_tg_id(uid)
     if user:
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-        markup.add("📊 Моя статистика", "🔗 Моя ссылка")
-        bot.send_message(message.chat.id, "👋 Добро пожаловать!\nИспользуйте меню ниже.", reply_markup=markup)
+        bot.send_message(message.chat.id, t(uid, "welcome_user"), reply_markup=user_menu_markup(uid))
         return
 
     req = db_query("SELECT 1 FROM requests WHERE tg_id=?", (uid,), fetch=True)
     if req:
-        bot.send_message(message.chat.id, "⏳ Ваша заявка находится на рассмотрении. Ожидайте решения администратора.")
+        bot.send_message(message.chat.id, t(uid, "req_pending"))
     else:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("📝 Регистрация")
-        bot.send_message(message.chat.id, "👋 Добро пожаловать!\nДля получения доступа к прокси подайте заявку.", reply_markup=markup)
+        markup.add(t(uid, "btn_register"))
+        bot.send_message(message.chat.id, t(uid, "welcome_new"), reply_markup=markup)
 
-@bot.message_handler(func=lambda m: m.text == "📝 Регистрация")
+@bot.message_handler(func=lambda m: m.text in _BTN["btn_register"])
 def req_start(message):
     uid = message.from_user.id
     if uid in ADMIN_IDS or get_user_by_tg_id(uid): return
     if db_query("SELECT 1 FROM banned_users WHERE tg_id=?", (uid,), fetch=True):
-        return bot.send_message(message.chat.id, "🚫 Доступ запрещен. Аккаунт заблокирован.")
+        return bot.send_message(message.chat.id, t(uid, "req_access_denied"))
     if db_query("SELECT 1 FROM requests WHERE tg_id=?", (uid,), fetch=True):
-        return bot.send_message(message.chat.id, "⏳ Ваша заявка уже на рассмотрении.")
+        return bot.send_message(message.chat.id, t(uid, "req_already_pending"))
 
     tg_username = message.from_user.username
     desired_name = re.sub(r"[^a-zA-Z0-9_]", "", tg_username)[:32] if tg_username else f"user_{uid}"[:32]
@@ -306,7 +400,7 @@ def req_start(message):
         desired_name = f"{desired_name}_{str(uid)[-4:]}"[:32]
 
     db_query("INSERT OR REPLACE INTO requests (tg_id, tg_username, desired_name) VALUES (?, ?, ?)", (uid, tg_username or "Без_юзернейма", desired_name))
-    bot.send_message(message.chat.id, "✅ Заявка отправлена!", reply_markup=telebot.types.ReplyKeyboardRemove())
+    bot.send_message(message.chat.id, t(uid, "req_sent"), reply_markup=telebot.types.ReplyKeyboardRemove())
 
     for admin in ADMIN_IDS:
         try:
@@ -318,28 +412,30 @@ def req_start(message):
             bot.send_message(admin, f"🔔 Новая заявка\n👤 @{tg_username or 'Без_юзернейма'} (ID: {uid})\n🏷 Имя: {desired_name}", reply_markup=markup)
         except: pass
 
-@bot.message_handler(func=lambda m: m.text == "📊 Моя статистика")
+@bot.message_handler(func=lambda m: m.text in _BTN["btn_stats"])
 def user_stats(message):
-    user = get_user_by_tg_id(message.from_user.id)
+    uid = message.from_user.id
+    user = get_user_by_tg_id(uid)
     if not user: return
     name = user[0]
     res = api_request("GET", "/users")
-    if not res: return bot.send_message(message.chat.id, "❌ Сервер временно недоступен.")
+    if not res: return bot.send_message(message.chat.id, t(uid, "api_unavailable"))
     user_data = next((u for u in res.get("data", []) if u['username'] == name), None)
-    if not user_data: return bot.send_message(message.chat.id, "❌ Данные не найдены.")
+    if not user_data: return bot.send_message(message.chat.id, t(uid, "data_not_found"))
 
     traffic = format_traffic(user_data.get("total_octets", 0))
-    ips = ", ".join(user_data.get("active_unique_ips_list", [])) or "нет"
-    bot.send_message(message.chat.id, f"👤 Логин: <code>{name}</code>\n📊 Трафик: <code>{traffic}</code>\n📍 IP: <code>{ips}</code>", parse_mode="HTML")
+    ips = ", ".join(user_data.get("active_unique_ips_list", [])) or t(uid, "ip_none")
+    bot.send_message(message.chat.id, t(uid, "user_stats", name=name, traffic=traffic, ips=ips), parse_mode="HTML")
 
-@bot.message_handler(func=lambda m: m.text == "🔗 Моя ссылка")
+@bot.message_handler(func=lambda m: m.text in _BTN["btn_link"])
 def user_link(message):
-    user = get_user_by_tg_id(message.from_user.id)
+    uid = message.from_user.id
+    user = get_user_by_tg_id(uid)
     if not user: return
     link = build_proxy_link(user[1])
-    if not link: return bot.send_message(message.chat.id, "❌ Ошибка генерации ссылки.")
+    if not link: return bot.send_message(message.chat.id, t(uid, "link_error"))
 
-    caption_text = f"🚀 Ваша ссылка для подключения:{BAN_WARNING}"
+    caption_text = t(uid, "link_caption") + t(uid, "ban_warning")
     try:
         bot.send_photo(message.chat.id, get_qr(link), caption=caption_text, parse_mode="HTML")
     except:
@@ -405,7 +501,7 @@ def process_request(call):
     if action == 'n':
         db_query("DELETE FROM requests WHERE tg_id=?", (tg_id,))
         bot.edit_message_text(f"❌ Заявка от @{username} отклонена.", call.message.chat.id, call.message.message_id)
-        try: bot.send_message(tg_id, "❌ Ваша заявка отклонена.")
+        try: bot.send_message(tg_id, t(tg_id, "req_rejected"))
         except: pass
         return
 
@@ -428,12 +524,10 @@ def process_request(call):
         bot.edit_message_text(f"✅ Одобрено: <code>{proxy_name}</code>", call.message.chat.id, call.message.message_id, parse_mode="HTML")
 
         try:
-            markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-            markup.add("📊 Моя статистика", "🔗 Моя ссылка")
-            bot.send_message(tg_id, "🎉 Ваша заявка одобрена! Вам доступно меню.", reply_markup=markup)
+            bot.send_message(tg_id, t(tg_id, "req_approved"), reply_markup=user_menu_markup(tg_id))
 
             if link:
-                caption_text = f"🚀 Ссылка для подключения:{BAN_WARNING}"
+                caption_text = t(tg_id, "link_caption") + t(tg_id, "ban_warning")
                 bot.send_photo(tg_id, get_qr(link), caption=caption_text, parse_mode="HTML")
                 bot.send_message(tg_id, link)
         except: pass
@@ -600,7 +694,7 @@ def confirm_action_exec(call):
         tg_id = user_data[0][0] if user_data else None
         if tg_id:
             db_query("INSERT OR REPLACE INTO banned_users (tg_id, proxy_name, reason) VALUES (?, ?, ?)", (tg_id, name, "Ручная блокировка"))
-            try: bot.send_message(tg_id, "🚫 Доступ заблокирован администратором.")
+            try: bot.send_message(tg_id, t(tg_id, "access_blocked"))
             except: pass
 
     clean_user_data(name)
@@ -644,7 +738,7 @@ def ban_spammer_tg(call):
     if user:
         api_request("DELETE", f"/users/{user[0]}")
         clean_user_data(user[0])
-        try: bot.send_message(tg_id, "🚫 Ваш доступ заблокирован.")
+        try: bot.send_message(tg_id, t(tg_id, "access_blocked"))
         except: pass
 
     new_text = f"🏷 Прокси: <code>{proxy_name}</code>\n<i>(Для ответа сделайте Reply на пересланное сообщение клиента)</i>\n\n✅ <b>TG ID {tg_id} ЗАБЛОКИРОВАН</b>"
@@ -717,16 +811,18 @@ def fsm_handler(message):
     state, data = get_state(uid)
     text = (message.text or "").strip()
 
-    if text.lower() == "отмена" or text == "/cancel":
+    if text.lower() in _CANCEL_TEXTS or text == "/cancel":
         clear_state(uid)
-        bot.send_message(message.chat.id, "❌ Действие отменено.")
+        bot.send_message(message.chat.id, t(uid, "action_cancelled"))
         return cmd_start(message)
 
     if state == "WAIT_BROADCAST":
         users = db_query("SELECT tg_id FROM users WHERE tg_id > 0", fetch=True)
         bot.send_message(message.chat.id, f"⏳ Рассылка для {len(users)} чел...")
         for u in users:
-            try: bot.send_message(u[0], f"📢 <b>Уведомление:</b>\n\n{text}", parse_mode="HTML"); time.sleep(0.05)
+            try:
+                bot.send_message(u[0], t(u[0], "broadcast_msg", text=text), parse_mode="HTML")
+                time.sleep(0.05)
             except: pass
         clear_state(uid); cmd_start(message)
 
@@ -771,7 +867,7 @@ def fsm_handler(message):
 
             if tg_id and link:
                 try:
-                    caption_text = f"🚀 Ваш прокси готов!{BAN_WARNING}"
+                    caption_text = t(tg_id, "proxy_ready") + t(tg_id, "ban_warning")
                     bot.send_photo(tg_id, get_qr(link), caption=caption_text, parse_mode="HTML")
                     bot.send_message(tg_id, link)
                 except: pass
