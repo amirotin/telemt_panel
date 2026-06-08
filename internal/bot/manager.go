@@ -22,11 +22,11 @@ type Status struct {
 // Manager runs the Python bot as a supervised subprocess.
 // It restarts the process automatically if it exits unexpectedly.
 type Manager struct {
-	mu         sync.Mutex
-	process    *os.Process
-	started    bool
-	lastError  string
-	cancel     context.CancelFunc
+	mu        sync.Mutex
+	process   *os.Process
+	started   bool
+	lastError string
+	cancel    context.CancelFunc
 
 	pythonPath string
 	scriptPath string
