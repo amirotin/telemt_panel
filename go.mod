@@ -9,11 +9,11 @@ require (
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/pelletier/go-toml/v2 v2.3.1
 	golang.org/x/crypto v0.52.0
-	golang.org/x/term v0.43.0
+	golang.org/x/term v0.44.0
 )
 
 require (
 	golang.org/x/net v0.54.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 )
