@@ -1,0 +1,71 @@
+{
+  "common": {
+    "save": "Сохранить",
+    "saving": "Сохранение...",
+    "loading": "Загрузка..."
+  },
+  "nav": {
+    "dashboard": "Панель",
+    "users": "Пользователи",
+    "runtime": "Состояние",
+    "security": "Безопасность",
+    "upstreams": "Аплинки и ДЦ",
+    "config": "Конфигурация",
+    "update": "Обновление",
+    "logs": "Журнал"
+  },
+  "sidebar": {
+    "lightMode": "Светлая тема",
+    "darkMode": "Тёмная тема",
+    "logout": "Выйти"
+  },
+  "update": {
+    "checking": "Проверка",
+    "downloading": "Загрузка",
+    "verifying": "Верификация",
+    "replacing": "Установка",
+    "restarting": "Перезапуск",
+    "lastCheck": "Последняя проверка:",
+    "enabled": "Вкл",
+    "disabled": "Выкл",
+    "checkInterval": "Интервал проверки",
+    "autoApply": "Автоустановка",
+    "available": "Доступно:",
+    "upToDate": "Актуально",
+    "loadingReleases": "Загрузка релизов...",
+    "retry": "Повторить",
+    "noVersions": "Нет доступных версий",
+    "selectVersion": "Выберите версию",
+    "currentLabel": "текущая",
+    "confirmTitle": "Подтверждение",
+    "preReleaseWarning": "Это pre-release версия {{version}}. Она может быть нестабильной.",
+    "downgradeWarning": "Вы собираетесь откатиться на более старую версию {{version}}.",
+    "proceedQuestion": "Продолжить установку?",
+    "cancel": "Отмена",
+    "proceed": "Продолжить",
+    "autoUpdateSection": "Автообновление",
+    "currentVersionLabel": "Текущая версия",
+    "refreshList": "Обновить список",
+    "refresh": "Обновить",
+    "publishedAt": "Опубликовано",
+    "releaseNotes": "заметки о релизе",
+    "update": "Обновить",
+    "changelog": "Список изменений",
+    "latestInstalled": "Установлена последняя версия",
+    "progressPanel": "Ход обновления Panel",
+    "progressTelemt": "Ход обновления Telemt",
+    "settingsError": "Ошибка: ",
+    "logEntries": "Журнал ({{count}} записей)",
+    "interval5m": "5 минут",
+    "interval15m": "15 минут",
+    "interval30m": "30 минут",
+    "interval1h": "1 час",
+    "interval3h": "3 часа",
+    "interval6h": "6 часов",
+    "interval12h": "12 часов",
+    "interval24h": "24 часа"
+  },
+  "dashboard": {
+    "systemInfo": "Информация о системе"
+  }
+}
