@@ -109,11 +109,19 @@ session_ttl = "24h"
 
 ### Docker
 
+Готовый образ публикуется на [GitHub Container Registry](https://github.com/amirotin/telemt_panel/pkgs/container/telemt_panel) при каждом push в `main`. Пример `docker-compose.yml` — в [docker-compose.example.yml](docker-compose.example.yml).
+
 ```bash
-cp config.example.toml config.toml
-# отредактируйте config.toml
+cp docker-compose.example.yml docker-compose.yml
+# отредактируйте panel-config/config.toml
 
 docker compose up -d
+```
+
+#### Обновление
+
+```bash
+docker compose pull telemt-panel && docker compose up -d telemt-panel
 ```
 
 ## Сборка
