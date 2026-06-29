@@ -13,6 +13,7 @@ import { UpstreamsPage } from '@/pages/UpstreamsPage';
 import { UpdatePage } from '@/pages/UpdatePage';
 import { ConfigPage } from '@/pages/ConfigPage';
 import { LogsPage } from '@/pages/LogsPage';
+import { TelegramPage } from '@/pages/TelegramPage';
 
 function AuthenticatedApp() {
   const { username, loading } = useAuth();
@@ -41,6 +42,7 @@ function AuthenticatedApp() {
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/upstreams" element={<UpstreamsPage />} />
           <Route path="/config" element={<ConfigPage />} />
+          <Route path="/telegram" element={<TelegramPage />} />
           <Route path="/update" element={<UpdatePage />} />
           <Route path="/logs" element={<LogsPage />} />
         </Route>

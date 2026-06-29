@@ -43,17 +43,26 @@ type UsersConfig struct {
 	Expiration     string `toml:"expiration" json:"expiration_rfc3339,omitempty"`
 }
 
+type TelegramConfig struct {
+	BotToken            string  `toml:"bot_token"`
+	AdminIDs            []int64 `toml:"admin_ids"`
+	Enabled             bool    `toml:"enabled"`
+	DefaultMaxTcpConns  int     `toml:"default_max_tcp_conns"`  // default max sessions per client
+	DefaultMaxUniqueIps int     `toml:"default_max_unique_ips"` // default max unique IPs per client
+}
+
 type Config struct {
-	Path     string       `toml:"-"` // config file path, set after loading
-	Listen   string       `toml:"listen"`
-	BasePath string       `toml:"base_path"`
-	DataDir  string       `toml:"data_dir"`
-	Telemt   TelemtConfig `toml:"telemt"`
-	Panel    PanelConfig  `toml:"panel"`
-	Auth     AuthConfig   `toml:"auth"`
-	TLS      TLSConfig    `toml:"tls"`
-	GeoIP    GeoIPConfig  `toml:"geoip"`
-	Users    UsersConfig  `toml:"users"`
+	Path     string         `toml:"-"` // config file path, set after loading
+	Listen   string         `toml:"listen"`
+	BasePath string         `toml:"base_path"`
+	DataDir  string         `toml:"data_dir"`
+	Telemt   TelemtConfig   `toml:"telemt"`
+	Panel    PanelConfig    `toml:"panel"`
+	Auth     AuthConfig     `toml:"auth"`
+	TLS      TLSConfig      `toml:"tls"`
+	GeoIP    GeoIPConfig    `toml:"geoip"`
+	Users    UsersConfig    `toml:"users"`
+	Telegram TelegramConfig `toml:"telegram"`
 }
 
 type GeoIPConfig struct {
