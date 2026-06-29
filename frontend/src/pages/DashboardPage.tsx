@@ -12,6 +12,7 @@ import { telemt } from '@/lib/api';
 import { formatUptime, formatNumber, formatBytes } from '@/lib/utils';
 import { Activity, Clock, Users, ArrowUpDown, Globe } from 'lucide-react';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface HealthData {
   status: string;
@@ -48,6 +49,7 @@ interface UserTrafficData {
 const ENDPOINTS = ['/v1/health', '/v1/stats/summary', '/v1/system/info', '/v1/runtime/gates'];
 
 export function DashboardPage() {
+  const { t } = useTranslation();
   const { data: wsData, errors, connected, refresh } = useWsSubscription('dashboard', ENDPOINTS, 5);
 
   const health = useEndpoint<HealthData>(wsData, '/v1/health');
@@ -165,7 +167,7 @@ export function DashboardPage() {
 
         {/* System Info */}
         {system && (
-          <CollapsibleSection title="System Info" description="Информация о системе">
+          <CollapsibleSection title="System Info" description={t('dashboard.systemInfo')}>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 lg:gap-3">
               {Object.entries(system).map(([key, value]) => (
                 <div key={key}>
