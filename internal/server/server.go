@@ -22,6 +22,7 @@ import (
 	"github.com/telemt/telemt-panel/internal/panel_updater"
 	"github.com/telemt/telemt-panel/internal/proxy"
 	"github.com/telemt/telemt-panel/internal/spa"
+	"github.com/telemt/telemt-panel/internal/telegram"
 	"github.com/telemt/telemt-panel/internal/telemt_config"
 	"github.com/telemt/telemt-panel/internal/updater"
 	"github.com/telemt/telemt-panel/internal/ws"
@@ -624,6 +625,152 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 
 	// Telemt API proxy (kept for direct REST calls like user CRUD)
 	mux.Handle("/api/telemt/", auth.RequireAuth(jwtSecret, telemtProxy))
+
+	// ── Telegram bot ──────────────────────────────────────────────────────────
+
+	botMgr := telegram.New(s.cfg)
+	botMgr.SetServiceActions(telegram.ServiceActions{
+		RestartTelemt: func() error {
+			return updater.RestartService(s.cfg.Telemt.ServiceName)
+		},
+		RestartPanel: func() error {
+			return panel_updater.RestartService(s.cfg.Panel.ServiceName)
+		},
+	})
+
+	// Auto-start if enabled and properly configured.
+	if s.cfg.Telegram.Enabled && s.cfg.Telegram.BotToken != "" && len(s.cfg.Telegram.AdminIDs) > 0 {
+		if err := botMgr.Start(); err != nil {
+			log.Printf("WARNING: telegram bot start failed: %v", err)
+		}
+	}
+
+	// isConfigured reports whether token + admin IDs are present.
+	isConfigured := func() bool {
+		return botMgr.IsConfigured()
+	}
+
+	// persistTelegramConfig writes current in-memory telegram settings to config file.
+	persistTelegramConfig := func() error {
+		if s.cfg.Path == "" {
+			return nil
+		}
+		tg := botMgr.GetTelegramConfig()
+		ids := make([]interface{}, len(tg.AdminIDs))
+		for i, id := range tg.AdminIDs {
+			ids[i] = id
+		}
+		updates := map[string]interface{}{
+			"telegram.bot_token":              tg.BotToken,
+			"telegram.admin_ids":              ids,
+			"telegram.enabled":                tg.Enabled,
+			"telegram.default_max_tcp_conns":  tg.DefaultMaxTcpConns,
+			"telegram.default_max_unique_ips": tg.DefaultMaxUniqueIps,
+		}
+		_, err := telemt_config.QuickUpdate(s.cfg.Path, updates)
+		return err
+	}
+
+	mux.Handle("GET /api/telegram/config", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tg := botMgr.GetTelegramConfig()
+		adminIDs := tg.AdminIDs
+		if adminIDs == nil {
+			adminIDs = []int64{}
+		}
+		writeJSON(w, http.StatusOK, jsonResponse{
+			OK: true,
+			Data: map[string]interface{}{
+				"bot_token":              tg.BotToken,
+				"admin_ids":              adminIDs,
+				"enabled":                tg.Enabled,
+				"default_max_tcp_conns":  tg.DefaultMaxTcpConns,
+				"default_max_unique_ips": tg.DefaultMaxUniqueIps,
+			},
+		})
+	})))
+
+	mux.Handle("POST /api/telegram/config", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			BotToken            string  `json:"bot_token"`
+			AdminIDs            []int64 `json:"admin_ids"`
+			DefaultMaxTcpConns  int     `json:"default_max_tcp_conns"`
+			DefaultMaxUniqueIps int     `json:"default_max_unique_ips"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+			return
+		}
+
+		// Build new config preserving the current Enabled flag, then
+		// propagate atomically so all goroutines and HTTP handlers see the
+		// same values without a data race on s.cfg.
+		newTgCfg := config.TelegramConfig{
+			BotToken:            req.BotToken,
+			AdminIDs:            req.AdminIDs,
+			DefaultMaxTcpConns:  req.DefaultMaxTcpConns,
+			DefaultMaxUniqueIps: req.DefaultMaxUniqueIps,
+			Enabled:             botMgr.GetTelegramConfig().Enabled,
+		}
+		botMgr.Stop()
+		botMgr.UpdateConfig(newTgCfg)
+		if newTgCfg.Enabled && isConfigured() {
+			if err := botMgr.Start(); err != nil {
+				log.Printf("WARNING: telegram bot restart failed: %v", err)
+			}
+		}
+
+		if err := persistTelegramConfig(); err != nil {
+			log.Printf("WARNING: failed to persist telegram config: %s", err)
+			writeError(w, http.StatusInternalServerError, "persist_failed", "failed to save telegram config")
+			return
+		}
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true})
+	})))
+
+	mux.Handle("GET /api/telegram/status", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		st := botMgr.Status()
+		writeJSON(w, http.StatusOK, jsonResponse{
+			OK: true,
+			Data: map[string]interface{}{
+				"running":    st.Running,
+				"enabled":    botMgr.GetTelegramConfig().Enabled,
+				"last_error": st.LastError,
+				"configured": isConfigured(),
+			},
+		})
+	})))
+
+	mux.Handle("POST /api/telegram/start", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isConfigured() {
+			writeError(w, http.StatusBadRequest, "not_configured", "bot_token and admin_ids are required")
+			return
+		}
+
+		botMgr.SetEnabled(true)
+		if err := botMgr.Start(); err != nil {
+			writeError(w, http.StatusInternalServerError, "start_failed", err.Error())
+			return
+		}
+		if err := persistTelegramConfig(); err != nil {
+			botMgr.SetEnabled(false)
+			botMgr.Stop()
+			log.Printf("WARNING: failed to persist telegram config: %s", err)
+			writeError(w, http.StatusInternalServerError, "persist_failed", "failed to save telegram config")
+			return
+		}
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: botMgr.Status()})
+	})))
+
+	mux.Handle("POST /api/telegram/stop", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		botMgr.SetEnabled(false)
+		botMgr.Stop()
+		if err := persistTelegramConfig(); err != nil {
+			log.Printf("WARNING: failed to persist telegram config: %s", err)
+			writeError(w, http.StatusInternalServerError, "persist_failed", "failed to save telegram config")
+			return
+		}
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: botMgr.Status()})
+	})))
 
 	// SPA
 	mux.Handle("/", spa.NewHandler(distFS, s.cfg.BasePath))
