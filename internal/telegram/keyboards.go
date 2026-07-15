@@ -1,48 +1,49 @@
 package telegram
 
 import (
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot/models"
 )
 
-func replyKeyboard(rows ...[]tgbotapi.KeyboardButton) tgbotapi.ReplyKeyboardMarkup {
-	kb := tgbotapi.NewReplyKeyboard(rows...)
-	kb.ResizeKeyboard = true
-	return kb
+func replyKeyboard(rows ...[]models.KeyboardButton) models.ReplyKeyboardMarkup {
+	return models.ReplyKeyboardMarkup{
+		Keyboard:       rows,
+		ResizeKeyboard: true,
+	}
 }
 
-func textButton(text string) tgbotapi.KeyboardButton {
-	return tgbotapi.NewKeyboardButton(text)
+func textButton(text string) models.KeyboardButton {
+	return models.KeyboardButton{Text: text}
 }
 
-func textRow(texts ...string) []tgbotapi.KeyboardButton {
-	row := make([]tgbotapi.KeyboardButton, 0, len(texts))
+func textRow(texts ...string) []models.KeyboardButton {
+	row := make([]models.KeyboardButton, 0, len(texts))
 	for _, text := range texts {
 		row = append(row, textButton(text))
 	}
 	return row
 }
 
-func inlineDataButton(text, data string) tgbotapi.InlineKeyboardButton {
-	return tgbotapi.NewInlineKeyboardButtonData(text, data)
+func inlineDataButton(text, data string) models.InlineKeyboardButton {
+	return models.InlineKeyboardButton{Text: text, CallbackData: data}
 }
 
-func inlineURLButton(text, url string) tgbotapi.InlineKeyboardButton {
-	return tgbotapi.NewInlineKeyboardButtonURL(text, url)
+func inlineURLButton(text, url string) models.InlineKeyboardButton {
+	return models.InlineKeyboardButton{Text: text, URL: url}
 }
 
-func inlineRow(buttons ...tgbotapi.InlineKeyboardButton) []tgbotapi.InlineKeyboardButton {
-	return tgbotapi.NewInlineKeyboardRow(buttons...)
+func inlineRow(buttons ...models.InlineKeyboardButton) []models.InlineKeyboardButton {
+	return buttons
 }
 
-func inlineKeyboard(rows ...[]tgbotapi.InlineKeyboardButton) tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+func inlineKeyboard(rows ...[]models.InlineKeyboardButton) models.InlineKeyboardMarkup {
+	return models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
-func removeKeyboard() tgbotapi.ReplyKeyboardRemove {
-	return tgbotapi.NewRemoveKeyboard(true)
+func removeKeyboard() models.ReplyKeyboardRemove {
+	return models.ReplyKeyboardRemove{RemoveKeyboard: true}
 }
 
-func (b *Bot) adminKeyboard() tgbotapi.ReplyKeyboardMarkup {
+func (b *Bot) adminKeyboard() models.ReplyKeyboardMarkup {
 	return replyKeyboard(
 		textRow("📊 Статистика", "📥 Заявки"),
 		textRow("➕ Добавить", "📢 Рассылка"),
@@ -51,14 +52,14 @@ func (b *Bot) adminKeyboard() tgbotapi.ReplyKeyboardMarkup {
 	)
 }
 
-func (b *Bot) tgIDEntryKeyboard() tgbotapi.ReplyKeyboardMarkup {
+func (b *Bot) tgIDEntryKeyboard() models.ReplyKeyboardMarkup {
 	return replyKeyboard(textRow("Отмена"))
 }
 
-func (b *Bot) cancelKeyboard() tgbotapi.ReplyKeyboardMarkup {
+func (b *Bot) cancelKeyboard() models.ReplyKeyboardMarkup {
 	return replyKeyboard(textRow("Отмена"))
 }
 
-func (b *Bot) userKeyboard(tgID int64) tgbotapi.ReplyKeyboardMarkup {
+func (b *Bot) userKeyboard(tgID int64) models.ReplyKeyboardMarkup {
 	return replyKeyboard(textRow(b.t(tgID, "btn_stats"), b.t(tgID, "btn_link")))
 }

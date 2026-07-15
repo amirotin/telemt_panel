@@ -1,52 +1,67 @@
 package telegram
 
 import (
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"bytes"
+	"context"
+
+	tgbot "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 )
 
-func (b *Bot) rawAPI() *tgbotapi.BotAPI {
+func (b *Bot) rawAPI() *tgbot.Bot {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.api
 }
 
-func (b *Bot) send(chatID int64, text string) tgbotapi.Message {
+func (b *Bot) send(chatID int64, text string) models.Message {
 	api := b.rawAPI()
 	if api == nil {
-		return tgbotapi.Message{}
+		return models.Message{}
 	}
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = tgbotapi.ModeHTML
-	msg.DisableWebPagePreview = true
-	m, _ := api.Send(msg)
-	return m
+	m, _ := api.SendMessage(context.Background(), &tgbot.SendMessageParams{
+		ChatID:             chatID,
+		Text:               text,
+		ParseMode:          models.ParseModeHTML,
+		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: tgbot.True()},
+	})
+	if m == nil {
+		return models.Message{}
+	}
+	return *m
 }
 
-func (b *Bot) sendMarkup(chatID int64, text string, markup interface{}) tgbotapi.Message {
+func (b *Bot) sendMarkup(chatID int64, text string, markup models.ReplyMarkup) models.Message {
 	api := b.rawAPI()
 	if api == nil {
-		return tgbotapi.Message{}
+		return models.Message{}
 	}
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = tgbotapi.ModeHTML
-	msg.DisableWebPagePreview = true
-	msg.ReplyMarkup = markup
-	m, _ := api.Send(msg)
-	return m
+	m, _ := api.SendMessage(context.Background(), &tgbot.SendMessageParams{
+		ChatID:             chatID,
+		Text:               text,
+		ParseMode:          models.ParseModeHTML,
+		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: tgbot.True()},
+		ReplyMarkup:        markup,
+	})
+	if m == nil {
+		return models.Message{}
+	}
+	return *m
 }
 
-func (b *Bot) editText(chatID int64, msgID int, text string, markup *tgbotapi.InlineKeyboardMarkup) {
+func (b *Bot) editText(chatID int64, msgID int, text string, markup *models.InlineKeyboardMarkup) {
 	api := b.rawAPI()
 	if api == nil {
 		return
 	}
-	edit := tgbotapi.NewEditMessageText(chatID, msgID, text)
-	edit.ParseMode = tgbotapi.ModeHTML
-	edit.DisableWebPagePreview = true
-	if markup != nil {
-		edit.ReplyMarkup = markup
-	}
-	api.Send(edit) //nolint:errcheck
+	api.EditMessageText(context.Background(), &tgbot.EditMessageTextParams{
+		ChatID:             chatID,
+		MessageID:          msgID,
+		Text:               text,
+		ParseMode:          models.ParseModeHTML,
+		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: tgbot.True()},
+		ReplyMarkup:        markup,
+	}) //nolint:errcheck
 }
 
 func (b *Bot) answerCallback(callbackID, text string) {
@@ -54,7 +69,10 @@ func (b *Bot) answerCallback(callbackID, text string) {
 	if api == nil {
 		return
 	}
-	api.Request(tgbotapi.NewCallback(callbackID, text)) //nolint:errcheck
+	api.AnswerCallbackQuery(context.Background(), &tgbot.AnswerCallbackQueryParams{
+		CallbackQueryID: callbackID,
+		Text:            text,
+	}) //nolint:errcheck
 }
 
 func (b *Bot) copyMsg(toChatID, fromChatID int64, msgID int) {
@@ -62,20 +80,27 @@ func (b *Bot) copyMsg(toChatID, fromChatID int64, msgID int) {
 	if api == nil {
 		return
 	}
-	cp := tgbotapi.CopyMessageConfig{
-		BaseChat:   tgbotapi.BaseChat{ChatID: toChatID},
+	api.CopyMessage(context.Background(), &tgbot.CopyMessageParams{
+		ChatID:     toChatID,
 		FromChatID: fromChatID,
 		MessageID:  msgID,
-	}
-	api.Send(cp) //nolint:errcheck
+	}) //nolint:errcheck
 }
 
-func (b *Bot) forwardMsg(toChatID, fromChatID int64, msgID int) (tgbotapi.Message, error) {
+func (b *Bot) forwardMsg(toChatID, fromChatID int64, msgID int) (models.Message, error) {
 	api := b.rawAPI()
 	if api == nil {
-		return tgbotapi.Message{}, nil
+		return models.Message{}, nil
 	}
-	return api.Send(tgbotapi.NewForward(toChatID, fromChatID, msgID))
+	m, err := api.ForwardMessage(context.Background(), &tgbot.ForwardMessageParams{
+		ChatID:     toChatID,
+		FromChatID: fromChatID,
+		MessageID:  msgID,
+	})
+	if m == nil {
+		return models.Message{}, err
+	}
+	return *m, err
 }
 
 func (b *Bot) sendQR(chatID int64, data, caption string) {
@@ -88,10 +113,13 @@ func (b *Bot) sendQR(chatID int64, data, caption string) {
 		b.send(chatID, caption)
 		return
 	}
-	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileBytes{Name: "qr.png", Bytes: png})
-	photo.Caption = caption
-	photo.ParseMode = tgbotapi.ModeHTML
-	if _, err := api.Send(photo); err != nil {
+	_, err = api.SendPhoto(context.Background(), &tgbot.SendPhotoParams{
+		ChatID:    chatID,
+		Photo:     &models.InputFileUpload{Filename: "qr.png", Data: bytes.NewReader(png)},
+		Caption:   caption,
+		ParseMode: models.ParseModeHTML,
+	})
+	if err != nil {
 		b.send(chatID, caption)
 	}
 }
@@ -101,7 +129,9 @@ func (b *Bot) sendDocument(chatID int64, filename string, data []byte, caption s
 	if api == nil {
 		return
 	}
-	doc := tgbotapi.NewDocument(chatID, tgbotapi.FileBytes{Name: filename, Bytes: data})
-	doc.Caption = caption
-	api.Send(doc) //nolint:errcheck
+	api.SendDocument(context.Background(), &tgbot.SendDocumentParams{
+		ChatID:   chatID,
+		Document: &models.InputFileUpload{Filename: filename, Data: bytes.NewReader(data)},
+		Caption:  caption,
+	}) //nolint:errcheck
 }

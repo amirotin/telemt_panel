@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot/models"
 	"github.com/telemt/telemt-panel/internal/config"
 	_ "modernc.org/sqlite"
 )
@@ -113,9 +113,36 @@ func TestReplyMapAndSecretUpdate(t *testing.T) {
 }
 
 func TestReplyProxyName(t *testing.T) {
-	msg := &tgbotapi.Message{Text: "🏷 Прокси: alice_123\n(Reply на пересланное сообщение для ответа)"}
+	msg := &models.Message{Text: "🏷 Прокси: alice_123\n(Reply на пересланное сообщение для ответа)"}
 	if got := replyProxyName(msg); got != "alice_123" {
 		t.Fatalf("unexpected proxy name: %q", got)
+	}
+}
+
+func TestCommandName(t *testing.T) {
+	msg := &models.Message{
+		Text: "/start@test_bot",
+		Entities: []models.MessageEntity{
+			{Type: models.MessageEntityTypeBotCommand, Offset: 0, Length: len("/start@test_bot")},
+		},
+	}
+	if got := commandName(msg); got != "start" {
+		t.Fatalf("unexpected command: %q", got)
+	}
+}
+
+func TestCallbackMessage(t *testing.T) {
+	cq := &models.CallbackQuery{
+		Message: models.MaybeInaccessibleMessage{
+			Type:    models.MaybeInaccessibleMessageTypeMessage,
+			Message: &models.Message{ID: 42, Chat: models.Chat{ID: 123}},
+		},
+	}
+	if got := callbackChatID(cq); got != 123 {
+		t.Fatalf("unexpected chat ID: %d", got)
+	}
+	if got := callbackMessageID(cq); got != 42 {
+		t.Fatalf("unexpected message ID: %d", got)
 	}
 }
 

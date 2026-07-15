@@ -13,7 +13,8 @@ import (
 	"sync"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbot "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/telemt/telemt-panel/internal/config"
 	_ "modernc.org/sqlite"
@@ -43,7 +44,7 @@ type Bot struct {
 	cfg        *config.Config
 	mu         sync.Mutex
 	wg         sync.WaitGroup
-	api        *tgbotapi.BotAPI
+	api        *tgbot.Bot
 	db         *sql.DB
 	states     map[int64]*fsmState
 	started    bool
@@ -79,7 +80,16 @@ func (b *Bot) Start() error {
 	token := b.cfg.Telegram.BotToken // snapshot under lock; UpdateConfig may race otherwise
 	b.mu.Unlock()
 
-	api, err := tgbotapi.NewBotAPI(token)
+	api, err := tgbot.New(token,
+		tgbot.WithDefaultHandler(func(ctx context.Context, _ *tgbot.Bot, update *models.Update) {
+			b.handleUpdate(update)
+		}),
+		tgbot.WithErrorsHandler(func(err error) {
+			log.Printf("[telegram] bot error: %v", err)
+		}),
+		tgbot.WithHTTPClient(60*time.Second, &http.Client{Timeout: 70 * time.Second}),
+		tgbot.WithWorkers(8),
+	)
 	if err != nil {
 		b.mu.Lock()
 		b.started = false
@@ -219,26 +229,7 @@ func (b *Bot) run(ctx context.Context) {
 		return
 	}
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := api.GetUpdatesChan(u)
-
-	for {
-		select {
-		case update, ok := <-updates:
-			if !ok {
-				return
-			}
-			b.wg.Add(1)
-			go func(u tgbotapi.Update) {
-				defer b.wg.Done()
-				b.handleUpdate(u)
-			}(update)
-		case <-ctx.Done():
-			api.StopReceivingUpdates()
-			return
-		}
-	}
+	api.Start(ctx)
 }
 
 // ── FSM helpers ────────────────────────────────────────────────────────────

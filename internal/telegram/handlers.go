@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot/models"
 )
 
 var proxyNameRe = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
@@ -22,7 +22,10 @@ func isValidProxyName(name string) bool {
 
 // ── Update dispatcher ──────────────────────────────────────────────────────
 
-func (b *Bot) handleUpdate(update tgbotapi.Update) {
+func (b *Bot) handleUpdate(update *models.Update) {
+	if update == nil {
+		return
+	}
 	switch {
 	case update.Message != nil:
 		b.handleMessage(update.Message)
@@ -31,7 +34,7 @@ func (b *Bot) handleUpdate(update tgbotapi.Update) {
 	}
 }
 
-func (b *Bot) handleMessage(msg *tgbotapi.Message) {
+func (b *Bot) handleMessage(msg *models.Message) {
 	if msg.From == nil {
 		return
 	}
@@ -49,8 +52,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
-	if msg.IsCommand() {
-		switch msg.Command() {
+	if command := commandName(msg); command != "" {
+		switch command {
 		case "start", "cancel":
 			b.cmdStart(msg)
 		}
@@ -105,7 +108,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 // ── /start ─────────────────────────────────────────────────────────────────
 
-func (b *Bot) cmdStart(msg *tgbotapi.Message) {
+func (b *Bot) cmdStart(msg *models.Message) {
 	uid := msg.From.ID
 	b.clearState(uid)
 
@@ -138,7 +141,7 @@ func (b *Bot) cmdStart(msg *tgbotapi.Message) {
 
 // ── Client handlers ────────────────────────────────────────────────────────
 
-func (b *Bot) userRegister(msg *tgbotapi.Message) {
+func (b *Bot) userRegister(msg *models.Message) {
 	uid := msg.From.ID
 	if b.isAdmin(uid) {
 		return
@@ -156,7 +159,7 @@ func (b *Bot) userRegister(msg *tgbotapi.Message) {
 		return
 	}
 
-	username := msg.From.UserName
+	username := msg.From.Username
 	desiredName := cleanUsername(username, uid)
 
 	// Sync API users to ensure name uniqueness.
@@ -192,7 +195,7 @@ func (b *Bot) userRegister(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *Bot) userStats(msg *tgbotapi.Message) {
+func (b *Bot) userStats(msg *models.Message) {
 	uid := msg.From.ID
 	proxyName, _ := b.dbGetUser(uid)
 	if proxyName == "" {
@@ -216,7 +219,7 @@ func (b *Bot) userStats(msg *tgbotapi.Message) {
 	b.send(msg.Chat.ID, b.t(uid, "data_not_found"))
 }
 
-func (b *Bot) userLink(msg *tgbotapi.Message) {
+func (b *Bot) userLink(msg *models.Message) {
 	uid := msg.From.ID
 	_, secret := b.dbGetUser(uid)
 	if secret == "" {
@@ -234,7 +237,7 @@ func (b *Bot) userLink(msg *tgbotapi.Message) {
 
 // ── Admin handlers ─────────────────────────────────────────────────────────
 
-func (b *Bot) adminStats(msg *tgbotapi.Message) {
+func (b *Bot) adminStats(msg *models.Message) {
 	users, err := b.apiGetUsers()
 	if err != nil {
 		b.send(msg.Chat.ID, "❌ API недоступно.")
@@ -243,7 +246,7 @@ func (b *Bot) adminStats(msg *tgbotapi.Message) {
 	b.dbSyncUsers(users)
 
 	var activeCount int
-	rows := []tgbotapi.InlineKeyboardButton{}
+	rows := []models.InlineKeyboardButton{}
 	for _, u := range users {
 		if len(u.activeIPs) > 0 {
 			activeCount++
@@ -251,11 +254,11 @@ func (b *Bot) adminStats(msg *tgbotapi.Message) {
 		}
 	}
 
-	var kbRows [][]tgbotapi.InlineKeyboardButton
+	var kbRows [][]models.InlineKeyboardButton
 	for _, btn := range rows {
-		kbRows = append(kbRows, []tgbotapi.InlineKeyboardButton{btn})
+		kbRows = append(kbRows, []models.InlineKeyboardButton{btn})
 	}
-	kbRows = append(kbRows, []tgbotapi.InlineKeyboardButton{
+	kbRows = append(kbRows, []models.InlineKeyboardButton{
 		inlineDataButton("Показать всех клиентов", "st_all"),
 	})
 	kb := inlineKeyboard(kbRows...)
@@ -269,7 +272,7 @@ func (b *Bot) adminStats(msg *tgbotapi.Message) {
 	b.sendMarkup(msg.Chat.ID, text, kb)
 }
 
-func (b *Bot) adminRequests(msg *tgbotapi.Message) {
+func (b *Bot) adminRequests(msg *models.Message) {
 	reqs := b.dbGetRequests()
 	if len(reqs) == 0 {
 		b.send(msg.Chat.ID, "📭 Очередь пуста.")
@@ -288,17 +291,17 @@ func (b *Bot) adminRequests(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *Bot) adminAdd(msg *tgbotapi.Message) {
+func (b *Bot) adminAdd(msg *models.Message) {
 	b.setState(msg.From.ID, "WAIT_ADD_NAME", nil)
 	b.sendMarkup(msg.Chat.ID, "Введите <b>имя прокси</b> для нового пользователя\n(только a-z, 0-9, _ — от 3 до 32 символов):", b.cancelKeyboard())
 }
 
-func (b *Bot) adminBroadcastStart(msg *tgbotapi.Message) {
+func (b *Bot) adminBroadcastStart(msg *models.Message) {
 	b.setState(msg.From.ID, "WAIT_BROADCAST", nil)
 	b.sendMarkup(msg.Chat.ID, "Введите текст рассылки:", b.cancelKeyboard())
 }
 
-func (b *Bot) adminBlacklist(msg *tgbotapi.Message) {
+func (b *Bot) adminBlacklist(msg *models.Message) {
 	banned := b.dbGetBanned()
 	if len(banned) == 0 {
 		b.send(msg.Chat.ID, "⚫️ Список пуст.")
@@ -316,7 +319,7 @@ func (b *Bot) adminBlacklist(msg *tgbotapi.Message) {
 	}
 }
 
-func (b *Bot) adminBackup(msg *tgbotapi.Message) {
+func (b *Bot) adminBackup(msg *models.Message) {
 	b.mu.Lock()
 	db := b.db
 	b.mu.Unlock()
@@ -337,7 +340,7 @@ func (b *Bot) adminBackup(msg *tgbotapi.Message) {
 	b.sendDocument(msg.Chat.ID, "users.db", data, "💾 Резервная копия БД")
 }
 
-func (b *Bot) adminService(msg *tgbotapi.Message) {
+func (b *Bot) adminService(msg *models.Message) {
 	kb := inlineKeyboard(
 		inlineRow(inlineDataButton("🔄 Перезапустить бота", "svc_ask_bot")),
 		inlineRow(inlineDataButton("🔄 Перезапустить Telemt", "svc_ask_telemt")),
@@ -346,16 +349,17 @@ func (b *Bot) adminService(msg *tgbotapi.Message) {
 	b.sendMarkup(msg.Chat.ID, "⚙️ Сервисные действия:", kb)
 }
 
-func (b *Bot) adminReplyToUser(msg *tgbotapi.Message) {
+func (b *Bot) adminReplyToUser(msg *models.Message) {
 	reply := msg.ReplyToMessage
 	var targetUID int64
-	if reply.ForwardFrom != nil {
-		targetUID = reply.ForwardFrom.ID
-	} else {
-		targetUID = b.dbGetReplyTarget(reply.MessageID)
+	if reply.ForwardOrigin != nil && reply.ForwardOrigin.MessageOriginUser != nil {
+		targetUID = reply.ForwardOrigin.MessageOriginUser.SenderUser.ID
 	}
 	if targetUID == 0 {
-		targetUID = b.dbGetNearbyReplyTarget(reply.MessageID)
+		targetUID = b.dbGetReplyTarget(reply.ID)
+	}
+	if targetUID == 0 {
+		targetUID = b.dbGetNearbyReplyTarget(reply.ID)
 	}
 	if targetUID == 0 {
 		if proxyName := replyProxyName(reply); proxyName != "" {
@@ -363,17 +367,17 @@ func (b *Bot) adminReplyToUser(msg *tgbotapi.Message) {
 		}
 	}
 	if targetUID == 0 {
-		log.Printf("[telegram] reply target miss: admin_id=%d reply_to_msg_id=%d msg_id=%d", msg.From.ID, reply.MessageID, msg.MessageID)
+		log.Printf("[telegram] reply target miss: admin_id=%d reply_to_msg_id=%d msg_id=%d", msg.From.ID, reply.ID, msg.ID)
 		b.send(msg.Chat.ID, "❌ Не удалось определить получателя. Возможно, сообщение слишком старое (старше 3 дней).")
 		return
 	}
-	b.copyMsg(targetUID, msg.Chat.ID, msg.MessageID)
+	b.copyMsg(targetUID, msg.Chat.ID, msg.ID)
 	b.send(msg.Chat.ID, "✅ Ответ отправлен!")
 }
 
 // ── FSM ────────────────────────────────────────────────────────────────────
 
-func (b *Bot) handleFSM(msg *tgbotapi.Message, state *fsmState) {
+func (b *Bot) handleFSM(msg *models.Message, state *fsmState) {
 	uid := msg.From.ID
 	text := strings.TrimSpace(msg.Text)
 
@@ -398,7 +402,7 @@ func (b *Bot) handleFSM(msg *tgbotapi.Message, state *fsmState) {
 	}
 }
 
-func (b *Bot) fsmBroadcast(msg *tgbotapi.Message, text string) {
+func (b *Bot) fsmBroadcast(msg *models.Message, text string) {
 	uid := msg.From.ID
 	tgIDs := b.dbGetAllUserTGIDs()
 	b.send(msg.Chat.ID, fmt.Sprintf("⏳ Рассылка для %d чел...", len(tgIDs)))
@@ -412,7 +416,7 @@ func (b *Bot) fsmBroadcast(msg *tgbotapi.Message, text string) {
 	b.cmdStart(msg)
 }
 
-func (b *Bot) fsmAddName(msg *tgbotapi.Message, text string) {
+func (b *Bot) fsmAddName(msg *models.Message, text string) {
 	uid := msg.From.ID
 	if !isValidProxyName(text) {
 		b.send(msg.Chat.ID, "❌ Имя должно содержать только латиницу, цифры и _ (3-32 символа).")
@@ -422,7 +426,7 @@ func (b *Bot) fsmAddName(msg *tgbotapi.Message, text string) {
 	b.sendMarkup(msg.Chat.ID, fmt.Sprintf("✅ Имя прокси: <code>%s</code>\n\nВведите <b>Telegram ID</b> пользователя или отправьте «нет» чтобы пропустить:", text), b.tgIDEntryKeyboard())
 }
 
-func (b *Bot) fsmAddTGID(msg *tgbotapi.Message, text string, state *fsmState) {
+func (b *Bot) fsmAddTGID(msg *models.Message, text string, state *fsmState) {
 	uid := msg.From.ID
 	proxyName := state.Data["proxy_name"]
 
@@ -460,7 +464,7 @@ func (b *Bot) fsmAddTGID(msg *tgbotapi.Message, text string, state *fsmState) {
 	}
 }
 
-func (b *Bot) fsmBindTGID(msg *tgbotapi.Message, text string, state *fsmState) {
+func (b *Bot) fsmBindTGID(msg *models.Message, text string, state *fsmState) {
 	uid := msg.From.ID
 	proxyName := state.Data["proxy_name"]
 
@@ -479,12 +483,12 @@ func (b *Bot) fsmBindTGID(msg *tgbotapi.Message, text string, state *fsmState) {
 	)
 }
 
-func (b *Bot) fsmMsgToUser(msg *tgbotapi.Message, state *fsmState) {
+func (b *Bot) fsmMsgToUser(msg *models.Message, state *fsmState) {
 	uid := msg.From.ID
 	tgID, _ := strconv.ParseInt(state.Data["tg_id"], 10, 64)
 	proxyName := state.Data["proxy_name"]
 
-	b.copyMsg(tgID, msg.Chat.ID, msg.MessageID)
+	b.copyMsg(tgID, msg.Chat.ID, msg.ID)
 	b.clearState(uid)
 	b.send(msg.Chat.ID, fmt.Sprintf("✅ Сообщение отправлено клиенту <b>%s</b>.", proxyName))
 	b.cmdStart(msg)
@@ -492,16 +496,16 @@ func (b *Bot) fsmMsgToUser(msg *tgbotapi.Message, state *fsmState) {
 
 // ── Callbacks ──────────────────────────────────────────────────────────────
 
-func (b *Bot) handleCallback(cq *tgbotapi.CallbackQuery) {
-	if cq.Message == nil {
+func (b *Bot) handleCallback(cq *models.CallbackQuery) {
+	if callbackMessage(cq) == nil {
 		b.answerCallback(cq.ID, "")
 		return
 	}
 	b.answerCallback(cq.ID, "")
 
 	data := cq.Data
-	chatID := cq.Message.Chat.ID
-	msgID := cq.Message.MessageID
+	chatID := callbackChatID(cq)
+	msgID := callbackMessageID(cq)
 
 	switch {
 	case strings.HasPrefix(data, "req_y_") || strings.HasPrefix(data, "req_n_"):
@@ -539,7 +543,7 @@ func (b *Bot) handleCallback(cq *tgbotapi.CallbackQuery) {
 	}
 }
 
-func (b *Bot) cbProcessRequest(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbProcessRequest(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -549,8 +553,8 @@ func (b *Bot) cbProcessRequest(cq *tgbotapi.CallbackQuery) {
 	if err != nil {
 		return
 	}
-	chatID := cq.Message.Chat.ID
-	msgID := cq.Message.MessageID
+	chatID := callbackChatID(cq)
+	msgID := callbackMessageID(cq)
 
 	proxyName, username, ok := b.dbGetRequest(tgID)
 	if !ok {
@@ -589,12 +593,12 @@ func (b *Bot) cbProcessRequest(cq *tgbotapi.CallbackQuery) {
 	}
 }
 
-func (b *Bot) cbShowStats(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbShowStats(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
-	chatID := cq.Message.Chat.ID
-	msgID := cq.Message.MessageID
+	chatID := callbackChatID(cq)
+	msgID := callbackMessageID(cq)
 
 	if cq.Data == "st_all" {
 		users, err := b.apiGetUsers()
@@ -602,13 +606,13 @@ func (b *Bot) cbShowStats(cq *tgbotapi.CallbackQuery) {
 			b.editText(chatID, msgID, "❌ API недоступно.", nil)
 			return
 		}
-		var kbRows [][]tgbotapi.InlineKeyboardButton
+		var kbRows [][]models.InlineKeyboardButton
 		for _, u := range users {
 			icon := "⚪️"
 			if len(u.activeIPs) > 0 {
 				icon = "🟢"
 			}
-			kbRows = append(kbRows, []tgbotapi.InlineKeyboardButton{
+			kbRows = append(kbRows, []models.InlineKeyboardButton{
 				inlineDataButton(icon+" "+u.name, "st_"+u.name),
 			})
 		}
@@ -655,7 +659,7 @@ func (b *Bot) cbShowStats(cq *tgbotapi.CallbackQuery) {
 	b.send(chatID, fmt.Sprintf("Данные по %s не найдены.", name))
 }
 
-func (b *Bot) cbConfirmAsk(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbConfirmAsk(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -671,11 +675,11 @@ func (b *Bot) cbConfirmAsk(cq *tgbotapi.CallbackQuery) {
 		inlineDataButton("🚨 ДА, "+action, cbData),
 		inlineDataButton("Отмена", "cancel_action"),
 	))
-	b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+	b.editText(callbackChatID(cq), callbackMessageID(cq),
 		fmt.Sprintf("⚠️ Точно %s <code>%s</code>?", strings.ToLower(action), name), &kb)
 }
 
-func (b *Bot) cbConfirmExec(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbConfirmExec(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -685,7 +689,7 @@ func (b *Bot) cbConfirmExec(cq *tgbotapi.CallbackQuery) {
 	name := cq.Data[8:]
 
 	if err := b.apiDeleteUser(name); err != nil {
-		b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+		b.editText(callbackChatID(cq), callbackMessageID(cq),
 			fmt.Sprintf("❌ Ошибка API: прокси <code>%s</code> не удалён. Повторите позже.\n%v", name, err), nil)
 		return
 	}
@@ -699,79 +703,79 @@ func (b *Bot) cbConfirmExec(cq *tgbotapi.CallbackQuery) {
 	}
 
 	b.dbCleanUser(name)
-	b.editText(cq.Message.Chat.ID, cq.Message.MessageID, fmt.Sprintf("✅ Исполнено: <code>%s</code>", name), nil)
+	b.editText(callbackChatID(cq), callbackMessageID(cq), fmt.Sprintf("✅ Исполнено: <code>%s</code>", name), nil)
 }
 
-func (b *Bot) cbBindAsk(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbBindAsk(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
 	proxyName := cq.Data[9:]
 	b.setState(cq.From.ID, "WAIT_TG_BIND", map[string]string{"proxy_name": proxyName})
-	b.sendMarkup(cq.Message.Chat.ID,
+	b.sendMarkup(callbackChatID(cq),
 		fmt.Sprintf("Введите <b>Telegram ID</b> пользователя для прокси <code>%s</code>:", proxyName),
 		b.tgIDEntryKeyboard(),
 	)
 }
 
-func (b *Bot) cbMsgAsk(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbMsgAsk(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
 	name := cq.Data[8:]
 	tgID, _ := b.dbGetUserByName(name)
 	if tgID == 0 {
-		b.send(cq.Message.Chat.ID, fmt.Sprintf("❌ У пользователя <b>%s</b> не привязан Telegram.", name))
+		b.send(callbackChatID(cq), fmt.Sprintf("❌ У пользователя <b>%s</b> не привязан Telegram.", name))
 		return
 	}
 	b.setState(cq.From.ID, "WAIT_MSG_TO_USER", map[string]string{
 		"tg_id":      strconv.FormatInt(tgID, 10),
 		"proxy_name": name,
 	})
-	b.sendMarkup(cq.Message.Chat.ID,
+	b.sendMarkup(callbackChatID(cq),
 		fmt.Sprintf("Напишите сообщение для <b>%s</b> (можно прикрепить фото/файл):", name),
 		b.cancelKeyboard(),
 	)
 }
 
-func (b *Bot) cbShowTGID(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbShowTGID(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
 	name := cq.Data[5:]
 	tgID, _ := b.dbGetUserByName(name)
 	if tgID == 0 {
-		b.send(cq.Message.Chat.ID, fmt.Sprintf("⚠️ Пользователь <b>%s</b> не привязан к Telegram.", name))
+		b.send(callbackChatID(cq), fmt.Sprintf("⚠️ Пользователь <b>%s</b> не привязан к Telegram.", name))
 		return
 	}
 	kb := inlineKeyboard(inlineRow(
 		inlineURLButton("Открыть профиль", fmt.Sprintf("tg://user?id=%d", tgID)),
 	))
-	b.sendMarkup(cq.Message.Chat.ID,
+	b.sendMarkup(callbackChatID(cq),
 		fmt.Sprintf("👤 Пользователь: <b>%s</b>\nID Telegram: <code>%d</code>", name, tgID),
 		kb,
 	)
 }
 
-func (b *Bot) cbShowQR(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbShowQR(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
 	name := cq.Data[3:]
 	_, secret := b.dbGetUserByName(name)
 	if secret == "" {
-		b.send(cq.Message.Chat.ID, "❌ У этого пользователя нет секрета.")
+		b.send(callbackChatID(cq), "❌ У этого пользователя нет секрета.")
 		return
 	}
 	link := b.buildProxyLink(secret)
 	if link == "" {
-		b.send(cq.Message.Chat.ID, "❌ PROXY_DOMAIN не настроен.")
+		b.send(callbackChatID(cq), "❌ PROXY_DOMAIN не настроен.")
 		return
 	}
-	b.sendQR(cq.Message.Chat.ID, link, fmt.Sprintf("🚀 QR и ссылка для <b>%s</b>:\n\n<code>%s</code>", name, link))
+	b.sendQR(callbackChatID(cq), link, fmt.Sprintf("🚀 QR и ссылка для <b>%s</b>:\n\n<code>%s</code>", name, link))
 }
 
-func (b *Bot) cbReplyAsk(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbReplyAsk(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -787,10 +791,10 @@ func (b *Bot) cbReplyAsk(cq *tgbotapi.CallbackQuery) {
 		"tg_id":      strconv.FormatInt(tgID, 10),
 		"proxy_name": proxyName,
 	})
-	b.sendMarkup(cq.Message.Chat.ID, fmt.Sprintf("Напишите ответ для <b>%s</b>:", proxyName), b.cancelKeyboard())
+	b.sendMarkup(callbackChatID(cq), fmt.Sprintf("Напишите ответ для <b>%s</b>:", proxyName), b.cancelKeyboard())
 }
 
-func (b *Bot) cbRotateAsk(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbRotateAsk(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -799,11 +803,11 @@ func (b *Bot) cbRotateAsk(cq *tgbotapi.CallbackQuery) {
 		inlineDataButton("🚨 ДА, перевыпустить", "rotate_yes_"+name),
 		inlineDataButton("Отмена", "cancel_action"),
 	))
-	b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+	b.editText(callbackChatID(cq), callbackMessageID(cq),
 		fmt.Sprintf("⚠️ Перевыпустить ссылку для <code>%s</code>?\nСтарая ссылка перестанет работать.", name), &kb)
 }
 
-func (b *Bot) cbRotateExec(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbRotateExec(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -812,20 +816,20 @@ func (b *Bot) cbRotateExec(cq *tgbotapi.CallbackQuery) {
 	secret := randomHex(16)
 	realSecret, err := b.apiRotateUserSecret(name, oldSecret, secret)
 	if err != nil {
-		b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+		b.editText(callbackChatID(cq), callbackMessageID(cq),
 			fmt.Sprintf("❌ Не удалось перевыпустить ссылку для <code>%s</code>: %v", name, err), nil)
 		return
 	}
 	b.dbUpdateUserSecret(name, realSecret)
 	link := b.buildProxyLink(realSecret)
 	if link == "" {
-		b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+		b.editText(callbackChatID(cq), callbackMessageID(cq),
 			fmt.Sprintf("✅ Секрет для <code>%s</code> обновлён, но домен прокси не настроен.", name), nil)
 		return
 	}
-	b.editText(cq.Message.Chat.ID, cq.Message.MessageID, fmt.Sprintf("✅ Ссылка для <code>%s</code> перевыпущена.", name), nil)
-	b.sendQR(cq.Message.Chat.ID, link, fmt.Sprintf("🚀 Новая ссылка для <b>%s</b>:\n\n<code>%s</code>", name, link))
-	b.send(cq.Message.Chat.ID, link)
+	b.editText(callbackChatID(cq), callbackMessageID(cq), fmt.Sprintf("✅ Ссылка для <code>%s</code> перевыпущена.", name), nil)
+	b.sendQR(callbackChatID(cq), link, fmt.Sprintf("🚀 Новая ссылка для <b>%s</b>:\n\n<code>%s</code>", name, link))
+	b.send(callbackChatID(cq), link)
 	if tgID != 0 {
 		caption := b.t(tgID, "link_caption") + b.t(tgID, "ban_warning")
 		b.sendQR(tgID, link, caption)
@@ -833,7 +837,7 @@ func (b *Bot) cbRotateExec(cq *tgbotapi.CallbackQuery) {
 	}
 }
 
-func (b *Bot) cbBanTG(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbBanTG(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -849,7 +853,7 @@ func (b *Bot) cbBanTG(cq *tgbotapi.CallbackQuery) {
 
 	if proxyName != "Спамер (без прокси)" {
 		if err := b.apiDeleteUser(proxyName); err != nil {
-			b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+			b.editText(callbackChatID(cq), callbackMessageID(cq),
 				fmt.Sprintf("🏷 Прокси: <code>%s</code>\n\n⚠️ <b>TG ID %d забанен в БД</b>, но ошибка API: %v\nУдалите прокси вручную.", proxyName, tgID, err),
 				nil,
 			)
@@ -859,14 +863,14 @@ func (b *Bot) cbBanTG(cq *tgbotapi.CallbackQuery) {
 		b.send(tgID, b.t(tgID, "access_blocked"))
 	}
 
-	b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+	b.editText(callbackChatID(cq), callbackMessageID(cq),
 		fmt.Sprintf("🏷 Прокси: <code>%s</code>\n<i>(Для ответа сделайте Reply на пересланное сообщение)</i>\n\n✅ <b>TG ID %d ЗАБЛОКИРОВАН</b>",
 			proxyName, tgID),
 		nil,
 	)
 }
 
-func (b *Bot) cbUnban(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbUnban(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -875,14 +879,14 @@ func (b *Bot) cbUnban(cq *tgbotapi.CallbackQuery) {
 		return
 	}
 	if !b.dbIsBanned(tgID) {
-		b.editText(cq.Message.Chat.ID, cq.Message.MessageID, "Пользователь уже разбанен.", nil)
+		b.editText(callbackChatID(cq), callbackMessageID(cq), "Пользователь уже разбанен.", nil)
 		return
 	}
 	b.dbUnbanUser(tgID)
-	b.editText(cq.Message.Chat.ID, cq.Message.MessageID, "✅ Пользователь разбанен.", nil)
+	b.editText(callbackChatID(cq), callbackMessageID(cq), "✅ Пользователь разбанен.", nil)
 }
 
-func (b *Bot) cbServiceAsk(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbServiceAsk(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
@@ -899,16 +903,16 @@ func (b *Bot) cbServiceAsk(cq *tgbotapi.CallbackQuery) {
 		inlineDataButton("🚨 ДА, перезапустить", "svc_yes_"+target),
 		inlineDataButton("Отмена", "cancel_action"),
 	))
-	b.editText(cq.Message.Chat.ID, cq.Message.MessageID, fmt.Sprintf("⚠️ Перезапустить %s?", label), &kb)
+	b.editText(callbackChatID(cq), callbackMessageID(cq), fmt.Sprintf("⚠️ Перезапустить %s?", label), &kb)
 }
 
-func (b *Bot) cbServiceExec(cq *tgbotapi.CallbackQuery) {
+func (b *Bot) cbServiceExec(cq *models.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
 	}
 	target := cq.Data[8:]
-	chatID := cq.Message.Chat.ID
-	msgID := cq.Message.MessageID
+	chatID := callbackChatID(cq)
+	msgID := callbackMessageID(cq)
 	switch target {
 	case "bot":
 		b.editText(chatID, msgID, "⏳ Перезапускаю бота...", nil)
@@ -956,7 +960,7 @@ func (b *Bot) runServiceAction(chatID int64, msgID int, label string, pick func(
 
 // ── Forward client messages to admins ─────────────────────────────────────
 
-func (b *Bot) forwardToAdmin(msg *tgbotapi.Message) {
+func (b *Bot) forwardToAdmin(msg *models.Message) {
 	api := b.rawAPI()
 	if api == nil {
 		return
@@ -981,15 +985,15 @@ func (b *Bot) forwardToAdmin(msg *tgbotapi.Message) {
 	b.mu.Unlock()
 
 	for _, adminID := range adminIDs {
-		fwdMsg, err := b.forwardMsg(adminID, msg.Chat.ID, msg.MessageID)
+		fwdMsg, err := b.forwardMsg(adminID, msg.Chat.ID, msg.ID)
 		if err == nil {
-			b.dbSaveReplyMap(fwdMsg.MessageID, uid)
+			b.dbSaveReplyMap(fwdMsg.ID, uid)
 		}
 
 		infoText := fmt.Sprintf("🏷 Прокси: <code>%s</code>\n<i>(Reply на пересланное сообщение для ответа)</i>", proxyName)
 		sent := b.sendMarkup(adminID, infoText, adminActions)
-		if sent.MessageID != 0 {
-			b.dbSaveReplyMap(sent.MessageID, uid)
+		if sent.ID != 0 {
+			b.dbSaveReplyMap(sent.ID, uid)
 		}
 		if err != nil {
 			log.Printf("[telegram] forward to admin %d failed: %v", adminID, err)
@@ -1020,7 +1024,47 @@ func orDefault(s, def string) string {
 	return s
 }
 
-func replyProxyName(msg *tgbotapi.Message) string {
+func commandName(msg *models.Message) string {
+	if msg == nil || msg.Text == "" {
+		return ""
+	}
+	for _, e := range msg.Entities {
+		if e.Type != models.MessageEntityTypeBotCommand || e.Offset != 0 || e.Length <= 1 || e.Length > len(msg.Text) {
+			continue
+		}
+		cmd := msg.Text[1:e.Length]
+		if at := strings.IndexByte(cmd, '@'); at >= 0 {
+			cmd = cmd[:at]
+		}
+		return cmd
+	}
+	return ""
+}
+
+func callbackMessage(cq *models.CallbackQuery) *models.Message {
+	if cq == nil || cq.Message.Type != models.MaybeInaccessibleMessageTypeMessage {
+		return nil
+	}
+	return cq.Message.Message
+}
+
+func callbackChatID(cq *models.CallbackQuery) int64 {
+	msg := callbackMessage(cq)
+	if msg == nil {
+		return 0
+	}
+	return msg.Chat.ID
+}
+
+func callbackMessageID(cq *models.CallbackQuery) int {
+	msg := callbackMessage(cq)
+	if msg == nil {
+		return 0
+	}
+	return msg.ID
+}
+
+func replyProxyName(msg *models.Message) string {
 	if msg == nil {
 		return ""
 	}
