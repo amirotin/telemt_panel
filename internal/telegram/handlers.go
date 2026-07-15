@@ -423,7 +423,7 @@ func (b *Bot) fsmAddName(msg *models.Message, text string) {
 		return
 	}
 	b.setState(uid, "WAIT_ADD_TGID", map[string]string{"proxy_name": text})
-	b.sendMarkup(msg.Chat.ID, fmt.Sprintf("✅ Имя прокси: <code>%s</code>\n\nВведите <b>Telegram ID</b> пользователя или отправьте «нет» чтобы пропустить:", text), b.tgIDEntryKeyboard())
+	b.sendMarkup(msg.Chat.ID, fmt.Sprintf("✅ Имя прокси: <code>%s</code>\n\nВыберите пользователя из контактов TG, введите <b>Telegram ID</b> вручную или отправьте «нет» чтобы пропустить:", text), b.tgIDEntryKeyboard())
 }
 
 func (b *Bot) fsmAddTGID(msg *models.Message, text string, state *fsmState) {
@@ -431,10 +431,12 @@ func (b *Bot) fsmAddTGID(msg *models.Message, text string, state *fsmState) {
 	proxyName := state.Data["proxy_name"]
 
 	var tgID int64
-	if text != "нет" && text != "no" && text != "skip" {
+	if sharedID, ok := sharedTGID(msg); ok {
+		tgID = sharedID
+	} else if text != "нет" && text != "no" && text != "skip" {
 		parsed, err := strconv.ParseInt(text, 10, 64)
 		if err != nil {
-			b.send(msg.Chat.ID, "❌ Введите числовой Telegram ID или «нет».")
+			b.send(msg.Chat.ID, "❌ Выберите пользователя из контактов TG, введите числовой Telegram ID или «нет».")
 			return
 		}
 		tgID = parsed
@@ -469,12 +471,16 @@ func (b *Bot) fsmBindTGID(msg *models.Message, text string, state *fsmState) {
 	proxyName := state.Data["proxy_name"]
 
 	var tgID int64
-	parsed, err := strconv.ParseInt(text, 10, 64)
-	if err != nil {
-		b.send(msg.Chat.ID, "❌ Введите корректный числовой Telegram ID.")
-		return
+	if sharedID, ok := sharedTGID(msg); ok {
+		tgID = sharedID
+	} else {
+		parsed, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			b.send(msg.Chat.ID, "❌ Выберите пользователя из контактов TG или введите корректный числовой Telegram ID.")
+			return
+		}
+		tgID = parsed
 	}
-	tgID = parsed
 	b.dbUpdateUserTGID(proxyName, tgID)
 	b.clearState(uid)
 	b.sendMarkup(msg.Chat.ID,
@@ -713,7 +719,7 @@ func (b *Bot) cbBindAsk(cq *models.CallbackQuery) {
 	proxyName := cq.Data[9:]
 	b.setState(cq.From.ID, "WAIT_TG_BIND", map[string]string{"proxy_name": proxyName})
 	b.sendMarkup(callbackChatID(cq),
-		fmt.Sprintf("Введите <b>Telegram ID</b> пользователя для прокси <code>%s</code>:", proxyName),
+		fmt.Sprintf("Выберите пользователя из контактов TG или введите <b>Telegram ID</b> для прокси <code>%s</code>:", proxyName),
 		b.tgIDEntryKeyboard(),
 	)
 }
@@ -1062,6 +1068,14 @@ func callbackMessageID(cq *models.CallbackQuery) int {
 		return 0
 	}
 	return msg.ID
+}
+
+func sharedTGID(msg *models.Message) (int64, bool) {
+	if msg == nil || msg.UsersShared == nil || len(msg.UsersShared.Users) == 0 {
+		return 0, false
+	}
+	tgID := msg.UsersShared.Users[0].UserID
+	return tgID, tgID != 0
 }
 
 func replyProxyName(msg *models.Message) string {

@@ -4,6 +4,8 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
+const tgUserRequestID int32 = 1
+
 func replyKeyboard(rows ...[]models.KeyboardButton) models.ReplyKeyboardMarkup {
 	return models.ReplyKeyboardMarkup{
 		Keyboard:       rows,
@@ -13,6 +15,19 @@ func replyKeyboard(rows ...[]models.KeyboardButton) models.ReplyKeyboardMarkup {
 
 func textButton(text string) models.KeyboardButton {
 	return models.KeyboardButton{Text: text}
+}
+
+func userRequestButton(text string) models.KeyboardButton {
+	return models.KeyboardButton{
+		Text: text,
+		RequestUsers: &models.KeyboardButtonRequestUsers{
+			RequestID:       tgUserRequestID,
+			UserIsBot:       false,
+			MaxQuantity:     1,
+			RequestName:     true,
+			RequestUsername: true,
+		},
+	}
 }
 
 func textRow(texts ...string) []models.KeyboardButton {
@@ -53,7 +68,10 @@ func (b *Bot) adminKeyboard() models.ReplyKeyboardMarkup {
 }
 
 func (b *Bot) tgIDEntryKeyboard() models.ReplyKeyboardMarkup {
-	return replyKeyboard(textRow("Отмена"))
+	return replyKeyboard(
+		[]models.KeyboardButton{userRequestButton("Выбрать из контактов TG")},
+		textRow("Отмена"),
+	)
 }
 
 func (b *Bot) cancelKeyboard() models.ReplyKeyboardMarkup {

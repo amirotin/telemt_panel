@@ -158,4 +158,22 @@ func TestTGIDEntryKeyboardDoesNotRequestContact(t *testing.T) {
 	if got := string(data); strings.Contains(got, "request_contact") {
 		t.Fatalf("TG ID entry keyboard must not request contact: %s", got)
 	}
+	if got := string(data); !strings.Contains(got, "request_users") {
+		t.Fatalf("TG ID entry keyboard must request users: %s", got)
+	}
+}
+
+func TestSharedTGID(t *testing.T) {
+	msg := &models.Message{
+		UsersShared: &models.UsersShared{
+			RequestID: int(tgUserRequestID),
+			Users: []models.SharedUser{
+				{UserID: 12345, Username: "alice"},
+			},
+		},
+	}
+	tgID, ok := sharedTGID(msg)
+	if !ok || tgID != 12345 {
+		t.Fatalf("unexpected shared TG ID: id=%d ok=%v", tgID, ok)
+	}
 }
