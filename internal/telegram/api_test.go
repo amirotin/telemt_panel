@@ -2,9 +2,11 @@ package telegram
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,5 +116,19 @@ func TestReplyProxyName(t *testing.T) {
 	msg := &tgbotapi.Message{Text: "🏷 Прокси: alice_123\n(Reply на пересланное сообщение для ответа)"}
 	if got := replyProxyName(msg); got != "alice_123" {
 		t.Fatalf("unexpected proxy name: %q", got)
+	}
+}
+
+func TestTGIDEntryKeyboardDoesNotRequestContact(t *testing.T) {
+	b := &Bot{}
+	data, err := json.Marshal(b.tgIDEntryKeyboard())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) == "" || json.Valid(data) == false {
+		t.Fatalf("invalid keyboard json: %s", data)
+	}
+	if got := string(data); strings.Contains(got, "request_contact") {
+		t.Fatalf("TG ID entry keyboard must not request contact: %s", got)
 	}
 }
