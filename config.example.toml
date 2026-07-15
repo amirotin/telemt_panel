@@ -113,10 +113,9 @@ session_ttl = "24h"
 
 # Telegram bot token.
 # Необходимо получить токен у менеджера ботов Telegram @botfather
-# bot_token = ""
+# bot_token = "PASTE_TELEGRAM_BOT_TOKEN_HERE"
 
 # Telegram User IDs of bot administrators.
 # Один или несколько User ID администратора(-ов) Telegram-бота.
 # Для получения User ID используйте @userinfobot или команду '/id' в боте.
 # admin_ids = []
-
