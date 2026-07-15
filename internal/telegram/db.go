@@ -321,6 +321,23 @@ func (b *Bot) dbGetReplyTarget(adminMsgID int) int64 {
 	return uid
 }
 
+func (b *Bot) dbGetNearbyReplyTarget(adminMsgID int) int64 {
+	b.mu.Lock()
+	db := b.db
+	b.mu.Unlock()
+	if db == nil {
+		return 0
+	}
+	var uid int64
+	db.QueryRow(`
+SELECT client_uid
+FROM reply_map
+WHERE admin_msg_id BETWEEN ? AND ?
+ORDER BY ABS(admin_msg_id - ?)
+LIMIT 1`, adminMsgID-2, adminMsgID+2, adminMsgID).Scan(&uid) //nolint:errcheck
+	return uid
+}
+
 func (b *Bot) dbUpsertKnownIP(name, ip string, ts int64) {
 	b.mu.Lock()
 	db := b.db

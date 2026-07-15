@@ -105,6 +105,9 @@ func TestReplyMapAndSecretUpdate(t *testing.T) {
 	if got := b.dbGetReplyTarget(42); got != 123 {
 		t.Fatalf("unexpected reply target: %d", got)
 	}
+	if got := b.dbGetNearbyReplyTarget(41); got != 123 {
+		t.Fatalf("unexpected nearby reply target: %d", got)
+	}
 }
 
 func TestReplyProxyName(t *testing.T) {

@@ -364,6 +364,9 @@ func (b *Bot) adminReplyToUser(msg *tgbotapi.Message) {
 		targetUID = b.dbGetReplyTarget(reply.MessageID)
 	}
 	if targetUID == 0 {
+		targetUID = b.dbGetNearbyReplyTarget(reply.MessageID)
+	}
+	if targetUID == 0 {
 		if proxyName := replyProxyName(reply); proxyName != "" {
 			targetUID, _ = b.dbGetUserByName(proxyName)
 		}
