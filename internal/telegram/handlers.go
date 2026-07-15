@@ -14,6 +14,7 @@ import (
 )
 
 var proxyNameRe = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
+var replyProxyNameRe = regexp.MustCompile(`(?m)Прокси:\s*([a-zA-Z0-9_]{3,32})`)
 
 func isValidProxyName(name string) bool {
 	return proxyNameRe.MatchString(name)
@@ -361,6 +362,11 @@ func (b *Bot) adminReplyToUser(msg *tgbotapi.Message) {
 		targetUID = reply.ForwardFrom.ID
 	} else {
 		targetUID = b.dbGetReplyTarget(reply.MessageID)
+	}
+	if targetUID == 0 {
+		if proxyName := replyProxyName(reply); proxyName != "" {
+			targetUID, _ = b.dbGetUserByName(proxyName)
+		}
 	}
 	if targetUID == 0 {
 		log.Printf("[telegram] reply target miss: admin_id=%d reply_to_msg_id=%d msg_id=%d", msg.From.ID, reply.MessageID, msg.MessageID)
@@ -1048,4 +1054,19 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+func replyProxyName(msg *tgbotapi.Message) string {
+	if msg == nil {
+		return ""
+	}
+	text := msg.Text
+	if text == "" {
+		text = msg.Caption
+	}
+	m := replyProxyNameRe.FindStringSubmatch(text)
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
 }

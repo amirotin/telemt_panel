@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/telemt/telemt-panel/internal/config"
 	_ "modernc.org/sqlite"
 )
@@ -103,5 +104,12 @@ func TestReplyMapAndSecretUpdate(t *testing.T) {
 	b.dbSaveReplyMap(42, 123)
 	if got := b.dbGetReplyTarget(42); got != 123 {
 		t.Fatalf("unexpected reply target: %d", got)
+	}
+}
+
+func TestReplyProxyName(t *testing.T) {
+	msg := &tgbotapi.Message{Text: "🏷 Прокси: alice_123\n(Reply на пересланное сообщение для ответа)"}
+	if got := replyProxyName(msg); got != "alice_123" {
+		t.Fatalf("unexpected proxy name: %q", got)
 	}
 }
