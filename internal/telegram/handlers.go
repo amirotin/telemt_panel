@@ -78,6 +78,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			b.adminBlacklist(msg)
 		case "💾 Бэкап":
 			b.adminBackup(msg)
+		case "⚙️ Сервис":
+			b.adminService(msg)
 		}
 		return
 	}
@@ -337,6 +339,21 @@ func (b *Bot) adminBackup(msg *tgbotapi.Message) {
 	b.sendDocument(msg.Chat.ID, "users.db", data, "💾 Резервная копия БД")
 }
 
+func (b *Bot) adminService(msg *tgbotapi.Message) {
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Перезапустить бота", "svc_ask_bot"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Перезапустить Telemt", "svc_ask_telemt"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Перезапустить панель", "svc_ask_panel"),
+		),
+	)
+	b.sendMarkup(msg.Chat.ID, "⚙️ Сервисные действия:", kb)
+}
+
 func (b *Bot) adminReplyToUser(msg *tgbotapi.Message) {
 	reply := msg.ReplyToMessage
 	var targetUID int64
@@ -346,6 +363,7 @@ func (b *Bot) adminReplyToUser(msg *tgbotapi.Message) {
 		targetUID = b.dbGetReplyTarget(reply.MessageID)
 	}
 	if targetUID == 0 {
+		log.Printf("[telegram] reply target miss: admin_id=%d reply_to_msg_id=%d msg_id=%d", msg.From.ID, reply.MessageID, msg.MessageID)
 		b.send(msg.Chat.ID, "❌ Не удалось определить получателя. Возможно, сообщение слишком старое (старше 3 дней).")
 		return
 	}
@@ -401,7 +419,7 @@ func (b *Bot) fsmAddName(msg *tgbotapi.Message, text string) {
 		return
 	}
 	b.setState(uid, "WAIT_ADD_TGID", map[string]string{"proxy_name": text})
-	b.sendMarkup(msg.Chat.ID, fmt.Sprintf("✅ Имя прокси: <code>%s</code>\n\nВведите <b>Telegram ID</b> пользователя\n(или отправьте «нет» чтобы пропустить):", text), b.cancelKeyboard())
+	b.sendMarkup(msg.Chat.ID, fmt.Sprintf("✅ Имя прокси: <code>%s</code>\n\nВведите <b>Telegram ID</b>, отправьте контакт пользователя или отправьте «нет» чтобы пропустить:", text), b.contactKeyboard())
 }
 
 func (b *Bot) fsmAddTGID(msg *tgbotapi.Message, text string, state *fsmState) {
@@ -409,10 +427,16 @@ func (b *Bot) fsmAddTGID(msg *tgbotapi.Message, text string, state *fsmState) {
 	proxyName := state.Data["proxy_name"]
 
 	var tgID int64
-	if text != "нет" && text != "no" && text != "skip" {
+	if msg.Contact != nil {
+		tgID = msg.Contact.UserID
+		if tgID == 0 {
+			b.send(msg.Chat.ID, "❌ В этом контакте нет Telegram ID. Введите ID вручную или отправьте «нет».")
+			return
+		}
+	} else if text != "нет" && text != "no" && text != "skip" {
 		parsed, err := strconv.ParseInt(text, 10, 64)
 		if err != nil {
-			b.send(msg.Chat.ID, "❌ Введите числовой Telegram ID или «нет».")
+			b.send(msg.Chat.ID, "❌ Введите числовой Telegram ID, отправьте контакт или «нет».")
 			return
 		}
 		tgID = parsed
@@ -446,10 +470,20 @@ func (b *Bot) fsmBindTGID(msg *tgbotapi.Message, text string, state *fsmState) {
 	uid := msg.From.ID
 	proxyName := state.Data["proxy_name"]
 
-	tgID, err := strconv.ParseInt(text, 10, 64)
-	if err != nil {
-		b.send(msg.Chat.ID, "❌ Введите корректный числовой Telegram ID.")
-		return
+	var tgID int64
+	if msg.Contact != nil {
+		tgID = msg.Contact.UserID
+		if tgID == 0 {
+			b.send(msg.Chat.ID, "❌ В этом контакте нет Telegram ID. Введите ID вручную.")
+			return
+		}
+	} else {
+		parsed, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			b.send(msg.Chat.ID, "❌ Введите корректный числовой Telegram ID или отправьте контакт.")
+			return
+		}
+		tgID = parsed
 	}
 	b.dbUpdateUserTGID(proxyName, tgID)
 	b.clearState(uid)
@@ -504,10 +538,20 @@ func (b *Bot) handleCallback(cq *tgbotapi.CallbackQuery) {
 		b.cbShowTGID(cq)
 	case strings.HasPrefix(data, "qr_"):
 		b.cbShowQR(cq)
+	case strings.HasPrefix(data, "reply_"):
+		b.cbReplyAsk(cq)
+	case strings.HasPrefix(data, "rotate_ask_"):
+		b.cbRotateAsk(cq)
+	case strings.HasPrefix(data, "rotate_yes_"):
+		b.cbRotateExec(cq)
 	case strings.HasPrefix(data, "bantg_"):
 		b.cbBanTG(cq)
 	case strings.HasPrefix(data, "unban_"):
 		b.cbUnban(cq)
+	case strings.HasPrefix(data, "svc_ask_"):
+		b.cbServiceAsk(cq)
+	case strings.HasPrefix(data, "svc_yes_"):
+		b.cbServiceExec(cq)
 	case data == "cancel_action":
 		b.editText(chatID, msgID, "Действие отменено.", nil)
 	}
@@ -621,6 +665,9 @@ func (b *Bot) cbShowStats(cq *tgbotapi.CallbackQuery) {
 				tgbotapi.NewInlineKeyboardButtonData("🆔 Показать TG ID", "tgid_"+name),
 				tgbotapi.NewInlineKeyboardButtonData("📱 Показать QR", "qr_"+name),
 			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🔁 Перевыпустить ссылку", "rotate_ask_"+name),
+			),
 		)
 		b.editText(chatID, msgID, text, &kb)
 		return
@@ -685,8 +732,8 @@ func (b *Bot) cbBindAsk(cq *tgbotapi.CallbackQuery) {
 	proxyName := cq.Data[9:]
 	b.setState(cq.From.ID, "WAIT_TG_BIND", map[string]string{"proxy_name": proxyName})
 	b.sendMarkup(cq.Message.Chat.ID,
-		fmt.Sprintf("Введите <b>Telegram ID</b> пользователя, которого хотите привязать к прокси <code>%s</code>:", proxyName),
-		b.cancelKeyboard(),
+		fmt.Sprintf("Введите <b>Telegram ID</b> пользователя или отправьте контакт для прокси <code>%s</code>:", proxyName),
+		b.contactKeyboard(),
 	)
 }
 
@@ -747,6 +794,68 @@ func (b *Bot) cbShowQR(cq *tgbotapi.CallbackQuery) {
 	b.sendQR(cq.Message.Chat.ID, link, fmt.Sprintf("🚀 QR и ссылка для <b>%s</b>:\n\n<code>%s</code>", name, link))
 }
 
+func (b *Bot) cbReplyAsk(cq *tgbotapi.CallbackQuery) {
+	if !b.isAdmin(cq.From.ID) {
+		return
+	}
+	tgID, err := strconv.ParseInt(cq.Data[6:], 10, 64)
+	if err != nil {
+		return
+	}
+	proxyName, _ := b.dbGetUser(tgID)
+	if proxyName == "" {
+		proxyName = strconv.FormatInt(tgID, 10)
+	}
+	b.setState(cq.From.ID, "WAIT_MSG_TO_USER", map[string]string{
+		"tg_id":      strconv.FormatInt(tgID, 10),
+		"proxy_name": proxyName,
+	})
+	b.sendMarkup(cq.Message.Chat.ID, fmt.Sprintf("Напишите ответ для <b>%s</b>:", proxyName), b.cancelKeyboard())
+}
+
+func (b *Bot) cbRotateAsk(cq *tgbotapi.CallbackQuery) {
+	if !b.isAdmin(cq.From.ID) {
+		return
+	}
+	name := cq.Data[11:]
+	kb := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🚨 ДА, перевыпустить", "rotate_yes_"+name),
+		tgbotapi.NewInlineKeyboardButtonData("Отмена", "cancel_action"),
+	))
+	b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+		fmt.Sprintf("⚠️ Перевыпустить ссылку для <code>%s</code>?\nСтарая ссылка перестанет работать.", name), &kb)
+}
+
+func (b *Bot) cbRotateExec(cq *tgbotapi.CallbackQuery) {
+	if !b.isAdmin(cq.From.ID) {
+		return
+	}
+	name := cq.Data[11:]
+	tgID, oldSecret := b.dbGetUserByName(name)
+	secret := randomHex(16)
+	realSecret, err := b.apiRotateUserSecret(name, oldSecret, secret)
+	if err != nil {
+		b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+			fmt.Sprintf("❌ Не удалось перевыпустить ссылку для <code>%s</code>: %v", name, err), nil)
+		return
+	}
+	b.dbUpdateUserSecret(name, realSecret)
+	link := b.buildProxyLink(realSecret)
+	if link == "" {
+		b.editText(cq.Message.Chat.ID, cq.Message.MessageID,
+			fmt.Sprintf("✅ Секрет для <code>%s</code> обновлён, но домен прокси не настроен.", name), nil)
+		return
+	}
+	b.editText(cq.Message.Chat.ID, cq.Message.MessageID, fmt.Sprintf("✅ Ссылка для <code>%s</code> перевыпущена.", name), nil)
+	b.sendQR(cq.Message.Chat.ID, link, fmt.Sprintf("🚀 Новая ссылка для <b>%s</b>:\n\n<code>%s</code>", name, link))
+	b.send(cq.Message.Chat.ID, link)
+	if tgID != 0 {
+		caption := b.t(tgID, "link_caption") + b.t(tgID, "ban_warning")
+		b.sendQR(tgID, link, caption)
+		b.send(tgID, link)
+	}
+}
+
 func (b *Bot) cbBanTG(cq *tgbotapi.CallbackQuery) {
 	if !b.isAdmin(cq.From.ID) {
 		return
@@ -799,6 +908,78 @@ func (b *Bot) cbUnban(cq *tgbotapi.CallbackQuery) {
 	b.editText(cq.Message.Chat.ID, cq.Message.MessageID, "✅ Пользователь разбанен.", nil)
 }
 
+func (b *Bot) cbServiceAsk(cq *tgbotapi.CallbackQuery) {
+	if !b.isAdmin(cq.From.ID) {
+		return
+	}
+	target := cq.Data[8:]
+	label := map[string]string{
+		"bot":    "бота",
+		"telemt": "Telemt",
+		"panel":  "панель",
+	}[target]
+	if label == "" {
+		return
+	}
+	kb := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🚨 ДА, перезапустить", "svc_yes_"+target),
+		tgbotapi.NewInlineKeyboardButtonData("Отмена", "cancel_action"),
+	))
+	b.editText(cq.Message.Chat.ID, cq.Message.MessageID, fmt.Sprintf("⚠️ Перезапустить %s?", label), &kb)
+}
+
+func (b *Bot) cbServiceExec(cq *tgbotapi.CallbackQuery) {
+	if !b.isAdmin(cq.From.ID) {
+		return
+	}
+	target := cq.Data[8:]
+	chatID := cq.Message.Chat.ID
+	msgID := cq.Message.MessageID
+	switch target {
+	case "bot":
+		b.editText(chatID, msgID, "⏳ Перезапускаю бота...", nil)
+		b.restartBotAsync(chatID)
+	case "telemt":
+		b.runServiceAction(chatID, msgID, "Telemt", func(actions ServiceActions) func() error {
+			return actions.RestartTelemt
+		})
+	case "panel":
+		b.runServiceAction(chatID, msgID, "панель", func(actions ServiceActions) func() error {
+			return actions.RestartPanel
+		})
+	}
+}
+
+func (b *Bot) restartBotAsync(chatID int64) {
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		b.Stop()
+		if err := b.Start(); err != nil {
+			log.Printf("[telegram] bot restart failed: %v", err)
+			return
+		}
+		b.send(chatID, "✅ Бот перезапущен.")
+	}()
+}
+
+func (b *Bot) runServiceAction(chatID int64, msgID int, label string, pick func(ServiceActions) func() error) {
+	b.mu.Lock()
+	action := pick(b.actions)
+	b.mu.Unlock()
+	if action == nil {
+		b.editText(chatID, msgID, fmt.Sprintf("❌ Рестарт %s не настроен.", label), nil)
+		return
+	}
+	b.editText(chatID, msgID, fmt.Sprintf("⏳ Перезапускаю %s...", label), nil)
+	go func() {
+		if err := action(); err != nil {
+			b.send(chatID, fmt.Sprintf("❌ Не удалось перезапустить %s: %v", label, err))
+			return
+		}
+		b.send(chatID, fmt.Sprintf("✅ Рестарт %s запущен.", label))
+	}()
+}
+
 // ── Forward client messages to admins ─────────────────────────────────────
 
 func (b *Bot) forwardToAdmin(msg *tgbotapi.Message) {
@@ -813,9 +994,12 @@ func (b *Bot) forwardToAdmin(msg *tgbotapi.Message) {
 		proxyName = "Не зарегистрирован"
 	}
 
-	banBtn := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🚫 Забанить TG", fmt.Sprintf("bantg_%d", uid)),
-	))
+	adminActions := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✉️ Ответить", fmt.Sprintf("reply_%d", uid)),
+			tgbotapi.NewInlineKeyboardButtonData("🚫 Забанить TG", fmt.Sprintf("bantg_%d", uid)),
+		),
+	)
 
 	b.mu.Lock()
 	adminIDs := make([]int64, len(b.cfg.Telegram.AdminIDs))
@@ -825,14 +1009,14 @@ func (b *Bot) forwardToAdmin(msg *tgbotapi.Message) {
 	for _, adminID := range adminIDs {
 		fwdCfg := tgbotapi.NewForward(adminID, msg.Chat.ID, msg.MessageID)
 		fwdMsg, err := api.Send(fwdCfg)
-		if err == nil && fwdMsg.ForwardFrom == nil {
+		if err == nil {
 			b.dbSaveReplyMap(fwdMsg.MessageID, uid)
 		}
 
 		infoText := fmt.Sprintf("🏷 Прокси: <code>%s</code>\n<i>(Reply на пересланное сообщение для ответа)</i>", proxyName)
 		infoMsg := tgbotapi.NewMessage(adminID, infoText)
 		infoMsg.ParseMode = tgbotapi.ModeHTML
-		infoMsg.ReplyMarkup = banBtn
+		infoMsg.ReplyMarkup = adminActions
 		sent, err := api.Send(infoMsg)
 		if err == nil {
 			b.dbSaveReplyMap(sent.MessageID, uid)

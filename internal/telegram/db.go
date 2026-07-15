@@ -210,6 +210,16 @@ func (b *Bot) dbUpdateUserTGID(name string, tgID int64) {
 	db.Exec("UPDATE users SET tg_id=? WHERE proxy_name=?", tgID, name) //nolint:errcheck
 }
 
+func (b *Bot) dbUpdateUserSecret(name string, secret string) {
+	b.mu.Lock()
+	db := b.db
+	b.mu.Unlock()
+	if db == nil {
+		return
+	}
+	db.Exec("UPDATE users SET secret=? WHERE proxy_name=?", secret, name) //nolint:errcheck
+}
+
 func (b *Bot) dbCleanUser(name string) {
 	b.mu.Lock()
 	db := b.db

@@ -33,6 +33,11 @@ type fsmState struct {
 	Data  map[string]string
 }
 
+type ServiceActions struct {
+	RestartTelemt func() error
+	RestartPanel  func() error
+}
+
 // Bot is the Telegram bot running as goroutines inside the panel process.
 type Bot struct {
 	cfg        *config.Config
@@ -50,6 +55,7 @@ type Bot struct {
 	domain    string
 	port      int
 	tlsDomain string
+	actions   ServiceActions
 }
 
 // New creates a Bot. Call Start() to begin polling.
@@ -161,6 +167,12 @@ func (b *Bot) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return Status{Running: b.started, LastError: b.lastError}
+}
+
+func (b *Bot) SetServiceActions(actions ServiceActions) {
+	b.mu.Lock()
+	b.actions = actions
+	b.mu.Unlock()
 }
 
 func (b *Bot) loadDomainInfo() {
@@ -409,6 +421,20 @@ func (b *Bot) adminKeyboard() tgbotapi.ReplyKeyboardMarkup {
 			tgbotapi.NewKeyboardButton("⚫️ Черный список"),
 			tgbotapi.NewKeyboardButton("💾 Бэкап"),
 		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("⚙️ Сервис"),
+		),
+	)
+	kb.ResizeKeyboard = true
+	return kb
+}
+
+func (b *Bot) contactKeyboard() tgbotapi.ReplyKeyboardMarkup {
+	contactBtn := tgbotapi.NewKeyboardButton("📇 Отправить контакт")
+	contactBtn.RequestContact = true
+	kb := tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(contactBtn),
+		tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton("Отмена")),
 	)
 	kb.ResizeKeyboard = true
 	return kb

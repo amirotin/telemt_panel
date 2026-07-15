@@ -629,6 +629,14 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 	// ── Telegram bot ──────────────────────────────────────────────────────────
 
 	botMgr := telegram.New(s.cfg)
+	botMgr.SetServiceActions(telegram.ServiceActions{
+		RestartTelemt: func() error {
+			return updater.RestartService(s.cfg.Telemt.ServiceName)
+		},
+		RestartPanel: func() error {
+			return panel_updater.RestartService(s.cfg.Panel.ServiceName)
+		},
+	})
 
 	// Auto-start if enabled and properly configured.
 	if s.cfg.Telegram.Enabled && s.cfg.Telegram.BotToken != "" && len(s.cfg.Telegram.AdminIDs) > 0 {
