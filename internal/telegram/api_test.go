@@ -177,3 +177,50 @@ func TestSharedTGID(t *testing.T) {
 		t.Fatalf("unexpected shared TG ID: id=%d ok=%v", tgID, ok)
 	}
 }
+
+func TestAdminKeyboardTakesPriorityOverReply(t *testing.T) {
+	var usersCalled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/users" {
+			usersCalled = true
+			w.Write([]byte(`{"ok":true,"data":[]}`))
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := initSchema(db); err != nil {
+		t.Fatal(err)
+	}
+
+	b := &Bot{
+		cfg: &config.Config{
+			Telemt:   config.TelemtConfig{URL: srv.URL},
+			Telegram: config.TelegramConfig{AdminIDs: []int64{541621233}},
+		},
+		db:         db,
+		httpClient: &http.Client{Timeout: time.Second},
+	}
+
+	b.handleMessage(&models.Message{
+		ID:   3000,
+		Text: "📊 Статистика",
+		From: &models.User{ID: 541621233},
+		Chat: models.Chat{ID: 541621233},
+		ReplyToMessage: &models.Message{
+			ID:   2184,
+			Text: "stale reply anchor",
+			Chat: models.Chat{ID: 541621233},
+		},
+	})
+
+	if !usersCalled {
+		t.Fatal("expected admin stats handler to run before reply handling")
+	}
+}

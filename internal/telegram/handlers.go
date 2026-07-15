@@ -64,11 +64,6 @@ func (b *Bot) handleMessage(msg *models.Message) {
 
 	// ── Admin handlers ────────────────────────────────────────────────────
 	if b.isAdmin(uid) {
-		// Admin replying to a forwarded client message.
-		if msg.ReplyToMessage != nil {
-			b.adminReplyToUser(msg)
-			return
-		}
 		switch text {
 		case "📊 Статистика":
 			b.adminStats(msg)
@@ -84,6 +79,11 @@ func (b *Bot) handleMessage(msg *models.Message) {
 			b.adminBackup(msg)
 		case "⚙️ Сервис":
 			b.adminService(msg)
+		default:
+			// Admin replying to a forwarded client message.
+			if msg.ReplyToMessage != nil {
+				b.adminReplyToUser(msg)
+			}
 		}
 		return
 	}
