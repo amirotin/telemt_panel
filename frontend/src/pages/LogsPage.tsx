@@ -203,7 +203,7 @@ export function LogsPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-text-primary">Logs</h1>
           {status && (
-            <span className="text-xs px-2 py-1 rounded bg-surface-secondary text-text-secondary">
+            <span className="text-xs px-2 py-1 rounded bg-surface-hover text-text-secondary">
               {status.source}: {status.target}
             </span>
           )}
@@ -215,7 +215,7 @@ export function LogsPage() {
         {!streaming ? (
           <button
             onClick={() => start(initialLines, since)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary/90"
           >
             <Play className="w-3.5 h-3.5" />
             Start
@@ -233,7 +233,7 @@ export function LogsPage() {
         {streaming && (
           <button
             onClick={paused ? resume : pause}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-surface-secondary text-text-primary rounded hover:bg-surface-secondary/80"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-surface-hover text-text-primary rounded hover:bg-surface-hover/80"
           >
             <Pause className="w-3.5 h-3.5" />
             {paused ? `Resume (${bufferedCount})` : 'Pause'}
@@ -244,7 +244,7 @@ export function LogsPage() {
           value={initialLines}
           onChange={(e) => setInitialLines(Number(e.target.value))}
           disabled={streaming}
-          className="px-2 py-1.5 text-sm bg-surface-secondary text-text-primary rounded border border-border"
+          className="px-2 py-1.5 text-sm bg-surface-hover text-text-primary rounded border border-border"
         >
           {LINE_OPTIONS.map((n) => (
             <option key={n} value={n}>{n} lines</option>
@@ -255,7 +255,7 @@ export function LogsPage() {
           value={since}
           onChange={(e) => setSince(e.target.value)}
           disabled={streaming}
-          className="px-2 py-1.5 text-sm bg-surface-secondary text-text-primary rounded border border-border"
+          className="px-2 py-1.5 text-sm bg-surface-hover text-text-primary rounded border border-border"
         >
           {SINCE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -269,7 +269,7 @@ export function LogsPage() {
             placeholder="Filter logs..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-sm bg-surface-secondary text-text-primary rounded border border-border placeholder:text-text-secondary"
+            className="w-full pl-8 pr-3 py-1.5 text-sm bg-surface-hover text-text-primary rounded border border-border placeholder:text-text-secondary"
           />
         </div>
 
@@ -325,7 +325,7 @@ export function LogsPage() {
       {showScrollButton && (
         <button
           onClick={scrollToBottom}
-          className="fixed bottom-8 right-8 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-full shadow-lg z-50"
+          className="fixed bottom-8 right-8 px-3 py-1.5 text-xs bg-primary text-white rounded-full shadow-lg z-50"
         >
           New lines ↓
         </button>

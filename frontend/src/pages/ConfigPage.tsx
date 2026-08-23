@@ -51,6 +51,9 @@ export function ConfigPage() {
       setCurrentContent(data.content);
       setConfigPath(data.path);
       setMode(data.mode ?? 'file');
+      // In file mode Quick Settings would rewrite the whole file via a TOML
+      // round-trip, destroying the operator's comments — see the tab guard.
+      if ((data.mode ?? 'file') === 'file') setActiveTab('advanced');
       setConfigHash(data.hash ?? '');
       setHasChanges(false);
     } catch (err: any) {
@@ -197,11 +200,31 @@ export function ConfigPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {activeTab === 'quick' ? (
-          <QuickSettingsTab
-            content={currentContent}
-            onChange={handleContentChange}
-            mode={mode}
-          />
+          mode === 'file' ? (
+            <div className="p-6 max-w-2xl">
+              <p className="text-sm text-text-primary mb-2">
+                Quick Settings are disabled in file edit mode.
+              </p>
+              <p className="text-sm text-text-secondary mb-4">
+                The form regenerates the whole TOML file and would strip your
+                comments and formatting. Use the Advanced Editor to edit the
+                file directly, or switch <code>config_edit_mode</code> to{' '}
+                <code>"api"</code> to edit settings safely through the Telemt API.
+              </p>
+              <button
+                onClick={() => setActiveTab('advanced')}
+                className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-surface-hover transition-colors"
+              >
+                Open Advanced Editor
+              </button>
+            </div>
+          ) : (
+            <QuickSettingsTab
+              content={currentContent}
+              onChange={handleContentChange}
+              mode={mode}
+            />
+          )
         ) : (
           <AdvancedEditorTab
             content={currentContent}

@@ -37,6 +37,9 @@ export function useWsProvider(): WsContextValue {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const subscribers = useRef<Map<string, Subscriber>>(new Map());
+  // Set on unmount (logout) so onclose stops scheduling reconnects — without
+  // this flag the socket kept reconnecting forever in the background.
+  const closedIntentionally = useRef(false);
 
   const getAggregated = useCallback(() => {
     const endpointIntervals = new Map<string, number>();
@@ -109,7 +112,9 @@ export function useWsProvider(): WsContextValue {
     ws.onclose = () => {
       setConnected(false);
       wsRef.current = null;
-      reconnectTimer.current = setTimeout(connect, 3000);
+      if (!closedIntentionally.current) {
+        reconnectTimer.current = setTimeout(connect, 3000);
+      }
     };
 
     ws.onerror = () => ws.close();
@@ -117,8 +122,10 @@ export function useWsProvider(): WsContextValue {
 
   // Connect once on mount
   useEffect(() => {
+    closedIntentionally.current = false;
     connect();
     return () => {
+      closedIntentionally.current = true;
       clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };

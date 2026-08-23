@@ -105,3 +105,42 @@
     @apply w-4 h-4 rounded-sm border-border bg-surface text-primary focus:ring-2 focus:ring-primary/50 cursor-pointer;
   }
 }
+
+/* Fallback for browsers without color-mix() (old Android WebView, Telegram
+   in-app browser). Tailwind v4 compiles opacity modifiers on var()-based
+   theme colors to color-mix() with a SOLID-color fallback, which rendered
+   active nav items and status badges as same-color text on same-color
+   background (#117). Keep in sync with the /N utilities used in tsx. */
+@supports not (color: color-mix(in lab, red, red)) {
+  .border-border\/50 { border-color: rgb(var(--c-border) / 0.5); }
+  .border-border\/30 { border-color: rgb(var(--c-border) / 0.3); }
+  .bg-success\/5 { background-color: rgb(var(--c-success) / 0.05); }
+  .bg-success\/10 { background-color: rgb(var(--c-success) / 0.1); }
+  .bg-success\/15 { background-color: rgb(var(--c-success) / 0.15); }
+  .bg-success\/20 { background-color: rgb(var(--c-success) / 0.2); }
+  .bg-danger\/10 { background-color: rgb(var(--c-danger) / 0.1); }
+  .bg-danger\/15 { background-color: rgb(var(--c-danger) / 0.15); }
+  .bg-danger\/20 { background-color: rgb(var(--c-danger) / 0.2); }
+  .bg-warning\/10 { background-color: rgb(var(--c-warning) / 0.1); }
+  .bg-warning\/15 { background-color: rgb(var(--c-warning) / 0.15); }
+  .bg-warning\/20 { background-color: rgb(var(--c-warning) / 0.2); }
+  .bg-accent\/10 { background-color: rgb(var(--c-accent) / 0.1); }
+  .bg-accent\/15 { background-color: rgb(var(--c-accent) / 0.15); }
+  .bg-accent\/20 { background-color: rgb(var(--c-accent) / 0.2); }
+  .bg-status-ok\/10 { background-color: rgb(var(--c-status-ok) / 0.1); }
+  .bg-status-ok\/20 { background-color: rgb(var(--c-status-ok) / 0.2); }
+  .bg-status-warn\/20 { background-color: rgb(var(--c-status-warn) / 0.2); }
+  .bg-text-secondary\/40 { background-color: rgb(var(--c-text-secondary) / 0.4); }
+  .text-text-secondary\/40 { color: rgb(var(--c-text-secondary) / 0.4); }
+  .border-warning\/30 { border-color: rgb(var(--c-warning) / 0.3); }
+  .border-danger\/30 { border-color: rgb(var(--c-danger) / 0.3); }
+  .border-accent\/30 { border-color: rgb(var(--c-accent) / 0.3); }
+  .border-success\/30 { border-color: rgb(var(--c-success) / 0.3); }
+  .hover\:bg-accent\/90:hover { background-color: rgb(var(--c-accent) / 0.9); }
+  .hover\:bg-accent\/25:hover { background-color: rgb(var(--c-accent) / 0.25); }
+  .hover\:bg-primary\/90:hover { background-color: rgb(var(--c-primary) / 0.9); }
+  .hover\:bg-surface-hover\/80:hover { background-color: rgb(var(--c-surface-hover) / 0.8); }
+  .hover\:bg-success\/10:hover { background-color: rgb(var(--c-success) / 0.1); }
+  .hover\:bg-danger\/10:hover { background-color: rgb(var(--c-danger) / 0.1); }
+  .hover\:text-danger\/80:hover { color: rgb(var(--c-danger) / 0.8); }
+}
