@@ -95,6 +95,50 @@ func TestUsers(t *testing.T) {
 	}
 }
 
+func TestStatsSummary(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/stats/summary" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.Write([]byte(`{"ok":true,"data":{
+			"uptime_seconds":12.5,"connections_total":10,"connections_bad_total":2,
+			"handshake_timeouts_total":1,"configured_users":3,
+			"connections_bad_by_class":[{"class":"timeout","total":2}],
+			"handshake_failures_by_class":[{"class":"tls","total":1}]
+		},"revision":"r1"}`))
+	})
+
+	s, err := c.StatsSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.UptimeSeconds != 12.5 || s.ConnectionsTotal != 10 || s.ConfiguredUsers != 3 {
+		t.Errorf("summary = %+v", s)
+	}
+	if len(s.ConnectionsBadByClass) != 1 || s.ConnectionsBadByClass[0].Class != "timeout" {
+		t.Errorf("connections_bad_by_class = %+v", s.ConnectionsBadByClass)
+	}
+	if len(s.HandshakeFailuresByClass) != 1 || s.HandshakeFailuresByClass[0].Total != 1 {
+		t.Errorf("handshake_failures_by_class = %+v", s.HandshakeFailuresByClass)
+	}
+}
+
+func TestStatsSummaryOmitsByClassOnOldBuild(t *testing.T) {
+	// Older Telemt builds don't send the by-class breakdowns at all.
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{"uptime_seconds":1,"connections_total":0,
+			"connections_bad_total":0,"handshake_timeouts_total":0,"configured_users":1},"revision":"r1"}`))
+	})
+
+	s, err := c.StatsSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ConnectionsBadByClass != nil || s.HandshakeFailuresByClass != nil {
+		t.Errorf("expected nil by-class slices on old build, got %+v / %+v", s.ConnectionsBadByClass, s.HandshakeFailuresByClass)
+	}
+}
+
 func TestNonJSONErrorResponse(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)

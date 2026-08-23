@@ -134,3 +134,8 @@ func (c *Client) SystemInfo(ctx context.Context) (SystemInfoData, error) {
 func (c *Client) Users(ctx context.Context) ([]UserInfo, error) {
 	return get[[]UserInfo](ctx, c, "/v1/users")
 }
+
+// StatsSummary calls GET /v1/stats/summary.
+func (c *Client) StatsSummary(ctx context.Context) (SummaryData, error) {
+	return get[SummaryData](ctx, c, "/v1/stats/summary")
+}

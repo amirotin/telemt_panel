@@ -42,6 +42,24 @@ type UserLinks struct {
 	TLSDomains []TLSDomainLink `json:"tls_domains"`
 }
 
+// ClassCount pairs a connection or handshake-failure class with its counter.
+type ClassCount struct {
+	Class string `json:"class"`
+	Total uint64 `json:"total"`
+}
+
+// SummaryData is the payload of GET /v1/stats/summary. The by-class
+// breakdowns are absent (nil) on older Telemt builds that predate them.
+type SummaryData struct {
+	UptimeSeconds            float64      `json:"uptime_seconds"`
+	ConnectionsTotal         uint64       `json:"connections_total"`
+	ConnectionsBadTotal      uint64       `json:"connections_bad_total"`
+	HandshakeTimeoutsTotal   uint64       `json:"handshake_timeouts_total"`
+	ConfiguredUsers          uint64       `json:"configured_users"`
+	ConnectionsBadByClass    []ClassCount `json:"connections_bad_by_class,omitempty"`
+	HandshakeFailuresByClass []ClassCount `json:"handshake_failures_by_class,omitempty"`
+}
+
 // UserInfo is one user as returned by GET /v1/users.
 type UserInfo struct {
 	Username           string    `json:"username"`
