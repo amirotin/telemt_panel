@@ -148,3 +148,29 @@ assertDeepEqual(
 );
 
 console.log('usersPage.helpers tests passed');
+
+// Fake-TLS-only setups (the common case): secret recovered from the ee link,
+// which embeds secret + hex(SNI domain).
+const tlsOnlyLinks = {
+  classic: [],
+  secure: [],
+  tls: [`tg://proxy?server=host.example&port=443&secret=ee${secret}687474702e6578616d706c65`],
+};
+const webFromTls = buildProxyLinks(tlsOnlyLinks, 'alice', [webProfiles[0]]);
+assertDeepEqual(
+  webFromTls.find((g) => g.label === 'WEB')?.links.map((l) => l.url),
+  [`tg://webproxy?server=proxy.example.com&secret=dd${secret}`],
+);
+
+// Bare ee-secret without a domain suffix also works.
+const webFromBareTls = buildProxyLinks(
+  { tls: [`tg://proxy?server=h&port=443&secret=ee${secret}`] },
+  'alice',
+  [webProfiles[1]],
+);
+assertDeepEqual(
+  webFromBareTls.find((g) => g.label === 'WEB')?.links.map((l) => l.url),
+  [`tg://webproxy?server=second.example.net&secret=${secret}`],
+);
+
+console.log('webproxy tls-extraction tests passed');

@@ -45,13 +45,18 @@ function getSecret(raw: string): string {
 }
 
 // extractPlainSecret recovers the user's bare 32-hex secret from existing
-// links: classic carries it as-is, secure carries it with a "dd" prefix.
+// links: classic carries it as-is, secure with a "dd" prefix, fake-TLS with
+// "ee" + secret + hex(SNI domain). The tls fallback matters most in the
+// field: faketls-only setups have empty classic/secure arrays (#117 follow-up).
 // The Users API does not expose the secret directly.
 export function extractPlainSecret(links: UserLinks | undefined): string {
   const classic = getSecret(links?.classic?.[0] ?? '');
   if (/^[0-9a-fA-F]{32}$/.test(classic)) return classic;
   const secure = getSecret(links?.secure?.[0] ?? '');
   if (/^dd[0-9a-fA-F]{32}$/i.test(secure)) return secure.slice(2);
+  const tls = getSecret(links?.tls?.[0] ?? '');
+  const m = /^ee([0-9a-fA-F]{32})/i.exec(tls);
+  if (m) return m[1];
   return '';
 }
 
