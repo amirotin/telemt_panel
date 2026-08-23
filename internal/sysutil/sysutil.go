@@ -96,20 +96,20 @@ func installBinaryAtomic(src, dst string) error {
 func installBinaryWithSudo(src, dst string) error {
 	tmpDst := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+".tmp")
 
-	cmd := exec.Command("sudo", "cp", "-f", src, tmpDst)
+	cmd := exec.Command("sudo", "-n", "cp", "-f", src, tmpDst)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("no write access to %s and sudo copy to temp file failed: %s (%w). "+
 			"Configure passwordless sudo for the panel user or change binary_path to a writable location",
 			filepath.Dir(dst), strings.TrimSpace(string(out)), err)
 	}
-	defer exec.Command("sudo", "rm", "-f", tmpDst).Run()
+	defer exec.Command("sudo", "-n", "rm", "-f", tmpDst).Run()
 
-	cmd = exec.Command("sudo", "chmod", "0755", tmpDst)
+	cmd = exec.Command("sudo", "-n", "chmod", "0755", tmpDst)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("sudo chmod failed for %s: %s (%w)", tmpDst, strings.TrimSpace(string(out)), err)
 	}
 
-	cmd = exec.Command("sudo", "mv", "-f", tmpDst, dst)
+	cmd = exec.Command("sudo", "-n", "mv", "-f", tmpDst, dst)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("sudo atomic replace failed for %s: %s (%w)", dst, strings.TrimSpace(string(out)), err)
 	}
@@ -142,7 +142,7 @@ func BackupBinary(binaryPath, stagingDir string) (string, error) {
 	backupDst := filepath.Join(stagingDir, filepath.Base(binaryPath)+".bak")
 
 	if NeedsSudo(binaryPath) {
-		cmd := exec.Command("sudo", "cp", "-f", binaryPath, backupDst)
+		cmd := exec.Command("sudo", "-n", "cp", "-f", binaryPath, backupDst)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return "", fmt.Errorf("cannot backup %s: no read access and sudo failed: %s (%w). "+
 				"Check that the panel user has read access to the binary or configure sudo",
@@ -187,7 +187,7 @@ func RestartService(serviceName string) error {
 	}
 
 	// Fall back to sudo
-	cmd = exec.Command("sudo", "systemctl", "restart", serviceName)
+	cmd = exec.Command("sudo", "-n", "systemctl", "restart", serviceName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("systemctl restart %s failed: %s: %w", serviceName, string(output), err)
