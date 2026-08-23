@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"golang.org/x/term"
 
@@ -58,6 +61,13 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Graceful shutdown on SIGINT/SIGTERM: in-flight requests (including
+	// non-atomic Telemt config writes) get a chance to finish before exit.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	srv := server.New(cfg)
-	log.Fatal(srv.Run(version, distFS))
+	if err := srv.Run(ctx, version, distFS); err != nil {
+		log.Fatal(err)
+	}
 }
