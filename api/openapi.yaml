@@ -1,0 +1,870 @@
+# Telemt Panel v2 — HTTP contract (source of truth).
+# Server stubs: oapi-codegen. TS client + TanStack Query hooks: hey-api/openapi-ts.
+# Conventions (differ from v1 — no {ok,data} envelope):
+#   - plain HTTP status codes; success bodies are the resource itself
+#   - errors: application/json {code, message} with proper status (schema Error)
+#   - auth: opaque session id in HttpOnly cookie "panel_session" (see 05-auth.md)
+#   - realtime is SSE (/api/events*), documented here as text/event-stream;
+#     event payload shapes live in 02-hub-sse.md and the generated topic types
+openapi: 3.1.0
+info:
+  title: Telemt Panel API
+  version: 2.0.0-draft1
+  description: >
+    Admin API of Telemt Panel v2 plus the unauthenticated subscription page.
+    Telemt-shaped payloads follow the upstream source catalog (specs/07-telemt-sdk.md).
+
+servers:
+  - url: /
+    description: Same origin; base_path is prepended by the SPA runtime when configured.
+
+tags:
+  - { name: auth }
+  - { name: users }
+  - { name: telemt }
+  - { name: host }
+  - { name: updates }
+  - { name: realtime }
+  - { name: misc }
+  - { name: subpage }
+
+security:
+  - session: []
+
+paths:
+  # ───────────────────────── auth ─────────────────────────
+  /api/auth/login:
+    post:
+      tags: [auth]
+      security: []
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                totp: { type: string, description: Required when TOTP is enabled }
+      responses:
+        "204": { description: Logged in; session cookie set }
+        "401":
+          description: invalid_credentials | totp_required
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      responses: { "204": { description: Session revoked server-side; cookie cleared } }
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      responses:
+        "200":
+          description: Current admin identity and enabled auth options
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [username, totp_enabled, passkeys]
+                properties:
+                  username: { type: string }
+                  totp_enabled: { type: boolean }
+                  passkeys:
+                    type: array
+                    items: { $ref: "#/components/schemas/PasskeyInfo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/sessions:
+    get:
+      tags: [auth]
+      operationId: listSessions
+      responses:
+        "200":
+          description: Active sessions (current one flagged)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } }
+    delete:
+      tags: [auth]
+      operationId: revokeOtherSessions
+      description: Revoke all sessions except the current one.
+      responses: { "204": { description: Revoked } }
+
+  /api/auth/sessions/{sessionId}:
+    delete:
+      tags: [auth]
+      operationId: revokeSession
+      parameters: [ { name: sessionId, in: path, required: true, schema: { type: string } } ]
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # TOTP lifecycle (state lives in store, not config)
+  /api/auth/totp/setup:
+    post:
+      tags: [auth]
+      operationId: totpSetup
+      responses:
+        "200":
+          description: Provisioning secret for QR (not yet enabled)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [otpauth_url, secret]
+                properties:
+                  otpauth_url: { type: string }
+                  secret: { type: string }
+  /api/auth/totp/enable:
+    post:
+      tags: [auth]
+      operationId: totpEnable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string } } }
+      responses:
+        "200":
+          description: Enabled; recovery codes shown exactly once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recovery_codes]
+                properties:
+                  recovery_codes: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /api/auth/totp:
+    delete:
+      tags: [auth]
+      operationId: totpDisable
+      responses: { "204": { description: Disabled } }
+
+  # WebAuthn: bodies/responses are the standard CredentialCreation/Request JSON
+  # produced by go-webauthn; typed loosely on purpose.
+  /api/auth/webauthn/register/begin:
+    post:
+      tags: [auth]
+      operationId: webauthnRegisterBegin
+      responses:
+        "200": { description: CredentialCreationOptions, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/auth/webauthn/register/finish:
+    post:
+      tags: [auth]
+      operationId: webauthnRegisterFinish
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses:
+        "200": { description: Registered, content: { application/json: { schema: { $ref: "#/components/schemas/PasskeyInfo" } } } }
+  /api/auth/webauthn/login/begin:
+    post:
+      tags: [auth]
+      security: []
+      operationId: webauthnLoginBegin
+      responses:
+        "200": { description: CredentialRequestOptions, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "404": { description: No passkeys enrolled }
+  /api/auth/webauthn/login/finish:
+    post:
+      tags: [auth]
+      security: []
+      operationId: webauthnLoginFinish
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses:
+        "204": { description: Logged in; session cookie set }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/auth/webauthn/credentials/{credentialId}:
+    delete:
+      tags: [auth]
+      operationId: webauthnDeleteCredential
+      parameters: [ { name: credentialId, in: path, required: true, schema: { type: string } } ]
+      responses: { "204": { description: Deleted }, "404": { $ref: "#/components/responses/NotFound" } }
+
+  # ───────────────────────── users ─────────────────────────
+  /api/users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      description: >
+        Composite of Telemt GET /v1/users merged with quota usage (when the
+        `quota` capability is present) and the panel's subscription URL.
+      responses:
+        "200":
+          description: All users
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/User" } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+    post:
+      tags: [users]
+      operationId: createUser
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UserCreate" } } }
+      responses:
+        "201":
+          description: Created; secret returned exactly once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, secret]
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  secret: { type: string }
+        "409": { description: user_exists, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+
+  /api/users/{username}:
+    parameters: [ { $ref: "#/components/parameters/Username" } ]
+    get:
+      tags: [users]
+      operationId: getUser
+      responses:
+        "200": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [users]
+      operationId: patchUser
+      description: >
+        JSON Merge Patch semantics forwarded to Telemt: omitted = unchanged,
+        null = remove the limit, value = set.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UserPatch" } } }
+      responses:
+        "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+    delete:
+      tags: [users]
+      operationId: deleteUser
+      responses:
+        "204": { description: Deleted }
+        "409": { description: last_user_forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/users/{username}/reset-quota:
+    post:
+      tags: [users]
+      operationId: resetUserQuota
+      parameters: [ { $ref: "#/components/parameters/Username" } ]
+      responses:
+        "200":
+          description: Usage zeroed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [username, used_bytes, last_reset_epoch_secs]
+                properties:
+                  username: { type: string }
+                  used_bytes: { type: integer, const: 0 }
+                  last_reset_epoch_secs: { type: integer, format: int64 }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/users/{username}/rotate-secret:
+    post:
+      tags: [users]
+      operationId: rotateUserSecret
+      description: Rotates the user's secret; implicitly invalidates the old subscription link.
+      parameters: [ { $ref: "#/components/parameters/Username" } ]
+      responses:
+        "200":
+          description: New secret returned exactly once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, secret]
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  secret: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "501": { description: Capability absent on this Telemt build }
+
+  /api/users/{username}/enabled:
+    put:
+      tags: [users]
+      operationId: setUserEnabled
+      parameters: [ { $ref: "#/components/parameters/Username" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } }
+      responses:
+        "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "501": { description: Capability absent on this Telemt build }
+
+  /api/users/{username}/sublink:
+    get:
+      tags: [users]
+      operationId: getUserSublink
+      parameters: [ { $ref: "#/components/parameters/Username" } ]
+      responses:
+        "200":
+          description: Current subscription URL for sharing
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sublink" } } }
+    post:
+      tags: [users]
+      operationId: regenerateUserSublink
+      description: Rotates the per-user nonce; the previous subscription URL stops working.
+      parameters: [ { $ref: "#/components/parameters/Username" } ]
+      responses:
+        "200": { description: New URL, content: { application/json: { schema: { $ref: "#/components/schemas/Sublink" } } } }
+
+  # ───────────────────────── telemt ─────────────────────────
+  /api/telemt/info:
+    get:
+      tags: [telemt]
+      operationId: getTelemtInfo
+      responses:
+        "200":
+          description: Version, connectivity and capability flags (07-telemt-sdk.md §3)
+          content: { application/json: { schema: { $ref: "#/components/schemas/TelemtInfo" } } }
+
+  /api/telemt/config:
+    get:
+      tags: [telemt]
+      operationId: getTelemtConfig
+      responses:
+        "200":
+          description: Editable sections + revision (api mode) or file content (file mode)
+          content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfig" } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+    patch:
+      tags: [telemt]
+      operationId: patchTelemtConfig
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatch" } } }
+      responses:
+        "200": { description: Applied, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
+        "409":
+          description: revision_conflict — re-read and merge
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+
+  /api/telemt/reload:
+    post:
+      tags: [telemt]
+      operationId: reloadTelemt
+      description: Config re-read via Telemt reload API (capability `reload_api`) — not a service restart.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: { type: string, enum: [instant, drain], default: instant }
+                timeout_secs: { type: integer, minimum: 1, maximum: 3600 }
+      responses:
+        "202": { description: Reload accepted (progress via SSE topic `stats`) }
+        "409": { description: reload_in_progress }
+        "501": { description: Capability absent — offer service restart instead }
+
+  /api/telemt/restart:
+    post:
+      tags: [telemt]
+      operationId: restartTelemtService
+      description: Service-level restart through the host layer; disabled when host cap restart_telemt=false.
+      responses:
+        "202": { description: Restart initiated }
+        "409": { description: Manual restart required on this platform (see /api/host hint) }
+
+  # ───────────────────────── host ─────────────────────────
+  /api/host:
+    get:
+      tags: [host]
+      operationId: getHost
+      responses:
+        "200":
+          description: Detected platform and capabilities (01-host-matrix.md)
+          content: { application/json: { schema: { $ref: "#/components/schemas/HostInfo" } } }
+
+  # ───────────────────────── updates ─────────────────────────
+  /api/updates:
+    get:
+      tags: [updates]
+      operationId: getUpdates
+      responses:
+        "200":
+          description: Both targets — versions, releases, active run, journal
+          content: { application/json: { schema: { $ref: "#/components/schemas/UpdatesStatus" } } }
+
+  /api/updates/{target}/apply:
+    post:
+      tags: [updates]
+      operationId: applyUpdate
+      parameters:
+        - { name: target, in: path, required: true, schema: { type: string, enum: [telemt, panel] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [version], properties: { version: { type: string } } }
+      responses:
+        "202": { description: Run started (progress via SSE topic `update`) }
+        "409": { description: Another update run holds the global lock }
+
+  /api/updates/auto:
+    get:
+      tags: [updates]
+      operationId: getAutoUpdate
+      responses:
+        "200": { description: Settings, content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdateSettings" } } } }
+    put:
+      tags: [updates]
+      operationId: putAutoUpdate
+      description: Persisted to the store — the panel never rewrites its config file.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdateSettings" } } }
+      responses: { "204": { description: Saved } }
+
+  # ───────────────────────── realtime ─────────────────────────
+  /api/events:
+    get:
+      tags: [realtime]
+      operationId: streamEvents
+      description: >
+        SSE stream. Events: one per subscribed topic (users|stats|runtime|upstreams|security|update)
+        carrying full topic snapshots, plus heartbeat and source_error. Supports Last-Event-ID.
+        Protocol: 02-hub-sse.md.
+      parameters:
+        - { name: topics, in: query, required: true, schema: { type: string }, example: "users,stats,runtime" }
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+
+  /api/events/logs:
+    get:
+      tags: [realtime]
+      operationId: streamLogs
+      parameters:
+        - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
+      responses:
+        "200": { description: SSE of LogLine events, content: { text/event-stream: { schema: { type: string } } } }
+        "501": { description: Host cap log_stream=false }
+
+  /api/snapshot:
+    get:
+      tags: [realtime]
+      operationId: getSnapshot
+      description: One-shot topic snapshots (initial render / no-SSE fallback). Same payloads as SSE events.
+      parameters:
+        - { name: topics, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Map topic → snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: object, additionalProperties: true }
+
+  /api/history:
+    get:
+      tags: [realtime]
+      operationId: getHistory
+      description: Metric history; 501 on the memory store profile beyond the RAM ring.
+      parameters:
+        - { name: metric, in: query, required: true, schema: { type: string, enum: [connections, traffic, health, active_users] } }
+        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 1h, 24h, 7d] } }
+      responses:
+        "200": { description: Series, content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
+        "501": { description: Range unavailable on this store profile }
+
+  # ───────────────────────── misc ─────────────────────────
+  /api/logs/tail:
+    get:
+      tags: [misc]
+      operationId: tailLogs
+      parameters:
+        - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
+        - { name: lines, in: query, schema: { type: integer, default: 200, maximum: 1000 } }
+      responses:
+        "200":
+          description: Recent lines
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/LogLine" } }
+
+  /api/audit:
+    get:
+      tags: [misc]
+      operationId: getAudit
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200":
+          description: Panel operation journal (logins, user changes, updates)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
+
+  /api/geoip:
+    get:
+      tags: [misc]
+      operationId: lookupGeo
+      parameters:
+        - { name: ip, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Geo info, content: { application/json: { schema: { $ref: "#/components/schemas/GeoInfo" } } } }
+        "501": { description: GeoIP databases not configured }
+
+  # ───────────────────────── subpage ─────────────────────────
+  /sub/{token}:
+    get:
+      tags: [subpage]
+      security: []
+      operationId: getSubscriptionPage
+      description: >
+        Unauthenticated per-user subscription page (04-subpage.md). Server-rendered HTML,
+        no required JS; uniform 404 for unknown tokens; rate limited per IP.
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Page, content: { text/html: { schema: { type: string } } } }
+        "404": { description: Unknown token (uniform, no details) }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: panel_session
+
+  parameters:
+    Username:
+      name: username
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
+
+  responses:
+    Unauthorized:
+      description: No valid session
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Not found
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    BadRequest:
+      description: Invalid input
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    RateLimited:
+      description: Too many requests
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    TelemtUnreachable:
+      description: telemt_unreachable | telemt_auth_failed
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    TelemtReadOnly:
+      description: Telemt API is in read_only mode
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: >
+            Machine code. Panel codes: invalid_credentials, totp_required, session_expired,
+            telemt_unreachable, telemt_auth_failed, revision_conflict, update_locked,
+            capability_absent, manual_restart_required, rate_limited, bad_request, not_found.
+            Telemt codes are passed through where meaningful (user_exists, last_user_forbidden, read_only).
+        message: { type: string }
+
+    User:
+      type: object
+      description: Telemt UserInfo merged with quota usage and panel extras.
+      required: [username, enabled, current_connections, active_unique_ips, total_octets, links]
+      properties:
+        username: { type: string }
+        enabled: { type: boolean }
+        in_runtime: { type: boolean }
+        user_ad_tag: { type: string }
+        max_tcp_conns: { type: integer }
+        max_unique_ips: { type: integer }
+        data_quota_bytes: { type: integer, format: int64 }
+        expiration_rfc3339: { type: string, format: date-time }
+        rate_limit_up_bps: { type: integer, format: int64 }
+        rate_limit_down_bps: { type: integer, format: int64 }
+        current_connections: { type: integer, format: int64 }
+        active_unique_ips: { type: integer }
+        active_unique_ips_list: { type: array, items: { type: string } }
+        recent_unique_ips: { type: integer }
+        recent_unique_ips_list: { type: array, items: { type: string } }
+        total_octets: { type: integer, format: int64 }
+        links: { $ref: "#/components/schemas/UserLinks" }
+        quota:
+          type: object
+          description: Present when the quota capability is available and the user has a quota.
+          required: [used_bytes, last_reset_epoch_secs]
+          properties:
+            used_bytes: { type: integer, format: int64 }
+            last_reset_epoch_secs: { type: integer, format: int64 }
+        sub_url: { type: string, description: Absolute subscription page URL }
+
+    UserLinks:
+      type: object
+      required: [classic, secure, tls, tls_domains]
+      properties:
+        classic: { type: array, items: { type: string } }
+        secure: { type: array, items: { type: string } }
+        tls: { type: array, items: { type: string } }
+        tls_domains:
+          type: array
+          items:
+            type: object
+            required: [domain, link]
+            properties:
+              domain: { type: string }
+              link: { type: string }
+
+    UserCreate:
+      type: object
+      required: [username]
+      properties:
+        username: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
+        secret: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
+        user_ad_tag: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
+        max_tcp_conns: { type: integer, minimum: 1 }
+        max_unique_ips: { type: integer, minimum: 1 }
+        data_quota_bytes: { type: integer, format: int64, minimum: 1 }
+        expiration_rfc3339: { type: string, format: date-time }
+        rate_limit_up_bps: { type: integer, format: int64, minimum: 1 }
+        rate_limit_down_bps: { type: integer, format: int64, minimum: 1 }
+        enabled: { type: boolean, default: true }
+
+    UserPatch:
+      type: object
+      description: JSON Merge Patch — null removes a limit, omitted leaves unchanged.
+      properties:
+        secret: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
+        user_ad_tag: { type: [string, "null"] }
+        max_tcp_conns: { type: [integer, "null"] }
+        max_unique_ips: { type: [integer, "null"] }
+        data_quota_bytes: { type: [integer, "null"], format: int64 }
+        expiration_rfc3339: { type: [string, "null"] }
+        rate_limit_up_bps: { type: [integer, "null"], format: int64 }
+        rate_limit_down_bps: { type: [integer, "null"], format: int64 }
+        enabled: { type: [boolean, "null"] }
+
+    Sublink:
+      type: object
+      required: [url, enabled]
+      properties:
+        url: { type: string }
+        enabled: { type: boolean, description: false when subpage module is disabled }
+
+    TelemtInfo:
+      type: object
+      required: [reachable, capabilities]
+      properties:
+        reachable: { type: boolean }
+        version: { type: string }
+        arch: { type: string }
+        os: { type: string }
+        uptime_seconds: { type: number }
+        config_path: { type: string }
+        config_edit_mode: { type: string, enum: [api, file] }
+        capabilities:
+          type: object
+          description: Detected per 07-telemt-sdk.md §SDK-3.
+          required: [quota, runtime_edge, reload_api, config_api, user_enable_disable, rotate_secret]
+          properties:
+            quota: { type: boolean }
+            runtime_edge: { type: boolean }
+            reload_api: { type: boolean }
+            config_api: { type: boolean }
+            user_enable_disable: { type: boolean }
+            rotate_secret: { type: boolean }
+        hint:
+          type: string
+          description: Actionable diagnostic (e.g. "check [server.api].whitelist — connection dropped").
+
+    TelemtConfig:
+      type: object
+      required: [mode, revision]
+      properties:
+        mode: { type: string, enum: [api, file] }
+        revision: { type: string }
+        sections:
+          type: object
+          additionalProperties: true
+          description: api mode — editable sections as JSON (integers preserved)
+        raw:
+          type: string
+          description: file mode — full TOML text
+
+    TelemtConfigPatch:
+      type: object
+      required: [revision]
+      properties:
+        revision: { type: string, description: From the prior GET; forwarded as If-Match }
+        sections:
+          type: object
+          additionalProperties: true
+          description: api mode — sparse section patch
+        raw:
+          type: string
+          description: file mode — full new TOML text (comment-preserving patch applied server-side)
+        reload: { type: string, enum: [none, instant, drain], default: instant }
+
+    TelemtConfigPatchResult:
+      type: object
+      required: [revision, changed]
+      properties:
+        revision: { type: string }
+        changed: { type: array, items: { type: string } }
+        runtime_reload_required: { type: boolean }
+        process_restart_required: { type: boolean }
+        deferred_process_fields: { type: array, items: { type: string } }
+
+    HostInfo:
+      type: object
+      required: [service_manager, log_source, privileges_mode, caps]
+      properties:
+        service_manager: { type: string, enum: [systemd, openrc, procd, sysvinit, docker, none] }
+        log_source: { type: string, enum: [journald, logread, syslog, docker, file, none] }
+        privileges_mode: { type: string, enum: [agent, direct, degraded] }
+        os_release: { type: string }
+        caps:
+          type: object
+          required: [restart_telemt, restart_panel, log_tail, log_stream, self_update]
+          properties:
+            restart_telemt: { type: boolean }
+            restart_panel: { type: boolean }
+            log_tail: { type: boolean }
+            log_stream: { type: boolean }
+            self_update: { type: boolean }
+        manual_commands:
+          type: object
+          additionalProperties: { type: string }
+          description: Copyable shell commands for operations with cap=false.
+
+    UpdatesStatus:
+      type: object
+      required: [targets, lock_held]
+      properties:
+        lock_held: { type: boolean }
+        targets:
+          type: array
+          items:
+            type: object
+            required: [target, current_version, releases]
+            properties:
+              target: { type: string, enum: [telemt, panel] }
+              current_version: { type: string }
+              releases:
+                type: array
+                items:
+                  type: object
+                  required: [version, published_at]
+                  properties:
+                    version: { type: string }
+                    published_at: { type: string, format: date-time }
+                    prerelease: { type: boolean }
+                    newer: { type: boolean }
+              active_run: { $ref: "#/components/schemas/UpdateRun" }
+              journal: { type: array, items: { $ref: "#/components/schemas/UpdateRun" } }
+
+    UpdateRun:
+      type: object
+      required: [run_id, target, phase, version_to, started_at]
+      properties:
+        run_id: { type: string }
+        target: { type: string, enum: [telemt, panel] }
+        phase:
+          type: string
+          enum: [checking, downloading, verifying, staging, installing, restarting, health, done, rolling_back, rolled_back, failed]
+        version_from: { type: string }
+        version_to: { type: string }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        detail: { type: string }
+
+    AutoUpdateSettings:
+      type: object
+      required: [telemt, panel, interval]
+      properties:
+        telemt: { type: string, enum: [off, check, apply] }
+        panel: { type: string, enum: [off, check, apply] }
+        interval: { type: string, description: Go duration ≥ 1h, e.g. "6h" }
+
+    SessionInfo:
+      type: object
+      required: [id, created, last_seen, current]
+      properties:
+        id: { type: string }
+        created: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+        ip: { type: string }
+        user_agent_label: { type: string, description: Parsed, human-readable ("iPhone · Safari") }
+        auth_method: { type: string, enum: [password, passkey] }
+        current: { type: boolean }
+
+    PasskeyInfo:
+      type: object
+      required: [id, name, created]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created: { type: string, format: date-time }
+        last_used: { type: string, format: date-time }
+
+    LogLine:
+      type: object
+      required: [ts, msg]
+      properties:
+        ts: { type: string, format: date-time }
+        level: { type: string, enum: [debug, info, warn, error, unknown] }
+        unit: { type: string }
+        msg: { type: string }
+
+    AuditEntry:
+      type: object
+      required: [ts, action]
+      properties:
+        ts: { type: string, format: date-time }
+        action: { type: string, description: "login | user.create | user.patch | user.delete | quota.reset | config.patch | update.apply | ..." }
+        subject: { type: string, description: Username / target / section }
+        detail: { type: string }
+
+    HistorySeries:
+      type: object
+      required: [metric, range, points]
+      properties:
+        metric: { type: string }
+        range: { type: string }
+        points:
+          type: array
+          items:
+            type: object
+            required: [ts, value]
+            properties:
+              ts: { type: integer, format: int64, description: epoch seconds }
+              value: { type: number }
+
+    GeoInfo:
+      type: object
+      required: [ip]
+      properties:
+        ip: { type: string }
+        country: { type: string }
+        city: { type: string }
+        asn: { type: integer }
+        as_org: { type: string }

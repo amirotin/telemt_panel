@@ -1,0 +1,24 @@
+# Binaries
+telemt-panel
+panel-agent
+release/
+
+# Frontend
+web/node_modules/
+web/dist/
+
+# Config with secrets
+config.toml
+
+# Local state
+*.db
+
+# IDE / tools
+.claude/
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
