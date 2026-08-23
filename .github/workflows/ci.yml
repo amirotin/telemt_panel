@@ -73,6 +73,14 @@ jobs:
           cd frontend
           npx tsc --noEmit
 
+      - name: Frontend tests
+        run: |
+          cd frontend
+          for t in $(find src -name '*.test.ts'); do
+            echo "== $t"
+            npx --yes tsx "$t"
+          done
+
       - name: Build backend
         run: go build -v .
 
