@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,17 +147,7 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 
 	// Auth endpoints
 	mux.HandleFunc("POST /api/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		// Strip port from RemoteAddr (e.g. "1.2.3.4:12345" → "1.2.3.4")
-		if host, _, ok := strings.Cut(ip, ":"); ok {
-			ip = host
-		}
-		// Use only the first (leftmost, client) IP from X-Forwarded-For
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			if first, _, _ := strings.Cut(fwd, ","); first != "" {
-				ip = strings.TrimSpace(first)
-			}
-		}
+		ip := clientIP(r, s.cfg.TrustedProxyPrefixes)
 
 		if !limiter.allow(ip, 5, 1*time.Minute) {
 			writeError(w, http.StatusTooManyRequests, "rate_limited", "too many login attempts, try again later")
@@ -193,7 +184,7 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 			MaxAge:   int(ttl.Seconds()),
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
-			Secure:   r.TLS != nil,
+			Secure:   requestIsSecure(r, s.cfg.TrustedProxyPrefixes),
 		})
 
 		writeJSON(w, http.StatusOK, jsonResponse{
@@ -633,7 +624,7 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 	if s.cfg.BasePath != "" {
 		handler = basePathHandler(s.cfg.BasePath, mux)
 	}
-	handler = securityHeaders(handler)
+	handler = securityHeaders(s.cfg.TrustedProxyPrefixes, handler)
 
 	srv := &http.Server{
 		Addr:         s.cfg.Listen,
@@ -675,12 +666,12 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 	return srv.ListenAndServe()
 }
 
-func securityHeaders(next http.Handler) http.Handler {
+func securityHeaders(trustedProxies []netip.Prefix, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		if r.TLS != nil {
+		if requestIsSecure(r, trustedProxies) {
 			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		}
 		next.ServeHTTP(w, r)

@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
+	"net/url"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-// checkOrigin validates the WebSocket origin header.
+// checkOrigin validates the WebSocket origin header by exact host match,
+// mirroring the check in internal/ws. A substring match would accept
+// attacker-controlled origins that merely embed the panel's host.
 func checkOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -22,7 +24,11 @@ func checkOrigin(r *http.Request) bool {
 	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
 		host = fwd
 	}
-	return strings.Contains(origin, host)
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return parsed.Host == host
 }
 
 var wsUpgrader = websocket.Upgrader{
