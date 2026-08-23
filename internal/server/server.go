@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -129,7 +130,7 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	})
 }
 
-func (s *Server) Run(version string, distFS fs.FS) error {
+func (s *Server) Run(ctx context.Context, version string, distFS fs.FS) error {
 	jwtSecret := []byte(s.cfg.Auth.JWTSecret)
 
 	ttl, err := time.ParseDuration(s.cfg.Auth.SessionTTL)
@@ -652,18 +653,47 @@ func (s *Server) Run(version string, distFS fs.FS) error {
 		}()
 
 		log.Printf("Telemt Panel listening on %s (ACME TLS, domain: %s)", s.cfg.Listen, s.cfg.TLS.AcmeDomain)
-		return srv.ListenAndServeTLS("", "")
+		return serveUntilShutdown(ctx, srv, func() error { return srv.ListenAndServeTLS("", "") })
 	}
 
 	// TLS: custom certificates
 	if s.cfg.TLS.CertFile != "" {
 		log.Printf("Telemt Panel listening on %s (TLS)", s.cfg.Listen)
-		return srv.ListenAndServeTLS(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
+		return serveUntilShutdown(ctx, srv, func() error {
+			return srv.ListenAndServeTLS(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
+		})
 	}
 
 	// Plain HTTP
 	log.Printf("Telemt Panel listening on %s", s.cfg.Listen)
-	return srv.ListenAndServe()
+	return serveUntilShutdown(ctx, srv, srv.ListenAndServe)
+}
+
+// serveUntilShutdown runs serve and, when ctx is canceled (SIGINT/SIGTERM),
+// drains in-flight requests via srv.Shutdown so deferred cleanups in Run
+// (auto-update stop, GeoIP close) actually execute on service stop.
+func serveUntilShutdown(ctx context.Context, srv *http.Server, serve func() error) error {
+	errCh := make(chan error, 1)
+	go func() { errCh <- serve() }()
+
+	select {
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		log.Printf("shutdown signal received, draining connections...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("shutdown: %s", err)
+			return err
+		}
+		<-errCh // serve returns http.ErrServerClosed after Shutdown
+		log.Printf("shutdown complete")
+		return nil
+	}
 }
 
 func securityHeaders(trustedProxies []netip.Prefix, next http.Handler) http.Handler {
