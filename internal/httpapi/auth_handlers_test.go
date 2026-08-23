@@ -160,6 +160,30 @@ func TestLoginWrongPassword(t *testing.T) {
 	}
 }
 
+func TestLoginWrongUsername(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	// A username that doesn't exist must still be rejected as
+	// invalid_credentials (never a different code, and never a different
+	// code path that could reveal it via timing — see auth.VerifyCredentials).
+	w, cookie := login(t, h, "nobody", testPassword)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+	if cookie != nil {
+		t.Fatal("wrong username must not set a session cookie")
+	}
+
+	var body struct{ Code string }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != "invalid_credentials" {
+		t.Fatalf("error code = %q, want invalid_credentials", body.Code)
+	}
+}
+
 func TestLoginRateLimited(t *testing.T) {
 	srv := newTestServer(t)
 	h := srv.Handler()

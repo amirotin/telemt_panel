@@ -117,6 +117,57 @@ func TestRequireSessionValidSlidesTTL(t *testing.T) {
 	}
 }
 
+func TestRequireSessionRefreshesCookieWhenStale(t *testing.T) {
+	ttl := time.Hour
+	cfg := testConfig("", ttl)
+	st := newMemoryStore(t)
+
+	idHash := HashToken("some-token")
+	// Older than ttl/cookieRefreshFraction (1 minute) but well inside ttl,
+	// so the session is valid but its cookie is due for a refresh.
+	past := time.Now().Add(-2 * time.Minute)
+	if err := st.PutSession(store.Session{IDHash: idHash, Created: past, LastSeen: past}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	r := httptest.NewRequest("GET", "/api/auth/me", nil)
+	r.AddCookie(&http.Cookie{Name: CookieName, Value: "some-token"})
+	w := httptest.NewRecorder()
+	RequireSession(st, cfg)(okHandler()).ServeHTTP(w, r)
+
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != CookieName {
+		t.Fatalf("Set-Cookie = %+v, want one panel_session cookie", cookies)
+	}
+	if cookies[0].Value != "some-token" {
+		t.Errorf("refreshed cookie value = %q, want unchanged %q", cookies[0].Value, "some-token")
+	}
+	if cookies[0].MaxAge != int(ttl.Seconds()) {
+		t.Errorf("refreshed cookie MaxAge = %d, want %d (the full TTL)", cookies[0].MaxAge, int(ttl.Seconds()))
+	}
+}
+
+func TestRequireSessionDoesNotRefreshFreshCookie(t *testing.T) {
+	cfg := testConfig("", time.Hour)
+	st := newMemoryStore(t)
+
+	idHash := HashToken("some-token")
+	// Well under ttl/cookieRefreshFraction (1 minute) — no refresh needed.
+	past := time.Now().Add(-10 * time.Second)
+	if err := st.PutSession(store.Session{IDHash: idHash, Created: past, LastSeen: past}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	r := httptest.NewRequest("GET", "/api/auth/me", nil)
+	r.AddCookie(&http.Cookie{Name: CookieName, Value: "some-token"})
+	w := httptest.NewRecorder()
+	RequireSession(st, cfg)(okHandler()).ServeHTTP(w, r)
+
+	if cookies := w.Result().Cookies(); len(cookies) != 0 {
+		t.Errorf("Set-Cookie = %+v, want none (cookie is still fresh)", cookies)
+	}
+}
+
 func TestCSRF(t *testing.T) {
 	trusted := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
 	cfg := testConfig("", time.Hour, trusted...)

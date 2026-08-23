@@ -39,7 +39,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username != s.cfg.Auth.Username || !auth.VerifyPassword(s.cfg.Auth.PasswordHash, req.Password) {
+	if !auth.VerifyCredentials(s.cfg.Auth.Username, s.cfg.Auth.PasswordHash, req.Username, req.Password) {
 		s.limiter.RecordFailure(ip)
 		s.appendAudit("login.failed", req.Username, "ip="+ip)
 		auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")

@@ -11,10 +11,22 @@ import (
 	"github.com/amirotin/telemt_panel/internal/store"
 )
 
+// cookieRefreshFraction controls how often RequireSession re-issues the
+// session cookie: whenever the cookie's remaining lifetime has decayed by
+// more than 1/60th of the TTL since it was last (re)written. This keeps
+// the cookie's client-side MaxAge from expiring long before the
+// server-side sliding TTL would, without rewriting Set-Cookie on every
+// single request.
+const cookieRefreshFraction = 60
+
 // RequireSession returns middleware that rejects requests without a valid,
-// unexpired session. On success it slides the session's TTL (Touch) and
-// makes the admin's username and the session's store key available via
-// UsernameFromContext / SessionIDHashFromContext.
+// unexpired session. On success it slides the session's TTL (Touch),
+// re-issues the session cookie with a fresh MaxAge once its remaining
+// lifetime has meaningfully decayed (see cookieRefreshFraction) — without
+// this, the browser would stop sending the cookie after the MaxAge set at
+// login regardless of how active the admin was — and makes the admin's
+// username and the session's store key available via UsernameFromContext /
+// SessionIDHashFromContext.
 func RequireSession(st store.Store, cfg *config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,12 +44,17 @@ func RequireSession(st store.Store, cfg *config.Config) func(http.Handler) http.
 			}
 
 			now := time.Now()
-			if now.Sub(sess.LastSeen) > cfg.Auth.SessionTTLDuration() {
+			ttl := cfg.Auth.SessionTTLDuration()
+			age := now.Sub(sess.LastSeen)
+			if age > ttl {
 				_ = st.DeleteSession(idHash)
 				writeSessionExpired(w)
 				return
 			}
 			_ = st.TouchSession(idHash, now)
+			if age > ttl/cookieRefreshFraction {
+				SetSessionCookie(w, r, cfg, cookie.Value)
+			}
 
 			ctx := context.WithValue(r.Context(), ctxUsername, cfg.Auth.Username)
 			ctx = context.WithValue(ctx, ctxSessionIDHash, idHash)
