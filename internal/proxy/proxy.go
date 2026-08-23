@@ -178,7 +178,9 @@ func (p *TelemtProxy) GetSystemInfo() (*SystemInfo, error) {
 		req.Header.Set("Authorization", p.authHeader)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	// http.DefaultClient has no timeout: a hung Telemt would wedge the
+	// config handlers that call this in the request path.
+	resp, err := telemtHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
