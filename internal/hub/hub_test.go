@@ -23,8 +23,9 @@ type fakeTelemt struct {
 	health  telemt.HealthData
 	summary telemt.SummaryData
 
-	usersFailing  int32
-	healthFailing int32
+	usersFailing   int32
+	healthFailing  int32
+	summaryFailing int32
 
 	requests chan string
 }
@@ -62,6 +63,11 @@ func (f *fakeTelemt) serve(w http.ResponseWriter, r *http.Request) {
 		f.mu.Unlock()
 		writeEnvelope(w, health)
 	case "/v1/stats/summary":
+		if atomic.LoadInt32(&f.summaryFailing) > 0 {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"ok":false,"error":{"code":"internal_error","message":"boom"}}`)
+			return
+		}
 		f.mu.Lock()
 		summary := f.summary
 		f.mu.Unlock()
@@ -92,6 +98,10 @@ func (f *fakeTelemt) setUsersFailing(failing bool) {
 
 func (f *fakeTelemt) setHealthFailing(failing bool) {
 	atomic.StoreInt32(&f.healthFailing, boolToInt32(failing))
+}
+
+func (f *fakeTelemt) setSummaryFailing(failing bool) {
+	atomic.StoreInt32(&f.summaryFailing, boolToInt32(failing))
 }
 
 func boolToInt32(b bool) int32 {
@@ -481,6 +491,89 @@ func TestStatsTopicNullsFailedSubCall(t *testing.T) {
 	}
 	if snap.Summary == nil || snap.Summary.UptimeSeconds != 42 {
 		t.Errorf("summary = %+v, want uptime 42", snap.Summary)
+	}
+}
+
+func TestStatsTopicSourceErrorsWhenBothSubCallsFail(t *testing.T) {
+	f, tc := newFakeTelemt(t)
+	f.setHealthFailing(true)
+	f.setSummaryFailing(true)
+
+	interval := 10 * time.Millisecond
+	h := New(Config{UsersInterval: time.Hour, StatsInterval: interval, Grace: time.Second}, tc)
+	t.Cleanup(h.Close)
+
+	start := time.Now()
+	ch, _, cancel, err := h.Subscribe([]string{"stats"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	// A total outage (both sub-calls failing) must surface as source_error,
+	// not silently publish {"health":null,"summary":null}.
+	ev := recvEvent(t, ch, time.Second)
+	if ev.Err != sourceErrorCode || ev.Topic != "stats" {
+		t.Fatalf("event = %+v, want source_error for stats", ev)
+	}
+
+	// Backoff engaged: the next poll waits at least a full base interval
+	// (doubled from the immediate first poll), not another immediate retry.
+	ev2 := recvEvent(t, ch, time.Second)
+	gap := time.Since(start)
+	if ev2.Err != sourceErrorCode {
+		t.Fatalf("second event = %+v, want another source_error (still failing)", ev2)
+	}
+	if gap < interval {
+		t.Fatalf("second source_error arrived after %v since subscribe, want >= backoff interval %v (no backoff?)", gap, interval)
+	}
+
+	// Recovery still works once both sub-calls succeed again. One more
+	// source_error may already be in flight from before this flip; drain
+	// past it to the first real snapshot.
+	f.health = telemt.HealthData{Status: "ok"}
+	f.summary = telemt.SummaryData{UptimeSeconds: 7}
+	f.setHealthFailing(false)
+	f.setSummaryFailing(false)
+
+	var recovered Event
+	for i := 0; i < 10; i++ {
+		recovered = recvEvent(t, ch, 2*time.Second)
+		if recovered.Err == "" {
+			break
+		}
+	}
+	if recovered.Err != "" {
+		t.Fatalf("no recovered snapshot after 10 events, last = %+v", recovered)
+	}
+	var snap statsSnapshot
+	if err := json.Unmarshal(recovered.Data, &snap); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if snap.Health == nil || snap.Summary == nil || snap.Summary.UptimeSeconds != 7 {
+		t.Fatalf("recovered snapshot = %+v", snap)
+	}
+}
+
+func TestSnapshotValidatesAllTopicsBeforeFetching(t *testing.T) {
+	f, tc := newFakeTelemt(t)
+	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
+
+	h := New(Config{}, tc)
+	t.Cleanup(h.Close)
+
+	_, err := h.Snapshot(t.Context(), []string{"users", "bogus"})
+	var unk *ErrUnknownTopic
+	if !asErrUnknownTopic(err, &unk) || unk.Topic != "bogus" {
+		t.Fatalf("err = %v, want ErrUnknownTopic{bogus}", err)
+	}
+
+	// The invalid topic must reject before any upstream fetch happens —
+	// not even for the other, valid topic in the same request.
+	select {
+	case p := <-f.requests:
+		t.Fatalf("unexpected upstream request %s before topic validation failed", p)
+	default:
 	}
 }
 

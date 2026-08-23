@@ -1,13 +1,17 @@
 package httpapi
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
@@ -189,5 +193,169 @@ func TestHandleEventsWritesInitialSnapshot(t *testing.T) {
 	}
 	if !strings.Contains(body, `"alice"`) {
 		t.Fatalf("body missing the cached user: %q", body)
+	}
+}
+
+// mutableFakeTelemtHTTP is a Telemt stand-in whose /v1/users response can
+// be changed mid-test, for exercising the hub's poller against a real
+// upstream server rather than a pre-canceled request.
+type mutableFakeTelemtHTTP struct {
+	mu    sync.Mutex
+	users []telemt.UserInfo
+}
+
+func newMutableFakeTelemtHTTP(t *testing.T, users []telemt.UserInfo) (*mutableFakeTelemtHTTP, *telemt.Client) {
+	t.Helper()
+	f := &mutableFakeTelemtHTTP{users: users}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/users" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		f.mu.Lock()
+		u := f.users
+		f.mu.Unlock()
+		data, _ := json.Marshal(u)
+		fmt.Fprintf(w, `{"ok":true,"data":%s,"revision":"r"}`, data)
+	}))
+	t.Cleanup(srv.Close)
+	return f, telemt.New(srv.URL, "")
+}
+
+func (f *mutableFakeTelemtHTTP) setUsers(users []telemt.UserInfo) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.users = users
+}
+
+// sseFrame is one parsed SSE frame (blank-line delimited); comment lines
+// (heartbeats) are not surfaced as frames.
+type sseFrame struct {
+	id    string
+	event string
+	data  string
+}
+
+// readSSEFrames scans r for SSE frames in a background goroutine, sending
+// each one on the returned channel; the channel closes when r is exhausted
+// or errors (in particular, when the response body is closed client-side).
+func readSSEFrames(r io.Reader) <-chan sseFrame {
+	out := make(chan sseFrame, 16)
+	go func() {
+		defer close(out)
+		scanner := bufio.NewScanner(r)
+		var cur sseFrame
+		for scanner.Scan() {
+			line := scanner.Text()
+			switch {
+			case line == "":
+				if cur.event != "" || cur.data != "" {
+					out <- cur
+				}
+				cur = sseFrame{}
+			case strings.HasPrefix(line, ":"):
+				// comment line (heartbeat) — not a frame field
+			case strings.HasPrefix(line, "id: "):
+				cur.id = strings.TrimPrefix(line, "id: ")
+			case strings.HasPrefix(line, "event: "):
+				cur.event = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				cur.data = strings.TrimPrefix(line, "data: ")
+			}
+		}
+	}()
+	return out
+}
+
+// nextFrame waits up to timeout for the next frame from frames.
+func nextFrame(t *testing.T, frames <-chan sseFrame, timeout time.Duration) sseFrame {
+	t.Helper()
+	select {
+	case f, ok := <-frames:
+		if !ok {
+			t.Fatal("SSE stream closed unexpectedly")
+		}
+		return f
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for an SSE frame")
+	}
+	panic("unreachable")
+}
+
+// TestHandleEventsStreamsUpdatesAndReplaysOnReconnect exercises the SSE
+// endpoint end-to-end over a real network connection (httptest.Server, not
+// ResponseRecorder): a client reads the initial snapshot, observes a
+// streamed update after the fake upstream's data changes, disconnects, and
+// reconnects with Last-Event-ID set to the initial snapshot's id — which
+// must replay exactly the missed update instead of a fresh snapshot.
+func TestHandleEventsStreamsUpdatesAndReplaysOnReconnect(t *testing.T) {
+	fake, tc := newMutableFakeTelemtHTTP(t, []telemt.UserInfo{{Username: "alice"}})
+
+	interval := 20 * time.Millisecond
+	srv, cookie := newSSETestServer(t, tc, hub.Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: time.Second})
+
+	panelSrv := httptest.NewServer(srv.Handler())
+	t.Cleanup(panelSrv.Close)
+
+	req1, err := http.NewRequest(http.MethodGet, panelSrv.URL+"/api/events?topics=users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req1.AddCookie(cookie)
+	resp1, err := http.DefaultClient.Do(req1)
+	if err != nil {
+		t.Fatalf("first connect: %v", err)
+	}
+	t.Cleanup(func() { resp1.Body.Close() })
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("first connect status = %d, want 200", resp1.StatusCode)
+	}
+
+	frames1 := readSSEFrames(resp1.Body)
+
+	initial := nextFrame(t, frames1, 2*time.Second)
+	if initial.event != "users" || !strings.Contains(initial.data, "alice") {
+		t.Fatalf("initial frame = %+v, want the users snapshot with alice", initial)
+	}
+	initialID := initial.id
+	if initialID == "" {
+		t.Fatal("initial frame carries no id")
+	}
+
+	// Change the upstream data and observe the streamed update on the same
+	// open connection.
+	fake.setUsers([]telemt.UserInfo{{Username: "bob"}})
+	updated := nextFrame(t, frames1, 2*time.Second)
+	if updated.event != "users" || !strings.Contains(updated.data, "bob") {
+		t.Fatalf("updated frame = %+v, want the bob update", updated)
+	}
+
+	resp1.Body.Close()
+
+	// Reconnect with Last-Event-ID at the initial snapshot: the bob update
+	// must come back via replay, not a fresh (already-current) snapshot,
+	// and with the same id as when it first streamed.
+	req2, err := http.NewRequest(http.MethodGet, panelSrv.URL+"/api/events?topics=users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req2.AddCookie(cookie)
+	req2.Header.Set("Last-Event-ID", initialID)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	t.Cleanup(func() { resp2.Body.Close() })
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("reconnect status = %d, want 200", resp2.StatusCode)
+	}
+
+	frames2 := readSSEFrames(resp2.Body)
+	replayed := nextFrame(t, frames2, 2*time.Second)
+	if replayed.event != "users" || !strings.Contains(replayed.data, "bob") {
+		t.Fatalf("replayed frame = %+v, want the missed bob update", replayed)
+	}
+	if replayed.id != updated.id {
+		t.Fatalf("replayed id = %s, want %s (the same event, replayed)", replayed.id, updated.id)
 	}
 }

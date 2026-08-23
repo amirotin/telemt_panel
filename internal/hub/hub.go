@@ -183,11 +183,20 @@ type statsSnapshot struct {
 
 func fetchStats(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 	var snap statsSnapshot
-	if health, err := tc.Health(ctx); err == nil {
+	health, healthErr := tc.Health(ctx)
+	if healthErr == nil {
 		snap.Health = &health
 	}
-	if summary, err := tc.StatsSummary(ctx); err == nil {
+	summary, summaryErr := tc.StatsSummary(ctx)
+	if summaryErr == nil {
 		snap.Summary = &summary
+	}
+	// A single sub-call failing still publishes (the other field carries
+	// real data); both failing means Telemt itself is unreachable, so this
+	// must surface as a fetch error — the source_error/backoff path — not
+	// a silent {"health":null,"summary":null} snapshot.
+	if healthErr != nil && summaryErr != nil {
+		return nil, fmt.Errorf("stats: health: %w; summary: %w", healthErr, summaryErr)
 	}
 	return json.Marshal(snap)
 }
@@ -434,17 +443,24 @@ func (h *Hub) ReplaySince(since uint64, topics []string) ([]Event, bool) {
 // Snapshot returns the current payload for each of topics, fetching
 // synchronously (bound to ctx) for any topic that is idle (no active
 // poller) or has never been polled; an active topic's cached value is
-// returned as-is, without a redundant fetch. Requesting an unknown topic
-// returns *ErrUnknownTopic.
+// returned as-is, without a redundant fetch. Every topic name is validated
+// up front, before any fetch runs: requesting an unknown topic returns
+// *ErrUnknownTopic and performs no upstream requests at all, even for the
+// other, valid topics in the same call.
 func (h *Hub) Snapshot(ctx context.Context, topics []string) (map[string]json.RawMessage, error) {
-	out := make(map[string]json.RawMessage, len(topics))
+	h.mu.Lock()
 	for _, name := range topics {
-		h.mu.Lock()
-		t, ok := h.topics[name]
-		if !ok {
+		if _, ok := h.topics[name]; !ok {
 			h.mu.Unlock()
 			return nil, &ErrUnknownTopic{Topic: name}
 		}
+	}
+	h.mu.Unlock()
+
+	out := make(map[string]json.RawMessage, len(topics))
+	for _, name := range topics {
+		h.mu.Lock()
+		t := h.topics[name]
 		fresh := t.running && t.hasData
 		h.mu.Unlock()
 
