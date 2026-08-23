@@ -523,6 +523,21 @@ func (s *Server) Run(ctx context.Context, version string, distFS fs.FS) error {
 		if !ok {
 			return
 		}
+		// Optimistic concurrency, mirroring the api mode's If-Match: reject
+		// the save if the file changed since the client loaded it, so
+		// parallel edits (or a Telemt-side rewrite) aren't silently lost.
+		if req.Hash != "" {
+			_, currentHash, err := telemt_config.ReadConfig(configPath)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "read_config_failed", err.Error())
+				return
+			}
+			if currentHash != req.Hash {
+				writeError(w, http.StatusConflict, "revision_conflict",
+					"config file changed since it was loaded; reload and re-apply your changes")
+				return
+			}
+		}
 		backupDir := filepath.Join(os.TempDir(), "telemt-panel-config-backups")
 		if s.cfg.DataDir != "" {
 			backupDir = filepath.Join(s.cfg.DataDir, "config-backups")
