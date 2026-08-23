@@ -158,6 +158,7 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 |--------|----------|----------|-------------|
 | — | `listen` | Адрес и порт | `0.0.0.0:8080` |
 | — | `base_path` | Подпуть для reverse proxy (например `/panel123`) | — |
+| — | `trusted_proxies` | CIDR/IP обратных прокси, чьим `X-Forwarded-For`/`X-Forwarded-Proto` можно верить (rate-limit логина, флаг `Secure` у cookie за TLS-прокси) | — |
 | `[telemt]` | `url` | URL API Telemt | **обязательный** |
 | `[telemt]` | `auth_header` | Authorization-заголовок к Telemt API | — |
 | `[telemt]` | `binary_path` | Путь к бинарнику telemt (для обновлений) | `/bin/telemt` |

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -44,16 +45,21 @@ type UsersConfig struct {
 }
 
 type Config struct {
-	Path     string       `toml:"-"` // config file path, set after loading
-	Listen   string       `toml:"listen"`
-	BasePath string       `toml:"base_path"`
-	DataDir  string       `toml:"data_dir"`
-	Telemt   TelemtConfig `toml:"telemt"`
-	Panel    PanelConfig  `toml:"panel"`
-	Auth     AuthConfig   `toml:"auth"`
-	TLS      TLSConfig    `toml:"tls"`
-	GeoIP    GeoIPConfig  `toml:"geoip"`
-	Users    UsersConfig  `toml:"users"`
+	Path     string `toml:"-"` // config file path, set after loading
+	Listen   string `toml:"listen"`
+	BasePath string `toml:"base_path"`
+	DataDir  string `toml:"data_dir"`
+	// TrustedProxies lists CIDRs of reverse proxies whose X-Forwarded-*
+	// headers are trusted. Empty means forwarded headers are ignored.
+	TrustedProxies []string `toml:"trusted_proxies"`
+	// TrustedProxyPrefixes is the parsed form of TrustedProxies.
+	TrustedProxyPrefixes []netip.Prefix `toml:"-"`
+	Telemt               TelemtConfig   `toml:"telemt"`
+	Panel                PanelConfig    `toml:"panel"`
+	Auth                 AuthConfig     `toml:"auth"`
+	TLS                  TLSConfig      `toml:"tls"`
+	GeoIP                GeoIPConfig    `toml:"geoip"`
+	Users                UsersConfig    `toml:"users"`
 }
 
 type GeoIPConfig struct {
@@ -172,6 +178,23 @@ func Load(path string) (*Config, error) {
 		if _, err := time.Parse(time.RFC3339, cfg.Users.Expiration); err != nil {
 			return nil, fmt.Errorf("users.expiration: invalid RFC3339 format: %w", err)
 		}
+	}
+
+	// Parse trusted proxy CIDRs; bare IPs are accepted as single-address prefixes.
+	for _, entry := range cfg.TrustedProxies {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(entry)
+		if err != nil {
+			addr, addrErr := netip.ParseAddr(entry)
+			if addrErr != nil {
+				return nil, fmt.Errorf("trusted_proxies: invalid CIDR or IP %q: %w", entry, err)
+			}
+			prefix = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		cfg.TrustedProxyPrefixes = append(cfg.TrustedProxyPrefixes, prefix)
 	}
 
 	// Normalize base_path: ensure leading slash, strip trailing slash

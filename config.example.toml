@@ -12,6 +12,12 @@ listen = "0.0.0.0:8080"
 #
 # base_path = "/panel123"
 
+# Reverse proxies whose X-Forwarded-For / X-Forwarded-Proto headers are
+# trusted (CIDRs or single IPs). Required for correct login rate limiting
+# and Secure session cookies behind a TLS-terminating proxy.
+# When empty (default), forwarded headers are ignored.
+# trusted_proxies = ["127.0.0.1/32", "::1/128"]
+
 [telemt]
 # Telemt API base URL (no trailing slash)
 url = "http://127.0.0.1:9091"
