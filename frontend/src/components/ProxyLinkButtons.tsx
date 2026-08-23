@@ -15,13 +15,17 @@ export interface ProxyLinkGroup {
 function ProxyLinkGroupButtons({ group }: { group: ProxyLinkGroup }) {
   const [idx, setIdx] = useState(0);
   const selected = group.links[Math.min(idx, group.links.length - 1)];
-  const showDomainSelect = group.label === 'TLS' && group.links.length > 1;
+  const showDomainSelect = (group.label === 'TLS' || group.label === 'WEB') && group.links.length > 1;
+  // tg://webproxy has no t.me equivalent (Telegram Desktop-only scheme).
+  const isWebProxy = selected.url.startsWith('tg://webproxy');
 
   return (
     <div className="flex flex-col items-start gap-1.5">
       <div className="flex items-center gap-1">
         <CopyButton text={selected.url} label={group.label} />
-        <CopyButton text={selected.url.replace('tg://proxy', 'https://t.me/proxy')} label="t.me" />
+        {!isWebProxy && (
+          <CopyButton text={selected.url.replace('tg://proxy', 'https://t.me/proxy')} label="t.me" />
+        )}
       </div>
       {showDomainSelect && (
         <select

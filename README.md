@@ -31,7 +31,7 @@ Web-панель управления для [Telemt](https://github.com/telemt/
 ## Возможности
 
 - **Dashboard** — здоровье сервера, uptime, соединения, общий трафик, статус DC
-- **Пользователи** — CRUD через API Telemt, сортировка по колонкам, подсветка активных соединений
+- **Пользователи** — CRUD через API Telemt, сортировка по колонкам, подсветка активных соединений, ссылки подключения включая WEB-режим (`tg://webproxy`, Telemt 3.5.2+)
 - **Runtime** — соединения, ME pool state, ME quality, upstream quality, NAT/STUN, self-test, события
 - **Безопасность** — posture (read-only, whitelist, auth header), лимиты, whitelist
 - **Upstreams** — статус upstream-серверов и пулов

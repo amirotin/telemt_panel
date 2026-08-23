@@ -17,7 +17,7 @@ import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Search, ChevronL
 import { formatBytes } from '@/lib/utils';
 import { useQuota, resetUserQuota, type QuotaEntry } from '@/hooks/useQuota';
 import { QuotaBar } from '@/components/QuotaBar';
-import { buildProxyLinks, type UserLinks } from './usersPage.helpers';
+import { buildProxyLinks, type UserLinks, type WebProfile } from './usersPage.helpers';
 
 type SortKey = 'username' | 'current_connections' | 'active_unique_ips' | 'total_octets' | 'expiration_rfc3339';
 type SortDir = 'asc' | 'desc';
@@ -61,6 +61,18 @@ export function UsersPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
+
+  // WEB proxy vhost profiles (Telemt 3.5.2+); static config, fetched once.
+  // The Users API does not return tg://webproxy links — see usersPage.helpers.
+  const [webProfiles, setWebProfiles] = useState<WebProfile[]>([]);
+  useEffect(() => {
+    panelApi
+      .get<{ available: boolean; enabled: boolean; profiles: WebProfile[] }>('/telemt/web/profiles')
+      .then((d) => {
+        if (d.available && d.enabled) setWebProfiles(d.profiles);
+      })
+      .catch(() => {});
+  }, []);
 
   const toggleSort = useCallback((key: SortKey) => {
     setSortKey((prev) => {
@@ -337,7 +349,7 @@ export function UsersPage() {
                           <Link to={`/users/${u.username}`} className="text-accent hover:underline">{u.username}</Link>
                         </TableCell>
                         <TableCell>
-                          <ProxyLinkButtons links={buildProxyLinks(u.links, u.username)} />
+                          <ProxyLinkButtons links={buildProxyLinks(u.links, u.username, webProfiles)} />
                         </TableCell>
                         <TableCell>
                           <Badge variant={u.current_connections > 0 ? 'default' : 'outline'}>
@@ -414,7 +426,7 @@ export function UsersPage() {
                   activeUniqueIps={u.active_unique_ips}
                   totalTraffic={u.total_octets}
                   online={u.current_connections > 0}
-                  links={buildProxyLinks(u.links, u.username)}
+                  links={buildProxyLinks(u.links, u.username, webProfiles)}
                   onEdit={() => setEditUser(u)}
                   onDelete={() => setDeleteUser(u.username)}
                   quotaUsed={quotaByUser.get(u.username)?.used_bytes}

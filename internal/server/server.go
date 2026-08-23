@@ -557,6 +557,39 @@ func (s *Server) Run(ctx context.Context, version string, distFS fs.FS) error {
 		})
 	})))
 
+	// WEB proxy profiles (Telemt 3.5.2+). The Users API does not return
+	// tg://webproxy links, so the frontend assembles them from these vhost
+	// profiles plus the user's secret. Best-effort: reading Telemt's config
+	// file may be impossible (Docker api mode) — then available=false and the
+	// UI simply shows no WEB group.
+	mux.Handle("GET /api/telemt/web/profiles", auth.RequireAuth(jwtSecret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		type webProfilesResponse struct {
+			Available bool                       `json:"available"`
+			Enabled   bool                       `json:"enabled"`
+			Profiles  []telemt_config.WebProfile `json:"profiles"`
+		}
+		resp := webProfilesResponse{Profiles: []telemt_config.WebProfile{}}
+
+		configPath := s.cfg.Telemt.ConfigPath
+		if configPath == "" {
+			if info, err := telemtProxy.GetSystemInfo(); err == nil {
+				configPath = info.ConfigPath
+			}
+		}
+		if configPath != "" {
+			if content, _, err := telemt_config.ReadConfig(configPath); err == nil {
+				if enabled, profiles, err := telemt_config.ParseWebProfiles(content); err == nil {
+					resp.Available = true
+					resp.Enabled = enabled
+					if profiles != nil {
+						resp.Profiles = profiles
+					}
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, jsonResponse{OK: true, Data: resp})
+	})))
+
 	// GeoIP lookup endpoint
 	var geoipLookup *geoip.Lookup
 	if s.cfg.GeoIP.DBPath != "" {
