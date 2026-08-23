@@ -16,6 +16,13 @@ export interface ProxyLinkOption {
   isDefault: boolean;
 }
 
+// One WEB vhost profile from GET /api/telemt/web/profiles (Telemt 3.5.2+).
+export interface WebProfile {
+  host: string;
+  user: string;
+  secret_mode: string; // "plain" | "dd"
+}
+
 export interface ProxyLinkGroup {
   label: string;
   links: ProxyLinkOption[];
@@ -29,6 +36,45 @@ function getServer(raw: string): string {
   }
 }
 
+function getSecret(raw: string): string {
+  try {
+    return new URL(raw).searchParams.get('secret') ?? '';
+  } catch {
+    return raw.match(/[?&]secret=([^&]*)/)?.[1] ?? '';
+  }
+}
+
+// extractPlainSecret recovers the user's bare 32-hex secret from existing
+// links: classic carries it as-is, secure carries it with a "dd" prefix.
+// The Users API does not expose the secret directly.
+export function extractPlainSecret(links: UserLinks | undefined): string {
+  const classic = getSecret(links?.classic?.[0] ?? '');
+  if (/^[0-9a-fA-F]{32}$/.test(classic)) return classic;
+  const secure = getSecret(links?.secure?.[0] ?? '');
+  if (/^dd[0-9a-fA-F]{32}$/i.test(secure)) return secure.slice(2);
+  return '';
+}
+
+// buildWebProxyLinks assembles tg://webproxy links (Telemt 3.5.2+ WEB mode)
+// for this user from the vhost profiles. The API does not return them; the
+// scheme has no port (always 443) and no comment parameter.
+export function buildWebProxyLinks(
+  links: UserLinks | undefined,
+  username: string,
+  webProfiles: WebProfile[] | undefined,
+): ProxyLinkOption[] {
+  if (!webProfiles?.length) return [];
+  const secret = extractPlainSecret(links);
+  if (!secret) return [];
+  return webProfiles
+    .filter((p) => p.user === username)
+    .map((p) => ({
+      url: `tg://webproxy?server=${p.host}&secret=${p.secret_mode === 'dd' ? 'dd' : ''}${secret}`,
+      domain: p.host,
+      isDefault: true,
+    }));
+}
+
 function appendComment(raw: string, username: string): string {
   try {
     const u = new URL(raw);
@@ -40,7 +86,11 @@ function appendComment(raw: string, username: string): string {
   }
 }
 
-export function buildProxyLinks(links: UserLinks | undefined, username: string): ProxyLinkGroup[] {
+export function buildProxyLinks(
+  links: UserLinks | undefined,
+  username: string,
+  webProfiles?: WebProfile[],
+): ProxyLinkGroup[] {
   if (!links) return [];
 
   const result: ProxyLinkGroup[] = [];
@@ -62,6 +112,7 @@ export function buildProxyLinks(links: UserLinks | undefined, username: string):
   }
   addGroup('Secure', (links.secure ?? []).map((url) => makeLink(url, getServer(url), true)));
   addGroup('Classic', (links.classic ?? []).map((url) => makeLink(url, getServer(url), true)));
+  addGroup('WEB', buildWebProxyLinks(links, username, webProfiles));
 
   return result;
 }
