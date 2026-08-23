@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
 
@@ -19,12 +21,22 @@ import (
 type Server struct {
 	cfg     *config.Config
 	tc      *telemt.Client
+	st      store.Store
+	limiter *auth.Limiter
 	version string
 }
 
 // New builds the handler tree.
-func New(cfg *config.Config, tc *telemt.Client, version string) *Server {
-	return &Server{cfg: cfg, tc: tc, version: version}
+func New(cfg *config.Config, tc *telemt.Client, st store.Store, version string) *Server {
+	return &Server{cfg: cfg, tc: tc, st: st, limiter: auth.NewLimiter(), version: version}
+}
+
+// chain wraps h with mws, applied outermost-first (mws[0] runs first).
+func chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(mws) - 1; i >= 0; i-- {
+		h = mws[i](h)
+	}
+	return h
 }
 
 // Handler returns the routed HTTP handler.
@@ -38,33 +50,52 @@ func (s *Server) Handler() http.Handler {
 		})
 	})
 
-	mux.HandleFunc("GET /api/telemt/info", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
+	// protect wraps a handler with the CSRF and session checks shared by
+	// every authenticated /api/* route except /api/auth/login (which has
+	// its own checks) and /sub/* (no cookie, no mutations, out of scope
+	// here).
+	protect := func(h http.HandlerFunc) http.Handler {
+		return chain(h, auth.CSRF(s.cfg), auth.RequireSession(s.st, s.cfg))
+	}
 
-		type info struct {
-			Reachable bool   `json:"reachable"`
-			Version   string `json:"version,omitempty"`
-			Hint      string `json:"hint,omitempty"`
-		}
-		sysInfo, err := s.tc.SystemInfo(ctx)
-		if err != nil {
-			var apiErr *telemt.APIError
-			hint := "telemt is unreachable — check telemt.url"
-			if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
-				hint = "telemt rejected authorization — check telemt.auth_header"
-			}
-			writeJSON(w, http.StatusOK, info{Reachable: false, Hint: hint})
-			return
-		}
-		writeJSON(w, http.StatusOK, info{Reachable: true, Version: sysInfo.Version})
-	})
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.Handle("POST /api/auth/logout", protect(s.handleLogout))
+	mux.Handle("GET /api/auth/me", protect(s.handleMe))
+	mux.Handle("GET /api/auth/sessions", protect(s.handleListSessions))
+	mux.Handle("DELETE /api/auth/sessions", protect(s.handleRevokeOtherSessions))
+	mux.Handle("DELETE /api/auth/sessions/{sessionId}", protect(s.handleRevokeSession))
+
+	mux.Handle("GET /api/telemt/info", protect(s.handleTelemtInfo))
 
 	return mux
 }
 
+func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	type info struct {
+		Reachable bool   `json:"reachable"`
+		Version   string `json:"version,omitempty"`
+		Hint      string `json:"hint,omitempty"`
+	}
+	sysInfo, err := s.tc.SystemInfo(ctx)
+	if err != nil {
+		var apiErr *telemt.APIError
+		hint := "telemt is unreachable — check telemt.url"
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
+			hint = "telemt rejected authorization — check telemt.auth_header"
+		}
+		writeJSON(w, http.StatusOK, info{Reachable: false, Hint: hint})
+		return
+	}
+	writeJSON(w, http.StatusOK, info{Reachable: true, Version: sysInfo.Version})
+}
+
 // Run serves until ctx is canceled, then drains connections.
 func (s *Server) Run(ctx context.Context) error {
+	defer s.limiter.Stop()
+
 	srv := &http.Server{
 		Addr:         s.cfg.Listen,
 		Handler:      s.Handler(),

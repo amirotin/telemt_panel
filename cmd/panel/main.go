@@ -1,26 +1,40 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/httpapi"
+	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"golang.org/x/term"
 )
 
 // version is injected at build time via -ldflags.
 var version = "0.0.0-dev"
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("telemt-panel " + version)
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version":
+			fmt.Println("telemt-panel " + version)
+			return
+		case "hash-password":
+			if err := runHashPassword(); err != nil {
+				slog.Error("hash-password", "err", err)
+				os.Exit(1)
+			}
+			return
+		}
 	}
 
 	configPath := flag.String("config", "config.toml", "path to config file")
@@ -35,10 +49,55 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Memory driver with no mirror file for now; a data-dir config key to
+	// pick the mirror path lands in a later milestone.
+	st, err := store.NewMemory("")
+	if err != nil {
+		slog.Error("open store", "err", err)
+		os.Exit(1)
+	}
+	defer st.Close()
+
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
-	srv := httpapi.New(cfg, tc, version)
+	srv := httpapi.New(cfg, tc, st, version)
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
+}
+
+// runHashPassword implements the `panel hash-password` CLI subcommand:
+// reads a password from stdin (a terminal prompt when stdin is a TTY, a
+// piped line otherwise) and prints its bcrypt hash for auth.password_hash.
+func runHashPassword() error {
+	password, err := readPassword()
+	if err != nil {
+		return fmt.Errorf("read password: %w", err)
+	}
+
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	fmt.Println(hash)
+	return nil
+}
+
+func readPassword() (string, error) {
+	fd := int(os.Stdin.Fd())
+	if term.IsTerminal(fd) {
+		fmt.Fprint(os.Stderr, "Password: ")
+		raw, err := term.ReadPassword(fd)
+		fmt.Fprintln(os.Stderr)
+		if err != nil {
+			return "", err
+		}
+		return string(raw), nil
+	}
+
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", err
+	}
+	return string(bytes.TrimRight(data, "\r\n")), nil
 }
