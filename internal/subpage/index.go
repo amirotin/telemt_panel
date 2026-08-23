@@ -60,12 +60,13 @@ func newIndex(secret []byte, client UsersLister, nonces NonceProvider, now func(
 // Lookup returns the username for token. On a miss, it refreshes the index
 // from Telemt first — but only if the index hasn't refreshed within the
 // last refreshInterval, so a burst of invalid guesses costs at most one
-// upstream call per interval.
+// upstream call per interval, even when many misses arrive concurrently
+// (see claimRefreshWindow).
 func (idx *Index) Lookup(ctx context.Context, token string) (string, bool) {
 	if username, ok := idx.get(token); ok {
 		return username, true
 	}
-	if idx.dueForRefresh() {
+	if idx.claimRefreshWindow() {
 		_ = idx.Refresh(ctx) // best-effort: a failed refresh just leaves the miss standing
 	}
 	return idx.get(token)
@@ -78,10 +79,23 @@ func (idx *Index) get(token string) (string, bool) {
 	return username, ok
 }
 
-func (idx *Index) dueForRefresh() bool {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-	return idx.now().Sub(idx.lastRefresh) >= idx.refreshInterval
+// claimRefreshWindow atomically checks whether a refresh is due and, if
+// so, claims the window by stamping lastRefresh before returning — under
+// a single lock acquisition, so "check due" and "claim it" can't be
+// split by a concurrent caller the way a separate read-then-write would
+// allow. Concurrent Lookup misses that lose the claim proceed straight to
+// serving the (possibly still stale) map instead of also calling Refresh;
+// a miss on a just-rotated token self-heals on the next window. Refresh
+// itself stamps lastRefresh again once the fetch completes, which is
+// harmless — it only ever extends the window further into the future.
+func (idx *Index) claimRefreshWindow() bool {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if idx.now().Sub(idx.lastRefresh) < idx.refreshInterval {
+		return false
+	}
+	idx.lastRefresh = idx.now()
+	return true
 }
 
 // Refresh unconditionally rebuilds the token index from the current

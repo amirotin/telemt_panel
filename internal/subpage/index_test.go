@@ -3,6 +3,7 @@ package subpage
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ func (f *fakeNonces) SetSubpageNonce(username, nonce string) error {
 	return nil
 }
 
-func newTestIndex(t *testing.T, lister *fakeLister, nonces NonceProvider, now func() time.Time) *Index {
+func newTestIndex(t *testing.T, lister UsersLister, nonces NonceProvider, now func() time.Time) *Index {
 	t.Helper()
 	return newIndex([]byte("panel-secret"), lister, nonces, now, 30*time.Second)
 }
@@ -172,6 +173,98 @@ func TestIndexRefreshErrorLeavesExistingTokensUsable(t *testing.T) {
 	lister.err = errors.New("telemt unreachable")
 	if _, ok := idx.Lookup(context.Background(), token); !ok {
 		t.Fatal("a later failed refresh must not evict already-known tokens")
+	}
+}
+
+// blockingLister is a UsersLister whose Users call signals entered (once,
+// non-blocking) and then blocks until release is closed — used to hold a
+// refresh "in flight" while concurrent Lookup calls race against it, the
+// way the public /sub/* handler's concurrent misses would against a real,
+// slow Telemt round trip.
+type blockingLister struct {
+	mu      sync.Mutex
+	calls   int
+	entered chan struct{}
+	release chan struct{}
+}
+
+func newBlockingLister() *blockingLister {
+	return &blockingLister{
+		entered: make(chan struct{}, 1),
+		release: make(chan struct{}),
+	}
+}
+
+func (b *blockingLister) Users(context.Context) ([]telemt.UserInfo, error) {
+	b.mu.Lock()
+	b.calls++
+	b.mu.Unlock()
+
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+	<-b.release
+	return nil, nil
+}
+
+func (b *blockingLister) callCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.calls
+}
+
+// TestIndexConcurrentMissesRefreshExactlyOnce guards against the
+// check-then-act race in the refresh throttle: many goroutines missing
+// concurrently while the index is due for a refresh must trigger exactly
+// one Users() call, not one per goroutine that observed "due" before the
+// winner finished. blockingLister holds the winner's fetch open so any
+// racing goroutine that would have wrongly claimed the window (under the
+// old separate check-then-write logic) gets the chance to do so before
+// the winner completes.
+func TestIndexConcurrentMissesRefreshExactlyOnce(t *testing.T) {
+	now := time.Now()
+	clock := func() time.Time { return now } // frozen: only the true winner can ever see "due"
+
+	lister := newBlockingLister()
+	idx := newTestIndex(t, lister, newFakeNonces(), clock)
+
+	const n = 50
+	ready := make(chan struct{}, n)
+	proceed := make(chan struct{})
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			ready <- struct{}{}
+			<-proceed
+			idx.Lookup(context.Background(), "bogus-token")
+		}()
+	}
+
+	// Wait for every goroutine to be parked at the gate, then release them
+	// all at once to maximize concurrent contention on the claim.
+	for i := 0; i < n; i++ {
+		<-ready
+	}
+	close(proceed)
+
+	select {
+	case <-lister.entered:
+		// The winner is now blocked inside Users(); every other goroutine
+		// has either already lost the claim or will lose it (the frozen
+		// clock makes a second claim impossible regardless of timing).
+	case <-time.After(5 * time.Second):
+		t.Fatal("no goroutine entered Users() within the deadline")
+	}
+	close(lister.release)
+
+	wg.Wait()
+
+	if got := lister.callCount(); got != 1 {
+		t.Fatalf("Users() called %d times concurrently, want exactly 1", got)
 	}
 }
 
