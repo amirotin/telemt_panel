@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,6 +59,7 @@ func SaveConfig(configPath, content string) (newHash string, err error) {
 	if err := createBackup(configPath, backupPath); err != nil {
 		return "", fmt.Errorf("create backup: %w", err)
 	}
+	pruneBackups(configPath, 5)
 
 	// Write the new content in place, preserving the existing inode.
 	//
@@ -258,6 +261,22 @@ func createBackup(src, dst string) error {
 		log.Printf("[telemt_config] preserve backup ownership %s: %v", dst, err)
 	}
 	return nil
+}
+
+// pruneBackups removes old <configPath>.backup.* files beyond keep, oldest
+// first. Timestamped names sort chronologically, so a lexical sort suffices.
+// Best-effort: backups previously accumulated without bound on every save.
+func pruneBackups(configPath string, keep int) {
+	matches, err := filepath.Glob(configPath + ".backup.*")
+	if err != nil || len(matches) <= keep {
+		return
+	}
+	sort.Strings(matches)
+	for _, old := range matches[:len(matches)-keep] {
+		if err := os.Remove(old); err != nil {
+			log.Printf("[telemt_config] prune backup %s: %v", old, err)
+		}
+	}
 }
 
 func calculateHash(data []byte) string {

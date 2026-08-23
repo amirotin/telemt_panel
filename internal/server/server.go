@@ -383,17 +383,15 @@ func (s *Server) Run(ctx context.Context, version string, distFS fs.FS) error {
 		autoMgr.UpdateConfig("panel", req.Panel)
 		autoMgr.UpdateConfig("telemt", req.Telemt)
 
-		// Persist auto-update settings to config file
+		// Persist auto-update settings to the panel's own config file with a
+		// line-surgical edit — a parse→marshal round-trip (the old QuickUpdate
+		// path) destroyed the operator's comments and formatting.
 		if s.cfg.Path != "" {
-			updates := map[string]interface{}{
-				"panel.auto_update.enabled":         req.Panel.Enabled,
-				"panel.auto_update.check_interval":  req.Panel.CheckInterval,
-				"panel.auto_update.auto_apply":      req.Panel.AutoApply,
-				"telemt.auto_update.enabled":        req.Telemt.Enabled,
-				"telemt.auto_update.check_interval": req.Telemt.CheckInterval,
-				"telemt.auto_update.auto_apply":     req.Telemt.AutoApply,
+			sections := map[string]config.AutoUpdateConfig{
+				"panel":  {Enabled: req.Panel.Enabled, CheckInterval: req.Panel.CheckInterval, AutoApply: req.Panel.AutoApply},
+				"telemt": {Enabled: req.Telemt.Enabled, CheckInterval: req.Telemt.CheckInterval, AutoApply: req.Telemt.AutoApply},
 			}
-			if _, err := telemt_config.QuickUpdate(s.cfg.Path, updates); err != nil {
+			if err := config.SaveAutoUpdateSettings(s.cfg.Path, sections); err != nil {
 				log.Printf("WARNING: failed to persist auto-update config: %s", err)
 			}
 		}
