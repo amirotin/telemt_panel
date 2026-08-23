@@ -58,23 +58,23 @@ toml_value() {
   awk -v section="[$_section]" -v key="$_key" '
     /^[[:space:]]*#/ { next }
     /^[[:space:]]*\[[^[]/ {
-      in_section = ($0 == section)
-      next
+in_section = ($0 == section)
+next
     }
     in_section {
-      line = $0
-      sub(/[[:space:]]*#.*/, "", line)
-      split(line, parts, "=")
-      current_key = parts[1]
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", current_key)
-      if (current_key == key) {
-        value = substr(line, index(line, "=") + 1)
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-        gsub(/^"/, "", value)
-        gsub(/"$/, "", value)
-        print value
-        exit
-      }
+line = $0
+sub(/[[:space:]]*#.*/, "", line)
+split(line, parts, "=")
+current_key = parts[1]
+gsub(/^[[:space:]]+|[[:space:]]+$/, "", current_key)
+if (current_key == key) {
+  value = substr(line, index(line, "=") + 1)
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+  gsub(/^"/, "", value)
+  gsub(/"$/, "", value)
+  print value
+  exit
+}
     }
   ' "$_file"
 }
@@ -85,7 +85,7 @@ detect_arch() {
   case "$_arch" in
     x86_64)  echo "x86_64"  ;;
     aarch64) echo "aarch64" ;;
-    *)       die "Unsupported architecture: $_arch" ;;
+    *) die "Unsupported architecture: $_arch" ;;
   esac
 }
 
@@ -98,8 +98,8 @@ detect_telemt() {
     /usr/bin/telemt \
     /usr/local/bin/telemt; do
     if [ -x "$_candidate" ]; then
-      echo "$_candidate"
-      return
+echo "$_candidate"
+return
     fi
   done
   echo "/bin/telemt"
@@ -118,9 +118,18 @@ create_system_user() {
     say "System user '$SYSTEM_USER' already exists"
   else
     $SUDO useradd --system --shell /usr/sbin/nologin --home /nonexistent "$SYSTEM_USER" 2>/dev/null \
-      || $SUDO adduser --system --shell /usr/sbin/nologin --home /nonexistent --disabled-password "$SYSTEM_USER" 2>/dev/null \
-      || die "Failed to create system user '$SYSTEM_USER'. Create it manually and re-run."
+|| $SUDO adduser --system --shell /usr/sbin/nologin --home /nonexistent --disabled-password "$SYSTEM_USER" 2>/dev/null \
+|| die "Failed to create system user '$SYSTEM_USER'. Create it manually and re-run."
     say "Created system user '$SYSTEM_USER'"
+  fi
+
+  # Journal access without sudo: newer sudo versions (e.g. Ubuntu 26.04)
+  # reject the old wildcard journalctl sudoers lines, so log reading relies
+  # on systemd-journal group membership instead.
+  if getent group systemd-journal >/dev/null 2>&1; then
+    $SUDO usermod -aG systemd-journal "$SYSTEM_USER" 2>/dev/null \
+&& say "User '$SYSTEM_USER' added to group 'systemd-journal' (log access)" \
+|| say "WARNING: could not add '$SYSTEM_USER' to systemd-journal group; live logs may need manual setup"
   fi
 }
 
@@ -134,20 +143,20 @@ join_telemt_group() {
   # Fallback: check if 'telemt' group exists directly
   if [ -z "$_telemt_group" ] || [ "$_telemt_group" = "root" ]; then
     if command -v getent >/dev/null 2>&1; then
-      getent group telemt >/dev/null 2>&1 && _telemt_group="telemt"
+getent group telemt >/dev/null 2>&1 && _telemt_group="telemt"
     elif grep -q "^telemt:" /etc/group 2>/dev/null; then
-      _telemt_group="telemt"
+_telemt_group="telemt"
     fi
   fi
 
   if [ -n "$_telemt_group" ] && [ "$_telemt_group" != "root" ]; then
     if id -nG "$SYSTEM_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "$_telemt_group"; then
-      say "User '$SYSTEM_USER' already in group '$_telemt_group'"
+say "User '$SYSTEM_USER' already in group '$_telemt_group'"
     else
-      $SUDO usermod -aG "$_telemt_group" "$SYSTEM_USER" 2>/dev/null \
-        || $SUDO adduser "$SYSTEM_USER" "$_telemt_group" 2>/dev/null \
-        || { say "WARNING: Could not add '$SYSTEM_USER' to group '$_telemt_group' — add manually for telemt config access"; return; }
-      say "Added '$SYSTEM_USER' to group '$_telemt_group' for telemt config access"
+$SUDO usermod -aG "$_telemt_group" "$SYSTEM_USER" 2>/dev/null \
+  || $SUDO adduser "$SYSTEM_USER" "$_telemt_group" 2>/dev/null \
+  || { say "WARNING: Could not add '$SYSTEM_USER' to group '$_telemt_group' — add manually for telemt config access"; return; }
+say "Added '$SYSTEM_USER' to group '$_telemt_group' for telemt config access"
     fi
   else
     say "WARNING: telemt group not found — panel won't have access to telemt config"
@@ -199,7 +208,6 @@ install_sudoers_dropin() {
   _rm=$(command_path rm)
   _tee=$(command_path tee)
   _systemctl=$(command_path systemctl)
-  _journalctl=$(command_path journalctl)
   _visudo=$(command -v visudo 2>/dev/null || true)
 
   _panel_tmp="${BIN_DIR}/.${BINARY_NAME}.tmp"
@@ -227,10 +235,6 @@ $SYSTEM_USER ALL=(root) NOPASSWD: $_systemctl restart $SERVICE_NAME
 $SYSTEM_USER ALL=(root) NOPASSWD: $_systemctl restart $_telemt_service
 $SYSTEM_USER ALL=(root) NOPASSWD: $_systemctl start $SERVICE_NAME
 $SYSTEM_USER ALL=(root) NOPASSWD: $_systemctl start $_telemt_service
-$SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -n * --no-pager -o short-iso
-$SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -n * --since * --no-pager -o short-iso
-$SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -f --no-pager -o short-iso
-$SYSTEM_USER ALL=(root) NOPASSWD: $_journalctl -u $_telemt_service -f --since * --no-pager -o short-iso
 $SYSTEM_USER ALL=(root) NOPASSWD: $_tee $_telemt_config
 EOF
 
@@ -303,15 +307,15 @@ Usage: $0 <command> [options]
 
 Commands:
   install [version]   Install or update (default: latest release)
-  uninstall           Remove binary, service, and sudoers drop-in
-  purge               Remove everything including config, data, and user
-  --help              Show this help
+  uninstall     Remove binary, service, and sudoers drop-in
+  purge         Remove everything including config, data, and user
+  --help        Show this help
 
 Examples:
-  $0                  Install latest version
+  $0            Install latest version
   $0 install v1.2.0  Install specific version
-  $0 uninstall        Remove service and binary
-  $0 purge            Remove everything
+  $0 uninstall  Remove service and binary
+  $0 purge      Remove everything
 
 Directories:
   Binary:   $PANEL_BINARY_PATH
@@ -351,8 +355,8 @@ do_install() {
   else
     say "Fetching latest release..."
     TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-      | grep '"tag_name"' | cut -d'"' -f4) \
-      || die "Could not determine latest release"
+| grep '"tag_name"' | cut -d'"' -f4) \
+|| die "Could not determine latest release"
     [ -n "$TAG" ] || die "Could not determine latest release"
     say "Latest version: $TAG"
   fi
@@ -371,19 +375,19 @@ do_install() {
     CHECKSUM_URL="https://github.com/$REPO/releases/download/$TAG/checksums.txt"
     TMP_CHECKSUMS="$TEMP_DIR/checksums.txt"
     if curl -fsSL "$CHECKSUM_URL" -o "$TMP_CHECKSUMS" 2>/dev/null; then
-      say "Verifying SHA256 checksum..."
-      EXPECTED=$(grep "$TARBALL" "$TMP_CHECKSUMS" | awk '{print $1}')
-      if [ -n "$EXPECTED" ]; then
-        ACTUAL=$(sha256sum "$TMP_TAR" | awk '{print $1}')
-        if [ "$EXPECTED" != "$ACTUAL" ]; then
-          die "Checksum mismatch! Expected: $EXPECTED, Got: $ACTUAL"
-        fi
-        say "Checksum OK"
-      else
-        say "WARNING: Checksum file found but no entry for $TARBALL - skipping verification"
-      fi
+say "Verifying SHA256 checksum..."
+EXPECTED=$(grep "$TARBALL" "$TMP_CHECKSUMS" | awk '{print $1}')
+if [ -n "$EXPECTED" ]; then
+  ACTUAL=$(sha256sum "$TMP_TAR" | awk '{print $1}')
+  if [ "$EXPECTED" != "$ACTUAL" ]; then
+    die "Checksum mismatch! Expected: $EXPECTED, Got: $ACTUAL"
+  fi
+  say "Checksum OK"
+else
+  say "WARNING: Checksum file found but no entry for $TARBALL - skipping verification"
+fi
     else
-      say "WARNING: Checksum file not available - skipping verification"
+say "WARNING: Checksum file not available - skipping verification"
     fi
   fi
 
@@ -422,7 +426,7 @@ do_install() {
     say "Generating password hash..."
     # Use printf to pipe password to avoid heredoc indentation issues
     PASS_HASH=$(printf '%s\n' "$ADMIN_PASS" | "$PANEL_BINARY_PATH" hash-password) \
-      || die "Failed to generate password hash"
+|| die "Failed to generate password hash"
 
     JWT_SECRET=$(openssl rand -hex 32)
 
@@ -434,7 +438,7 @@ data_dir = \"$DATA_DIR\"
 url = \"$TELEMT_URL\""
 
     if [ -n "$TELEMT_AUTH" ]; then
-      _cfg="$_cfg
+_cfg="$_cfg
 auth_header = \"$TELEMT_AUTH\""
     fi
 
@@ -475,11 +479,11 @@ session_ttl = \"24h\""
   printf '\n'
   printf '  Panel URL:     http://%s:8080\n' "$_ip"
   printf '  System user:   %s\n' "$SYSTEM_USER"
-  printf '  Binary:        %s\n' "$PANEL_BINARY_PATH"
-  printf '  Config:        %s\n' "$CONFIG_FILE"
-  printf '  Data:          %s\n' "$DATA_DIR"
-  printf '  Sudoers:       %s\n' "$SUDOERS_FILE"
-  printf '  Service:       %s\n' "$SERVICE_NAME"
+  printf '  Binary:  %s\n' "$PANEL_BINARY_PATH"
+  printf '  Config:  %s\n' "$CONFIG_FILE"
+  printf '  Data:    %s\n' "$DATA_DIR"
+  printf '  Sudoers: %s\n' "$SUDOERS_FILE"
+  printf '  Service: %s\n' "$SERVICE_NAME"
   printf '\n'
   printf '  Useful commands:\n'
   printf '    sudo systemctl status  %s\n' "$SERVICE_NAME"
@@ -553,7 +557,7 @@ shift 2>/dev/null || true
 case "$_cmd" in
   install)    do_install "${1:-}" ;;
   uninstall)  do_uninstall ;;
-  purge)      do_purge ;;
+  purge)do_purge ;;
   --help|-h)  usage ;;
-  *)          usage; exit 1 ;;
+  *)    usage; exit 1 ;;
 esac
