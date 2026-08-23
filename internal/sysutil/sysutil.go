@@ -174,10 +174,16 @@ func RemoveFile(path string) error {
 	return nil
 }
 
-// RestartService runs "systemctl restart <name>", using sudo if direct call fails.
+// RestartService restarts a service via systemctl, using sudo if the direct
+// call fails. On hosts without systemd (Entware/Keenetic, OpenWrt, sysvinit)
+// it falls back to the service's init script.
 func RestartService(serviceName string) error {
 	if !isValidServiceName(serviceName) {
 		return fmt.Errorf("invalid service name: %q", serviceName)
+	}
+
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return restartViaInitScript(serviceName)
 	}
 
 	// Try without sudo first (works if panel has polkit rule or runs as root)
@@ -193,6 +199,29 @@ func RestartService(serviceName string) error {
 		return fmt.Errorf("systemctl restart %s failed: %s: %w", serviceName, string(output), err)
 	}
 	return nil
+}
+
+// restartViaInitScript restarts a service through its init script on
+// systemd-less hosts. Looks in /etc/init.d/<name> (sysvinit, OpenWrt/procd)
+// and /opt/etc/init.d/S??<name>* (Entware convention, e.g. S91telemt).
+func restartViaInitScript(serviceName string) error {
+	candidates := []string{"/etc/init.d/" + serviceName}
+	if matches, err := filepath.Glob("/opt/etc/init.d/S[0-9][0-9]" + serviceName + "*"); err == nil {
+		candidates = append(candidates, matches...)
+	}
+
+	for _, script := range candidates {
+		info, err := os.Stat(script)
+		if err != nil || info.Mode()&0111 == 0 {
+			continue
+		}
+		output, err := exec.Command(script, "restart").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%s restart failed: %s: %w", script, strings.TrimSpace(string(output)), err)
+		}
+		return nil
+	}
+	return fmt.Errorf("cannot restart %q: no systemctl and no init script found in /etc/init.d or /opt/etc/init.d", serviceName)
 }
 
 func isValidServiceName(name string) bool {
