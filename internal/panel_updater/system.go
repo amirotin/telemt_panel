@@ -194,7 +194,7 @@ func CleanupLegacyBackup(binaryPath string) {
 	p := backupPathLegacy(binaryPath)
 	if _, err := os.Stat(p); err == nil {
 		if os.Remove(p) != nil {
-			_ = exec.Command("sudo", "rm", "-f", p).Run()
+			_ = exec.Command("sudo", "-n", "rm", "-f", p).Run()
 		}
 	}
 }

@@ -193,7 +193,7 @@ func CleanupLegacyBackup(binaryPath string) {
 	if _, err := os.Stat(p); err == nil {
 		// Try direct removal first, then sudo
 		if os.Remove(p) != nil {
-			_ = exec.Command("sudo", "rm", "-f", p).Run()
+			_ = exec.Command("sudo", "-n", "rm", "-f", p).Run()
 		}
 	}
 }
