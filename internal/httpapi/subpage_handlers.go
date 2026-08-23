@@ -1,0 +1,200 @@
+package httpapi
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"io"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/amirotin/telemt_panel/internal/auth"
+	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/subpage"
+	"github.com/amirotin/telemt_panel/internal/telemt"
+)
+
+// subpageRequestTimeout bounds the Telemt round trip for both the public
+// /sub/{token} view and the admin sublink endpoints.
+const subpageRequestTimeout = 10 * time.Second
+
+// handleSubpage implements GET /sub/{token}: the token-addressed, no-login
+// per-user subscription page. Every failure path (bad token, unknown
+// user, upstream error) below returns the uniform 404 text body — the
+// page must never distinguish "wrong token" from "right token, backend
+// hiccup" for an unauthenticated caller.
+func (s *Server) handleSubpage(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+
+	ctx, cancel := context.WithTimeout(r.Context(), subpageRequestTimeout)
+	defer cancel()
+
+	username, ok := s.subIndex.Lookup(ctx, token)
+	if !ok {
+		writeSubpageNotFound(w)
+		return
+	}
+
+	users, err := s.tc.Users(ctx)
+	if err != nil {
+		slog.Error("subpage: fetch users", "err", err)
+		writeSubpageNotFound(w)
+		return
+	}
+	u, ok := findUser(users, username)
+	if !ok {
+		writeSubpageNotFound(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex")
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.WriteHeader(http.StatusOK)
+	if err := subpage.RenderPage(w, u, r.Header.Get("Accept-Language"), time.Now()); err != nil {
+		slog.Error("subpage: render", "username", username, "err", err)
+	}
+}
+
+// writeSubpageNotFound writes the uniform, detail-free 404 the spec
+// requires for any invalid or unknown /sub/* token — no distinction
+// between "malformed", "unknown" and "revoked", and never a redirect back
+// to the panel (which would reveal the panel exists).
+func writeSubpageNotFound(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	io.WriteString(w, "not found")
+}
+
+// subpageRateLimited wraps next with the 30 req/min per-client-IP limit
+// on /sub/*, reusing the same trusted-proxy IP resolution as the rest of
+// the panel.
+func (s *Server) subpageRateLimited(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := auth.ClientIP(r, s.cfg.TrustedProxyPrefixes)
+		if !s.subLimiter.Allow(ip) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusTooManyRequests)
+			io.WriteString(w, "too many requests")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// sublinkResponse mirrors api/openapi.yaml schema Sublink.
+type sublinkResponse struct {
+	URL     string `json:"url"`
+	Enabled bool   `json:"enabled"`
+}
+
+// handleGetSublink implements GET /api/users/{username}/sublink.
+func (s *Server) handleGetSublink(w http.ResponseWriter, r *http.Request) {
+	s.writeSublink(w, r, false)
+}
+
+// handlePostSublink implements POST /api/users/{username}/sublink:
+// rotates the user's subpage nonce, immediately revoking the previous URL.
+func (s *Server) handlePostSublink(w http.ResponseWriter, r *http.Request) {
+	s.writeSublink(w, r, true)
+}
+
+// writeSublink is the shared body of both sublink endpoints; rotate
+// selects the POST (regenerate) behavior.
+func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate bool) {
+	username := r.PathValue("username")
+
+	ctx, cancel := context.WithTimeout(r.Context(), subpageRequestTimeout)
+	defer cancel()
+
+	users, err := s.tc.Users(ctx)
+	if err != nil {
+		slog.Error("sublink: fetch users", "err", err)
+		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", "could not reach telemt")
+		return
+	}
+	u, ok := findUser(users, username)
+	if !ok {
+		auth.WriteError(w, http.StatusNotFound, "not_found", "user not found")
+		return
+	}
+	secret, ok := subpage.ExtractSecret(u.Links)
+	if !ok {
+		auth.WriteError(w, http.StatusConflict, "sublink_unavailable", "user has no classic or secure link to derive a subpage link from")
+		return
+	}
+
+	if rotate {
+		nonce, err := randomNonce()
+		if err != nil {
+			slog.Error("sublink: generate nonce", "err", err)
+			auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not rotate link")
+			return
+		}
+		if err := s.st.SetSubpageNonce(username, nonce); err != nil {
+			slog.Error("sublink: set nonce", "username", username, "err", err)
+			auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not rotate link")
+			return
+		}
+		// Force an immediate index rebuild so the old token stops
+		// resolving right away, rather than waiting out the lazy
+		// refresh's throttle window. Best-effort: a failed refresh here
+		// just means the old token keeps working until the next lazy
+		// refresh catches up — not a reason to fail the rotation, since
+		// the nonce itself is already durably rotated in the store.
+		if err := s.subIndex.Refresh(ctx); err != nil {
+			slog.Warn("sublink: index refresh after rotate", "username", username, "err", err)
+		}
+		s.appendAudit("sublink.rotate", username, "")
+	}
+
+	path, err := s.subSvc.URL(username, secret)
+	if err != nil {
+		slog.Error("sublink: build url", "username", username, "err", err)
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not build link")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sublinkResponse{
+		URL:     absoluteURL(r, s.cfg, path),
+		Enabled: s.cfg.Subpage.Enabled,
+	})
+}
+
+// randomNonce generates the "16 random hex" subpage nonce: 16 random
+// bytes, hex-encoded (32 hex chars — the same shape as a Telemt user
+// secret, though the two are unrelated).
+func randomNonce() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+// findUser returns the user named username from users, if present.
+func findUser(users []telemt.UserInfo, username string) (telemt.UserInfo, bool) {
+	for _, u := range users {
+		if u.Username == username {
+			return u, true
+		}
+	}
+	return telemt.UserInfo{}, false
+}
+
+// absoluteURL builds the externally visible absolute URL for a
+// base-path-relative path, using the same trusted-proxy X-Forwarded-Host
+// handling as auth.CSRF's Origin check.
+func absoluteURL(r *http.Request, cfg *config.Config, path string) string {
+	scheme := "http"
+	if auth.RequestIsSecure(r, cfg.TrustedProxyPrefixes) {
+		scheme = "https"
+	}
+	host := r.Host
+	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" && auth.PeerTrusted(r, cfg.TrustedProxyPrefixes) {
+		host = fwd
+	}
+	return scheme + "://" + host + path
+}

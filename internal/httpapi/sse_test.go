@@ -58,6 +58,7 @@ func newSSETestServer(t *testing.T, tc *telemt.Client, hubCfg hub.Config) (*Serv
 	t.Cleanup(hb.Close)
 	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)
+	t.Cleanup(srv.subLimiter.Stop)
 
 	h := srv.Handler()
 	_, cookie := login(t, h, "admin", testPassword)

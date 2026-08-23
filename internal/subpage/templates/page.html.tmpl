@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.S.Title}} — {{.Username}}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 640px; margin: 0 auto; padding: 1.5rem 1rem 3rem;
+    line-height: 1.5;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; word-break: break-all; }
+  h2 { font-size: 1.1rem; margin-top: 2rem; }
+  h3 { font-size: 1rem; }
+  .status { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.85rem; }
+  .status-active { background: #d5f5e3; color: #146c43; }
+  .status-disabled, .status-expired, .status-quota_exhausted { background: #fadbd8; color: #a12622; }
+  .bar { background: #e5e5e5; border-radius: 999px; height: 0.6rem; overflow: hidden; margin: 0.5rem 0; }
+  .bar-fill { background: #146c43; height: 100%; }
+  .group { border: 1px solid #d9d9d9; border-radius: 0.5rem; padding: 1rem; margin: 0.75rem 0; }
+  .variant + .variant { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #d9d9d9; }
+  .domain { font-weight: 600; margin: 0 0 0.5rem; }
+  .btn {
+    display: inline-block; padding: 0.5rem 1rem; margin: 0.25rem 0.5rem 0.25rem 0;
+    border-radius: 0.4rem; text-decoration: none; font-size: 0.95rem;
+  }
+  .btn-primary { background: #2481cc; color: #fff; }
+  .btn-secondary { border: 1px solid #2481cc; color: #2481cc; }
+  .qr { display: block; margin: 0.75rem 0; width: 160px; height: 160px; }
+  dl.fields { margin: 0.5rem 0; }
+  dl.fields dt { font-size: 0.8rem; opacity: 0.7; margin-top: 0.5rem; }
+  dl.fields dd { margin: 0.1rem 0; display: flex; align-items: center; gap: 0.5rem; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+  button.copy { font-size: 0.75rem; padding: 0.1rem 0.5rem; cursor: pointer; }
+  details.instructions { margin-top: 1rem; }
+  details.instructions summary { cursor: pointer; font-weight: 600; }
+  details.instructions p { margin: 0.5rem 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>{{.Username}}</h1>
+    <p><span class="status status-{{.Status.Key}}">{{.Status.Label}}</span></p>
+  </header>
+
+  {{if .Quota}}
+  <section class="quota">
+    <h2>{{$.S.QuotaHeading}}</h2>
+    <div class="bar"><div class="bar-fill" style="width:{{.Quota.Percent}}%"></div></div>
+    <p>{{.Quota.UsedHuman}} {{$.S.QuotaUsedOf}} {{.Quota.TotalHuman}}</p>
+  </section>
+  {{end}}
+
+  {{if .Expiry}}
+  <section class="expiry">
+    <p>{{$.S.ExpiryLabel}}: {{.Expiry.Formatted}}</p>
+  </section>
+  {{end}}
+
+  <section class="connect">
+    <h2>{{.S.ConnectHeading}}</h2>
+    {{if not .Groups}}
+    <p>{{.S.NoLinks}}</p>
+    {{end}}
+    {{range .Groups}}
+    <div class="group">
+      <h3>{{.Title}}</h3>
+      {{range .Variants}}
+      <div class="variant">
+        {{if .Domain}}<p class="domain">{{.Domain}}</p>{{end}}
+        <a class="btn btn-primary" href="{{.TgURL}}">{{$.S.OpenInTelegram}}</a>
+        <a class="btn btn-secondary" href="{{.TMeURL}}">{{$.S.OpenViaTMe}}</a>
+        <img class="qr" src="{{.QRDataURI}}" alt="QR" width="256" height="256">
+        <dl class="fields">
+          <dt>{{$.S.FieldServer}}</dt>
+          <dd><code>{{.Server}}</code><button type="button" class="copy" data-copy>{{$.S.CopyButton}}</button></dd>
+          <dt>{{$.S.FieldPort}}</dt>
+          <dd><code>{{.Port}}</code><button type="button" class="copy" data-copy>{{$.S.CopyButton}}</button></dd>
+          <dt>{{$.S.FieldSecret}}</dt>
+          <dd><code>{{.Secret}}</code><button type="button" class="copy" data-copy>{{$.S.CopyButton}}</button></dd>
+        </dl>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  </section>
+
+  <details class="instructions"{{if eq .Lang "ru"}} open{{end}}>
+    <summary>{{.InstructionsRU.Heading}}</summary>
+    <p><strong>iOS:</strong> {{.InstructionsRU.IOS}}</p>
+    <p><strong>Android:</strong> {{.InstructionsRU.Android}}</p>
+    <p><strong>Desktop:</strong> {{.InstructionsRU.Desktop}}</p>
+  </details>
+  <details class="instructions"{{if eq .Lang "en"}} open{{end}}>
+    <summary>{{.InstructionsEN.Heading}}</summary>
+    <p><strong>iOS:</strong> {{.InstructionsEN.IOS}}</p>
+    <p><strong>Android:</strong> {{.InstructionsEN.Android}}</p>
+    <p><strong>Desktop:</strong> {{.InstructionsEN.Desktop}}</p>
+  </details>
+</main>
+<script>
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  var code = btn.previousElementSibling;
+  if (!code || !navigator.clipboard) return;
+  navigator.clipboard.writeText(code.textContent).then(function () {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function () { btn.textContent = prev; }, 1200);
+  });
+});
+</script>
+</body>
+</html>

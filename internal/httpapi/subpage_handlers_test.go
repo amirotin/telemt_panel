@@ -1,0 +1,272 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/amirotin/telemt_panel/internal/auth"
+	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/hub"
+	"github.com/amirotin/telemt_panel/internal/store"
+	"github.com/amirotin/telemt_panel/internal/telemt"
+)
+
+const testUserSecret = "0123456789abcdef0123456789abcdef"
+
+func fixtureUsers() []telemt.UserInfo {
+	return []telemt.UserInfo{
+		{
+			Username: "alice",
+			Enabled:  true,
+			Links: telemt.UserLinks{
+				Classic: []string{"tg://proxy?server=1.2.3.4&port=443&secret=" + testUserSecret},
+			},
+		},
+	}
+}
+
+// newSubpageTestServer builds a logged-in Server with the subpage module
+// enabled and one fixture user ("alice") served by a fake Telemt.
+func newSubpageTestServer(t *testing.T, enabled bool) (*Server, *http.Cookie) {
+	t.Helper()
+	hash, err := auth.HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	cfg := &config.Config{
+		Auth:    config.AuthConfig{Username: "admin", PasswordHash: hash},
+		Subpage: config.SubpageConfig{Enabled: enabled, Secret: "panel-secret"},
+	}
+	st, err := store.NewMemory("")
+	if err != nil {
+		t.Fatalf("store.NewMemory: %v", err)
+	}
+	tc := newFakeTelemtHTTP(t, fixtureUsers())
+	hb := hub.New(hub.Config{}, tc)
+	t.Cleanup(hb.Close)
+
+	srv := New(cfg, tc, st, hb, "test")
+	t.Cleanup(srv.limiter.Stop)
+	t.Cleanup(srv.subLimiter.Stop)
+
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+	if cookie == nil {
+		t.Fatal("expected a successful login")
+	}
+	return srv, cookie
+}
+
+func getSublink(t *testing.T, h http.Handler, cookie *http.Cookie) sublinkResponse {
+	t.Helper()
+	r := httptest.NewRequest("GET", "/api/users/alice/sublink", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get sublink status = %d, body = %s", w.Code, w.Body)
+	}
+	var out sublinkResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode sublink response: %v", err)
+	}
+	return out
+}
+
+// pathOf strips scheme+host from an absolute URL, returning the
+// request-target path+query to hit against the test handler directly.
+func pathOf(t *testing.T, absoluteURL string) string {
+	t.Helper()
+	u, err := url.Parse(absoluteURL)
+	if err != nil {
+		t.Fatalf("parse url %q: %v", absoluteURL, err)
+	}
+	return u.RequestURI()
+}
+
+func TestHandleGetSublinkRequiresSession(t *testing.T) {
+	srv, _ := newSubpageTestServer(t, true)
+	h := srv.Handler()
+
+	r := httptest.NewRequest("GET", "/api/users/alice/sublink", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHandleGetSublinkReturnsAbsoluteURL(t *testing.T) {
+	srv, cookie := newSubpageTestServer(t, true)
+	h := srv.Handler()
+
+	link := getSublink(t, h, cookie)
+	if !link.Enabled {
+		t.Error("expected enabled=true when subpage.enabled is true")
+	}
+	if !strings.HasPrefix(link.URL, "http://") || !strings.Contains(link.URL, "/sub/") {
+		t.Fatalf("url = %q, want an absolute http://.../sub/<token> URL", link.URL)
+	}
+}
+
+func TestHandleGetSublinkUnknownUser(t *testing.T) {
+	srv, cookie := newSubpageTestServer(t, true)
+	h := srv.Handler()
+
+	r := httptest.NewRequest("GET", "/api/users/nobody/sublink", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+func TestHandleSubpageServesPageForValidToken(t *testing.T) {
+	srv, cookie := newSubpageTestServer(t, true)
+	h := srv.Handler()
+
+	link := getSublink(t, h, cookie)
+
+	r := httptest.NewRequest("GET", pathOf(t, link.URL), nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", w.Code, w.Body)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	if got := w.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
+	}
+	if got := w.Header().Get("X-Robots-Tag"); got != "noindex" {
+		t.Errorf("X-Robots-Tag = %q, want noindex", got)
+	}
+	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Errorf("Cache-Control = %q, want private, no-store", got)
+	}
+	if !strings.Contains(w.Body.String(), "alice") {
+		t.Error("expected the page to mention the username")
+	}
+	if !strings.Contains(w.Body.String(), testUserSecret) {
+		t.Error("expected the page to contain the raw secret field")
+	}
+}
+
+func TestHandleSubpageUnknownTokenIsUniform404(t *testing.T) {
+	srv, _ := newSubpageTestServer(t, true)
+	h := srv.Handler()
+
+	r := httptest.NewRequest("GET", "/sub/does-not-exist", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "not found" {
+		t.Errorf("body = %q, want %q", body, "not found")
+	}
+	if loc := w.Header().Get("Location"); loc != "" {
+		t.Errorf("unexpected redirect to %q", loc)
+	}
+}
+
+func TestHandleSubpageRouteNotRegisteredWhenDisabled(t *testing.T) {
+	srv, _ := newSubpageTestServer(t, false)
+	h := srv.Handler()
+
+	r := httptest.NewRequest("GET", "/sub/anything", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+func TestSublinkRotateInvalidatesOldToken(t *testing.T) {
+	srv, cookie := newSubpageTestServer(t, true)
+	h := srv.Handler()
+
+	before := getSublink(t, h, cookie)
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, mutating("POST", "/api/users/alice/sublink", cookie))
+	if w.Code != http.StatusOK {
+		t.Fatalf("rotate status = %d, body = %s", w.Code, w.Body)
+	}
+	var after sublinkResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &after); err != nil {
+		t.Fatalf("decode rotate response: %v", err)
+	}
+	if after.URL == before.URL {
+		t.Fatal("expected the URL to change after rotation")
+	}
+
+	// The old token now 404s.
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", pathOf(t, before.URL), nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("old token status = %d, want 404", w.Code)
+	}
+
+	// The new token works immediately (no waiting for the lazy refresh
+	// window), and the audit log recorded the rotation.
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", pathOf(t, after.URL), nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("new token status = %d, want 200", w.Code)
+	}
+
+	entries, err := srv.st.ListAudit(1)
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Action != "sublink.rotate" || entries[0].Subject != "alice" {
+		t.Fatalf("audit entries = %+v, want one sublink.rotate for alice", entries)
+	}
+}
+
+func TestSubpageRateLimited(t *testing.T) {
+	srv, _ := newSubpageTestServer(t, true)
+	h := srv.Handler()
+
+	for i := 0; i < 30; i++ {
+		r := httptest.NewRequest("GET", "/sub/some-token", nil)
+		r.RemoteAddr = "203.0.113.7:1234"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code == http.StatusTooManyRequests {
+			t.Fatalf("request %d rate limited early", i)
+		}
+	}
+
+	r := httptest.NewRequest("GET", "/sub/some-token", nil)
+	r.RemoteAddr = "203.0.113.7:1234"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", w.Code)
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "too many requests" {
+		t.Errorf("body = %q, want %q", body, "too many requests")
+	}
+
+	// A different client IP is unaffected.
+	r = httptest.NewRequest("GET", "/sub/some-token", nil)
+	r.RemoteAddr = "198.51.100.9:1234"
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code == http.StatusTooManyRequests {
+		t.Fatal("a different client IP was rate limited by another IP's usage")
+	}
+}

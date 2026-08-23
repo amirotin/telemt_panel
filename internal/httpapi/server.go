@@ -15,22 +15,36 @@ import (
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
+	"github.com/amirotin/telemt_panel/internal/subpage"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
 
 // Server holds the panel's HTTP dependencies.
 type Server struct {
-	cfg     *config.Config
-	tc      *telemt.Client
-	st      store.Store
-	hub     *hub.Hub
-	limiter *auth.Limiter
-	version string
+	cfg        *config.Config
+	tc         *telemt.Client
+	st         store.Store
+	hub        *hub.Hub
+	limiter    *auth.Limiter
+	subSvc     *subpage.Service
+	subIndex   *subpage.Index
+	subLimiter *subpage.RateLimiter
+	version    string
 }
 
 // New builds the handler tree.
 func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, version string) *Server {
-	return &Server{cfg: cfg, tc: tc, st: st, hub: hb, limiter: auth.NewLimiter(), version: version}
+	return &Server{
+		cfg:        cfg,
+		tc:         tc,
+		st:         st,
+		hub:        hb,
+		limiter:    auth.NewLimiter(),
+		subSvc:     subpage.NewService(cfg.Subpage.Secret, cfg.BasePath, st),
+		subIndex:   subpage.NewIndex(cfg.Subpage.Secret, tc, st),
+		subLimiter: subpage.NewRateLimiter(),
+		version:    version,
+	}
 }
 
 // chain wraps h with mws, applied outermost-first (mws[0] runs first).
@@ -72,6 +86,17 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/events", protect(s.handleEvents))
 	mux.Handle("GET /api/snapshot", protect(s.handleSnapshot))
 
+	mux.Handle("GET /api/users/{username}/sublink", protect(s.handleGetSublink))
+	mux.Handle("POST /api/users/{username}/sublink", protect(s.handlePostSublink))
+
+	// subpage.enabled=false removes the route entirely rather than
+	// registering it and 404ing — an operator that disabled the module
+	// gets a plain unrouted path, not a page that pretends to check
+	// tokens.
+	if s.cfg.Subpage.Enabled {
+		mux.Handle("GET /sub/{token}", s.subpageRateLimited(s.handleSubpage))
+	}
+
 	return mux
 }
 
@@ -100,6 +125,7 @@ func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
 // Run serves until ctx is canceled, then drains connections.
 func (s *Server) Run(ctx context.Context) error {
 	defer s.limiter.Stop()
+	defer s.subLimiter.Stop()
 	defer s.hub.Close()
 
 	srv := &http.Server{

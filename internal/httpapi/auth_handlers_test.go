@@ -40,6 +40,7 @@ func newTestServer(t *testing.T) *Server {
 	t.Cleanup(hb.Close)
 	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)
+	t.Cleanup(srv.subLimiter.Stop)
 	return srv
 }
 
