@@ -9,6 +9,7 @@ import (
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
@@ -35,7 +36,9 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
 	tc := telemt.New("http://127.0.0.1:1", "")
-	srv := New(cfg, tc, st, "test")
+	hb := hub.New(hub.Config{}, tc)
+	t.Cleanup(hb.Close)
+	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)
 	return srv
 }

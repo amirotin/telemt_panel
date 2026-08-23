@@ -13,6 +13,7 @@ import (
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
@@ -22,13 +23,14 @@ type Server struct {
 	cfg     *config.Config
 	tc      *telemt.Client
 	st      store.Store
+	hub     *hub.Hub
 	limiter *auth.Limiter
 	version string
 }
 
 // New builds the handler tree.
-func New(cfg *config.Config, tc *telemt.Client, st store.Store, version string) *Server {
-	return &Server{cfg: cfg, tc: tc, st: st, limiter: auth.NewLimiter(), version: version}
+func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, version string) *Server {
+	return &Server{cfg: cfg, tc: tc, st: st, hub: hb, limiter: auth.NewLimiter(), version: version}
 }
 
 // chain wraps h with mws, applied outermost-first (mws[0] runs first).
@@ -67,6 +69,9 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /api/telemt/info", protect(s.handleTelemtInfo))
 
+	mux.Handle("GET /api/events", protect(s.handleEvents))
+	mux.Handle("GET /api/snapshot", protect(s.handleSnapshot))
+
 	return mux
 }
 
@@ -95,6 +100,7 @@ func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
 // Run serves until ctx is canceled, then drains connections.
 func (s *Server) Run(ctx context.Context) error {
 	defer s.limiter.Stop()
+	defer s.hub.Close()
 
 	srv := &http.Server{
 		Addr:         s.cfg.Listen,

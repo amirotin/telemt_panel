@@ -14,6 +14,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/httpapi"
+	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 	"golang.org/x/term"
@@ -59,7 +60,8 @@ func main() {
 	defer st.Close()
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
-	srv := httpapi.New(cfg, tc, st, version)
+	hb := hub.New(hub.Config{}, tc)
+	srv := httpapi.New(cfg, tc, st, hb, version)
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
