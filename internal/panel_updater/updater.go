@@ -365,6 +365,17 @@ func (u *Updater) applyAsync(version string) {
 	// Restart service (uses sudo if needed)
 	u.setStatus(PhaseRestarting, fmt.Sprintf("running: systemctl restart %s", u.serviceName))
 	if err := RestartService(u.serviceName); err != nil {
+		// The pre-restart Done status file is now a lie: without this,
+		// the next panel start would report a successful update that was
+		// actually rolled back and delete the recovered backup.
+		u.mu.Lock()
+		failedStatus := Status{
+			Phase:   PhaseError,
+			Message: fmt.Sprintf("restart failed, rolled back: %s", err),
+			Log:     u.status.Log,
+		}
+		u.mu.Unlock()
+		u.saveStatusToFile(failedStatus)
 		u.appendLog(fmt.Sprintf("restart failed: %s, rolling back", err))
 		if backupPath != "" {
 			if rbErr := RestoreBackup(backupPath, u.binaryPath); rbErr != nil {
