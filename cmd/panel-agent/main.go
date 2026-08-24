@@ -4,9 +4,10 @@
 // rewriting a config file) when the panel itself runs unprivileged (spec
 // 01-host-matrix.md §Привилегии). It never executes arbitrary commands:
 // every request is one of internal/host's fixed Op kinds, and every
-// argument is checked against this process's own --allow-dest/
-// --allow-service flags — the agent's allow-lists are its final
-// authority regardless of what the client sends.
+// argument is checked against this process's own --allow-binary-dest/
+// --allow-config-path/--staging-prefix/--allow-service flags — the
+// agent's allow-lists are its final authority regardless of what the
+// client sends.
 package main
 
 import (
@@ -19,7 +20,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -32,10 +35,18 @@ import (
 // never reads).
 const connDeadline = 30 * time.Second
 
+// staleSocketProbeTimeout bounds the connect-and-close probe run before
+// removing an existing socket file, to tell a genuinely stale file (no
+// one listening) from a live prior instance.
+const staleSocketProbeTimeout = 500 * time.Millisecond
+
 func main() {
 	socketPath := flag.String("socket", host.DefaultAgentSocket, "unix socket to listen on")
-	var allowDest, allowService stringSliceFlag
-	flag.Var(&allowDest, "allow-dest", "allowed destination/backup/config path (repeatable)")
+	socketGroup := flag.String("socket-group", "", "group allowed to connect to the socket, for the unprivileged-panel profile (see run's doc comment); unset keeps the socket root-only")
+	var allowBinaryDest, allowConfigPath, allowService stringSliceFlag
+	flag.Var(&allowBinaryDest, "allow-binary-dest", "allowed install-binary/restore-binary dest or backup path (repeatable)")
+	flag.Var(&allowConfigPath, "allow-config-path", "allowed write-config path (repeatable)")
+	stagingPrefix := flag.String("staging-prefix", "", "directory prefix install-binary's staging source must fall under")
 	flag.Var(&allowService, "allow-service", "allowed service/container name (repeatable)")
 	flag.Parse()
 
@@ -44,7 +55,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, *socketPath, []string(allowDest), []string(allowService), logger); err != nil {
+	allow := host.AllowLists{
+		BinaryPaths:   []string(allowBinaryDest),
+		ConfigPaths:   []string(allowConfigPath),
+		StagingPrefix: *stagingPrefix,
+		Services:      []string(allowService),
+	}
+	if err := run(ctx, *socketPath, *socketGroup, allow, logger); err != nil {
 		logger.Error("panel-agent exiting", "error", err)
 		os.Exit(1)
 	}
@@ -65,16 +82,39 @@ func (s *stringSliceFlag) Set(v string) error {
 // canceled, then waits for in-flight connections to finish before
 // returning — the graceful-shutdown half of the brief's SIGTERM
 // requirement (main wires SIGTERM into ctx via signal.NotifyContext).
-func run(ctx context.Context, socketPath string, allowDest, allowService []string, logger *slog.Logger) error {
+//
+// Two deployment profiles, selected by whether socketGroup is set:
+//   - root-only (default, socketGroup == ""): socket dir 0700, socket
+//     file 0600, both owned by whatever user runs this process (normally
+//     root) — only that user can dial in, which fits a panel that also
+//     runs as root (direct mode) or doesn't need the agent at all.
+//   - unprivileged-panel (socketGroup set): socket dir 0750, socket file
+//     0660, both group-owned by socketGroup — an unprivileged panel
+//     process whose user is a member of that group can dial in without
+//     running as root itself. install.sh provisioning the group and
+//     panel-user membership is out of scope here; this only makes the
+//     agent capable of that profile once such provisioning exists.
+func run(ctx context.Context, socketPath, socketGroup string, allow host.AllowLists, logger *slog.Logger) error {
+	dirMode, sockMode := os.FileMode(0o700), os.FileMode(0o600)
+	var gid int
+	if socketGroup != "" {
+		var err error
+		gid, err = lookupGroupID(socketGroup)
+		if err != nil {
+			return fmt.Errorf("resolve --socket-group %q: %w", socketGroup, err)
+		}
+		dirMode, sockMode = 0o750, 0o660
+	}
+
+	if err := refuseIfAgentAlreadyLive(socketPath); err != nil {
+		return err
+	}
 	if err := os.Remove(socketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove stale socket: %w", err)
 	}
 	dir := filepath.Dir(socketPath)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return fmt.Errorf("create socket dir %q: %w", dir, err)
-	}
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return fmt.Errorf("chmod socket dir %q: %w", dir, err)
 	}
 
 	ln, err := net.Listen("unix", socketPath)
@@ -82,16 +122,28 @@ func run(ctx context.Context, socketPath string, allowDest, allowService []strin
 		return fmt.Errorf("listen on %q: %w", socketPath, err)
 	}
 	defer ln.Close()
-	if err := os.Chmod(socketPath, 0o600); err != nil {
+
+	if socketGroup != "" {
+		if err := os.Chown(dir, -1, gid); err != nil {
+			return fmt.Errorf("chown socket dir %q to group %q: %w", dir, socketGroup, err)
+		}
+		if err := os.Chown(socketPath, -1, gid); err != nil {
+			return fmt.Errorf("chown socket %q to group %q: %w", socketPath, socketGroup, err)
+		}
+	}
+	if err := os.Chmod(dir, dirMode); err != nil {
+		return fmt.Errorf("chmod socket dir %q: %w", dir, err)
+	}
+	if err := os.Chmod(socketPath, sockMode); err != nil {
 		return fmt.Errorf("chmod socket %q: %w", socketPath, err)
 	}
 
 	svcMgr := host.NewServiceManager("auto", host.DefaultProbe(), host.OSCmdRunner)
 	logSrc := host.NewLogSource("auto", "", svcMgr.Kind(), host.DefaultProbe(), host.OSCmdRunner, host.OSProcessStarter, host.DefaultLogPollInterval)
-	allow := host.AllowLists{Paths: allowDest, Services: allowService}
 
 	logger.Info("listening", "socket", socketPath, "service_manager", svcMgr.Kind(), "log_source", logSrc.Kind(),
-		"allow_dest", len(allowDest), "allow_service", len(allowService))
+		"allow_binary_dest", len(allow.BinaryPaths), "allow_config_path", len(allow.ConfigPaths),
+		"staging_prefix", allow.StagingPrefix, "allow_service", len(allow.Services), "socket_group", socketGroup)
 
 	go func() {
 		<-ctx.Done()
@@ -116,6 +168,37 @@ func run(ctx context.Context, socketPath string, allowDest, allowService []strin
 	}
 	wg.Wait()
 	return nil
+}
+
+// refuseIfAgentAlreadyLive probe-dials socketPath with a short timeout:
+// a successful connect means a prior instance is actually listening, in
+// which case start-up must refuse rather than remove that live socket
+// out from under it (removing it here would silently orphan the running
+// instance — its listener stays open on the deleted inode, but nothing
+// can dial the now-missing path to reach it). A failed dial (no such
+// file, or a file with nothing listening — the ECONNREFUSED case of a
+// genuinely stale socket left by an unclean shutdown) is not an error:
+// the caller proceeds to remove and recreate it.
+func refuseIfAgentAlreadyLive(socketPath string) error {
+	conn, err := net.DialTimeout("unix", socketPath, staleSocketProbeTimeout)
+	if err != nil {
+		return nil
+	}
+	conn.Close()
+	return fmt.Errorf("agent already running at %q", socketPath)
+}
+
+// lookupGroupID resolves a group name to its numeric GID.
+func lookupGroupID(name string) (int, error) {
+	g, err := user.LookupGroup(name)
+	if err != nil {
+		return 0, err
+	}
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return 0, fmt.Errorf("group %q has a non-numeric gid %q", name, g.Gid)
+	}
+	return gid, nil
 }
 
 // handleConn serves exactly one request/reply round trip: read one
