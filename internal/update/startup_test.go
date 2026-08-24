@@ -2,6 +2,7 @@ package update
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -242,5 +243,161 @@ func TestReconcileStartup_ContinuesPastAPerTargetError(t *testing.T) {
 	panelEntries, _ := st.ListUpdateJournal(TargetPanel, 20)
 	if len(panelEntries) != 2 || panelEntries[0].Phase != PhaseDone {
 		t.Errorf("panel journal = %+v, want a trailing done entry despite telemt's store error", panelEntries)
+	}
+}
+
+// TestReconcileStartupAcrossProcessRestart is the process-boundary
+// regression the audit called out (finding P1.1): a journal entry written
+// by one *Memory instance backed by a mirror file must still be there,
+// intact, for ReconcileStartup running against a brand new *Memory opened
+// on the same path — the exact sequence a real self-update restart goes
+// through (old process journals + Close()s, new process NewMemory()s the
+// same data_dir and calls ReconcileStartup before anything else). Without
+// the mirror covering the journal, every one of these subtests would see
+// an empty journal and silently no-op.
+func TestReconcileStartupAcrossProcessRestart(t *testing.T) {
+	t.Run("panel restarting + matching running version reconciles to done", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "mirror.json")
+		st1, err := store.NewMemory(path)
+		if err != nil {
+			t.Fatalf("NewMemory: %v", err)
+		}
+		if err := st1.AppendUpdateJournal(store.UpdateJournalEntry{
+			Target: TargetPanel, RunID: "r1", Phase: PhaseRestarting, VersionFrom: "v1.0.0", VersionTo: "v2.0.0", TS: time.Now(),
+		}); err != nil {
+			t.Fatalf("seed AppendUpdateJournal: %v", err)
+		}
+		if err := st1.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+
+		st2, err := store.NewMemory(path) // the new process, after the restart
+		if err != nil {
+			t.Fatalf("NewMemory (reopen): %v", err)
+		}
+		defer st2.Close()
+		if err := ReconcileStartup(st2, "v2.0.0"); err != nil {
+			t.Fatalf("ReconcileStartup: %v", err)
+		}
+
+		entries, err := st2.ListUpdateJournal(TargetPanel, 20)
+		if err != nil {
+			t.Fatalf("ListUpdateJournal: %v", err)
+		}
+		if len(entries) != 2 || entries[0].Phase != PhaseDone {
+			t.Fatalf("panel journal after reconcile = %+v, want it to end in done", entries)
+		}
+	})
+
+	t.Run("panel restarting + mismatched running version reconciles to rolled_back", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "mirror.json")
+		st1, err := store.NewMemory(path)
+		if err != nil {
+			t.Fatalf("NewMemory: %v", err)
+		}
+		if err := st1.AppendUpdateJournal(store.UpdateJournalEntry{
+			Target: TargetPanel, RunID: "r1", Phase: PhaseRestarting, VersionFrom: "v1.0.0", VersionTo: "v2.0.0", TS: time.Now(),
+		}); err != nil {
+			t.Fatalf("seed AppendUpdateJournal: %v", err)
+		}
+		if err := st1.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+
+		st2, err := store.NewMemory(path) // came back running the old binary
+		if err != nil {
+			t.Fatalf("NewMemory (reopen): %v", err)
+		}
+		defer st2.Close()
+		if err := ReconcileStartup(st2, "v1.0.0"); err != nil {
+			t.Fatalf("ReconcileStartup: %v", err)
+		}
+
+		entries, err := st2.ListUpdateJournal(TargetPanel, 20)
+		if err != nil {
+			t.Fatalf("ListUpdateJournal: %v", err)
+		}
+		if len(entries) != 2 || entries[0].Phase != PhaseRolledBack {
+			t.Fatalf("panel journal after reconcile = %+v, want it to end in rolled_back", entries)
+		}
+	})
+
+	t.Run("telemt dangling installing reconciles to failed", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "mirror.json")
+		st1, err := store.NewMemory(path)
+		if err != nil {
+			t.Fatalf("NewMemory: %v", err)
+		}
+		if err := st1.AppendUpdateJournal(store.UpdateJournalEntry{
+			Target: TargetTelemt, RunID: "r1", Phase: PhaseInstalling, VersionFrom: "v1.0.0", VersionTo: "v2.0.0", TS: time.Now(),
+		}); err != nil {
+			t.Fatalf("seed AppendUpdateJournal: %v", err)
+		}
+		if err := st1.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+
+		st2, err := store.NewMemory(path) // the panel process restarted (crash, not self-update)
+		if err != nil {
+			t.Fatalf("NewMemory (reopen): %v", err)
+		}
+		defer st2.Close()
+		if err := ReconcileStartup(st2, "v1.0.0"); err != nil {
+			t.Fatalf("ReconcileStartup: %v", err)
+		}
+
+		entries, err := st2.ListUpdateJournal(TargetTelemt, 20)
+		if err != nil {
+			t.Fatalf("ListUpdateJournal: %v", err)
+		}
+		if len(entries) != 2 || entries[0].Phase != PhaseFailed {
+			t.Fatalf("telemt journal after reconcile = %+v, want it to end in failed", entries)
+		}
+	})
+}
+
+// TestUpdateJournalHistorySurvivesPlainRestart checks the other half of the
+// audit finding: not just the pending-confirmation handoff, but ordinary
+// update history (terminal entries a completed run already journaled)
+// must still be readable after a plain restart with no reconciliation
+// needed at all.
+func TestUpdateJournalHistorySurvivesPlainRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mirror.json")
+	st1, err := store.NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
+	}
+	ts := time.Now()
+	seed := []store.UpdateJournalEntry{
+		{Target: TargetTelemt, RunID: "r1", Phase: PhaseDone, VersionFrom: "v1.0.0", VersionTo: "v1.1.0", TS: ts},
+		{Target: TargetTelemt, RunID: "r2", Phase: PhaseFailed, VersionFrom: "v1.1.0", VersionTo: "v1.2.0", TS: ts.Add(time.Minute)},
+	}
+	for _, e := range seed {
+		if err := st1.AppendUpdateJournal(e); err != nil {
+			t.Fatalf("seed AppendUpdateJournal: %v", err)
+		}
+	}
+	if err := st1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	st2, err := store.NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory (reopen): %v", err)
+	}
+	defer st2.Close()
+
+	// No dangling non-terminal entry, so ReconcileStartup must leave the
+	// history untouched.
+	if err := ReconcileStartup(st2, "v1.2.0"); err != nil {
+		t.Fatalf("ReconcileStartup: %v", err)
+	}
+
+	entries, err := st2.ListUpdateJournal(TargetTelemt, 20)
+	if err != nil {
+		t.Fatalf("ListUpdateJournal: %v", err)
+	}
+	if len(entries) != 2 || entries[0].RunID != "r2" || entries[1].RunID != "r1" {
+		t.Fatalf("ListUpdateJournal after reopen = %+v, want [r2, r1] newest-first", entries)
 	}
 }

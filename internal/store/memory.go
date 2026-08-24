@@ -23,9 +23,10 @@ const (
 const touchMirrorDebounce = 30 * time.Second
 
 // Memory is an in-memory Store for the router profile: no flash writes,
-// bounded by ring buffers. Sessions, subpage nonces and settings can
-// optionally be mirrored to a JSON file so they survive a process restart;
-// audit, update-journal and metric history are process-lifetime only.
+// bounded by ring buffers. Sessions, subpage nonces, settings and the
+// update journal can optionally be mirrored to a JSON file so they survive
+// a process restart; audit and metric history remain process-lifetime
+// only.
 type Memory struct {
 	mu sync.Mutex
 
@@ -51,18 +52,20 @@ type Memory struct {
 }
 
 // mirrorFile is the on-disk shape of the mirrored subset of state
-// (sessions, subpage nonces and settings only).
+// (sessions, subpage nonces, settings and the update journal).
 type mirrorFile struct {
-	Sessions      map[string]Session `json:"sessions"`
-	SubpageNonces map[string]string  `json:"subpage_nonces"`
-	Settings      map[string]string  `json:"settings"`
+	Sessions      map[string]Session              `json:"sessions"`
+	SubpageNonces map[string]string               `json:"subpage_nonces"`
+	Settings      map[string]string               `json:"settings"`
+	Journal       map[string][]UpdateJournalEntry `json:"journal"`
 }
 
 // NewMemory creates an in-memory Store. If mirrorPath is non-empty,
-// sessions, subpage nonces and settings are loaded from it now and
-// persisted back to it on every subsequent mutation of those families
-// (touches are debounced, see touchMirrorDebounce). A missing or corrupt
-// mirror file is logged and treated as empty — it never fails startup.
+// sessions, subpage nonces, settings and the update journal are loaded
+// from it now and persisted back to it on every subsequent mutation of
+// those families (touches are debounced, see touchMirrorDebounce). A
+// missing or corrupt mirror file is logged and treated as empty — it
+// never fails startup.
 func NewMemory(mirrorPath string) (*Memory, error) {
 	m := &Memory{
 		sessions:       make(map[string]Session),
@@ -104,6 +107,19 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 	if mf.Settings != nil {
 		m.settings = mf.Settings
 	}
+	if mf.Journal != nil {
+		// Defensive ring-cap truncation: the mirrored file is trusted
+		// less than an append made through this process, so a
+		// hand-edited or foreign-written file holding more than
+		// journalCap entries for a target must not defeat the ring
+		// bound going forward.
+		for target, entries := range mf.Journal {
+			if len(entries) > journalCap {
+				mf.Journal[target] = entries[len(entries)-journalCap:]
+			}
+		}
+		m.journal = mf.Journal
+	}
 	return m, nil
 }
 
@@ -120,6 +136,7 @@ func (m *Memory) saveMirrorLocked() {
 		Sessions:      m.sessions,
 		SubpageNonces: m.subpageNonces,
 		Settings:      m.settings,
+		Journal:       m.journal,
 	}
 	data, err := json.Marshal(mf)
 	if err != nil {
@@ -270,7 +287,12 @@ func (m *Memory) ListAudit(limit int) ([]AuditEntry, error) {
 }
 
 // AppendUpdateJournal records one update-journal entry for e.Target,
-// evicting the oldest for that target if its ring is full.
+// evicting the oldest for that target if its ring is full. Unlike
+// TouchSession, this writes through to the mirror immediately rather than
+// via the debounce timer: update runs are rare events (not a hot path like
+// session touches), so there is no flash-wear concern, and durability
+// matters more here — this is the exact state ReconcileStartup depends on
+// after a restart.
 func (m *Memory) AppendUpdateJournal(e UpdateJournalEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -279,6 +301,7 @@ func (m *Memory) AppendUpdateJournal(e UpdateJournalEntry) error {
 		entries = entries[len(entries)-journalCap:]
 	}
 	m.journal[e.Target] = entries
+	m.saveMirrorLocked()
 	return nil
 }
 

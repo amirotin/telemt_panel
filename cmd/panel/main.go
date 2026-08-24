@@ -101,16 +101,31 @@ func newStore(cfg *config.Config) (store.Store, error) {
 // directory that can't be created (read-only filesystem, e.g. a router) is
 // not fatal — it disables the mirror the same way, after a warning, so the
 // store doesn't then also warn on every single write for the rest of the
-// process's life.
+// process's life. Either way, a "" result also gets the one-time
+// self-update caveat warning below — without a mirror, ReconcileStartup
+// has nothing to reconcile after a self-update restart (see its doc
+// comment).
 func resolveMirrorPath(dataDir string) string {
 	if dataDir == "" {
+		warnMirrorDisabled()
 		return ""
 	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		slog.Warn("state mirror disabled: cannot create data_dir", "path", dataDir, "error", err)
+		warnMirrorDisabled()
 		return ""
 	}
 	return filepath.Join(dataDir, mirrorStateFile)
+}
+
+// warnMirrorDisabled logs the one-time boot caveat that follows from
+// running with no store mirror: a panel self-update can still be applied,
+// but ReconcileStartup in the process that comes back after the restart
+// will find an empty journal and silently treat it as "nothing to
+// reconcile" (see update.ReconcileStartup's doc comment), so the
+// confirm/roll-back step of self-update is effectively skipped.
+func warnMirrorDisabled() {
+	slog.Warn("self-update confirmation will not survive a restart without data_dir")
 }
 
 // runHashPassword implements the `panel hash-password` CLI subcommand:

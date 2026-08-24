@@ -46,6 +46,15 @@ import (
 // handoff (or vice versa) — each target's outcome is independent, so one
 // failing is not a reason to abandon the other. Every failure is logged
 // per-target as it happens and also returned, joined, to the caller.
+//
+// Limitation with data_dir="" (RAM-only profile, no store mirror file):
+// the journal this function reads lives only in the OLD process's memory
+// and does not survive the restart it is meant to reconcile, so
+// reconciliation is impossible by construction — every target's journal
+// looks empty to the new process regardless of what actually happened,
+// and this becomes an unconditional no-op. This is a known, accepted gap
+// of that profile, not a bug in this function; cmd/panel warns about it
+// once at boot where the mirror path is resolved.
 func ReconcileStartup(st store.Store, running string) error {
 	var errs []error
 	for _, target := range []string{TargetTelemt, TargetPanel} {

@@ -374,6 +374,9 @@ func TestMirrorRoundTrip(t *testing.T) {
 	if err := m1.SetSetting("theme", "dark"); err != nil {
 		t.Fatalf("SetSetting: %v", err)
 	}
+	if err := m1.AppendUpdateJournal(UpdateJournalEntry{Target: "panel", RunID: "r1", Phase: "restarting", VersionFrom: "v1.0.0", VersionTo: "v2.0.0"}); err != nil {
+		t.Fatalf("AppendUpdateJournal: %v", err)
+	}
 	// Metrics are explicitly excluded from the mirror.
 	if err := m1.RecordMetric("rx_bytes", MetricPoint{TS: 1, Value: 1}); err != nil {
 		t.Fatalf("RecordMetric: %v", err)
@@ -410,12 +413,62 @@ func TestMirrorRoundTrip(t *testing.T) {
 		t.Fatalf("GetSetting after reopen = %q ok:%v err:%v, want \"dark\" true nil", setting, ok, err)
 	}
 
+	journal, err := m2.ListUpdateJournal("panel", 0)
+	if err != nil {
+		t.Fatalf("ListUpdateJournal after reopen: %v", err)
+	}
+	if len(journal) != 1 || journal[0].RunID != "r1" || journal[0].Phase != "restarting" {
+		t.Fatalf("ListUpdateJournal after reopen = %+v, want one restarting entry for r1", journal)
+	}
+
 	points, err := m2.MetricRange("rx_bytes", 0)
 	if err != nil {
 		t.Fatalf("MetricRange after reopen: %v", err)
 	}
 	if len(points) != 0 {
 		t.Fatalf("MetricRange after reopen = %+v, want empty (metrics not mirrored)", points)
+	}
+}
+
+// TestMirrorJournalRingCapTruncationOnLoad checks that NewMemory defensively
+// truncates a mirrored journal that holds more than journalCap entries for a
+// target — e.g. a file written by a future version with a larger cap, or
+// hand-edited — rather than trusting the mirror's own bound.
+func TestMirrorJournalRingCapTruncationOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mirror.json")
+
+	total := journalCap + 10
+	entries := make([]UpdateJournalEntry, total)
+	for i := range entries {
+		entries[i] = UpdateJournalEntry{Target: "telemt", Phase: fmt.Sprintf("%d", i)}
+	}
+	mf := mirrorFile{Journal: map[string][]UpdateJournalEntry{"telemt": entries}}
+	data, err := json.Marshal(mf)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	m, err := NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
+	}
+	got, err := m.ListUpdateJournal("telemt", 0)
+	if err != nil {
+		t.Fatalf("ListUpdateJournal: %v", err)
+	}
+	if len(got) != journalCap {
+		t.Fatalf("len(ListUpdateJournal) = %d, want %d (oversized mirrored journal must be truncated on load)", len(got), journalCap)
+	}
+	if got[0].Phase != fmt.Sprintf("%d", total-1) {
+		t.Fatalf("newest entry Phase = %q, want %q", got[0].Phase, fmt.Sprintf("%d", total-1))
+	}
+	oldestSurvivor := got[len(got)-1].Phase
+	if oldestSurvivor != fmt.Sprintf("%d", total-journalCap) {
+		t.Fatalf("oldest surviving entry Phase = %q, want %q", oldestSurvivor, fmt.Sprintf("%d", total-journalCap))
 	}
 }
 
@@ -598,6 +651,51 @@ func TestTouchDebounceImmediateFamiliesUnaffected(t *testing.T) {
 	// The pending touch flush must be untouched by the immediate write.
 	if ft.scheduled != 1 {
 		t.Fatalf("scheduleTimer called %d times after SetSetting, want still 1", ft.scheduled)
+	}
+}
+
+// TestAppendUpdateJournalWritesThroughImmediately checks that, unlike
+// TouchSession, AppendUpdateJournal is not subject to the touch debounce:
+// it must be visible in the mirror file as soon as it returns, even while a
+// touch flush is pending (update runs are rare — no flash-wear concern, so
+// there is no reason to defer them).
+func TestAppendUpdateJournalWritesThroughImmediately(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mirror.json")
+	m, err := NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
+	}
+	if err := m.PutSession(Session{IDHash: "a", Created: time.Now()}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	ft := &fakeTimer{}
+	m.scheduleTimer = ft.schedule
+	if err := m.TouchSession("a", time.Now()); err != nil {
+		t.Fatalf("TouchSession: %v", err)
+	}
+	if ft.scheduled != 1 {
+		t.Fatalf("scheduleTimer called %d times, want 1", ft.scheduled)
+	}
+
+	if err := m.AppendUpdateJournal(UpdateJournalEntry{Target: "panel", RunID: "r1", Phase: "restarting"}); err != nil {
+		t.Fatalf("AppendUpdateJournal: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var mf mirrorFile
+	if err := json.Unmarshal(data, &mf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if len(mf.Journal["panel"]) != 1 || mf.Journal["panel"][0].RunID != "r1" {
+		t.Fatalf("mirror Journal[panel] = %+v, want one entry for r1 (AppendUpdateJournal must write through immediately)", mf.Journal["panel"])
+	}
+	// The pending touch flush must be untouched by the immediate write.
+	if ft.scheduled != 1 {
+		t.Fatalf("scheduleTimer called %d times after AppendUpdateJournal, want still 1", ft.scheduled)
 	}
 }
 
