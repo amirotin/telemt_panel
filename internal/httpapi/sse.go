@@ -16,8 +16,29 @@ import (
 )
 
 // snapshotFetchTimeout bounds an on-demand fetch for an idle topic in
-// handleEvents (initial connect) and handleSnapshot.
+// handleSnapshot.
 const snapshotFetchTimeout = 10 * time.Second
+
+// sseWriteDeadline is how far forward handleEvents pushes the connection's
+// write deadline before every SSE write. http.Server.WriteTimeout
+// (server.go) is armed once, as an absolute deadline for the whole
+// response — it does not reset itself just because the handler keeps
+// writing. An SSE stream is technically "still writing" for as long as the
+// client stays connected, so left alone that deadline would kill every
+// stream at the WriteTimeout mark regardless of heartbeats. Extending the
+// deadline via http.ResponseController on each write keeps normal
+// (non-streaming) routes protected by the same WriteTimeout while letting
+// a healthy stream live indefinitely.
+const sseWriteDeadline = 60 * time.Second
+
+// extendSSEWriteDeadline pushes w's write deadline sseWriteDeadline into
+// the future; see sseWriteDeadline's doc comment. SetWriteDeadline can
+// fail on a transport that doesn't support deadlines (not the case for
+// net/http's own connections) — that error is ignored here and would
+// surface on the next actual write instead.
+func extendSSEWriteDeadline(rc *http.ResponseController) {
+	_ = rc.SetWriteDeadline(time.Now().Add(sseWriteDeadline))
+}
 
 // parseTopics splits a comma-separated topics query param into a
 // deduplicated, non-empty list. /api/events and /api/snapshot both require
@@ -133,9 +154,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "streaming unsupported")
 		return
 	}
+	rc := http.NewResponseController(w)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
+	extendSSEWriteDeadline(rc)
 	w.WriteHeader(http.StatusOK)
 
 	replayed := false
@@ -143,6 +166,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		if since, err := strconv.ParseUint(lastID, 10, 64); err == nil {
 			if events, ok := s.hub.ReplaySince(since, topics); ok {
 				for _, e := range events {
+					extendSSEWriteDeadline(rc)
 					if err := writeSSEEvent(w, e); err != nil {
 						return
 					}
@@ -153,6 +177,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	if !replayed {
 		for _, e := range snapshots {
+			extendSSEWriteDeadline(rc)
 			if err := writeSSEEvent(w, e); err != nil {
 				return
 			}
@@ -171,11 +196,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
+			extendSSEWriteDeadline(rc)
 			if err := writeSSEEvent(w, e); err != nil {
 				return
 			}
 			flusher.Flush()
 		case <-heartbeat.C:
+			extendSSEWriteDeadline(rc)
 			if _, err := fmt.Fprint(w, ": hb\n\n"); err != nil {
 				return
 			}

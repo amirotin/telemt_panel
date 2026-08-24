@@ -143,6 +143,16 @@ func (s *Server) Run(ctx context.Context) error {
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
+	// Shutdown waits for every in-flight handler to return, but an SSE
+	// handler only returns when its subscriber channel closes or the
+	// client disconnects — neither of which "drain connections" below
+	// causes on its own. Closing the hub here, as soon as Shutdown starts
+	// rather than after it returns, closes every subscriber channel
+	// immediately so streaming handlers exit right away instead of
+	// stalling Shutdown up to its own deadline. hub.Close is idempotent, so
+	// the deferred call above (belt-and-braces for the non-Shutdown return
+	// paths) is safe to also run.
+	srv.RegisterOnShutdown(s.hub.Close)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()

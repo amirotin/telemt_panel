@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -358,5 +359,101 @@ func TestHandleEventsStreamsUpdatesAndReplaysOnReconnect(t *testing.T) {
 	}
 	if replayed.id != updated.id {
 		t.Fatalf("replayed id = %s, want %s (the same event, replayed)", replayed.id, updated.id)
+	}
+}
+
+// TestHandleEventsReconnectWithStaleFutureLastEventIDFallsBackToSnapshot
+// covers finding 3 end to end: a Last-Event-ID beyond anything this hub
+// has issued (as if the client held an id from before a panel restart,
+// which resets the hub's sequence counter to 0) must not be treated as a
+// valid-but-empty replay — the client must still get the current snapshot,
+// not silence.
+func TestHandleEventsReconnectWithStaleFutureLastEventIDFallsBackToSnapshot(t *testing.T) {
+	_, tc := newMutableFakeTelemtHTTP(t, []telemt.UserInfo{{Username: "alice"}})
+	srv, cookie := newSSETestServer(t, tc, hub.Config{UsersInterval: 20 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second})
+
+	panelSrv := httptest.NewServer(srv.Handler())
+	t.Cleanup(panelSrv.Close)
+
+	req, err := http.NewRequest(http.MethodGet, panelSrv.URL+"/api/events?topics=users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	req.Header.Set("Last-Event-ID", "999999999") // never issued by this (freshly started) hub
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	frame := nextFrame(t, readSSEFrames(resp.Body), 2*time.Second)
+	if frame.event != "users" || !strings.Contains(frame.data, "alice") {
+		t.Fatalf("expected a full snapshot fallback for a stale future Last-Event-ID, got %+v", frame)
+	}
+}
+
+// TestHandleEventsOutlivesServerWriteTimeout covers finding 1: an
+// http.Server's WriteTimeout is an absolute per-response deadline armed
+// once, not extended just because the handler keeps writing — so without
+// handleEvents pushing the deadline forward on every write (via
+// http.ResponseController), a real server would kill any SSE stream older
+// than WriteTimeout even though heartbeats keep it demonstrably alive.
+// This test reproduces the bug's exact precondition (a real *http.Server
+// with a short WriteTimeout, not httptest.NewServer's default of none) and
+// proves the connection survives well past it thanks to sub-WriteTimeout
+// heartbeats.
+func TestHandleEventsOutlivesServerWriteTimeout(t *testing.T) {
+	tc := newFakeTelemtHTTP(t, []telemt.UserInfo{{Username: "alice"}})
+	srv, cookie := newSSETestServer(t, tc, hub.Config{Heartbeat: 15 * time.Millisecond})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	const writeTimeout = 60 * time.Millisecond
+	httpSrv := &http.Server{Handler: srv.Handler(), WriteTimeout: writeTimeout}
+	go httpSrv.Serve(ln)
+	t.Cleanup(func() { httpSrv.Close() })
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+ln.Addr().String()+"/api/events?topics=users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	// Read raw bytes for well beyond writeTimeout; a connection killed at
+	// the WriteTimeout mark surfaces as a read error long before readFor
+	// has elapsed, since nothing but heartbeats (every 15ms) is flowing.
+	const readFor = 6 * writeTimeout
+	start := time.Now()
+	time.AfterFunc(readFor, func() { resp.Body.Close() })
+
+	reader := bufio.NewReader(resp.Body)
+	var lines int
+	for {
+		if _, err := reader.ReadString('\n'); err != nil {
+			break
+		}
+		lines++
+	}
+	elapsed := time.Since(start)
+
+	if elapsed < readFor {
+		t.Fatalf("stream died after %s (WriteTimeout=%s), want it to survive until this test closed it at %s — the write deadline was not extended", elapsed, writeTimeout, readFor)
+	}
+	if lines == 0 {
+		t.Fatal("read zero lines from the stream — nothing to prove it stayed open and healthy")
 	}
 }
