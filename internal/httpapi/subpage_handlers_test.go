@@ -236,6 +236,111 @@ func TestSublinkRotateInvalidatesOldToken(t *testing.T) {
 	}
 }
 
+// TestHandleSubpageUsesQuotaEntryUsedBytesOverLifetimeTotal covers finding
+// 4: handleSubpage must feed the /sub/{token} page a QuotaList entry (same
+// graceful-degradation helper the /api/users handlers use) rather than
+// letting the page fall back to UserInfo's lifetime TotalOctets alone —
+// otherwise a user reset via POST reset-quota shows "quota exhausted"
+// forever, since TotalOctets never resets.
+func TestHandleSubpageUsesQuotaEntryUsedBytesOverLifetimeTotal(t *testing.T) {
+	u := aliceFixture()
+	dataQuota := uint64(10 << 30)
+	u.DataQuotaBytes = &dataQuota
+	u.TotalOctets = dataQuota // lifetime counter alone would read "exhausted"
+
+	fake := newFakeTelemt(u)
+	fake.hasQuota = true
+	fake.quota = map[string]telemt.QuotaEntry{
+		"alice": {DataQuotaBytes: dataQuota, UsedBytes: 1 << 30, LastResetEpochSecs: 1700000000},
+	}
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	link := getSublink(t, h, cookie)
+	r := httptest.NewRequest("GET", pathOf(t, link.URL), nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	body := w.Body.String()
+	if strings.Contains(body, `class="status status-quota_exhausted"`) {
+		t.Error("expected the reset-aware used_bytes, not lifetime TotalOctets, to decide the status")
+	}
+	if !strings.Contains(body, "1.0 GiB") {
+		t.Errorf("expected the quota entry's used_bytes rendered as 1.0 GiB; body:\n%s", body)
+	}
+}
+
+// TestHandleSubpageWithoutQuotaCapabilityFallsBackToTotalOctets covers the
+// degraded path: an older Telemt build with no quota-list capability must
+// still render the page from UserInfo's TotalOctets, unchanged from
+// before this fix.
+func TestHandleSubpageWithoutQuotaCapabilityFallsBackToTotalOctets(t *testing.T) {
+	u := aliceFixture()
+	dataQuota := uint64(10 << 30)
+	u.DataQuotaBytes = &dataQuota
+	u.TotalOctets = 2 << 30
+
+	fake := newFakeTelemt(u)
+	fake.hasQuota = false
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	link := getSublink(t, h, cookie)
+	r := httptest.NewRequest("GET", pathOf(t, link.URL), nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "2.0 GiB") {
+		t.Errorf("expected the TotalOctets fallback rendered as 2.0 GiB; body:\n%s", body)
+	}
+}
+
+// TestHandleSubpageRenderFailureReturns500 covers the other half of
+// finding 4: handleSubpage renders into a buffer before writing any
+// status line, so a render failure (here, a link whose secret is too long
+// for the QR encoder) surfaces as a real 500 instead of the previous
+// behavior of a 200 with a truncated or empty body.
+func TestHandleSubpageRenderFailureReturns500(t *testing.T) {
+	// The token/sublink URL is derived from the Classic link's secret
+	// (subpage.ExtractSecret, which validates that it's exactly 32 hex
+	// chars), so that one stays well-formed; a second, TLS link carries a
+	// secret far too long for the QR encoder to force RenderPage to fail
+	// once the page actually renders.
+	hugeSecret := strings.Repeat("a", 4000)
+	u := telemt.UserInfo{
+		Username: "alice",
+		Enabled:  true,
+		Links: telemt.UserLinks{
+			Classic: []string{"tg://proxy?server=1.2.3.4&port=443&secret=" + testUserSecret},
+			TLS:     []string{"tg://proxy?server=1.2.3.4&port=443&secret=" + hugeSecret},
+		},
+	}
+	fake := newFakeTelemt(u)
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	link := getSublink(t, h, cookie)
+	r := httptest.NewRequest("GET", pathOf(t, link.URL), nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", w.Code, w.Body)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "internal error" {
+		t.Errorf("body = %q, want %q", body, "internal error")
+	}
+}
+
 func TestSubpageRateLimited(t *testing.T) {
 	srv, _ := newSubpageTestServer(t, true)
 	h := srv.Handler()

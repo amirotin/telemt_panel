@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -48,14 +49,35 @@ func (s *Server) handleSubpage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// hasQuota degrades gracefully (older Telemt builds, or a hiccup
+	// fetching the list) — same helper the users handlers use. entry is
+	// nil unless u specifically has one, which RenderPage then falls back
+	// on u.TotalOctets for.
+	quota, hasQuota := s.quotaListOrDegrade(ctx)
+	var entry *telemt.QuotaEntry
+	if hasQuota {
+		if q, ok := quota[username]; ok {
+			entry = &q
+		}
+	}
+
+	// Render into a buffer first so a render failure can still surface as
+	// a real error status: writing 200 before rendering (the previous
+	// behavior) means a failure partway through leaves the client with a
+	// 200 and a truncated or empty body instead of a clear error.
+	var buf bytes.Buffer
+	if err := subpage.RenderPage(&buf, u, entry, r.Header.Get("Accept-Language"), time.Now()); err != nil {
+		slog.Error("subpage: render", "username", username, "err", err)
+		writeSubpageRenderError(w)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Robots-Tag", "noindex")
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.WriteHeader(http.StatusOK)
-	if err := subpage.RenderPage(w, u, r.Header.Get("Accept-Language"), time.Now()); err != nil {
-		slog.Error("subpage: render", "username", username, "err", err)
-	}
+	w.Write(buf.Bytes())
 }
 
 // writeSubpageNotFound writes the uniform, detail-free 404 the spec
@@ -66,6 +88,16 @@ func writeSubpageNotFound(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	io.WriteString(w, "not found")
+}
+
+// writeSubpageRenderError writes a plain 500 for a page render failure —
+// unlike writeSubpageNotFound, this is a real backend error rather than a
+// deliberately uniform response, but it still carries no detail to an
+// unauthenticated caller.
+func writeSubpageRenderError(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusInternalServerError)
+	io.WriteString(w, "internal error")
 }
 
 // subpageRateLimited wraps next with the 30 req/min per-client-IP limit

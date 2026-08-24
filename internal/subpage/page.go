@@ -40,6 +40,7 @@ type quotaView struct {
 	Percent    int
 	UsedHuman  string
 	TotalHuman string
+	ResetHuman string // "" when the last-reset date isn't known
 }
 
 type expiryView struct {
@@ -70,10 +71,16 @@ type linkVariantView struct {
 
 // RenderPage renders u's subscription page to w, choosing RU or EN chrome
 // strings from acceptLanguage (both languages' manual-setup instructions
-// are always rendered — see the template).
-func RenderPage(w io.Writer, u telemt.UserInfo, acceptLanguage string, now time.Time) error {
+// are always rendered — see the template). quota is u's entry from
+// telemt.Client.QuotaList, or nil when that capability is absent on this
+// Telemt build or u has no entry there; when non-nil its UsedBytes is
+// preferred over u.TotalOctets for both the quota bar and the
+// quota_exhausted status, since TotalOctets is a lifetime counter that a
+// quota reset does not affect (u.TotalOctets alone would keep showing
+// "quota exhausted" forever after a reset).
+func RenderPage(w io.Writer, u telemt.UserInfo, quota *telemt.QuotaEntry, acceptLanguage string, now time.Time) error {
 	lang := detectLanguage(acceptLanguage)
-	data, err := buildPageData(u, lang, now)
+	data, err := buildPageData(u, quota, lang, now)
 	if err != nil {
 		return err
 	}
@@ -90,13 +97,13 @@ func detectLanguage(acceptLanguage string) string {
 	return "en"
 }
 
-func buildPageData(u telemt.UserInfo, lang string, now time.Time) (pageData, error) {
+func buildPageData(u telemt.UserInfo, quota *telemt.QuotaEntry, lang string, now time.Time) (pageData, error) {
 	s := stringsEN
 	if lang == "ru" {
 		s = stringsRU
 	}
 
-	groups, err := buildGroups(u.Links, s)
+	groups, err := buildGroups(u.Username, u.Links, s)
 	if err != nil {
 		return pageData{}, err
 	}
@@ -107,39 +114,57 @@ func buildPageData(u telemt.UserInfo, lang string, now time.Time) (pageData, err
 		InstructionsRU: instructionsRU,
 		InstructionsEN: instructionsEN,
 		Username:       u.Username,
-		Status:         buildStatus(u, s, now),
-		Quota:          buildQuota(u),
+		Status:         buildStatus(u, quota, s, now),
+		Quota:          buildQuota(u, quota),
 		Expiry:         buildExpiry(u, now),
 		Groups:         groups,
 	}, nil
 }
 
-func buildStatus(u telemt.UserInfo, s uiStrings, now time.Time) statusView {
+// quotaUsedBytes reports how much of u's quota is used, preferring
+// quota.UsedBytes (reset-aware) over u.TotalOctets (a lifetime counter a
+// quota reset never clears) whenever a quota entry is available.
+func quotaUsedBytes(u telemt.UserInfo, quota *telemt.QuotaEntry) uint64 {
+	if quota != nil {
+		return quota.UsedBytes
+	}
+	return u.TotalOctets
+}
+
+func buildStatus(u telemt.UserInfo, quota *telemt.QuotaEntry, s uiStrings, now time.Time) statusView {
 	if !u.Enabled {
 		return statusView{Key: "disabled", Label: s.StatusDisabled}
 	}
 	if exp, ok := parseExpiry(u.ExpirationRFC3339); ok && !now.Before(exp) {
 		return statusView{Key: "expired", Label: s.StatusExpired}
 	}
-	if u.DataQuotaBytes != nil && u.TotalOctets >= *u.DataQuotaBytes {
+	if u.DataQuotaBytes != nil && quotaUsedBytes(u, quota) >= *u.DataQuotaBytes {
 		return statusView{Key: "quota_exhausted", Label: s.StatusQuotaExhausted}
 	}
 	return statusView{Key: "active", Label: s.StatusActive}
 }
 
 // buildQuota returns nil when Telemt hasn't reported a quota for this
-// user (DataQuotaBytes omitted) — there's nothing to bar-chart. Telemt's
-// UserInfo carries no quota-reset date, so this view has none either.
-func buildQuota(u telemt.UserInfo) *quotaView {
+// user (DataQuotaBytes omitted) — there's nothing to bar-chart. The reset
+// date renders only when quota is non-nil and carries one (Telemt's plain
+// UserInfo has no quota-reset date at all; the quota-list entry does, once
+// the user has been reset at least once — LastResetEpochSecs is 0 until
+// then).
+func buildQuota(u telemt.UserInfo, quota *telemt.QuotaEntry) *quotaView {
 	if u.DataQuotaBytes == nil {
 		return nil
 	}
 	total := *u.DataQuotaBytes
-	return &quotaView{
-		Percent:    quotaPercent(u.TotalOctets, total),
-		UsedHuman:  formatBytes(u.TotalOctets),
+	used := quotaUsedBytes(u, quota)
+	v := &quotaView{
+		Percent:    quotaPercent(used, total),
+		UsedHuman:  formatBytes(used),
 		TotalHuman: formatBytes(total),
 	}
+	if quota != nil && quota.LastResetEpochSecs > 0 {
+		v.ResetHuman = time.Unix(quota.LastResetEpochSecs, 0).UTC().Format("2006-01-02 15:04 MST")
+	}
+	return v
 }
 
 func buildExpiry(u telemt.UserInfo, now time.Time) *expiryView {
@@ -194,12 +219,14 @@ func formatBytes(n uint64) string {
 // order (design doc 04-subpage.md), skipping any link this panel can't
 // parse into server/port/secret (logged, not fatal — Telemt is the source
 // of truth and a malformed link there shouldn't take down the whole page).
-func buildGroups(links telemt.UserLinks, s uiStrings) ([]linkGroupView, error) {
+// username is only for those log lines — never anything from the link
+// itself, which carries the user's connection secret.
+func buildGroups(username string, links telemt.UserLinks, s uiStrings) ([]linkGroupView, error) {
 	var groups []linkGroupView
 
 	var tlsVariants []linkVariantView
-	for _, link := range links.TLS {
-		v, ok, err := buildVariant(link, "")
+	for i, link := range links.TLS {
+		v, ok, err := buildVariant(username, "tls", i, link, "")
 		if err != nil {
 			return nil, err
 		}
@@ -207,8 +234,8 @@ func buildGroups(links telemt.UserLinks, s uiStrings) ([]linkGroupView, error) {
 			tlsVariants = append(tlsVariants, v)
 		}
 	}
-	for _, d := range links.TLSDomains {
-		v, ok, err := buildVariant(d.Link, d.Domain)
+	for i, d := range links.TLSDomains {
+		v, ok, err := buildVariant(username, "tls_domain", i, d.Link, d.Domain)
 		if err != nil {
 			return nil, err
 		}
@@ -220,13 +247,13 @@ func buildGroups(links telemt.UserLinks, s uiStrings) ([]linkGroupView, error) {
 		groups = append(groups, linkGroupView{Title: s.GroupTLS, Variants: tlsVariants})
 	}
 
-	if g, err := buildSimpleGroup(links.Secure, s.GroupSecure); err != nil {
+	if g, err := buildSimpleGroup(username, "secure", links.Secure, s.GroupSecure); err != nil {
 		return nil, err
 	} else if g != nil {
 		groups = append(groups, *g)
 	}
 
-	if g, err := buildSimpleGroup(links.Classic, s.GroupClassic); err != nil {
+	if g, err := buildSimpleGroup(username, "classic", links.Classic, s.GroupClassic); err != nil {
 		return nil, err
 	} else if g != nil {
 		groups = append(groups, *g)
@@ -235,10 +262,10 @@ func buildGroups(links telemt.UserLinks, s uiStrings) ([]linkGroupView, error) {
 	return groups, nil
 }
 
-func buildSimpleGroup(links []string, title string) (*linkGroupView, error) {
+func buildSimpleGroup(username, kind string, links []string, title string) (*linkGroupView, error) {
 	var variants []linkVariantView
-	for _, link := range links {
-		v, ok, err := buildVariant(link, "")
+	for i, link := range links {
+		v, ok, err := buildVariant(username, kind, i, link, "")
 		if err != nil {
 			return nil, err
 		}
@@ -255,16 +282,19 @@ func buildSimpleGroup(links []string, title string) (*linkGroupView, error) {
 // buildVariant parses one tg://proxy link into a display variant. The
 // bool is false (not an error) when the link is missing server/port/secret
 // query params — defensive against an unexpected Telemt link shape.
-func buildVariant(tgLink, domain string) (linkVariantView, bool, error) {
+// kind and index identify which link this is in the log lines below
+// without ever logging the link itself or the connection secret it embeds
+// (url.Error, in particular, echoes the raw unparseable input verbatim).
+func buildVariant(username, kind string, index int, tgLink, domain string) (linkVariantView, bool, error) {
 	u, err := url.Parse(tgLink)
 	if err != nil {
-		slog.Warn("subpage: unparseable link", "link", tgLink, "err", err)
+		slog.Warn("subpage: unparseable link", "username", username, "kind", kind, "index", index)
 		return linkVariantView{}, false, nil
 	}
 	q := u.Query()
 	server, port, secret := q.Get("server"), q.Get("port"), q.Get("secret")
 	if server == "" || port == "" || secret == "" {
-		slog.Warn("subpage: link missing server/port/secret", "link", tgLink)
+		slog.Warn("subpage: link missing server/port/secret", "username", username, "kind", kind, "index", index)
 		return linkVariantView{}, false, nil
 	}
 

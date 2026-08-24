@@ -51,6 +51,7 @@
     <h2>{{$.S.QuotaHeading}}</h2>
     <div class="bar"><div class="bar-fill" style="width:{{.Quota.Percent}}%"></div></div>
     <p>{{.Quota.UsedHuman}} {{$.S.QuotaUsedOf}} {{.Quota.TotalHuman}}</p>
+    {{if .Quota.ResetHuman}}<p>{{$.S.QuotaResetLabel}}: {{.Quota.ResetHuman}}</p>{{end}}
   </section>
   {{end}}
 

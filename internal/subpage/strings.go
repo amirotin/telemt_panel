@@ -11,6 +11,7 @@ type uiStrings struct {
 	StatusQuotaExhausted string
 	QuotaHeading         string
 	QuotaUsedOf          string
+	QuotaResetLabel      string
 	ExpiryLabel          string
 	ConnectHeading       string
 	GroupTLS             string
@@ -41,6 +42,7 @@ var stringsRU = uiStrings{
 	StatusQuotaExhausted: "Квота исчерпана",
 	QuotaHeading:         "Остаток квоты",
 	QuotaUsedOf:          "из",
+	QuotaResetLabel:      "Сброшена",
 	ExpiryLabel:          "Действует до",
 	ConnectHeading:       "Подключение",
 	GroupTLS:             "TLS (маскировка под сайт)",
@@ -63,6 +65,7 @@ var stringsEN = uiStrings{
 	StatusQuotaExhausted: "Quota exhausted",
 	QuotaHeading:         "Quota remaining",
 	QuotaUsedOf:          "of",
+	QuotaResetLabel:      "Reset",
 	ExpiryLabel:          "Valid until",
 	ConnectHeading:       "Connect",
 	GroupTLS:             "TLS (disguised as a website)",
