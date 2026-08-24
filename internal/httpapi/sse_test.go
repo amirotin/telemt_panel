@@ -89,8 +89,10 @@ func TestHandleSnapshotReturnsCachedData(t *testing.T) {
 	if !ok {
 		t.Fatal("snapshot response missing the users topic")
 	}
-	var users []telemt.UserInfo
-	if err := json.Unmarshal(data, &users); err != nil || len(users) != 1 || users[0].Username != "alice" {
+	var snap struct {
+		Users []telemt.UserInfo `json:"users"`
+	}
+	if err := json.Unmarshal(data, &snap); err != nil || len(snap.Users) != 1 || snap.Users[0].Username != "alice" {
 		t.Fatalf("users = %s", data)
 	}
 }
@@ -455,5 +457,129 @@ func TestHandleEventsOutlivesServerWriteTimeout(t *testing.T) {
 	}
 	if lines == 0 {
 		t.Fatal("read zero lines from the stream — nothing to prove it stayed open and healthy")
+	}
+}
+
+// TestHandleEventsHeartbeatIsObservableEvent covers backlog item 5's
+// heartbeat reconciliation: the spec (02-hub-sse.md) form is an observable
+// `event: heartbeat` / `data: {}` frame, replacing the earlier `: hb`
+// comment a client's EventSource could never see at all.
+func TestHandleEventsHeartbeatIsObservableEvent(t *testing.T) {
+	tc := newFakeTelemtHTTP(t, []telemt.UserInfo{{Username: "alice"}})
+	srv, cookie := newSSETestServer(t, tc, hub.Config{Heartbeat: 15 * time.Millisecond})
+
+	panelSrv := httptest.NewServer(srv.Handler())
+	t.Cleanup(panelSrv.Close)
+
+	req, err := http.NewRequest(http.MethodGet, panelSrv.URL+"/api/events?topics=users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	frames := readSSEFrames(resp.Body)
+	// The very first frame is the initial "users" snapshot; the heartbeat
+	// follows once the 15ms ticker fires.
+	initial := nextFrame(t, frames, 2*time.Second)
+	if initial.event != "users" {
+		t.Fatalf("first frame = %+v, want the initial users snapshot", initial)
+	}
+	hb := nextFrame(t, frames, 2*time.Second)
+	if hb.event != "heartbeat" || hb.data != "{}" {
+		t.Fatalf("frame = %+v, want event:heartbeat data:{}", hb)
+	}
+}
+
+// newPartialFakeTelemtHTTP serves /v1/users normally and lets failStats force
+// both of the "stats" topic's sub-calls (health, stats/summary) to fail —
+// fetchStats only source_errors when both fail, so this reliably makes the
+// whole "stats" topic's on-demand fetch fail without touching "users".
+func newPartialFakeTelemtHTTP(t *testing.T, users []telemt.UserInfo, failStats bool) *telemt.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/users":
+			data, _ := json.Marshal(users)
+			fmt.Fprintf(w, `{"ok":true,"data":%s,"revision":"r"}`, data)
+		case "/v1/health":
+			if failStats {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprint(w, `{"ok":false,"error":{"code":"internal_error","message":"boom"}}`)
+				return
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"status":"ok","read_only":false},"revision":"r"}`)
+		case "/v1/stats/summary":
+			if failStats {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprint(w, `{"ok":false,"error":{"code":"internal_error","message":"boom"}}`)
+				return
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"uptime_seconds":1,"connections_total":0,"connections_bad_total":0,"handshake_timeouts_total":0,"configured_users":0},"revision":"r"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return telemt.New(srv.URL, "")
+}
+
+// TestHandleSnapshotOmitsFailedTopicButKeepsSuccessful covers backlog item 4:
+// a topic whose on-demand fetch fails must be omitted from the response map
+// (never a bare JSON null), while a sibling topic that did succeed still
+// comes back normally in the same 200 response.
+func TestHandleSnapshotOmitsFailedTopicButKeepsSuccessful(t *testing.T) {
+	tc := newPartialFakeTelemtHTTP(t, []telemt.UserInfo{{Username: "alice"}}, true)
+	srv, cookie := newSSETestServer(t, tc, hub.Config{})
+
+	r := httptest.NewRequest("GET", "/api/snapshot?topics=users,stats", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := out["users"]; !ok {
+		t.Error("users topic missing, want it present (its fetch succeeded)")
+	}
+	if _, ok := out["stats"]; ok {
+		t.Errorf("stats topic present (%s), want it omitted (its fetch failed)", out["stats"])
+	}
+}
+
+// TestHandleSnapshotAllTopicsFailingReturns502 covers backlog item 4's other
+// half: when every requested topic's on-demand fetch fails (Telemt fully
+// unreachable here), the response is 502 telemt_unreachable rather than an
+// all-empty 200 object.
+func TestHandleSnapshotAllTopicsFailingReturns502(t *testing.T) {
+	tc := telemt.New("http://127.0.0.1:1", "") // nothing listens here
+	srv, cookie := newSSETestServer(t, tc, hub.Config{})
+
+	r := httptest.NewRequest("GET", "/api/snapshot?topics=users,stats", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502: %s", w.Code, w.Body)
+	}
+	var body struct{ Code, Message string }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Code != "telemt_unreachable" {
+		t.Fatalf("code = %q, want telemt_unreachable", body.Code)
 	}
 }

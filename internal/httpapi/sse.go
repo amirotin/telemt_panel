@@ -77,7 +77,12 @@ func writeUnknownTopicOr500(w http.ResponseWriter, err error, action string) {
 
 // handleSnapshot implements GET /api/snapshot?topics=a,b: the current
 // cached payload for each requested topic, fetching on demand for any
-// topic the hub isn't actively polling.
+// topic the hub isn't actively polling. A topic with no data — its
+// on-demand fetch failed, or (the "update" topic) nothing has been
+// published yet — is omitted from the response map rather than surfacing
+// as a bare JSON null: the contract promises every present key is an
+// object (openapi getSnapshot). If every requested topic ends up empty,
+// that's reported as 502 telemt_unreachable instead of an all-empty 200.
 func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	topics, err := parseTopics(r.URL.Query().Get("topics"))
 	if err != nil {
@@ -93,7 +98,19 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		writeUnknownTopicOr500(w, err, "snapshot")
 		return
 	}
-	writeJSON(w, http.StatusOK, snap)
+
+	out := make(map[string]json.RawMessage, len(snap))
+	for name, data := range snap {
+		if data == nil {
+			continue
+		}
+		out[name] = data
+	}
+	if len(out) == 0 {
+		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", "could not reach telemt for any requested topic")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // sseEventPayload is the data field of a topic snapshot/update event.
@@ -107,6 +124,15 @@ type sseErrorPayload struct {
 	Topic string `json:"topic"`
 	Code  string `json:"code"`
 }
+
+// sseHeartbeatFrame is the observable heartbeat frame spec 02-hub-sse.md
+// defines — `event: heartbeat` + `data: {}` — sent during quiet periods to
+// keep intermediary proxies from timing the connection out and to let
+// clients drive a liveness indicator. Shared by handleEvents and
+// handleEventsLogs (logs_handler.go) so both SSE endpoints stay consistent;
+// this replaced an earlier `: hb` comment-only heartbeat, which a client
+// could not observe at all (spec 02-hub-sse.md's "Heartbeat" note).
+const sseHeartbeatFrame = "event: heartbeat\ndata: {}\n\n"
 
 // writeSSEEvent renders one hub.Event as an SSE frame: `id`/`event`/`data`
 // lines followed by a blank line. See v2/specs/02-hub-sse.md.
@@ -132,9 +158,9 @@ func writeSSEEvent(w io.Writer, e hub.Event) error {
 // stream of hub broadcasts for the requested topics. On connect it writes
 // each topic's current snapshot immediately (or, with a Last-Event-ID that
 // is still in the hub's replay ring, just the events missed since then);
-// after that, events stream as the hub broadcasts them, with a heartbeat
-// comment during quiet periods to keep intermediary proxies from timing
-// the connection out.
+// after that, events stream as the hub broadcasts them, with an observable
+// `event: heartbeat` frame (sseHeartbeatFrame) during quiet periods to keep
+// intermediary proxies from timing the connection out.
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	topics, err := parseTopics(r.URL.Query().Get("topics"))
 	if err != nil {
@@ -203,7 +229,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		case <-heartbeat.C:
 			extendSSEWriteDeadline(rc)
-			if _, err := fmt.Fprint(w, ": hb\n\n"); err != nil {
+			if _, err := fmt.Fprint(w, sseHeartbeatFrame); err != nil {
 				return
 			}
 			flusher.Flush()

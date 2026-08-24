@@ -332,6 +332,48 @@ func TestHandleEventsLogs_StreamsAndEndsOnDisconnect(t *testing.T) {
 	}
 }
 
+// TestHandleEventsLogs_HeartbeatIsObservableEvent covers backlog item 5's
+// heartbeat reconciliation for the log-stream SSE handler specifically —
+// it must stay consistent with handleEvents (sse.go), both now emitting the
+// spec's `event: heartbeat` / `data: {}` frame instead of the old `: hb`
+// comment a client couldn't observe at all.
+func TestHandleEventsLogs_HeartbeatIsObservableEvent(t *testing.T) {
+	srv, cookie, _, logSrc := newHostTestServer(t)
+	logSrc.CapsValue = host.LogCaps{CanStream: true}
+	srv.logStreamHeartbeat = 15 * time.Millisecond
+
+	logSrc.StreamFunc = func(ctx context.Context, service string) (<-chan host.LogLine, error) {
+		out := make(chan host.LogLine)
+		go func() {
+			defer close(out)
+			<-ctx.Done() // never sends a line — only heartbeats should flow
+		}()
+		return out, nil
+	}
+
+	panelSrv := httptest.NewServer(srv.Handler())
+	t.Cleanup(panelSrv.Close)
+
+	req, err := http.NewRequest(http.MethodGet, panelSrv.URL+"/api/events/logs?service=telemt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	frame := nextFrame(t, readSSEFrames(resp.Body), 2*time.Second)
+	if frame.event != "heartbeat" || frame.data != "{}" {
+		t.Fatalf("frame = %+v, want event:heartbeat data:{}", frame)
+	}
+}
+
 func TestHandleEventsLogs_StreamStartErrorReturns502(t *testing.T) {
 	srv, cookie, _, logSrc := newHostTestServer(t)
 	logSrc.CapsValue = host.LogCaps{CanStream: true}

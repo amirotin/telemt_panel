@@ -26,7 +26,8 @@ const logTailTimeout = 10 * time.Second
 
 // logStreamHeartbeatInterval matches the brief's 25s heartbeat for
 // GET /api/events/logs (separate from the hub's configurable heartbeat,
-// since log streaming doesn't go through the hub).
+// since log streaming doesn't go through the hub) — Server.logStreamHeartbeat
+// defaults to this and tests override the field directly for determinism.
 const logStreamHeartbeatInterval = 25 * time.Second
 
 // apiLogLine is the wire shape of openapi LogLine.
@@ -139,7 +140,7 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	heartbeat := time.NewTicker(logStreamHeartbeatInterval)
+	heartbeat := time.NewTicker(s.logStreamHeartbeat)
 	defer heartbeat.Stop()
 
 	for {
@@ -157,7 +158,10 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		case <-heartbeat.C:
 			extendSSEWriteDeadline(rc)
-			if _, err := fmt.Fprint(w, ": hb\n\n"); err != nil {
+			// Same observable form as handleEvents' heartbeat
+			// (sseHeartbeatFrame, sse.go) — the two SSE endpoints must stay
+			// consistent.
+			if _, err := fmt.Fprint(w, sseHeartbeatFrame); err != nil {
 				return
 			}
 			flusher.Flush()
