@@ -28,12 +28,13 @@ type Config struct {
 	// only.
 	DataDir string `toml:"data_dir"`
 
-	Telemt  TelemtConfig  `toml:"telemt"`
-	Auth    AuthConfig    `toml:"auth"`
-	Store   StoreConfig   `toml:"store"`
-	Subpage SubpageConfig `toml:"subpage"`
-	Host    HostConfig    `toml:"host"`
-	Updates UpdatesConfig `toml:"updates"`
+	Telemt     TelemtConfig     `toml:"telemt"`
+	Auth       AuthConfig       `toml:"auth"`
+	Store      StoreConfig      `toml:"store"`
+	Subpage    SubpageConfig    `toml:"subpage"`
+	Host       HostConfig       `toml:"host"`
+	Updates    UpdatesConfig    `toml:"updates"`
+	Privileges PrivilegesConfig `toml:"privileges"`
 }
 
 // TelemtConfig points the panel at the Telemt API.
@@ -108,6 +109,21 @@ type UpdatesConfig struct {
 	PanelBinaryPath  string `toml:"panel_binary_path"`
 }
 
+// PrivilegesConfig selects how the panel executes the five privileged
+// host operations (installing/restoring a binary, restarting a service,
+// tailing a journal, rewriting a config file): in-process (the panel
+// already runs as root) or via cmd/panel-agent's unix socket. See
+// v2/specs/01-host-matrix.md §Привилегии.
+type PrivilegesConfig struct {
+	// Mode: "auto" (default) picks direct when the panel's effective
+	// UID is 0, otherwise the agent socket if it's reachable, otherwise
+	// a degraded Runner. "agent" and "direct" force that path outright
+	// (see host.SelectRunner's doc comment for exact fallback behavior).
+	Mode string `toml:"mode"`
+	// AgentSocket is the panel-agent's unix socket path.
+	AgentSocket string `toml:"agent_socket"`
+}
+
 // Load reads, validates and normalizes the config file.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -132,6 +148,10 @@ func Load(path string) (*Config, error) {
 			PanelRepo:        "amirotin/telemt_panel",
 			TelemtBinaryPath: "/bin/telemt",
 			PanelBinaryPath:  "/usr/local/bin/telemt-panel",
+		},
+		Privileges: PrivilegesConfig{
+			Mode:        "auto",
+			AgentSocket: "/run/telemt-panel/agent.sock",
 		},
 	}
 	if err := toml.Unmarshal(data, cfg); err != nil {
@@ -177,6 +197,17 @@ func Load(path string) (*Config, error) {
 	case "auto", "journald", "logread", "syslog", "docker", "file":
 	default:
 		return nil, fmt.Errorf("host.log_source: unknown value %q (auto | journald | logread | syslog | docker | file)", cfg.Host.LogSource)
+	}
+
+	switch cfg.Privileges.Mode {
+	case "":
+		cfg.Privileges.Mode = "auto"
+	case "auto", "agent", "direct":
+	default:
+		return nil, fmt.Errorf("privileges.mode: unknown value %q (auto | agent | direct)", cfg.Privileges.Mode)
+	}
+	if cfg.Privileges.AgentSocket == "" {
+		cfg.Privileges.AgentSocket = "/run/telemt-panel/agent.sock"
 	}
 
 	for _, entry := range cfg.TrustedProxies {

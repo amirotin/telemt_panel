@@ -60,6 +60,13 @@ func TestLoadMinimal(t *testing.T) {
 	if cfg.Updates != wantUpdates {
 		t.Errorf("default updates = %+v, want %+v", cfg.Updates, wantUpdates)
 	}
+	wantPrivileges := PrivilegesConfig{
+		Mode:        "auto",
+		AgentSocket: "/run/telemt-panel/agent.sock",
+	}
+	if cfg.Privileges != wantPrivileges {
+		t.Errorf("default privileges = %+v, want %+v", cfg.Privileges, wantPrivileges)
+	}
 }
 
 func TestLoadDataDirEmptyDisablesMirror(t *testing.T) {
@@ -117,6 +124,34 @@ panel_binary_path = "/opt/panel"
 	}
 }
 
+func TestLoadPrivilegesOverrides(t *testing.T) {
+	cfg, err := load(t, minimal+`
+[privileges]
+mode = "direct"
+agent_socket = "/tmp/custom-agent.sock"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := PrivilegesConfig{Mode: "direct", AgentSocket: "/tmp/custom-agent.sock"}
+	if cfg.Privileges != want {
+		t.Errorf("privileges = %+v, want %+v", cfg.Privileges, want)
+	}
+}
+
+func TestLoadPrivilegesEmptySocketFallsBackToDefault(t *testing.T) {
+	cfg, err := load(t, minimal+`
+[privileges]
+agent_socket = ""
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Privileges.AgentSocket != "/run/telemt-panel/agent.sock" {
+		t.Errorf("agent_socket = %q, want default", cfg.Privileges.AgentSocket)
+	}
+}
+
 func TestLoadValidation(t *testing.T) {
 	cases := []struct {
 		name, content, wantErr string
@@ -143,6 +178,9 @@ service_manager = "launchd"`, "host.service_manager"},
 		{"unknown log source", minimal + `
 [host]
 log_source = "eventlog"`, "host.log_source"},
+		{"unknown privileges mode", minimal + `
+[privileges]
+mode = "sudo"`, "privileges.mode"},
 		// Top-level keys must precede sections in TOML.
 		{"bad trusted proxy", `trusted_proxies = ["not-an-ip"]` + minimal, "trusted_proxies"},
 	}

@@ -58,6 +58,16 @@ enabled = false
 # telemt_container = "telemt"
 # panel_container = "telemt-panel"
 
+[privileges]
+# How the panel executes privileged host operations (installing/restoring
+# a binary, restarting a service, tailing a journal, rewriting a config
+# file). "auto" (default): direct in-process execution when the panel
+# runs as root, else the panel-agent socket below if reachable, else
+# those operations report unavailable rather than blocking startup.
+# mode = "auto" # auto | agent | direct
+# Unix socket cmd/panel-agent listens on (installed by install.sh).
+# agent_socket = "/run/telemt-panel/agent.sock"
+
 [updates]
 # GitHub repos (owner/name) update checks poll for new releases.
 # telemt_repo = "telemt/telemt"
