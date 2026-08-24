@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +23,12 @@ type fakeTelemt struct {
 	users   []telemt.UserInfo
 	health  telemt.HealthData
 	summary telemt.SummaryData
+	// quota and quotaEnabled script /v1/stats/users/quota: quotaEnabled
+	// false serves a 404 (capability absent on this Telemt build), matching
+	// fakeTelemt's default (a Telemt build predating the endpoint), the
+	// same way the real route is unrouted on old builds.
+	quota        map[string]telemt.QuotaEntry
+	quotaEnabled bool
 
 	usersFailing   int32
 	healthFailing  int32
@@ -52,6 +59,30 @@ func (f *fakeTelemt) serve(w http.ResponseWriter, r *http.Request) {
 		users := f.users
 		f.mu.Unlock()
 		writeEnvelope(w, users)
+	case "/v1/stats/users/quota":
+		f.mu.Lock()
+		enabled, quota := f.quotaEnabled, f.quota
+		f.mu.Unlock()
+		if !enabled {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		type wireEntry struct {
+			Username           string `json:"username"`
+			DataQuotaBytes     uint64 `json:"data_quota_bytes"`
+			UsedBytes          uint64 `json:"used_bytes"`
+			LastResetEpochSecs int64  `json:"last_reset_epoch_secs"`
+		}
+		entries := make([]wireEntry, 0, len(quota))
+		for username, q := range quota {
+			entries = append(entries, wireEntry{
+				Username: username, DataQuotaBytes: q.DataQuotaBytes,
+				UsedBytes: q.UsedBytes, LastResetEpochSecs: q.LastResetEpochSecs,
+			})
+		}
+		writeEnvelope(w, struct {
+			Users []wireEntry `json:"users"`
+		}{Users: entries})
 	case "/v1/health":
 		if atomic.LoadInt32(&f.healthFailing) > 0 {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -90,6 +121,13 @@ func (f *fakeTelemt) setUsers(users []telemt.UserInfo) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.users = users
+}
+
+func (f *fakeTelemt) setQuota(quota map[string]telemt.QuotaEntry) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.quotaEnabled = true
+	f.quota = quota
 }
 
 func (f *fakeTelemt) setUsersFailing(failing bool) {
@@ -222,13 +260,90 @@ func drainUntilClosed(t *testing.T, ch <-chan Event, timeout time.Duration) {
 	}
 }
 
+// decodeUsers decodes the "users" topic's composite payload and returns
+// just its user list, for tests that only care about that part.
 func decodeUsers(t *testing.T, data json.RawMessage) []telemt.UserInfo {
 	t.Helper()
-	var users []telemt.UserInfo
-	if err := json.Unmarshal(data, &users); err != nil {
-		t.Fatalf("decode users: %v (data=%s)", err, data)
+	return decodeUsersSnapshot(t, data).Users
+}
+
+func decodeUsersSnapshot(t *testing.T, data json.RawMessage) usersSnapshot {
+	t.Helper()
+	var snap usersSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("decode users snapshot: %v (data=%s)", err, data)
 	}
-	return users
+	return snap
+}
+
+// TestUsersTopicComposite covers the composite payload backlog item 2
+// requires (spec 02-hub-sse.md): the "users" topic must carry quota usage
+// and quota_supported alongside the raw user list, degrading gracefully
+// (quota: null, quota_supported: false) when the capability is absent
+// rather than failing the topic.
+func TestUsersTopicComposite(t *testing.T) {
+	f, tc := newFakeTelemt(t)
+	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
+	f.setQuota(map[string]telemt.QuotaEntry{"alice": {DataQuotaBytes: 1024, UsedBytes: 512, LastResetEpochSecs: 100}})
+
+	h := New(Config{UsersInterval: 20 * time.Millisecond, StatsInterval: time.Hour}, tc)
+	t.Cleanup(h.Close)
+
+	ch, _, cancel, err := h.Subscribe([]string{"users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	ev := <-ch
+	snap := decodeUsersSnapshot(t, ev.Data)
+	if len(snap.Users) != 1 || snap.Users[0].Username != "alice" {
+		t.Fatalf("users = %+v", snap.Users)
+	}
+	if !snap.QuotaSupported {
+		t.Fatal("quota_supported = false, want true")
+	}
+	alice, ok := snap.Quota["alice"]
+	if !ok || alice.UsedBytes != 512 || alice.DataQuotaBytes != 1024 {
+		t.Fatalf("quota[alice] = %+v, ok=%v", alice, ok)
+	}
+}
+
+// TestUsersTopicDegradesQuotaWhenCapabilityAbsent covers the same composite
+// topic on a Telemt build that predates the quota endpoint (fakeTelemt's
+// default: quotaEnabled is false, serving 404) — the topic must still
+// publish the user list, with quota explicit-null and quota_supported
+// false, not a source_error.
+func TestUsersTopicDegradesQuotaWhenCapabilityAbsent(t *testing.T) {
+	f, tc := newFakeTelemt(t)
+	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
+
+	h := New(Config{UsersInterval: 20 * time.Millisecond, StatsInterval: time.Hour}, tc)
+	t.Cleanup(h.Close)
+
+	ch, _, cancel, err := h.Subscribe([]string{"users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	ev := <-ch
+	if ev.Err != "" {
+		t.Fatalf("event = %+v, want a snapshot, not a source_error", ev)
+	}
+	snap := decodeUsersSnapshot(t, ev.Data)
+	if len(snap.Users) != 1 || snap.Users[0].Username != "alice" {
+		t.Fatalf("users = %+v", snap.Users)
+	}
+	if snap.QuotaSupported {
+		t.Fatal("quota_supported = true, want false (capability absent)")
+	}
+	if snap.Quota != nil {
+		t.Fatalf("quota = %+v, want nil", snap.Quota)
+	}
+	if !bytes.Contains(ev.Data, []byte(`"quota":null`)) {
+		t.Fatalf("data = %s, want an explicit quota:null, not an omitted key", ev.Data)
+	}
 }
 
 func TestUnknownTopicRejected(t *testing.T) {

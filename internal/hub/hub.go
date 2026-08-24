@@ -173,12 +173,32 @@ func New(cfg Config, tc *telemt.Client) *Hub {
 	return h
 }
 
+// usersSnapshot is the "users" topic's composite payload (spec
+// 02-hub-sse.md topic table: "список пользователей + квоты"): the raw
+// Telemt user list merged with quota usage, mirroring the same graceful
+// degradation httpapi's quotaListOrDegrade applies to the REST endpoint —
+// a quota fetch failure never fails the topic, it just publishes without
+// quota data. Quota is an explicit JSON null (Go's nil-map default), not an
+// omitted key, when the capability is unsupported or the probe failed.
+type usersSnapshot struct {
+	Users          []telemt.UserInfo            `json:"users"`
+	Quota          map[string]telemt.QuotaEntry `json:"quota"`
+	QuotaSupported bool                         `json:"quota_supported"`
+}
+
 func fetchUsers(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 	users, err := tc.Users(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(users)
+	// Both calls run under the poll's own context/timeout — a quota hiccup
+	// must not cost the users topic its own budget twice.
+	quota, hasQuota, err := tc.QuotaList(ctx)
+	if err != nil {
+		slog.Warn("hub: users topic: quota list", "err", err)
+		quota, hasQuota = nil, false
+	}
+	return json.Marshal(usersSnapshot{Users: users, Quota: quota, QuotaSupported: hasQuota})
 }
 
 // statsSnapshot is the "stats" topic's composite payload. Health and
