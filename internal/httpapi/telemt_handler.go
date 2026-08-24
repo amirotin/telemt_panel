@@ -26,11 +26,13 @@ type telemtCapabilitiesView struct {
 
 // telemtInfoView mirrors api/openapi.yaml schema TelemtInfo.
 type telemtInfoView struct {
-	Reachable      bool                   `json:"reachable"`
-	Version        string                 `json:"version,omitempty"`
-	Arch           string                 `json:"arch,omitempty"`
-	OS             string                 `json:"os,omitempty"`
-	UptimeSeconds  float64                `json:"uptime_seconds,omitempty"`
+	Reachable bool   `json:"reachable"`
+	Version   string `json:"version,omitempty"`
+	Arch      string `json:"arch,omitempty"`
+	OS        string `json:"os,omitempty"`
+	// UptimeSeconds has no omitempty: a fresh-restart 0.0 is a legitimate
+	// value and must not be dropped the way omitempty would drop it.
+	UptimeSeconds  float64                `json:"uptime_seconds"`
 	ConfigPath     string                 `json:"config_path,omitempty"`
 	ConfigEditMode string                 `json:"config_edit_mode,omitempty"`
 	Capabilities   telemtCapabilitiesView `json:"capabilities"`

@@ -127,6 +127,47 @@ func TestHandleTelemtInfo_ReachableShapeMatchesOpenapi(t *testing.T) {
 	}
 }
 
+// TestHandleTelemtInfo_ZeroUptimeIsSentNotOmitted covers fix 3: a
+// fresh-restart uptime_seconds:0 is a real value, not "no data" — omitempty
+// on that field would silently drop it, indistinguishable on the wire from
+// an old Telemt build that never sent it at all.
+func TestHandleTelemtInfo_ZeroUptimeIsSentNotOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/system/info":
+			fmt.Fprint(w, `{"ok":true,"data":{"version":"3.5.2","target_arch":"x86_64","target_os":"linux",
+				"build_profile":"release","process_started_at_epoch_secs":1000,"uptime_seconds":0,
+				"config_path":"/etc/telemt/telemt.toml","config_hash":"abc","config_reload_count":1},"revision":"r"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	tc := telemt.New(srv.URL, "")
+
+	panelSrv, cookie := newTelemtInfoTestServer(t, tc)
+
+	r := httptest.NewRequest("GET", "/api/telemt/info", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	panelSrv.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+	v, ok := raw["uptime_seconds"]
+	if !ok {
+		t.Fatal("uptime_seconds key missing, want it present even when 0")
+	}
+	if v != float64(0) {
+		t.Errorf("uptime_seconds = %v, want 0", v)
+	}
+}
+
 // TestHandleTelemtInfo_UnreachableHintNamesAPI is the acceptance test's
 // core assertion in isolation: an unreachable Telemt must report
 // reachable:false with a hint naming the Telemt API (telemt.url), never
