@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -234,7 +235,56 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET /sub/{token}", s.subpageRateLimited(s.handleSubpage))
 	}
 
-	return mux
+	return apiJSONFallback(mux)
+}
+
+// headerCapture is a throwaway http.ResponseWriter used only to run
+// ServeMux's synthetic "no route matched" handler far enough to read the
+// Allow header it sets for a 405 — never written to the real response,
+// discarded immediately after.
+type headerCapture struct {
+	header http.Header
+}
+
+func newHeaderCapture() *headerCapture { return &headerCapture{header: make(http.Header)} }
+
+func (c *headerCapture) Header() http.Header         { return c.header }
+func (c *headerCapture) Write(b []byte) (int, error) { return len(b), nil }
+func (c *headerCapture) WriteHeader(int)             {}
+
+// apiJSONFallback wraps mux so an unmatched /api/* request — an unknown
+// path, or a known path with the wrong method — returns the panel's
+// {code,message} JSON error envelope (api/openapi.yaml Error) instead of
+// ServeMux's default plain-text 404/405. Non-/api/ paths, including
+// /sub/*, pass through untouched and keep their existing plain-text
+// behavior — the audit's scope is the JSON API surface only.
+//
+// mux.Handler(r) reports the empty pattern "" exactly when ServeMux itself
+// would fall back to a synthetic handler (net/http's findHandler): either a
+// bare 404 or, when the path matches a route under a different method, a
+// 405 with an Allow header already set. Running that synthetic handler
+// against a headerCapture (rather than the real ResponseWriter) reads the
+// Allow header, if any, without letting its plain-text body reach the
+// client.
+func apiJSONFallback(mux *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		if h, pattern := mux.Handler(r); pattern == "" {
+			capture := newHeaderCapture()
+			h.ServeHTTP(capture, r)
+			if allow := capture.header.Get("Allow"); allow != "" {
+				w.Header().Set("Allow", allow)
+				auth.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+				return
+			}
+			auth.WriteError(w, http.StatusNotFound, "not_found", "not found")
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // Run serves until ctx is canceled, then drains connections.

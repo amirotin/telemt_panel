@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,6 +84,84 @@ func TestAllowedServiceNames_NoDuplicateWhenContainerMatchesService(t *testing.T
 		if got[i] != w {
 			t.Errorf("allowedServiceNames[%d] = %q, want %q (full: %v)", i, got[i], w, got)
 		}
+	}
+}
+
+// TestAPIUnknownPathReturnsJSON404 covers P2.6b: an unmatched /api/* path
+// must get the panel's {code,message} envelope, not ServeMux's default
+// plain-text 404.
+func TestAPIUnknownPathReturnsJSON404(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	r := httptest.NewRequest(http.MethodGet, "/api/nope", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+	var body struct{ Code, Message string }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v (body: %s)", err, w.Body.String())
+	}
+	if body.Code != "not_found" {
+		t.Fatalf("error code = %q, want not_found", body.Code)
+	}
+}
+
+// TestAPIWrongMethodReturnsJSON405WithAllow covers P2.6b: a known /api/*
+// path hit with the wrong method must get a JSON 405 with the Allow header
+// ServeMux itself computes (the actual set of methods registered for that
+// path), not a plain-text body.
+func TestAPIWrongMethodReturnsJSON405WithAllow(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	// GET /api/auth/me is registered; DELETE is not.
+	r := httptest.NewRequest(http.MethodDelete, "/api/auth/me", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", w.Code)
+	}
+	if allow := w.Header().Get("Allow"); allow == "" {
+		t.Error("Allow header missing on 405 response")
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+	var body struct{ Code, Message string }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v (body: %s)", err, w.Body.String())
+	}
+	if body.Code != "method_not_allowed" {
+		t.Fatalf("error code = %q, want method_not_allowed", body.Code)
+	}
+}
+
+// TestSubUnknownPathStaysPlainText covers P2.6b's scope boundary: the
+// JSON fallback applies to /api/* only — /sub/* (public, no cookie) must
+// keep ServeMux's default plain-text 404 unchanged.
+func TestSubUnknownPathStaysPlainText(t *testing.T) {
+	srv := newTestServer(t)
+	srv.cfg.Subpage.Enabled = true
+	srv.cfg.Subpage.Secret = "test-secret-at-least-32-bytes-long!!"
+	h := srv.Handler()
+
+	r := httptest.NewRequest(http.MethodGet, "/sub/bad", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct == "application/json" {
+		t.Fatal("Content-Type = application/json, want /sub/* to stay plain text")
 	}
 }
 

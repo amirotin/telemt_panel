@@ -127,7 +127,11 @@ type sessionInfo struct {
 	Current        bool      `json:"current"`
 }
 
-// handleListSessions implements GET /api/auth/sessions.
+// handleListSessions implements GET /api/auth/sessions. A session whose
+// LastSeen has aged past the TTL is filtered out and lazily deleted here —
+// the same expiry rule RequireSession enforces on every request
+// (auth.SessionExpired) — so a session that would already be rejected as
+// expired on use never shows up as a live device in the list.
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	current, _ := auth.SessionIDHashFromContext(r.Context())
 
@@ -138,8 +142,16 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
+	ttl := s.cfg.Auth.SessionTTLDuration()
 	out := make([]sessionInfo, 0, len(sessions))
 	for _, sess := range sessions {
+		if auth.SessionExpired(now.Sub(sess.LastSeen), ttl) {
+			if err := s.st.DeleteSession(sess.IDHash); err != nil {
+				slog.Error("list sessions: delete expired", "err", err)
+			}
+			continue
+		}
 		out = append(out, sessionInfo{
 			ID:             sess.IDHash,
 			Created:        sess.Created,

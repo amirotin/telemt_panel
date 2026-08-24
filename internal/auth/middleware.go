@@ -19,6 +19,14 @@ import (
 // single request.
 const cookieRefreshFraction = 60
 
+// SessionExpired reports whether a session last seen age ago has exceeded
+// ttl — the one expiry rule RequireSession and the sessions list
+// (httpapi's handleListSessions) both apply, factored here so the two
+// can't drift out of sync.
+func SessionExpired(age, ttl time.Duration) bool {
+	return age > ttl
+}
+
 // RequireSession returns middleware that rejects requests without a valid,
 // unexpired session. On success it slides the session's TTL (Touch),
 // re-issues the session cookie with a fresh MaxAge once its remaining
@@ -46,7 +54,7 @@ func RequireSession(st store.Store, cfg *config.Config) func(http.Handler) http.
 			now := time.Now()
 			ttl := cfg.Auth.SessionTTLDuration()
 			age := now.Sub(sess.LastSeen)
-			if age > ttl {
+			if SessionExpired(age, ttl) {
 				_ = st.DeleteSession(idHash)
 				writeSessionExpired(w)
 				return

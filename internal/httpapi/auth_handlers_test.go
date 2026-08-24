@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
@@ -307,6 +308,35 @@ func TestSessionsListAndRevocation(t *testing.T) {
 	sessions = listSessions(t, h, cookieA)
 	if len(sessions) != 1 || !sessions[0].Current {
 		t.Fatalf("sessions after revoke-others = %+v, want just the current session", sessions)
+	}
+}
+
+// TestSessionsListFiltersAndDeletesExpiredSessions covers P2.6a: a session
+// whose LastSeen has aged past the TTL must not appear in the devices list,
+// and must be removed from the store as a side effect of listing — the
+// same lazy-delete-on-expiry behavior RequireSession applies on use.
+func TestSessionsListFiltersAndDeletesExpiredSessions(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+	srv.cfg.Auth.SessionTTL = "1h"
+
+	_, current := login(t, h, "admin", testPassword)
+	if current == nil {
+		t.Fatal("expected a successful login")
+	}
+
+	expiredIDHash := auth.HashToken("expired-token")
+	longAgo := time.Now().Add(-2 * time.Hour)
+	if err := srv.st.PutSession(store.Session{IDHash: expiredIDHash, Created: longAgo, LastSeen: longAgo}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	sessions := listSessions(t, h, current)
+	if len(sessions) != 1 || !sessions[0].Current {
+		t.Fatalf("sessions = %+v, want just the current one (expired session filtered out)", sessions)
+	}
+	if _, ok, _ := srv.st.GetSession(expiredIDHash); ok {
+		t.Error("expired session should have been lazily deleted from the store by the list call")
 	}
 }
 
