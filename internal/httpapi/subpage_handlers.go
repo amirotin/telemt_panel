@@ -54,7 +54,10 @@ func (s *Server) handleSubpage(w http.ResponseWriter, r *http.Request) {
 	// nonce rotation that should have revoked it. This check, not the
 	// index, is what makes revocation deterministic — a mismatch triggers
 	// a throttled refresh so the stale entry ages out, then 404s exactly
-	// like an unknown token.
+	// like an unknown token. The stale-hit 404 does more work (Users fetch
+	// + HMAC) than the unknown-token 404 — an accepted timing asymmetry:
+	// reaching this path requires presenting a complete previously-valid
+	// token, so the timing reveals nothing the caller does not already know.
 	secret, ok := subpage.ExtractSecret(u.Links)
 	if !ok {
 		s.subIndex.TriggerRefresh(ctx)

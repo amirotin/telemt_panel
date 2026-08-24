@@ -84,7 +84,10 @@ func (s *Service) Verify(username, userSecret, token string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return deriveToken(s.secret, username, userSecret, nonce) == token, nil
+	// Constant-time compare: the early-exit timing of == on the derived
+	// value is not known to be exploitable here (Verify runs only after an
+	// exact hash-map hit in Index.Lookup), but hmac.Equal costs nothing.
+	return hmac.Equal([]byte(deriveToken(s.secret, username, userSecret, nonce)), []byte(token)), nil
 }
 
 // ExtractSecret returns the user's canonical 32-hex Telemt secret from
