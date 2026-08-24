@@ -17,10 +17,15 @@ const (
 	metricCap  = 900
 )
 
+// touchMirrorDebounce caps how often a TouchSession-triggered mirror write
+// happens: at most once per this interval, however many touches land in
+// between.
+const touchMirrorDebounce = 30 * time.Second
+
 // Memory is an in-memory Store for the router profile: no flash writes,
-// bounded by ring buffers. Sessions and subpage nonces can optionally be
-// mirrored to a JSON file so they survive a process restart; audit,
-// update-journal and metric history are process-lifetime only.
+// bounded by ring buffers. Sessions, subpage nonces and settings can
+// optionally be mirrored to a JSON file so they survive a process restart;
+// audit, update-journal and metric history are process-lifetime only.
 type Memory struct {
 	mu sync.Mutex
 
@@ -29,29 +34,48 @@ type Memory struct {
 	journal       map[string][]UpdateJournalEntry
 	metrics       map[string][]MetricPoint
 	subpageNonces map[string]string
+	settings      map[string]string
 
 	mirrorPath string
+
+	// Touch debounce: TouchSession marks the mirror dirty and defers the
+	// write to a timer that fires at most once per mirrorDebounce, instead
+	// of writing on every touch. All other mutations still write through
+	// saveMirrorLocked immediately. scheduleTimer is the injection point
+	// tests use to control the timer deterministically, without real
+	// waits; it returns a stop func, mirroring time.Timer.Stop.
+	mirrorDebounce time.Duration
+	touchDirty     bool
+	stopTouchTimer func()
+	scheduleTimer  func(d time.Duration, f func()) (stop func())
 }
 
 // mirrorFile is the on-disk shape of the mirrored subset of state
-// (sessions and subpage nonces only).
+// (sessions, subpage nonces and settings only).
 type mirrorFile struct {
 	Sessions      map[string]Session `json:"sessions"`
 	SubpageNonces map[string]string  `json:"subpage_nonces"`
+	Settings      map[string]string  `json:"settings"`
 }
 
 // NewMemory creates an in-memory Store. If mirrorPath is non-empty,
-// sessions and subpage nonces are loaded from it now and persisted back to
-// it on every subsequent mutation of those two families. A missing or
-// corrupt mirror file is logged and treated as empty — it never fails
-// startup.
+// sessions, subpage nonces and settings are loaded from it now and
+// persisted back to it on every subsequent mutation of those families
+// (touches are debounced, see touchMirrorDebounce). A missing or corrupt
+// mirror file is logged and treated as empty — it never fails startup.
 func NewMemory(mirrorPath string) (*Memory, error) {
 	m := &Memory{
-		sessions:      make(map[string]Session),
-		journal:       make(map[string][]UpdateJournalEntry),
-		metrics:       make(map[string][]MetricPoint),
-		subpageNonces: make(map[string]string),
-		mirrorPath:    mirrorPath,
+		sessions:       make(map[string]Session),
+		journal:        make(map[string][]UpdateJournalEntry),
+		metrics:        make(map[string][]MetricPoint),
+		subpageNonces:  make(map[string]string),
+		settings:       make(map[string]string),
+		mirrorPath:     mirrorPath,
+		mirrorDebounce: touchMirrorDebounce,
+		scheduleTimer: func(d time.Duration, f func()) func() {
+			t := time.AfterFunc(d, f)
+			return func() { t.Stop() }
+		},
 	}
 
 	if mirrorPath == "" {
@@ -77,6 +101,9 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 	if mf.SubpageNonces != nil {
 		m.subpageNonces = mf.SubpageNonces
 	}
+	if mf.Settings != nil {
+		m.settings = mf.Settings
+	}
 	return m, nil
 }
 
@@ -92,6 +119,7 @@ func (m *Memory) saveMirrorLocked() {
 	mf := mirrorFile{
 		Sessions:      m.sessions,
 		SubpageNonces: m.subpageNonces,
+		Settings:      m.settings,
 	}
 	data, err := json.Marshal(mf)
 	if err != nil {
@@ -144,7 +172,9 @@ func (m *Memory) GetSession(idHash string) (Session, bool, error) {
 }
 
 // TouchSession updates LastSeen for the given session. Touching a session
-// that does not exist is not an error.
+// that does not exist is not an error. The mirror write is debounced (see
+// mirrorDebounce) rather than immediate, since touches happen far more
+// often than the other mutation families.
 func (m *Memory) TouchSession(idHash string, at time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -154,8 +184,36 @@ func (m *Memory) TouchSession(idHash string, at time.Time) error {
 	}
 	s.LastSeen = at
 	m.sessions[idHash] = s
-	m.saveMirrorLocked()
+	m.scheduleMirrorLocked()
 	return nil
+}
+
+// scheduleMirrorLocked marks the mirror dirty and, if no flush is already
+// scheduled, arms a timer to flush it after mirrorDebounce. Callers must
+// hold mu.
+func (m *Memory) scheduleMirrorLocked() {
+	if m.mirrorPath == "" {
+		return
+	}
+	m.touchDirty = true
+	if m.stopTouchTimer != nil {
+		return // a flush is already scheduled for this window
+	}
+	m.stopTouchTimer = m.scheduleTimer(m.mirrorDebounce, m.flushTouch)
+}
+
+// flushTouch is the debounce timer callback: it writes the mirror if state
+// is still dirty and clears the schedule so a later touch can arm a new
+// window. Runs on the timer's own goroutine in production.
+func (m *Memory) flushTouch() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stopTouchTimer = nil
+	if !m.touchDirty {
+		return
+	}
+	m.touchDirty = false
+	m.saveMirrorLocked()
 }
 
 // DeleteSession removes one session.
@@ -276,9 +334,37 @@ func (m *Memory) SetSubpageNonce(username, nonce string) error {
 	return nil
 }
 
-// Close is a no-op for the memory driver; state is process-lifetime only
-// (beyond whatever was mirrored to disk).
+// GetSetting returns the value stored under key.
+func (m *Memory) GetSetting(key string) (string, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.settings[key]
+	return v, ok, nil
+}
+
+// SetSetting sets the value stored under key, creating or overwriting it.
+func (m *Memory) SetSetting(key, value string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settings[key] = value
+	m.saveMirrorLocked()
+	return nil
+}
+
+// Close stops any pending touch-debounce timer and, if a touch flush was
+// still owed, flushes it synchronously before returning. Beyond the
+// mirror, state is process-lifetime only.
 func (m *Memory) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.stopTouchTimer != nil {
+		m.stopTouchTimer()
+		m.stopTouchTimer = nil
+	}
+	if m.touchDirty {
+		m.touchDirty = false
+		m.saveMirrorLocked()
+	}
 	return nil
 }
 

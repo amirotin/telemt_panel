@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -248,6 +249,31 @@ func TestSubpageNonceCRUD(t *testing.T) {
 	}
 }
 
+func TestSettingCRUD(t *testing.T) {
+	m := newMemory(t)
+	v, ok, err := m.GetSetting("missing")
+	if err != nil || ok || v != "" {
+		t.Fatalf("GetSetting(missing) = %q ok:%v err:%v, want \"\" false nil", v, ok, err)
+	}
+
+	if err := m.SetSetting("theme", "dark"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	v, ok, err = m.GetSetting("theme")
+	if err != nil || !ok || v != "dark" {
+		t.Fatalf("GetSetting(theme) = %q ok:%v err:%v, want \"dark\" true nil", v, ok, err)
+	}
+
+	// SetSetting overwrites the previous value.
+	if err := m.SetSetting("theme", "light"); err != nil {
+		t.Fatalf("SetSetting (overwrite): %v", err)
+	}
+	v, _, _ = m.GetSetting("theme")
+	if v != "light" {
+		t.Fatalf("GetSetting after overwrite = %q, want %q", v, "light")
+	}
+}
+
 // TestRingTruncation drives each bounded family past its cap and checks
 // that it holds exactly cap entries afterward, and that those entries are
 // the most-recently-inserted ones (oldest ones were dropped).
@@ -343,6 +369,9 @@ func TestMirrorRoundTrip(t *testing.T) {
 	if err := m1.SetSubpageNonce("alice", "n1"); err != nil {
 		t.Fatalf("SetSubpageNonce: %v", err)
 	}
+	if err := m1.SetSetting("theme", "dark"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
 	// Metrics are explicitly excluded from the mirror.
 	if err := m1.RecordMetric("rx_bytes", MetricPoint{TS: 1, Value: 1}); err != nil {
 		t.Fatalf("RecordMetric: %v", err)
@@ -372,6 +401,11 @@ func TestMirrorRoundTrip(t *testing.T) {
 	nonce, err := m2.GetSubpageNonce("alice")
 	if err != nil || nonce != "n1" {
 		t.Fatalf("GetSubpageNonce after reopen = %q err:%v, want \"n1\" nil", nonce, err)
+	}
+
+	setting, ok, err := m2.GetSetting("theme")
+	if err != nil || !ok || setting != "dark" {
+		t.Fatalf("GetSetting after reopen = %q ok:%v err:%v, want \"dark\" true nil", setting, ok, err)
 	}
 
 	points, err := m2.MetricRange("rx_bytes", 0)
@@ -423,6 +457,181 @@ func TestMirrorCorruptFileStartsEmpty(t *testing.T) {
 	sessions, err := m.ListSessions()
 	if err != nil || len(sessions) != 0 {
 		t.Fatalf("ListSessions on corrupt mirror = %+v err:%v, want empty nil", sessions, err)
+	}
+}
+
+// fakeTimer is a test double for Memory.scheduleTimer: it records how many
+// times it was armed and hands back the pending callback so tests can fire
+// it deterministically instead of waiting on a real timer.
+type fakeTimer struct {
+	scheduled int
+	pending   func()
+}
+
+func (f *fakeTimer) schedule(_ time.Duration, cb func()) func() {
+	f.scheduled++
+	f.pending = cb
+	return func() { f.pending = nil }
+}
+
+func (f *fakeTimer) fire() {
+	cb := f.pending
+	f.pending = nil
+	if cb != nil {
+		cb()
+	}
+}
+
+// readMirrorLastSeen reads path off disk and returns idHash's LastSeen, for
+// asserting exactly when a touch became visible in the mirror.
+func readMirrorLastSeen(t *testing.T, path, idHash string) time.Time {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var mf mirrorFile
+	if err := json.Unmarshal(data, &mf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	s, ok := mf.Sessions[idHash]
+	if !ok {
+		t.Fatalf("session %q not in mirror", idHash)
+	}
+	return s.LastSeen
+}
+
+// TestTouchDebounce drives a touch storm through an injected fake timer and
+// checks that it coalesces into exactly one scheduled flush, that the
+// mirror is untouched until that flush fires, and that firing it writes the
+// latest state.
+func TestTouchDebounce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mirror.json")
+	m, err := NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
+	}
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := m.PutSession(Session{IDHash: "a", Created: base, LastSeen: base}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(base) {
+		t.Fatalf("initial mirror LastSeen = %v, want %v", got, base)
+	}
+
+	ft := &fakeTimer{}
+	m.scheduleTimer = ft.schedule
+
+	// Touch storm: several touches inside one debounce window must
+	// coalesce into a single scheduled flush and must not write yet.
+	for i := 1; i <= 5; i++ {
+		at := base.Add(time.Duration(i) * time.Second)
+		if err := m.TouchSession("a", at); err != nil {
+			t.Fatalf("TouchSession(%d): %v", i, err)
+		}
+	}
+	if ft.scheduled != 1 {
+		t.Fatalf("scheduleTimer called %d times, want 1 (storm should coalesce)", ft.scheduled)
+	}
+	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(base) {
+		t.Fatalf("mirror LastSeen before flush = %v, want unchanged %v", got, base)
+	}
+
+	// Firing the debounce timer flushes the latest state once.
+	ft.fire()
+	wantLatest := base.Add(5 * time.Second)
+	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(wantLatest) {
+		t.Fatalf("mirror LastSeen after flush = %v, want %v", got, wantLatest)
+	}
+
+	// A touch after the window flushed arms a new window.
+	if err := m.TouchSession("a", base.Add(6*time.Second)); err != nil {
+		t.Fatalf("TouchSession: %v", err)
+	}
+	if ft.scheduled != 2 {
+		t.Fatalf("scheduleTimer called %d times after new touch, want 2", ft.scheduled)
+	}
+}
+
+// TestTouchDebounceImmediateFamiliesUnaffected checks that other mutation
+// families still write through synchronously while a touch flush is
+// pending, rather than waiting on the debounce window.
+func TestTouchDebounceImmediateFamiliesUnaffected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mirror.json")
+	m, err := NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
+	}
+	if err := m.PutSession(Session{IDHash: "a", Created: time.Now()}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	ft := &fakeTimer{}
+	m.scheduleTimer = ft.schedule
+
+	if err := m.TouchSession("a", time.Now()); err != nil {
+		t.Fatalf("TouchSession: %v", err)
+	}
+	if ft.scheduled != 1 {
+		t.Fatalf("scheduleTimer called %d times, want 1", ft.scheduled)
+	}
+
+	if err := m.SetSetting("k", "v"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var mf mirrorFile
+	if err := json.Unmarshal(data, &mf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if mf.Settings["k"] != "v" {
+		t.Fatalf("Settings[k] = %q, want %q (SetSetting must write through immediately)", mf.Settings["k"], "v")
+	}
+	// The pending touch flush must be untouched by the immediate write.
+	if ft.scheduled != 1 {
+		t.Fatalf("scheduleTimer called %d times after SetSetting, want still 1", ft.scheduled)
+	}
+}
+
+// TestTouchDebounceFlushedOnClose checks that a pending touch flush is
+// written synchronously by Close, without waiting for the timer to fire.
+func TestTouchDebounceFlushedOnClose(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mirror.json")
+	m, err := NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
+	}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := m.PutSession(Session{IDHash: "a", Created: base, LastSeen: base}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	ft := &fakeTimer{}
+	m.scheduleTimer = ft.schedule
+
+	touched := base.Add(time.Minute)
+	if err := m.TouchSession("a", touched); err != nil {
+		t.Fatalf("TouchSession: %v", err)
+	}
+	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(base) {
+		t.Fatalf("mirror LastSeen before Close = %v, want unchanged %v", got, base)
+	}
+
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(touched) {
+		t.Fatalf("mirror LastSeen after Close = %v, want %v", got, touched)
+	}
+	if ft.pending != nil {
+		t.Fatalf("Close left a pending timer callback armed, want stopped")
 	}
 }
 

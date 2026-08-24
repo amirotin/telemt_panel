@@ -88,6 +88,12 @@ type Store interface {
 	// SetSubpageNonce sets the subpage nonce for username.
 	SetSubpageNonce(username, nonce string) error
 
+	// GetSetting returns the value stored under key. The bool is false
+	// when no such key exists; that case is not an error.
+	GetSetting(key string) (string, bool, error)
+	// SetSetting sets the value stored under key, creating or overwriting it.
+	SetSetting(key, value string) error
+
 	// Close releases any resources held by the store.
 	Close() error
 }
