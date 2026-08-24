@@ -7,11 +7,14 @@ import (
 )
 
 // Privileges mode values (config `[privileges] mode`, and SelectRunner's
-// mode argument).
+// mode argument). PrivilegesModeDegraded is never a config value — it's
+// one of ResolveMode's three possible results, reported by GET /api/host
+// when neither direct execution nor the agent socket is available.
 const (
-	PrivilegesModeAuto   = "auto"
-	PrivilegesModeAgent  = "agent"
-	PrivilegesModeDirect = "direct"
+	PrivilegesModeAuto     = "auto"
+	PrivilegesModeAgent    = "agent"
+	PrivilegesModeDirect   = "direct"
+	PrivilegesModeDegraded = "degraded"
 )
 
 // dialProbeTimeout bounds SelectRunner's one-shot connect-and-close probe
@@ -65,6 +68,34 @@ func SelectRunner(mode string, socketPath string, euid int, allow AllowLists, sv
 			return NewAgentClient(socketPath, defaultAgentOpTimeout)
 		}
 		return degradedRunner{}
+	}
+}
+
+// ResolveMode reports which Runner kind SelectRunner would return for the
+// same mode/socketPath/euid — "direct", "agent", or "degraded" — for
+// callers (GET /api/host's privileges_mode) that need to display the mode
+// without holding a second Runner instance around just to inspect its
+// type. Mirrors SelectRunner's branching exactly, including reusing the
+// same dialProbe; kept as a separate function rather than changing
+// SelectRunner's signature so every existing caller keeps working
+// unchanged.
+func ResolveMode(mode string, socketPath string, euid int) string {
+	switch mode {
+	case PrivilegesModeDirect:
+		return PrivilegesModeDirect
+	case PrivilegesModeAgent:
+		if dialProbe(socketPath) {
+			return PrivilegesModeAgent
+		}
+		return PrivilegesModeDegraded
+	default: // PrivilegesModeAuto and unrecognized values alike
+		if euid == 0 {
+			return PrivilegesModeDirect
+		}
+		if dialProbe(socketPath) {
+			return PrivilegesModeAgent
+		}
+		return PrivilegesModeDegraded
 	}
 }
 

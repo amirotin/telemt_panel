@@ -127,3 +127,38 @@ func (f *LogSource) Stream(ctx context.Context, service string) (<-chan host.Log
 
 // Caps implements host.LogSource.
 func (f *LogSource) Caps() host.LogCaps { return f.CapsValue }
+
+// Runner is a fake host.Runner for tests (the update engine, httpapi) that
+// need to script or inspect privileged-op execution without a real direct
+// or agent Runner. Zero value returns Output{}, nil for every call and
+// records it; set RunFunc (or the plain Result/Err fields it falls back
+// to) to script behavior.
+type Runner struct {
+	RunFunc func(op host.Op) (host.Output, error)
+	Result  host.Output
+	Err     error
+
+	mu    sync.Mutex
+	Calls []host.Op
+}
+
+// Run implements host.Runner, recording the call.
+func (f *Runner) Run(ctx context.Context, op host.Op) (host.Output, error) {
+	f.mu.Lock()
+	f.Calls = append(f.Calls, op)
+	f.mu.Unlock()
+	if f.RunFunc != nil {
+		return f.RunFunc(op)
+	}
+	return f.Result, f.Err
+}
+
+// CallsSnapshot returns a copy of the ops recorded so far, safe to read
+// concurrently with in-flight Run calls.
+func (f *Runner) CallsSnapshot() []host.Op {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]host.Op, len(f.Calls))
+	copy(out, f.Calls)
+	return out
+}
