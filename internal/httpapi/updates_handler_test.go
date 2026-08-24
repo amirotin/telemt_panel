@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -262,6 +263,111 @@ func TestHandleApplyUpdate_UnknownTarget(t *testing.T) {
 	srv.Handler().ServeHTTP(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// TestNew_DockerServiceManager_RestartTargetsUseContainerNames covers
+// finding 3 end to end, through the real Server.New wiring (unlike
+// newUpdatesTestServer above, which replaces srv.updateEngine entirely and
+// so never exercises New's own service-name resolution). It deliberately
+// gives the telemt/panel *service* names and *container* names disjoint,
+// telltale substrings so a wiring regression back to the systemd-style
+// service name — or a rejection by an allow-list that only knows the
+// service name — is unambiguous in the resulting error.
+//
+// direct mode's Docker ServiceManager really execs `docker restart
+// <container>` (host.OSCmdRunner is not injectable through New()); this
+// test never needs that to succeed — install-binary succeeds first
+// (proving the staging/binary-path plumbing is fine), and whatever the
+// restart-service op's outcome is, Docker.Restart's error always embeds
+// the exact service string ExecOp resolved and let past the allow-list
+// check, which is what this test actually asserts on.
+func TestNew_DockerServiceManager_RestartTargetsUseContainerNames(t *testing.T) {
+	tc := newFakeTelemtWithVersion(t, "v1.0.0")
+
+	binDir := t.TempDir()
+	telemtBinPath := filepath.Join(binDir, "telemt")
+	panelBinPath := filepath.Join(binDir, "panel")
+	if err := os.WriteFile(telemtBinPath, []byte("old-telemt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(panelBinPath, []byte("old-panel"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// New()'s engine uses the real host's detected arch/libc (it has no
+	// override hook), so the fake release's asset must match those, not a
+	// fixed "x86_64"/"musl" the way newUpdatesTestServer's manually-built
+	// engine does.
+	arch := update.DetectArch()
+	variant := update.DetectLibc(update.DefaultProbe())
+	tarBytes := buildTarGz(t, "telemt", []byte("new-telemt"))
+	assetName := update.AssetName("telemt", arch, variant)
+	sum := sha256.Sum256(tarBytes)
+	releaseSrv := newFakeGitHub(t)
+	releaseSrv.assets["/assets/"+assetName] = tarBytes
+	releaseSrv.assets["/assets/"+assetName+".sha256"] = []byte(hex.EncodeToString(sum[:]) + "  " + assetName + "\n")
+	releaseSrv.releases = []update.Release{{
+		Tag: "v2.0.0",
+		Assets: []update.Asset{
+			{Name: assetName, BrowserDownloadURL: releaseSrv.URL + "/assets/" + assetName},
+			{Name: assetName + ".sha256", BrowserDownloadURL: releaseSrv.URL + "/assets/" + assetName + ".sha256"},
+		},
+	}}
+
+	hash, err := auth.HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	cfg := &config.Config{
+		Auth:    config.AuthConfig{Username: "admin", PasswordHash: hash},
+		DataDir: t.TempDir(),
+		Updates: config.UpdatesConfig{
+			TelemtRepo: "owner/telemt", PanelRepo: "owner/panel",
+			TelemtBinaryPath: telemtBinPath, PanelBinaryPath: panelBinPath,
+		},
+		Host: config.HostConfig{
+			ServiceManager:  "docker",
+			TelemtService:   "telemt-service-name",
+			PanelService:    "panel-service-name",
+			TelemtContainer: "telemt-container-name",
+			PanelContainer:  "panel-container-name",
+		},
+		// "direct" forces host.NewDirectRunner regardless of the test
+		// process's euid — SelectRunner's doc comment: an operator's
+		// explicit choice is taken at face value.
+		Privileges: config.PrivilegesConfig{Mode: "direct"},
+	}
+	st, err := store.NewMemory("")
+	if err != nil {
+		t.Fatalf("store.NewMemory: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	hb := hub.New(hub.Config{}, tc)
+	t.Cleanup(hb.Close)
+
+	srv := New(cfg, tc, st, hb, "1.0.0")
+	t.Cleanup(srv.limiter.Stop)
+	t.Cleanup(srv.subLimiter.Stop)
+	srv.SetUpdateGithubBaseURL(releaseSrv.URL)
+
+	if srv.svcMgr.Kind() != host.KindDocker {
+		t.Fatalf("svcMgr.Kind() = %q, want docker (test setup problem, not the fix under test)", srv.svcMgr.Kind())
+	}
+
+	err = srv.updateEngine.Apply(context.Background(), update.TargetTelemt, "v2.0.0")
+	if err == nil {
+		t.Fatal("want a non-nil error (no real \"telemt-container-name\" docker container exists in the test environment)")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "is not in the allowed service list") {
+		t.Fatalf("Apply error = %q — the container name was rejected by the allow-list, want it accepted", msg)
+	}
+	if !strings.Contains(msg, "telemt-container-name") {
+		t.Fatalf("Apply error = %q, want it to reference the docker container name \"telemt-container-name\"", msg)
+	}
+	if strings.Contains(msg, "telemt-service-name") {
+		t.Fatalf("Apply error = %q, want it NOT to reference the systemd-style service name \"telemt-service-name\" — a docker host must restart the container, not that unit", msg)
 	}
 }
 

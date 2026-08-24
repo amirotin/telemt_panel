@@ -4,6 +4,9 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +16,74 @@ import (
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
+
+// TestStagingPrefix_EmptyDataDirIsAbsoluteUnderTempDir covers finding 4: an
+// empty data_dir (the documented RAM-only-state config) must not produce
+// the relative path "staging" — every install op's validatePathShape
+// check (privexec.go) rejects a relative staging prefix outright.
+func TestStagingPrefix_EmptyDataDirIsAbsoluteUnderTempDir(t *testing.T) {
+	got := stagingPrefix("")
+	if !filepath.IsAbs(got) {
+		t.Fatalf("stagingPrefix(\"\") = %q, want an absolute path", got)
+	}
+	if !strings.HasPrefix(got, os.TempDir()) {
+		t.Errorf("stagingPrefix(\"\") = %q, want it under os.TempDir() %q", got, os.TempDir())
+	}
+}
+
+func TestStagingPrefix_NonEmptyDataDirJoinsStaging(t *testing.T) {
+	got := stagingPrefix("/var/lib/telemt-panel")
+	want := filepath.Join("/var/lib/telemt-panel", "staging")
+	if got != want {
+		t.Errorf("stagingPrefix(%q) = %q, want %q", "/var/lib/telemt-panel", got, want)
+	}
+}
+
+// TestAllowedServiceNames_IncludesContainerNamesWhenTheyDiffer covers
+// finding 3's allow-list half: both the plain service name and the docker
+// container name must be allow-listed whenever they differ, since
+// restart-service and read-journal each resolve their own name from a
+// potentially different Kind() (service manager vs. log source).
+func TestAllowedServiceNames_IncludesContainerNamesWhenTheyDiffer(t *testing.T) {
+	cfg := config.HostConfig{
+		TelemtService:   "telemt",
+		PanelService:    "telemt-panel",
+		TelemtContainer: "telemt-ctr",
+		PanelContainer:  "panel-ctr",
+	}
+	got := allowedServiceNames(cfg)
+	want := []string{"telemt", "telemt-panel", "telemt-ctr", "panel-ctr"}
+	if len(got) != len(want) {
+		t.Fatalf("allowedServiceNames = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("allowedServiceNames[%d] = %q, want %q (full: %v)", i, got[i], w, got)
+		}
+	}
+}
+
+// TestAllowedServiceNames_NoDuplicateWhenContainerMatchesService covers
+// the non-docker case: a container name that happens to equal the plain
+// service name (or is unset) must not be listed twice.
+func TestAllowedServiceNames_NoDuplicateWhenContainerMatchesService(t *testing.T) {
+	cfg := config.HostConfig{
+		TelemtService:   "telemt",
+		PanelService:    "telemt-panel",
+		TelemtContainer: "telemt", // same as TelemtService
+		PanelContainer:  "",       // unset
+	}
+	got := allowedServiceNames(cfg)
+	want := []string{"telemt", "telemt-panel"}
+	if len(got) != len(want) {
+		t.Fatalf("allowedServiceNames = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("allowedServiceNames[%d] = %q, want %q (full: %v)", i, got[i], w, got)
+		}
+	}
+}
 
 // freeAddr reserves an ephemeral TCP port and immediately releases it so a
 // test's own *http.Server (started via Run, which only accepts an address

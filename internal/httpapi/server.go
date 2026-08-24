@@ -62,13 +62,21 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	// allow-list check (privexec.go) requires an exact member of this
 	// list, so the sibling has to be listed explicitly, not just the live
 	// path.
+	// telemtServiceName/panelServiceName are the update engine's restart
+	// targets — resolved the same way resolveLogicalService (host_handler.go)
+	// resolves GET /api/host's restart/log calls, so a docker host's
+	// restart-service op targets the CONTAINER name, not a systemd-style
+	// unit name that means nothing to `docker restart`.
+	telemtServiceName, _ := resolveLogicalService("telemt", svcMgr.Kind(), cfg.Host)
+	panelServiceName, _ := resolveLogicalService("panel", svcMgr.Kind(), cfg.Host)
+
 	allow := host.AllowLists{
 		BinaryPaths: []string{
 			cfg.Updates.TelemtBinaryPath, cfg.Updates.TelemtBinaryPath + ".bak",
 			cfg.Updates.PanelBinaryPath, cfg.Updates.PanelBinaryPath + ".bak",
 		},
-		StagingPrefix: filepath.Join(cfg.DataDir, "staging"),
-		Services:      []string{cfg.Host.TelemtService, cfg.Host.PanelService},
+		StagingPrefix: stagingPrefix(cfg.DataDir),
+		Services:      allowedServiceNames(cfg.Host),
 	}
 	runner := host.SelectRunner(cfg.Privileges.Mode, cfg.Privileges.AgentSocket, euid, allow, svcMgr, logSrc)
 	privilegesMode := host.ResolveMode(cfg.Privileges.Mode, cfg.Privileges.AgentSocket, euid)
@@ -77,13 +85,13 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		Client:       tc,
 		RepoName:     cfg.Updates.TelemtRepo,
 		BinaryPath_:  cfg.Updates.TelemtBinaryPath,
-		ServiceName_: cfg.Host.TelemtService,
+		ServiceName_: telemtServiceName,
 	}
 	panelTarget := &update.PanelTarget{
 		Version_:     version,
 		RepoName:     cfg.Updates.PanelRepo,
 		BinaryPath_:  cfg.Updates.PanelBinaryPath,
-		ServiceName_: cfg.Host.PanelService,
+		ServiceName_: panelServiceName,
 	}
 	updateEngine := update.NewEngine(update.EngineConfig{
 		Runner:      runner,
@@ -112,6 +120,41 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		updateEngine:       updateEngine,
 		autoUpdater:        update.NewAutoUpdater(st, updateEngine),
 	}
+}
+
+// stagingPrefix returns the update engine's staging directory prefix
+// (AllowLists.StagingPrefix and EngineConfig.StagingDir): under dataDir
+// when the panel has one configured, or a fixed directory under the OS
+// temp dir when data_dir is "" — a legitimate, documented config (RAM-only
+// state). filepath.Join(dataDir, "staging") with dataDir=="" would
+// otherwise yield the relative path "staging", which validatePathShape
+// (privexec.go) rejects on every single install op ("must be absolute")
+// and which os.MkdirAll would otherwise create under the process's
+// current working directory.
+func stagingPrefix(dataDir string) string {
+	if dataDir == "" {
+		return filepath.Join(os.TempDir(), "telemt-panel-staging")
+	}
+	return filepath.Join(dataDir, "staging")
+}
+
+// allowedServiceNames returns every service/container name that may
+// legitimately appear as an ExecOp "service" argument for the telemt and
+// panel logical services. Both the plain name and the docker container
+// name are included whenever they differ, rather than only whichever one
+// matches the service manager's detected Kind() at startup: restart-service
+// resolves its name from svcMgr.Kind() while read-journal resolves from
+// the (independently configurable) log source's Kind(), so the two can
+// legitimately disagree — see resolveLogicalService's doc comment.
+func allowedServiceNames(cfg config.HostConfig) []string {
+	names := []string{cfg.TelemtService, cfg.PanelService}
+	if cfg.TelemtContainer != "" && cfg.TelemtContainer != cfg.TelemtService {
+		names = append(names, cfg.TelemtContainer)
+	}
+	if cfg.PanelContainer != "" && cfg.PanelContainer != cfg.PanelService {
+		names = append(names, cfg.PanelContainer)
+	}
+	return names
 }
 
 // SetUpdateGithubBaseURL overrides the update engine's GitHub API base URL
