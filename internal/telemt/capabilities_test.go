@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -235,5 +236,66 @@ func TestCapabilitiesRotateSecretWellFormedNotFoundDoesNotFlip(t *testing.T) {
 	}
 	if !caps.RotateSecret {
 		t.Fatal("a well-formed not_found for an existing route must not flip rotate_secret false")
+	}
+}
+
+// TestCapabilitiesSingleFlightsColdCacheProbe covers fix 2: N concurrent
+// Capabilities() calls against a cold (or just-expired) cache must fire
+// exactly one 4-probe round, not one round per caller. The first goroutine
+// to reach the quota probe is held there (via the release channel) for a
+// beat so every other goroutine has time to call Capabilities and block on
+// the single-flight guard — without probeMu serializing them, they would
+// instead all reach the fake server concurrently and this count would come
+// back well above 1.
+func TestCapabilitiesSingleFlightsColdCacheProbe(t *testing.T) {
+	var quotaCalls, runtimeCalls, reloadCalls, configCalls int32
+	var firstIn int32
+	release := make(chan struct{})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/stats/users/quota":
+			atomic.AddInt32(&quotaCalls, 1)
+			if atomic.AddInt32(&firstIn, 1) == 1 {
+				<-release
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"users":[]},"revision":"r"}`)
+		case "/v1/runtime/connections/summary":
+			atomic.AddInt32(&runtimeCalls, 1)
+			fmt.Fprint(w, `{"ok":true,"data":{"enabled":false},"revision":"r"}`)
+		case "/v1/system/reload/0":
+			atomic.AddInt32(&reloadCalls, 1)
+			fmt.Fprint(w, `{"ok":true,"data":{},"revision":"r"}`)
+		case "/v1/config":
+			atomic.AddInt32(&configCalls, 1)
+			fmt.Fprint(w, `{"ok":true,"data":{},"revision":"r"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "")
+
+	const n = 20
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			if _, err := c.Capabilities(context.Background()); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+
+	// Let every goroutine reach Capabilities and pile up on the
+	// single-flight guard before releasing the winner's quota probe.
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	if quotaCalls != 1 || runtimeCalls != 1 || reloadCalls != 1 || configCalls != 1 {
+		t.Fatalf("probe calls = quota:%d runtime:%d reload:%d config:%d, want exactly 1 each (single-flight)",
+			quotaCalls, runtimeCalls, reloadCalls, configCalls)
 	}
 }

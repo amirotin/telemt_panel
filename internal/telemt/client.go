@@ -45,6 +45,10 @@ type Client struct {
 	caps      Caps
 	capsAt    time.Time
 	capsValid bool
+	// probeMu serializes the actual Telemt probe round in
+	// probeCapsSingleFlight (capabilities.go), independent of capsMu (which
+	// only guards the cached snapshot) — see that function's doc comment.
+	probeMu sync.Mutex
 
 	// userEnableDisableAbsent and rotateSecretAbsent latch true the first
 	// time SetEnabled/RotateSecret sees a real 404/405 from Telemt —

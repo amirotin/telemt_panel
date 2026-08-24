@@ -49,13 +49,31 @@ func (c *Client) Capabilities(ctx context.Context) (Caps, error) {
 
 	caps, cached := c.cachedCaps()
 	if !cached {
-		caps = c.probeCaps(ctx)
-		c.storeCaps(caps)
+		caps = c.probeCapsSingleFlight(ctx)
 	}
 
 	caps.UserEnableDisable = !c.userEnableDisableAbsent.Load()
 	caps.RotateSecret = !c.rotateSecretAbsent.Load()
 	return caps, nil
+}
+
+// probeCapsSingleFlight ensures only one goroutine actually probes Telemt
+// per stale cache window. cachedCaps releases capsMu before a probe runs, so
+// without this, N concurrent cold-cache callers would each fire a full
+// 4-probe round (a thundering herd) — c.probeMu serializes entry, and the
+// cachedCaps re-check under it (double-checked locking) lets every goroutine
+// but the first skip straight to the winner's freshly stored result instead
+// of probing again.
+func (c *Client) probeCapsSingleFlight(ctx context.Context) Caps {
+	c.probeMu.Lock()
+	defer c.probeMu.Unlock()
+
+	if caps, cached := c.cachedCaps(); cached {
+		return caps
+	}
+	caps := c.probeCaps(ctx)
+	c.storeCaps(caps)
+	return caps
 }
 
 func (c *Client) cachedCaps() (Caps, bool) {
