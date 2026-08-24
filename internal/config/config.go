@@ -89,6 +89,13 @@ type HostConfig struct {
 	TelemtService   string `toml:"telemt_service"`
 	PanelService    string `toml:"panel_service"`
 	TelemtContainer string `toml:"telemt_container"`
+	// PanelContainer is the container name used for the panel's own
+	// restart/log operations when service_manager (or log_source) is
+	// docker — mirrors TelemtContainer. Without this, a dockerized panel
+	// would resolve to PanelService (a systemd-style unit name) even
+	// under the docker manager, which doesn't mean anything to `docker
+	// restart`/`docker logs`.
+	PanelContainer string `toml:"panel_container"`
 }
 
 // UpdatesConfig points the panel's self-update and Telemt-update flows at
@@ -118,6 +125,7 @@ func Load(path string) (*Config, error) {
 			TelemtService:   "telemt",
 			PanelService:    "telemt-panel",
 			TelemtContainer: "telemt",
+			PanelContainer:  "telemt-panel",
 		},
 		Updates: UpdatesConfig{
 			TelemtRepo:       "telemt/telemt",

@@ -56,6 +56,7 @@ enabled = false
 # telemt_service = "telemt"
 # panel_service = "telemt-panel"
 # telemt_container = "telemt"
+# panel_container = "telemt-panel"
 
 [updates]
 # GitHub repos (owner/name) update checks poll for new releases.

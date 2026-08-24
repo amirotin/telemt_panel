@@ -46,6 +46,7 @@ func TestLoadMinimal(t *testing.T) {
 		TelemtService:   "telemt",
 		PanelService:    "telemt-panel",
 		TelemtContainer: "telemt",
+		PanelContainer:  "telemt-panel",
 	}
 	if cfg.Host != wantHost {
 		t.Errorf("default host = %+v, want %+v", cfg.Host, wantHost)
@@ -80,6 +81,7 @@ log_file = "/var/log/telemt.log"
 telemt_service = "telemt-custom"
 panel_service = "panel-custom"
 telemt_container = "telemt-ct"
+panel_container = "panel-ct"
 
 [updates]
 telemt_repo = "acme/telemt"
@@ -98,6 +100,7 @@ panel_binary_path = "/opt/panel"
 		TelemtService:   "telemt-custom",
 		PanelService:    "panel-custom",
 		TelemtContainer: "telemt-ct",
+		PanelContainer:  "panel-ct",
 	}
 	if cfg.Host != wantHost {
 		t.Errorf("host = %+v, want %+v", cfg.Host, wantHost)
