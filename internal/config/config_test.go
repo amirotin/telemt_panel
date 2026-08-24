@@ -37,6 +37,81 @@ func TestLoadMinimal(t *testing.T) {
 	if got := cfg.Auth.SessionTTLDuration(); got != 720*time.Hour {
 		t.Errorf("default TTL = %v", got)
 	}
+	if cfg.DataDir != "/var/lib/telemt-panel" {
+		t.Errorf("default data_dir = %q, want /var/lib/telemt-panel", cfg.DataDir)
+	}
+	wantHost := HostConfig{
+		ServiceManager:  "auto",
+		LogSource:       "auto",
+		TelemtService:   "telemt",
+		PanelService:    "telemt-panel",
+		TelemtContainer: "telemt",
+	}
+	if cfg.Host != wantHost {
+		t.Errorf("default host = %+v, want %+v", cfg.Host, wantHost)
+	}
+	wantUpdates := UpdatesConfig{
+		TelemtRepo:       "telemt/telemt",
+		PanelRepo:        "amirotin/telemt_panel",
+		TelemtBinaryPath: "/bin/telemt",
+		PanelBinaryPath:  "/usr/local/bin/telemt-panel",
+	}
+	if cfg.Updates != wantUpdates {
+		t.Errorf("default updates = %+v, want %+v", cfg.Updates, wantUpdates)
+	}
+}
+
+func TestLoadDataDirEmptyDisablesMirror(t *testing.T) {
+	cfg, err := load(t, `data_dir = ""`+"\n"+minimal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DataDir != "" {
+		t.Errorf("data_dir = %q, want empty (mirror disabled)", cfg.DataDir)
+	}
+}
+
+func TestLoadHostAndUpdatesOverrides(t *testing.T) {
+	cfg, err := load(t, minimal+`
+[host]
+service_manager = "openrc"
+log_source = "file"
+log_file = "/var/log/telemt.log"
+telemt_service = "telemt-custom"
+panel_service = "panel-custom"
+telemt_container = "telemt-ct"
+
+[updates]
+telemt_repo = "acme/telemt"
+panel_repo = "acme/panel"
+github_token = "ghp_x"
+telemt_binary_path = "/opt/telemt"
+panel_binary_path = "/opt/panel"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHost := HostConfig{
+		ServiceManager:  "openrc",
+		LogSource:       "file",
+		LogFile:         "/var/log/telemt.log",
+		TelemtService:   "telemt-custom",
+		PanelService:    "panel-custom",
+		TelemtContainer: "telemt-ct",
+	}
+	if cfg.Host != wantHost {
+		t.Errorf("host = %+v, want %+v", cfg.Host, wantHost)
+	}
+	wantUpdates := UpdatesConfig{
+		TelemtRepo:       "acme/telemt",
+		PanelRepo:        "acme/panel",
+		GithubToken:      "ghp_x",
+		TelemtBinaryPath: "/opt/telemt",
+		PanelBinaryPath:  "/opt/panel",
+	}
+	if cfg.Updates != wantUpdates {
+		t.Errorf("updates = %+v, want %+v", cfg.Updates, wantUpdates)
+	}
 }
 
 func TestLoadValidation(t *testing.T) {
@@ -59,6 +134,12 @@ driver = "postgres"`, "unknown driver"},
 		{"subpage without secret", minimal + `
 [subpage]
 enabled = true`, "subpage.secret"},
+		{"unknown service manager", minimal + `
+[host]
+service_manager = "launchd"`, "host.service_manager"},
+		{"unknown log source", minimal + `
+[host]
+log_source = "eventlog"`, "host.log_source"},
 		// Top-level keys must precede sections in TOML.
 		{"bad trusted proxy", `trusted_proxies = ["not-an-ip"]` + minimal, "trusted_proxies"},
 	}

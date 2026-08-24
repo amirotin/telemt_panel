@@ -23,10 +23,17 @@ type Config struct {
 	TrustedProxies       []string       `toml:"trusted_proxies"`
 	TrustedProxyPrefixes []netip.Prefix `toml:"-"`
 
+	// DataDir holds the panel's on-disk state mirror (sessions, subpage
+	// nonces, settings). Empty disables the mirror — state stays in RAM
+	// only.
+	DataDir string `toml:"data_dir"`
+
 	Telemt  TelemtConfig  `toml:"telemt"`
 	Auth    AuthConfig    `toml:"auth"`
 	Store   StoreConfig   `toml:"store"`
 	Subpage SubpageConfig `toml:"subpage"`
+	Host    HostConfig    `toml:"host"`
+	Updates UpdatesConfig `toml:"updates"`
 }
 
 // TelemtConfig points the panel at the Telemt API.
@@ -67,6 +74,33 @@ type SubpageConfig struct {
 	Secret  string `toml:"secret"`
 }
 
+// HostConfig describes the host the panel runs on, for the runtime-control
+// and log-streaming features to detect or be told which init system, log
+// source and service/container names to use.
+type HostConfig struct {
+	// ServiceManager selects how the panel controls services: auto (probe
+	// at startup) | systemd | openrc | procd | sysvinit | docker | none.
+	ServiceManager string `toml:"service_manager"`
+	// LogSource selects where live logs are read from: auto (probe at
+	// startup) | journald | logread | syslog | docker | file.
+	LogSource string `toml:"log_source"`
+	// LogFile is the path tailed when log_source is "file".
+	LogFile         string `toml:"log_file"`
+	TelemtService   string `toml:"telemt_service"`
+	PanelService    string `toml:"panel_service"`
+	TelemtContainer string `toml:"telemt_container"`
+}
+
+// UpdatesConfig points the panel's self-update and Telemt-update flows at
+// their GitHub releases and installed binary locations.
+type UpdatesConfig struct {
+	TelemtRepo       string `toml:"telemt_repo"`
+	PanelRepo        string `toml:"panel_repo"`
+	GithubToken      string `toml:"github_token"`
+	TelemtBinaryPath string `toml:"telemt_binary_path"`
+	PanelBinaryPath  string `toml:"panel_binary_path"`
+}
+
 // Load reads, validates and normalizes the config file.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -75,8 +109,22 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Listen: "0.0.0.0:8080",
-		Store:  StoreConfig{Driver: "memory"},
+		Listen:  "0.0.0.0:8080",
+		Store:   StoreConfig{Driver: "memory"},
+		DataDir: "/var/lib/telemt-panel",
+		Host: HostConfig{
+			ServiceManager:  "auto",
+			LogSource:       "auto",
+			TelemtService:   "telemt",
+			PanelService:    "telemt-panel",
+			TelemtContainer: "telemt",
+		},
+		Updates: UpdatesConfig{
+			TelemtRepo:       "telemt/telemt",
+			PanelRepo:        "amirotin/telemt_panel",
+			TelemtBinaryPath: "/bin/telemt",
+			PanelBinaryPath:  "/usr/local/bin/telemt-panel",
+		},
 	}
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
@@ -105,6 +153,22 @@ func Load(path string) (*Config, error) {
 
 	if cfg.Subpage.Enabled && cfg.Subpage.Secret == "" {
 		return nil, fmt.Errorf("subpage.secret is required when the subscription page is enabled")
+	}
+
+	switch cfg.Host.ServiceManager {
+	case "":
+		cfg.Host.ServiceManager = "auto"
+	case "auto", "systemd", "openrc", "procd", "sysvinit", "docker", "none":
+	default:
+		return nil, fmt.Errorf("host.service_manager: unknown value %q (auto | systemd | openrc | procd | sysvinit | docker | none)", cfg.Host.ServiceManager)
+	}
+
+	switch cfg.Host.LogSource {
+	case "":
+		cfg.Host.LogSource = "auto"
+	case "auto", "journald", "logread", "syslog", "docker", "file":
+	default:
+		return nil, fmt.Errorf("host.log_source: unknown value %q (auto | journald | logread | syslog | docker | file)", cfg.Host.LogSource)
 	}
 
 	for _, entry := range cfg.TrustedProxies {

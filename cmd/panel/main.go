@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -66,6 +67,9 @@ func main() {
 	}
 }
 
+// mirrorStateFile is the mirror's filename within cfg.DataDir.
+const mirrorStateFile = "panel-state.json"
+
 // newStore builds the state backend selected by cfg.Store.Driver. Only
 // "memory" is implemented so far; config.Load already accepts "sqlite" (a
 // later milestone), so main must refuse it explicitly here rather than
@@ -75,9 +79,11 @@ func newStore(cfg *config.Config) (store.Store, error) {
 	case "sqlite":
 		return nil, fmt.Errorf("store.driver \"sqlite\" is not implemented yet; use \"memory\"")
 	default:
-		// Memory driver with no mirror file for now; a data-dir config key
-		// to pick the mirror path lands in a later milestone.
-		return store.NewMemory("")
+		mirrorPath := ""
+		if cfg.DataDir != "" {
+			mirrorPath = filepath.Join(cfg.DataDir, mirrorStateFile)
+		}
+		return store.NewMemory(mirrorPath)
 	}
 }
 
