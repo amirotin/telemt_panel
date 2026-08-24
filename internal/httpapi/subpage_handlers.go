@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"io"
 	"log/slog"
 	"net/http"
@@ -195,15 +194,11 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 	})
 }
 
-// randomNonce generates the "16 random hex" subpage nonce: 16 random
-// bytes, hex-encoded (32 hex chars — the same shape as a Telemt user
-// secret, though the two are unrelated).
+// randomNonce generates the subpage nonce. The value only feeds the token
+// HMAC as an opaque revocation salt, so its format is free: rand.Text's
+// ~128-bit base32 token matches the old 16-byte hex nonce in entropy.
 func randomNonce() (string, error) {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
+	return rand.Text(), nil
 }
 
 // findUser returns the user named username from users, if present.

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -196,7 +197,7 @@ func fetchStats(ctx context.Context, tc *telemt.Client) (json.RawMessage, error)
 	// must surface as a fetch error — the source_error/backoff path — not
 	// a silent {"health":null,"summary":null} snapshot.
 	if healthErr != nil && summaryErr != nil {
-		return nil, fmt.Errorf("stats: health: %w; summary: %w", healthErr, summaryErr)
+		return nil, fmt.Errorf("stats: %w", errors.Join(healthErr, summaryErr))
 	}
 	return json.Marshal(snap)
 }
