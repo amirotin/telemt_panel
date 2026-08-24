@@ -423,6 +423,18 @@ func (h *Hub) ReplaySince(since uint64, topics []string) ([]Event, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	if since > h.seq {
+		// A Last-Event-ID beyond the hub's current sequence counter means
+		// the hub restarted since the client last saw an event (seq resets
+		// to 0 on restart) and the client is holding a now-stale id from a
+		// previous process. Without this check, since exceeds every ring
+		// event's Seq, so the loop below would return an empty (but "ok")
+		// replay — the SSE handler would then skip its full-snapshot
+		// fallback, leaving the client with no data until the next
+		// background update.
+		return nil, false
+	}
+
 	if len(h.ring) > 0 && since+1 < h.ring[0].Seq {
 		return nil, false
 	}

@@ -380,6 +380,40 @@ func TestReplayTooOldReturnsFalse(t *testing.T) {
 	}
 }
 
+// TestReplayStaleFutureIDFallsBackToFalse covers finding 3: a warm hub
+// (freshly restarted, seq reset to 0) receiving a Last-Event-ID from a
+// client that connected to a previous, longer-lived process. since is then
+// larger than the hub's current seq — every ring event satisfies
+// ev.Seq <= since, so without an explicit check ReplaySince would return
+// an empty-but-ok replay and the SSE handler would skip its full-snapshot
+// fallback, leaving the client with no data at all.
+func TestReplayStaleFutureIDFallsBackToFalse(t *testing.T) {
+	f, tc := newFakeTelemt(t)
+	f.setUsers([]telemt.UserInfo{{Username: "v0"}})
+
+	h := New(Config{UsersInterval: 5 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc)
+	t.Cleanup(h.Close)
+
+	ch, _, cancel, err := h.Subscribe([]string{"users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	first := recvEvent(t, ch, time.Second)
+
+	// A Last-Event-ID far beyond anything this hub has issued yet (e.g.
+	// left over from before a restart).
+	staleFuture := first.Seq + 1000
+	events, ok := h.ReplaySince(staleFuture, []string{"users"})
+	if ok {
+		t.Fatalf("ReplaySince(%d): want ok=false for a since beyond the hub's current seq, got events=%+v", staleFuture, events)
+	}
+	if events != nil {
+		t.Fatalf("ReplaySince(%d): want nil events alongside ok=false, got %+v", staleFuture, events)
+	}
+}
+
 func TestSlowSubscriberClosedPollerStaysAlive(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "v0"}})
