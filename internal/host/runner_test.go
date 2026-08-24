@@ -1,8 +1,12 @@
 package host
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
-// recordedCmd is one CmdRunner invocation captured by fakeRunner.
+// recordedCmd is one CmdRunner/ProcessStarter invocation captured by
+// fakeRunner/fakeProcessStarter.
 type recordedCmd struct {
 	name string
 	args []string
@@ -26,4 +30,24 @@ func (f *fakeRunner) run(_ context.Context, name string, args ...string) ([]byte
 		return f.handler(name, args)
 	}
 	return f.stdout, f.stderr, f.err
+}
+
+// fakeProcessStarter is a ProcessStarter that records every call and
+// returns the fixed reader/err fields — LogSource Stream tests use this
+// instead of spawning a real long-lived process. Tests that need to
+// control timing (e.g. proving cancellation stops the reading goroutine)
+// pass the reader side of an io.Pipe() as reader and write to the writer
+// side themselves.
+type fakeProcessStarter struct {
+	calls  []recordedCmd
+	reader io.ReadCloser
+	err    error
+}
+
+func (f *fakeProcessStarter) start(_ context.Context, name string, args ...string) (io.ReadCloser, error) {
+	f.calls = append(f.calls, recordedCmd{name: name, args: append([]string(nil), args...)})
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.reader, nil
 }

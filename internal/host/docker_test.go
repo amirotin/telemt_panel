@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
 )
@@ -66,5 +67,89 @@ func TestDocker_Caps(t *testing.T) {
 func TestDocker_Kind(t *testing.T) {
 	if got := NewDocker(nil).Kind(); got != KindDocker {
 		t.Errorf("Kind() = %q, want %q", got, KindDocker)
+	}
+}
+
+func TestDockerLog_Tail_Argv_MergesStdoutAndStderr(t *testing.T) {
+	r := &fakeRunner{stdout: []byte("out1\nout2\n"), stderr: []byte("err1\n")}
+	d := NewDockerLog(r.run, nil)
+
+	got, err := d.Tail(context.Background(), "telemt", 100)
+	if err != nil {
+		t.Fatalf("Tail: %v", err)
+	}
+	if len(got) != 3 || got[0].Msg != "out1" || got[1].Msg != "out2" || got[2].Msg != "err1" {
+		t.Fatalf("got = %+v, want [out1 out2 err1]", got)
+	}
+	for _, l := range got {
+		if l.Unit != "telemt" {
+			t.Errorf("Unit = %q, want telemt", l.Unit)
+		}
+		if l.Level != "unknown" {
+			t.Errorf("Level = %q, want unknown", l.Level)
+		}
+	}
+	want := []recordedCmd{{name: "docker", args: []string{"logs", "--tail", "100", "telemt"}}}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %#v, want %#v", r.calls, want)
+	}
+}
+
+func TestDockerLog_Tail_Error(t *testing.T) {
+	r := &fakeRunner{stderr: []byte("no such container"), err: errors.New("boom")}
+	d := NewDockerLog(r.run, nil)
+
+	if _, err := d.Tail(context.Background(), "telemt", 100); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDockerLog_Stream(t *testing.T) {
+	pr, pw := io.Pipe()
+	starter := &fakeProcessStarter{reader: pr}
+	d := NewDockerLog(nil, starter.start)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := d.Stream(ctx, "telemt")
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	go func() { io.WriteString(pw, "line one\n") }()
+	first := <-ch
+	if first.Msg != "line one" || first.Unit != "telemt" {
+		t.Fatalf("first = %+v", first)
+	}
+
+	cancel()
+	pw.Close()
+	for range ch {
+	}
+
+	want := []recordedCmd{{name: "docker", args: []string{"logs", "-f", "telemt"}}}
+	if !reflect.DeepEqual(starter.calls, want) {
+		t.Errorf("calls = %#v, want %#v", starter.calls, want)
+	}
+}
+
+func TestDockerLog_Stream_Error(t *testing.T) {
+	starter := &fakeProcessStarter{err: errors.New("boom")}
+	d := NewDockerLog(nil, starter.start)
+
+	if _, err := d.Stream(context.Background(), "telemt"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDockerLog_Caps(t *testing.T) {
+	caps := NewDockerLog(nil, nil).Caps()
+	if !caps.CanTail || !caps.CanStream {
+		t.Errorf("caps = %+v, want both true", caps)
+	}
+}
+
+func TestDockerLog_Kind(t *testing.T) {
+	if got := NewDockerLog(nil, nil).Kind(); got != LogKindDocker {
+		t.Errorf("Kind() = %q, want %q", got, LogKindDocker)
 	}
 }

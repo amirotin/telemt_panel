@@ -13,6 +13,7 @@ import (
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/subpage"
@@ -30,10 +31,18 @@ type Server struct {
 	subIndex   *subpage.Index
 	subLimiter *subpage.RateLimiter
 	version    string
+
+	svcMgr     host.ServiceManager
+	logSrc     host.LogSource
+	logStreams *logStreamRegistry
 }
 
 // New builds the handler tree.
 func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, version string) *Server {
+	probe := host.DefaultProbe()
+	svcMgr := host.NewServiceManager(cfg.Host.ServiceManager, probe, host.OSCmdRunner)
+	logSrc := host.NewLogSource(cfg.Host.LogSource, cfg.Host.LogFile, svcMgr.Kind(), probe, host.OSCmdRunner, host.OSProcessStarter, host.DefaultLogPollInterval)
+
 	return &Server{
 		cfg:        cfg,
 		tc:         tc,
@@ -44,6 +53,9 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		subIndex:   subpage.NewIndex(cfg.Subpage.Secret, tc, st),
 		subLimiter: subpage.NewRateLimiter(),
 		version:    version,
+		svcMgr:     svcMgr,
+		logSrc:     logSrc,
+		logStreams: newLogStreamRegistry(),
 	}
 }
 
@@ -83,7 +95,11 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /api/telemt/info", protect(s.handleTelemtInfo))
 
+	mux.Handle("GET /api/host", protect(s.handleHost))
+	mux.Handle("GET /api/logs/tail", protect(s.handleLogsTail))
+
 	mux.Handle("GET /api/events", protect(s.handleEvents))
+	mux.Handle("GET /api/events/logs", protect(s.handleEventsLogs))
 	mux.Handle("GET /api/snapshot", protect(s.handleSnapshot))
 
 	mux.Handle("GET /api/users", protect(s.handleListUsers))
@@ -135,6 +151,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer s.limiter.Stop()
 	defer s.subLimiter.Stop()
 	defer s.hub.Close()
+	defer s.logStreams.Close()
 
 	srv := &http.Server{
 		Addr:         s.cfg.Listen,
@@ -153,6 +170,11 @@ func (s *Server) Run(ctx context.Context) error {
 	// the deferred call above (belt-and-braces for the non-Shutdown return
 	// paths) is safe to also run.
 	srv.RegisterOnShutdown(s.hub.Close)
+	// Same rationale as hub.Close above: a log stream (GET
+	// /api/events/logs) only returns when its context is canceled or the
+	// client disconnects, so it needs its own shutdown hook to end
+	// promptly rather than stall Shutdown.
+	srv.RegisterOnShutdown(s.logStreams.Close)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()

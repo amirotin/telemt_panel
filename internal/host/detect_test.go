@@ -1,6 +1,9 @@
 package host
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // fixtureProbe builds a Probe over an in-memory marker set — no real
 // filesystem or PATH access.
@@ -107,6 +110,85 @@ func TestDetectServiceManagerKind(t *testing.T) {
 			p := fixtureProbe(tc.paths, tc.pathBins)
 			if got := DetectServiceManagerKind(tc.configured, p); got != tc.want {
 				t.Errorf("DetectServiceManagerKind(%q) = %q, want %q", tc.configured, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDetectLogSourceKind(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured string
+		svcKind    string
+		paths      map[string]bool
+		want       string
+	}{
+		{name: "config override wins", configured: "docker", svcKind: KindSystemd, want: LogKindDocker},
+		{name: "config override to none wins", configured: "none", svcKind: KindSystemd, want: LogKindNone},
+		{name: "empty configured treated as auto", configured: "", svcKind: KindSystemd, want: LogKindJournald},
+		{name: "journald follows systemd", configured: "auto", svcKind: KindSystemd, want: LogKindJournald},
+		{name: "logread follows procd", configured: "auto", svcKind: KindProcd, want: LogKindLogread},
+		{
+			name:       "syslog file wins over docker when both present",
+			configured: "auto",
+			svcKind:    KindDocker,
+			paths:      map[string]bool{"/var/log/messages": true},
+			want:       LogKindSyslog,
+		},
+		{
+			name:       "syslog via /var/log/syslog",
+			configured: "auto",
+			svcKind:    KindOpenRC,
+			paths:      map[string]bool{"/var/log/syslog": true},
+			want:       LogKindSyslog,
+		},
+		{name: "docker follows docker service manager", configured: "auto", svcKind: KindDocker, want: LogKindDocker},
+		{name: "no markers and no matching service manager falls back to none", configured: "auto", svcKind: KindSysvinit, want: LogKindNone},
+		{name: "systemd wins over a syslog marker", configured: "auto", svcKind: KindSystemd, paths: map[string]bool{"/var/log/syslog": true}, want: LogKindJournald},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := fixtureProbe(tc.paths, nil)
+			if got := DetectLogSourceKind(tc.configured, tc.svcKind, p); got != tc.want {
+				t.Errorf("DetectLogSourceKind(%q, %q) = %q, want %q", tc.configured, tc.svcKind, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewLogSource_ReturnsMatchingKind(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured string
+		logFile    string
+		svcKind    string
+		paths      map[string]bool
+		wantKind   string
+	}{
+		{name: "journald", configured: "journald", svcKind: KindSystemd, wantKind: LogKindJournald},
+		{name: "logread", configured: "logread", svcKind: KindProcd, wantKind: LogKindLogread},
+		{
+			name:       "syslog with a detected marker",
+			configured: "syslog",
+			paths:      map[string]bool{"/var/log/syslog": true},
+			wantKind:   LogKindSyslog,
+		},
+		{
+			name:       "syslog with no marker degrades to none",
+			configured: "syslog",
+			wantKind:   LogKindNone,
+		},
+		{name: "docker", configured: "docker", wantKind: LogKindDocker},
+		{name: "file with a configured path", configured: "file", logFile: "/var/log/telemt.log", wantKind: LogKindFile},
+		{name: "file with no configured path degrades to none", configured: "file", logFile: "", wantKind: LogKindNone},
+		{name: "auto with nothing detected falls back to none", configured: "auto", wantKind: LogKindNone},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := fixtureProbe(tc.paths, nil)
+			ls := NewLogSource(tc.configured, tc.logFile, tc.svcKind, p, nil, nil, time.Second)
+			if got := ls.Kind(); got != tc.wantKind {
+				t.Errorf("Kind() = %q, want %q", got, tc.wantKind)
 			}
 		})
 	}

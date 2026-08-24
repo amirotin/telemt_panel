@@ -26,15 +26,18 @@ const (
 	KindNone     = "none"
 )
 
-// Log source kinds a LogSource can report from Kind(). These match the
-// host.log_source config enum one-to-one (implementations land in the next
-// task).
+// Log source kinds a LogSource can report from Kind(). Journald/Logread/
+// Syslog/Docker/File match the host.log_source config enum one-to-one; None
+// is never a config value (log_source has no "none" setting) — it's what
+// detection falls back to, and what a LogSource's Kind() reports, when no
+// usable source exists on this host.
 const (
 	LogKindJournald = "journald"
 	LogKindLogread  = "logread"
 	LogKindSyslog   = "syslog"
 	LogKindDocker   = "docker"
 	LogKindFile     = "file"
+	LogKindNone     = "none"
 )
 
 // ServiceStatus is the normalized run state of a managed service.
@@ -54,6 +57,12 @@ const (
 // cannot restart the service itself (Caps().CanRestart == false). Callers
 // should show ManualRestartHint instead of retrying.
 var ErrManualRestartRequired = errors.New("host: manual restart required")
+
+// ErrLogUnavailable is returned by NoneLog's Tail/Stream. It's a defensive
+// fallback, not the primary signal — callers are expected to check
+// Caps().CanTail/CanStream (both false on NoneLog) before calling either
+// method at all, the same way ErrManualRestartRequired backs ServiceCaps.
+var ErrLogUnavailable = errors.New("host: log source unavailable")
 
 // ExitError reports a command's nonzero exit code. Managers that key
 // status off exit codes (procd) check for this instead of os/exec's
@@ -118,9 +127,8 @@ type LogLine struct {
 }
 
 // LogSource reads a service's log: a bounded tail and a live stream.
-// Implementations (journald, logread, syslog, docker, file) land in the
-// next task; the interface is defined here so this package's consumers
-// and hosttest fakes can depend on it now.
+// Implementations: journald.go, logread.go, syslog.go, file.go, docker.go
+// (DockerLog), plus the NoneLog fallback in none.go.
 type LogSource interface {
 	// Kind identifies the implementation; one of the LogKind* constants
 	// above.

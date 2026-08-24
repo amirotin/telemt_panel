@@ -34,3 +34,31 @@ func (n *None) Caps() ServiceCaps {
 		ManualRestartHint: "no init system detected on this host; restart the service manually",
 	}
 }
+
+// NoneLog is the fallback LogSource for hosts where no log source was
+// detected or configured. Tail/Stream always fail; Caps().CanTail/
+// CanStream are both false, so httpapi is expected to 501 before ever
+// calling either — ErrLogUnavailable is a defensive fallback, not the
+// primary signal, the same way None's Restart backs ServiceCaps.
+type NoneLog struct{}
+
+// NewNoneLog builds a NoneLog LogSource.
+func NewNoneLog() *NoneLog { return &NoneLog{} }
+
+// Kind implements LogSource.
+func (n *NoneLog) Kind() string { return LogKindNone }
+
+// Tail implements LogSource. Always fails: Caps().CanTail is false.
+func (n *NoneLog) Tail(ctx context.Context, service string, lines int) ([]LogLine, error) {
+	return nil, ErrLogUnavailable
+}
+
+// Stream implements LogSource. Always fails: Caps().CanStream is false.
+func (n *NoneLog) Stream(ctx context.Context, service string) (<-chan LogLine, error) {
+	return nil, ErrLogUnavailable
+}
+
+// Caps implements LogSource.
+func (n *NoneLog) Caps() LogCaps {
+	return LogCaps{CanTail: false, CanStream: false}
+}
