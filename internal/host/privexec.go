@@ -18,19 +18,37 @@ const maxJournalLines = 10000
 // AllowLists is the validation policy every op argument is checked
 // against, on both the direct and agent execution paths — the single
 // place service names and filesystem paths are decided to be safe to
-// touch. On the agent, these come from its own --allow-dest/--allow-service
-// flags (its final authority regardless of what the client sends); in
-// direct mode, the caller wiring SelectRunner constructs the equivalent
-// lists from the panel's own config-derived values (the configured
-// telemt/panel binary paths and service/container names).
+// touch. On the agent, these come from its own --allow-binary-dest/
+// --allow-config-path/--staging-prefix/--allow-service flags (its final
+// authority regardless of what the client sends); in direct mode, the
+// caller wiring SelectRunner constructs the equivalent lists from the
+// panel's own config-derived values (the configured telemt/panel binary
+// paths and service/container names).
+//
+// The three path fields are deliberately partitioned by purpose rather
+// than one shared list: install-binary/restore-binary and write-config
+// must never become mutually addressable (a client that can only write
+// binaries must not be able to redirect that into overwriting a config
+// file, and vice versa) once M3 adds a real write-config path — see
+// ExecOp, which validates each op's path args against exactly one of
+// these fields, never a union of them.
 type AllowLists struct {
-	// Paths lists the absolute paths install-binary/restore-binary's
-	// "dest", restore-binary's "backup", and write-config's "path" may
-	// target. install-binary/restore-binary's source-only args
-	// ("staging"/"backup" as a *read* path is the exception — see
-	// ExecOp) are still required to be absolute with no ".." traversal,
-	// just not allow-list members.
-	Paths []string
+	// BinaryPaths lists the absolute paths install-binary's "dest" and
+	// restore-binary's "dest"/"backup" may target.
+	BinaryPaths []string
+	// ConfigPaths lists the absolute paths write-config's "path" may
+	// target. Kept separate from BinaryPaths (see the type doc comment).
+	ConfigPaths []string
+	// StagingPrefix is the one directory prefix install-binary's
+	// "staging" source must fall under. Unlike BinaryPaths/ConfigPaths
+	// this is a *prefix*, not an exact-match list: the panel's staging
+	// path varies per update run (e.g. a fresh subdirectory per run), so
+	// a fixed allow-list entry doesn't fit. Without this, an authorized
+	// client could point "staging" at any absolute file the agent can
+	// read and have it copied into an allow-listed dest — an
+	// arbitrary-file-read primitive. Empty means no staging path
+	// validates (install-binary is unusable), never "allow anything".
+	StagingPrefix string
 	// Services lists the service/container names restart-service and
 	// read-journal may target.
 	Services []string
@@ -48,22 +66,22 @@ type AllowLists struct {
 func ExecOp(ctx context.Context, op Op, allow AllowLists, svcMgr ServiceManager, logSrc LogSource) (Output, error) {
 	switch op.Kind {
 	case OpInstallBinary:
-		staging, err := requireSourcePath(op, ArgStaging)
+		staging, err := requireWithinPrefix(op, ArgStaging, allow.StagingPrefix)
 		if err != nil {
 			return Output{}, err
 		}
-		dest, err := requireAllowedPath(op, ArgDest, allow.Paths)
+		dest, err := requireAllowedPath(op, ArgDest, allow.BinaryPaths)
 		if err != nil {
 			return Output{}, err
 		}
 		return Output{}, installExecutable(staging, dest)
 
 	case OpRestoreBinary:
-		backup, err := requireAllowedPath(op, ArgBackup, allow.Paths)
+		backup, err := requireAllowedPath(op, ArgBackup, allow.BinaryPaths)
 		if err != nil {
 			return Output{}, err
 		}
-		dest, err := requireAllowedPath(op, ArgDest, allow.Paths)
+		dest, err := requireAllowedPath(op, ArgDest, allow.BinaryPaths)
 		if err != nil {
 			return Output{}, err
 		}
@@ -98,7 +116,7 @@ func ExecOp(ctx context.Context, op Op, allow AllowLists, svcMgr ServiceManager,
 		return Output{Stdout: formatLogLines(logLines)}, nil
 
 	case OpWriteConfig:
-		path, err := requireAllowedPath(op, ArgPath, allow.Paths)
+		path, err := requireAllowedPath(op, ArgPath, allow.ConfigPaths)
 		if err != nil {
 			return Output{}, err
 		}
@@ -114,11 +132,9 @@ func ExecOp(ctx context.Context, op Op, allow AllowLists, svcMgr ServiceManager,
 }
 
 // requireSourcePath reads a required path arg and checks it's absolute
-// with no ".." traversal — the baseline every path arg gets — without an
-// allow-list membership check. Used only for install-binary's "staging":
-// the panel's own staging directory varies per update run, so it can't
-// practically be a static allow-list entry; the operation is still safe
-// because its "dest" (what actually gets overwritten) is allow-listed.
+// with no ".." traversal — the baseline every path arg gets, layered
+// under either an allow-list membership check (requireAllowedPath) or a
+// prefix check (requireWithinPrefix).
 func requireSourcePath(op Op, key string) (string, error) {
 	v, ok := op.Args[key]
 	if !ok || v == "" {
@@ -145,6 +161,32 @@ func requireAllowedPath(op Op, key string, allow []string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("host: %s: arg %q value %q is not in the allowed path list", op.Kind, key, v)
+}
+
+// requireWithinPrefix reads a required path arg, checks it's absolute
+// with no ".." traversal, and requires it to fall under prefix — the
+// staging-path check backing FINDING 1's fix. The comparison is done on
+// filepath.Clean'd forms and requires an exact match on prefix itself or
+// a match on prefix+separator, so a sibling directory that merely shares
+// prefix as a string prefix (e.g. prefix "/a/staging" and path
+// "/a/staging-evil/x") is correctly rejected rather than accepted by a
+// naive strings.HasPrefix(path, prefix) check. An empty prefix always
+// rejects — there is no "no prefix configured means allow anything"
+// fallback.
+func requireWithinPrefix(op Op, key, prefix string) (string, error) {
+	v, err := requireSourcePath(op, key)
+	if err != nil {
+		return "", err
+	}
+	if prefix == "" {
+		return "", fmt.Errorf("host: %s: arg %q: no staging prefix configured", op.Kind, key)
+	}
+	cleanPrefix := filepath.Clean(prefix)
+	cleanPath := filepath.Clean(v)
+	if cleanPath != cleanPrefix && !strings.HasPrefix(cleanPath, cleanPrefix+string(os.PathSeparator)) {
+		return "", fmt.Errorf("host: %s: arg %q value %q is outside the staging prefix %q", op.Kind, key, v, prefix)
+	}
+	return v, nil
 }
 
 // validatePathShape rejects a relative path or one containing a ".."
