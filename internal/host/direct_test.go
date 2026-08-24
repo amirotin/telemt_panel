@@ -175,6 +175,37 @@ func TestDirectRunner_InstallBinary_RejectsStagingPrefixSiblingTrick(t *testing.
 	}
 }
 
+// TestDirectRunner_InstallBinary_RejectsSymlinkStagingSource proves finding
+// 1's fix: requireWithinPrefix only validates the staging path as a
+// STRING, so a symlink planted inside the (allowed) staging dir but
+// pointing outside it must still be refused when the file is actually
+// opened for reading — otherwise it's an arbitrary-file-read primitive
+// identical in effect to TestDirectRunner_InstallBinary_RejectsStagingOutsidePrefix,
+// just reached through a symlink instead of a raw path.
+func TestDirectRunner_InstallBinary_RejectsSymlinkStagingSource(t *testing.T) {
+	dir := t.TempDir()
+	stagingDir := filepath.Join(dir, "staging")
+	os.MkdirAll(stagingDir, 0o755)
+	secret := filepath.Join(dir, "secret-not-in-staging")
+	os.WriteFile(secret, []byte("top secret"), 0o600)
+	link := filepath.Join(stagingDir, "staging-telemt")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	dest := filepath.Join(dir, "telemt")
+
+	r := host.NewDirectRunner(host.AllowLists{BinaryPaths: []string{dest}, StagingPrefix: stagingDir}, nil, nil)
+	_, err := r.Run(context.Background(), host.Op{Kind: host.OpInstallBinary, Args: map[string]string{
+		host.ArgStaging: link, host.ArgDest: dest,
+	}})
+	if err == nil {
+		t.Fatal("want error: a symlink under the staging prefix pointing outside it must be rejected, not followed")
+	}
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Error("dest must not have been written")
+	}
+}
+
 func TestDirectRunner_InstallBinary_RejectsWhenStagingPrefixUnconfigured(t *testing.T) {
 	dir := t.TempDir()
 	staging := filepath.Join(dir, "staging-telemt")

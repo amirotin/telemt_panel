@@ -3,10 +3,12 @@ package host
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -244,8 +246,21 @@ func requireBoundedLines(op Op) (int, error) {
 // in dest's directory, then rename), forcing mode 0755 regardless of
 // src's mode — an installed binary must be executable no matter what
 // permissions the staged/backup copy happened to carry.
+//
+// src is opened with O_NOFOLLOW rather than read via os.ReadFile: the
+// staging path is only prefix-validated as a string (requireWithinPrefix),
+// so a symlink planted inside the staging dir and pointing outside it
+// would otherwise be followed transparently, letting an op that's only
+// supposed to read from staging read (and then install) an arbitrary file
+// the process can access. O_NOFOLLOW makes the open fail on a symlink
+// final component instead of following it.
 func installExecutable(src, dest string) error {
-	data, err := os.ReadFile(src)
+	f, err := os.OpenFile(src, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("host: open %q: %w", src, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return fmt.Errorf("host: read %q: %w", src, err)
 	}
