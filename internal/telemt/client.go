@@ -14,6 +14,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -34,15 +36,39 @@ type Client struct {
 	baseURL    string
 	authHeader string
 	http       *http.Client
+
+	// now is the injectable clock behind the Capabilities cache (see
+	// capabilities.go). Defaults to time.Now; tests set it via newClient.
+	now func() time.Time
+
+	capsMu    sync.Mutex
+	caps      Caps
+	capsAt    time.Time
+	capsValid bool
+
+	// userEnableDisableAbsent and rotateSecretAbsent latch true the first
+	// time SetEnabled/RotateSecret sees a real 404/405 from Telemt —
+	// probing these mutating routes ahead of time would be unsafe, so
+	// Capabilities instead defaults both true and lets a live call flip
+	// them lazily (07-telemt-sdk.md §SDK-3).
+	userEnableDisableAbsent atomic.Bool
+	rotateSecretAbsent      atomic.Bool
 }
 
 // New creates a client for the given API base URL (no trailing slash).
 // authHeader is sent verbatim as the Authorization header; empty disables it.
 func New(baseURL, authHeader string) *Client {
+	return newClient(baseURL, authHeader, time.Now)
+}
+
+// newClient is the injectable-clock constructor used by tests to exercise
+// the Capabilities cache without sleeping.
+func newClient(baseURL, authHeader string, now func() time.Time) *Client {
 	return &Client{
 		baseURL:    baseURL,
 		authHeader: authHeader,
 		http:       &http.Client{Timeout: 15 * time.Second},
+		now:        now,
 	}
 }
 
@@ -249,9 +275,14 @@ func (c *Client) ResetQuota(ctx context.Context, username string) (QuotaEntry, e
 
 // RotateSecret calls POST /v1/users/{username}/rotate-secret, returning the
 // new secret exactly once. On Telemt builds that predate this route, the
-// request 404s/405s as an *APIError the caller maps to capability_absent.
+// request 404s/405s as an *APIError the caller maps to capability_absent;
+// that same response latches the rotate_secret capability false for future
+// Capabilities calls (07-telemt-sdk.md §SDK-3).
 func (c *Client) RotateSecret(ctx context.Context, username string) (UserInfo, string, error) {
 	out, err := mutate[userSecret](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/rotate-secret", nil)
+	if isRouteAbsent(err) {
+		c.rotateSecretAbsent.Store(true)
+	}
 	if err != nil {
 		return UserInfo{}, "", err
 	}
@@ -260,11 +291,32 @@ func (c *Client) RotateSecret(ctx context.Context, username string) (UserInfo, s
 
 // SetEnabled calls POST /v1/users/{username}/enable or .../disable. On
 // Telemt builds that predate these routes, the request 404s/405s as an
-// *APIError the caller maps to capability_absent.
+// *APIError the caller maps to capability_absent; that same response
+// latches the user_enable_disable capability false for future Capabilities
+// calls (07-telemt-sdk.md §SDK-3).
 func (c *Client) SetEnabled(ctx context.Context, username string, enabled bool) (UserInfo, error) {
 	action := "disable"
 	if enabled {
 		action = "enable"
 	}
-	return mutate[UserInfo](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/"+action, nil)
+	out, err := mutate[UserInfo](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/"+action, nil)
+	if isRouteAbsent(err) {
+		c.userEnableDisableAbsent.Store(true)
+	}
+	return out, err
+}
+
+// isRouteAbsent reports whether err is a well-formed *APIError with a
+// status indicating the route itself doesn't exist on this Telemt build
+// (404 or 405) — as opposed to a well-formed not_found error for a
+// genuinely missing user on a route that does exist (Code "not_found" is
+// excluded for exactly that reason). Mirrors httpapi's writeTelemtError
+// capabilityGated branch, which draws the same line for the equivalent
+// HTTP-status mapping.
+func isRouteAbsent(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Code == "not_found" {
+		return false
+	}
+	return apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed
 }
