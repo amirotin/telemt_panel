@@ -91,6 +91,15 @@ type envelope struct {
 
 // call performs a request and returns the raw data payload plus revision.
 func (c *Client) call(ctx context.Context, method, path string, body any) (json.RawMessage, string, error) {
+	return c.callRevision(ctx, method, path, body, "")
+}
+
+// callRevision is call plus an optional If-Match header, sent whenever
+// revision is non-empty (07-telemt-sdk.md §SDK-5: "SDK шлёт If-Match всегда,
+// когда у вызывающего кода есть ревизия"). Telemt trims a surrounding
+// quoted-string form but accepts a bare value too (config_store.rs
+// parse_if_match), so the raw revision string is sent as-is.
+func (c *Client) callRevision(ctx context.Context, method, path string, body any, revision string) (json.RawMessage, string, error) {
 	var reqBody io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -110,6 +119,9 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (json.
 	if c.authHeader != "" {
 		req.Header.Set("Authorization", c.authHeader)
 	}
+	if revision != "" {
+		req.Header.Set("If-Match", revision)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -125,12 +137,17 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (json.
 	var env envelope
 	jsonErr := json.Unmarshal(raw, &env)
 	switch {
+	// A well-formed success envelope wins even outside the 2xx range: Telemt
+	// answers GET /v1/health/ready with the normal {ok:true,...} envelope on
+	// both 200 (ready) and 503 (not ready) — "not ready" is reported through
+	// HealthReadyData's own fields, not an HTTP-level failure (verified
+	// against mod.rs's /v1/health/ready handler, 3.5.2 sources).
+	case jsonErr == nil && env.OK:
+		return env.Data, env.Revision, nil
 	case jsonErr == nil && env.Error != nil:
 		return nil, "", &APIError{Status: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID}
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return nil, "", &APIError{Status: resp.StatusCode, Code: "http_error", Message: http.StatusText(resp.StatusCode)}
-	case jsonErr == nil && env.OK:
-		return env.Data, env.Revision, nil
 	default:
 		// Legacy builds return some payloads flat, without the envelope
 		// (2xx, valid or invalid JSON for the envelope shape either way).
@@ -158,18 +175,41 @@ func get[T any](ctx context.Context, c *Client, path string) (T, error) {
 // this adds payload decoding, tolerating an empty body for mutations with
 // nothing to report.
 func mutate[T any](ctx context.Context, c *Client, method, path string, body any) (T, error) {
+	out, _, err := mutateRevision[T](ctx, c, method, path, body, "")
+	return out, err
+}
+
+// getRevision is get plus returning the envelope's revision — for GET
+// endpoints whose revision the caller needs to chain into a later If-Match
+// (07-telemt-sdk.md §SDK-2: GetConfig is the one read that matters here).
+func getRevision[T any](ctx context.Context, c *Client, path string) (T, string, error) {
 	var out T
-	data, _, err := c.call(ctx, method, path, body)
+	data, revision, err := c.call(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return out, err
-	}
-	if len(data) == 0 {
-		return out, nil
+		return out, "", err
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, "", fmt.Errorf("telemt: decode %s: %w", path, err)
 	}
-	return out, nil
+	return out, revision, nil
+}
+
+// mutateRevision is mutate plus an optional If-Match (revision) and
+// returning the envelope's revision — for mutations whose caller-visible
+// revision matters (Reload, PatchConfig).
+func mutateRevision[T any](ctx context.Context, c *Client, method, path string, body any, revision string) (T, string, error) {
+	var out T
+	data, respRevision, err := c.callRevision(ctx, method, path, body, revision)
+	if err != nil {
+		return out, "", err
+	}
+	if len(data) == 0 {
+		return out, respRevision, nil
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return out, "", fmt.Errorf("telemt: decode %s: %w", path, err)
+	}
+	return out, respRevision, nil
 }
 
 // userSecret is the wire shape shared by CreateUser and RotateSecret: the
