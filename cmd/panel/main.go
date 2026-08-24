@@ -59,13 +59,15 @@ func main() {
 	}
 	defer st.Close()
 
-	// Panel self-update journal handoff (spec 03-update-engine.md
-	// §Журнал): if this process was just brought up by a self-update's
-	// restart, complete that run's journal entry now that a live process
-	// of the running version exists to confirm it. A no-op the rest of the
-	// time (no pending "restarting" entry).
-	if err := update.ConfirmStartup(st, version); err != nil {
-		slog.Error("confirm update startup", "err", err)
+	// Reconcile any update run left dangling by a previous process
+	// instance, for both targets: completes a pending panel self-update
+	// journal handoff (spec 03-update-engine.md §Журнал) if that's why
+	// this process just started, and fails-closed any other non-terminal
+	// journal entry (e.g. a telemt update whose panel process died
+	// mid-install). A no-op the rest of the time (every target's last
+	// journal entry, if any, already terminal).
+	if err := update.ReconcileStartup(st, version); err != nil {
+		slog.Error("reconcile update startup", "err", err)
 	}
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)

@@ -75,7 +75,7 @@ type Target interface {
 	// PostRestart is called after the service restart succeeds. telemt:
 	// polls SDK Health until it responds or a timeout elapses. panel: nil —
 	// the NEW process confirms success at its own startup instead (see
-	// ConfirmStartup and runPhases' panel special case below), since this
+	// ReconcileStartup and runPhases' panel special case below), since this
 	// process may be replaced by the restart before PostRestart could ever
 	// run.
 	PostRestart(ctx context.Context) error
@@ -245,6 +245,19 @@ func (e *Engine) LockHeld() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.running
+}
+
+// HasActiveRun is LockHeld under the name its one other caller
+// (httpapi's shutdown path) actually cares about: not "is Apply
+// serializing right now" but "is there an install/restart in flight that
+// graceful shutdown should say something about". It does not block
+// shutdown on the answer — Server.Run never waits for a run to finish (a
+// self-update's own restart makes that the wrong thing to do); it only
+// decides whether to log a warning before exiting, so the operator isn't
+// left guessing why the panel restarted mid-update. Correctness for that
+// case comes from ReconcileStartup at the next boot, not from this check.
+func (e *Engine) HasActiveRun() bool {
+	return e.LockHeld()
 }
 
 // ActiveRun returns targetName's current run status and true while it is
@@ -427,10 +440,17 @@ func (e *Engine) fail(rc *runCtx, phase, detail string) error {
 }
 
 // rollback journals rolling_back, restores backupPath via the Runner and
-// restarts the service, then journals rolled_back — or, if there is no
-// backup to restore (binaryPath didn't exist before this run, e.g. a
-// first-ever install), journals failed instead since there is nothing to
-// roll back to.
+// restarts the service, then journals rolled_back.
+//
+// backupPath=="" is a deliberate, distinct outcome, not an edge case of
+// the above: it means this was a first-ever install (target.BinaryPath()
+// didn't exist before runPhases' staging phase, so there was never
+// anything to back up — see runPhases' os.ReadFile/os.IsNotExist branch).
+// There is nothing to roll back TO, so rollback journals failed instead
+// of rolled_back here — "rolled_back" would be a lie about a prior state
+// that never existed. Callers must not treat failed as "rollback didn't
+// run"; for this branch specifically it means "rollback correctly
+// declined to run".
 func (e *Engine) rollback(ctx context.Context, rc *runCtx, target Target, backupPath, failedPhase string, cause error) error {
 	e.transition(rc, PhaseRollingBack, fmt.Sprintf("%s failed: %v", failedPhase, cause))
 
@@ -585,7 +605,7 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 		// above at any moment. The journal rule (spec 03 §Журнал) forbids
 		// claiming success before a live process of the new version has
 		// confirmed it — the last journal entry stays "restarting" here;
-		// ConfirmStartup completes it (done/rolled_back) from the new
+		// ReconcileStartup completes it (done/rolled_back) from the new
 		// process's own startup path.
 		return nil
 	}

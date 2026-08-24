@@ -169,6 +169,61 @@ func TestApply_ChecksumMismatch_FailsWithoutInstalling(t *testing.T) {
 	}
 }
 
+// TestApply_FirstInstall_NoBackupLateFailure_JournalsFailedNotRolledBack
+// covers rollback's backupPath=="" branch: a first-ever install (nothing
+// at target.BinaryPath() yet, so no backup was ever taken) whose install
+// op then fails has nothing to roll back to. The correct journal outcome
+// is "failed", not "rolled_back" — claiming a rollback happened would be
+// a lie about a prior installed state that never existed — and no
+// restore-binary/restart-service ops should be attempted.
+func TestApply_FirstInstall_NoBackupLateFailure_JournalsFailedNotRolledBack(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := filepath.Join(dir, "telemt") // deliberately never created
+
+	fixture := newFakeReleaseServer(t)
+	tarBytes := buildTarGz(t, "telemt", []byte("new-binary"))
+	setupHappyRelease(fixture, TargetTelemt, tarBytes)
+
+	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", binaryPath: binaryPath, serviceName: "telemt", version: ""}
+	runner := newTestRunner()
+	runner.RunFunc = func(op host.Op) (host.Output, error) {
+		if op.Kind == host.OpInstallBinary && op.Args[host.ArgDest] == binaryPath {
+			return host.Output{}, errors.New("install failed")
+		}
+		return host.Output{}, nil
+	}
+
+	e, st := newTestEngine(t, fixture, runner, map[string]Target{TargetTelemt: target}, nil)
+
+	err := e.Apply(context.Background(), TargetTelemt, "v2.0.0")
+	if err == nil {
+		t.Fatal("Apply: want error")
+	}
+
+	entries, _ := st.ListUpdateJournal(TargetTelemt, 20)
+	if len(entries) == 0 {
+		t.Fatal("no journal entries recorded")
+	}
+	if entries[0].Phase != PhaseFailed {
+		t.Fatalf("last journal entry phase = %q, want %q (not %q — nothing existed to roll back to)", entries[0].Phase, PhaseFailed, PhaseRolledBack)
+	}
+	if !strings.Contains(entries[0].Detail, "no backup available") {
+		t.Errorf("failed journal detail = %q, want it to explain there was no backup", entries[0].Detail)
+	}
+
+	calls := runner.CallsSnapshot()
+	for _, c := range calls {
+		if c.Kind == host.OpRestoreBinary {
+			t.Errorf("runner calls = %+v, want no restore-binary op (nothing to restore)", calls)
+		}
+	}
+	// The only install-binary call should be the failed main install — no
+	// backup-save call precedes it, since there was nothing to back up.
+	if len(calls) != 1 || calls[0].Kind != host.OpInstallBinary || calls[0].Args[host.ArgDest] != binaryPath {
+		t.Errorf("runner calls = %+v, want exactly one install-binary call at dest=%s", calls, binaryPath)
+	}
+}
+
 func TestApply_LateFailures_RollBack(t *testing.T) {
 	tests := []struct {
 		name        string

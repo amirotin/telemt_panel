@@ -120,6 +120,6 @@ func (t *PanelTarget) ServiceName() string { return t.ServiceName_ }
 
 // PostRestart implements Target: a no-op. The NEW process (the one
 // actually running the updated binary) is the only one that can confirm
-// success — see ConfirmStartup and runPhases' panel special case, which
+// success — see ReconcileStartup and runPhases' panel special case, which
 // never even calls this method.
 func (t *PanelTarget) PostRestart(context.Context) error { return nil }
