@@ -18,17 +18,8 @@ jobs:
         with:
           go-version: 'stable'
 
-      - name: Go format check
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "Files not formatted with gofmt:"
-            echo "$out"
-            exit 1
-          fi
-
-      - name: Go vet
-        run: go vet ./...
+      - name: Lint (gofmt + vet)
+        run: make lint
 
       - name: Build
         run: CGO_ENABLED=0 go build ./...
@@ -38,5 +29,10 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./cmd/panel
           CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build ./cmd/panel
 
+      # -race requires cgo — stated explicitly so a future job-level
+      # CGO_ENABLED=0 cleanup cannot silently break this step. The Build
+      # steps above keep verifying the pure-Go configuration we ship.
       - name: Test
-        run: go test -race ./...
+        run: make test
+        env:
+          CGO_ENABLED: "1"

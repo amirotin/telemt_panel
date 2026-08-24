@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 )
@@ -188,7 +188,7 @@ func (m *Memory) ListSessions() ([]Session, error) {
 	for _, s := range m.sessions {
 		out = append(out, s)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
+	slices.SortFunc(out, func(a, b Session) int { return b.Created.Compare(a.Created) })
 	return out, nil
 }
 

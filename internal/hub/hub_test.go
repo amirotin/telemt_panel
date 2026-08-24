@@ -158,6 +158,25 @@ func (f *fakeTelemt) drainFor(d time.Duration) {
 	}
 }
 
+// drainUntilQuiet discards requests until none arrives for a full quiet
+// window, then returns. Unlike a fixed-duration drain, this is robust to
+// race-detector slowdown: a still-running poller (interval far below quiet)
+// would keep breaking the silence, so observed quiet proves it stopped.
+// Fails the test if silence is not reached within max.
+func (f *fakeTelemt) drainUntilQuiet(t *testing.T, quiet, max time.Duration) {
+	t.Helper()
+	hardDeadline := time.After(max)
+	for {
+		select {
+		case <-f.requests:
+		case <-time.After(quiet):
+			return
+		case <-hardDeadline:
+			t.Fatalf("poller still active after %v", max)
+		}
+	}
+}
+
 // countRequests counts requests to path over window.
 func (f *fakeTelemt) countRequests(path string, window time.Duration) int {
 	deadline := time.After(window)
@@ -458,12 +477,15 @@ func TestPollerStopsAfterGrace(t *testing.T) {
 	recvEvent(t, ch, time.Second)
 	cancel()
 
-	// The poller legitimately keeps running through the grace window;
-	// drain whatever it does without asserting on it.
-	f.drainFor(grace + 5*interval)
+	// The poller legitimately keeps running through the grace window; wait
+	// for real silence instead of a fixed wall-clock drain so the test
+	// stays deterministic under race-detector slowdown (quiet is 30x the
+	// poll interval — a live poller cannot stay silent that long even at
+	// 20x slowdown).
+	f.drainUntilQuiet(t, 30*interval, 5*time.Second)
 
-	// Once grace has elapsed, it must have stopped for good.
-	f.assertNoRequest(t, "/v1/users", 5*interval)
+	// Once quiet, it must have stopped for good.
+	f.assertNoRequest(t, "/v1/users", 30*interval)
 }
 
 func TestSourceErrorOnUpstream500AndRecovery(t *testing.T) {
@@ -643,8 +665,9 @@ func TestCloseStopsRunningPollersAndClosesSubscribers(t *testing.T) {
 	h.Close()
 
 	drainUntilClosed(t, ch, time.Second)
-	// One fetch may already have been in flight when Close ran; absorb it
-	// before asserting the poller has truly stopped.
-	f.drainFor(20 * time.Millisecond)
-	f.assertNoRequest(t, "/v1/users", 5*10*time.Millisecond)
+	// One fetch may already have been in flight when Close ran; absorb any
+	// stragglers by waiting for real silence (30x the poll interval), which
+	// stays deterministic under race-detector slowdown, then assert.
+	f.drainUntilQuiet(t, 300*time.Millisecond, 5*time.Second)
+	f.assertNoRequest(t, "/v1/users", 300*time.Millisecond)
 }
