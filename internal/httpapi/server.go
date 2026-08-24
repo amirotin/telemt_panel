@@ -255,6 +255,14 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	case <-ctx.Done():
 		slog.Info("shutdown signal received, draining connections")
+		// Visibility only, never a wait: an in-flight install/restart must
+		// not block shutdown (SIGTERM has to work even mid-update, and a
+		// panel self-update restarts this very process by design). The
+		// run's own correctness on an interrupted shutdown comes from
+		// ReconcileStartup at the next boot, not from anything done here.
+		if s.updateEngine.HasActiveRun() {
+			slog.Warn("update in progress at shutdown; will reconcile on next boot")
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
