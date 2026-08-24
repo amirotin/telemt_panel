@@ -193,6 +193,24 @@ config_edit_mode = "registry"
 username = "admin"
 password_hash = "$2a$10$x"
 `, "telemt.config_edit_mode"},
+		{"unparseable session_ttl", `
+[telemt]
+url = "http://127.0.0.1:9091"
+
+[auth]
+username = "admin"
+password_hash = "$2a$10$x"
+session_ttl = "not-a-duration"
+`, "auth.session_ttl"},
+		{"non-positive session_ttl", `
+[telemt]
+url = "http://127.0.0.1:9091"
+
+[auth]
+username = "admin"
+password_hash = "$2a$10$x"
+session_ttl = "0h"
+`, "auth.session_ttl"},
 		// Top-level keys must precede sections in TOML.
 		{"bad trusted proxy", `trusted_proxies = ["not-an-ip"]` + minimal, "trusted_proxies"},
 	}
@@ -203,6 +221,27 @@ password_hash = "$2a$10$x"
 				t.Errorf("want error containing %q, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+// TestLoadValidSessionTTLOverridesDefault covers P3.9's happy path: a
+// well-formed, positive session_ttl loads without error and is honored by
+// SessionTTLDuration, instead of always falling back to the 720h default.
+func TestLoadValidSessionTTLOverridesDefault(t *testing.T) {
+	cfg, err := load(t, `
+[telemt]
+url = "http://127.0.0.1:9091"
+
+[auth]
+username = "admin"
+password_hash = "$2a$10$x"
+session_ttl = "2h"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Auth.SessionTTLDuration(); got != 2*time.Hour {
+		t.Errorf("SessionTTLDuration() = %v, want 2h", got)
 	}
 }
 

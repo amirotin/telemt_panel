@@ -57,6 +57,10 @@ type AuthConfig struct {
 }
 
 // SessionTTLDuration returns the parsed sliding session TTL (default 720h).
+// Load already rejects a non-empty session_ttl that fails to parse or is
+// <=0, so the fallback below is unreachable through a Config that passed
+// Load — kept as a safety net for callers that build a Config by hand
+// (e.g. tests) without going through Load.
 func (a AuthConfig) SessionTTLDuration() time.Duration {
 	if a.SessionTTL == "" {
 		return 720 * time.Hour
@@ -180,6 +184,15 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Auth.PasswordHash == "" {
 		return nil, fmt.Errorf("auth.password_hash is required")
+	}
+	if cfg.Auth.SessionTTL != "" {
+		d, err := time.ParseDuration(cfg.Auth.SessionTTL)
+		if err != nil {
+			return nil, fmt.Errorf("auth.session_ttl: invalid duration %q: %w", cfg.Auth.SessionTTL, err)
+		}
+		if d <= 0 {
+			return nil, fmt.Errorf("auth.session_ttl: must be positive, got %q", cfg.Auth.SessionTTL)
+		}
 	}
 
 	switch cfg.Store.Driver {
