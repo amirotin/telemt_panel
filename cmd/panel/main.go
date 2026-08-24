@@ -50,9 +50,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Memory driver with no mirror file for now; a data-dir config key to
-	// pick the mirror path lands in a later milestone.
-	st, err := store.NewMemory("")
+	st, err := newStore(cfg)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
@@ -65,6 +63,21 @@ func main() {
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
+	}
+}
+
+// newStore builds the state backend selected by cfg.Store.Driver. Only
+// "memory" is implemented so far; config.Load already accepts "sqlite" (a
+// later milestone), so main must refuse it explicitly here rather than
+// silently falling back to an in-memory store an operator didn't ask for.
+func newStore(cfg *config.Config) (store.Store, error) {
+	switch cfg.Store.Driver {
+	case "sqlite":
+		return nil, fmt.Errorf("store.driver \"sqlite\" is not implemented yet; use \"memory\"")
+	default:
+		// Memory driver with no mirror file for now; a data-dir config key
+		// to pick the mirror path lands in a later milestone.
+		return store.NewMemory("")
 	}
 }
 
