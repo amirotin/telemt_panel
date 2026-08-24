@@ -1,6 +1,6 @@
 # Binaries
 telemt-panel
-panel-agent
+/panel-agent
 release/
 
 # Frontend
