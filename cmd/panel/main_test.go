@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,5 +31,48 @@ func TestNewStoreBuildsMemoryStore(t *testing.T) {
 			t.Fatalf("newStore(driver=%q): want a non-nil store", driver)
 		}
 		st.Close()
+	}
+}
+
+func TestResolveMirrorPathEmptyDisablesMirror(t *testing.T) {
+	if got := resolveMirrorPath(""); got != "" {
+		t.Fatalf("resolveMirrorPath(\"\") = %q, want \"\"", got)
+	}
+}
+
+func TestResolveMirrorPathCreatesDataDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "does", "not", "exist", "yet")
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("precondition: %q already exists", dir)
+	}
+
+	got := resolveMirrorPath(dir)
+	want := filepath.Join(dir, mirrorStateFile)
+	if got != want {
+		t.Fatalf("resolveMirrorPath(%q) = %q, want %q", dir, got, want)
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("data_dir was not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("%q was created but is not a directory", dir)
+	}
+}
+
+func TestResolveMirrorPathUnwritableParentDisablesMirror(t *testing.T) {
+	// A regular file in place of a would-be parent directory makes
+	// MkdirAll fail regardless of the test's own user/permissions (e.g.
+	// running as root), unlike a plain permission-bit test would.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	dataDir := filepath.Join(blocker, "sub")
+
+	got := resolveMirrorPath(dataDir)
+	if got != "" {
+		t.Fatalf("resolveMirrorPath(%q) = %q, want \"\" (mkdir must fail, not panic or error out)", dataDir, got)
 	}
 }

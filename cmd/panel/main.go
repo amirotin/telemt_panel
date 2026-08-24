@@ -79,12 +79,26 @@ func newStore(cfg *config.Config) (store.Store, error) {
 	case "sqlite":
 		return nil, fmt.Errorf("store.driver \"sqlite\" is not implemented yet; use \"memory\"")
 	default:
-		mirrorPath := ""
-		if cfg.DataDir != "" {
-			mirrorPath = filepath.Join(cfg.DataDir, mirrorStateFile)
-		}
-		return store.NewMemory(mirrorPath)
+		return store.NewMemory(resolveMirrorPath(cfg.DataDir))
 	}
+}
+
+// resolveMirrorPath turns a data_dir config value into the store mirror's
+// file path, creating the directory if it doesn't exist yet. An empty
+// dataDir means the mirror is disabled by config and returns "". A
+// directory that can't be created (read-only filesystem, e.g. a router) is
+// not fatal — it disables the mirror the same way, after a warning, so the
+// store doesn't then also warn on every single write for the rest of the
+// process's life.
+func resolveMirrorPath(dataDir string) string {
+	if dataDir == "" {
+		return ""
+	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		slog.Warn("state mirror disabled: cannot create data_dir", "path", dataDir, "error", err)
+		return ""
+	}
+	return filepath.Join(dataDir, mirrorStateFile)
 }
 
 // runHashPassword implements the `panel hash-password` CLI subcommand:
