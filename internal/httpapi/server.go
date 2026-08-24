@@ -86,6 +86,14 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/events", protect(s.handleEvents))
 	mux.Handle("GET /api/snapshot", protect(s.handleSnapshot))
 
+	mux.Handle("GET /api/users", protect(s.handleListUsers))
+	mux.Handle("POST /api/users", protect(s.handleCreateUser))
+	mux.Handle("GET /api/users/{username}", protect(s.handleGetUser))
+	mux.Handle("PATCH /api/users/{username}", protect(s.handlePatchUser))
+	mux.Handle("DELETE /api/users/{username}", protect(s.handleDeleteUser))
+	mux.Handle("POST /api/users/{username}/reset-quota", protect(s.handleResetQuota))
+	mux.Handle("POST /api/users/{username}/rotate-secret", protect(s.handleRotateSecret))
+	mux.Handle("PUT /api/users/{username}/enabled", protect(s.handleSetEnabled))
 	mux.Handle("GET /api/users/{username}/sublink", protect(s.handleGetSublink))
 	mux.Handle("POST /api/users/{username}/sublink", protect(s.handlePostSublink))
 
