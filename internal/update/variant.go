@@ -35,18 +35,33 @@ func DefaultProbe() Probe {
 // DetectLibc determines whether the host should use "musl" or "gnu" release
 // binaries. This is router-critical operational knowledge: OpenWrt and
 // Alpine are the primary musl deployment targets and often lack a usable
-// `ldd`, so the filesystem markers are checked first. Detection order:
+// `ldd`, so the filesystem markers are checked first. musl is the safe
+// default whenever libc is uncertain — a musl binary runs on both glibc and
+// musl hosts, while a gnu binary requires glibc ≥2.32 and fails to start on
+// an older router, so "gnu" is returned only on positive evidence.
+// Detection order:
 //  1. /etc/alpine-release or /etc/openwrt_release exists → musl
 //  2. `ldd --version` output contains "musl" → musl
-//  3. otherwise → gnu
+//  3. `ldd --version` output positively indicates glibc (contains "GNU" or
+//     "glibc", case-insensitive) → gnu
+//  4. anything else — ldd missing, erroring, empty, or unrecognized output
+//     → musl (the safe default)
 func DetectLibc(p Probe) string {
 	if p.Stat("/etc/alpine-release") || p.Stat("/etc/openwrt_release") {
 		return "musl"
 	}
-	if out, err := p.LddVersion(); err == nil && strings.Contains(out, "musl") {
+	out, err := p.LddVersion()
+	if err != nil {
 		return "musl"
 	}
-	return "gnu"
+	if strings.Contains(out, "musl") {
+		return "musl"
+	}
+	lower := strings.ToLower(out)
+	if strings.Contains(lower, "gnu") || strings.Contains(lower, "glibc") {
+		return "gnu"
+	}
+	return "musl"
 }
 
 // DetectArch maps runtime.GOARCH to the architecture token used in release

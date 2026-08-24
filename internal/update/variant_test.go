@@ -40,16 +40,34 @@ func TestDetectLibc(t *testing.T) {
 			want:   "musl",
 		},
 		{
-			name:   "glibc ldd, no markers",
+			name:   "glibc ldd (GLIBC token), no markers",
 			paths:  map[string]bool{},
 			lddOut: "ldd (Ubuntu GLIBC 2.35-0ubuntu3.8) 2.35",
 			want:   "gnu",
 		},
 		{
-			name:   "ldd missing entirely",
+			name:   "glibc ldd (GNU libc token), no markers",
+			paths:  map[string]bool{},
+			lddOut: "ldd (GNU libc) 2.35",
+			want:   "gnu",
+		},
+		{
+			name:   "ldd missing entirely defaults to safe musl, not gnu",
 			paths:  map[string]bool{},
 			lddErr: errors.New("exec: \"ldd\": executable file not found in $PATH"),
-			want:   "gnu",
+			want:   "musl",
+		},
+		{
+			name:   "unrecognized ldd output defaults to safe musl, not gnu",
+			paths:  map[string]bool{},
+			lddOut: "some unexpected banner text",
+			want:   "musl",
+		},
+		{
+			name:   "empty ldd output defaults to safe musl, not gnu",
+			paths:  map[string]bool{},
+			lddOut: "",
+			want:   "musl",
 		},
 	}
 	for _, tt := range tests {
