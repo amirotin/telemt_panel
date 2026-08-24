@@ -14,6 +14,25 @@ import (
 // /api/auth/login), well above any real username/password payload.
 const loginRequestBodyLimit = 1 << 20 // 1MB
 
+// loginUsernameMaxBytes bounds an accepted login username. A request over
+// this is rejected before auth.VerifyCredentials — which always runs
+// bcrypt, matched username or not, specifically to avoid a timing oracle —
+// so an oversized username can't be used to force wasted bcrypt work; no
+// legitimate username is anywhere near this long. Also the cap applied to
+// the audit Subject for login.failed entries, so an oversized or
+// adversarial username can't bloat the audit log either.
+const loginUsernameMaxBytes = 256
+
+// truncateAuditSubject caps s to loginUsernameMaxBytes on a byte boundary —
+// fine for an audit log field, where a truncated multi-byte rune at the cut
+// is cosmetic, not a correctness concern.
+func truncateAuditSubject(s string) string {
+	if len(s) <= loginUsernameMaxBytes {
+		return s
+	}
+	return s[:loginUsernameMaxBytes]
+}
+
 // loginRequest is the /api/auth/login body. TOTP is accepted but unused
 // until the TOTP milestone lands (spec 05-auth.md).
 type loginRequest struct {
@@ -39,9 +58,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.Username) > loginUsernameMaxBytes {
+		s.limiter.RecordFailure(ip)
+		s.appendAudit("login.failed", truncateAuditSubject(req.Username), "ip="+ip)
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "username too long")
+		return
+	}
+
 	if !auth.VerifyCredentials(s.cfg.Auth.Username, s.cfg.Auth.PasswordHash, req.Username, req.Password) {
 		s.limiter.RecordFailure(ip)
-		s.appendAudit("login.failed", req.Username, "ip="+ip)
+		s.appendAudit("login.failed", truncateAuditSubject(req.Username), "ip="+ip)
 		auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
 		return
 	}

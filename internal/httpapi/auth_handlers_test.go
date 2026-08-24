@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -186,6 +187,74 @@ func TestLoginWrongUsername(t *testing.T) {
 	}
 	if body.Code != "invalid_credentials" {
 		t.Fatalf("error code = %q, want invalid_credentials", body.Code)
+	}
+}
+
+// TestLoginUsernameTooLongRejected covers P3.10: a username over
+// loginUsernameMaxBytes is rejected as 400 bad_request before the bcrypt
+// path, and the audit Subject it records is truncated rather than storing
+// the full oversized value.
+func TestLoginUsernameTooLongRejected(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	longUsername := strings.Repeat("a", loginUsernameMaxBytes+50)
+	w, cookie := login(t, h, longUsername, testPassword)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if cookie != nil {
+		t.Fatal("oversized username must not set a session cookie")
+	}
+
+	var body struct{ Code string }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != "bad_request" {
+		t.Fatalf("error code = %q, want bad_request", body.Code)
+	}
+
+	entries, err := srv.st.ListAudit(1)
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Action != "login.failed" {
+		t.Fatalf("audit entries = %+v, want one login.failed", entries)
+	}
+	if len(entries[0].Subject) != loginUsernameMaxBytes {
+		t.Errorf("audit Subject len = %d, want truncated to %d", len(entries[0].Subject), loginUsernameMaxBytes)
+	}
+	if entries[0].Subject != longUsername[:loginUsernameMaxBytes] {
+		t.Error("audit Subject is not the expected truncated prefix of the oversized username")
+	}
+}
+
+// TestLoginUsernameTooLongCountsTowardRateLimit covers the "still counted
+// by the rate limiter" half of P3.10: an oversized-username attempt must
+// consume a failure slot just like a wrong-password attempt, so an
+// attacker can't use oversized usernames to bypass the login rate limit.
+func TestLoginUsernameTooLongCountsTowardRateLimit(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	longUsername := strings.Repeat("a", loginUsernameMaxBytes+1)
+	for i := 0; i < 5; i++ {
+		w, _ := login(t, h, longUsername, testPassword)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("attempt %d: status = %d, want 400", i, w.Code)
+		}
+	}
+
+	// 6th attempt, even with valid credentials, is rate limited — proving
+	// the five oversized-username rejections above each counted as a
+	// failure.
+	w, cookie := login(t, h, "admin", testPassword)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", w.Code)
+	}
+	if cookie != nil {
+		t.Fatal("rate-limited login must not set a session cookie")
 	}
 }
 
