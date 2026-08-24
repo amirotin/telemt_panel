@@ -51,6 +51,7 @@ paths:
                 totp: { type: string, description: Required when TOTP is enabled }
       responses:
         "204": { description: Logged in; session cookie set }
+        "400": { description: bad_request — malformed request body, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401":
           description: invalid_credentials | totp_required
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -220,8 +221,10 @@ paths:
                 properties:
                   user: { $ref: "#/components/schemas/User" }
                   secret: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "409": { description: user_exists, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/users/{username}:
     parameters: [ { $ref: "#/components/parameters/Username" } ]
@@ -231,6 +234,7 @@ paths:
       responses:
         "200": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
     patch:
       tags: [users]
       operationId: patchUser
@@ -242,8 +246,10 @@ paths:
         content: { application/json: { schema: { $ref: "#/components/schemas/UserPatch" } } }
       responses:
         "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
     delete:
       tags: [users]
       operationId: deleteUser
@@ -251,6 +257,7 @@ paths:
         "204": { description: Deleted }
         "409": { description: last_user_forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/users/{username}/reset-quota:
     post:
@@ -270,6 +277,8 @@ paths:
                   used_bytes: { type: integer, const: 0 }
                   last_reset_epoch_secs: { type: integer, format: int64 }
         "404": { $ref: "#/components/responses/NotFound" }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/users/{username}/rotate-secret:
     post:
@@ -289,7 +298,9 @@ paths:
                   user: { $ref: "#/components/schemas/User" }
                   secret: { type: string }
         "404": { $ref: "#/components/responses/NotFound" }
-        "501": { description: Capability absent on this Telemt build }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "501": { description: capability_absent — not supported on this Telemt build, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/users/{username}/enabled:
     put:
@@ -303,8 +314,11 @@ paths:
             schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } }
       responses:
         "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "501": { description: Capability absent on this Telemt build }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "501": { description: capability_absent — not supported on this Telemt build, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/users/{username}/sublink:
     get:
@@ -315,6 +329,9 @@ paths:
         "200":
           description: Current subscription URL for sharing
           content: { application/json: { schema: { $ref: "#/components/schemas/Sublink" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: sublink_unavailable — user has no classic/secure link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
     post:
       tags: [users]
       operationId: regenerateUserSublink
@@ -322,6 +339,9 @@ paths:
       parameters: [ { $ref: "#/components/parameters/Username" } ]
       responses:
         "200": { description: New URL, content: { application/json: { schema: { $ref: "#/components/schemas/Sublink" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: sublink_unavailable — user has no classic/secure link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   # ───────────────────────── telemt ─────────────────────────
   /api/telemt/info:
@@ -416,7 +436,8 @@ paths:
             schema: { type: object, required: [version], properties: { version: { type: string } } }
       responses:
         "202": { description: Run started (progress via SSE topic `update`) }
-        "409": { description: Another update run holds the global lock }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: update_locked — another update run holds the global lock, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/updates/auto:
     get:
@@ -431,7 +452,9 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdateSettings" } } }
-      responses: { "204": { description: Saved } }
+      responses:
+        "204": { description: Saved }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   # ───────────────────────── realtime ─────────────────────────
   /api/events:
@@ -440,38 +463,49 @@ paths:
       operationId: streamEvents
       description: >
         SSE stream. Events: one per subscribed topic (users|stats|runtime|upstreams|security|update)
-        carrying full topic snapshots, plus heartbeat and source_error. Supports Last-Event-ID.
-        Protocol: 02-hub-sse.md.
+        carrying full topic snapshots, plus `event: heartbeat` (data `{}`, every ~25s of
+        quiet) and source_error. Supports Last-Event-ID. Protocol: 02-hub-sse.md.
       parameters:
         - { name: topics, in: query, required: true, schema: { type: string }, example: "users,stats,runtime" }
       responses:
         "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   /api/events/logs:
     get:
       tags: [realtime]
       operationId: streamLogs
+      description: >
+        SSE stream of LogLine events (`event: log`), plus the same `event: heartbeat`
+        frame as /api/events during quiet periods.
       parameters:
         - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
       responses:
         "200": { description: SSE of LogLine events, content: { text/event-stream: { schema: { type: string } } } }
-        "501": { description: Host cap log_stream=false }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "501": { description: log_stream_unavailable — host cap log_stream=false, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: log_source_error — the log source failed to start streaming, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/snapshot:
     get:
       tags: [realtime]
       operationId: getSnapshot
-      description: One-shot topic snapshots (initial render / no-SSE fallback). Same payloads as SSE events.
+      description: >
+        One-shot topic snapshots (initial render / no-SSE fallback). Same payloads as SSE
+        events. A topic whose on-demand fetch fails is omitted from the response object
+        entirely — never a bare JSON null — so every key present is a real snapshot.
       parameters:
         - { name: topics, in: query, required: true, schema: { type: string } }
       responses:
         "200":
-          description: Map topic → snapshot
+          description: Map topic → snapshot; a topic with no data yet is simply absent as a key
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: { type: object, additionalProperties: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "502": { description: telemt_unreachable — every requested topic's fetch failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/history:
     get:
@@ -499,6 +533,9 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/LogLine" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "501": { description: log_tail_unavailable — host cap log_tail=false, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: log_source_error — the log source failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/audit:
     get:
@@ -581,10 +618,23 @@ components:
         code:
           type: string
           description: >
-            Machine code. Panel codes: invalid_credentials, totp_required, session_expired,
-            telemt_unreachable, telemt_auth_failed, revision_conflict, update_locked,
-            capability_absent, manual_restart_required, rate_limited, bad_request, not_found.
-            Telemt codes are passed through where meaningful (user_exists, last_user_forbidden, read_only).
+            Machine code. Panel codes actually emitted today (grepped from every
+            WriteError call site): bad_request, invalid_credentials, rate_limited,
+            session_expired, csrf_rejected, internal_error, not_found,
+            telemt_unreachable, capability_absent, update_locked, sublink_unavailable,
+            log_tail_unavailable, log_stream_unavailable, log_source_error.
+            Reserved for milestones not yet implemented: totp_required (TOTP login),
+            telemt_auth_failed (superseded on /api/telemt/info by a reachable:false
+            body, not an error status — kept here for /api/telemt/config, M3),
+            revision_conflict, reload_in_progress, manual_restart_required
+            (/api/telemt/restart). A well-formed Telemt *APIError whose status is
+            4xx and isn't otherwise mapped above is passed through verbatim with
+            Telemt's own code — notably user_exists, last_user_forbidden, read_only,
+            plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request,
+            access_not_editable, section_not_editable, field_not_editable,
+            unauthorized, forbidden, method_not_allowed, revision_conflict,
+            reload_in_progress, config_patch_not_atomic, payload_too_large,
+            api_disabled, maestro_unavailable.
         message: { type: string }
 
     User:
