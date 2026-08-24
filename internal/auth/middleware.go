@@ -78,10 +78,15 @@ var mutatingMethods = map[string]bool{
 
 // CSRF returns middleware that rejects cross-site mutating requests. A
 // request is same-site (and allowed) when Sec-Fetch-Site is "same-origin"
-// or "none" (the latter covers direct navigation/non-browser clients that
-// send no Origin at all, e.g. curl); otherwise the Origin header's host
-// must match the request host. Never apply this to /sub/* (no cookie, no
-// mutations there) or to /api/auth/login (protected by its own checks).
+// or "none" (the latter is a browser sending a top-level, user-initiated
+// navigation with no initiating origin, e.g. typing the URL directly —
+// still same-site by definition, just not cross-site); otherwise the
+// Origin header's host must match the request host. A non-browser client
+// like curl sends neither Sec-Fetch-Site nor Origin, so it falls through
+// to the Origin check and is rejected there (origin == "") — fail-closed
+// by design, not something "none" was meant to cover. Never apply this to
+// /sub/* (no cookie, no mutations there) or to /api/auth/login (protected
+// by its own checks).
 func CSRF(cfg *config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
