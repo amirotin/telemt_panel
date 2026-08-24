@@ -162,6 +162,13 @@ func New(cfg Config, tc *telemt.Client) *Hub {
 			interval: cfg.StatsInterval,
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc) },
 		},
+		// "update" is event-driven, not polled: the update engine and
+		// auto-updater push snapshots into it directly via PublishUpdate.
+		// A nil fetch is this topic's marker — Subscribe/Snapshot special-case
+		// it below instead of ever calling a poller.
+		"update": {
+			name: "update",
+		},
 	}
 	return h
 }
@@ -246,7 +253,10 @@ func (h *Hub) Subscribe(topics []string) (ch <-chan Event, snapshots []Event, ca
 			t.graceTimer.Stop()
 			t.graceTimer = nil
 		}
-		if !t.running {
+		// A nil fetch marks a push-only topic (see New's "update" entry):
+		// there is nothing to poll, so no poller ever starts for it — its
+		// snapshot only ever changes via PublishUpdate.
+		if !t.running && t.fetch != nil {
 			t.running = true
 			t.stop = make(chan struct{})
 			h.wg.Add(1)
@@ -474,7 +484,9 @@ func (h *Hub) Snapshot(ctx context.Context, topics []string) (map[string]json.Ra
 	for _, name := range topics {
 		h.mu.Lock()
 		t := h.topics[name]
-		fresh := t.running && t.hasData
+		// A push-only topic (nil fetch) has nothing to fetch on demand —
+		// its cached value (possibly still empty) is always "fresh".
+		fresh := t.fetch == nil || (t.running && t.hasData)
 		h.mu.Unlock()
 
 		if !fresh {
@@ -490,6 +502,21 @@ func (h *Hub) Snapshot(ctx context.Context, topics []string) (map[string]json.Ra
 		h.mu.Unlock()
 	}
 	return out, nil
+}
+
+// PublishUpdate pushes a new snapshot into the event-driven "update" topic
+// (see New). Unlike every other topic there is no poller behind it: the
+// update engine and auto-updater call this directly whenever a run's phase
+// changes or an auto-check finds something to report. Subscribing works
+// exactly like any other topic — a new subscriber gets the last published
+// snapshot immediately (Subscribe's t.hasData check), and later pushes
+// broadcast the same way a poller's fetch result would (recordFetchSuccess
+// already dedupes an unchanged payload, same as a polled topic).
+func (h *Hub) PublishUpdate(data json.RawMessage) {
+	h.mu.Lock()
+	t := h.topics["update"]
+	h.mu.Unlock()
+	h.recordFetchSuccess(t, data)
 }
 
 // Close stops every poller and disconnects every subscriber. Safe to call
