@@ -6,7 +6,6 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -40,6 +39,10 @@ type Server struct {
 	logSrc         host.LogSource
 	logStreams     *logStreamRegistry
 	privilegesMode string
+	// logStreamHeartbeat is GET /api/events/logs' heartbeat period; defaults
+	// to logStreamHeartbeatInterval (logs_handler.go), overridable by tests
+	// in this package the same way svcMgr/logSrc are.
+	logStreamHeartbeat time.Duration
 
 	updateEngine *update.Engine
 	autoUpdater  *update.AutoUpdater
@@ -92,21 +95,22 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	})
 
 	return &Server{
-		cfg:            cfg,
-		tc:             tc,
-		st:             st,
-		hub:            hb,
-		limiter:        auth.NewLimiter(),
-		subSvc:         subpage.NewService(cfg.Subpage.Secret, cfg.BasePath, st),
-		subIndex:       subpage.NewIndex(cfg.Subpage.Secret, tc, st),
-		subLimiter:     subpage.NewRateLimiter(),
-		version:        version,
-		svcMgr:         svcMgr,
-		logSrc:         logSrc,
-		logStreams:     newLogStreamRegistry(),
-		privilegesMode: privilegesMode,
-		updateEngine:   updateEngine,
-		autoUpdater:    update.NewAutoUpdater(st, updateEngine),
+		cfg:                cfg,
+		tc:                 tc,
+		st:                 st,
+		hub:                hb,
+		limiter:            auth.NewLimiter(),
+		subSvc:             subpage.NewService(cfg.Subpage.Secret, cfg.BasePath, st),
+		subIndex:           subpage.NewIndex(cfg.Subpage.Secret, tc, st),
+		subLimiter:         subpage.NewRateLimiter(),
+		version:            version,
+		svcMgr:             svcMgr,
+		logSrc:             logSrc,
+		logStreams:         newLogStreamRegistry(),
+		privilegesMode:     privilegesMode,
+		logStreamHeartbeat: logStreamHeartbeatInterval,
+		updateEngine:       updateEngine,
+		autoUpdater:        update.NewAutoUpdater(st, updateEngine),
 	}
 }
 
@@ -178,28 +182,6 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	return mux
-}
-
-func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	type info struct {
-		Reachable bool   `json:"reachable"`
-		Version   string `json:"version,omitempty"`
-		Hint      string `json:"hint,omitempty"`
-	}
-	sysInfo, err := s.tc.SystemInfo(ctx)
-	if err != nil {
-		var apiErr *telemt.APIError
-		hint := "telemt is unreachable — check telemt.url"
-		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
-			hint = "telemt rejected authorization — check telemt.auth_header"
-		}
-		writeJSON(w, http.StatusOK, info{Reachable: false, Hint: hint})
-		return
-	}
-	writeJSON(w, http.StatusOK, info{Reachable: true, Version: sysInfo.Version})
 }
 
 // Run serves until ctx is canceled, then drains connections.

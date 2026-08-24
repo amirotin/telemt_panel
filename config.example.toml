@@ -21,6 +21,10 @@ data_dir = "/var/lib/telemt-panel"
 url = "http://127.0.0.1:9091"
 # Authorization header value, verbatim ([server.api].auth_header in Telemt).
 auth_header = ""
+# How the (not yet implemented) Telemt config editor will apply changes:
+# "api" (default) PATCHes through the Telemt API; "file" rewrites the file
+# directly. Wire-only for now — reported by GET /api/telemt/info.
+# config_edit_mode = "api" # api | file
 
 [auth]
 # Password login is the base method; passkeys and TOTP are enabled from the

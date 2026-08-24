@@ -40,6 +40,9 @@ func TestLoadMinimal(t *testing.T) {
 	if cfg.DataDir != "/var/lib/telemt-panel" {
 		t.Errorf("default data_dir = %q, want /var/lib/telemt-panel", cfg.DataDir)
 	}
+	if cfg.Telemt.ConfigEditMode != "api" {
+		t.Errorf("default telemt.config_edit_mode = %q, want api", cfg.Telemt.ConfigEditMode)
+	}
 	wantHost := HostConfig{
 		ServiceManager:  "auto",
 		LogSource:       "auto",
@@ -181,6 +184,15 @@ log_source = "eventlog"`, "host.log_source"},
 		{"unknown privileges mode", minimal + `
 [privileges]
 mode = "sudo"`, "privileges.mode"},
+		{"unknown config edit mode", `
+[telemt]
+url = "http://127.0.0.1:9091"
+config_edit_mode = "registry"
+
+[auth]
+username = "admin"
+password_hash = "$2a$10$x"
+`, "telemt.config_edit_mode"},
 		// Top-level keys must precede sections in TOML.
 		{"bad trusted proxy", `trusted_proxies = ["not-an-ip"]` + minimal, "trusted_proxies"},
 	}

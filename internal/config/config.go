@@ -41,6 +41,12 @@ type Config struct {
 type TelemtConfig struct {
 	URL        string `toml:"url"`
 	AuthHeader string `toml:"auth_header"`
+	// ConfigEditMode selects how GET/PATCH /api/telemt/config will edit
+	// Telemt's own config once that milestone lands: "api" (default, PATCH
+	// through the Telemt API) or "file" (direct file rewrite). Wire-only
+	// for now — GET /api/telemt/info reports it, but no config-editing
+	// endpoint reads it yet.
+	ConfigEditMode string `toml:"config_edit_mode"`
 }
 
 // AuthConfig holds the password login; passkeys/TOTP state lives in the store.
@@ -135,6 +141,7 @@ func Load(path string) (*Config, error) {
 		Listen:  "0.0.0.0:8080",
 		Store:   StoreConfig{Driver: "memory"},
 		DataDir: "/var/lib/telemt-panel",
+		Telemt:  TelemtConfig{ConfigEditMode: "api"},
 		Host: HostConfig{
 			ServiceManager:  "auto",
 			LogSource:       "auto",
@@ -160,6 +167,13 @@ func Load(path string) (*Config, error) {
 
 	if cfg.Telemt.URL == "" {
 		return nil, fmt.Errorf("telemt.url is required")
+	}
+	switch cfg.Telemt.ConfigEditMode {
+	case "":
+		cfg.Telemt.ConfigEditMode = "api"
+	case "api", "file":
+	default:
+		return nil, fmt.Errorf("telemt.config_edit_mode: unknown value %q (api | file)", cfg.Telemt.ConfigEditMode)
 	}
 	if cfg.Auth.Username == "" {
 		return nil, fmt.Errorf("auth.username is required")
