@@ -1,6 +1,8 @@
 package update
 
 import (
+	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/store"
@@ -38,13 +40,21 @@ import (
 //
 // A target whose last journal entry is already terminal, or has no
 // entries at all, is left untouched.
+//
+// Both targets are always attempted, even if one fails: a store error
+// reconciling telemt must not skip the panel's own pending-restart
+// handoff (or vice versa) — each target's outcome is independent, so one
+// failing is not a reason to abandon the other. Every failure is logged
+// per-target as it happens and also returned, joined, to the caller.
 func ReconcileStartup(st store.Store, running string) error {
+	var errs []error
 	for _, target := range []string{TargetTelemt, TargetPanel} {
 		if err := reconcileTargetStartup(st, target, running); err != nil {
-			return err
+			slog.Error("update: reconcile startup", "target", target, "err", err)
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // reconcileTargetStartup is ReconcileStartup's per-target logic.
@@ -66,7 +76,11 @@ func reconcileTargetStartup(st store.Store, target, running string) error {
 	if target == TargetPanel && last.Phase == PhaseRestarting {
 		phase = PhaseDone
 		detail = ""
-		if running != last.VersionTo {
+		// CompareVersions, not a raw string comparison: running is the
+		// ldflags build version, last.VersionTo is a GitHub release tag
+		// (e.g. "v1.2.3") — a "v" prefix mismatch between the two must not
+		// read as a failed update (CompareVersions normalizes it away).
+		if CompareVersions(running, last.VersionTo) != 0 {
 			phase = PhaseRolledBack
 			detail = "restarted with old binary"
 		}

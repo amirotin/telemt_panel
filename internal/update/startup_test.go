@@ -1,6 +1,7 @@
 package update
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -49,6 +50,17 @@ func TestReconcileStartup(t *testing.T) {
 				{Target: TargetPanel, RunID: "r1", Phase: PhaseRestarting, VersionFrom: "v1.0.0", VersionTo: "v2.0.0", TS: time.Now()},
 			},
 			running:    "v2.0.0",
+			wantAppend: true,
+			wantPhase:  PhaseDone,
+			wantDetail: "",
+		},
+		{
+			name:   "panel restarting with a v-prefix mismatch (tag vs ldflags version) still appends done",
+			target: TargetPanel,
+			seed: []store.UpdateJournalEntry{
+				{Target: TargetPanel, RunID: "r1", Phase: PhaseRestarting, VersionFrom: "v1.0.0", VersionTo: "v1.2.3", TS: time.Now()},
+			},
+			running:    "1.2.3", // ldflags build version, no "v" prefix — same release as VersionTo's GitHub tag
 			wantAppend: true,
 			wantPhase:  PhaseDone,
 			wantDetail: "",
@@ -185,5 +197,50 @@ func TestReconcileStartup_ActsOnBothTargetsIndependently(t *testing.T) {
 	panelEntries, _ := st.ListUpdateJournal(TargetPanel, 20)
 	if len(panelEntries) != 2 || panelEntries[0].Phase != PhaseDone {
 		t.Errorf("panel journal = %+v, want a trailing done entry", panelEntries)
+	}
+}
+
+// faultyJournalStore wraps a real Store and fails ListUpdateJournal for
+// exactly one target, leaving every other method (including the other
+// target's journal calls) delegated unchanged.
+type faultyJournalStore struct {
+	store.Store
+	failTarget string
+}
+
+func (f *faultyJournalStore) ListUpdateJournal(target string, limit int) ([]store.UpdateJournalEntry, error) {
+	if target == f.failTarget {
+		return nil, errors.New("boom")
+	}
+	return f.Store.ListUpdateJournal(target, limit)
+}
+
+// TestReconcileStartup_ContinuesPastAPerTargetError covers the deferred
+// minor folded into finding 2: a store error reconciling one target (here
+// telemt, processed first) must not abort the loop before the other
+// target (panel) gets its own reconciliation — each target's outcome is
+// independent. The error is still surfaced to the caller, just not at the
+// cost of skipping the remaining target.
+func TestReconcileStartup_ContinuesPastAPerTargetError(t *testing.T) {
+	st, err := store.NewMemory("")
+	if err != nil {
+		t.Fatalf("store.NewMemory: %v", err)
+	}
+	defer st.Close()
+
+	if err := st.AppendUpdateJournal(store.UpdateJournalEntry{
+		Target: TargetPanel, RunID: "p1", Phase: PhaseRestarting, VersionFrom: "v1.0.0", VersionTo: "v2.0.0", TS: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed panel: %v", err)
+	}
+
+	fs := &faultyJournalStore{Store: st, failTarget: TargetTelemt}
+	if err := ReconcileStartup(fs, "v2.0.0"); err == nil {
+		t.Fatal("want a non-nil error surfacing the telemt store failure")
+	}
+
+	panelEntries, _ := st.ListUpdateJournal(TargetPanel, 20)
+	if len(panelEntries) != 2 || panelEntries[0].Phase != PhaseDone {
+		t.Errorf("panel journal = %+v, want a trailing done entry despite telemt's store error", panelEntries)
 	}
 }
