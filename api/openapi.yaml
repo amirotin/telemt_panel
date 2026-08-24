@@ -6,6 +6,9 @@
 #   - auth: opaque session id in HttpOnly cookie "panel_session" (see 05-auth.md)
 #   - realtime is SSE (/api/events*), documented here as text/event-stream;
 #     event payload shapes live in 02-hub-sse.md and the generated topic types
+#   - x-status: planned marks a path with no route registered yet in
+#     internal/httpapi/server.go (M3 backlog) — audited against the actual
+#     route table, not aspirational; absence of the tag means implemented
 openapi: 3.1.0
 info:
   title: Telemt Panel API
@@ -108,8 +111,10 @@ paths:
         "204": { description: Revoked }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  # TOTP lifecycle (state lives in store, not config)
+  # TOTP lifecycle (state lives in store, not config) — not yet implemented,
+  # see each path's x-status below.
   /api/auth/totp/setup:
+    x-status: planned
     post:
       tags: [auth]
       operationId: totpSetup
@@ -125,6 +130,7 @@ paths:
                   otpauth_url: { type: string }
                   secret: { type: string }
   /api/auth/totp/enable:
+    x-status: planned
     post:
       tags: [auth]
       operationId: totpEnable
@@ -145,20 +151,24 @@ paths:
                   recovery_codes: { type: array, items: { type: string } }
         "400": { $ref: "#/components/responses/BadRequest" }
   /api/auth/totp:
+    x-status: planned
     delete:
       tags: [auth]
       operationId: totpDisable
       responses: { "204": { description: Disabled } }
 
   # WebAuthn: bodies/responses are the standard CredentialCreation/Request JSON
-  # produced by go-webauthn; typed loosely on purpose.
+  # produced by go-webauthn; typed loosely on purpose. Not yet implemented,
+  # see each path's x-status below.
   /api/auth/webauthn/register/begin:
+    x-status: planned
     post:
       tags: [auth]
       operationId: webauthnRegisterBegin
       responses:
         "200": { description: CredentialCreationOptions, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
   /api/auth/webauthn/register/finish:
+    x-status: planned
     post:
       tags: [auth]
       operationId: webauthnRegisterFinish
@@ -166,6 +176,7 @@ paths:
       responses:
         "200": { description: Registered, content: { application/json: { schema: { $ref: "#/components/schemas/PasskeyInfo" } } } }
   /api/auth/webauthn/login/begin:
+    x-status: planned
     post:
       tags: [auth]
       security: []
@@ -174,6 +185,7 @@ paths:
         "200": { description: CredentialRequestOptions, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
         "404": { description: No passkeys enrolled }
   /api/auth/webauthn/login/finish:
+    x-status: planned
     post:
       tags: [auth]
       security: []
@@ -183,6 +195,7 @@ paths:
         "204": { description: Logged in; session cookie set }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/auth/webauthn/credentials/{credentialId}:
+    x-status: planned
     delete:
       tags: [auth]
       operationId: webauthnDeleteCredential
@@ -354,6 +367,7 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtInfo" } } }
 
   /api/telemt/config:
+    x-status: planned
     get:
       tags: [telemt]
       operationId: getTelemtConfig
@@ -376,6 +390,7 @@ paths:
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
 
   /api/telemt/reload:
+    x-status: planned
     post:
       tags: [telemt]
       operationId: reloadTelemt
@@ -395,6 +410,7 @@ paths:
         "501": { description: Capability absent — offer service restart instead }
 
   /api/telemt/restart:
+    x-status: planned
     post:
       tags: [telemt]
       operationId: restartTelemtService
@@ -508,6 +524,7 @@ paths:
         "502": { description: telemt_unreachable — every requested topic's fetch failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/history:
+    x-status: planned
     get:
       tags: [realtime]
       operationId: getHistory
@@ -520,6 +537,24 @@ paths:
         "501": { description: Range unavailable on this store profile }
 
   # ───────────────────────── misc ─────────────────────────
+  /api/health:
+    get:
+      tags: [misc]
+      security: []
+      operationId: getHealth
+      description: Unauthenticated liveness probe; no Telemt or store dependency.
+      responses:
+        "200":
+          description: Panel is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { type: string, enum: [ok] }
+                  version: { type: string }
+
   /api/logs/tail:
     get:
       tags: [misc]
@@ -538,6 +573,7 @@ paths:
         "502": { description: log_source_error — the log source failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/audit:
+    x-status: planned
     get:
       tags: [misc]
       operationId: getAudit
@@ -551,6 +587,7 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
 
   /api/geoip:
+    x-status: planned
     get:
       tags: [misc]
       operationId: lookupGeo
