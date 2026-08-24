@@ -19,11 +19,14 @@ import (
 // maxDownloadSize bounds a single downloaded release asset — generous for
 // a native binary tarball, small enough to stop a malicious or
 // misconfigured browser_download_url from filling the staging disk.
-const maxDownloadSize = 512 << 20
+// A var (not const) so tests can shrink it to exercise the overflow path
+// without transferring hundreds of megabytes.
+var maxDownloadSize int64 = 512 << 20
 
 // maxExtractedBinarySize bounds the one binary extracted from a release
-// tarball, for the same reason.
-const maxExtractedBinarySize = 512 << 20
+// tarball, for the same reason. Also a var for the same test-only reason
+// as maxDownloadSize.
+var maxExtractedBinarySize int64 = 512 << 20
 
 // download fetches url into dest, bound to ctx. Any non-200 response is an
 // error — a release asset URL redirecting to a 404 or GitHub rate-limit
@@ -41,12 +44,23 @@ func (e *Engine) download(ctx context.Context, url, dest string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("update: download %q: http %d", url, resp.StatusCode)
 	}
+	// Early check when the server declares a size: catches an oversized
+	// asset before any bytes are read, not just after wasting the transfer.
+	if resp.ContentLength > maxDownloadSize {
+		return fmt.Errorf("update: download %q: asset exceeds size limit (%d bytes)", url, maxDownloadSize)
+	}
 
 	out, err := os.Create(dest)
 	if err != nil {
 		return fmt.Errorf("update: create %q: %w", dest, err)
 	}
-	_, copyErr := io.Copy(out, io.LimitReader(resp.Body, maxDownloadSize))
+	// Read one byte past the limit: reaching it proves the body is larger
+	// than allowed, rather than LimitReader silently truncating an oversized
+	// asset into a corrupt-but-accepted download.
+	n, copyErr := io.Copy(out, io.LimitReader(resp.Body, maxDownloadSize+1))
+	if copyErr == nil && n > maxDownloadSize {
+		copyErr = fmt.Errorf("asset exceeds size limit (%d bytes)", maxDownloadSize)
+	}
 	closeErr := out.Close()
 	if copyErr != nil {
 		return fmt.Errorf("update: write %q: %w", dest, copyErr)
@@ -137,12 +151,25 @@ func extractSingleBinary(tarGzPath, destDir string) (string, error) {
 			return "", fmt.Errorf("update: tar %q contains more than one regular file", tarGzPath)
 		}
 		found = true
+		// Reject an oversized entry from its declared header size before
+		// copying any bytes — a tar header is untrusted, but there is no
+		// reason to stream gigabytes to disk just to say no.
+		if hdr.Size > maxExtractedBinarySize {
+			return "", fmt.Errorf("update: tar entry %q exceeds size limit (%d bytes)", hdr.Name, maxExtractedBinarySize)
+		}
 
 		out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 		if err != nil {
 			return "", fmt.Errorf("update: create %q: %w", destPath, err)
 		}
-		_, copyErr := io.Copy(out, io.LimitReader(tr, maxExtractedBinarySize))
+		written, copyErr := io.Copy(out, tr)
+		// The header lied about Size (undersized or oversized vs. actual tar
+		// content): an exact-count check catches both, since a short read
+		// would otherwise pass silently and a long one is caught by re-
+		// validating written against the same bound checked above.
+		if copyErr == nil && written != hdr.Size {
+			copyErr = fmt.Errorf("tar entry %q: wrote %d bytes, header declared %d", hdr.Name, written, hdr.Size)
+		}
 		closeErr := out.Close()
 		if copyErr != nil {
 			return "", fmt.Errorf("update: write %q: %w", destPath, copyErr)

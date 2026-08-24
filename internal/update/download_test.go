@@ -5,8 +5,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -99,6 +102,110 @@ func TestExtractSingleBinary_ExtractsTheOneFile(t *testing.T) {
 	}
 	if string(got) != "binary-content" {
 		t.Errorf("extracted content = %q, want %q", got, "binary-content")
+	}
+}
+
+// TestDownload_ContentLengthOverLimitFailsEarly covers P2.4: a declared
+// Content-Length above the limit must be rejected before any body bytes are
+// read, without needing to actually transfer an oversized payload.
+func TestDownload_ContentLengthOverLimitFailsEarly(t *testing.T) {
+	orig := maxDownloadSize
+	maxDownloadSize = 16
+	t.Cleanup(func() { maxDownloadSize = orig })
+
+	var served bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served = true
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		w.Write(bytes.Repeat([]byte("x"), 100))
+	}))
+	t.Cleanup(srv.Close)
+
+	e := &Engine{httpClient: http.DefaultClient}
+	dest := filepath.Join(t.TempDir(), "out")
+	err := e.download(context.Background(), srv.URL, dest)
+	if err == nil {
+		t.Fatal("download: want error for oversized Content-Length, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds size limit") {
+		t.Errorf("download err = %v, want it to mention the size limit", err)
+	}
+	if !served {
+		t.Fatal("test bug: handler never ran")
+	}
+}
+
+// TestDownload_BodyOverLimitWithoutContentLengthFails covers the case
+// Content-Length can't catch: a chunked/unknown-length body that turns out
+// to exceed the limit must still be rejected, not silently truncated.
+func TestDownload_BodyOverLimitWithoutContentLengthFails(t *testing.T) {
+	orig := maxDownloadSize
+	maxDownloadSize = 16
+	t.Cleanup(func() { maxDownloadSize = orig })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Flush before writing any body bytes: forces chunked transfer
+		// encoding, so the client sees no Content-Length and must rely on
+		// the LimitReader+exact-count check to catch the oversized body.
+		w.(http.Flusher).Flush()
+		w.Write(bytes.Repeat([]byte("x"), 20)) // over the 16-byte limit
+	}))
+	t.Cleanup(srv.Close)
+
+	e := &Engine{httpClient: http.DefaultClient}
+	dest := filepath.Join(t.TempDir(), "out")
+	err := e.download(context.Background(), srv.URL, dest)
+	if err == nil {
+		t.Fatal("download: want error for oversized chunked body, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds size limit") {
+		t.Errorf("download err = %v, want it to mention the size limit", err)
+	}
+}
+
+// TestExtractSingleBinary_RejectsOversizedHeaderBeforeCopying covers P2.4:
+// an entry whose declared Header.Size exceeds the limit must be rejected
+// from the header alone, before any bytes are copied.
+func TestExtractSingleBinary_RejectsOversizedHeaderBeforeCopying(t *testing.T) {
+	orig := maxExtractedBinarySize
+	maxExtractedBinarySize = 8
+	t.Cleanup(func() { maxExtractedBinarySize = orig })
+
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "release.tar.gz")
+	data := buildTarGz(t, "telemt", []byte("this-is-way-too-long"))
+	if err := os.WriteFile(tarPath, data, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	if _, err := extractSingleBinary(tarPath, dir); err == nil {
+		t.Fatal("extractSingleBinary: want error for oversized header, got nil")
+	} else if !strings.Contains(err.Error(), "exceeds size limit") {
+		t.Errorf("extractSingleBinary err = %v, want it to mention the size limit", err)
+	}
+}
+
+// TestExtractSingleBinary_ExactCountMismatchFails covers the exact-count
+// check: an archive whose compressed stream ends before the header's
+// declared byte count must fail rather than silently accepting a short
+// read. archive/tar's own reader already surfaces this as a read error
+// (io.ErrUnexpectedEOF) once the underlying gzip stream runs out mid-entry
+// — truncating deep enough into the compressed content (not just the
+// trailing gzip checksum/padding) reliably triggers that path.
+func TestExtractSingleBinary_ExactCountMismatchFails(t *testing.T) {
+	full := buildTarGz(t, "telemt", []byte(strings.Repeat("binary-content-long-enough", 50)))
+	truncated := full[:len(full)/2]
+
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "release.tar.gz")
+	if err := os.WriteFile(tarPath, truncated, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	if _, err := extractSingleBinary(tarPath, dir); err == nil {
+		t.Fatal("extractSingleBinary: want error for truncated tar entry, got nil")
 	}
 }
 
