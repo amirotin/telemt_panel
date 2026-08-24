@@ -70,10 +70,10 @@ func TestNewAssetMatcher(t *testing.T) {
 			wantSum: "",
 		},
 		{
-			// P3.12 regression: an asset whose name merely starts with the
-			// binary's name (e.g. a detached signature "<bin>.sha256.asc") must
-			// not be picked as the checksum.
-			name:      "prefix collision on the checksum name does not match",
+			// A detached signature "<bin>.sha256.asc" must not be picked as the
+			// checksum (suffix discipline; this held under the old prefix
+			// matcher too — the true P3.12 regression cases follow below).
+			name:      "detached .sha256.asc signature is not matched",
 			matchName: "telemt",
 			arch:      "x86_64",
 			variant:   "gnu",
@@ -83,6 +83,38 @@ func TestNewAssetMatcher(t *testing.T) {
 			},
 			wantBin: "telemt-x86_64-linux-gnu.tar.gz",
 			wantSum: "",
+		},
+		{
+			// P3.12 regression: the old matcher took any ".sha256" asset whose
+			// name started with the binary's name minus ".tar.gz", so a variant
+			// whose token extends another ("gnu" vs a hypothetical "gnu-musl")
+			// donated its checksum to the wrong binary. Exact match must reject
+			// the collider when the true sibling is absent...
+			name:      "variant-name-prefix collision alone is not matched",
+			matchName: "telemt",
+			arch:      "x86_64",
+			variant:   "gnu",
+			assets: []Asset{
+				{Name: "telemt-x86_64-linux-gnu.tar.gz"},
+				{Name: "telemt-x86_64-linux-gnu-musl.tar.gz.sha256"},
+			},
+			wantBin: "telemt-x86_64-linux-gnu.tar.gz",
+			wantSum: "",
+		},
+		{
+			// ...and must pick the true sibling even when the colliding name is
+			// listed first in the release's asset order.
+			name:      "true sibling wins over an earlier variant-name-prefix collider",
+			matchName: "telemt",
+			arch:      "x86_64",
+			variant:   "gnu",
+			assets: []Asset{
+				{Name: "telemt-x86_64-linux-gnu.tar.gz"},
+				{Name: "telemt-x86_64-linux-gnu-musl.tar.gz.sha256"},
+				{Name: "telemt-x86_64-linux-gnu.tar.gz.sha256"},
+			},
+			wantBin: "telemt-x86_64-linux-gnu.tar.gz",
+			wantSum: "telemt-x86_64-linux-gnu.tar.gz.sha256",
 		},
 		{
 			name:      "no checksum published",
