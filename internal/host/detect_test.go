@@ -65,6 +65,25 @@ func TestDetectServiceManagerKind(t *testing.T) {
 			want: KindSystemd,
 		},
 		{
+			name:       "openrc wins over procd and sysvinit when both present",
+			configured: "auto",
+			paths: map[string]bool{
+				"/run/openrc":          true,
+				"/etc/openwrt_release": true,
+				"/etc/init.d":          true,
+			},
+			want: KindOpenRC,
+		},
+		{
+			name:       "procd wins over sysvinit when both present",
+			configured: "auto",
+			paths: map[string]bool{
+				"/etc/openwrt_release": true,
+				"/etc/init.d":          true,
+			},
+			want: KindProcd,
+		},
+		{
 			name:       "empty configured treated as auto",
 			configured: "",
 			paths:      map[string]bool{"/etc/openwrt_release": true},

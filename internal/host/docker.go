@@ -24,13 +24,17 @@ func NewDocker(runner CmdRunner) *Docker {
 func (d *Docker) Kind() string { return KindDocker }
 
 // Status implements ServiceManager via
-// `docker inspect -f {{.State.Status}} <container>`.
+// `docker inspect -f {{.State.Status}} <container>`. "restarting" is
+// mid-cycle — neither reliably up nor down — so it maps to StatusUnknown,
+// matching the transitional-state convention systemd's Status uses for
+// activating/deactivating/reloading, rather than being lumped in with the
+// container's settled-down states.
 func (d *Docker) Status(ctx context.Context, container string) (ServiceStatus, error) {
 	out, _, runErr := d.run(ctx, "docker", "inspect", "-f", "{{.State.Status}}", container)
 	switch strings.TrimSpace(string(out)) {
 	case "running":
 		return StatusRunning, nil
-	case "exited", "dead", "created", "paused", "restarting":
+	case "exited", "dead", "created", "paused":
 		return StatusStopped, nil
 	case "":
 		if runErr != nil {
