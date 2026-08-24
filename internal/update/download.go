@@ -179,16 +179,25 @@ func (e *Engine) ReleasesView(ctx context.Context, targetName string) (ReleasesV
 	return BuildReleasesView(current, releases, matcher, e.maxNewer, e.maxOlder), nil
 }
 
-// LatestVersion returns the newest release version newer than targetName's
-// current version, if any (ok=false when already up to date or the
-// release list has no matching newer asset).
+// LatestVersion returns the newest STABLE release version newer than
+// targetName's current version, if any (ok=false when already up to date,
+// the only newer releases are prereleases, or the release list has no
+// matching newer asset).
+//
+// This is the auto-update picker (auto.go's tickTarget "apply" case, and
+// CheckAndPublish's "check" notice) — spec 08-migration.md treats
+// prereleases as opt-in betas the updater never auto-offers, so skipping
+// them here (rather than in BuildReleasesView/ReleasesView) is
+// deliberate: manual apply still lists and can install an RC, since
+// handleApplyUpdate takes an explicit version from the operator rather
+// than going through this function.
 func (e *Engine) LatestVersion(ctx context.Context, targetName string) (version string, ok bool, err error) {
 	view, err := e.ReleasesView(ctx, targetName)
 	if err != nil {
 		return "", false, err
 	}
 	for _, r := range view.Releases {
-		if r.Newer {
+		if r.Newer && !r.Prerelease {
 			return r.Version, true, nil
 		}
 	}

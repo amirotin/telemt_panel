@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -115,5 +116,82 @@ func TestParseChecksumFile(t *testing.T) {
 		if got := parseChecksumFile(tc.content); got != tc.want {
 			t.Errorf("parseChecksumFile(%q) = %q, want %q", tc.content, got, tc.want)
 		}
+	}
+}
+
+// TestLatestVersion_SkipsPrereleasesPickingLatestStable covers finding 5:
+// LatestVersion (the auto-update "apply"/"check" picker) must never
+// auto-offer a prerelease while a newer stable release also exists.
+func TestLatestVersion_SkipsPrereleasesPickingLatestStable(t *testing.T) {
+	fixture := newFakeReleaseServer(t)
+	assetName := AssetName(assetBaseName(TargetTelemt), "x86_64", "musl")
+	url := fixture.addAsset(assetName, []byte("x"))
+	fixture.releases = []Release{
+		{Tag: "v1.9.0", Assets: []Asset{{Name: assetName, BrowserDownloadURL: url}}},
+		{Tag: "v2.0.0-rc1", Prerelease: true, Assets: []Asset{{Name: assetName, BrowserDownloadURL: url}}},
+	}
+
+	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", version: "v1.0.0"}
+	e, _ := newTestEngine(t, fixture, newTestRunner(), map[string]Target{TargetTelemt: target}, nil)
+
+	version, ok, err := e.LatestVersion(context.Background(), TargetTelemt)
+	if err != nil {
+		t.Fatalf("LatestVersion: %v", err)
+	}
+	if !ok || version != "v1.9.0" {
+		t.Errorf("LatestVersion = (%q, %v), want (v1.9.0, true) — must skip the newer prerelease and pick the newer stable release", version, ok)
+	}
+}
+
+// TestLatestVersion_OnlyPrereleaseNewer_PicksNothing covers the other half
+// of finding 5: when the only newer release is a prerelease, auto-update
+// must find nothing to apply rather than falling back to it.
+func TestLatestVersion_OnlyPrereleaseNewer_PicksNothing(t *testing.T) {
+	fixture := newFakeReleaseServer(t)
+	assetName := AssetName(assetBaseName(TargetTelemt), "x86_64", "musl")
+	url := fixture.addAsset(assetName, []byte("x"))
+	fixture.releases = []Release{
+		{Tag: "v2.0.0-rc1", Prerelease: true, Assets: []Asset{{Name: assetName, BrowserDownloadURL: url}}},
+	}
+
+	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", version: "v1.0.0"}
+	e, _ := newTestEngine(t, fixture, newTestRunner(), map[string]Target{TargetTelemt: target}, nil)
+
+	version, ok, err := e.LatestVersion(context.Background(), TargetTelemt)
+	if err != nil {
+		t.Fatalf("LatestVersion: %v", err)
+	}
+	if ok {
+		t.Errorf("LatestVersion = (%q, true), want ok=false — the only newer release is a prerelease, auto-update must not pick it", version)
+	}
+}
+
+// TestReleasesView_StillListsPrereleasesForManualApply proves finding 5's
+// fix is scoped to LatestVersion only: the manual-apply release list
+// (GET /api/updates, backed by ReleasesView) must keep showing a
+// prerelease so an operator can still choose to install an RC explicitly.
+func TestReleasesView_StillListsPrereleasesForManualApply(t *testing.T) {
+	fixture := newFakeReleaseServer(t)
+	assetName := AssetName(assetBaseName(TargetTelemt), "x86_64", "musl")
+	url := fixture.addAsset(assetName, []byte("x"))
+	fixture.releases = []Release{
+		{Tag: "v2.0.0-rc1", Prerelease: true, Assets: []Asset{{Name: assetName, BrowserDownloadURL: url}}},
+	}
+
+	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", version: "v1.0.0"}
+	e, _ := newTestEngine(t, fixture, newTestRunner(), map[string]Target{TargetTelemt: target}, nil)
+
+	view, err := e.ReleasesView(context.Background(), TargetTelemt)
+	if err != nil {
+		t.Fatalf("ReleasesView: %v", err)
+	}
+	found := false
+	for _, r := range view.Releases {
+		if r.Version == "v2.0.0-rc1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("ReleasesView dropped the prerelease — manual apply's release list must still show it")
 	}
 }
