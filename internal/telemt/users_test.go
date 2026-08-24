@@ -14,7 +14,9 @@ func TestQuotaList(t *testing.T) {
 		if r.URL.Path != "/v1/stats/users/quota" {
 			t.Errorf("path = %s", r.URL.Path)
 		}
-		w.Write([]byte(`{"ok":true,"data":{"alice":{"data_quota_bytes":1024,"used_bytes":512,"last_reset_epoch_secs":100}},"revision":"r"}`))
+		// Real wire shape (src/api/users/view.rs::build_user_quota_list):
+		// an object with a users array, not a map keyed by username.
+		w.Write([]byte(`{"ok":true,"data":{"users":[{"username":"alice","data_quota_bytes":1024,"used_bytes":512,"last_reset_epoch_secs":100}]},"revision":"r"}`))
 	})
 
 	quota, ok, err := c.QuotaList(context.Background())

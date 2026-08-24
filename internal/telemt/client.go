@@ -170,7 +170,23 @@ func (c *Client) StatsSummary(ctx context.Context) (SummaryData, error) {
 	return get[SummaryData](ctx, c, "/v1/stats/summary")
 }
 
-// QuotaList calls GET /v1/stats/users/quota, keyed by username. A 404
+// quotaListWireEntry is one element of GET /v1/stats/users/quota's actual
+// wire shape (src/api/users/view.rs::build_user_quota_list in the Telemt
+// 3.5.2 source — an object with a users array, not a map keyed by
+// username; only users with a non-zero quota are listed, sorted by name).
+type quotaListWireEntry struct {
+	Username           string `json:"username"`
+	DataQuotaBytes     uint64 `json:"data_quota_bytes"`
+	UsedBytes          uint64 `json:"used_bytes"`
+	LastResetEpochSecs int64  `json:"last_reset_epoch_secs"`
+}
+
+type quotaListWire struct {
+	Users []quotaListWireEntry `json:"users"`
+}
+
+// QuotaList calls GET /v1/stats/users/quota and reshapes the wire's
+// {users:[...]} array into a map keyed by username for callers. A 404
 // (not_found) means this Telemt build predates the endpoint; that is
 // reported as a false capability flag, not an error, so callers can degrade
 // gracefully instead of failing the whole request.
@@ -183,9 +199,17 @@ func (c *Client) QuotaList(ctx context.Context) (map[string]QuotaEntry, bool, er
 		}
 		return nil, false, err
 	}
-	var out map[string]QuotaEntry
-	if err := json.Unmarshal(data, &out); err != nil {
+	var wire quotaListWire
+	if err := json.Unmarshal(data, &wire); err != nil {
 		return nil, false, fmt.Errorf("telemt: decode quota list: %w", err)
+	}
+	out := make(map[string]QuotaEntry, len(wire.Users))
+	for _, e := range wire.Users {
+		out[e.Username] = QuotaEntry{
+			DataQuotaBytes:     e.DataQuotaBytes,
+			UsedBytes:          e.UsedBytes,
+			LastResetEpochSecs: e.LastResetEpochSecs,
+		}
 	}
 	return out, true, nil
 }
