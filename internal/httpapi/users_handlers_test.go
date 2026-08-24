@@ -53,6 +53,22 @@ type fakeTelemt struct {
 	rotateErr     *telemtErr
 	enabledErr    *telemtErr
 	quotaErr      *telemtErr
+
+	// failUsersCountdown, when > 0, counts down on each GET /v1/users call
+	// and fails the one that brings it to 0 (then leaves it there, so
+	// later calls succeed again) — used by the subpage-index tests to
+	// fail one specific GET /v1/users call (e.g. the index's own
+	// background Refresh, which may not be the very next such call) while
+	// others around it still have to succeed.
+	failUsersCountdown int
+}
+
+// failUsersOnNthCall arms a failure of the nth subsequent GET /v1/users
+// call (1 = the very next call).
+func (f *fakeTelemt) failUsersOnNthCall(n int) {
+	f.mu.Lock()
+	f.failUsersCountdown = n
+	f.mu.Unlock()
 }
 
 func newFakeTelemt(users ...telemt.UserInfo) *fakeTelemt {
@@ -110,6 +126,14 @@ func usersPathUsername(path string) string {
 }
 
 func (f *fakeTelemt) writeUsersLocked(w http.ResponseWriter) {
+	if f.failUsersCountdown > 0 {
+		f.failUsersCountdown--
+		if f.failUsersCountdown == 0 {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, "simulated upstream failure")
+			return
+		}
+	}
 	names := make([]string, 0, len(f.users))
 	for name := range f.users {
 		names = append(names, name)
@@ -211,6 +235,19 @@ func (f *fakeTelemt) handlePatchLocked(w http.ResponseWriter, r *http.Request, u
 		writeTelemtErrBody(w, telemtErr{status: http.StatusNotFound, code: "not_found", message: "no such user"})
 		return
 	}
+
+	// Apply a "secret" patch to the stored links, mirroring the real
+	// Telemt behavior the subpage verify-on-hit tests depend on: a secret
+	// patch must actually change what ExtractSecret later reads back.
+	// Other patch fields aren't modeled here — no existing test needs it.
+	var patch struct {
+		Secret *string `json:"secret"`
+	}
+	if err := json.Unmarshal(body, &patch); err == nil && patch.Secret != nil {
+		u.Links = telemt.UserLinks{Classic: []string{"tg://proxy?server=1.2.3.4&port=443&secret=" + *patch.Secret}}
+	}
+	f.users[username] = u
+
 	writeEnvelope(w, http.StatusOK, u)
 }
 

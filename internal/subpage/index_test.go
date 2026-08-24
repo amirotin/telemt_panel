@@ -268,6 +268,90 @@ func TestIndexConcurrentMissesRefreshExactlyOnce(t *testing.T) {
 	}
 }
 
+// callGate drives one call to a sequencedLister: entered is closed as soon
+// as the call is received (which, for a call made from inside Refresh,
+// is always after Refresh has already claimed its generation number —
+// the claim happens before the Users() call), so a test can wait on it to
+// know the claim has happened without polling or sleeping; the call then
+// blocks until release is closed, returning users.
+type callGate struct {
+	entered chan struct{}
+	release chan struct{}
+	users   []telemt.UserInfo
+}
+
+func newCallGate(users []telemt.UserInfo) *callGate {
+	return &callGate{entered: make(chan struct{}), release: make(chan struct{}), users: users}
+}
+
+// sequencedLister is a UsersLister whose successive Users() calls are each
+// driven by their own callGate, in call order.
+type sequencedLister struct {
+	mu    sync.Mutex
+	calls int
+	gates []*callGate
+}
+
+func (s *sequencedLister) Users(context.Context) ([]telemt.UserInfo, error) {
+	s.mu.Lock()
+	g := s.gates[s.calls]
+	s.calls++
+	s.mu.Unlock()
+
+	close(g.entered)
+	<-g.release
+	return g.users, nil
+}
+
+// TestIndexRefreshDiscardsStaleOutOfOrderResult guards the generation
+// guard: two Refresh calls started in order (A then B) but finished out of
+// order (B, the call that started later, completes and installs first)
+// must leave B's map installed — A's later completion must not clobber it
+// with older data.
+func TestIndexRefreshDiscardsStaleOutOfOrderResult(t *testing.T) {
+	oldUser := telemt.UserInfo{Username: "alice", Links: telemt.UserLinks{Classic: classicLink(testUserSecret)}}
+	newUser := telemt.UserInfo{Username: "alice", Links: telemt.UserLinks{Classic: classicLink(rotatedUserSecret)}}
+
+	gateA := newCallGate([]telemt.UserInfo{oldUser})
+	gateB := newCallGate([]telemt.UserInfo{newUser})
+	lister := &sequencedLister{gates: []*callGate{gateA, gateB}}
+	idx := newTestIndex(t, lister, newFakeNonces(), time.Now)
+
+	resultA := make(chan error, 1)
+	resultB := make(chan error, 1)
+
+	// Start A first so it claims the lower generation number, then wait
+	// for confirmation (gateA.entered) that the claim has happened before
+	// starting B — deterministic ordering with no sleep or polling.
+	go func() { resultA <- idx.Refresh(context.Background()) }()
+	<-gateA.entered
+
+	go func() { resultB <- idx.Refresh(context.Background()) }()
+	<-gateB.entered
+
+	// Let B — the call that started second — finish and install first.
+	close(gateB.release)
+	if err := <-resultB; err != nil {
+		t.Fatalf("Refresh (B): %v", err)
+	}
+
+	// Now let A — the call that started first — finish last. Its result
+	// must be discarded rather than overwriting B's.
+	close(gateA.release)
+	if err := <-resultA; err != nil {
+		t.Fatalf("Refresh (A): %v", err)
+	}
+
+	newToken := deriveToken([]byte("panel-secret"), "alice", rotatedUserSecret, "")
+	if username, ok := idx.Lookup(context.Background(), newToken); !ok || username != "alice" {
+		t.Fatalf("Lookup(newToken) = (%q, %v), want (alice, true) — the newer refresh's result must win", username, ok)
+	}
+	oldToken := deriveToken([]byte("panel-secret"), "alice", testUserSecret, "")
+	if _, ok := idx.Lookup(context.Background(), oldToken); ok {
+		t.Fatal("Lookup(oldToken) hit — the older, stale refresh clobbered the newer one's result")
+	}
+}
+
 func TestIndexSkipsUsersWithoutAnExtractableSecret(t *testing.T) {
 	lister := &fakeLister{users: []telemt.UserInfo{
 		{Username: "no-links"},

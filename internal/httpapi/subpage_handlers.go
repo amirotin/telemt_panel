@@ -21,9 +21,9 @@ const subpageRequestTimeout = 10 * time.Second
 
 // handleSubpage implements GET /sub/{token}: the token-addressed, no-login
 // per-user subscription page. Every failure path (bad token, unknown
-// user, upstream error) below returns the uniform 404 text body — the
-// page must never distinguish "wrong token" from "right token, backend
-// hiccup" for an unauthenticated caller.
+// user, stale token, upstream error) below returns the uniform 404 text
+// body — the page must never distinguish "wrong token" from "right token,
+// backend hiccup" for an unauthenticated caller.
 func (s *Server) handleSubpage(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
 
@@ -44,6 +44,31 @@ func (s *Server) handleSubpage(w http.ResponseWriter, r *http.Request) {
 	}
 	u, ok := findUser(users, username)
 	if !ok {
+		writeSubpageNotFound(w)
+		return
+	}
+
+	// Re-verify the token against the user's CURRENT secret and nonce
+	// rather than trusting the index hit: the index is refreshed lazily
+	// and best-effort, so an entry can still be cached after a secret or
+	// nonce rotation that should have revoked it. This check, not the
+	// index, is what makes revocation deterministic — a mismatch triggers
+	// a throttled refresh so the stale entry ages out, then 404s exactly
+	// like an unknown token.
+	secret, ok := subpage.ExtractSecret(u.Links)
+	if !ok {
+		s.subIndex.TriggerRefresh(ctx)
+		writeSubpageNotFound(w)
+		return
+	}
+	valid, err := s.subSvc.Verify(username, secret, token)
+	if err != nil {
+		slog.Error("subpage: verify token", "username", username, "err", err)
+		writeSubpageNotFound(w)
+		return
+	}
+	if !valid {
+		s.subIndex.TriggerRefresh(ctx)
 		writeSubpageNotFound(w)
 		return
 	}

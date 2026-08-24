@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -338,6 +340,191 @@ func TestHandleSubpageRenderFailureReturns500(t *testing.T) {
 	}
 	if body := strings.TrimSpace(w.Body.String()); body != "internal error" {
 		t.Errorf("body = %q, want %q", body, "internal error")
+	}
+}
+
+// getSubpage issues GET /sub/{token} (path from an absolute sublink URL)
+// against h and returns the response.
+func getSubpage(t *testing.T, h http.Handler, absoluteURL string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", pathOf(t, absoluteURL), nil))
+	return w
+}
+
+// TestHandleSubpageSecretRotationInvalidatesOldTokenViaVerifyOnHit covers
+// P1.3: a rotate-secret call whose own best-effort index refresh FAILS
+// must still make the old token 404 immediately, because handleSubpage
+// re-verifies every cache hit against the user's current secret and nonce
+// rather than trusting the (possibly stale) index — the fix does not
+// depend on the refresh succeeding.
+func TestHandleSubpageSecretRotationInvalidatesOldTokenViaVerifyOnHit(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	before := getSublink(t, h, cookie)
+	// Prime the index with a cache hit for the old token.
+	if w := getSubpage(t, h, before.URL); w.Code != http.StatusOK {
+		t.Fatalf("priming request status = %d, want 200: %s", w.Code, w.Body)
+	}
+
+	// Arm the index's own Refresh() to fail on its next Users() call —
+	// the one rotate-secret's hook is about to make — while everything
+	// else (the rotate-secret call itself, handleSubpage's own fetch of
+	// the fresh user afterward) keeps working.
+	fake.failUsersOnNthCall(1)
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, mutating("POST", "/api/users/alice/rotate-secret", cookie))
+	if w.Code != http.StatusOK {
+		t.Fatalf("rotate-secret status = %d, want 200: %s", w.Code, w.Body)
+	}
+
+	// The old token must 404 immediately — a genuine cache hit that
+	// verify-on-hit catches, not a miss left by a successful refresh.
+	w = getSubpage(t, h, before.URL)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("old token status = %d, want 404: %s", w.Code, w.Body)
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "not found" {
+		t.Errorf("body = %q, want %q", body, "not found")
+	}
+
+	// Simulate the eventual catch-up (the next lazy refresh, or another
+	// admin action) so the new token is reachable too.
+	if err := srv.subIndex.Refresh(context.Background()); err != nil {
+		t.Fatalf("catch-up Refresh: %v", err)
+	}
+	after := getSublink(t, h, cookie)
+	if after.URL == before.URL {
+		t.Fatal("expected the sublink URL to change after secret rotation")
+	}
+	if w := getSubpage(t, h, after.URL); w.Code != http.StatusOK {
+		t.Fatalf("new token status = %d, want 200: %s", w.Code, w.Body)
+	}
+}
+
+// TestHandlePatchUserSecretInvalidatesOldTokenViaVerifyOnHit is the same
+// scenario as TestHandleSubpageSecretRotationInvalidatesOldTokenViaVerifyOnHit
+// but for PATCH /api/users/{username} with a "secret" field — the brief's
+// second refresh-hook trigger.
+func TestHandlePatchUserSecretInvalidatesOldTokenViaVerifyOnHit(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	before := getSublink(t, h, cookie)
+	if w := getSubpage(t, h, before.URL); w.Code != http.StatusOK {
+		t.Fatalf("priming request status = %d, want 200: %s", w.Code, w.Body)
+	}
+
+	fake.failUsersOnNthCall(1)
+
+	const newSecret = "99999999999999999999999999999999"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, mutatingJSON(t, "PATCH", "/api/users/alice", cookie, map[string]any{"secret": newSecret}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch status = %d, want 200: %s", w.Code, w.Body)
+	}
+
+	w = getSubpage(t, h, before.URL)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("old token status = %d, want 404: %s", w.Code, w.Body)
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "not found" {
+		t.Errorf("body = %q, want %q", body, "not found")
+	}
+
+	if err := srv.subIndex.Refresh(context.Background()); err != nil {
+		t.Fatalf("catch-up Refresh: %v", err)
+	}
+	after := getSublink(t, h, cookie)
+	if after.URL == before.URL {
+		t.Fatal("expected the sublink URL to change after a secret patch")
+	}
+	if w := getSubpage(t, h, after.URL); w.Code != http.StatusOK {
+		t.Fatalf("new token status = %d, want 200: %s", w.Code, w.Body)
+	}
+}
+
+// TestHandleSubpageNonceRotationFailingRefreshStillInvalidatesOldToken is
+// the audit's original scenario: sublink rotation's own best-effort
+// Refresh (the pre-existing "force an immediate index rebuild" call) can
+// fail, and before this fix the old token would then keep resolving.
+// verify-on-hit must catch it regardless.
+func TestHandleSubpageNonceRotationFailingRefreshStillInvalidatesOldToken(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	before := getSublink(t, h, cookie)
+	if w := getSubpage(t, h, before.URL); w.Code != http.StatusOK {
+		t.Fatalf("priming request status = %d, want 200: %s", w.Code, w.Body)
+	}
+
+	// writeSublink makes two GET /v1/users calls when rotating: one to find
+	// the user/secret, then the refresh hook's own Refresh() call — fail
+	// the second (the refresh), not the first.
+	fake.failUsersOnNthCall(2)
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, mutating("POST", "/api/users/alice/sublink", cookie))
+	if w.Code != http.StatusOK {
+		t.Fatalf("rotate sublink status = %d, want 200: %s", w.Code, w.Body)
+	}
+	var after sublinkResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &after); err != nil {
+		t.Fatalf("decode rotate response: %v", err)
+	}
+
+	w = getSubpage(t, h, before.URL)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("old token status = %d, want 404: %s", w.Code, w.Body)
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "not found" {
+		t.Errorf("body = %q, want %q", body, "not found")
+	}
+
+	if err := srv.subIndex.Refresh(context.Background()); err != nil {
+		t.Fatalf("catch-up Refresh: %v", err)
+	}
+	if w := getSubpage(t, h, after.URL); w.Code != http.StatusOK {
+		t.Fatalf("new token status = %d, want 200: %s", w.Code, w.Body)
+	}
+}
+
+// TestHandleSubpageStaleTokenUniform404MatchesUnknownToken is the
+// byte-level assertion the brief requires: verify-on-hit's 404 must be
+// indistinguishable from an unknown token's — same status, same headers,
+// same body — so a caller can never learn a token used to be valid.
+func TestHandleSubpageStaleTokenUniform404MatchesUnknownToken(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	before := getSublink(t, h, cookie)
+	if w := getSubpage(t, h, before.URL); w.Code != http.StatusOK {
+		t.Fatalf("priming request status = %d, want 200: %s", w.Code, w.Body)
+	}
+	fake.failUsersOnNthCall(1)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, mutating("POST", "/api/users/alice/rotate-secret", cookie))
+	if w.Code != http.StatusOK {
+		t.Fatalf("rotate-secret status = %d, want 200: %s", w.Code, w.Body)
+	}
+
+	stale := getSubpage(t, h, before.URL)
+	unknown := getSubpage(t, h, "http://example.invalid/sub/does-not-exist")
+
+	if stale.Code != unknown.Code {
+		t.Fatalf("status: stale=%d unknown=%d", stale.Code, unknown.Code)
+	}
+	if stale.Body.String() != unknown.Body.String() {
+		t.Fatalf("body: stale=%q unknown=%q", stale.Body.String(), unknown.Body.String())
+	}
+	if !reflect.DeepEqual(stale.Header(), unknown.Header()) {
+		t.Fatalf("headers: stale=%v unknown=%v", stale.Header(), unknown.Header())
 	}
 }
 

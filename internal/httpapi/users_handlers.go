@@ -205,6 +205,18 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	s.appendAudit("user.patch", username, "")
 
+	if _, secretChanged := patch["secret"]; secretChanged {
+		// A secret patch revokes the old subpage token the same way
+		// rotate-secret does. Force an immediate index rebuild rather
+		// than waiting out the lazy refresh's throttle window;
+		// best-effort, since handleSubpage's verify-on-hit already
+		// deterministically 404s the stale token regardless of whether
+		// this refresh succeeds.
+		if err := s.subIndex.Refresh(ctx); err != nil {
+			slog.Warn("patch-user: index refresh after secret change", "username", username, "err", err)
+		}
+	}
+
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
 	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota))
 }
@@ -261,6 +273,15 @@ func (s *Server) handleRotateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.appendAudit("secret.rotate", username, "")
+
+	// Force an immediate index rebuild, mirroring sublink rotation's own
+	// best-effort refresh below: a failed refresh here just leaves the
+	// old token to age out on the next lazy refresh — handleSubpage's
+	// verify-on-hit already deterministically 404s it on every request in
+	// between, so this is an optimization, not a correctness dependency.
+	if err := s.subIndex.Refresh(ctx); err != nil {
+		slog.Warn("rotate-secret: index refresh", "username", username, "err", err)
+	}
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
 	writeJSON(w, http.StatusOK, userSecretResponse{

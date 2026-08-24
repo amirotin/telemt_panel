@@ -73,6 +73,20 @@ func (s *Service) URL(username, userSecret string) (string, error) {
 	return s.basePath + "/sub/" + deriveToken(s.secret, username, userSecret, nonce), nil
 }
 
+// Verify reports whether token is the current, correct subpage token for
+// (username, userSecret) — recomputed from the CURRENT secret and a
+// freshly read nonce, the same derivation URL uses. handleSubpage calls
+// this on every Index.Lookup hit so a cached entry can never outlive the
+// secret or nonce rotation that should have revoked it: the index is only
+// an optimization, this call is what actually decides validity.
+func (s *Service) Verify(username, userSecret, token string) (bool, error) {
+	nonce, err := s.nonces.GetSubpageNonce(username)
+	if err != nil {
+		return false, err
+	}
+	return deriveToken(s.secret, username, userSecret, nonce) == token, nil
+}
+
 // ExtractSecret returns the user's canonical 32-hex Telemt secret from
 // their links, preferring the classic link (whose secret param carries it
 // unprefixed) and falling back to the secure link (whose secret param is

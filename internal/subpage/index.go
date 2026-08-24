@@ -38,6 +38,14 @@ type Index struct {
 	mu          sync.RWMutex
 	tokens      map[string]string
 	lastRefresh time.Time
+	// nextGen/installedGen guard against an out-of-order concurrent
+	// Refresh: nextGen hands each in-flight Refresh a unique, increasing
+	// sequence number when it starts; a Refresh only installs its result
+	// if its number is still newer than installedGen, so a slow call that
+	// started earlier can never clobber a faster one that started later
+	// (see Refresh).
+	nextGen      uint64
+	installedGen uint64
 }
 
 // NewIndex creates an Index backed by client for the given HMAC secret.
@@ -66,10 +74,21 @@ func (idx *Index) Lookup(ctx context.Context, token string) (string, bool) {
 	if username, ok := idx.get(token); ok {
 		return username, true
 	}
-	if idx.claimRefreshWindow() {
-		_ = idx.Refresh(ctx) // best-effort: a failed refresh just leaves the miss standing
-	}
+	idx.TriggerRefresh(ctx)
 	return idx.get(token)
+}
+
+// TriggerRefresh claims the refresh window (see claimRefreshWindow) and, if
+// claimed, runs a best-effort Refresh — a failed refresh here just leaves
+// the caller's own answer (a miss, or a verify-on-hit mismatch) standing.
+// Lookup calls this on every miss; the public /sub/{token} handler also
+// calls it when a cache hit fails re-verification against the user's
+// current secret and nonce, so a stale entry left behind by a rotation
+// (e.g. one whose own explicit Refresh failed) still ages out.
+func (idx *Index) TriggerRefresh(ctx context.Context) {
+	if idx.claimRefreshWindow() {
+		_ = idx.Refresh(ctx)
+	}
 }
 
 func (idx *Index) get(token string) (string, bool) {
@@ -105,7 +124,19 @@ func (idx *Index) claimRefreshWindow() bool {
 // nonce — can force a rebuild rather than waiting out the interval.
 // Users with no extractable secret (ExtractSecret) are skipped; they
 // simply have no subpage link.
+//
+// Concurrent Refresh calls (an explicit rotation racing the lazy
+// miss-triggered path, say) can finish in any order once their Users()
+// calls return. The generation number claimed at the start of this call
+// fixes that: it is only installed if no call that started later has
+// already installed its own — see the nextGen/installedGen fields —
+// so a slow, stale call can never overwrite a newer result.
 func (idx *Index) Refresh(ctx context.Context) error {
+	idx.mu.Lock()
+	idx.nextGen++
+	gen := idx.nextGen
+	idx.mu.Unlock()
+
 	users, err := idx.client.Users(ctx)
 	if err != nil {
 		return err
@@ -125,8 +156,14 @@ func (idx *Index) Refresh(ctx context.Context) error {
 	}
 
 	idx.mu.Lock()
-	idx.tokens = tokens
+	defer idx.mu.Unlock()
 	idx.lastRefresh = idx.now()
-	idx.mu.Unlock()
+	if gen <= idx.installedGen {
+		// A refresh that started after this one already installed its
+		// (fresher) result; this call's data is stale, discard it.
+		return nil
+	}
+	idx.tokens = tokens
+	idx.installedGen = gen
 	return nil
 }
