@@ -10,7 +10,13 @@ test:
 	go test ./...
 
 lint:
-	gofmt -l . && go vet ./...
+	@out="$$(gofmt -l .)"; \
+	if [ -n "$$out" ]; then \
+		echo "Files not formatted with gofmt:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi
+	go vet ./...
 
 # Static binaries for every supported target, router SoCs included.
 # Asset names keep the telemt-panel-<arch>-linux prefix the 0.x updater matches.
