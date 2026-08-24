@@ -18,6 +18,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"github.com/amirotin/telemt_panel/internal/update"
 	"golang.org/x/term"
 )
 
@@ -57,6 +58,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer st.Close()
+
+	// Panel self-update journal handoff (spec 03-update-engine.md
+	// §Журнал): if this process was just brought up by a self-update's
+	// restart, complete that run's journal entry now that a live process
+	// of the running version exists to confirm it. A no-op the rest of the
+	// time (no pending "restarting" entry).
+	if err := update.ConfirmStartup(st, version); err != nil {
+		slog.Error("confirm update startup", "err", err)
+	}
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
 	hb := hub.New(hub.Config{}, tc)

@@ -7,19 +7,11 @@ import (
 	"github.com/amirotin/telemt_panel/internal/host"
 )
 
-// privilegesModePlaceholder is a literal placeholder for HostInfo's
-// privileges_mode until the privileges Runner (Task 4, spec
-// 01-host-matrix.md §Привилегии) lands and can report the real
-// agent/direct/degraded mode. selfUpdateHint below documents the matching
-// placeholder for caps.self_update.
-const privilegesModePlaceholder = "direct"
-
-// selfUpdateHint explains why caps.self_update is always false for now:
-// the panel can't yet tell whether it holds the privileges a self-update
-// needs (that's the same Runner work privilegesModePlaceholder is standing
-// in for), so it reports the conservative answer rather than a capability
-// that might not actually work.
-const selfUpdateHint = "self-update capability detection is not implemented yet"
+// selfUpdateHint explains why caps.self_update is false: the panel's
+// Runner is degraded (host.SelectRunner found neither direct execution nor
+// a reachable panel-agent socket), so it can't actually install a binary
+// no matter what the update engine otherwise supports.
+const selfUpdateHint = "no privileges available to install a binary; run install.sh to install panel-agent, or run the panel as root"
 
 // hostCaps mirrors openapi HostInfo.caps.
 type hostCaps struct {
@@ -40,13 +32,19 @@ type hostInfo struct {
 }
 
 // handleHost implements GET /api/host: detected platform kinds, the
-// (placeholder, see above) privileges mode, capability booleans, and
-// copyable manual commands for every capability that's false — the UI
-// rule (01-host-matrix.md) is that an unavailable operation is shown
-// disabled with its manual command, never hidden.
+// privileges mode, capability booleans, and copyable manual commands for
+// every capability that's false — the UI rule (01-host-matrix.md) is that
+// an unavailable operation is shown disabled with its manual command,
+// never hidden.
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	restartCaps := s.svcMgr.Caps()
 	logCaps := s.logSrc.Caps()
+	// self_update reflects whether the Runner can execute privileged ops at
+	// all, not whether an update is actually available right now (that's
+	// GET /api/updates' job) — a degraded Runner makes Apply fail cleanly
+	// regardless of what releases exist, so it's the correct false case
+	// here.
+	selfUpdate := s.privilegesMode != host.PrivilegesModeDegraded
 
 	manual := map[string]string{}
 	if !restartCaps.CanRestart {
@@ -59,18 +57,20 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	if !logCaps.CanStream {
 		manual["log_stream"] = noLogSourceHint
 	}
-	manual["self_update"] = selfUpdateHint
+	if !selfUpdate {
+		manual["self_update"] = selfUpdateHint
+	}
 
 	writeJSON(w, http.StatusOK, hostInfo{
 		ServiceManager: s.svcMgr.Kind(),
 		LogSource:      s.logSrc.Kind(),
-		PrivilegesMode: privilegesModePlaceholder,
+		PrivilegesMode: s.privilegesMode,
 		Caps: hostCaps{
 			RestartTelemt: restartCaps.CanRestart,
 			RestartPanel:  restartCaps.CanRestart,
 			LogTail:       logCaps.CanTail,
 			LogStream:     logCaps.CanStream,
-			SelfUpdate:    false,
+			SelfUpdate:    selfUpdate,
 		},
 		ManualCommands: manual,
 	})

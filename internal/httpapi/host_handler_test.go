@@ -35,6 +35,11 @@ func TestHandleHost_AllCapsTrue(t *testing.T) {
 	srv, cookie, svcMgr, logSrc := newHostTestServer(t)
 	svcMgr.CapsValue = host.ServiceCaps{CanRestart: true, CanStatus: true}
 	logSrc.CapsValue = host.LogCaps{CanTail: true, CanStream: true}
+	// Set explicitly rather than relying on the test process's euid — a
+	// CI container running as root would otherwise make this test's
+	// privileges_mode/self_update expectations depend on ambient
+	// environment rather than the scripted ServiceCaps/LogCaps above.
+	srv.privilegesMode = host.PrivilegesModeDirect
 
 	r := httptest.NewRequest("GET", "/api/host", nil)
 	r.AddCookie(cookie)
@@ -51,22 +56,17 @@ func TestHandleHost_AllCapsTrue(t *testing.T) {
 	if got.ServiceManager != host.KindSystemd || got.LogSource != host.LogKindJournald {
 		t.Errorf("kinds = %q/%q, want systemd/journald", got.ServiceManager, got.LogSource)
 	}
-	if got.PrivilegesMode != "direct" {
+	if got.PrivilegesMode != host.PrivilegesModeDirect {
 		t.Errorf("PrivilegesMode = %q, want direct", got.PrivilegesMode)
 	}
 	if !got.Caps.RestartTelemt || !got.Caps.RestartPanel || !got.Caps.LogTail || !got.Caps.LogStream {
 		t.Errorf("caps = %+v, want restart/log caps all true", got.Caps)
 	}
-	if got.Caps.SelfUpdate {
-		t.Error("SelfUpdate = true, want false (placeholder until Task 4)")
+	if !got.Caps.SelfUpdate {
+		t.Error("SelfUpdate = false, want true (privileges_mode is direct, not degraded)")
 	}
-	// self_update has no working capability yet, so it always gets a
-	// manual-command hint even though every other cap is true here.
-	if _, ok := got.ManualCommands["self_update"]; !ok {
-		t.Error("manual_commands missing self_update hint")
-	}
-	if len(got.ManualCommands) != 1 {
-		t.Errorf("manual_commands = %v, want only self_update (every other cap is true)", got.ManualCommands)
+	if len(got.ManualCommands) != 0 {
+		t.Errorf("manual_commands = %v, want none (every cap is true)", got.ManualCommands)
 	}
 }
 
@@ -74,6 +74,7 @@ func TestHandleHost_AllCapsFalse_ManualCommandsCoverEveryGap(t *testing.T) {
 	srv, cookie, svcMgr, logSrc := newHostTestServer(t)
 	svcMgr.CapsValue = host.ServiceCaps{CanRestart: false, CanStatus: false, ManualRestartHint: "restart it yourself"}
 	logSrc.CapsValue = host.LogCaps{CanTail: false, CanStream: false}
+	srv.privilegesMode = host.PrivilegesModeDegraded
 
 	r := httptest.NewRequest("GET", "/api/host", nil)
 	r.AddCookie(cookie)

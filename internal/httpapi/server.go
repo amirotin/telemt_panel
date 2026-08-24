@@ -9,6 +9,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -18,6 +21,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/subpage"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"github.com/amirotin/telemt_panel/internal/update"
 )
 
 // Server holds the panel's HTTP dependencies.
@@ -32,9 +36,13 @@ type Server struct {
 	subLimiter *subpage.RateLimiter
 	version    string
 
-	svcMgr     host.ServiceManager
-	logSrc     host.LogSource
-	logStreams *logStreamRegistry
+	svcMgr         host.ServiceManager
+	logSrc         host.LogSource
+	logStreams     *logStreamRegistry
+	privilegesMode string
+
+	updateEngine *update.Engine
+	autoUpdater  *update.AutoUpdater
 }
 
 // New builds the handler tree.
@@ -43,19 +51,62 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	svcMgr := host.NewServiceManager(cfg.Host.ServiceManager, probe, host.OSCmdRunner)
 	logSrc := host.NewLogSource(cfg.Host.LogSource, cfg.Host.LogFile, svcMgr.Kind(), probe, host.OSCmdRunner, host.OSProcessStarter, host.DefaultLogPollInterval)
 
+	euid := os.Geteuid()
+	// BinaryPaths carries each target's live install path plus a fixed
+	// ".bak" sibling — the update engine's rollback step writes the
+	// pre-update binary there via install-binary before overwriting the
+	// live path, then restore-binary reads it back on failure. Both ops'
+	// allow-list check (privexec.go) requires an exact member of this
+	// list, so the sibling has to be listed explicitly, not just the live
+	// path.
+	allow := host.AllowLists{
+		BinaryPaths: []string{
+			cfg.Updates.TelemtBinaryPath, cfg.Updates.TelemtBinaryPath + ".bak",
+			cfg.Updates.PanelBinaryPath, cfg.Updates.PanelBinaryPath + ".bak",
+		},
+		StagingPrefix: filepath.Join(cfg.DataDir, "staging"),
+		Services:      []string{cfg.Host.TelemtService, cfg.Host.PanelService},
+	}
+	runner := host.SelectRunner(cfg.Privileges.Mode, cfg.Privileges.AgentSocket, euid, allow, svcMgr, logSrc)
+	privilegesMode := host.ResolveMode(cfg.Privileges.Mode, cfg.Privileges.AgentSocket, euid)
+
+	telemtTarget := &update.TelemtTarget{
+		Client:       tc,
+		RepoName:     cfg.Updates.TelemtRepo,
+		BinaryPath_:  cfg.Updates.TelemtBinaryPath,
+		ServiceName_: cfg.Host.TelemtService,
+	}
+	panelTarget := &update.PanelTarget{
+		Version_:     version,
+		RepoName:     cfg.Updates.PanelRepo,
+		BinaryPath_:  cfg.Updates.PanelBinaryPath,
+		ServiceName_: cfg.Host.PanelService,
+	}
+	updateEngine := update.NewEngine(update.EngineConfig{
+		Runner:      runner,
+		Store:       st,
+		Targets:     map[string]update.Target{update.TargetTelemt: telemtTarget, update.TargetPanel: panelTarget},
+		StagingDir:  allow.StagingPrefix,
+		GithubToken: cfg.Updates.GithubToken,
+		Hub:         hb,
+	})
+
 	return &Server{
-		cfg:        cfg,
-		tc:         tc,
-		st:         st,
-		hub:        hb,
-		limiter:    auth.NewLimiter(),
-		subSvc:     subpage.NewService(cfg.Subpage.Secret, cfg.BasePath, st),
-		subIndex:   subpage.NewIndex(cfg.Subpage.Secret, tc, st),
-		subLimiter: subpage.NewRateLimiter(),
-		version:    version,
-		svcMgr:     svcMgr,
-		logSrc:     logSrc,
-		logStreams: newLogStreamRegistry(),
+		cfg:            cfg,
+		tc:             tc,
+		st:             st,
+		hub:            hb,
+		limiter:        auth.NewLimiter(),
+		subSvc:         subpage.NewService(cfg.Subpage.Secret, cfg.BasePath, st),
+		subIndex:       subpage.NewIndex(cfg.Subpage.Secret, tc, st),
+		subLimiter:     subpage.NewRateLimiter(),
+		version:        version,
+		svcMgr:         svcMgr,
+		logSrc:         logSrc,
+		logStreams:     newLogStreamRegistry(),
+		privilegesMode: privilegesMode,
+		updateEngine:   updateEngine,
+		autoUpdater:    update.NewAutoUpdater(st, updateEngine),
 	}
 }
 
@@ -97,6 +148,11 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /api/host", protect(s.handleHost))
 	mux.Handle("GET /api/logs/tail", protect(s.handleLogsTail))
+
+	mux.Handle("GET /api/updates", protect(s.handleGetUpdates))
+	mux.Handle("POST /api/updates/{target}/apply", protect(s.handleApplyUpdate))
+	mux.Handle("GET /api/updates/auto", protect(s.handleGetAutoUpdate))
+	mux.Handle("PUT /api/updates/auto", protect(s.handlePutAutoUpdate))
 
 	mux.Handle("GET /api/events", protect(s.handleEvents))
 	mux.Handle("GET /api/events/logs", protect(s.handleEventsLogs))
@@ -148,6 +204,20 @@ func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
 
 // Run serves until ctx is canceled, then drains connections.
 func (s *Server) Run(ctx context.Context) error {
+	// The auto-updater is the one goroutine this method owns directly
+	// (everything else lives behind s.hub/s.logStreams' own Close). It
+	// already selects on ctx.Done() every loop iteration, so canceling ctx
+	// stops it immediately rather than after its next tick interval; wg.Wait
+	// (deferred first, so it runs last — defers are LIFO) blocks Run's
+	// return until that goroutine has actually exited.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.autoUpdater.Run(ctx)
+	}()
+	defer wg.Wait()
+
 	defer s.limiter.Stop()
 	defer s.subLimiter.Stop()
 	defer s.hub.Close()
