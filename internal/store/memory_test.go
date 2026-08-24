@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -632,6 +634,78 @@ func TestTouchDebounceFlushedOnClose(t *testing.T) {
 	}
 	if ft.pending != nil {
 		t.Fatalf("Close left a pending timer callback armed, want stopped")
+	}
+}
+
+// TestTouchDebounceConcurrentRace exercises the real (non-fake)
+// scheduleTimer — a genuine time.AfterFunc goroutine — racing against
+// concurrent TouchSession callers and a Close, under -race. It uses a ~1ms
+// debounce so the real timer fires naturally within the test's own bounded
+// wait rather than via an arbitrary sleep. It asserts Close's
+// flush-on-close guarantee holds even mid-storm: the session is present in
+// the mirror once everything has quiesced.
+func TestTouchDebounceConcurrentRace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mirror.json")
+	m, err := NewMemory(path)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
+	}
+	m.mirrorDebounce = time.Millisecond // real scheduleTimer (time.AfterFunc), just fast
+
+	if err := m.PutSession(Session{IDHash: "a", Created: time.Now()}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	const goroutines = 8
+	var started atomic.Int32
+	startedAll := make(chan struct{})
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			touchedOnce := false
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if err := m.TouchSession("a", time.Now()); err != nil {
+					t.Errorf("TouchSession: %v", err)
+				}
+				if !touchedOnce {
+					touchedOnce = true
+					if started.Add(1) == goroutines {
+						close(startedAll)
+					}
+				}
+			}
+		}()
+	}
+
+	// Bounded wait (channel, not a sleep): proceed once every goroutine has
+	// landed at least one touch, so Close below genuinely races real
+	// TouchSession callers and the real debounce timer instead of an empty
+	// storm.
+	<-startedAll
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close (mid-storm): %v", err)
+	}
+
+	close(stop)
+	wg.Wait()
+
+	// A second Close quiesces any timer a post-first-Close touch may have
+	// re-armed, so no timer goroutine outlives the test.
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close (final): %v", err)
+	}
+
+	if got := readMirrorLastSeen(t, path, "a"); got.IsZero() {
+		t.Fatalf("mirror LastSeen after storm+Close = zero, want the flush-on-close guarantee to hold")
 	}
 }
 
