@@ -21,7 +21,12 @@ type capsServer struct {
 	runtimeEdge  bool
 	runtimeErr   bool // serve a transport-level 500 instead of a gate wrapper
 	reloadStatus int  // 0 = 200
-	configStatus int  // 0 = 200
+	// reloadEnvelope404, when reloadStatus is 404, serves the JSON error
+	// envelope shape a live route answering "no such reload id" would
+	// return, instead of a bare 404 with no body — the two 404 shapes
+	// probeReloadAPI must tell apart (P2.5).
+	reloadEnvelope404 bool
+	configStatus      int // 0 = 200
 }
 
 func newCapsTestClient(t *testing.T, s *capsServer) *Client {
@@ -46,6 +51,9 @@ func newCapsTestClient(t *testing.T, s *capsServer) *Client {
 		case "/v1/system/reload/0":
 			if s.reloadStatus != 0 {
 				w.WriteHeader(s.reloadStatus)
+				if s.reloadStatus == http.StatusNotFound && s.reloadEnvelope404 {
+					fmt.Fprint(w, `{"ok":false,"error":{"code":"not_found","message":"no such reload id"},"request_id":1}`)
+				}
 				return
 			}
 			fmt.Fprint(w, `{"ok":true,"data":{"state":"succeeded"},"revision":"r"}`)
@@ -94,9 +102,14 @@ func TestCapabilitiesProbeTable(t *testing.T) {
 			want:   Caps{Quota: true, RuntimeEdge: false, ReloadAPI: true, ConfigAPI: true, UserEnableDisable: true, RotateSecret: true},
 		},
 		{
-			name:   "reload_api absent (route 404)",
+			name:   "reload_api absent (bare 404, route not registered)",
 			script: &capsServer{reloadStatus: http.StatusNotFound},
 			want:   Caps{Quota: true, RuntimeEdge: false, ReloadAPI: false, ConfigAPI: true, UserEnableDisable: true, RotateSecret: true},
+		},
+		{
+			name:   "reload_api present (JSON envelope 404, live route answering no such reload id)",
+			script: &capsServer{reloadStatus: http.StatusNotFound, reloadEnvelope404: true},
+			want:   Caps{Quota: true, RuntimeEdge: false, ReloadAPI: true, ConfigAPI: true, UserEnableDisable: true, RotateSecret: true},
 		},
 		{
 			name:   "reload_api other error defaults true",

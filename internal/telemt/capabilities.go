@@ -134,11 +134,15 @@ func (c *Client) probeRuntimeEdge(ctx context.Context) bool {
 }
 
 // probeReloadAPI judges the reload_api capability by GET /v1/system/reload/0
-// — a route-exists probe, not a real reload id lookup. A 404 means the
-// route itself isn't registered on this Telemt build (false); any other
-// error (including a well-formed "no such reload id" response, which this
-// SDK version can't distinguish from a route 404 by status/code alone) is
-// treated as the route existing (true), logged rather than trusted blindly.
+// — a route-exists probe, not a real reload id lookup. A 404 is ambiguous
+// by status code alone: a live route answering "no such reload id" also
+// responds 404, wrapped in the JSON error envelope with a real code (e.g.
+// "not_found"). call's own envelope handling already distinguishes the two
+// shapes (client.go): a bare 404 with no envelope becomes apiErr.Code ==
+// "http_error" (the route itself isn't registered — false), while a
+// well-formed envelope 404 keeps its real code (the route exists — true).
+// Any other error is treated as the route existing (true), logged rather
+// than trusted blindly.
 func (c *Client) probeReloadAPI(ctx context.Context) bool {
 	_, _, err := c.call(ctx, http.MethodGet, "/v1/system/reload/0", nil)
 	if err == nil {
@@ -146,7 +150,7 @@ func (c *Client) probeReloadAPI(ctx context.Context) bool {
 	}
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
-		return false
+		return apiErr.Code != "http_error"
 	}
 	slog.Warn("telemt: capability probe: reload_api", "err", err)
 	return true
