@@ -36,3 +36,24 @@ jobs:
         run: make test
         env:
           CGO_ENABLED: "1"
+
+  # Proves the release Makefile target and the self-updater's AssetMatcher
+  # actually agree (P1.2 audit finding): builds every arch/variant tarball
+  # exactly as a real release would, then verifies the updater can find,
+  # checksum, and extract each one.
+  release-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Build release assets
+        run: make release
+
+      - name: Verify release assets against the updater
+        run: RELEASE_DIR=$PWD/release go test -run TestReleaseContract ./internal/update/
