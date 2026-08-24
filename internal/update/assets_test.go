@@ -55,7 +55,10 @@ func TestNewAssetMatcher(t *testing.T) {
 			wantSum: "telemt-panel-x86_64-linux-gnu.tar.gz.sha256",
 		},
 		{
-			name:      "checksum matches bare .sha256 naming too",
+			// P3.12: checksum selection is an EXACT "<bin>.sha256" match, not a
+			// prefix match — a bare-suffix asset lacking the ".tar.gz" part must
+			// not be mistaken for the checksum.
+			name:      "bare .sha256 naming (no .tar.gz.sha256 sibling) is not matched",
 			matchName: "telemt",
 			arch:      "x86_64",
 			variant:   "gnu",
@@ -64,7 +67,22 @@ func TestNewAssetMatcher(t *testing.T) {
 				{Name: "telemt-x86_64-linux-gnu.sha256"},
 			},
 			wantBin: "telemt-x86_64-linux-gnu.tar.gz",
-			wantSum: "telemt-x86_64-linux-gnu.sha256",
+			wantSum: "",
+		},
+		{
+			// P3.12 regression: an asset whose name merely starts with the
+			// binary's name (e.g. a detached signature "<bin>.sha256.asc") must
+			// not be picked as the checksum.
+			name:      "prefix collision on the checksum name does not match",
+			matchName: "telemt",
+			arch:      "x86_64",
+			variant:   "gnu",
+			assets: []Asset{
+				{Name: "telemt-x86_64-linux-gnu.tar.gz"},
+				{Name: "telemt-x86_64-linux-gnu.tar.gz.sha256.asc"},
+			},
+			wantBin: "telemt-x86_64-linux-gnu.tar.gz",
+			wantSum: "",
 		},
 		{
 			name:      "no checksum published",

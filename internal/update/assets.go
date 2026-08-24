@@ -29,8 +29,9 @@ func AssetName(name, arch, variant string) string {
 // used instead — this keeps updates working when libc detection falls back
 // to a variant a given release doesn't publish (e.g. musl detected on a
 // host but the release only ships a gnu static binary). The checksum asset
-// is whichever ".sha256"-suffixed asset shares the chosen binary's name
-// prefix, covering both "<bin>.sha256" and "<bin>.tar.gz.sha256" naming.
+// is the one named exactly "<bin>.sha256" — an exact match, not a prefix
+// match, so e.g. a "<bin>.sha256.asc" signature asset is never mistaken
+// for the checksum.
 func NewAssetMatcher(name, arch, variant string) AssetMatcher {
 	archPrefix := name + "-" + arch + "-linux-"
 	preferred := archPrefix + variant + ".tar.gz"
@@ -54,11 +55,10 @@ func NewAssetMatcher(name, arch, variant string) AssetMatcher {
 			return nil, nil
 		}
 
-		sumPrefix := strings.TrimSuffix(bin.Name, ".tar.gz")
+		sumName := bin.Name + ".sha256"
 		var sum *Asset
 		for i := range assets {
-			n := assets[i].Name
-			if strings.HasPrefix(n, sumPrefix) && strings.HasSuffix(n, ".sha256") {
+			if assets[i].Name == sumName {
 				sum = &assets[i]
 				break
 			}
