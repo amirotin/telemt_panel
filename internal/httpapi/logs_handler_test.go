@@ -191,6 +191,26 @@ func TestHandleLogsTail_PanelService(t *testing.T) {
 	}
 }
 
+func TestHandleLogsTail_DockerUsesPanelContainerName(t *testing.T) {
+	srv, cookie, _, logSrc := newHostTestServer(t)
+	logSrc.KindValue = host.LogKindDocker
+	logSrc.CapsValue = host.LogCaps{CanTail: true}
+	srv.cfg.Host.PanelService = "telemt-panel"
+	srv.cfg.Host.PanelContainer = "panel-ctr"
+
+	r := httptest.NewRequest("GET", "/api/logs/tail?service=panel", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	if logSrc.TailCalls[0].Service != "panel-ctr" {
+		t.Errorf("Service = %q, want the configured panel container name (not PanelService)", logSrc.TailCalls[0].Service)
+	}
+}
+
 func TestHandleLogsTail_RequiresSession(t *testing.T) {
 	srv, _, _, logSrc := newHostTestServer(t)
 	logSrc.CapsValue = host.LogCaps{CanTail: true}

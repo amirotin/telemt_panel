@@ -89,10 +89,15 @@ func detectSyslogPath(p Probe) string {
 
 // DetectLogSourceKind returns the log source kind to use: configured
 // verbatim when it's not "auto" (config override wins), otherwise derived
-// from the already-detected service manager kind and filesystem markers,
-// in spec order (01-host-matrix.md): journald follows systemd, logread
-// follows procd, a syslog file if one of its markers exists, docker if the
-// service manager is docker, else none.
+// from the already-detected service manager kind and filesystem markers:
+// journald follows systemd, logread follows procd, docker follows the
+// docker service manager, else a syslog file if one of its markers
+// exists, else none. Docker is checked before the syslog file probe
+// (amending 01-host-matrix.md's spec-literal ordering, which checked
+// syslog first) because a stock Debian/Ubuntu Docker host has its own
+// /var/log/syslog for the OS itself, present independent of any
+// container — probing it before docker would silently tail the host's
+// syslog instead of the container's actual logs.
 func DetectLogSourceKind(configured, serviceManagerKind string, p Probe) string {
 	if configured != "" && configured != "auto" {
 		return configured
@@ -102,10 +107,10 @@ func DetectLogSourceKind(configured, serviceManagerKind string, p Probe) string 
 		return LogKindJournald
 	case serviceManagerKind == KindProcd:
 		return LogKindLogread
-	case detectSyslogPath(p) != "":
-		return LogKindSyslog
 	case serviceManagerKind == KindDocker:
 		return LogKindDocker
+	case detectSyslogPath(p) != "":
+		return LogKindSyslog
 	default:
 		return LogKindNone
 	}

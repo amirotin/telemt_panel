@@ -33,7 +33,11 @@ func NewSyslog(path string, pollInterval time.Duration) *Syslog {
 // Kind implements LogSource.
 func (s *Syslog) Kind() string { return LogKindSyslog }
 
-// Tail implements LogSource.
+// Tail implements LogSource. Each matched raw line is parsed via the
+// shared parseSyslogishLine (syslogline.go) rather than shipped as a raw
+// string — host.go's LogLine doc comment is explicit that the frontend
+// never parses raw log text, so this source doesn't get an exception just
+// because it reads a plain file instead of a structured API.
 func (s *Syslog) Tail(ctx context.Context, service string, lines int) ([]LogLine, error) {
 	raw, err := tailFileLines(s.path, syslogCandidateLines)
 	if err != nil {
@@ -43,10 +47,15 @@ func (s *Syslog) Tail(ctx context.Context, service string, lines int) ([]LogLine
 	if lines >= 0 && len(matched) > lines {
 		matched = matched[len(matched)-lines:]
 	}
-	return linesToLogLines(matched, service), nil
+	out := make([]LogLine, len(matched))
+	for i, line := range matched {
+		out[i] = parseSyslogishLine(line)
+	}
+	return out, nil
 }
 
-// Stream implements LogSource.
+// Stream implements LogSource. See Tail's doc comment on why each line is
+// parsed rather than passed through raw.
 func (s *Syslog) Stream(ctx context.Context, service string) (<-chan LogLine, error) {
 	raw := followFile(ctx, s.path, s.pollInterval)
 	ch := make(chan LogLine)
@@ -57,7 +66,7 @@ func (s *Syslog) Stream(ctx context.Context, service string) (<-chan LogLine, er
 				continue
 			}
 			select {
-			case ch <- newLogLine(line, service):
+			case ch <- parseSyslogishLine(line):
 			case <-ctx.Done():
 				return
 			}

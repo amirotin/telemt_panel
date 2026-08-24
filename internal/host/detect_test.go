@@ -129,11 +129,11 @@ func TestDetectLogSourceKind(t *testing.T) {
 		{name: "journald follows systemd", configured: "auto", svcKind: KindSystemd, want: LogKindJournald},
 		{name: "logread follows procd", configured: "auto", svcKind: KindProcd, want: LogKindLogread},
 		{
-			name:       "syslog file wins over docker when both present",
+			name:       "docker wins over a syslog marker when both present",
 			configured: "auto",
 			svcKind:    KindDocker,
 			paths:      map[string]bool{"/var/log/messages": true},
-			want:       LogKindSyslog,
+			want:       LogKindDocker,
 		},
 		{
 			name:       "syslog via /var/log/syslog",

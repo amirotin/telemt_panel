@@ -112,7 +112,12 @@ func TestHandleHost_RequiresSession(t *testing.T) {
 }
 
 func TestResolveLogicalService(t *testing.T) {
-	cfg := config.HostConfig{TelemtService: "telemt", PanelService: "telemt-panel", TelemtContainer: "telemt-ctr"}
+	cfg := config.HostConfig{
+		TelemtService:   "telemt",
+		PanelService:    "telemt-panel",
+		TelemtContainer: "telemt-ctr",
+		PanelContainer:  "panel-ctr",
+	}
 
 	tests := []struct {
 		logical  string
@@ -123,7 +128,7 @@ func TestResolveLogicalService(t *testing.T) {
 		{logical: "telemt", kind: host.KindSystemd, wantName: "telemt", wantOK: true},
 		{logical: "telemt", kind: host.KindDocker, wantName: "telemt-ctr", wantOK: true},
 		{logical: "panel", kind: host.KindSystemd, wantName: "telemt-panel", wantOK: true},
-		{logical: "panel", kind: host.KindDocker, wantName: "telemt-panel", wantOK: true},
+		{logical: "panel", kind: host.KindDocker, wantName: "panel-ctr", wantOK: true},
 		{logical: "bogus", kind: host.KindSystemd, wantName: "", wantOK: false},
 		{logical: "", kind: host.KindSystemd, wantName: "", wantOK: false},
 	}

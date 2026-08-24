@@ -177,6 +177,65 @@ func TestFollowFile_EmitsOnlyNewCompleteLines(t *testing.T) {
 	}
 }
 
+// TestFollowFile_HandlesCopytruncateRefillWithinOneTick covers Finding 2:
+// a same-inode truncate-then-refill that completes entirely between two
+// poll ticks, ending with the file LARGER than the old offset again — the
+// plain size<offset check alone can't catch this (by the time the next
+// tick observes the file, its size is back at or past the old offset,
+// just with different bytes there), so it must be caught by the
+// content-overlap check in followFileTicks instead. Driven through
+// followFileTicks directly with a manually-controlled tick channel — the
+// poll interval is effectively paused, since nothing ticks until this
+// test sends on tickCh — so the truncate+refill is deterministically
+// complete before the single forced tick is even processed, with no
+// reliance on real-time races.
+func TestFollowFile_HandlesCopytruncateRefillWithinOneTick(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "log.txt")
+	initial := "aaaa\nbbbb\ncccc\n"
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tickCh := make(chan time.Time)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := followFileTicks(ctx, path, tickCh, func() {})
+
+	// Truncate to 0 then immediately refill via the same path (same
+	// inode — os.WriteFile opens the existing file rather than
+	// create+rename, so rotation's inode check doesn't fire either) with
+	// content longer than the old offset, before any tick has run.
+	if err := os.Truncate(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	newContent := "NEW1\nNEW2\nNEW3\nNEW4\n"
+	if len(newContent) <= len(initial) {
+		t.Fatalf("test fixture bug: newContent (%d bytes) must be longer than initial (%d bytes) to exercise the bug", len(newContent), len(initial))
+	}
+	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case tickCh <- time.Now():
+	case <-time.After(2 * time.Second):
+		t.Fatal("followFileTicks never reached its tick wait")
+	}
+
+	want := []string{"NEW1", "NEW2", "NEW3", "NEW4"}
+	for _, w := range want {
+		got := recvLine(t, ch, 2*time.Second)
+		if got != w {
+			t.Fatalf("got %q, want %q — must restart from the top of the rewritten content, no stale/corrupted line from the old offset", got, w)
+		}
+	}
+
+	cancel()
+	for range ch {
+	}
+}
+
 func TestFile_Tail(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "telemt.log")
@@ -298,10 +357,10 @@ func TestFile_Kind(t *testing.T) {
 func TestSyslog_Tail_FiltersByTag(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "syslog")
-	content := "Jan 1 telemt[1]: telemt line one\n" +
-		"Jan 1 panel[2]: panel line one\n" +
-		"Jan 1 telemt[1]: telemt line two\n" +
-		"Jan 1 other[3]: unrelated\n"
+	content := "Thu Jan  1 00:00:10 1970 daemon.info telemt[1]: telemt line one\n" +
+		"Thu Jan  1 00:00:11 1970 daemon.info panel[2]: panel line one\n" +
+		"Thu Jan  1 00:00:12 1970 telemt[1]: telemt line two, no severity token\n" +
+		"Thu Jan  1 00:00:13 1970 daemon.info other[3]: unrelated\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -311,18 +370,28 @@ func TestSyslog_Tail_FiltersByTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Tail: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("got %d lines, want 2 (only telemt-tagged): %+v", len(got), got)
+	want := []LogLine{
+		{TS: mustParseANSIC(t, "Thu Jan  1 00:00:10 1970"), Level: "info", Unit: "telemt", Msg: "telemt line one"},
+		// The no-severity-token variant: still parses Unit/Msg correctly,
+		// Level falls back to "unknown" rather than misreading the tag.
+		{TS: mustParseANSIC(t, "Thu Jan  1 00:00:12 1970"), Level: "unknown", Unit: "telemt", Msg: "telemt line two, no severity token"},
 	}
-	if !strings.Contains(got[0].Msg, "telemt line one") || !strings.Contains(got[1].Msg, "telemt line two") {
-		t.Fatalf("got = %+v", got)
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d (only telemt-tagged): %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
 
 func TestSyslog_Tail_TrimsToRequestedCount(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "syslog")
-	content := "Jan 1 telemt[1]: a\nJan 1 telemt[1]: b\nJan 1 telemt[1]: c\n"
+	content := "Thu Jan  1 00:00:10 1970 daemon.info telemt[1]: a\n" +
+		"Thu Jan  1 00:00:11 1970 daemon.info telemt[1]: b\n" +
+		"Thu Jan  1 00:00:12 1970 daemon.info telemt[1]: c\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -332,15 +401,24 @@ func TestSyslog_Tail_TrimsToRequestedCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Tail: %v", err)
 	}
-	if len(got) != 2 || !strings.Contains(got[0].Msg, ": b") || !strings.Contains(got[1].Msg, ": c") {
-		t.Fatalf("got = %+v, want the last 2 matching lines", got)
+	want := []LogLine{
+		{TS: mustParseANSIC(t, "Thu Jan  1 00:00:11 1970"), Level: "info", Unit: "telemt", Msg: "b"},
+		{TS: mustParseANSIC(t, "Thu Jan  1 00:00:12 1970"), Level: "info", Unit: "telemt", Msg: "c"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
 
 func TestSyslog_Stream_FiltersByTag(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "syslog")
-	if err := os.WriteFile(path, []byte("Jan 1 preexisting: x\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("Thu Jan  1 00:00:09 1970 daemon.info preexisting[1]: x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	s := NewSyslog(path, 5*time.Millisecond)
@@ -352,12 +430,13 @@ func TestSyslog_Stream_FiltersByTag(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 
-	appendLine(t, path, "Jan 1 panel[9]: unrelated message, should be filtered out\n")
-	appendLine(t, path, "Jan 1 telemt[9]: this one matches\n")
+	appendLine(t, path, "Thu Jan  1 00:00:10 1970 daemon.info panel[9]: unrelated message, should be filtered out\n")
+	appendLine(t, path, "Thu Jan  1 00:00:11 1970 telemt[9]: this one matches, no severity token\n")
 
 	got := recvLine2(t, ch, 2*time.Second)
-	if !strings.Contains(got.Msg, "this one matches") {
-		t.Fatalf("got %+v, want the telemt-tagged line (panel line must be filtered)", got)
+	want := LogLine{TS: mustParseANSIC(t, "Thu Jan  1 00:00:11 1970"), Level: "unknown", Unit: "telemt", Msg: "this one matches, no severity token"}
+	if got != want {
+		t.Fatalf("got %+v, want %+v (the telemt-tagged line, panel line filtered)", got, want)
 	}
 }
 

@@ -85,9 +85,10 @@ const noLogSourceHint = "no log source detected or configured on this host; chec
 // resolveLogicalService maps the API's logical `service` query value
 // (telemt|panel) to the actual unit/container name to pass into a host
 // ServiceManager/LogSource call. Docker needs a container name instead of
-// a systemd-style unit for telemt (see Docker/DockerLog's doc comments);
-// there's no separate configured container name for the panel itself, so
-// it always resolves to host.panel_service regardless of kind.
+// a systemd-style unit for both telemt and panel (see Docker/DockerLog's
+// doc comments) — host.panel_container mirrors host.telemt_container so a
+// dockerized panel doesn't resolve to a systemd-style unit name that means
+// nothing to `docker restart`/`docker logs`.
 func resolveLogicalService(logical string, kind string, cfg config.HostConfig) (name string, ok bool) {
 	switch logical {
 	case "telemt":
@@ -96,6 +97,9 @@ func resolveLogicalService(logical string, kind string, cfg config.HostConfig) (
 		}
 		return cfg.TelemtService, true
 	case "panel":
+		if kind == host.KindDocker {
+			return cfg.PanelContainer, true
+		}
 		return cfg.PanelService, true
 	default:
 		return "", false
