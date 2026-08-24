@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -67,6 +68,21 @@ func TestAPIOnlyDegradation(t *testing.T) {
 	srv.svcMgr = host.NewNone()
 	srv.logSrc = host.NewNoneLog()
 	srv.privilegesMode = host.PrivilegesModeDegraded
+
+	// GET /api/updates would otherwise fall through to update.NewEngine's
+	// default GitHub client (real api.github.com) — the one real-network
+	// dependency this "stay green forever" test must not have. Point it at
+	// a local fake instead: an empty releases array is enough to prove the
+	// endpoint degrades cleanly, and the hit counter proves the override
+	// actually took (not silently ignored, still hitting the real API).
+	var githubHits int32
+	fakeGithub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&githubHits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	t.Cleanup(fakeGithub.Close)
+	srv.SetUpdateGithubBaseURL(fakeGithub.URL)
 
 	h := srv.Handler()
 
@@ -179,8 +195,8 @@ func TestAPIOnlyDegradation(t *testing.T) {
 		t.Fatalf("GET /sub/{token} = %d, want 404: %s", w.Code, w.Body)
 	}
 
-	// GET /api/updates: still lists (degraded — GitHub/Telemt both
-	// unreachable in this environment), never panics.
+	// GET /api/updates: still lists (Telemt unreachable, releases from the
+	// fake GitHub above), never panics.
 	r = httptest.NewRequest("GET", "/api/updates", nil)
 	r.AddCookie(cookie)
 	w = httptest.NewRecorder()
@@ -194,5 +210,8 @@ func TestAPIOnlyDegradation(t *testing.T) {
 	}
 	if len(updates.Targets) != 2 {
 		t.Errorf("/api/updates targets = %d, want 2 (telemt, panel) even when both are degraded", len(updates.Targets))
+	}
+	if atomic.LoadInt32(&githubHits) == 0 {
+		t.Error("the fake GitHub server was never hit — SetUpdateGithubBaseURL did not take effect, GET /api/updates may have hit the real network instead")
 	}
 }

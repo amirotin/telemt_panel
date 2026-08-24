@@ -239,6 +239,18 @@ func randomRunID() string {
 	return hex.EncodeToString(b)
 }
 
+// SetGithubBaseURL overrides the GitHub API base URL the engine's release
+// listing (ReleasesView) uses. Test-only hook — e.g. httpapi's API-only
+// degradation acceptance test points it at an httptest fake so GET
+// /api/updates never touches the real network; production callers never
+// call this, so NewEngine's default (the real GitHub API) is unchanged.
+// Not safe to call concurrently with an in-flight ReleasesView call — set
+// it before serving any requests, the same way tests set Client.BaseURL
+// directly before construction elsewhere in this package.
+func (e *Engine) SetGithubBaseURL(url string) {
+	e.github.BaseURL = url
+}
+
 // LockHeld reports whether a run (for either target) currently holds the
 // engine's global lock.
 func (e *Engine) LockHeld() bool {

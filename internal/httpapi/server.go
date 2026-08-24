@@ -114,6 +114,16 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	}
 }
 
+// SetUpdateGithubBaseURL overrides the update engine's GitHub API base URL
+// (update.Engine.SetGithubBaseURL). Test-only hook: TestAPIOnlyDegradation
+// (degradation_test.go) uses it to point GET /api/updates at an httptest
+// fake instead of the real GitHub API, so that "stay green forever" test
+// never depends on the network. Production callers never call this — New's
+// wiring is unaffected either way.
+func (s *Server) SetUpdateGithubBaseURL(url string) {
+	s.updateEngine.SetGithubBaseURL(url)
+}
+
 // chain wraps h with mws, applied outermost-first (mws[0] runs first).
 func chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
 	for i := len(mws) - 1; i >= 0; i-- {
