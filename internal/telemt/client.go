@@ -9,9 +9,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -119,6 +121,34 @@ func get[T any](ctx context.Context, c *Client, path string) (T, error) {
 	return out, nil
 }
 
+// mutate performs a mutating request (POST/PATCH/DELETE) and decodes its
+// payload into T. call already treats any 2xx status (200/201/202 — Telemt
+// varies these across user-mutation endpoints depending on whether the
+// change lands synchronously or via the config-file watcher) as success;
+// this adds payload decoding, tolerating an empty body for mutations with
+// nothing to report.
+func mutate[T any](ctx context.Context, c *Client, method, path string, body any) (T, error) {
+	var out T
+	data, _, err := c.call(ctx, method, path, body)
+	if err != nil {
+		return out, err
+	}
+	if len(data) == 0 {
+		return out, nil
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return out, fmt.Errorf("telemt: decode %s: %w", path, err)
+	}
+	return out, nil
+}
+
+// userSecret is the wire shape shared by CreateUser and RotateSecret: the
+// resulting user plus its secret, returned exactly once.
+type userSecret struct {
+	User   UserInfo `json:"user"`
+	Secret string   `json:"secret"`
+}
+
 // Health calls GET /v1/health.
 func (c *Client) Health(ctx context.Context) (HealthData, error) {
 	return get[HealthData](ctx, c, "/v1/health")
@@ -138,4 +168,79 @@ func (c *Client) Users(ctx context.Context) ([]UserInfo, error) {
 // StatsSummary calls GET /v1/stats/summary.
 func (c *Client) StatsSummary(ctx context.Context) (SummaryData, error) {
 	return get[SummaryData](ctx, c, "/v1/stats/summary")
+}
+
+// QuotaList calls GET /v1/stats/users/quota, keyed by username. A 404
+// (not_found) means this Telemt build predates the endpoint; that is
+// reported as a false capability flag, not an error, so callers can degrade
+// gracefully instead of failing the whole request.
+func (c *Client) QuotaList(ctx context.Context) (map[string]QuotaEntry, bool, error) {
+	data, _, err := c.call(ctx, http.MethodGet, "/v1/stats/users/quota", nil)
+	if err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	var out map[string]QuotaEntry
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, false, fmt.Errorf("telemt: decode quota list: %w", err)
+	}
+	return out, true, nil
+}
+
+// CreateUser calls POST /v1/users. 409 user_exists surfaces as an *APIError.
+func (c *Client) CreateUser(ctx context.Context, req CreateUserRequest) (UserInfo, string, error) {
+	out, err := mutate[userSecret](ctx, c, http.MethodPost, "/v1/users", req)
+	if err != nil {
+		return UserInfo{}, "", err
+	}
+	return out.User, out.Secret, nil
+}
+
+// PatchUser calls PATCH /v1/users/{username} with a caller-built JSON Merge
+// Patch map: a key absent from patch is omitted from the request body
+// (Telemt: leave unchanged); a key present with a nil value marshals to
+// JSON null (Telemt: remove the limit). Building that distinction is the
+// caller's job — see httpapi's decodeUserPatch.
+func (c *Client) PatchUser(ctx context.Context, username string, patch map[string]any) (UserInfo, error) {
+	return mutate[UserInfo](ctx, c, http.MethodPatch, "/v1/users/"+url.PathEscape(username), patch)
+}
+
+// DeleteUser calls DELETE /v1/users/{username}. 409 last_user_forbidden
+// surfaces as an *APIError when username is the last configured user.
+func (c *Client) DeleteUser(ctx context.Context, username string) error {
+	_, _, err := c.call(ctx, http.MethodDelete, "/v1/users/"+url.PathEscape(username), nil)
+	return err
+}
+
+// ResetQuota calls POST /v1/users/{username}/reset-quota. The response
+// carries only used_bytes (zeroed) and last_reset_epoch_secs — the
+// resulting QuotaEntry's DataQuotaBytes is left at its zero value, since
+// Telemt does not echo the configured limit back on this endpoint.
+func (c *Client) ResetQuota(ctx context.Context, username string) (QuotaEntry, error) {
+	return mutate[QuotaEntry](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/reset-quota", nil)
+}
+
+// RotateSecret calls POST /v1/users/{username}/rotate-secret, returning the
+// new secret exactly once. On Telemt builds that predate this route, the
+// request 404s/405s as an *APIError the caller maps to capability_absent.
+func (c *Client) RotateSecret(ctx context.Context, username string) (UserInfo, string, error) {
+	out, err := mutate[userSecret](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/rotate-secret", nil)
+	if err != nil {
+		return UserInfo{}, "", err
+	}
+	return out.User, out.Secret, nil
+}
+
+// SetEnabled calls POST /v1/users/{username}/enable or .../disable. On
+// Telemt builds that predate these routes, the request 404s/405s as an
+// *APIError the caller maps to capability_absent.
+func (c *Client) SetEnabled(ctx context.Context, username string, enabled bool) (UserInfo, error) {
+	action := "disable"
+	if enabled {
+		action = "enable"
+	}
+	return mutate[UserInfo](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/"+action, nil)
 }

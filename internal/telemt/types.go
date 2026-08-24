@@ -60,6 +60,31 @@ type SummaryData struct {
 	HandshakeFailuresByClass []ClassCount `json:"handshake_failures_by_class,omitempty"`
 }
 
+// QuotaEntry is one user's entry in GET /v1/stats/users/quota — undocumented
+// in Telemt's API.md but implemented; the endpoint 404s on older builds,
+// which QuotaList surfaces as a false capability flag rather than an error.
+type QuotaEntry struct {
+	DataQuotaBytes     uint64 `json:"data_quota_bytes"`
+	UsedBytes          uint64 `json:"used_bytes"`
+	LastResetEpochSecs int64  `json:"last_reset_epoch_secs"`
+}
+
+// CreateUserRequest is the body of POST /v1/users. Username is required;
+// every other field is omitted from the wire request when unset, letting
+// Telemt apply its own defaults (secret generated, enabled=true, no limits).
+type CreateUserRequest struct {
+	Username          string  `json:"username"`
+	Secret            string  `json:"secret,omitempty"`
+	UserAdTag         string  `json:"user_ad_tag,omitempty"`
+	MaxTCPConns       *uint64 `json:"max_tcp_conns,omitempty"`
+	ExpirationRFC3339 string  `json:"expiration_rfc3339,omitempty"`
+	DataQuotaBytes    *uint64 `json:"data_quota_bytes,omitempty"`
+	RateLimitUpBps    *uint64 `json:"rate_limit_up_bps,omitempty"`
+	RateLimitDownBps  *uint64 `json:"rate_limit_down_bps,omitempty"`
+	MaxUniqueIPs      *uint64 `json:"max_unique_ips,omitempty"`
+	Enabled           *bool   `json:"enabled,omitempty"`
+}
+
 // UserInfo is one user as returned by GET /v1/users.
 type UserInfo struct {
 	Username           string    `json:"username"`
