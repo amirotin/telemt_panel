@@ -11,11 +11,49 @@ import (
 // defaultAgentDialTimeout bounds connecting to the panel-agent socket.
 const defaultAgentDialTimeout = 3 * time.Second
 
-// defaultAgentOpTimeout bounds one op's round trip once connected: write
-// the request frame, wait for the agent to execute it, read the reply.
-// Generous for install/restore (a local file copy) and restart-service
-// (a service manager command), which are the slowest ops.
-const defaultAgentOpTimeout = 30 * time.Second
+// Per-Op-Kind deadlines for one op's round trip once connected (write the
+// request frame, wait for the agent to execute it, read the reply) — see
+// agentOpTimeoutFor. A single flat timeout undersold the two shapes of
+// work these ops do: install-binary/restore-binary copy a file (slow on a
+// loaded disk) and restart-service waits on a service manager command,
+// while read-journal/write-config are quick, bounded operations that
+// should fail fast rather than hang for minutes on a wedged agent.
+const (
+	// agentInstallBinaryTimeout and agentRestoreBinaryTimeout bound a
+	// local file copy — the slowest ops, generous for a large binary on a
+	// slow disk.
+	agentInstallBinaryTimeout = 120 * time.Second
+	agentRestoreBinaryTimeout = 120 * time.Second
+	// agentRestartServiceTimeout bounds a service-manager restart command.
+	agentRestartServiceTimeout = 90 * time.Second
+	// agentReadJournalTimeout and agentWriteConfigTimeout bound a quick,
+	// bounded read/write.
+	agentReadJournalTimeout = 30 * time.Second
+	agentWriteConfigTimeout = 30 * time.Second
+	// defaultAgentOpTimeout is the fallback for any Op.Kind outside the
+	// five above — defensive only; ExecOp's switch (privexec.go) is the
+	// single authority on which kinds actually exist.
+	defaultAgentOpTimeout = 30 * time.Second
+)
+
+// agentOpTimeoutFor returns kind's per-op deadline (the agent*Timeout
+// constants above).
+func agentOpTimeoutFor(kind string) time.Duration {
+	switch kind {
+	case OpInstallBinary:
+		return agentInstallBinaryTimeout
+	case OpRestoreBinary:
+		return agentRestoreBinaryTimeout
+	case OpRestartService:
+		return agentRestartServiceTimeout
+	case OpReadJournal:
+		return agentReadJournalTimeout
+	case OpWriteConfig:
+		return agentWriteConfigTimeout
+	default:
+		return defaultAgentOpTimeout
+	}
+}
 
 // agentClient is a Runner that dials the panel-agent's unix socket once
 // per op — no persistent connection or multiplexing, matching the
@@ -23,17 +61,13 @@ const defaultAgentOpTimeout = 30 * time.Second
 type agentClient struct {
 	socketPath  string
 	dialTimeout time.Duration
-	opTimeout   time.Duration
 }
 
 // NewAgentClient builds a Runner that executes ops by dialing the
 // panel-agent unix socket at socketPath, one fresh connection per op,
-// bounded by opTimeout (falling back to defaultAgentOpTimeout when <= 0).
-func NewAgentClient(socketPath string, opTimeout time.Duration) Runner {
-	if opTimeout <= 0 {
-		opTimeout = defaultAgentOpTimeout
-	}
-	return &agentClient{socketPath: socketPath, dialTimeout: defaultAgentDialTimeout, opTimeout: opTimeout}
+// each bounded by its Op.Kind's own deadline (agentOpTimeoutFor).
+func NewAgentClient(socketPath string) Runner {
+	return &agentClient{socketPath: socketPath, dialTimeout: defaultAgentDialTimeout}
 }
 
 // Run implements Runner: dial, send op as one framed JSON request, read
@@ -48,7 +82,7 @@ func (c *agentClient) Run(ctx context.Context, op Op) (Output, error) {
 	}
 	defer conn.Close()
 
-	deadline := time.Now().Add(c.opTimeout)
+	deadline := time.Now().Add(agentOpTimeoutFor(op.Kind))
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 		deadline = ctxDeadline
 	}

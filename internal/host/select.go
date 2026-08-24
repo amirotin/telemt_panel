@@ -57,7 +57,7 @@ func SelectRunner(mode string, socketPath string, euid int, allow AllowLists, sv
 		return NewDirectRunner(allow, svcMgr, logSrc)
 	case PrivilegesModeAgent:
 		if dialProbe(socketPath) {
-			return NewAgentClient(socketPath, defaultAgentOpTimeout)
+			return NewAgentClient(socketPath)
 		}
 		return degradedRunner{}
 	default: // PrivilegesModeAuto and unrecognized values alike
@@ -65,7 +65,7 @@ func SelectRunner(mode string, socketPath string, euid int, allow AllowLists, sv
 			return NewDirectRunner(allow, svcMgr, logSrc)
 		}
 		if dialProbe(socketPath) {
-			return NewAgentClient(socketPath, defaultAgentOpTimeout)
+			return NewAgentClient(socketPath)
 		}
 		return degradedRunner{}
 	}
