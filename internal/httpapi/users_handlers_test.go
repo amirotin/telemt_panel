@@ -122,6 +122,16 @@ func (f *fakeTelemt) writeUsersLocked(w http.ResponseWriter) {
 	writeEnvelope(w, http.StatusOK, out)
 }
 
+// quotaWireEntry mirrors the real GET /v1/stats/users/quota wire shape
+// (src/api/users/view.rs::build_user_quota_list in the Telemt 3.5.2
+// source): an object with a users array, not a map keyed by username.
+type quotaWireEntry struct {
+	Username           string `json:"username"`
+	DataQuotaBytes     uint64 `json:"data_quota_bytes"`
+	UsedBytes          uint64 `json:"used_bytes"`
+	LastResetEpochSecs int64  `json:"last_reset_epoch_secs"`
+}
+
 func (f *fakeTelemt) writeQuotaLocked(w http.ResponseWriter) {
 	if f.quotaErr != nil {
 		writeTelemtErrBody(w, *f.quotaErr)
@@ -132,7 +142,24 @@ func (f *fakeTelemt) writeQuotaLocked(w http.ResponseWriter) {
 		io.WriteString(w, "not found")
 		return
 	}
-	writeEnvelope(w, http.StatusOK, f.quota)
+	names := make([]string, 0, len(f.quota))
+	for name := range f.quota {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	entries := make([]quotaWireEntry, len(names))
+	for i, name := range names {
+		q := f.quota[name]
+		entries[i] = quotaWireEntry{
+			Username:           name,
+			DataQuotaBytes:     q.DataQuotaBytes,
+			UsedBytes:          q.UsedBytes,
+			LastResetEpochSecs: q.LastResetEpochSecs,
+		}
+	}
+	writeEnvelope(w, http.StatusOK, struct {
+		Users []quotaWireEntry `json:"users"`
+	}{Users: entries})
 }
 
 func (f *fakeTelemt) handleCreateLocked(w http.ResponseWriter, r *http.Request) {
@@ -590,6 +617,87 @@ func TestHandlePatchUserReadOnly(t *testing.T) {
 	}
 }
 
+// TestHandlePatchUserSecretNullRejected covers finding 2: both
+// openapi.yaml (UserPatch.secret is a plain, non-nullable string) and
+// 07-telemt-sdk.md ("secret non-nullable") forbid removing secret via
+// merge patch, so an explicit "secret":null must be rejected locally,
+// before ever reaching Telemt.
+func TestHandlePatchUserSecretNullRejected(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	req := mutatingJSON(t, "PATCH", "/api/users/alice", cookie, map[string]any{"secret": nil})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body = %s", w.Code, w.Body)
+	}
+	if fake.lastPatchBody != nil {
+		t.Errorf("upstream PATCH was called with body %s, want no upstream request at all", fake.lastPatchBody)
+	}
+
+	// login() itself records a "login" audit entry; assert no user.patch
+	// entry was added on top of it, rather than asserting the log is empty.
+	entries, err := srv.st.ListAudit(10)
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	for _, e := range entries {
+		if e.Action == "user.patch" {
+			t.Fatalf("audit = %+v, want no user.patch entry for a rejected request", entries)
+		}
+	}
+}
+
+// TestHandlePatchUserUnmappedClientErrorPassesThrough covers finding 3: an
+// upstream 4xx APIError whose code isn't one of the specifically-mapped
+// ones (user_exists/last_user_forbidden/read_only/not_found) must surface
+// with Telemt's own status and code, not get flattened into 502
+// telemt_unreachable — an admin's bad input isn't a connectivity problem.
+func TestHandlePatchUserUnmappedClientErrorPassesThrough(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	fake.patchErr = &telemtErr{status: http.StatusConflict, code: "revision_conflict", message: "config changed"}
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	req := mutatingJSON(t, "PATCH", "/api/users/alice", cookie, map[string]any{"enabled": true})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (passed through from upstream)", w.Code)
+	}
+	var body map[string]string
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body["code"] != "revision_conflict" {
+		t.Errorf("code = %q, want revision_conflict passed through, not telemt_unreachable", body["code"])
+	}
+}
+
+// TestHandleCreateUserUnmappedServerErrorStaysUnreachable is the other
+// half of finding 3's fix: an upstream 5xx (or otherwise non-4xx)
+// APIError with an unmapped code should still collapse to 502
+// telemt_unreachable — the passthrough is specifically for 4xx client-input
+// problems, not a blanket "always show Telemt's raw status."
+func TestHandleCreateUserUnmappedServerErrorStaysUnreachable(t *testing.T) {
+	fake := newFakeTelemt()
+	fake.createErr = &telemtErr{status: http.StatusInternalServerError, code: "internal_error", message: "boom"}
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	req := mutatingJSON(t, "POST", "/api/users", cookie, telemt.CreateUserRequest{Username: "carol"})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+	var body map[string]string
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body["code"] != "telemt_unreachable" {
+		t.Errorf("code = %q, want telemt_unreachable", body["code"])
+	}
+}
+
 func TestHandleDeleteUser(t *testing.T) {
 	fake := newFakeTelemt(aliceFixture())
 	srv, cookie := newUsersTestServer(t, fake, true)
@@ -751,6 +859,60 @@ func TestHandleSetEnabledCapabilityAbsent(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusNotImplemented {
 		t.Fatalf("status = %d, want 501", w.Code)
+	}
+}
+
+// TestHandleSetEnabledRequiresEnabledKey covers finding 1: openapi.yaml
+// marks "enabled" required on this endpoint. A body missing the key (or
+// carrying an explicit null) must be rejected with 400 rather than
+// silently defaulting to false and disabling the user — encoding/json
+// unmarshaling null into a plain bool is a no-op, not an error, which is
+// exactly the trap a naive struct decode falls into.
+func TestHandleSetEnabledRequiresEnabledKey(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	req := mutatingJSON(t, "PUT", "/api/users/alice/enabled", cookie, map[string]any{})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body = %s", w.Code, w.Body)
+	}
+
+	fake.mu.Lock()
+	stillEnabled := fake.users["alice"].Enabled
+	fake.mu.Unlock()
+	if !stillEnabled {
+		t.Error("user was disabled despite a rejected request")
+	}
+
+	// login() itself records a "login" audit entry; assert no user.enabled
+	// entry was added on top of it, rather than asserting the log is empty.
+	entries, err := srv.st.ListAudit(10)
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	for _, e := range entries {
+		if e.Action == "user.enabled" {
+			t.Fatalf("audit = %+v, want no user.enabled entry for a rejected request", entries)
+		}
+	}
+}
+
+// TestHandleSetEnabledNullRejected is the explicit-null half of finding 1:
+// {"enabled":null} must be treated the same as a missing key, not as
+// false.
+func TestHandleSetEnabledNullRejected(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture())
+	srv, cookie := newUsersTestServer(t, fake, true)
+	h := srv.Handler()
+
+	req := mutatingJSON(t, "PUT", "/api/users/alice/enabled", cookie, map[string]any{"enabled": nil})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body = %s", w.Code, w.Body)
 	}
 }
 

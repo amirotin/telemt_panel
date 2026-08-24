@@ -269,30 +269,56 @@ func (s *Server) handleRotateSecret(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleSetEnabled implements PUT /api/users/{username}/enabled.
+// handleSetEnabled implements PUT /api/users/{username}/enabled. openapi.yaml
+// marks enabled required; decodeEnabledRequest rejects a body where the key
+// is absent or explicitly null rather than silently defaulting to false.
 func (s *Server) handleSetEnabled(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 
-	var req struct {
-		Enabled bool `json:"enabled"`
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxUserPatchBody))
+	if err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "could not read request body")
+		return
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxUserPatchBody)).Decode(&req); err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+	enabled, err := decodeEnabledRequest(body)
+	if err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "enabled is required")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), subpageRequestTimeout)
 	defer cancel()
 
-	u, err := s.tc.SetEnabled(ctx, username, req.Enabled)
+	u, err := s.tc.SetEnabled(ctx, username, enabled)
 	if err != nil {
 		writeTelemtError(w, err, true)
 		return
 	}
-	s.appendAudit("user.enabled", username, fmt.Sprintf("enabled=%t", req.Enabled))
+	s.appendAudit("user.enabled", username, fmt.Sprintf("enabled=%t", enabled))
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
 	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota))
+}
+
+// decodeEnabledRequest parses the PUT /api/users/{username}/enabled body's
+// required "enabled" key. An absent key or an explicit JSON null both
+// error — encoding/json unmarshaling null into a plain bool is a silent
+// no-op, not an error, so without this check a caller sending
+// {"enabled":null} (or {}) would flip a user disabled with no signal.
+func decodeEnabledRequest(body []byte) (bool, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return false, err
+	}
+	v, ok := raw["enabled"]
+	if !ok || bytes.Equal(bytes.TrimSpace(v), jsonNull) {
+		return false, errors.New("enabled is required")
+	}
+	var enabled bool
+	if err := json.Unmarshal(v, &enabled); err != nil {
+		return false, err
+	}
+	return enabled, nil
 }
 
 // userPatchFields is the set of keys accepted from a UserPatch request
@@ -340,6 +366,12 @@ var jsonNull = []byte("null")
 // json.RawMessage per key rather than a typed struct, because a struct's
 // pointer fields collapse "absent" and "null" to the same nil value —
 // exactly the distinction that must survive onto the wire.
+//
+// secret is the one field this null handling does not apply to: both
+// openapi.yaml (UserPatch.secret is a plain, non-nullable string) and
+// 07-telemt-sdk.md ("secret non-nullable") forbid removing it via merge
+// patch, so an explicit "secret":null is rejected here rather than
+// forwarded upstream.
 func decodeUserPatch(body []byte) (map[string]any, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -353,6 +385,9 @@ func decodeUserPatch(body []byte) (map[string]any, error) {
 			continue // unknown fields ignored, matching Telemt's own tolerance
 		}
 		if bytes.Equal(bytes.TrimSpace(val), jsonNull) {
+			if key == "secret" {
+				return nil, errors.New("secret cannot be null")
+			}
 			patch[key] = nil
 			continue
 		}
@@ -374,6 +409,14 @@ func decodeUserPatch(body []byte) (map[string]any, error) {
 // capability_absent rather than 404. A well-formed not_found error (the
 // route exists; the user genuinely doesn't) always maps to 404 regardless
 // of capabilityGated, since that switch case is checked first.
+//
+// telemt_unreachable is reserved for actual connectivity failures (no
+// *APIError at all) and for upstream 5xx/unexpected statuses. An *APIError
+// whose code isn't one of the ones above but whose status is 4xx (e.g.
+// bad_request, forbidden, revision_conflict) is the admin's own input being
+// rejected, not the backend being unreachable — that must not be masked as
+// 502 telemt_unreachable, so it passes through with Telemt's own status,
+// code and message.
 func writeTelemtError(w http.ResponseWriter, err error, capabilityGated bool) {
 	var apiErr *telemt.APIError
 	if !errors.As(err, &apiErr) {
@@ -390,6 +433,10 @@ func writeTelemtError(w http.ResponseWriter, err error, capabilityGated bool) {
 	default:
 		if capabilityGated && (apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed) {
 			auth.WriteError(w, http.StatusNotImplemented, "capability_absent", "telemt build does not support this operation")
+			return
+		}
+		if apiErr.Status >= 400 && apiErr.Status < 500 {
+			auth.WriteError(w, apiErr.Status, apiErr.Code, apiErr.Message)
 			return
 		}
 		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", apiErr.Message)
