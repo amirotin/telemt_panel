@@ -364,6 +364,126 @@ func TestHandleEventsStreamsUpdatesAndReplaysOnReconnect(t *testing.T) {
 	}
 }
 
+// recvHubEvent waits up to timeout for the next event from a raw hub
+// subscriber channel, failing the test on timeout or an unexpected close.
+func recvHubEvent(t *testing.T, ch <-chan hub.Event, timeout time.Duration) hub.Event {
+	t.Helper()
+	select {
+	case e, ok := <-ch:
+		if !ok {
+			t.Fatal("hub event channel closed unexpectedly")
+		}
+		return e
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for a hub event")
+	}
+	panic("unreachable")
+}
+
+// TestHandleEventsReplayLiveRaceDeliversExactlyOnce covers P3.11: an event
+// broadcast in the narrow window between handleEvents' hub.Subscribe call
+// (which registers the live channel) and its hub.ReplaySince call (which
+// computes what to replay on a Last-Event-ID reconnect) lands in both the
+// ring ReplaySince reads from and the just-registered live channel. Without
+// dropping it from the live loop once already replayed, the client would
+// see the exact same event twice.
+//
+// srv.sseAfterSubscribeHook (test-only, nil in production — see its doc
+// comment on Server) fires right after Subscribe and blocks, via an
+// independent observer subscription, until the broadcast this test
+// triggers has actually completed — the ring append and every subscriber
+// send happen under the same hub lock, so once the observer has received
+// its copy, handleEvents' own ReplaySince is guaranteed to see the event
+// too. This reliably lands the race that real goroutine scheduling alone
+// is far too narrow a window to hit deterministically.
+func TestHandleEventsReplayLiveRaceDeliversExactlyOnce(t *testing.T) {
+	fake, tc := newMutableFakeTelemtHTTP(t, []telemt.UserInfo{{Username: "alice"}})
+	interval := 5 * time.Millisecond
+	srv, cookie := newSSETestServer(t, tc, hub.Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: time.Second})
+
+	panelSrv := httptest.NewServer(srv.Handler())
+	t.Cleanup(panelSrv.Close)
+
+	// First connection: establish a baseline id to reconnect from.
+	req1, err := http.NewRequest(http.MethodGet, panelSrv.URL+"/api/events?topics=users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req1.AddCookie(cookie)
+	resp1, err := http.DefaultClient.Do(req1)
+	if err != nil {
+		t.Fatalf("first connect: %v", err)
+	}
+	initial := nextFrame(t, readSSEFrames(resp1.Body), 2*time.Second)
+	resp1.Body.Close()
+	if initial.id == "" {
+		t.Fatal("initial frame carries no id")
+	}
+
+	// An independent observer subscription, used only to detect when the
+	// raced broadcast below has actually completed — not the connection
+	// under test.
+	observerCh, _, observerCancel, err := srv.hub.Subscribe([]string{"users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer observerCancel()
+
+	const raceUser = "raced"
+	srv.sseAfterSubscribeHook = func() {
+		fake.setUsers([]telemt.UserInfo{{Username: raceUser}})
+		recvHubEvent(t, observerCh, 2*time.Second)
+	}
+	t.Cleanup(func() { srv.sseAfterSubscribeHook = nil })
+
+	req2, err := http.NewRequest(http.MethodGet, panelSrv.URL+"/api/events?topics=users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req2.AddCookie(cookie)
+	req2.Header.Set("Last-Event-ID", initial.id)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	t.Cleanup(func() { resp2.Body.Close() })
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("reconnect status = %d, want 200", resp2.StatusCode)
+	}
+
+	// Drain frames until the stream falls quiet: the fake upstream's data
+	// only changes once (to raceUser), so there is no further heartbeat or
+	// poll to rely on — a duplicate delivery of the raced event, if the
+	// dedup fix were missing, would arrive back-to-back with its first
+	// delivery (both already queued by the same reconnect handler), well
+	// within this quiet window.
+	const quiet = 300 * time.Millisecond
+	frames := readSSEFrames(resp2.Body)
+	seen := 0
+	var seenIDs []string
+readLoop:
+	for {
+		select {
+		case f, ok := <-frames:
+			if !ok {
+				break readLoop
+			}
+			if f.event == "heartbeat" {
+				continue
+			}
+			seenIDs = append(seenIDs, f.id)
+			if strings.Contains(f.data, raceUser) {
+				seen++
+			}
+		case <-time.After(quiet):
+			break readLoop
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("raced event delivered %d times (ids seen: %v), want exactly 1", seen, seenIDs)
+	}
+}
+
 // TestHandleEventsReconnectWithStaleFutureLastEventIDFallsBackToSnapshot
 // covers finding 3 end to end: a Last-Event-ID beyond anything this hub
 // has issued (as if the client held an id from before a panel restart,

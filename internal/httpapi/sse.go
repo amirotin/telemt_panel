@@ -174,6 +174,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer cancel()
+	if s.sseAfterSubscribeHook != nil {
+		s.sseAfterSubscribeHook()
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -187,6 +190,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	extendSSEWriteDeadline(rc)
 	w.WriteHeader(http.StatusOK)
 
+	// lastReplayedSeq is the highest Seq written during replay below. The
+	// subscriber channel (ch) is already registered by Subscribe, above,
+	// before ReplaySince runs — an event broadcast in that window lands in
+	// both ch and the replay result, so the live loop below must drop
+	// anything at or under this watermark to avoid delivering it twice.
+	var lastReplayedSeq uint64
 	replayed := false
 	if lastID := r.Header.Get("Last-Event-ID"); lastID != "" {
 		if since, err := strconv.ParseUint(lastID, 10, 64); err == nil {
@@ -195,6 +204,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 					extendSSEWriteDeadline(rc)
 					if err := writeSSEEvent(w, e); err != nil {
 						return
+					}
+					if e.Seq > lastReplayedSeq {
+						lastReplayedSeq = e.Seq
 					}
 				}
 				replayed = true
@@ -221,6 +233,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case e, open := <-ch:
 			if !open {
 				return
+			}
+			if replayed && e.Seq <= lastReplayedSeq {
+				// Already delivered as part of the replay above — see
+				// lastReplayedSeq's doc comment.
+				continue
 			}
 			extendSSEWriteDeadline(rc)
 			if err := writeSSEEvent(w, e); err != nil {

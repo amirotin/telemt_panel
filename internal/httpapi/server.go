@@ -44,6 +44,13 @@ type Server struct {
 	// to logStreamHeartbeatInterval (logs_handler.go), overridable by tests
 	// in this package the same way svcMgr/logSrc are.
 	logStreamHeartbeat time.Duration
+	// sseAfterSubscribeHook, if set, runs in handleEvents (sse.go)
+	// immediately after hub.Subscribe registers the live channel and before
+	// replay/snapshot is computed — nil in production. sse_test.go sets it
+	// to deterministically land a broadcast in that exact window, the race
+	// P3.11's dedup fix covers, which real concurrency alone is too narrow
+	// to hit reliably.
+	sseAfterSubscribeHook func()
 
 	updateEngine *update.Engine
 	autoUpdater  *update.AutoUpdater
