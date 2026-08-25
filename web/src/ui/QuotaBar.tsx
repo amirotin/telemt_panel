@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { formatBytes } from "../lib/format";
-import { quotaFillClass } from "./quota.helpers";
+import { isUnlimitedQuota, quotaFillClass, quotaRatio } from "./quota.helpers";
 
 export type QuotaBarSize = "sm" | "md";
 
@@ -32,8 +32,8 @@ export function QuotaBar({
   className,
 }: QuotaBarProps) {
   const limit = limitBytes ?? null;
-  const unlimited = limit === null || limit <= 0;
-  const ratio = unlimited ? 1 : Math.min(1, usedBytes / limit);
+  const unlimited = isUnlimitedQuota(limit);
+  const ratio = quotaRatio(usedBytes, limit);
 
   return (
     <div className={cn("flex w-full flex-col gap-1.5", className)}>

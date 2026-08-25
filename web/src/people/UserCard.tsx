@@ -4,7 +4,7 @@ import { Avatar } from "../ui/Avatar";
 import { CountBadge } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
 import { IconMore } from "../ui/icons";
-import { quotaFillClass } from "../ui/quota.helpers";
+import { isUnlimitedQuota, quotaFillClass, quotaRatio } from "../ui/quota.helpers";
 import { useLongPress } from "./useLongPress";
 import { visibleFor, type DisplayMode } from "../display-mode";
 import { computeUserStatus, formatBitsPerSecond, getUserQuota, isOnline } from "./users.helpers";
@@ -52,9 +52,10 @@ export function UserCard({
   const meta = personMeta({ user, status, quota });
   const badge = personBadge({ user, status });
 
-  const hasBar = visibleFor("basic", mode) && quota.limitBytes !== null && status !== "disabled";
-  const ratio =
-    quota.limitBytes && quota.limitBytes > 0 ? Math.min(1, quota.usedBytes / quota.limitBytes) : 0;
+  // No bar for an uncapped user: a permanently full track says nothing.
+  const hasBar =
+    visibleFor("basic", mode) && !isUnlimitedQuota(quota.limitBytes) && status !== "disabled";
+  const ratio = quotaRatio(quota.usedBytes, quota.limitBytes);
 
   return (
     <div
