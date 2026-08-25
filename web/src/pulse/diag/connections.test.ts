@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { connectionsGroups } from "./connections.helpers";
-import type { RuntimeEdgeConnectionsSummary } from "../../realtime/topics";
+import { connectionsGroups, summaryGroup } from "./connections.helpers";
+import type { RuntimeEdgeConnectionsSummary, StatsSummary } from "../../realtime/topics";
 
 const data: RuntimeEdgeConnectionsSummary = {
   cache: { ttl_ms: 1000, served_from_cache: true, stale_cache_used: false },
@@ -49,5 +49,39 @@ describe("connectionsGroups", () => {
   it("still emits an (empty) group for an empty array field", () => {
     const groups = connectionsGroups(data);
     expect(groups[3]).toEqual({ title: "Топ по трафику", rows: [] });
+  });
+});
+
+describe("summaryGroup", () => {
+  const summary: StatsSummary = {
+    uptime_seconds: 3600,
+    connections_total: 42,
+    connections_bad_total: 3,
+    handshake_timeouts_total: 1,
+    configured_users: 7,
+    connections_bad_by_class: [{ class: "rate_limited", total: 3 }],
+    handshake_failures_by_class: [{ class: "tls", total: 1 }],
+  };
+
+  it("returns no group when summary is null (sub-call failed this poll)", () => {
+    expect(summaryGroup(null)).toEqual([]);
+  });
+
+  it("flattens every summary scalar/array under one Сводка group", () => {
+    const groups = summaryGroup(summary);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe("Сводка");
+    const keys = groups[0].rows.map((r) => r.key);
+    expect(keys).toEqual([
+      "uptime_seconds",
+      "connections_total",
+      "connections_bad_total",
+      "handshake_timeouts_total",
+      "configured_users",
+      "connections_bad_by_class[0].class",
+      "connections_bad_by_class[0].total",
+      "handshake_failures_by_class[0].class",
+      "handshake_failures_by_class[0].total",
+    ]);
   });
 });

@@ -76,7 +76,53 @@ describe("computeProblems", () => {
     expect(items.map((i) => i.key)).toEqual(["cap_runtime_edge", "cap_quota"]);
   });
 
-  it("orders: not_ready, read_only, stale topics, handshake failures, capabilities", () => {
+  it("reports connections_bad_total and handshake_timeouts_total only when non-zero", () => {
+    const zero = computeProblems(
+      stats({ summary: { uptime_seconds: 0, connections_total: 0, connections_bad_total: 0, handshake_timeouts_total: 0, configured_users: 0 } }),
+      [],
+      [],
+    );
+    expect(zero).toEqual([]);
+
+    const nonZero = computeProblems(
+      stats({ summary: { uptime_seconds: 0, connections_total: 0, connections_bad_total: 4, handshake_timeouts_total: 2, configured_users: 0 } }),
+      [],
+      [],
+    );
+    expect(nonZero.map((i) => i.key)).toEqual(["connections_bad_total", "handshake_timeouts_total"]);
+    expect(nonZero[0].detail).toBe("4");
+    expect(nonZero[1].detail).toBe("2");
+  });
+
+  it("does not treat a null summary (failed sub-call) as zero bad connections", () => {
+    // stats() defaults summary to null — a distinct case from an explicit
+    // summary object whose counters happen to be 0.
+    expect(computeProblems(stats(), [], [])).toEqual([]);
+  });
+
+  it("ranks connections_bad_by_class descending by count and drops zero-count classes", () => {
+    const items = computeProblems(
+      stats({
+        summary: {
+          uptime_seconds: 0,
+          connections_total: 0,
+          connections_bad_total: 0,
+          handshake_timeouts_total: 0,
+          configured_users: 0,
+          connections_bad_by_class: [
+            { class: "rate_limited", total: 2 },
+            { class: "quota_exceeded", total: 9 },
+            { class: "unused", total: 0 },
+          ],
+        },
+      }),
+      [],
+      [],
+    );
+    expect(items.map((i) => i.key)).toEqual(["connections_bad_quota_exceeded", "connections_bad_rate_limited"]);
+  });
+
+  it("orders: not_ready, read_only, stale topics, handshake failures, bad-connections scalars, bad-by-class, capabilities", () => {
     const items = computeProblems(
       stats({
         ready: { ready: false, status: "not_ready", admission_open: false, healthy_upstreams: 0, total_upstreams: 1 },
@@ -84,10 +130,11 @@ describe("computeProblems", () => {
         summary: {
           uptime_seconds: 0,
           connections_total: 0,
-          connections_bad_total: 0,
-          handshake_timeouts_total: 0,
+          connections_bad_total: 3,
+          handshake_timeouts_total: 1,
           configured_users: 0,
           handshake_failures_by_class: [{ class: "timeout", total: 1 }],
+          connections_bad_by_class: [{ class: "rate_limited", total: 1 }],
         },
       }),
       [{ topic: "runtime", stale: true, error: null }],
@@ -98,6 +145,9 @@ describe("computeProblems", () => {
       "read_only",
       "stale_runtime",
       "handshake_timeout",
+      "connections_bad_total",
+      "handshake_timeouts_total",
+      "connections_bad_rate_limited",
       "cap_runtime_edge",
     ]);
   });
