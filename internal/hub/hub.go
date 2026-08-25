@@ -414,19 +414,30 @@ func (r *statsSysInfoRefresher) get(ctx context.Context) (version string, uptime
 }
 
 // runtimeSnapshot is the "runtime" topic's composite payload (spec
-// 02-hub-sse.md / M3 task-2 brief): the always-on Gates/Initialization
-// group plus the ME-pool/quality/NAT-STUN/self-test Gated[T] group. Any
-// sub-call failing leaves its field null and the topic still publishes;
-// every one of the six failing is treated as Telemt being unreachable.
-// RecentEvents is included only when the runtime_edge capability is on.
+// 02-hub-sse.md / M3 task-2 brief, extended by mini-task 2c): the
+// always-on Gates/Initialization group plus the ME-pool/quality/NAT-STUN/
+// self-test Gated[T] group. Any sub-call failing leaves its field null and
+// the topic still publishes; every one of the six original (Gates through
+// MeSelfTest) failing is treated as Telemt being unreachable — Minimal and
+// UpstreamQuality are additional best-effort fields (mini-task 2c) whose
+// own failure never counts toward that check, the same treatment
+// RecentEvents already gets, just without the runtime_edge gate (Minimal/
+// UpstreamQuality are gated by minimal_runtime_enabled instead, which
+// their own response's enabled/reason fields already report — see
+// MinimalAllPayload/RuntimeUpstreamQualityData's doc comments — so unlike
+// RecentEvents they're always attempted, not conditioned on a
+// Capabilities() probe). RecentEvents itself is included only when the
+// runtime_edge capability is on.
 type runtimeSnapshot struct {
-	Gates          *telemt.RuntimeGatesData                        `json:"gates"`
-	Initialization *telemt.RuntimeInitializationData               `json:"initialization"`
-	MePoolState    *telemt.Gated[telemt.RuntimeMePoolStatePayload] `json:"me_pool_state"`
-	MeQuality      *telemt.Gated[telemt.RuntimeMeQualityPayload]   `json:"me_quality"`
-	NatStun        *telemt.Gated[telemt.RuntimeNatStunPayload]     `json:"nat_stun"`
-	MeSelfTest     *telemt.Gated[telemt.RuntimeMeSelftestPayload]  `json:"me_selftest"`
-	RecentEvents   *telemt.Gated[telemt.RuntimeEdgeEventsPayload]  `json:"recent_events,omitempty"`
+	Gates           *telemt.RuntimeGatesData                        `json:"gates"`
+	Initialization  *telemt.RuntimeInitializationData               `json:"initialization"`
+	MePoolState     *telemt.Gated[telemt.RuntimeMePoolStatePayload] `json:"me_pool_state"`
+	MeQuality       *telemt.Gated[telemt.RuntimeMeQualityPayload]   `json:"me_quality"`
+	NatStun         *telemt.Gated[telemt.RuntimeNatStunPayload]     `json:"nat_stun"`
+	MeSelfTest      *telemt.Gated[telemt.RuntimeMeSelftestPayload]  `json:"me_selftest"`
+	Minimal         *telemt.Gated[telemt.MinimalAllPayload]         `json:"minimal"`
+	UpstreamQuality *telemt.RuntimeUpstreamQualityData              `json:"upstream_quality"`
+	RecentEvents    *telemt.Gated[telemt.RuntimeEdgeEventsPayload]  `json:"recent_events,omitempty"`
 }
 
 func fetchRuntime(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
@@ -465,6 +476,23 @@ func fetchRuntime(ctx context.Context, tc *telemt.Client) (json.RawMessage, erro
 	}
 	if len(errs) == 6 {
 		return nil, fmt.Errorf("runtime: %w", errors.Join(errs...))
+	}
+
+	// Minimal/UpstreamQuality: always attempted (gated by
+	// minimal_runtime_enabled, reflected in their own response, not by a
+	// capability probe here) — a failure is logged and leaves the field
+	// null, same degrade rule as every other sub-call, but never joins
+	// errs above: mini-task 2c scopes these two as best-effort additions
+	// that must not turn a healthy six-call poll into a source_error.
+	if v, err := tc.MinimalAll(ctx); err == nil {
+		snap.Minimal = &v
+	} else {
+		slog.Warn("hub: runtime topic: minimal all", "err", err)
+	}
+	if v, err := tc.UpstreamQuality(ctx); err == nil {
+		snap.UpstreamQuality = &v
+	} else {
+		slog.Warn("hub: runtime topic: upstream quality", "err", err)
 	}
 
 	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {

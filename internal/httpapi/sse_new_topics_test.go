@@ -76,6 +76,8 @@ func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 	// appear too since this fixture has RuntimeEdge on.
 	for _, want := range []string{
 		`"gates"`, `"me_pool_state"`, `"me_quality"`, `"nat_stun"`, `"me_selftest"`, `"recent_events"`,
+		// minimal/upstream_quality: mini-task 2c.
+		`"minimal"`, `"upstream_quality"`,
 		`"upstreams"`, `"dcs"`, `"me_writers"`,
 		`"posture"`, `"whitelist"`, `"effective_limits"`, `"tls_fingerprints"`,
 		`"ready"`, `"connections_summary"`,

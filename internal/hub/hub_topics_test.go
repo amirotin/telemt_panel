@@ -68,6 +68,15 @@ func TestRuntimeTopicComposite(t *testing.T) {
 	if snap.MePoolState == nil || snap.MeQuality == nil || snap.NatStun == nil || snap.MeSelfTest == nil {
 		t.Errorf("runtime snapshot missing a Gated[T] field: %+v", snap)
 	}
+	// Minimal/UpstreamQuality (mini-task 2c): always attempted regardless
+	// of runtime_edge, so both must be present (non-nil) even on the
+	// default scenario — enabled true since MinimalRuntimeOff is false.
+	if snap.Minimal == nil || !snap.Minimal.Enabled || snap.Minimal.Data == nil {
+		t.Errorf("runtime snapshot minimal = %+v, want an enabled Gated payload", snap.Minimal)
+	}
+	if snap.UpstreamQuality == nil || !snap.UpstreamQuality.Enabled {
+		t.Errorf("runtime snapshot upstream_quality = %+v, want enabled", snap.UpstreamQuality)
+	}
 	if snap.RecentEvents != nil {
 		t.Errorf("runtime snapshot has recent_events with runtime_edge off, want omitted: %+v", snap.RecentEvents)
 	}
@@ -78,6 +87,35 @@ func TestRuntimeTopicComposite(t *testing.T) {
 	}
 	if _, ok := raw["recent_events"]; ok {
 		t.Error(`runtime snapshot JSON has a "recent_events" key with runtime_edge off, want it omitted entirely`)
+	}
+	// Unlike recent_events, minimal/upstream_quality are never omitted —
+	// they're always attempted, so the keys are always present (null on
+	// failure, per mini-task 2c's "failed sub-call -> field null" rule).
+	for _, key := range []string{"minimal", "upstream_quality"} {
+		if _, ok := raw[key]; !ok {
+			t.Errorf("runtime snapshot JSON missing key %q, want it always present", key)
+		}
+	}
+}
+
+// TestRuntimeTopicMinimalRuntimeOff covers the minimal_runtime_enabled
+// gate's effect on the two mini-task-2c fields: Minimal reports a closed
+// Gated wrapper (data omitted) and UpstreamQuality reports enabled:false,
+// matching MePoolState/MeQuality/NatStun/MeSelfTest's own existing
+// MinimalRuntimeOff behavior — none of this turns into a source_error.
+func TestRuntimeTopicMinimalRuntimeOff(t *testing.T) {
+	_, h := newTelemttestHub(t, telemttest.Scenario{MinimalRuntimeOff: true}, nil)
+	data := subscribeAndAwait(t, h, "runtime")
+
+	var snap runtimeSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("decode runtime snapshot: %v (data=%s)", err, data)
+	}
+	if snap.Minimal == nil || snap.Minimal.Enabled || snap.Minimal.Data != nil {
+		t.Errorf("runtime snapshot minimal = %+v, want a closed gate (enabled false, data nil)", snap.Minimal)
+	}
+	if snap.UpstreamQuality == nil || snap.UpstreamQuality.Enabled {
+		t.Errorf("runtime snapshot upstream_quality = %+v, want enabled false", snap.UpstreamQuality)
 	}
 }
 
