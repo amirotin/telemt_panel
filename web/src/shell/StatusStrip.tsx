@@ -1,10 +1,11 @@
 import { cn } from "../lib/cn";
-import { useStrings } from "../i18n";
+import { fill, useStrings } from "../i18n";
 import { StatePill } from "../ui/StatePill";
 import { Skeleton } from "../ui/Skeleton";
 import { useSnapshot, useConnectionState } from "../realtime";
 import type { StatsSnapshot } from "../realtime/topics";
-import { connectionsLabel, healthLabel, healthPillState } from "./StatusStrip.helpers";
+import { useHistorySeries } from "../pulse/useHistorySeries";
+import { connectionsLabel, healthLabel, healthPillState, trafficLabel } from "./StatusStrip.helpers";
 
 const DOT_CLASSES = {
   ok: "bg-ok",
@@ -24,19 +25,30 @@ export interface StatusStripProps {
 }
 
 // StatusStrip — the always-visible health/connections/traffic readout
-// (design-brief.md §Навигация: "глобальный статус-стрип"), driven entirely
-// by the SSE store's `stats` topic. Connections/traffic use the best figure
-// actually available in M3 without runtime_edge (see StatusStrip.helpers.ts);
-// traffic stays an honest «н/д» until Task 6's history-backed figure exists
-// rather than showing a number that would mean something else.
+// (design-brief.md §Навигация: "глобальный статус-стрип"), driven by the SSE
+// store's `stats` topic plus GET /api/history for traffic. Connections use
+// the best figure actually available in M3 without runtime_edge (see
+// StatusStrip.helpers.ts); traffic reuses StatRow's own 15-min history query
+// (trafficLabel/useHistorySeries) rather than the permanent «н/д» this
+// readout showed before that endpoint existed.
 export function StatusStrip({ variant = "strip", className }: StatusStripProps) {
   const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const connection = useConnectionState();
+  const trafficHistory = useHistorySeries("traffic");
   const isStale = stats.stale || connection.stale;
 
   const state = healthPillState(stats.data?.health?.status);
-  const counters = `${connectionsLabel(stats.data, s)} · ${s.shell.trafficUnavailable}`;
+  const trafficText = trafficLabel(trafficHistory.data, s);
+  const trafficDescription = fill(s.shell.trafficAriaTemplate, { value: trafficText });
+  const counters = (
+    <>
+      {connectionsLabel(stats.data, s)} ·{" "}
+      <span title={trafficDescription} aria-label={trafficDescription}>
+        {trafficText}
+      </span>
+    </>
+  );
 
   const flags = (
     <>

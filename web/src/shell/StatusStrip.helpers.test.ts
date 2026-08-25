@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { connectionsLabel, healthLabel, healthPillState } from "./StatusStrip.helpers";
+import { connectionsLabel, healthLabel, healthPillState, trafficLabel } from "./StatusStrip.helpers";
 import type { StatsSnapshot } from "../realtime/topics";
+import type { HistorySeries } from "../lib/api/generated/types.gen";
 import { ru as s } from "../i18n";
 
 describe("healthPillState", () => {
@@ -107,5 +108,23 @@ describe("connectionsLabel", () => {
       connections_summary: { enabled: false, reason: "runtime_edge disabled", data: null },
     };
     expect(connectionsLabel(data, s)).toBe("42 соед.");
+  });
+});
+
+describe("trafficLabel", () => {
+  function series(points: Array<{ ts: number; v: number }>): HistorySeries {
+    return { metric: "traffic", range: "15m", points };
+  }
+
+  it("falls back to н/д before any history has loaded", () => {
+    expect(trafficLabel(undefined, s)).toBe("н/д");
+  });
+
+  it("falls back to н/д when the 15-min ring genuinely has no points", () => {
+    expect(trafficLabel(series([]), s)).toBe("н/д");
+  });
+
+  it("formats the latest point with formatBytes — the same figure StatRow's traffic row shows", () => {
+    expect(trafficLabel(series([{ ts: 1, v: 1024 }, { ts: 2, v: 50_233 }]), s)).toBe("49 КБ");
   });
 });
