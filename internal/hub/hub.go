@@ -43,6 +43,10 @@ const (
 	// interval while its upstream fetch keeps failing.
 	maxBackoff = 60 * time.Second
 
+	// defaultPokeFloor bounds how often Poke can force an extra poll of
+	// the same topic beyond its normal interval — see Poke's doc comment.
+	defaultPokeFloor = 500 * time.Millisecond
+
 	// sourceErrorCode is the SSE source_error event's code for any fetch
 	// failure; the panel does not currently need finer-grained
 	// classification of the underlying Telemt error.
@@ -71,6 +75,10 @@ type Config struct {
 	// StatsSysInfoRefresh overrides defaultStatsSysInfoRefresh; tests set
 	// this small to observe the refresh without a real 60s wait.
 	StatsSysInfoRefresh time.Duration
+	// PokeFloor overrides defaultPokeFloor; tests set this small (or use
+	// the injectable Hub.now instead) to observe floor behavior without a
+	// real 500ms wait.
+	PokeFloor time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -103,6 +111,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.StatsSysInfoRefresh <= 0 {
 		c.StatsSysInfoRefresh = defaultStatsSysInfoRefresh
+	}
+	if c.PokeFloor <= 0 {
+		c.PokeFloor = defaultPokeFloor
 	}
 	return c
 }
@@ -147,6 +158,17 @@ type topicState struct {
 	lastData  json.RawMessage
 	lastKey   json.RawMessage
 	lastEvent Event
+
+	// wake carries Poke requests to runPoller: a buffered(1), non-blocking
+	// send so concurrent Poke calls coalesce into at most one pending
+	// forced poll. nil for topics with no poller (fetch == nil, i.e.
+	// "update").
+	wake chan struct{}
+	// lastForcedPollAt is touched only by runPoller's own goroutine (never
+	// read or written under Hub.mu, never from Poke) — safe without a lock
+	// by construction, the same way runPoller's local backoff/timer
+	// variables are. Zero value means "never forced yet".
+	lastForcedPollAt time.Time
 }
 
 // subscriber is one client's view of the hub: a buffered event channel and
@@ -184,6 +206,16 @@ type Hub struct {
 	// poll's history recording just ran" deterministically instead of
 	// polling the store with a sleep loop.
 	historyRecordedHook func()
+
+	// now is Poke's injectable clock for its floor check (defaultPokeFloor/
+	// Config.PokeFloor) — defaults to time.Now; tests substitute a fake to
+	// observe floor behavior without a real wait.
+	now func() time.Time
+	// scheduleTimer is PokeAfter's injectable one-shot scheduler — same
+	// signature and default (time.AfterFunc) as store.Memory's own
+	// scheduleTimer field; tests substitute a fake that fires synchronously
+	// or on manual trigger instead of waiting the real delay.
+	scheduleTimer func(d time.Duration, f func()) (stop func())
 }
 
 // New creates a Hub polling tc for this package's topic registry (users,
@@ -201,31 +233,41 @@ func New(cfg Config, tc *telemt.Client, st store.Store) *Hub {
 		ctx:         ctx,
 		cancel:      cancel,
 		subscribers: make(map[uint64]*subscriber),
+		now:         time.Now,
+		scheduleTimer: func(d time.Duration, f func()) func() {
+			t := time.AfterFunc(d, f)
+			return func() { t.Stop() }
+		},
 	}
 	sysInfo := &statsSysInfoRefresher{tc: tc, interval: cfg.StatsSysInfoRefresh, now: time.Now}
 	h.topics = map[string]*topicState{
 		"users": {
 			name:     "users",
+			wake:     make(chan struct{}, 1),
 			interval: cfg.UsersInterval,
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchUsers(ctx, tc) },
 		},
 		"stats": {
 			name:     "stats",
+			wake:     make(chan struct{}, 1),
 			interval: cfg.StatsInterval,
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc, sysInfo) },
 		},
 		"runtime": {
 			name:     "runtime",
+			wake:     make(chan struct{}, 1),
 			interval: cfg.RuntimeInterval,
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchRuntime(ctx, tc) },
 		},
 		"upstreams": {
 			name:     "upstreams",
+			wake:     make(chan struct{}, 1),
 			interval: cfg.UpstreamsInterval,
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchUpstreams(ctx, tc) },
 		},
 		"security": {
 			name:     "security",
+			wake:     make(chan struct{}, 1),
 			interval: cfg.SecurityInterval,
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchSecurity(ctx, tc) },
 		},
@@ -697,7 +739,11 @@ func (h *Hub) stopIfIdle(t *topicState) {
 // stop (grace-period timeout after the last unsubscribe, or Close). It
 // polls immediately on start so a first subscriber never waits a full
 // interval for its snapshot, then on t.interval, doubling the wait on
-// fetch errors up to maxBackoff and resetting it on the next success.
+// fetch errors up to maxBackoff and resetting it on the next success. A
+// Poke-triggered wake (t.wake) is handled the same way as a normal timer
+// tick, subject to the poke floor (t.lastForcedPollAt, touched only here —
+// see topicState's doc comment) — this is the only place t.fetch is ever
+// called for t, so two polls of the same topic can never run concurrently.
 func (h *Hub) runPoller(t *topicState) {
 	defer h.wg.Done()
 
@@ -705,6 +751,20 @@ func (h *Hub) runPoller(t *topicState) {
 	backoff := t.interval
 	timer := time.NewTimer(0)
 	defer timer.Stop()
+
+	// resetTimer restarts the interval timer from now, draining a pending
+	// (already-fired but unread) tick first if there is one — both
+	// select cases below just polled, so the next one is a full interval
+	// (or backoff) away regardless of which case triggered this poll.
+	resetTimer := func(d time.Duration) {
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(d)
+	}
 
 	for {
 		select {
@@ -719,7 +779,25 @@ func (h *Hub) runPoller(t *topicState) {
 					backoff = maxBackoff
 				}
 			}
-			timer.Reset(backoff)
+			resetTimer(backoff)
+		case <-t.wake:
+			if h.now().Sub(t.lastForcedPollAt) < h.cfg.PokeFloor {
+				// Another forced poll happened too recently — drop this
+				// wake rather than queue it; the data is already about as
+				// fresh as Poke could make it, and the normal interval
+				// timer above is still running unaffected.
+				continue
+			}
+			t.lastForcedPollAt = h.now()
+			if h.poll(t) {
+				backoff = t.interval
+			} else {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			resetTimer(backoff)
 		}
 	}
 }
@@ -921,6 +999,84 @@ func (h *Hub) ReplaySince(since uint64, topics []string) ([]Event, bool) {
 		out = append(out, ev)
 	}
 	return out, true
+}
+
+// Poke requests an immediate out-of-band poll of topic, ahead of its
+// normal interval — for a caller that just mutated data the topic reports
+// (a user create/patch/delete and friends; see users_handlers.go) and
+// wants subscribers to see it sooner than the next scheduled tick,
+// shortening the SSE-vs-GET-/api/snapshot staleness window a fixed poll
+// interval otherwise leaves open. The poll still goes through the normal
+// recordFetchSuccess path, so diffKey/push-on-change decides whether an
+// SSE event actually goes out — Poke only asks for an earlier check, it
+// never forces a broadcast.
+//
+//   - Unknown topic: *ErrUnknownTopic, same as Subscribe/Snapshot.
+//   - Event-driven topic (currently just "update", fetch == nil): no-op.
+//     There is no poller and no polled cache to refresh — PublishUpdate is
+//     that topic's only data source, and it already pushes synchronously.
+//   - Topic has a live poller (a subscriber is holding it, t.running):
+//     wakes runPoller via t.wake, a buffered(1) non-blocking send — a
+//     wake already pending absorbs this call for free (coalescing), and
+//     runPoller's own floor check (Config.PokeFloor, default 500ms) caps
+//     how often a wake actually triggers a fetch. Since t.fetch is only
+//     ever called from runPoller's single goroutine, this can never race
+//     with — or run concurrently alongside — that topic's normal polling.
+//   - Topic has no live poller (no subscribers, t.running false): runs a
+//     one-shot synchronous fetch (the same on-demand path Snapshot uses
+//     for an idle topic) so the next GET /api/snapshot sees fresh data
+//     immediately, rather than no-op-ing and leaving Snapshot to serve
+//     whatever was last cached (possibly nothing, for a topic no one has
+//     subscribed to yet). Narrow, accepted race: if a new subscriber
+//     starts this topic's poller in the brief window between this check
+//     and the fetch actually running, both fetches proceed independently
+//     — recordFetchSuccess is safe under concurrent callers (Hub.mu), so
+//     the only cost is one harmless duplicate Telemt round trip, not a
+//     correctness issue.
+func (h *Hub) Poke(topic string) error {
+	h.mu.Lock()
+	t, ok := h.topics[topic]
+	if !ok {
+		h.mu.Unlock()
+		return &ErrUnknownTopic{Topic: topic}
+	}
+	if t.fetch == nil {
+		h.mu.Unlock()
+		return nil
+	}
+	if !t.running {
+		h.mu.Unlock()
+		h.pollWithContext(h.ctx, t)
+		return nil
+	}
+	h.mu.Unlock()
+
+	select {
+	case t.wake <- struct{}{}:
+	default:
+		// A wake is already pending — coalesced, matching this method's
+		// doc comment.
+	}
+	return nil
+}
+
+// PokeAfter schedules a Poke(topic) call after delay via h.scheduleTimer
+// (default a real time.AfterFunc; tests substitute a fake — see Hub's
+// scheduleTimer field doc comment) instead of blocking the caller. For a
+// mutation whose effect Telemt applies asynchronously (its config-file
+// watcher, ~50ms debounce — 07-telemt-sdk.md) and whose SDK method does
+// not itself wait for that to settle, an immediate Poke would likely just
+// re-read the pre-mutation state; delaying by roughly that settle window
+// makes the forced poll actually see the change. Fire-and-forget: the
+// returned timer is never tracked or stopped (safe to fire after Close —
+// Poke on a topic with a canceled Hub.ctx just fails the fetch cleanly,
+// same as any other post-Close poll).
+func (h *Hub) PokeAfter(topic string, delay time.Duration) {
+	h.scheduleTimer(delay, func() {
+		if err := h.Poke(topic); err != nil {
+			slog.Warn("hub: delayed poke", "topic", topic, "err", err)
+		}
+	})
 }
 
 // Snapshot returns the current payload for each of topics, fetching
