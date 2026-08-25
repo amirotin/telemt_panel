@@ -1,5 +1,5 @@
 import { useSnapshot } from "../../realtime";
-import type { StatsSnapshot } from "../../realtime/topics";
+import type { StatsSnapshot, UpstreamsTopic } from "../../realtime/topics";
 import { useCaps } from "../../caps";
 import { CountBadge } from "../../ui/Chip";
 import { Skeleton } from "../../ui/Skeleton";
@@ -30,7 +30,7 @@ export function Problems({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const runtime = useSnapshot("runtime");
-  const upstreams = useSnapshot("upstreams");
+  const upstreams = useSnapshot<UpstreamsTopic>("upstreams");
   const security = useSnapshot("security");
   const caps = useCaps();
 
@@ -53,7 +53,13 @@ export function Problems({ onHide }: { onHide?: () => void }) {
     ? (Object.keys(capabilities) as Array<keyof typeof capabilities>).filter((k) => !capabilities[k])
     : [];
 
-  const items = computeProblems(stats.data, staleTopics, missingCapabilities, s);
+  const items = computeProblems(
+    stats.data,
+    staleTopics,
+    missingCapabilities,
+    upstreams.data?.dcs ?? null,
+    s,
+  );
 
   if (items.length === 0) {
     // "Nothing is wrong" is the common state on a healthy server, so it
@@ -98,6 +104,11 @@ export function Problems({ onHide }: { onHide?: () => void }) {
                 {item.detail !== undefined && !count && (
                   <span className="mt-0.5 block text-micro leading-relaxed text-text-muted">
                     {item.detail}
+                  </span>
+                )}
+                {item.hint !== undefined && (
+                  <span className="mt-0.5 block text-micro italic leading-relaxed text-text-faint">
+                    {item.hint}
                   </span>
                 )}
               </div>

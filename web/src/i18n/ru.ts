@@ -95,6 +95,11 @@ export const ru = {
     connectionsUnit: ["соед.", "соед.", "соед."],
     traffic: "Трафик",
     trafficUnavailable: "н/д",
+    // Tooltip/aria for the sidebar card's traffic figure (StatusStrip.tsx) —
+    // the value is the same 15-min /api/history figure StatRow shows, so
+    // this spells the window out for anyone who only sees the abbreviated
+    // "· 49 КБ" counter.
+    trafficAriaTemplate: "Трафик за 15 минут: {value}",
     stale: "Устарело",
     reconnecting: "Переподключение…",
     polling: "Опрос",
@@ -333,6 +338,12 @@ export const ru = {
       connectionsBad: "Плохие соединения (всего)",
       handshakeTimeouts: "Таймауты хендшейка",
       connectionsBadByClass: "Плохие соединения",
+      meDirectFallback: "Middle-proxy недоступен: трафик идёт напрямую (0 живых writer'ов)",
+      meDirectFallbackHint:
+        "Проверьте исходящий доступ к Telegram / core.telegram.org (загрузка proxy-config).",
+      meCoverageLow: "Низкое покрытие middle-proxy",
+      meCoverageLowDetail: "{alive}/{floor} писателей, покрытие {pct}%",
+      meSplitTraffic: "Часть соединений обслуживается напрямую, минуя ME",
     },
     activeSessions: {
       current: "Текущие соединения",
