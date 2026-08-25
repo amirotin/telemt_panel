@@ -1,40 +1,87 @@
 /*
- * Design tokens — RGB triplets (not hex), so every color can be used with
- * Tailwind's alpha modifier (`bg-surface/60`) via `rgb(var(--x) / <alpha-value>)`
- * in tailwind.css's @theme block. Dark is the product default (see
- * 06-ui.md); :root carries the dark palette directly, [data-theme="light"]
- * overrides it, and prefers-color-scheme handles "system" (the default
- * theme setting) when no explicit choice has been stored — see
- * src/lib/theme.ts.
+ * Design tokens — RGB triplets (not hex), so a token can also be consumed
+ * raw (`rgb(var(--avatar-1-from))` in a gradient) alongside the Tailwind
+ * utilities index.css's @theme block builds from them. Dark is the product default (06-ui.md);
+ * :root carries the dark palette directly, [data-theme="light"] overrides
+ * it, and the prefers-color-scheme block below only ever applies when the
+ * user explicitly picked «Системная» (index.html's boot script pins
+ * data-theme="dark" for every other case — see src/lib/theme.ts).
  *
- * Palette intent: a proxy/network-ops tool, not a generic admin template —
- * a cool near-black surface stack with one deliberate accent (signal blue,
- * distinct from the "ok" status green so the two never get confused) and a
- * single ok/warn/error/muted status set used everywhere (06-ui.md: v1 had
- * two parallel status vocabularies, this project has exactly one).
+ * Palette source: v2/design/"Telemt Panel Прототип.dc.html" — the approved
+ * prototype's own :root/[data-theme="light"] variables, re-expressed as
+ * triplets and extended where the app needs roles the prototype only
+ * expressed inline (accent-soft/accent-strong, avatar hues, bar colors).
+ * Where the prototype's value failed WCAG AA as text on its own surface
+ * (its light accent/ok/warn/err, both themes' "muted"), the token is
+ * darkened/lightened to reach AA and the prototype value is kept for the
+ * decorative role instead — noted per token below.
  */
 
 :root {
-  --bg: 10 12 15;
-  --surface: 17 20 24;
-  --surface-2: 25 29 34;
-  --surface-3: 34 39 46;
-  --border: 42 47 55;
-  --border-strong: 60 67 78;
+  /* Surfaces: page → panel → card → elevated. `--surface-sunken` is the
+     recessed well used inside a panel (the prototype's inspector cards sit
+     on --bg inside a --sur panel; the subscription page uses --bg2). */
+  --bg: 18 23 29; /* #12171d */
+  --surface-sunken: 14 19 25; /* #0e1319 */
+  --surface: 23 30 38; /* #171e26 */
+  --surface-2: 28 36 46; /* #1c242e */
+  --surface-3: 35 45 56; /* #232d38 — hover/active step above surface-2 */
 
-  --text: 236 238 240;
-  --text-muted: 156 164 175;
-  --text-faint: 104 112 122;
+  --border: 31 39 49; /* #1f2731 */
+  --border-strong: 42 53 66; /* #2a3542 */
 
-  --accent: 64 170 255;
-  --accent-text: 8 12 18;
+  --text: 238 243 248; /* #eef3f8 */
+  --text-muted: 143 160 176; /* #8fa0b0 — 6.7:1 on --bg */
+  /* Prototype's --mut is #5b6c7d (3.3:1) — kept only as the decorative
+     `--muted` status color below; the readable text role is lightened. */
+  --text-faint: 122 137 152; /* #7a8998 — 5.0:1 on --bg */
 
-  --ok: 52 199 110;
-  --warn: 245 176 65;
-  --error: 255 96 96;
-  --muted: 133 141 152;
+  /* Accent: `--accent` paints text, icons, bars and borders; solid button
+     fills use `--accent-strong` so white label text clears AA (white on
+     #4a9bdd is only 3.0:1). `--accent-soft` is the active-nav / soft-chip
+     wash the prototype writes inline as rgba(74,155,221,.14). */
+  --accent: 74 155 221; /* #4a9bdd */
+  --accent-strong: 43 113 174; /* #2b71ae — white on it: 5.2:1 */
+  --accent-hover: 106 183 238; /* #6ab7ee */
+  --accent-text: 255 255 255;
 
-  --focus-ring: 64 170 255;
+  /* The one status set (06-ui.md): ok | warn | error | muted. */
+  --ok: 94 201 126; /* #5ec97e */
+  --warn: 224 166 63; /* #e0a63f */
+  --error: 224 101 90; /* #e0655a */
+  --error-strong: 217 86 74; /* #d9564a — the prototype's solid "STOP" red */
+  --muted: 122 137 152; /* #7a8998 */
+
+  --focus-ring: 74 155 221;
+
+  /* Avatar hues — the prototype's five initial gradients plus a sixth
+     (rose) so the deterministic hash spreads a little further. Each is a
+     dark→light pair used as linear-gradient(135deg, from, to). */
+  --avatar-1-from: 46 92 138; /* blue    #2e5c8a → #4a9bdd */
+  --avatar-1-to: 74 155 221;
+  --avatar-2-from: 61 143 104; /* green   #3d8f68 → #5ec97e */
+  --avatar-2-to: 94 201 126;
+  --avatar-3-from: 138 107 209; /* violet #8a6bd1 → #a98ae6 */
+  --avatar-3-to: 169 138 230;
+  --avatar-4-from: 79 138 138; /* teal    #4f8a8a → #6fc7c7 */
+  --avatar-4-to: 111 199 199;
+  --avatar-5-from: 160 106 60; /* amber   #a06a3c → #d1975a */
+  --avatar-5-to: 209 151 90;
+  --avatar-6-from: 168 74 106; /* rose    #a84a6a → #e07694 */
+  --avatar-6-to: 224 118 148;
+  /* Offline / attention avatars (prototype: var(--sur2)+var(--sec), and
+     #3a2a2c + #e88 for a quota-exhausted user). */
+  --avatar-idle-bg: 28 36 46;
+  --avatar-idle-text: 143 160 176;
+  --avatar-alert-bg: 58 42 44; /* #3a2a2c */
+  --avatar-alert-text: 238 136 136; /* #ee8888 */
+
+  /* Quota / activity bars: track plus the three fill steps the prototype
+     switches between at 80% and 100%. */
+  --bar-track: 28 36 46;
+  --bar-fill: 74 155 221;
+  --bar-fill-warn: 224 166 63;
+  --bar-fill-full: 217 86 74;
 
   --font-family-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
@@ -45,53 +92,111 @@
 }
 
 [data-theme="light"] {
-  --bg: 246 247 249;
+  --bg: 243 245 248; /* #f3f5f8 */
+  --surface-sunken: 233 237 242; /* #e9edf2 */
   --surface: 255 255 255;
-  --surface-2: 241 243 246;
-  --surface-3: 231 234 238;
-  --border: 220 224 229;
-  --border-strong: 198 204 212;
+  --surface-2: 231 236 241; /* #e7ecf1 */
+  --surface-3: 219 226 234; /* #dbe2ea */
 
-  --text: 20 23 27;
-  --text-muted: 90 98 108;
-  --text-faint: 132 140 150;
+  --border: 219 226 234; /* #dbe2ea */
+  --border-strong: 196 206 218;
 
-  --accent: 24 122 214;
+  --text: 23 34 44; /* #17222c */
+  --text-muted: 84 97 111; /* #54616f — 5.8:1 on --bg (proto #5c6d7e = 4.9) */
+  --text-faint: 98 109 121; /* #626d79 — 4.8:1 on --bg (proto #93a0ad = 2.4) */
+
+  /* Prototype light accent #2f7cc0 is 4.0:1 as text on --bg; darkened to
+     clear AA both as text and as a white-on-fill button. */
+  --accent: 30 108 176; /* #1e6cb0 — 5.0:1 text, 5.5:1 with white on it */
+  --accent-strong: 30 108 176;
+  --accent-hover: 21 87 150; /* #155796 */
   --accent-text: 255 255 255;
 
-  --ok: 24 150 78;
-  --warn: 176 108 8;
-  --error: 205 45 45;
-  --muted: 110 118 128;
+  --ok: 23 122 69; /* #177a45 (proto #2c9457 = 3.5:1) */
+  --warn: 138 92 10; /* #8a5c0a (proto #ab7412 = 3.7:1) */
+  --error: 181 58 46; /* #b53a2e (proto #c74d40 = 4.2:1) */
+  --error-strong: 181 58 46;
+  --muted: 98 109 121;
 
-  --focus-ring: 24 122 214;
+  --focus-ring: 30 108 176;
+
+  /* Same six hues, darkened so white initials stay legible on light. */
+  --avatar-1-from: 36 76 118;
+  --avatar-1-to: 56 128 190;
+  --avatar-2-from: 40 112 78;
+  --avatar-2-to: 62 158 100;
+  --avatar-3-from: 104 78 168;
+  --avatar-3-to: 138 107 209;
+  --avatar-4-from: 45 108 108;
+  --avatar-4-to: 72 154 154;
+  --avatar-5-from: 132 84 42;
+  --avatar-5-to: 176 118 64;
+  --avatar-6-from: 140 56 84;
+  --avatar-6-to: 186 82 112;
+  --avatar-idle-bg: 231 236 241;
+  --avatar-idle-text: 84 97 111;
+  --avatar-alert-bg: 250 228 226;
+  --avatar-alert-text: 158 46 36;
+
+  --bar-track: 219 226 234;
+  --bar-fill: 30 108 176;
+  --bar-fill-warn: 138 92 10;
+  --bar-fill-full: 181 58 46;
 }
 
-/* "system" theme setting (src/lib/theme.ts default): no [data-theme]
-   attribute is set, so this media query is the only thing distinguishing
-   light from dark. Kept in sync field-for-field with [data-theme="light"]
-   above. */
+/* Only reached when the user explicitly chose «Системная»: index.html's
+   boot script writes data-theme="dark" for the default and for an explicit
+   dark choice, and data-theme="light" for an explicit light one, so a bare
+   :root here means "system" (theme.ts's applyTheme removes the attribute).
+   Kept in sync field-for-field with [data-theme="light"] above. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: 246 247 249;
+    --bg: 243 245 248;
+    --surface-sunken: 233 237 242;
     --surface: 255 255 255;
-    --surface-2: 241 243 246;
-    --surface-3: 231 234 238;
-    --border: 220 224 229;
-    --border-strong: 198 204 212;
+    --surface-2: 231 236 241;
+    --surface-3: 219 226 234;
 
-    --text: 20 23 27;
-    --text-muted: 90 98 108;
-    --text-faint: 132 140 150;
+    --border: 219 226 234;
+    --border-strong: 196 206 218;
 
-    --accent: 24 122 214;
+    --text: 23 34 44;
+    --text-muted: 84 97 111;
+    --text-faint: 98 109 121;
+
+    --accent: 30 108 176;
+    --accent-strong: 30 108 176;
+    --accent-hover: 21 87 150;
     --accent-text: 255 255 255;
 
-    --ok: 24 150 78;
-    --warn: 176 108 8;
-    --error: 205 45 45;
-    --muted: 110 118 128;
+    --ok: 23 122 69;
+    --warn: 138 92 10;
+    --error: 181 58 46;
+    --error-strong: 181 58 46;
+    --muted: 98 109 121;
 
-    --focus-ring: 24 122 214;
+    --focus-ring: 30 108 176;
+
+    --avatar-1-from: 36 76 118;
+    --avatar-1-to: 56 128 190;
+    --avatar-2-from: 40 112 78;
+    --avatar-2-to: 62 158 100;
+    --avatar-3-from: 104 78 168;
+    --avatar-3-to: 138 107 209;
+    --avatar-4-from: 45 108 108;
+    --avatar-4-to: 72 154 154;
+    --avatar-5-from: 132 84 42;
+    --avatar-5-to: 176 118 64;
+    --avatar-6-from: 140 56 84;
+    --avatar-6-to: 186 82 112;
+    --avatar-idle-bg: 231 236 241;
+    --avatar-idle-text: 84 97 111;
+    --avatar-alert-bg: 250 228 226;
+    --avatar-alert-text: 158 46 36;
+
+    --bar-track: 219 226 234;
+    --bar-fill: 30 108 176;
+    --bar-fill-warn: 138 92 10;
+    --bar-fill-full: 181 58 46;
   }
 }

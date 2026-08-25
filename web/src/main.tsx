@@ -10,7 +10,15 @@ import { routeTree } from "./routeTree.gen";
 import { DisplayModeProvider } from "./display-mode";
 import { SSEProvider } from "./realtime";
 import { registerServiceWorker } from "./pwa/registerSW";
+import { applyTheme, getStoredTheme } from "./lib/theme";
 import "./styles/index.css";
+
+// index.html's boot script already pinned [data-theme] before first paint;
+// this re-applies it through the same code path the toggle uses, so the
+// <meta name="theme-color"> tag is in sync from the very first render even
+// on a fresh profile (useTheme only mounts with the theme switcher, which
+// lives behind the header menu's sheet).
+applyTheme(getStoredTheme());
 
 const router = createRouter({
   routeTree,

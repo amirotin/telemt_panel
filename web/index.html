@@ -22,13 +22,19 @@
       // Applied before first paint to avoid a flash of the wrong theme —
       // src/lib/theme.ts owns this logic at runtime; this is a minimal,
       // dependency-free duplicate of just the "read + apply" half.
+      //
+      // Dark is the product default (06-ui.md), so ANY stored value other
+      // than an explicit "light"/"system" pins data-theme="dark" — leaving
+      // the attribute off would hand a first-time visitor on a light OS the
+      // light palette, which is exactly the bug the D1 design pass fixed.
       (function () {
+        var t = null;
         try {
-          var t = localStorage.getItem("telemt-panel:theme");
-          if (t === "dark" || t === "light") {
-            document.documentElement.setAttribute("data-theme", t);
-          }
+          t = localStorage.getItem("telemt-panel:theme");
         } catch (e) {}
+        if (t !== "system") {
+          document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+        }
       })();
     </script>
   </head>

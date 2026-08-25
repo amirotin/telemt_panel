@@ -2,30 +2,66 @@
 @import "./tokens.css";
 
 /* Map tokens into Tailwind's theme so utilities like `bg-surface`,
-   `text-ok/70`, `border-border` exist, with alpha support via
-   rgb(var(--x) / <alpha-value>) — Tailwind substitutes <alpha-value> for
-   opacity modifiers (`/50`) and for `1` otherwise. */
+   `text-ok/70`, `border-border` exist.
+   
+   The value is a plain `rgb(var(--x))`, NOT the v3-era
+   `rgb(var(--x))` placeholder: Tailwind v4 never
+   substitutes <alpha-value>, so that form shipped a literally invalid
+   color into every utility and the whole token palette silently did
+   nothing (the shell rendered as unstyled black-on-white — the bug the D1
+   design pass started from). v4 implements the `/50` opacity modifier
+   with color-mix() over whatever the token resolves to, so alpha still
+   works — `bg-accent/14`, `bg-ok/15` and friends are all live. */
 @theme {
-  --color-bg: rgb(var(--bg) / <alpha-value>);
-  --color-surface: rgb(var(--surface) / <alpha-value>);
-  --color-surface-2: rgb(var(--surface-2) / <alpha-value>);
-  --color-surface-3: rgb(var(--surface-3) / <alpha-value>);
-  --color-border: rgb(var(--border) / <alpha-value>);
-  --color-border-strong: rgb(var(--border-strong) / <alpha-value>);
+  --color-bg: rgb(var(--bg));
+  --color-surface-sunken: rgb(var(--surface-sunken));
+  --color-surface: rgb(var(--surface));
+  --color-surface-2: rgb(var(--surface-2));
+  --color-surface-3: rgb(var(--surface-3));
+  --color-border: rgb(var(--border));
+  --color-border-strong: rgb(var(--border-strong));
 
-  --color-text: rgb(var(--text) / <alpha-value>);
-  --color-text-muted: rgb(var(--text-muted) / <alpha-value>);
-  --color-text-faint: rgb(var(--text-faint) / <alpha-value>);
+  --color-text: rgb(var(--text));
+  --color-text-muted: rgb(var(--text-muted));
+  --color-text-faint: rgb(var(--text-faint));
 
-  --color-accent: rgb(var(--accent) / <alpha-value>);
-  --color-accent-text: rgb(var(--accent-text) / <alpha-value>);
+  --color-accent: rgb(var(--accent));
+  --color-accent-strong: rgb(var(--accent-strong));
+  --color-accent-hover: rgb(var(--accent-hover));
+  --color-accent-text: rgb(var(--accent-text));
 
-  --color-ok: rgb(var(--ok) / <alpha-value>);
-  --color-warn: rgb(var(--warn) / <alpha-value>);
-  --color-error: rgb(var(--error) / <alpha-value>);
-  --color-muted: rgb(var(--muted) / <alpha-value>);
+  --color-ok: rgb(var(--ok));
+  --color-warn: rgb(var(--warn));
+  --color-error: rgb(var(--error));
+  --color-error-strong: rgb(var(--error-strong));
+  --color-muted: rgb(var(--muted));
 
-  --color-focus-ring: rgb(var(--focus-ring) / <alpha-value>);
+  --color-bar-track: rgb(var(--bar-track));
+
+  --color-focus-ring: rgb(var(--focus-ring));
+
+  /* Radii from the prototype's card language: inputs/buttons 12px, small
+     cards 10-11px, panels/cards 14px, sheets 18-20px, pills 999px. These
+     deliberately override Tailwind's defaults so existing `rounded-lg`
+     (buttons/inputs) and `rounded-xl` (cards) call sites land on the
+     prototype's values without a repo-wide class rewrite. */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-3xl: 22px;
+
+  /* Compact meta type scale (the prototype's 11.5/12.5/13.5px steps) —
+     `text-sm`/`text-xs` stay Tailwind's 14/12px. */
+  --text-micro: 11.5px;
+  --text-micro--line-height: 1.35;
+  --text-meta: 12.5px;
+  --text-meta--line-height: 1.35;
+  --text-row: 13.5px;
+  --text-row--line-height: 1.35;
+  --text-title: 26px;
+  --text-title--line-height: 1.15;
 
   --font-sans: var(--font-family-sans);
   --font-mono: var(--font-family-mono);
@@ -50,18 +86,34 @@
   min-height: 44px;
   min-width: 44px;
 }
+/* The brand/avatar gradient direction, so the six avatar hue pairs and the
+   sidebar's "T" tile all share one angle (prototype: 135deg). */
+@utility brand-gradient {
+  background-image: linear-gradient(
+    135deg,
+    rgb(var(--avatar-1-from)),
+    rgb(var(--avatar-1-to))
+  );
+}
+
+/* Horizontally scrollable strips (the People chip row on a phone) keep the
+   scroll without the 6px bar cutting into a 34px chip. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 @layer base {
   * {
     border-color: rgb(var(--border));
   }
 
-  /* "system" (no [data-theme] — see src/lib/theme.ts's applyTheme): let
-     native form controls/scrollbars follow the OS preference directly
-     rather than hard-coding dark, matching tokens.css's own
-     prefers-color-scheme block for the custom palette. An explicit choice
-     ([data-theme="dark"|"light"]) pins color-scheme the same way it pins
-     the tokens. */
+  /* index.html pins [data-theme] for dark (the default) and light; only an
+     explicit «Системная» choice leaves the attribute off, so a bare html
+     element is exactly the "follow the OS" case. */
   html {
     color-scheme: light dark;
   }
@@ -98,5 +150,20 @@
   :focus-visible {
     outline: 2px solid rgb(var(--focus-ring));
     outline-offset: 2px;
+  }
+
+  /* Thin, themed scrollbars — the prototype's own (a 6px thumb on a
+     transparent track); without this the browser paints a light-mode
+     scrollbar strip down the middle of every dark panel. */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--border-strong));
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
