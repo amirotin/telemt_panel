@@ -9,8 +9,14 @@
     <meta name="color-scheme" content="dark light" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Telemt Panel" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <!-- iOS Safari's "add to home screen" ignores rel="icon"/the manifest's
+         SVG entries entirely and needs a real PNG apple-touch-icon (Task 4's
+         carried "SVG-only manifest icons" gap) — generated from icon.svg by
+         scripts/generate-icons.mjs. -->
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <title>Telemt Panel</title>
     <script>
       // Applied before first paint to avoid a flash of the wrong theme —
