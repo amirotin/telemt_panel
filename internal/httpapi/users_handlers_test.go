@@ -272,6 +272,15 @@ func (f *fakeTelemt) handleResetQuotaLocked(w http.ResponseWriter, username stri
 		writeTelemtErrBody(w, *f.resetQuotaErr)
 		return
 	}
+	// Zero the stored entry's UsedBytes if one exists, mirroring real
+	// Telemt so a subsequent GET /v1/stats/users/quota actually reflects
+	// the reset (mini-task 2b's poke test depends on this producing an
+	// observable change) — DataQuotaBytes is left untouched, same as the
+	// SDK's own ResetQuota doc comment describes for the response value.
+	if q, ok := f.quota[username]; ok {
+		q.UsedBytes = 0
+		f.quota[username] = q
+	}
 	writeEnvelope(w, http.StatusOK, struct {
 		Username           string `json:"username"`
 		UsedBytes          uint64 `json:"used_bytes"`
