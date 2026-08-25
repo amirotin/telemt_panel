@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -357,3 +358,66 @@ func TestHandleTelemtRestart_ManualRestartRequired(t *testing.T) {
 		t.Error("runner was called despite CanRestart=false")
 	}
 }
+
+// TestWriteTelemtConfigError_Mapping is a table-driven unit test on
+// writeTelemtConfigError itself (fix round 1, finding 2): telemttest can't
+// produce most of these codes (the 422-mapped ones aren't reachable through
+// any real PATCH /v1/config flow the fake models), so this calls the
+// mapper directly with synthetic *telemt.APIError values instead of going
+// through the full HTTP stack.
+func TestWriteTelemtConfigError_Mapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        *telemt.APIError
+		wantStatus int
+		wantCode   string
+	}{
+		{"access_not_editable", &telemt.APIError{Status: http.StatusBadRequest, Code: "access_not_editable", Message: "nope"}, http.StatusUnprocessableEntity, "access_not_editable"},
+		{"section_not_editable", &telemt.APIError{Status: http.StatusBadRequest, Code: "section_not_editable", Message: "nope"}, http.StatusUnprocessableEntity, "section_not_editable"},
+		{"field_not_editable", &telemt.APIError{Status: http.StatusBadRequest, Code: "field_not_editable", Message: "nope"}, http.StatusUnprocessableEntity, "field_not_editable"},
+		{"config_patch_not_atomic", &telemt.APIError{Status: http.StatusBadRequest, Code: "config_patch_not_atomic", Message: "nope"}, http.StatusUnprocessableEntity, "config_patch_not_atomic"},
+		{"ambiguous_listeners", &telemt.APIError{Status: http.StatusBadRequest, Code: "ambiguous_listeners", Message: "nope"}, http.StatusUnprocessableEntity, "ambiguous_listeners"},
+		// Everything below is unaffected by the 422 remapping — passed
+		// through to the shared writeTelemtError, asserting its actual
+		// existing convention (not a new one this handler introduces).
+		{"revision_conflict passthrough", &telemt.APIError{Status: http.StatusConflict, Code: "revision_conflict", Message: "stale"}, http.StatusConflict, "revision_conflict"},
+		{"read_only", &telemt.APIError{Status: http.StatusForbidden, Code: "read_only", Message: "ro"}, http.StatusForbidden, "read_only"},
+		{"payload_too_large passthrough", &telemt.APIError{Status: http.StatusRequestEntityTooLarge, Code: "payload_too_large", Message: "too big"}, http.StatusRequestEntityTooLarge, "payload_too_large"},
+		{"5xx maps to telemt_unreachable", &telemt.APIError{Status: http.StatusInternalServerError, Code: "internal_error", Message: "boom"}, http.StatusBadGateway, "telemt_unreachable"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			writeTelemtConfigError(w, tc.err)
+			if w.Code != tc.wantStatus {
+				t.Errorf("status = %d, want %d: %s", w.Code, tc.wantStatus, w.Body)
+			}
+			var got struct{ Code string }
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if got.Code != tc.wantCode {
+				t.Errorf("code = %q, want %q", got.Code, tc.wantCode)
+			}
+		})
+	}
+}
+
+// TestWriteTelemtConfigError_NonAPIErrorIsUnreachable covers the
+// not-a-*telemt.APIError path (a plain transport failure) — must still map
+// to the standard telemt_unreachable envelope, not panic on a nil type
+// assertion.
+func TestWriteTelemtConfigError_NonAPIErrorIsUnreachable(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeTelemtConfigError(w, errPlainTransportFailure)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502: %s", w.Code, w.Body)
+	}
+	var got struct{ Code string }
+	json.Unmarshal(w.Body.Bytes(), &got)
+	if got.Code != "telemt_unreachable" {
+		t.Errorf("code = %q, want telemt_unreachable", got.Code)
+	}
+}
+
+var errPlainTransportFailure = fmt.Errorf("dial tcp: connection refused")
