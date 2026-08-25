@@ -47,7 +47,26 @@ export function JournalPage() {
         </button>
       </div>
 
-      {tab === "logs" ? <LogsTab /> : <EventsTab />}
+      {/*
+        Both tabs stay mounted at all times, toggled via the native `hidden`
+        attribute rather than a conditional render — LogsTab owns a live SSE
+        stream (useLogStream) plus the in-memory ring/pause/filter state
+        (journalReducer), all of which unmounting-and-remounting on every
+        tab switch would silently drop: switching to «События» and back used
+        to reopen a brand-new EventSource and reset the ring to empty. Each
+        of LogsTab/EventsTab is still only ever mounted once for the
+        JournalPage's lifetime (one `useEffect([service])` run in
+        useLogStream), so this can't create a second concurrent
+        EventSource — see LogList.test.tsx's sibling
+        `useLogStream.test.tsx` for the one-EventSource-per-mount guarantee
+        this relies on.
+      */}
+      <div hidden={tab !== "logs"}>
+        <LogsTab />
+      </div>
+      <div hidden={tab !== "events"}>
+        <EventsTab />
+      </div>
     </div>
   );
 }
