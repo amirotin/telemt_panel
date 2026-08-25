@@ -165,6 +165,7 @@ func get[T any](ctx context.Context, c *Client, path string) (T, error) {
 	if err := json.Unmarshal(data, &out); err != nil {
 		return out, fmt.Errorf("telemt: decode %s: %w", path, err)
 	}
+	normalizeSlices(&out)
 	return out, nil
 }
 
@@ -191,6 +192,7 @@ func getRevision[T any](ctx context.Context, c *Client, path string) (T, string,
 	if err := json.Unmarshal(data, &out); err != nil {
 		return out, "", fmt.Errorf("telemt: decode %s: %w", path, err)
 	}
+	normalizeSlices(&out)
 	return out, revision, nil
 }
 
@@ -204,11 +206,13 @@ func mutateRevision[T any](ctx context.Context, c *Client, method, path string, 
 		return out, "", err
 	}
 	if len(data) == 0 {
+		normalizeSlices(&out)
 		return out, respRevision, nil
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
 		return out, "", fmt.Errorf("telemt: decode %s: %w", path, err)
 	}
+	normalizeSlices(&out)
 	return out, respRevision, nil
 }
 

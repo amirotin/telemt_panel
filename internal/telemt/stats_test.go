@@ -57,8 +57,14 @@ func TestUpstreamsDisabledStillHasZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Enabled || got.Summary != nil || got.Upstreams != nil {
+	if got.Enabled || got.Summary != nil {
 		t.Errorf("upstreams = %+v", got)
+	}
+	// Upstreams is a genuine JSON array field (unlike Summary, an optional
+	// pointer): normalizeSlices turns its omitted-field nil into a non-nil
+	// empty slice — "arrays are always [], never null".
+	if got.Upstreams == nil || len(got.Upstreams) != 0 {
+		t.Errorf("Upstreams = %#v, want non-nil empty", got.Upstreams)
 	}
 }
 

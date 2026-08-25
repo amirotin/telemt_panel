@@ -115,8 +115,11 @@ func TestReloadStatus(t *testing.T) {
 	if status.State != ReloadPhaseSucceeded || status.StartedAtEpochSecs == nil || *status.StartedAtEpochSecs != 5001 {
 		t.Errorf("status = %+v", status)
 	}
-	if status.Warnings != nil {
-		t.Errorf("warnings = %+v, want nil (omitted field)", status.Warnings)
+	// Warnings is a genuine JSON array field: normalizeSlices turns its
+	// omitted-field nil into a non-nil empty slice — "arrays are always
+	// [], never null" — rather than leaving it nil.
+	if status.Warnings == nil || len(status.Warnings) != 0 {
+		t.Errorf("warnings = %#v, want non-nil empty", status.Warnings)
 	}
 }
 

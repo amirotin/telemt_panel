@@ -134,8 +134,16 @@ func TestStatsSummaryOmitsByClassOnOldBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.ConnectionsBadByClass != nil || s.HandshakeFailuresByClass != nil {
-		t.Errorf("expected nil by-class slices on old build, got %+v / %+v", s.ConnectionsBadByClass, s.HandshakeFailuresByClass)
+	// normalizeSlices (normalize.go) turns the omitted-field nil slice
+	// into a non-nil empty one — the panel's output contract is "arrays
+	// are always [], never null" — so this now asserts emptiness (the
+	// meaningful part of "old build didn't send these") rather than
+	// literal Go nilness.
+	if s.ConnectionsBadByClass == nil || len(s.ConnectionsBadByClass) != 0 {
+		t.Errorf("ConnectionsBadByClass = %#v, want non-nil empty", s.ConnectionsBadByClass)
+	}
+	if s.HandshakeFailuresByClass == nil || len(s.HandshakeFailuresByClass) != 0 {
+		t.Errorf("HandshakeFailuresByClass = %#v, want non-nil empty", s.HandshakeFailuresByClass)
 	}
 }
 
