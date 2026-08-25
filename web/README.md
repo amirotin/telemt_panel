@@ -86,9 +86,14 @@ Tailwind v4, hey-api, vitest) plus:
 
 - **qrcode** (+ `@types/qrcode`) — local QR generation for the QR primitive, no
   CDN/network, explicitly approved in the task brief.
-- **js-yaml** — used only by `scripts/filter-openapi.mjs` (dev-time codegen
-  input, not shipped); pinned via `overrides` to 4.3.1 to clear a transitive
-  advisory in `@hey-api/openapi-ts`'s own dependency without downgrading it.
+- **js-yaml** — used by `scripts/filter-openapi.mjs` (dev-time codegen input,
+  not shipped) and, since Task 4's fix round 1, `src/i18n/ru.test.ts` (parses
+  `../api/openapi.yaml`'s `Error.code` enum directly rather than
+  hand-maintaining a second copy of the code list — see that test's own
+  comment); no new package needed, just an ambient `src/types/js-yaml.d.ts`
+  since neither js-yaml nor `@types/js-yaml` ships types. Pinned via
+  `overrides` to 4.3.1 to clear a transitive advisory in
+  `@hey-api/openapi-ts`'s own dependency without downgrading it.
 - **@eslint/js**, **globals**, **typescript-eslint**, **eslint-plugin-react-hooks**,
   **eslint-plugin-react-refresh** — standard ESLint flat-config wiring, no
   Prettier (see `eslint.config.js`'s comment).

@@ -1,55 +1,39 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { errorMessage, errorMessages } from "./ru";
 
-// Every {code} api/openapi.yaml's Error schema documents (its `code`
-// property description — grepped from every panel WriteError call site
-// plus every Telemt *APIError code passed through verbatim) must have a
-// human message here. This list is maintained by hand in step with that
-// prose description (it isn't a structured enum in the YAML, so there's
-// nothing machine-parseable to diff against) — see task-4-report.md for how
-// it was extracted.
-const OPENAPI_ERROR_CODES = [
-  "bad_request",
-  "invalid_credentials",
-  "rate_limited",
-  "session_expired",
-  "csrf_rejected",
-  "internal_error",
-  "not_found",
-  "telemt_unreachable",
-  "capability_absent",
-  "capability_unavailable",
-  "manual_restart_required",
-  "update_locked",
-  "sublink_unavailable",
-  "log_tail_unavailable",
-  "log_stream_unavailable",
-  "log_source_error",
-  "totp_required",
-  "telemt_auth_failed",
-  "user_exists",
-  "last_user_forbidden",
-  "read_only",
-  "revision_conflict",
-  "reload_in_progress",
-  "reload_not_found",
-  "ambiguous_listeners",
-  "bad_request",
-  "access_not_editable",
-  "section_not_editable",
-  "field_not_editable",
-  "unauthorized",
-  "forbidden",
-  "method_not_allowed",
-  "config_patch_not_atomic",
-  "payload_too_large",
-  "api_disabled",
-  "maestro_unavailable",
-];
+// Parses api/openapi.yaml directly (js-yaml — already a devDependency for
+// scripts/filter-openapi.mjs, so this adds zero new npm packages; see
+// task-4-report.md's "Fix round 1" section) rather than hand-maintaining a
+// second copy of the code list here, which is exactly the drift risk this
+// replaces: api/openapi.yaml's Error.code is now a proper `enum:` (docs(api)
+// change, Fix round 1 item 5), so this test is the single source of truth
+// walking the real contract instead of a string a human has to remember to
+// update in lockstep.
+function documentedErrorCodes(): string[] {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const openapiPath = path.join(here, "..", "..", "..", "api", "openapi.yaml");
+  const doc = yaml.load(readFileSync(openapiPath, "utf8"));
+  const codes = (
+    doc as {
+      components?: { schemas?: { Error?: { properties?: { code?: { enum?: unknown } } } } };
+    }
+  ).components?.schemas?.Error?.properties?.code?.enum;
+  if (!Array.isArray(codes) || codes.length === 0) {
+    throw new Error("openapi.yaml: components.schemas.Error.properties.code.enum is missing/empty");
+  }
+  return codes.map((c) => {
+    if (typeof c !== "string") throw new Error(`non-string error code in openapi.yaml enum: ${String(c)}`);
+    return c;
+  });
+}
 
 describe("errorMessages completeness", () => {
-  it("has a non-empty Russian message for every documented openapi error code", () => {
-    for (const code of OPENAPI_ERROR_CODES) {
+  it("has a non-empty Russian message for every code in openapi.yaml's Error.code enum", () => {
+    for (const code of documentedErrorCodes()) {
       expect(errorMessages[code], `missing message for code "${code}"`).toBeTruthy();
     }
   });

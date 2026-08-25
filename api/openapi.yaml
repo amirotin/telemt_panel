@@ -715,6 +715,42 @@ components:
       properties:
         code:
           type: string
+          enum:
+            - bad_request
+            - invalid_credentials
+            - rate_limited
+            - session_expired
+            - csrf_rejected
+            - internal_error
+            - not_found
+            - telemt_unreachable
+            - capability_absent
+            - capability_unavailable
+            - manual_restart_required
+            - update_locked
+            - sublink_unavailable
+            - log_tail_unavailable
+            - log_stream_unavailable
+            - log_source_error
+            - totp_required
+            - telemt_auth_failed
+            - user_exists
+            - last_user_forbidden
+            - read_only
+            - revision_conflict
+            - reload_in_progress
+            - reload_not_found
+            - ambiguous_listeners
+            - access_not_editable
+            - section_not_editable
+            - field_not_editable
+            - unauthorized
+            - forbidden
+            - method_not_allowed
+            - config_patch_not_atomic
+            - payload_too_large
+            - api_disabled
+            - maestro_unavailable
           description: >
             Machine code. Panel codes actually emitted today (grepped from every
             WriteError call site): bad_request, invalid_credentials, rate_limited,
