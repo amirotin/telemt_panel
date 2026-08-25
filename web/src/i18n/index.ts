@@ -38,3 +38,4 @@ export {
 export { auditActionLabel, errorMessage, isKnownAuditAction } from "./messages";
 export { ru } from "./ru";
 export { en } from "./en";
+export { LanguageToggle } from "./LanguageToggle";

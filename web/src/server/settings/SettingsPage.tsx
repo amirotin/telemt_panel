@@ -13,6 +13,7 @@ import { IconDevice } from "../../ui/icons";
 import { pushToast } from "../../ui/Toast";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { ThemeToggle } from "../../components/ThemeToggle";
+import { LanguageToggle } from "../../i18n";
 import { DisplayModeSwitch, useDisplayMode, visibleFor } from "../../display-mode";
 import { useLogout } from "../../auth/useLogout";
 import { resetLayout } from "../../pulse/layout";
@@ -193,6 +194,7 @@ export function SettingsPage() {
 
       <Card className="flex flex-col gap-4">
         <CardTitle>{s.server.settings.displayTitle}</CardTitle>
+        <LanguageToggle />
         <ThemeToggle />
         <div className="flex flex-col gap-2">
           <SectionLabel>{s.displayMode.label}</SectionLabel>
