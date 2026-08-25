@@ -1,27 +1,45 @@
+import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { formatBytes } from "../lib/format";
+import { quotaFillClass } from "./quota.helpers";
+
+export type QuotaBarSize = "sm" | "md";
 
 export interface QuotaBarProps {
   usedBytes: number;
   /** null/undefined limit means unlimited — renders a filled, non-warning bar. */
   limitBytes?: number | null;
+  /** "sm" is the 4px hairline under a People row; "md" (default) is 6px. */
+  size?: QuotaBarSize;
+  /** Hide the "used / limit" caption — the row variant carries it in its own meta line. */
+  showLabel?: boolean;
+  /** Replace the default "used / limit" caption (e.g. the inspector's «12,4 из 50 ГБ»). */
+  label?: ReactNode;
   className?: string;
 }
+
+const TRACK_HEIGHT: Record<QuotaBarSize, string> = { sm: "h-1", md: "h-1.5" };
 
 // QuotaBar — user traffic quota (used/limit), the People list/detail's
 // core visual. Unlimited quotas (limitBytes null) show a filled accent bar
 // with no warning color, since there's no threshold to warn about.
-export function QuotaBar({ usedBytes, limitBytes, className }: QuotaBarProps) {
+export function QuotaBar({
+  usedBytes,
+  limitBytes,
+  size = "md",
+  showLabel = true,
+  label,
+  className,
+}: QuotaBarProps) {
   const limit = limitBytes ?? null;
-  const ratio = limit === null || limit <= 0 ? 1 : Math.min(1, usedBytes / limit);
-  const barColor =
-    limit === null ? "bg-accent" : ratio >= 1 ? "bg-error" : ratio >= 0.85 ? "bg-warn" : "bg-accent";
+  const unlimited = limit === null || limit <= 0;
+  const ratio = unlimited ? 1 : Math.min(1, usedBytes / limit);
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-surface-3">
+    <div className={cn("flex w-full flex-col gap-1.5", className)}>
+      <div className={cn("w-full overflow-hidden rounded-full bg-bar-track", TRACK_HEIGHT[size])}>
         <div
-          className={cn("h-full rounded-full transition-[width]", barColor)}
+          className={cn("h-full rounded-full transition-[width]", quotaFillClass(ratio, unlimited))}
           style={{ width: `${ratio * 100}%` }}
           role="progressbar"
           aria-valuenow={Math.round(ratio * 100)}
@@ -29,9 +47,11 @@ export function QuotaBar({ usedBytes, limitBytes, className }: QuotaBarProps) {
           aria-valuemax={100}
         />
       </div>
-      <span className="text-xs tabular-nums text-text-muted">
-        {formatBytes(usedBytes)} / {limit === null ? "∞" : formatBytes(limit)}
-      </span>
+      {showLabel && (
+        <span className="text-meta tabular-nums text-text-muted">
+          {label ?? `${formatBytes(usedBytes)} / ${limit === null ? "∞" : formatBytes(limit)}`}
+        </span>
+      )}
     </div>
   );
 }

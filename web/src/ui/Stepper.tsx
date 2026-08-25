@@ -1,6 +1,7 @@
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { IconButton } from "./IconButton";
+import { IconMinus, IconPlus } from "./icons";
 
 export interface StepperProps {
   value: number;
@@ -39,7 +40,7 @@ export function Stepper({
         onClick={dec}
         disabled={value <= min}
       >
-        −
+        <IconMinus />
       </IconButton>
       <span className="w-12 text-center text-base tabular-nums text-text">{value}</span>
       <IconButton
@@ -48,7 +49,7 @@ export function Stepper({
         onClick={inc}
         disabled={value >= max}
       >
-        +
+        <IconPlus />
       </IconButton>
     </div>
   );

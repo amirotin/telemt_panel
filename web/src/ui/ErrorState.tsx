@@ -15,7 +15,7 @@ export function ErrorState({ message, onRetry, className }: ErrorStateProps) {
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-3 rounded-xl border border-error/30 bg-error/5 px-6 py-8 text-center",
+        "flex flex-col items-center gap-3 rounded-xl border border-error/25 bg-error/8 px-6 py-8 text-center",
         className,
       )}
     >

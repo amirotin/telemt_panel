@@ -15,7 +15,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     <select
       ref={ref}
       className={cn(
-        "h-11 w-full rounded-lg border border-border bg-surface px-3 text-base text-text",
+        "h-11 w-full rounded-lg border border-border bg-surface-2 px-3.5 text-base text-text",
         "focus-visible:border-accent",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className,

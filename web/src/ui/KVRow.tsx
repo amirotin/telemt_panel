@@ -19,10 +19,10 @@ export function KVRow({ label, value, monospace, className }: KVRowProps) {
         className,
       )}
     >
-      <span className="shrink-0 text-sm text-text-muted">{label}</span>
+      <span className="shrink-0 text-meta text-text-muted">{label}</span>
       <span
         className={cn(
-          "truncate text-right text-sm tabular-nums text-text",
+          "truncate text-right text-row tabular-nums text-text",
           monospace && "font-mono",
         )}
       >

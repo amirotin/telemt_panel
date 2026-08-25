@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from "react";
 import {
+  Avatar,
   Button,
+  Chip,
+  CountBadge,
   IconButton,
   Input,
   Select,
@@ -16,6 +19,10 @@ import {
   Skeleton,
   EmptyState,
   ErrorState,
+  IconPlus,
+  IconServer,
+  IconSort,
+  IconStar,
 } from "../ui";
 import { pushToast, ToastViewport } from "../ui/Toast";
 import { ru } from "../i18n/ru";
@@ -43,17 +50,60 @@ export function UIShowcase() {
             Disabled
           </Button>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm">Small primary</Button>
+          <Button size="sm" variant="secondary">
+            Small secondary
+          </Button>
+          <Button size="sm" variant="danger">
+            Small danger
+          </Button>
+        </div>
       </Section>
 
       <Section title="IconButton">
         <div className="flex gap-2">
-          <IconButton aria-label="Пример">★</IconButton>
+          <IconButton aria-label="Пример">
+            <IconStar />
+          </IconButton>
           <IconButton aria-label="Пример solid" variant="solid">
-            ★
+            <IconServer />
+          </IconButton>
+          <IconButton aria-label="Пример accent" variant="accent">
+            <IconPlus />
           </IconButton>
           <IconButton aria-label="Пример disabled" disabled>
-            ★
+            <IconStar />
           </IconButton>
+        </div>
+      </Section>
+
+      <Section title="Chip / CountBadge">
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip active count={1234}>
+            Все
+          </Chip>
+          <Chip count={51}>Онлайн</Chip>
+          <Chip count={99}>Проблемы</Chip>
+          <Chip icon={<IconSort className="h-3 w-3" />}>Активность</Chip>
+        </div>
+        <div className="flex items-center gap-2">
+          <CountBadge>3</CountBadge>
+          <CountBadge tone="error">стоп</CountBadge>
+          <CountBadge tone="warn">срок</CountBadge>
+          <CountBadge tone="muted">выкл</CountBadge>
+        </div>
+      </Section>
+
+      <Section title="Avatar">
+        <div className="flex flex-wrap items-center gap-3">
+          {["marat", "lena", "work_backup", "family_pro", "olga_home", "kirill_tv_32"].map((n) => (
+            <Avatar key={n} name={n} online />
+          ))}
+          <Avatar name="offline_user" tone="idle" />
+          <Avatar name="over_quota" tone="alert" />
+          <Avatar name="small" size="sm" online />
+          <Avatar name="medium" size="md" />
         </div>
       </Section>
 
@@ -114,7 +164,7 @@ export function UIShowcase() {
       </Section>
 
       <Section title="KVRow">
-        <div className="max-w-sm rounded-xl border border-border bg-surface p-3">
+        <div className="max-w-sm rounded-xl bg-surface px-3.5">
           <KVRow label="Версия" value="2.0.0-draft1" />
           <KVRow label="Секрет" value="a1b2c3d4e5f6" monospace />
         </div>

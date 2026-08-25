@@ -16,13 +16,13 @@ export function StatCard({ label, value, delta, sparkline, className }: StatCard
   return (
     <div
       className={cn(
-        "flex flex-col gap-1 rounded-xl border border-border bg-surface p-4",
+        "flex flex-col gap-1 rounded-xl bg-surface p-4",
         className,
       )}
     >
-      <span className="text-xs text-text-muted">{label}</span>
+      <span className="text-meta text-text-muted">{label}</span>
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tabular-nums text-text">{value}</span>
+        <span className="text-2xl font-bold tabular-nums text-text">{value}</span>
         {delta !== undefined && (
           <span className="text-xs tabular-nums text-text-muted">{delta}</span>
         )}

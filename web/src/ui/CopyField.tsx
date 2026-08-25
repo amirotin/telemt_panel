@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { IconButton } from "./IconButton";
+import { IconCheck, IconCopy } from "./icons";
 import { copyText } from "../lib/copyText";
 import { pushToast } from "./Toast";
 
@@ -51,17 +52,21 @@ export function CopyField({ value, label, className, "data-testid": testId }: Co
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      {label && <span className="text-xs text-text-muted">{label}</span>}
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+      {label && <span className="text-micro font-medium uppercase tracking-[0.06em] text-text-faint">{label}</span>}
+      <div className="flex items-center gap-2 rounded-lg bg-surface-2 px-3 py-1.5">
         <span
           ref={valueRef}
           data-testid={testId}
-          className="min-w-0 flex-1 truncate font-mono text-sm text-text"
+          className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-text"
         >
           {value}
         </span>
-        <IconButton aria-label={copied ? ru.common.copied : ru.common.copy} onClick={copy}>
-          {copied ? "✓" : "⧉"}
+        <IconButton
+          aria-label={copied ? ru.common.copied : ru.common.copy}
+          onClick={copy}
+          className={copied ? "text-ok" : undefined}
+        >
+          {copied ? <IconCheck /> : <IconCopy />}
         </IconButton>
       </div>
     </div>

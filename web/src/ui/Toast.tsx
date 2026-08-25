@@ -70,7 +70,7 @@ export function ToastViewport() {
         <div
           key={t.id}
           className={cn(
-            "pointer-events-auto w-full max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg",
+            "pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-3 text-[13px] font-medium shadow-xl",
             variantClasses[t.variant],
           )}
         >

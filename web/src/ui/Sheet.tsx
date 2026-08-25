@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { IconButton } from "./IconButton";
+import { IconClose } from "./icons";
 
 export interface SheetProps {
   open: boolean;
@@ -79,15 +80,23 @@ export function Sheet({ open, onClose, title, children, className }: SheetProps)
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "relative flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-surface pb-safe",
-          "lg:max-w-lg lg:rounded-2xl lg:pb-0",
+          "relative flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-surface pb-safe shadow-2xl",
+          "lg:max-w-lg lg:rounded-3xl lg:pb-0",
           className,
         )}
       >
+        {/* Grabber — the prototype's bottom-sheet affordance; purely
+            decorative (the sheet is dismissed by the backdrop, Escape or
+            the close button), so it is hidden from the a11y tree and from
+            the centered `lg:` modal. */}
+        <div
+          className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-muted/40 lg:hidden"
+          aria-hidden="true"
+        />
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-base font-semibold text-text">{title}</h2>
+          <h2 className="text-[15px] font-bold text-text">{title}</h2>
           <IconButton aria-label={ru.common.close} onClick={onClose}>
-            ✕
+            <IconClose />
           </IconButton>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{children}</div>
