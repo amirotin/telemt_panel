@@ -8,13 +8,18 @@
 // `users`/`runtime`/`upstreams`/`security`/`update` as their widgets need
 // them, rather than each hand-rolling its own copy.
 
-// Gated mirrors Telemt's generic Gated[T] wrapper (07-telemt-sdk.md):
-// `data` is explicitly null when the gate is off, never omitted.
+// Gated mirrors Telemt's generic Gated[T] wrapper (07-telemt-sdk.md).
+// internal/telemt.Gated's Go field is `Data *T `json:"data,omitempty"`` —
+// the key is OMITTED entirely when the gate is off (Go's omitempty on a nil
+// pointer), never sent as an explicit JSON null. `data?` here matches that:
+// every consumer must treat `undefined` and `null` the same (both mean "no
+// data"), which resolveGated (pulse/widgets/gated.ts) already does via its
+// falsy `!gated.data` check.
 export interface Gated<T> {
   enabled: boolean;
   reason?: string;
   generated_at_epoch_secs?: number;
-  data: T | null;
+  data?: T | null;
 }
 
 export interface StatsHealth {

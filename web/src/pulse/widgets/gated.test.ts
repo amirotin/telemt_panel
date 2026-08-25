@@ -30,4 +30,22 @@ describe("resolveGated", () => {
       data: { x: 1 },
     });
   });
+
+  // F5 (closing fix wave): Telemt's actual wire behavior OMITS `data`
+  // entirely when the gate is off (Go's `json:"data,omitempty"` on a nil
+  // pointer) rather than sending an explicit null — resolveGated must
+  // treat both shapes identically since either can arrive over the wire.
+  it("treats an omitted data key the same as an explicit null, gate off", () => {
+    const omitted = resolveGated({ enabled: false, reason: "off", generated_at_epoch_secs: 0 });
+    const explicitNull = resolveGated({ enabled: false, reason: "off", generated_at_epoch_secs: 0, data: null });
+    expect(omitted).toEqual(explicitNull);
+    expect(omitted).toEqual({ status: "gated", reason: "off" });
+  });
+
+  it("treats an omitted data key the same as an explicit null, gate on but no payload yet", () => {
+    const omitted = resolveGated({ enabled: true, generated_at_epoch_secs: 0 });
+    const explicitNull = resolveGated({ enabled: true, generated_at_epoch_secs: 0, data: null });
+    expect(omitted).toEqual(explicitNull);
+    expect(omitted).toEqual({ status: "gated", reason: undefined });
+  });
 });
