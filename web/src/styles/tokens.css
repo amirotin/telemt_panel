@@ -32,9 +32,11 @@
 
   --text: 238 243 248; /* #eef3f8 */
   --text-muted: 143 160 176; /* #8fa0b0 — 6.7:1 on --bg */
-  /* Prototype's --mut is #5b6c7d (3.3:1) — kept only as the decorative
-     `--muted` status color below; the readable text role is lightened. */
-  --text-faint: 122 137 152; /* #7a8998 — 5.0:1 on --bg */
+  /* Prototype's --mut is #5b6c7d (3.3:1). Lightened until it clears AA on
+     the DARKEST surface it is ever painted on — --surface-2, which carries
+     input placeholders and the muted CountBadge: 4.78:1 there, 5.13:1 on
+     --surface, 5.50:1 on --bg. */
+  --text-faint: 128 144 160; /* #8090a0 */
 
   /* Accent: `--accent` paints text, icons, bars and borders; solid button
      fills use `--accent-strong` so white label text clears AA (white on
@@ -50,7 +52,7 @@
   --warn: 224 166 63; /* #e0a63f */
   --error: 224 101 90; /* #e0655a */
   --error-strong: 217 86 74; /* #d9564a — the prototype's solid "STOP" red */
-  --muted: 122 137 152; /* #7a8998 */
+  --muted: 128 144 160; /* #8090a0 — kept in step with --text-faint */
 
   --focus-ring: 74 155 221;
 
@@ -103,7 +105,7 @@
 
   --text: 23 34 44; /* #17222c */
   --text-muted: 84 97 111; /* #54616f — 5.8:1 on --bg (proto #5c6d7e = 4.9) */
-  --text-faint: 98 109 121; /* #626d79 — 4.8:1 on --bg (proto #93a0ad = 2.4) */
+  --text-faint: 93 104 115; /* #5d6873 — 4.78:1 on --surface-2, 5.69:1 on --surface */
 
   /* Prototype light accent #2f7cc0 is 4.0:1 as text on --bg; darkened to
      clear AA both as text and as a white-on-fill button. */
@@ -116,7 +118,7 @@
   --warn: 138 92 10; /* #8a5c0a (proto #ab7412 = 3.7:1) */
   --error: 181 58 46; /* #b53a2e (proto #c74d40 = 4.2:1) */
   --error-strong: 181 58 46;
-  --muted: 98 109 121;
+  --muted: 93 104 115;
 
   --focus-ring: 30 108 176;
 
@@ -162,7 +164,7 @@
 
     --text: 23 34 44;
     --text-muted: 84 97 111;
-    --text-faint: 98 109 121;
+    --text-faint: 93 104 115;
 
     --accent: 30 108 176;
     --accent-strong: 30 108 176;
@@ -173,7 +175,7 @@
     --warn: 138 92 10;
     --error: 181 58 46;
     --error-strong: 181 58 46;
-    --muted: 98 109 121;
+    --muted: 93 104 115;
 
     --focus-ring: 30 108 176;
 

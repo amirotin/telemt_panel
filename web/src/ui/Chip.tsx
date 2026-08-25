@@ -57,7 +57,9 @@ const TONE_CLASSES: Record<CountBadgeTone, string> = {
   accent: "bg-accent text-white",
   error: "bg-error-strong text-white",
   warn: "bg-warn/15 text-warn",
-  muted: "bg-surface-2 text-text-faint",
+  // --text-muted, not --text-faint: faint on surface-2 is 4.37:1 dark /
+  // 4.44:1 light — under AA for a 10.5px label. muted is 5.83:1 / 5.33:1.
+  muted: "bg-surface-2 text-text-muted",
 };
 
 // CountBadge — the tiny pill at the right edge of a People row (live

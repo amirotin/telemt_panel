@@ -30,12 +30,18 @@ export interface GatedProps {
 export function Gated({ enabled, reason, hint, onHide, className, children }: GatedProps) {
   if (enabled) return <>{children}</>;
 
-  // The prototype's dimmed «Внутренние подсистемы» block: a normal card at
-  // 75% opacity with muted copy — a gate is a fact about this server's
-  // build, not a failure, so it must not read as an error box (the dashed
-  // outline it used to have was the loudest thing on the dashboard).
+  // The prototype's quiet «Внутренние подсистемы» block: a normal card with
+  // muted copy — a gate is a fact about this server's build, not a failure,
+  // so it must not read as an error box (the dashed outline it used to have
+  // was the loudest thing on the dashboard).
+  //
+  // The recessive look comes from the token colors alone, NOT from an
+  // opacity multiplier on the card: `opacity-75` composited the copy
+  // towards the page background and dropped it to 4.12:1 (reason) and
+  // 3.20:1 (hint) — below AA. Without it, --text-muted is 6.26:1 dark /
+  // 6.33:1 light and --text-faint is 4.69:1 / 5.27:1 on --surface.
   return (
-    <div className={cn("flex flex-col gap-1.5 rounded-xl bg-surface p-3.5 opacity-75", className)}>
+    <div className={cn("flex flex-col gap-1.5 rounded-xl bg-surface p-3.5", className)}>
       <div className="flex items-start gap-2">
         <IconInfo className="mt-0.5 h-4 w-4 shrink-0 text-text-faint" />
         <p className="text-[13px] font-semibold leading-snug text-text-muted">
