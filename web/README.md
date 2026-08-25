@@ -159,5 +159,149 @@ incidental).
 ## Go integration
 
 See `internal/webui`'s package doc comment for the embed layout, base_path
-injection, and cache-header design. Screen → data → topic/endpoint mapping
-will be added here as Tasks 5–8 land (per the plan's Task 9).
+injection, and cache-header design.
+
+## Screen → data → topic/endpoint map
+
+Every route, what it renders from, and where that data comes from — the SSE
+topics from `02-hub-sse.md` (pushed continuously while the page has a live
+subscriber; `useSnapshot<T>("topic")`/`useTopic("topic")`,
+`src/realtime/context.tsx`) versus one-shot REST calls (TanStack Query
+`xxxOptions()`/`xxxMutation()`, generated from `api/openapi.yaml` into
+`src/lib/api/generated/`). Kept here for M4+ to extend without re-deriving it
+from scratch.
+
+| Route | Topics (SSE) | REST endpoints |
+|---|---|---|
+| `/login` | — | `POST /api/auth/login`, `GET /api/auth/me` (guard) |
+| `/people`, `/people/$username` | `users` (list, quota, per-user live metrics) | `GET /api/telemt/info` (caps), `POST /api/users`, `PATCH/DELETE /api/users/{username}`, `POST .../reset-quota`, `PUT .../enabled`, `POST .../rotate-secret`, `GET/POST /api/users/{username}/sublink` |
+| `/pulse` (widget dashboard) | `stats` (HealthHero, StatRow, ActiveSessions, Problems), `runtime` (MePool, NatStun, Selftest, RecentEvents, Problems, Upstreams), `upstreams` (DC, Upstreams widgets), `security` (SecurityPosture, TlsFingerprints widgets, Problems) | `GET /api/history?metric=&range=` (sparklines) |
+| `/pulse/diag/connections` | `stats` | — |
+| `/pulse/diag/dc`, `/pulse/diag/upstreams` | `upstreams`, `runtime` | — |
+| `/pulse/diag/me`, `/pulse/diag/nat` | `runtime` (+ `upstreams` for ME) | — |
+| `/pulse/diag/security` | `security` | — |
+| `/pulse/diag/counters` (extended-mode "Счётчики") | — | `GET /api/telemt/zero` (fetched on visit, not a topic — `zero`/`all` are display-only leaf maps, 07-telemt-sdk.md) |
+| `/journal` (Логи tab) | — | `GET /api/host` (picks live/tail/gated rung), SSE `GET /api/events/logs?service=` (own `EventSource`, not the topic multiplexer — `src/journal/logStream.ts`), fallback `GET /api/logs/tail?service=&lines=` |
+| `/journal` (События tab) | — | `GET /api/audit?limit=&before=` (paginated) |
+| `/server` (menu) | — | — |
+| `/server/config` | — | `GET/PATCH /api/telemt/config` (If-Match revision), `POST /api/telemt/reload`, `GET /api/telemt/reload/{id}` (polled to terminal), `GET /api/host` (restart cap) |
+| `/server/updates` | `update` (live apply steppers, SSE; falls back to polling `GET /api/updates` on SSE loss) | `GET /api/updates`, `POST /api/updates/{target}/apply`, `GET/PUT /api/updates/auto` |
+| `/server/security` | `security` | — |
+| `/server/platform` | — | `GET /api/host`, `POST /api/telemt/restart` |
+| `/server/settings` | — | `GET /api/auth/sessions`, `DELETE /api/auth/sessions` (revoke others), `DELETE /api/auth/sessions/{sessionId}`, `POST /api/telemt/restart`; theme/display-mode/dashboard-layout are localStorage only, no endpoint |
+| Shell (every authed route) | `stats` (StatusStrip health/connections/traffic) | `GET /api/auth/me` (session guard, `_authed.tsx`) |
+
+Notes:
+- `stats`/`runtime`/`upstreams`/`security`/`update` all flow through the one
+  app-wide `EventSource` multiplexer (`src/realtime/sseClient.ts`) — a page
+  subscribing to a topic just adds it to that connection's active set, it
+  never opens its own connection. The Journal Логи tab's log stream is the
+  one deliberate exception (its own `EventSource`, `src/journal/logStream.ts`)
+  since it's a distinct, high-volume, per-service stream outside the topic
+  protocol.
+- A user mutation (create/edit/delete/enable/rotate-secret/reset-quota,
+  sublink regenerate) triggers a server-side `Hub.Poke("users")` after a
+  short delay (`internal/hub`) so the `users` topic's next SSE frame reflects
+  it almost immediately, without waiting for that topic's normal poll
+  interval — this is what `web/e2e/mobile.spec.ts`'s "user appears in the
+  list without a manual reload" step exercises end to end.
+
+## e2e (Playwright)
+
+`web/e2e/` (chromium only, plan Ruling R4) runs against the **real built
+panel binary** + `cmd/telemt-mock` — never the vite dev server, never a
+mocked `fetch`. Two projects: `mobile` (360×640 — the primary target, one
+sequential flow through login → create a user → share/sub-page → Пульс
+dashboard + layout editor → Журнал → Сервер) and `desktop` (1280×800 smoke —
+sidebar, the Raw config editor/CodeMirror actually mounting at `lg:`).
+
+```bash
+npx playwright install chromium   # once per machine
+make build                        # from the repo root (src/) — the panel binary e2e runs against
+cd web
+npm run e2e                       # playwright test
+```
+
+- `e2e/stack.ts` builds `cmd/telemt-mock` itself (a dev/test-only binary,
+  never part of `make build`/`make release`) into a scratch temp dir, hashes
+  a fixed admin password through the real `telemt-panel hash-password`
+  subcommand, writes a scratch `config.toml` (memory store, `data_dir = ""`,
+  subpage enabled with a throwaway secret), and launches both processes —
+  see `e2e/global-setup.ts` (Playwright's "return a teardown function from
+  globalSetup" pattern) and `e2e/env.ts` for the fixed ports/credentials
+  every piece of the stack agrees on ahead of time. It does **not** build
+  the panel binary itself — that's `make build`'s job, run once before
+  `npm run e2e`, exactly like a developer already has to for any other
+  end-to-end check against the real embedded SPA.
+- The share/sub-page flow deliberately exercises `alice` (the fixture user
+  `telemttest.New` seeds with a real classic proxy link), not the user the
+  test just created — `cmd/telemt-mock`'s `CreateUser` fixture always
+  returns empty `Links` (matching `internal/telemt/telemttest/users.go`), so
+  a freshly created user never has a sub-link to share. See `e2e/env.ts`'s
+  `SEEDED_USER` comment.
+- CI runs this as its own `e2e` job (`.github/workflows/ci.yml`, after the
+  `build` job), with `retries: 1` (via `CI=true`) and the Playwright HTML
+  report + `test-results/` (screenshots, traces) uploaded as artifacts on
+  failure.
+
+## PWA
+
+`public/manifest.webmanifest` + `public/icon.svg` (name/icons/theme_color)
+and `public/sw.js` (app-shell caching: network-first for `index.html`,
+cache-first for the content-hashed `assets/` bundle, `/api/*` and `/sub/*`
+never touched — 06-ui.md: "offline — последние снапшоты топиков из памяти
+вкладки", not a service-worker cache) are both static files Vite copies
+as-is; registration is `src/pwa/registerSW.ts`, called from `main.tsx`,
+production builds only. `public/apple-touch-icon.png` +
+`public/icon-{192,512}.png` (generated by `node scripts/generate-icons.mjs`
+— screenshots `icon.svg` through the Chromium build `@playwright/test`
+already bundles, since no raster/SVG-to-PNG library is on the approved
+dependency list; re-run manually whenever `icon.svg` changes) fill the gap
+Safari's "add to home screen" leaves for an SVG-only manifest (it ignores
+`rel="icon"`/SVG manifest entries and needs a real `apple-touch-icon` PNG).
+`icon-192.png`/`icon-512.png` are declared `"purpose": "any maskable"` — the
+SVG's ring/dot content already sits inside the maskable safe zone (its
+farthest extent is a 22px radius inside a 32px half-size square, well under
+the 80%-diameter safe circle), so one raster per size covers both purposes
+without a separately-cropped maskable variant.
+
+`public/sw.js`'s whole routing policy (bypass `/api`+`/sub`, cache-first for
+`assets/`, network-first for everything else — i.e. the shell) is one pure
+function, `classifyRequest`. It's mirrored (not shared — a classic service
+worker script can't `import` a Vite/TypeScript module, only
+`importScripts()` another classic script) as `src/pwa/swRouting.ts`, unit
+tested in `src/pwa/swRouting.test.ts`; see that file's own comment for the
+duplication tradeoff.
+
+**Hand-written SW, not vite-plugin-pwa**: the whole caching policy is three
+rules, which is simpler to read, audit, and keep in sync with
+`internal/webui`'s own cache-header story (immutable `assets/`, no-cache
+elsewhere — `internal/webui/webui.go`) as ~90 lines of plain JS than to
+configure correctly through a plugin's Workbox strategy DSL, register its Vite
+plugin, and reason about what it generates. Revisit if a future task needs
+richer offline behavior (background sync, precache manifests with revisioning)
+that would make a hand-rolled SW harder to maintain than adopting the plugin.
+
+`internal/webui` registers `.webmanifest` → `application/manifest+json` (Go's
+builtin mime map has no association for it, so `http.FileServer` used to sniff
+it as `text/plain` — see that package's `init()`); `sw.js` gets Go's normal
+`.js` mime type and the same no-cache header as `manifest.webmanifest` (both
+are outside the `assets/` immutable-cache namespace, so a redeploy is always
+picked up — required for a service worker file specifically, not just
+incidental). `CACHE_NAME` in `public/sw.js` must be bumped on any change to
+that file's caching policy or precached `SHELL_URLS` — `activate` deletes
+every cache that doesn't match the current name, which is what makes a
+`sw.js` update actually replace a previously-cached shell instead of serving
+it forever.
+
+## Bundle size
+
+`npm run build`'s own gzip report is the source of truth (re-run it to check
+current numbers). As of Task 9: the entry chunk (`assets/index-*.js`, React +
+router + query + every eagerly-used primitive) is **~294 kB / ~94 kB gz** —
+comfortably under the plan's "первый экран < 300КБ gz" orientation figure
+(06-ui.md; not a CI gate). The one large lazy chunk, CodeMirror
+(`assets/RawConfigEditor-*.js`, ~274 kB / ~89 kB gz), is correctly split off
+the entry chunk — it only downloads when a `lg:` viewport visits
+Сервер → Конфигурация → Raw (`React.lazy` + `useIsDesktop`, see the
+CodeMirror dependency note above), never on first load.
