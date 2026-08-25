@@ -10,6 +10,39 @@ export function isKnownAuditAction(action: string): boolean {
   return Object.prototype.hasOwnProperty.call(auditActionLabels, action);
 }
 
+// AuditFamily groups the audit vocabulary into the handful of glyphs the
+// События list draws beside each entry (the prototype puts a round icon
+// tile at the head of every event row). Deliberately coarse: the icon is a
+// scanning aid for "what kind of thing happened", the sentence beside it
+// carries the specifics.
+export type AuditFamily = "session" | "person" | "removal" | "config" | "update" | "access";
+
+// auditActionFamily classifies an action string by its dotted prefix first
+// and by the whole string second, so an action this build doesn't know yet
+// (a newer backend adding "user.something") still lands in a sensible
+// family instead of the generic fallback.
+export function auditActionFamily(action: string): AuditFamily {
+  if (action === "user.delete") return "removal";
+  if (action === "login" || action === "login.failed" || action === "logout") return "session";
+
+  const domain = action.split(".")[0];
+  switch (domain) {
+    case "user":
+    case "quota":
+      return "person";
+    case "secret":
+    case "sublink":
+      return "access";
+    case "config":
+    case "telemt":
+      return "config";
+    case "update":
+      return "update";
+    default:
+      return "config";
+  }
+}
+
 // renderAuditAction turns one AuditEntry into a human Russian sentence for
 // the Journal "События" tab (Task 7 deliverable D). Most actions are just
 // "<label> — <subject>"; "user.enabled" is the one action whose meaning

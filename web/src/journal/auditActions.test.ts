@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isKnownAuditAction, renderAuditAction } from "./auditActions";
+import { auditActionFamily, isKnownAuditAction, renderAuditAction } from "./auditActions";
 import type { AuditEntry } from "../lib/api/generated/types.gen";
 
 // KNOWN_BACKEND_ACTIONS mirrors every literal string passed as the first
@@ -73,6 +73,57 @@ describe("renderAuditAction", () => {
     for (const action of KNOWN_BACKEND_ACTIONS) {
       const rendered = renderAuditAction(entry({ action, subject: "s", detail: "enabled=true" }));
       expect(rendered.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("auditActionFamily", () => {
+  it("groups the login/logout actions as a session", () => {
+    expect(auditActionFamily("login")).toBe("session");
+    expect(auditActionFamily("login.failed")).toBe("session");
+    expect(auditActionFamily("logout")).toBe("session");
+  });
+
+  it("separates a deletion from the other person actions", () => {
+    expect(auditActionFamily("user.delete")).toBe("removal");
+    expect(auditActionFamily("user.create")).toBe("person");
+    expect(auditActionFamily("user.patch")).toBe("person");
+    expect(auditActionFamily("user.enabled")).toBe("person");
+    expect(auditActionFamily("quota.reset")).toBe("person");
+  });
+
+  it("groups the credential actions as access", () => {
+    expect(auditActionFamily("secret.rotate")).toBe("access");
+    expect(auditActionFamily("sublink.rotate")).toBe("access");
+  });
+
+  it("groups config and telemt lifecycle actions as config", () => {
+    expect(auditActionFamily("config.patch")).toBe("config");
+    expect(auditActionFamily("telemt.reload")).toBe("config");
+    expect(auditActionFamily("telemt.restart")).toBe("config");
+  });
+
+  it("groups the updater actions as update", () => {
+    expect(auditActionFamily("update.apply")).toBe("update");
+    expect(auditActionFamily("update.auto_change")).toBe("update");
+  });
+
+  // A newer backend can add an action this build has no label for; the row
+  // still needs a glyph, and one from the right family when the prefix is
+  // one we already know.
+  it("classifies an unknown action by its domain prefix, falling back to config", () => {
+    expect(auditActionFamily("user.something_new")).toBe("person");
+    expect(auditActionFamily("update.rollback")).toBe("update");
+    expect(auditActionFamily("future.action")).toBe("config");
+    expect(auditActionFamily("weird")).toBe("config");
+  });
+
+  it("assigns a family to every action the backend actually emits", () => {
+    for (const action of KNOWN_BACKEND_ACTIONS) {
+      expect(
+        auditActionFamily(action),
+        `no family for "${action}"`,
+      ).toBeTruthy();
     }
   });
 });

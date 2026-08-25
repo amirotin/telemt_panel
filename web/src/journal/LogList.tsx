@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { Button } from "../ui/Button";
+import { IconArrowDown } from "../ui/icons";
 import { isScrolledToBottom } from "./autoscroll.helpers";
 import { windowLogLines } from "./logFilter.helpers";
 import { LogLineRow } from "./LogLineRow";
+import { gridColumnsClass } from "./logColumns";
 import type { RingLine } from "./logRing";
 
 const INITIAL_WINDOW = 500;
@@ -43,7 +45,10 @@ export function LogList({ lines, showUnit }: LogListProps) {
   const prevCountRef = useRef(lines.length);
   const atBottomRef = useRef(true);
 
-  const { visible, hiddenCount } = useMemo(() => windowLogLines(lines, windowSize), [lines, windowSize]);
+  const { visible, hiddenCount } = useMemo(
+    () => windowLogLines(lines, windowSize),
+    [lines, windowSize],
+  );
 
   useEffect(() => {
     const grew = lines.length - prevCountRef.current;
@@ -60,7 +65,11 @@ export function LogList({ lines, showUnit }: LogListProps) {
   function handleScroll() {
     const el = containerRef.current;
     if (!el) return;
-    const bottom = isScrolledToBottom(el.scrollTop, el.clientHeight, el.scrollHeight);
+    const bottom = isScrolledToBottom(
+      el.scrollTop,
+      el.clientHeight,
+      el.scrollHeight,
+    );
     atBottomRef.current = bottom;
     setAtBottom(bottom);
     if (bottom) setNewSinceScrolledUp(0);
@@ -87,17 +96,48 @@ export function LogList({ lines, showUnit }: LogListProps) {
         // own independent scroll region so autoscroll-to-bottom and
         // "показать раньше" behave against a genuinely clipped viewport
         // instead of the whole page growing to fit every line.
-        className="h-[65dvh] overflow-y-auto rounded-lg border border-border bg-surface px-2 lg:h-[70dvh]"
+        // `bg-surface-sunken` is the prototype's recessed log well: the feed
+        // reads as a pane cut into the page, not as another card sitting on
+        // it, which is what keeps a wall of monospace from competing with
+        // the toolbar above it.
+        className={cn(
+          "h-[65dvh] overflow-y-auto rounded-xl border border-border bg-surface-sunken lg:h-[70dvh]",
+          "px-3 py-2.5 lg:px-0 lg:py-0",
+        )}
         data-testid="log-list-scroll"
       >
+        {/*
+          The prototype's column header. Sticky inside the scroller (rather
+          than sitting above it) so the columns stay labelled while the feed
+          scrolls; hidden below `lg:`, where the rows are bubbles with an
+          inline meta line and there are no columns to caption.
+        */}
+        <div
+          className={cn(
+            "sticky top-0 z-10 hidden bg-surface-sunken px-3.5 py-1.5",
+            "border-b border-border text-micro font-semibold uppercase tracking-[0.06em] text-text-faint",
+            "lg:grid lg:gap-x-2.5",
+            gridColumnsClass(showUnit),
+          )}
+          aria-hidden="true"
+        >
+          <span>{ru.journal.timeColumn}</span>
+          <span>{ru.journal.levelColumn}</span>
+          {showUnit && <span>{ru.journal.unitColumn}</span>}
+          <span>{ru.journal.messageColumn}</span>
+        </div>
+
         {hiddenCount > 0 && (
           <div className="flex justify-center py-2">
-            <Button variant="ghost" onClick={() => setWindowSize((w) => w + WINDOW_STEP)}>
+            <Button
+              variant="ghost"
+              onClick={() => setWindowSize((w) => w + WINDOW_STEP)}
+            >
               {ru.journal.showEarlier} ({hiddenCount})
             </Button>
           </div>
         )}
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-2 lg:gap-0">
           {visible.map((line) => (
             <LogLineRow key={line.id} line={line} showUnit={showUnit} />
           ))}
@@ -108,14 +148,26 @@ export function LogList({ lines, showUnit }: LogListProps) {
         <button
           type="button"
           onClick={scrollToNew}
+          // The glow is written inline rather than as an arbitrary
+          // `shadow-[...]` utility: the value needs the accent token at 40%
+          // alpha, and a "/" inside a Tailwind arbitrary value is parsed as
+          // an opacity modifier rather than passed through to the CSS.
+          style={{ boxShadow: "0 6px 16px rgb(var(--accent) / 0.4)" }}
           className={cn(
-            "tap-target fixed inset-x-0 z-30 mx-auto w-fit rounded-full bg-accent px-4 py-2",
-            "text-sm font-medium text-accent-text shadow-lg",
+            // Keeps the 44px floor even though the prototype draws this pill
+            // at ~38px: it is the one floating control on a phone screen.
+            "tap-target fixed inset-x-0 z-30 mx-auto inline-flex w-fit items-center justify-center gap-1.5 rounded-full",
+            "bg-accent-strong px-4 py-2.5 text-xs font-semibold text-accent-text",
+            "transition-colors hover:bg-accent",
             "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-6",
             "lg:left-56 lg:right-0",
           )}
         >
-          {ru.journal.newLinesTemplate.replace("{n}", String(newSinceScrolledUp))}
+          <IconArrowDown aria-hidden="true" />
+          {ru.journal.jumpToNewTemplate.replace(
+            "{n}",
+            String(newSinceScrolledUp),
+          )}
         </button>
       )}
     </>

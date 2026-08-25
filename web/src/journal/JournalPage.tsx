@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
+import { Chip } from "../ui/Chip";
 import { LogsTab } from "./LogsTab";
 import { EventsTab } from "./EventsTab";
 
 type JournalTab = "logs" | "events";
+
+const TABS: JournalTab[] = ["logs", "events"];
 
 // JournalPage — /journal (06-ui.md §Журнал): live logs by default, plus a
 // "События" tab for the panel's own audit ring (Task 7 deliverable D).
@@ -16,35 +18,34 @@ export function JournalPage() {
 
   return (
     <div className="flex flex-col gap-3">
+      <h1 className="text-title font-extrabold tracking-tight text-text">
+        {ru.nav.journal}
+      </h1>
+
+      {/*
+        Chip is the app's one segmented-control language (D1), so the tab
+        strip is built from it rather than a second pill implementation.
+        `aria-pressed={undefined}` clears Chip's own toggle-button semantics:
+        a role="tab" carries aria-selected instead, and having both would be
+        an invalid combination for assistive tech.
+      */}
       <div
-        className="inline-flex w-fit rounded-lg border border-border bg-surface-2 p-0.5"
+        className="flex flex-wrap items-center gap-1.5"
         role="tablist"
         aria-label={ru.nav.journal}
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "logs"}
-          onClick={() => setTab("logs")}
-          className={cn(
-            "tap-target rounded-md px-4 text-sm font-medium transition-colors",
-            tab === "logs" ? "bg-accent text-accent-text" : "text-text-muted hover:text-text",
-          )}
-        >
-          {ru.journal.tabs.logs}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "events"}
-          onClick={() => setTab("events")}
-          className={cn(
-            "tap-target rounded-md px-4 text-sm font-medium transition-colors",
-            tab === "events" ? "bg-accent text-accent-text" : "text-text-muted hover:text-text",
-          )}
-        >
-          {ru.journal.tabs.events}
-        </button>
+        {TABS.map((id) => (
+          <Chip
+            key={id}
+            role="tab"
+            aria-pressed={undefined}
+            aria-selected={tab === id}
+            active={tab === id}
+            onClick={() => setTab(id)}
+          >
+            {ru.journal.tabs[id]}
+          </Chip>
+        ))}
       </div>
 
       {/*

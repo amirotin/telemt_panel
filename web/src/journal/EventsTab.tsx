@@ -1,14 +1,40 @@
+import type { ComponentType } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { getAuditInfiniteOptions } from "../lib/api/generated/@tanstack/react-query.gen";
 import { AsyncState } from "../components/AsyncState";
 import { Button } from "../ui/Button";
+import {
+  IconLogout,
+  IconSettings,
+  IconShield,
+  IconTrash,
+  IconUpgrade,
+  IconUserPlus,
+  type IconProps,
+} from "../ui/icons";
 import { ru } from "../i18n/ru";
 import { apiErrorCode } from "../people/apiError";
-import { renderAuditAction } from "./auditActions";
+import {
+  auditActionFamily,
+  renderAuditAction,
+  type AuditFamily,
+} from "./auditActions";
 import { formatAuditTimestamp } from "./timestamp.helpers";
 import type { AuditEntry } from "../lib/api/generated/types.gen";
 
 const PAGE_SIZE = 50;
+
+// The glyph per action family. auditActionFamily owns the classification
+// (and its test); this table is only the family → drawing step, so a new
+// backend action needs no change here.
+const FAMILY_ICONS: Record<AuditFamily, ComponentType<IconProps>> = {
+  session: IconLogout,
+  person: IconUserPlus,
+  removal: IconTrash,
+  config: IconSettings,
+  update: IconUpgrade,
+  access: IconShield,
+};
 
 // EventsTab — Task 7 deliverable D: the panel's own audit ring
 // (GET /api/audit), newest first, paged with "показать ещё" over the
@@ -30,7 +56,9 @@ export function EventsTab() {
     // sentinel reaches the first request as "no cursor" either way.
     initialPageParam: "",
     getNextPageParam: (lastPage: AuditEntry[]) =>
-      lastPage.length < PAGE_SIZE ? undefined : lastPage[lastPage.length - 1]?.ts,
+      lastPage.length < PAGE_SIZE
+        ? undefined
+        : lastPage[lastPage.length - 1]?.ts,
   });
 
   const entries = query.data?.pages.flat() ?? [];
@@ -48,27 +76,52 @@ export function EventsTab() {
     >
       {(list) => (
         <div className="flex flex-col gap-2">
-          <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
-            {list.map((entry, index) => (
-              <li key={`${entry.ts}-${index}`} className="flex flex-col gap-0.5 px-3 py-2 text-sm">
-                <span className="tabular-nums text-xs text-text-faint">{formatAuditTimestamp(entry.ts)}</span>
-                <span className="text-text">{renderAuditAction(entry)}</span>
-                {entry.detail && entry.action !== "user.enabled" && (
-                  <span className="text-xs text-text-muted">{entry.detail}</span>
-                )}
-              </li>
-            ))}
+          {/*
+            The prototype's event list rather than a bordered table: a round
+            icon tile per row, the human sentence, and the time/actor meta
+            under it, with the hairline drawn under the *text column* only so
+            the icons form an uninterrupted rail down the left edge.
+          */}
+          <ul className="flex flex-col">
+            {list.map((entry, index) => {
+              const Glyph = FAMILY_ICONS[auditActionFamily(entry.action)];
+              return (
+                <li
+                  key={`${entry.ts}-${index}`}
+                  className="flex items-center gap-3 py-1 last:[&>div]:border-b-0"
+                >
+                  <span
+                    className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-surface-2 text-[16px] text-text-muted"
+                    aria-hidden="true"
+                  >
+                    <Glyph />
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5 border-b border-border pt-1 pb-3">
+                    <span className="text-[13px] text-text">
+                      {renderAuditAction(entry)}
+                    </span>
+                    <span className="text-micro text-text-muted">
+                      <span className="tabular-nums">
+                        {formatAuditTimestamp(entry.ts)}
+                      </span>
+                      {entry.detail &&
+                        entry.action !== "user.enabled" &&
+                        ` · ${entry.detail}`}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
           {query.hasNextPage && (
-            <div className="flex justify-center">
-              <Button
-                variant="secondary"
-                onClick={() => void query.fetchNextPage()}
-                disabled={query.isFetchingNextPage}
-              >
-                {ru.journal.showMore}
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => void query.fetchNextPage()}
+              disabled={query.isFetchingNextPage}
+            >
+              {ru.journal.showMore}
+            </Button>
           )}
         </div>
       )}

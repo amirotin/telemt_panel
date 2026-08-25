@@ -1,15 +1,30 @@
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
-import { Button } from "../ui/Button";
+import { Chip } from "../ui/Chip";
+import { IconButton } from "../ui/IconButton";
 import { Input } from "../ui/Input";
+import { IconPause, IconPlay, IconSearch, IconTrash } from "../ui/icons";
 import type { DisplayMode } from "../display-mode/mode";
 import { visibleLevelChips, type LogLevel } from "./logFilter.helpers";
 import type { LogicalService } from "./types";
 
 const SERVICE_OPTIONS: LogicalService[] = ["telemt", "panel"];
 
+// The level chips carry a dot in the level's own status colour so the strip
+// is scannable without painting four differently-tinted pills (the app has
+// one chip look — 06-ui.md). error/warn own their colours; info and debug
+// read as muted, matching LogLineRow's own level mapping.
+const LEVEL_DOT: Record<LogLevel, string> = {
+  error: "bg-error",
+  warn: "bg-warn",
+  info: "bg-text-muted",
+  debug: "bg-text-faint",
+};
+
 function serviceLabel(service: LogicalService): string {
-  return service === "telemt" ? ru.journal.source.telemt : ru.journal.source.panel;
+  return service === "telemt"
+    ? ru.journal.source.telemt
+    : ru.journal.source.panel;
 }
 
 function levelLabel(level: LogLevel): string {
@@ -33,6 +48,10 @@ export interface LogToolbarProps {
 // LogToolbar — the Logs tab's header row: source switch + level chips +
 // search + pause/clear (Task 7 deliverable A). Shared between the live
 // stream viewer and the tail-only fallback, which is why pause is optional.
+//
+// Layout follows the prototype's Журнал artboard: one strip of source
+// chips with the pause pill pushed to its right edge, a second strip of
+// level chips, then the search field.
 export function LogToolbar({
   service,
   onServiceChange,
@@ -54,70 +73,100 @@ export function LogToolbar({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        {/*
+          role="radiogroup" (not a tablist): picking a source swaps which
+          stream the page follows, it does not switch between two mounted
+          panes.
+        */}
         <div
-          className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5"
+          className="flex min-w-0 flex-wrap items-center gap-1.5"
           role="radiogroup"
           aria-label={ru.journal.sourceLabel}
         >
           {SERVICE_OPTIONS.map((opt) => (
-            <button
+            <Chip
               key={opt}
-              type="button"
               role="radio"
+              aria-pressed={undefined}
               aria-checked={service === opt}
+              active={service === opt}
               onClick={() => onServiceChange(opt)}
-              className={cn(
-                "tap-target rounded-md px-3 text-sm font-medium transition-colors",
-                service === opt ? "bg-accent text-accent-text" : "text-text-muted hover:text-text",
-              )}
             >
               {serviceLabel(opt)}
-            </button>
+            </Chip>
           ))}
         </div>
 
         {onTogglePause && (
-          <Button variant="secondary" onClick={onTogglePause}>
+          <button
+            type="button"
+            onClick={onTogglePause}
+            className={cn(
+              "ml-auto inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-3.5",
+              "text-xs font-semibold transition-colors",
+              paused
+                ? "bg-accent/15 text-accent hover:bg-accent/25"
+                : "bg-surface-2 text-text hover:bg-surface-3",
+            )}
+          >
+            {paused ? <IconPlay /> : <IconPause />}
             {paused ? ru.journal.resume : ru.journal.pause}
-          </Button>
+          </button>
         )}
         {onClear && (
-          <Button variant="ghost" onClick={onClear}>
-            {ru.journal.clear}
-          </Button>
+          <IconButton
+            aria-label={ru.journal.clear}
+            onClick={onClear}
+            className={cn("shrink-0", !onTogglePause && "ml-auto")}
+          >
+            <IconTrash />
+          </IconButton>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={ru.journal.levelLabel}>
+      <div
+        className="flex flex-wrap items-center gap-1.5"
+        role="group"
+        aria-label={ru.journal.levelLabel}
+      >
         {visibleLevelChips(mode).map((level) => {
           const active = levels.has(level);
           return (
-            <button
+            <Chip
               key={level}
-              type="button"
-              aria-pressed={active}
+              active={active}
               onClick={() => toggleLevel(level)}
-              className={cn(
-                "tap-target rounded-full border px-3 text-xs font-medium transition-colors",
-                active
-                  ? "border-accent bg-accent/15 text-accent"
-                  : "border-border text-text-muted hover:text-text",
-              )}
+              icon={
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    LEVEL_DOT[level],
+                  )}
+                />
+              }
             >
               {levelLabel(level)}
-            </button>
+            </Chip>
           );
         })}
       </div>
 
-      <Input
-        type="search"
-        value={search}
-        onChange={(e) => onSearchChange(e.target.value)}
-        placeholder={ru.journal.searchPlaceholder}
-        aria-label={ru.journal.searchPlaceholder}
-      />
+      <div className="relative">
+        <IconSearch
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-[17px] text-text-faint"
+        />
+        <Input
+          type="search"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder={ru.journal.searchPlaceholder}
+          aria-label={ru.journal.searchPlaceholder}
+          className="pl-10"
+        />
+      </div>
     </div>
   );
 }
