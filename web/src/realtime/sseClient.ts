@@ -297,6 +297,20 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
         // skip doesn't mistake it for a still-live connection — and
         // schedule our own backoff.
         if (es === next) es = null;
+        if (consecutiveFailures === 1) {
+          // First failure of this streak: probe once via the plain GET
+          // /api/snapshot fetch path (same one refreshTopic/the polling
+          // fallback use) so an expired session (401) reaches the SDK
+          // client's response interceptor — and its /login redirect —
+          // within about a second, instead of only after the 4th backoff
+          // attempt (~14s). Reuses pollOnce/fetchAndInstall exactly as-is:
+          // it already swallows its own errors and never touches
+          // consecutiveFailures or startPollingIfNeeded, so this probe
+          // cannot itself double-count as a failure or start the polling
+          // loop. A transient network error here is silently discarded —
+          // the backoff scheduled below keeps retrying regardless.
+          void pollOnce();
+        }
         const delay = Math.min(1000 * 2 ** consecutiveFailures, 30_000);
         backoffTimer = setTimeout(rebuildNow, delay);
       }

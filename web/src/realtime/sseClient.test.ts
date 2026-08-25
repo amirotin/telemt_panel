@@ -231,7 +231,10 @@ describe("fallback polling after persistent failures", () => {
     }
 
     expect(client.getConnectionSnapshot().status).not.toBe("polling");
-    expect(fetchSnapshot).not.toHaveBeenCalled();
+    // The very first of the 3 failures fires the immediate first-failure
+    // probe (F3) — a single fetchSnapshot call, distinct from the polling
+    // fallback's own repeated calls, which never start here.
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("retry() forces an immediate rebuild and resets the failure count", async () => {
@@ -273,7 +276,11 @@ describe("fallback polling after persistent failures", () => {
       await vi.advanceTimersByTimeAsync(31_000);
     }
     expect(client.getConnectionSnapshot().status).not.toBe("polling");
-    expect(fetchSnapshot).not.toHaveBeenCalled();
+    // Two probe calls so far: one for the first streak's first failure,
+    // one for this second streak's first failure (F3 fires per streak, on
+    // consecutiveFailures===1, not just once ever) — still well short of
+    // the polling fallback actually starting.
+    expect(fetchSnapshot).toHaveBeenCalledTimes(2);
 
     // A fresh streak of 4 (> threshold of 3) does trigger polling.
     for (let i = 0; i < 4; i++) {
@@ -286,6 +293,90 @@ describe("fallback polling after persistent failures", () => {
     // Recovering again stops the fallback poll.
     latestInstance().emitOpen();
     expect(client.getConnectionSnapshot().status).toBe("open");
+  });
+});
+
+// F3 (closing fix wave): an expired session must reach the SDK client's 401
+// response interceptor (→ /login redirect) via an immediate probe fetch on
+// the very first CLOSED SSE failure, not only after backoff exhausts
+// several reconnect attempts (~14s).
+describe("first-failure probe (F3)", () => {
+  it("fires exactly one immediate snapshot fetch on the first CLOSED failure, none on the next", async () => {
+    const fetchSnapshot = vi.fn().mockResolvedValue({});
+    client = makeClient({ fetchSnapshot });
+    client.subscribeTopic("stats");
+    await vi.advanceTimersByTimeAsync(20);
+
+    latestInstance().emitError(2 /* CLOSED */);
+    // The probe is fired synchronously off the error handler — no timer
+    // advance needed for the call itself, only to flush its microtasks.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+    expect(fetchSnapshot).toHaveBeenCalledWith(["stats"]);
+
+    // Second consecutive failure (same streak) must not probe again.
+    await vi.advanceTimersByTimeAsync(2_000);
+    latestInstance().emitError(2 /* CLOSED */);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("a transient network error from the probe does not disrupt backoff/reconnect", async () => {
+    const fetchSnapshot = vi.fn().mockRejectedValue(new Error("network error"));
+    client = makeClient({ fetchSnapshot });
+    client.subscribeTopic("stats");
+    await vi.advanceTimersByTimeAsync(20);
+
+    latestInstance().emitError(2 /* CLOSED */);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+    // Swallowed like any other fetchAndInstall failure — status stays
+    // "reconnecting", not stuck, and the normal backoff reconnect below
+    // still runs on schedule.
+    expect(client.getConnectionSnapshot().status).toBe("reconnecting");
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(FakeEventSource.instances.length).toBe(2);
+  });
+
+  it("a 401 response reaching the real fetch path triggers the SDK client's login redirect", async () => {
+    const { client: apiClient } = await import("../lib/api/client");
+    const { setRouterInstance } = await import("../lib/router-instance");
+    const previousFetch = globalThis.fetch;
+    const previousConfig = apiClient.getConfig();
+
+    const navigate = vi.fn();
+    setRouterInstance({ navigate } as unknown as Parameters<typeof setRouterInstance>[0]);
+    // buildUrl needs an absolute base to construct a real Request in this
+    // (non-browser) test environment — production always has one via the
+    // page's own origin.
+    apiClient.setConfig({ baseUrl: "http://panel.test" });
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: false, error: { code: "session_expired" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+
+    try {
+      // No fetchSnapshot override — exercises the real defaultFetchSnapshot
+      // -> generated getSnapshot() -> the same `client` instance client.ts
+      // registers its 401 interceptor on.
+      client = makeClient();
+      client.subscribeTopic("stats");
+      await vi.advanceTimersByTimeAsync(20);
+      latestInstance().emitError(2 /* CLOSED */);
+      // Flush the probe's fetch -> interceptor -> navigate promise chain.
+      for (let i = 0; i < 10 && navigate.mock.calls.length === 0; i++) {
+        await vi.advanceTimersByTimeAsync(0);
+      }
+
+      expect(navigate).toHaveBeenCalledTimes(1);
+      expect(navigate.mock.calls[0][0]).toMatchObject({ to: "/login" });
+    } finally {
+      globalThis.fetch = previousFetch;
+      apiClient.setConfig(previousConfig);
+    }
   });
 });
 
