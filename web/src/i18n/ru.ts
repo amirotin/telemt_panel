@@ -67,6 +67,23 @@ export const ru = {
     defaultReason: "функция недоступна на этом сервере.",
     howToEnable: "Как включить",
     hideWidget: "Скрыть виджет",
+    // Keyed by GateHintKey (web/src/caps/gateHints.ts) — the "как включить"
+    // follow-up text for a disabled Telemt capability/gate. Kept here (not
+    // in caps/gateHints.ts) per the single-strings-module rule; that module
+    // only owns the key type + the lookup, not the Russian text itself.
+    hints: {
+      runtime_edge:
+        "Включите runtime_edge_enabled = true в конфиге Telemt и перезапустите прокси.",
+      quota: "Обновите Telemt — квоты трафика появились в более новой версии.",
+      config_api: "Обновите Telemt или включите редактирование конфигурации через его API.",
+      reload_api:
+        "Обновите Telemt — горячая перезагрузка конфигурации появилась в более новой версии.",
+      user_enable_disable:
+        "Обновите Telemt — включение и отключение пользователей появилось в более новой версии.",
+      rotate_secret: "Обновите Telemt — смена секрета через API появилась в более новой версии.",
+      log_stream:
+        "Живые логи недоступны на этой платформе — используйте разовый показ последних строк.",
+    },
   },
 } as const;
 
