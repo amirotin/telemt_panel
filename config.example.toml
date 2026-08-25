@@ -11,7 +11,9 @@ listen = "0.0.0.0:8080"
 # load. The panel itself only ever matches bare "/api" and "/sub" — the
 # reverse proxy MUST strip base_path off the request before forwarding, it
 # must not be passed through. Example nginx config for base_path = "/panel":
-#   location /panel/ { proxy_pass http://127.0.0.1:8080/; }
+#   location = /panel { return 301 /panel/; }
+#   location /panel/ { proxy_pass http://127.0.0.1:8080/; proxy_buffering off; }
+# (proxy_buffering off keeps the /api/events SSE stream flowing through nginx.)
 # base_path = "/panel"
 
 # Reverse proxies whose X-Forwarded-For / X-Forwarded-Proto headers are

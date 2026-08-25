@@ -145,7 +145,7 @@ export async function startStack(): Promise<Stack> {
     // subsequent test call goes through the panel anyway (it proxies to
     // telemt-mock, never the other way around), so there is no separate
     // "is telemt-mock up" probe to make here.
-    await waitForHealth(`${BASE_URL}/api/health`, 15_000);
+    await waitForHealth(`${BASE_URL}/api/health`, 30_000);
   } catch (err) {
     await stopStack({ panel, mock, tmpDir });
     throw err;

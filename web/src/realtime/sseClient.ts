@@ -88,6 +88,10 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   let consecutiveFailures = 0;
   let connection: ConnectionSnapshot = { status: "closed", stale: false };
   let disposed = false;
+  // generation increments on reset()/dispose(); an in-flight snapshot fetch
+  // that started under an older generation must not install into the store
+  // or re-arm the stale watchdog after teardown.
+  let generation = 0;
   // lastTopicsKey lets a rebuild triggered by a ref-count-only change (same
   // topic set, e.g. a second subscriber of an already-subscribed topic
   // mounting/unmounting) skip tearing down a live or already-reconnecting
@@ -172,9 +176,11 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   // so a create/edit/delete doesn't wait out the topic's own poll interval
   // to show up) both go through this, rather than each having its own copy.
   async function fetchAndInstall(topics: TopicName[]) {
-    if (topics.length === 0) return;
+    if (topics.length === 0 || disposed) return;
+    const gen = generation;
     try {
       const result = await fetchSnapshotFn(topics);
+      if (disposed || gen !== generation) return;
       for (const topic of topics) {
         const entry = result[topic];
         if (!entry) continue;
@@ -364,6 +370,7 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
       return fetchAndInstall([topic]);
     },
     reset() {
+      generation++;
       closeEventSource();
       stopPolling();
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -381,6 +388,7 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
     },
     dispose() {
       disposed = true;
+      generation++;
       closeEventSource();
       stopPolling();
       if (debounceTimer) clearTimeout(debounceTimer);

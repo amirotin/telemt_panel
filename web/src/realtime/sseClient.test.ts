@@ -458,3 +458,19 @@ describe("reset (logout)", () => {
     expect(client.getConnectionSnapshot()).toEqual({ status: "closed", stale: false });
   });
 });
+
+describe("late snapshot fetches after teardown", () => {
+  it("ignores a probe that resolves after reset()", async () => {
+    let resolveFetch: (v: Record<string, { v: unknown; ts: number }>) => void = () => {};
+    const fetchSnapshot = vi.fn(
+      () => new Promise<Record<string, { v: unknown; ts: number }>>((r) => { resolveFetch = r; }),
+    );
+    const c = makeClient({ fetchSnapshot: fetchSnapshot as never });
+    const p = c.refreshTopic("stats");
+    c.reset();
+    resolveFetch({ stats: { v: { late: true }, ts: 1 } });
+    await p;
+    expect(c.getTopicSnapshot("stats").data).toBeNull();
+    c.dispose();
+  });
+});
