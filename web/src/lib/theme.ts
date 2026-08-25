@@ -34,7 +34,10 @@ function resolvedColorScheme(theme: Theme): "dark" | "light" {
   return theme;
 }
 
-const THEME_COLOR = { dark: "#0b0d10", light: "#f7f8fa" } as const;
+// Must track --bg in styles/tokens.css: the browser paints the status bar
+// and the PWA splash with this, and a value that is off by a shade shows
+// as a seam above the page.
+const THEME_COLOR = { dark: "#12171d", light: "#f3f5f8" } as const;
 
 // applyTheme sets the [data-theme] attribute tokens.css keys off of and
 // updates the <meta name="theme-color"> tag so the browser chrome (status
