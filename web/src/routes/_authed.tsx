@@ -8,7 +8,10 @@ import { Shell } from "../shell/Shell";
 // session once for the whole subtree.
 export const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ context, location }) => {
-    await requireAuth(context.queryClient, location.href);
+    // pathname + searchStr, never location.href — the origin/scheme must
+    // never travel through the `redirect` search param (see guards.ts /
+    // safeRedirect.ts).
+    await requireAuth(context.queryClient, location.pathname + location.searchStr);
   },
   component: AuthedLayout,
 });

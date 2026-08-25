@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { loginMutation } from "../lib/api/generated/@tanstack/react-query.gen";
 import type { LoginError } from "../lib/api/generated/types.gen";
 import { getMeQueryKey, redirectIfAuthenticated } from "../auth/guards";
+import { safeRedirectTarget } from "../auth/safeRedirect";
 import { ru, errorMessage, errorMessages } from "../i18n/ru";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -36,7 +37,9 @@ function LoginPage() {
     ...loginMutation(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: getMeQueryKey() });
-      await router.navigate({ href: redirect ?? "/people" });
+      // redirect came off the wire (a URL search param) — never navigate to
+      // it raw, see auth/safeRedirect.ts.
+      await router.navigate({ href: safeRedirectTarget(redirect) });
     },
     onError: (err: LoginError) => {
       setFormError(loginErrorMessage(err));
@@ -92,6 +95,10 @@ function LoginPage() {
 }
 
 function loginErrorMessage(err: LoginError | undefined): string {
-  if (!err || typeof err.code !== "string" || err.code === "") return errorMessages["network"];
+  // A well-formed envelope error always has a non-empty `code` (openapi.yaml's
+  // Error schema requires it); no `err` at all — or one that isn't shaped
+  // like the envelope — means fetch itself never got a response (offline,
+  // DNS, CORS), not a documented error code.
+  if (!err || typeof err.code !== "string") return errorMessages["network"];
   return errorMessage(err.code);
 }
