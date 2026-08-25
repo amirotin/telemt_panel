@@ -137,3 +137,61 @@ func TestWebUIBasePathInjectedAcrossRoutes(t *testing.T) {
 		t.Errorf("/api/nope under base_path: status=%d content-type=%q", rec.Code, rec.Header().Get("Content-Type"))
 	}
 }
+
+// TestWebUISubpageWrongMethodGetsSubpageOwn405 covers fix round 1, finding
+// 4: a non-GET request to a registered /sub/{token} route must get the
+// subpage handler's own 405 (via mux, same as pre-M3), not webUI's
+// generic "method not allowed" — spaRouter routes the whole /sub
+// namespace to mux unconditionally, regardless of method.
+func TestWebUISubpageWrongMethodGetsSubpageOwn405(t *testing.T) {
+	srv := newTestServer(t)
+	srv.cfg.Subpage.Enabled = true
+	srv.cfg.Subpage.Secret = "test-subpage-secret"
+	srv.webUI = fakeWebUI(t, "")
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/sub/bad-token", nil))
+	if rec.Code != 405 {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), `id="root"`) {
+		t.Errorf("body looks like the SPA fallback, not the subpage's own 405: %s", rec.Body.String())
+	}
+}
+
+// TestWebUIBareAPIPath404sAsJSON and TestWebUIBareSubPath404 cover fix
+// round 1, finding 5: a bare "/api" or "/sub" (no trailing slash) used to
+// fall through to webUI's SPA shell (200) once the SPA catch-all existed.
+// Both must 404 in their namespace's own style instead.
+func TestWebUIBareAPIPath404sAsJSON(t *testing.T) {
+	srv := newTestServer(t)
+	srv.webUI = fakeWebUI(t, "")
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api", nil))
+	if rec.Code != 404 {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+}
+
+func TestWebUIBareSubPath404(t *testing.T) {
+	srv := newTestServer(t)
+	srv.cfg.Subpage.Enabled = true
+	srv.cfg.Subpage.Secret = "test-subpage-secret"
+	srv.webUI = fakeWebUI(t, "")
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/sub", nil))
+	if rec.Code != 404 {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want plain text (mux's own 404, not the JSON API envelope)", ct)
+	}
+	if strings.Contains(rec.Body.String(), `id="root"`) {
+		t.Errorf("body looks like the SPA fallback: %s", rec.Body.String())
+	}
+}

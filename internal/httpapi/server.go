@@ -285,24 +285,33 @@ func (s *Server) Handler() http.Handler {
 	// most-specific-match algorithm can't tell "no /api/ route matches
 	// this path" apart from "the catch-all matched" once a catch-all
 	// exists on the same mux — that would swallow apiJSONFallback's
-	// pattern=="" 404/405 detection for /api/* and the plain-text 404 for
-	// an unmatched /sub/{token}. spaRouter (below) keeps mux exactly as it
-	// was pre-M3 (apiJSONFallback and /sub/*'s own behavior untouched) and
-	// only reaches for webUI once mux itself has no opinion at all about
-	// the path.
+	// pattern=="" 404/405 detection for /api/* and the subpage's own
+	// 404/405 for /sub/*. spaRouter (below) dispatches by namespace
+	// prefix instead (/api, /sub, everything else) so both keep exactly
+	// their own behavior and webUI only ever sees a path neither owns.
 	return &spaRouter{mux: mux, api: apiHandler, webUI: s.webUI}
 }
 
 // spaRouter is Handler()'s top-level dispatcher once the embedded SPA is
-// available: /api/* always goes through api (apiJSONFallback's JSON
-// {code,message} 404/405 for an unmatched route, unchanged from pre-M3);
-// any other path that mux itself would still route (currently only
-// /sub/{token}, when subpage.enabled) goes straight to mux, keeping that
-// handler's own error behavior (e.g. the subpage's plain-text 404 for an
-// unknown token) untouched; everything else — the SPA's own client-side
-// routes, and (a deliberate change from pre-M3) /sub/* when the subpage
-// module is disabled — falls through to webUI, which answers with the
-// app shell (index.html) or a hashed asset.
+// available: exactly three namespaces, checked in order.
+//
+//   - /api and everything under /api/ always go through api
+//     (apiJSONFallback's JSON {code,message} 404/405 for an unmatched
+//     route, unchanged from pre-M3 other than fix round 1's finding 5:
+//     a bare "/api" now gets the same treatment as "/api/nope").
+//   - /sub and everything under /sub/ always go straight to mux, regardless
+//     of method or whether a pattern actually matches — never to webUI.
+//     This means mux's own behavior applies unconditionally: the subpage
+//     handler's plain-text 404 for an unknown token, its own 405 for a
+//     non-GET request (fix round 1, finding 4 — the earlier version of
+//     this router let a wrong-method /sub/{token} fall through to webUI's
+//     generic 405 instead), and a bare "/sub" 404 (finding 5); or, when
+//     subpage.enabled is false and no /sub/{token} pattern is registered
+//     at all, ServeMux's own plain-text 404 — the exact pre-M3 behavior,
+//     with no special-casing needed since webUI is never consulted for
+//     this prefix either way.
+//   - Everything else falls through to webUI, which answers with the SPA
+//     shell (index.html) for a client-side route or a hashed asset.
 type spaRouter struct {
 	mux   *http.ServeMux
 	api   http.Handler
@@ -310,15 +319,14 @@ type spaRouter struct {
 }
 
 func (rt *spaRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/api/") {
+	switch {
+	case pathIsOrUnder(r.URL.Path, "/api"):
 		rt.api.ServeHTTP(w, r)
-		return
-	}
-	if _, pattern := rt.mux.Handler(r); pattern != "" {
+	case pathIsOrUnder(r.URL.Path, "/sub"):
 		rt.mux.ServeHTTP(w, r)
-		return
+	default:
+		rt.webUI.ServeHTTP(w, r)
 	}
-	rt.webUI.ServeHTTP(w, r)
 }
 
 // headerCapture is a throwaway http.ResponseWriter used only to run
@@ -334,6 +342,17 @@ func newHeaderCapture() *headerCapture { return &headerCapture{header: make(http
 func (c *headerCapture) Header() http.Header         { return c.header }
 func (c *headerCapture) Write(b []byte) (int, error) { return len(b), nil }
 func (c *headerCapture) WriteHeader(int)             {}
+
+// pathIsOrUnder reports whether path is exactly prefix (e.g. a bare
+// "/api" or "/sub", no trailing slash) or begins with prefix+"/". Used to
+// dispatch a whole namespace consistently regardless of whether the
+// request happens to have anything after the prefix — a bare "/api" gets
+// exactly the same JSON-404 treatment as "/api/nope" (fix round 1, finding
+// 5); a bare "/sub" gets the same mux-owned treatment as "/sub/{token}"
+// (see spaRouter below).
+func pathIsOrUnder(path, prefix string) bool {
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
+}
 
 // apiJSONFallback wraps mux so an unmatched /api/* request — an unknown
 // path, or a known path with the wrong method — returns the panel's
@@ -351,7 +370,7 @@ func (c *headerCapture) WriteHeader(int)             {}
 // client.
 func apiJSONFallback(mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !pathIsOrUnder(r.URL.Path, "/api") {
 			mux.ServeHTTP(w, r)
 			return
 		}
