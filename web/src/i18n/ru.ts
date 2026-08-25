@@ -247,7 +247,7 @@ export const ru = {
       notReady: "Telemt не готов",
       readOnly: "Telemt в режиме только для чтения",
       capabilityGap: "Недоступна возможность:",
-      connectionsBad: "Плохие соединения",
+      connectionsBad: "Плохие соединения (всего)",
       handshakeTimeouts: "Таймауты хендшейка",
       connectionsBadByClass: "Плохие соединения",
     },
