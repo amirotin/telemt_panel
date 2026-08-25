@@ -82,7 +82,10 @@
     margin: 2px 0 0; font-size: 20px; font-weight: 800; letter-spacing: -0.02em;
     text-align: center; word-break: break-all;
   }
-  h1 .who { color: var(--sec); font-weight: 600; font-size: 13px; display: block; letter-spacing: 0; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
   .status {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 12px; border-radius: 99px; font-size: 12px; font-weight: 600;
@@ -100,7 +103,7 @@
   .row .v { color: var(--txt); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .quota { margin: 0; }
   .expiry { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
-  .bar { height: 8px; background: var(--sur2); border-radius: 99px; margin-top: 8px; overflow: hidden; }
+  .bar { height: 8px; background: var(--line); border-radius: 99px; margin-top: 8px; overflow: hidden; }
   .bar-fill { height: 100%; background: var(--acc); border-radius: 99px; }
   .bar-fill.warn { background: var(--warn); }
   .bar-fill.full { background: var(--err); }
@@ -133,7 +136,8 @@
   .btn-secondary {
     display: flex; align-items: center; justify-content: center;
     width: 100%; min-height: 44px;
-    background: var(--sur2); color: var(--txt); text-decoration: none;
+    background: color-mix(in srgb, var(--acc) 10%, transparent);
+    color: var(--acc); text-decoration: none;
     border-radius: 12px; font-size: 13px; font-weight: 600;
   }
   .qr-card { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -156,12 +160,13 @@
     transition: transform 0.15s;
   }
   details.manual[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
-  .fields { margin: 0; padding: 6px 16px 14px; border-top: 1px solid var(--line); }
-  .fields dt {
-    font-size: 11px; color: var(--sec); padding-top: 10px;
+  .fields {
+    margin: 0; padding: 6px 16px 14px; border-top: 1px solid var(--line);
+    display: grid; grid-template-columns: 64px 1fr; column-gap: 10px; align-items: center;
   }
+  .fields dt { font-size: 11px; color: var(--sec); }
   .fields dd {
-    margin: 0; display: flex; align-items: center; gap: 10px; min-height: 40px;
+    margin: 0; display: flex; align-items: center; gap: 10px; min-height: 44px;
   }
   .fields code {
     flex: 1; min-width: 0;
@@ -194,7 +199,7 @@
 <main>
   <header>
     <span class="avatar" aria-hidden="true">{{.Initial}}</span>
-    <h1><span class="who">{{.S.AccessFor}}</span>{{.Username}}</h1>
+    <h1>{{.S.AccessFor}} {{.Username}}</h1>
     <span class="status status-{{.Status.Key}}">{{.Status.Label}}</span>
   </header>
 
@@ -216,7 +221,7 @@
   {{end}}
 
   <section class="connect">
-    <h2 class="caption">{{.S.ConnectHeading}}</h2>
+    <h2 class="sr-only">{{.S.ConnectHeading}}</h2>
     {{if not .Groups}}
     <p class="empty">{{.S.NoLinks}}</p>
     {{end}}
