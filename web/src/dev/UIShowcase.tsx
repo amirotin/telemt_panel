@@ -2,6 +2,10 @@ import { useState, type ReactNode } from "react";
 import {
   Avatar,
   Button,
+  Card,
+  CardList,
+  CardRow,
+  CardTitle,
   Chip,
   CountBadge,
   IconButton,
@@ -16,7 +20,9 @@ import {
   CopyField,
   QR,
   Sparkline,
+  SectionLabel,
   Skeleton,
+  Toggle,
   EmptyState,
   ErrorState,
   IconPlus,
@@ -35,6 +41,7 @@ import { ru } from "../i18n/ru";
 export function UIShowcase() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [stepperValue, setStepperValue] = useState(3);
+  const [cardToggle, setCardToggle] = useState(true);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 p-6">
@@ -93,6 +100,28 @@ export function UIShowcase() {
           <CountBadge tone="warn">срок</CountBadge>
           <CountBadge tone="muted">выкл</CountBadge>
         </div>
+      </Section>
+
+      <Section title="Card / CardList / SectionLabel / Toggle">
+        <SectionLabel>{ru.nav.server}</SectionLabel>
+        <Card>
+          <CardTitle action={<StatePill state="ok">ok</StatePill>}>{ru.nav.pulse}</CardTitle>
+          <p className="mt-2 text-meta text-text-muted">{ru.gated.defaultReason}</p>
+        </Card>
+        <CardList>
+          <CardRow>
+            <span className="flex-1 text-row">{ru.theme.dark}</span>
+            <Toggle checked={cardToggle} onChange={setCardToggle} aria-label={ru.theme.toggle} />
+          </CardRow>
+          <CardRow>
+            <span className="flex-1 text-row">{ru.theme.light}</span>
+            <Toggle
+              checked={!cardToggle}
+              onChange={(v) => setCardToggle(!v)}
+              aria-label={ru.theme.toggle}
+            />
+          </CardRow>
+        </CardList>
       </Section>
 
       <Section title="Avatar">

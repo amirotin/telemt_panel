@@ -21,9 +21,7 @@ export function Card({ className, children }: CardProps) {
 // inset (the prototype writes `padding:6px 16px` on these).
 export function CardList({ className, children }: CardProps) {
   return (
-    <div className={cn("rounded-xl bg-surface px-4", className)}>
-      {children}
-    </div>
+    <div className={cn("rounded-xl bg-surface px-4", className)}>{children}</div>
   );
 }
 
@@ -55,16 +53,17 @@ export interface CardTitleProps {
 }
 
 // CardTitle — the 13px semibold heading the prototype puts at the top of a
-// card, with an optional trailing slot on the same baseline.
+// card, with an optional trailing slot on the same baseline. The row wraps
+// rather than squeezing: the heading keeps a 10rem floor, so on a 360px
+// phone a wide action (a «Завершить все остальные» button) drops to its own
+// line instead of truncating the title to «Сессии и у…».
 export function CardTitle({ className, children, action }: CardTitleProps) {
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <h3 className="min-w-0 truncate text-[13px] font-semibold text-text">
+    <div className={cn("flex flex-wrap items-center gap-2", className)}>
+      <h3 className="min-w-[10rem] flex-1 truncate text-[13px] font-semibold text-text">
         {children}
       </h3>
-      {action !== undefined && (
-        <div className="ml-auto flex shrink-0 items-center gap-2">{action}</div>
-      )}
+      {action !== undefined && <div className="ml-auto flex shrink-0 items-center gap-2">{action}</div>}
     </div>
   );
 }

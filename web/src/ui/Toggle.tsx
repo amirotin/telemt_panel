@@ -13,13 +13,7 @@ export interface ToggleProps {
 // for every on/off setting (автообновление, read-only, Passkey…). A real
 // <button role="switch"> rather than a restyled checkbox so the pressed
 // state, the 44px tap area and the focus ring all come from one place.
-export function Toggle({
-  checked,
-  onChange,
-  disabled,
-  className,
-  ...rest
-}: ToggleProps) {
+export function Toggle({ checked, onChange, disabled, className, ...rest }: ToggleProps) {
   return (
     <button
       type="button"

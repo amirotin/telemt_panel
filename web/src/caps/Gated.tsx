@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { Button } from "../ui/Button";
+import { IconInfo } from "../ui/icons";
 import { gateHints, type GateHintKey } from "./gateHints";
 
 export interface GatedProps {
@@ -29,24 +30,26 @@ export interface GatedProps {
 export function Gated({ enabled, reason, hint, onHide, className, children }: GatedProps) {
   if (enabled) return <>{children}</>;
 
+  // The prototype's dimmed «Внутренние подсистемы» block: a normal card at
+  // 75% opacity with muted copy — a gate is a fact about this server's
+  // build, not a failure, so it must not read as an error box (the dashed
+  // outline it used to have was the loudest thing on the dashboard).
   return (
-    <div
-      className={cn(
-        "flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center",
-        className,
-      )}
-    >
-      <p className="text-sm text-text-muted">
-        {ru.gated.disabledPrefix}
-        {reason ?? ru.gated.defaultReason}
-      </p>
+    <div className={cn("flex flex-col gap-1.5 rounded-xl bg-surface p-3.5 opacity-75", className)}>
+      <div className="flex items-start gap-2">
+        <IconInfo className="mt-0.5 h-4 w-4 shrink-0 text-text-faint" />
+        <p className="text-[13px] font-semibold leading-snug text-text-muted">
+          {ru.gated.disabledPrefix}
+          {reason ?? ru.gated.defaultReason}
+        </p>
+      </div>
       {hint && (
-        <p className="text-xs text-text-faint">
+        <p className="pl-6 text-meta leading-relaxed text-text-faint">
           {ru.gated.howToEnable}: {gateHints[hint]}
         </p>
       )}
       {onHide && (
-        <Button variant="ghost" onClick={onHide} className="self-center">
+        <Button variant="ghost" size="sm" onClick={onHide} className="self-start">
           {ru.gated.hideWidget}
         </Button>
       )}

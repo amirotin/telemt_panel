@@ -11,8 +11,7 @@ import { Input } from "../ui/Input";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
-    redirect:
-      typeof search["redirect"] === "string" ? search["redirect"] : undefined,
+    redirect: typeof search["redirect"] === "string" ? search["redirect"] : undefined,
   }),
   beforeLoad: async ({ context, search }) => {
     await redirectIfAuthenticated(context.queryClient, search.redirect);
@@ -53,8 +52,7 @@ function LoginPage() {
     mutation.mutate({ body: { username, password } });
   }
 
-  const canSubmit =
-    username.length > 0 && password.length > 0 && !mutation.isPending;
+  const canSubmit = username.length > 0 && password.length > 0 && !mutation.isPending;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-[360px] flex-col justify-center gap-3.5 px-4 py-10">
@@ -65,9 +63,7 @@ function LoginPage() {
         >
           T
         </span>
-        <h1 className="mt-1 text-xl font-extrabold tracking-tight text-text">
-          {ru.app.title}
-        </h1>
+        <h1 className="mt-1 text-xl font-extrabold tracking-tight text-text">{ru.app.title}</h1>
         <p className="text-meta text-text-muted">{ru.auth.tagline}</p>
       </div>
 

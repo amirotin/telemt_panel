@@ -15,7 +15,11 @@ export function EmptyState({ title, description, action, className }: EmptyState
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-surface/40 px-6 py-12 text-center",
+        // No outline: an empty state renders both on the bare page and
+        // inside a card, and a dashed box nested in a card is the single
+        // most "unstyled default" shape in a UI. Quiet centered copy reads
+        // correctly in both placements.
+        "flex flex-col items-center gap-2 rounded-xl px-6 py-10 text-center",
         className,
       )}
     >
