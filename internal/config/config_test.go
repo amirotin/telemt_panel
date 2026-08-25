@@ -213,6 +213,7 @@ session_ttl = "0h"
 `, "auth.session_ttl"},
 		// Top-level keys must precede sections in TOML.
 		{"bad trusted proxy", `trusted_proxies = ["not-an-ip"]` + minimal, "trusted_proxies"},
+		{"base_path with disallowed characters", `base_path = "/pa nel"` + minimal, "base_path"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -258,5 +259,17 @@ trusted_proxies = ["127.0.0.1", "10.0.0.0/8"]
 	}
 	if len(cfg.TrustedProxyPrefixes) != 2 || cfg.TrustedProxyPrefixes[0].String() != "127.0.0.1/32" {
 		t.Errorf("prefixes = %v", cfg.TrustedProxyPrefixes)
+	}
+}
+
+// TestLoadRejectsScriptInjectionBasePath covers Task 3 review fix round 1
+// finding 2: base_path is injected verbatim into every served page
+// (internal/webui's <base href> + window.__BASE_PATH__), so a value built
+// to break out of that HTML/JS context must fail to load rather than ever
+// reach the page.
+func TestLoadRejectsScriptInjectionBasePath(t *testing.T) {
+	_, err := load(t, `base_path = "/pa\"nel</script><script>alert(1)</script>"`+minimal)
+	if err == nil || !strings.Contains(err.Error(), "base_path") {
+		t.Fatalf("want a base_path error, got %v", err)
 	}
 }

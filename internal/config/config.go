@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -257,7 +258,41 @@ func Load(path string) (*Config, error) {
 	if cfg.BasePath != "" && !strings.HasPrefix(cfg.BasePath, "/") {
 		cfg.BasePath = "/" + cfg.BasePath
 	}
+	if err := validateBasePath(cfg.BasePath); err != nil {
+		return nil, err
+	}
 
 	cfg.Path = path
 	return cfg, nil
+}
+
+// basePathAllowedRE is the character whitelist validateBasePath enforces:
+// letters, digits, and the small set of characters RFC 3986 allows
+// unencoded in a URL path segment without requiring percent-encoding
+// (".", "_", "~", "-"), plus "/" as the segment separator.
+var basePathAllowedRE = regexp.MustCompile(`^[A-Za-z0-9._~/-]*$`)
+
+// validateBasePath enforces base_path's shape after Load's own
+// normalization above (trailing slash trimmed, leading slash added):
+// empty, or a leading-slash / no-trailing-slash path built only from
+// basePathAllowedRE's character set.
+//
+// This is the real defense behind internal/webui's <base href> and
+// window.__BASE_PATH__ injection into every served page: base_path is
+// operator-controlled config, not user input, but a misconfigured or
+// compromised value (e.g. containing '"', '<', '>') must never be able to
+// break out of that HTML/JS context. Rejecting it here, at load, is
+// simpler to reason about than any amount of escaping downstream — though
+// internal/webui.patchIndex also escapes defensively, belt-and-braces.
+func validateBasePath(p string) error {
+	if p == "" {
+		return nil
+	}
+	if !strings.HasPrefix(p, "/") {
+		return fmt.Errorf("base_path: %q must start with \"/\"", p)
+	}
+	if !basePathAllowedRE.MatchString(p) {
+		return fmt.Errorf("base_path: %q contains characters outside [A-Za-z0-9._~/-]", p)
+	}
+	return nil
 }

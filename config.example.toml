@@ -4,7 +4,11 @@
 
 listen = "0.0.0.0:8080"
 
-# Base path for running behind a reverse proxy on a sub-path.
+# Base path for running behind a reverse proxy on a sub-path. Injected
+# verbatim into the served page, so it's restricted to a plain URL path:
+# empty, or starting with "/" (no trailing slash), built only from
+# letters, digits, ".", "_", "~", "-" and "/" — anything else fails to
+# load.
 # base_path = "/panel"
 
 # Reverse proxies whose X-Forwarded-For / X-Forwarded-Proto headers are
