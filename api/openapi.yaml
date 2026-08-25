@@ -722,6 +722,15 @@ components:
             telemt_unreachable, capability_absent, capability_unavailable,
             manual_restart_required, update_locked, sublink_unavailable,
             log_tail_unavailable, log_stream_unavailable, log_source_error.
+            capability_absent (501) vs capability_unavailable (503) are
+            deliberately distinct, not aliases: capability_absent means the
+            route itself doesn't exist on this Telemt build (a bare 404/405
+            with no error envelope — detected reactively, after attempting
+            the call: rotate-secret, enable/disable, POST /api/telemt/reload,
+            GET /api/telemt/reload/{id}); capability_unavailable means the
+            panel checked the SDK's cached Capabilities probe proactively,
+            before ever calling Telemt, and the config API specifically was
+            already known unavailable (GET/PATCH /api/telemt/config only).
             Reserved for milestones not yet implemented: totp_required (TOTP login),
             telemt_auth_failed (superseded on /api/telemt/info by a reachable:false
             body, not an error status — kept here for /api/telemt/config, M3).
