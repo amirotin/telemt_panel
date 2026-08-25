@@ -30,9 +30,24 @@ export default tseslint.config(
       // Toast.tsx exports its store's imperative API (pushToast/
       // dismissToast) alongside ToastViewport by design (see that file's
       // own comment) — allowed by name rather than split into two files.
+      // Same pattern for display-mode's/realtime's context+hooks modules
+      // (Task 4): a context module exporting its Provider component
+      // alongside the hooks that read it is the whole point of keeping
+      // them colocated, not something worth a file split.
       "react-refresh/only-export-components": [
         "warn",
-        { allowConstantExport: true, allowExportNames: ["pushToast", "dismissToast"] },
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            "pushToast",
+            "dismissToast",
+            "useDisplayMode",
+            "useTopic",
+            "useSnapshot",
+            "useConnectionState",
+            "resetSSEClient",
+          ],
+        },
       ],
       "@typescript-eslint/no-unused-vars": [
         "error",
