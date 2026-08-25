@@ -1,0 +1,93 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Map tokens into Tailwind's theme so utilities like `bg-surface`,
+   `text-ok/70`, `border-border` exist, with alpha support via
+   rgb(var(--x) / <alpha-value>) — Tailwind substitutes <alpha-value> for
+   opacity modifiers (`/50`) and for `1` otherwise. */
+@theme {
+  --color-bg: rgb(var(--bg) / <alpha-value>);
+  --color-surface: rgb(var(--surface) / <alpha-value>);
+  --color-surface-2: rgb(var(--surface-2) / <alpha-value>);
+  --color-surface-3: rgb(var(--surface-3) / <alpha-value>);
+  --color-border: rgb(var(--border) / <alpha-value>);
+  --color-border-strong: rgb(var(--border-strong) / <alpha-value>);
+
+  --color-text: rgb(var(--text) / <alpha-value>);
+  --color-text-muted: rgb(var(--text-muted) / <alpha-value>);
+  --color-text-faint: rgb(var(--text-faint) / <alpha-value>);
+
+  --color-accent: rgb(var(--accent) / <alpha-value>);
+  --color-accent-text: rgb(var(--accent-text) / <alpha-value>);
+
+  --color-ok: rgb(var(--ok) / <alpha-value>);
+  --color-warn: rgb(var(--warn) / <alpha-value>);
+  --color-error: rgb(var(--error) / <alpha-value>);
+  --color-muted: rgb(var(--muted) / <alpha-value>);
+
+  --color-focus-ring: rgb(var(--focus-ring) / <alpha-value>);
+
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+}
+
+/* Reusable utilities the design system needs that Tailwind doesn't ship:
+   safe-area padding (shell-level, per the UI spec) and the 44x44 touch
+   target primitives enforce internally. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+@utility tap-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--border));
+  }
+
+  html {
+    color-scheme: dark;
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: rgb(var(--bg));
+    color: rgb(var(--text));
+    font-family: var(--font-sans);
+    /* Numbers everywhere in this UI (quotas, traffic, ports, counters) are
+       comparisons — tabular figures keep columns aligned. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 16px minimum on inputs is the iOS Safari rule that stops the page from
+     zooming in on focus — enforced here as a base-layer floor in addition
+     to Input's own explicit text-base, in case a future primitive forgets. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.35);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--focus-ring));
+    outline-offset: 2px;
+  }
+}

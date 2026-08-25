@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- Default (dark, the project default) paint before React/theme.ts run
+         and take over updating this tag's content on theme change. -->
+    <meta name="theme-color" id="theme-color-meta" content="#0b0d10" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <title>Telemt Panel</title>
+    <script>
+      // Applied before first paint to avoid a flash of the wrong theme —
+      // src/lib/theme.ts owns this logic at runtime; this is a minimal,
+      // dependency-free duplicate of just the "read + apply" half.
+      (function () {
+        try {
+          var t = localStorage.getItem("telemt-panel:theme");
+          if (t === "dark" || t === "light") {
+            document.documentElement.setAttribute("data-theme", t);
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

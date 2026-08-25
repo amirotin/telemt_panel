@@ -1,0 +1,97 @@
+/*
+ * Design tokens — RGB triplets (not hex), so every color can be used with
+ * Tailwind's alpha modifier (`bg-surface/60`) via `rgb(var(--x) / <alpha-value>)`
+ * in tailwind.css's @theme block. Dark is the product default (see
+ * 06-ui.md); :root carries the dark palette directly, [data-theme="light"]
+ * overrides it, and prefers-color-scheme handles "system" (the default
+ * theme setting) when no explicit choice has been stored — see
+ * src/lib/theme.ts.
+ *
+ * Palette intent: a proxy/network-ops tool, not a generic admin template —
+ * a cool near-black surface stack with one deliberate accent (signal blue,
+ * distinct from the "ok" status green so the two never get confused) and a
+ * single ok/warn/error/muted status set used everywhere (06-ui.md: v1 had
+ * two parallel status vocabularies, this project has exactly one).
+ */
+
+:root {
+  --bg: 10 12 15;
+  --surface: 17 20 24;
+  --surface-2: 25 29 34;
+  --surface-3: 34 39 46;
+  --border: 42 47 55;
+  --border-strong: 60 67 78;
+
+  --text: 236 238 240;
+  --text-muted: 156 164 175;
+  --text-faint: 104 112 122;
+
+  --accent: 64 170 255;
+  --accent-text: 8 12 18;
+
+  --ok: 52 199 110;
+  --warn: 245 176 65;
+  --error: 255 96 96;
+  --muted: 133 141 152;
+
+  --focus-ring: 64 170 255;
+
+  --font-family-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-family-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+[data-theme="light"] {
+  --bg: 246 247 249;
+  --surface: 255 255 255;
+  --surface-2: 241 243 246;
+  --surface-3: 231 234 238;
+  --border: 220 224 229;
+  --border-strong: 198 204 212;
+
+  --text: 20 23 27;
+  --text-muted: 90 98 108;
+  --text-faint: 132 140 150;
+
+  --accent: 24 122 214;
+  --accent-text: 255 255 255;
+
+  --ok: 24 150 78;
+  --warn: 176 108 8;
+  --error: 205 45 45;
+  --muted: 110 118 128;
+
+  --focus-ring: 24 122 214;
+}
+
+/* "system" theme setting (src/lib/theme.ts default): no [data-theme]
+   attribute is set, so this media query is the only thing distinguishing
+   light from dark. Kept in sync field-for-field with [data-theme="light"]
+   above. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: 246 247 249;
+    --surface: 255 255 255;
+    --surface-2: 241 243 246;
+    --surface-3: 231 234 238;
+    --border: 220 224 229;
+    --border-strong: 198 204 212;
+
+    --text: 20 23 27;
+    --text-muted: 90 98 108;
+    --text-faint: 132 140 150;
+
+    --accent: 24 122 214;
+    --accent-text: 255 255 255;
+
+    --ok: 24 150 78;
+    --warn: 176 108 8;
+    --error: 205 45 45;
+    --muted: 110 118 128;
+
+    --focus-ring: 24 122 214;
+  }
+}
