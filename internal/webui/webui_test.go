@@ -165,3 +165,112 @@ func TestEmbeddedDistExists(t *testing.T) {
 		t.Fatalf("embedded dist root not openable: %v", err)
 	}
 }
+
+// Fix round 1, finding 1: an unmatched path under assets/ (Vite's own
+// content-hashed namespace) must 404, not silently serve the SPA shell as
+// if it were a valid client-side route — a stale/wrong asset reference is
+// a real error, not a page to render.
+func TestUnknownAssetPath404s(t *testing.T) {
+	h, err := New(fixtureFS(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/assets/missing.js", nil))
+	if rec.Code != 404 {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+	if strings.Contains(rec.Body.String(), `id="root"`) {
+		t.Errorf("body looks like the SPA fallback, not a 404: %s", rec.Body.String())
+	}
+}
+
+// Fix round 1, finding 1: a missing top-level, well-known static file
+// (favicon.ico — browsers request it unprompted) must also 404 rather
+// than fall back to the SPA shell.
+func TestMissingTopLevelStaticFile404s(t *testing.T) {
+	h, err := New(fixtureFS(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/favicon.ico", nil))
+	if rec.Code != 404 {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+// Fix round 1, finding 1: an extension-less SPA route still falls back to
+// index.html — the 404 rule above must not regress this.
+func TestExtensionlessRouteStillFallsBackToIndex(t *testing.T) {
+	h, err := New(fixtureFS(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/users", nil))
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `id="root"`) {
+		t.Errorf("expected index.html fallback body, got: %s", rec.Body.String())
+	}
+}
+
+// Fix round 1, finding 1: a multi-segment SPA route whose last segment
+// happens to contain a dot (a legitimate username, e.g. "alice.smith")
+// must still reach the SPA — the extension-based 404 rule is scoped to
+// top-level paths only, precisely to avoid breaking this.
+func TestDottedRouteSegmentStillFallsBackToIndex(t *testing.T) {
+	h, err := New(fixtureFS(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/users/alice.smith", nil))
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `id="root"`) {
+		t.Errorf("expected index.html fallback body, got: %s", rec.Body.String())
+	}
+}
+
+// Fix round 1, finding 2: patchIndex must render inert output even for a
+// basePath value crafted to break out of the <base href> attribute and
+// the inline <script> body — defense-in-depth behind
+// config.validateBasePath actually rejecting this value at load (see
+// internal/config's TestLoadRejectsScriptInjectionBasePath).
+func TestPatchIndexEscapesHostileBasePath(t *testing.T) {
+	const hostile = `/pa"nel</script><script>alert(1)</script>`
+	h, err := New(fixtureFS(), hostile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	body := rec.Body.String()
+
+	if strings.Contains(body, "</script><script>alert(1)</script>") {
+		t.Errorf("raw payload broke out of the injected <script>: %s", body)
+	}
+	// The <base href="..."> attribute must stay a single well-formed
+	// attribute: no unescaped '"' inside the value able to close it early.
+	const attrStart = `<base href="`
+	i := strings.Index(body, attrStart)
+	if i < 0 {
+		t.Fatalf("missing <base href>: %s", body)
+	}
+	rest := body[i+len(attrStart):]
+	j := strings.Index(rest, `"`)
+	if j < 0 {
+		t.Fatalf("unterminated <base href> attribute: %s", body)
+	}
+	attrValue := rest[:j]
+	if strings.ContainsAny(attrValue, `<>`) {
+		t.Errorf("<base href> attribute value contains unescaped markup: %q", attrValue)
+	}
+}
