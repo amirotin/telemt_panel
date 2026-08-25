@@ -5,7 +5,13 @@ release/
 
 # Frontend
 web/node_modules/
-web/dist/
+web/.openapi-filtered.yaml
+
+# Built SPA embedded by internal/webui (vite.config.ts outDir) — everything
+# except the placeholder that lets `go build ./...` succeed before the
+# first `make web` (see internal/webui/embed.go).
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
 
 # Config with secrets
 config.toml

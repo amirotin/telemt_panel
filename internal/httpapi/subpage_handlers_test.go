@@ -183,8 +183,17 @@ func TestHandleSubpageUnknownTokenIsUniform404(t *testing.T) {
 	}
 }
 
+// TestHandleSubpageRouteNotRegisteredWhenDisabled: with subpage disabled,
+// /sub/{token} is not registered on the mux at all, so it must never reach
+// handleSubpage. srv.webUI is forced nil so this stays the pre-M3 bare Go
+// 404 regardless of whether a frontend happens to be built in this
+// workspace (internal/webui, added in M3, would otherwise answer an
+// unmatched non-API path with the SPA's index.html — exercised instead by
+// webui_handler_test.go, which builds a fake webUI so its outcome doesn't
+// depend on `make web` having run either).
 func TestHandleSubpageRouteNotRegisteredWhenDisabled(t *testing.T) {
 	srv, _ := newSubpageTestServer(t, false)
+	srv.webUI = nil
 	h := srv.Handler()
 
 	r := httptest.NewRequest("GET", "/sub/anything", nil)

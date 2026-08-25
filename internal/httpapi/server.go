@@ -22,6 +22,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/subpage"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 	"github.com/amirotin/telemt_panel/internal/update"
+	"github.com/amirotin/telemt_panel/internal/webui"
 )
 
 // Server holds the panel's HTTP dependencies.
@@ -61,6 +62,14 @@ type Server struct {
 
 	updateEngine *update.Engine
 	autoUpdater  *update.AutoUpdater
+
+	// webUI serves the embedded SPA (internal/webui) — registered as the
+	// mux's catch-all "/" pattern in Handler(), after every /api/ and
+	// /sub/ route, so it never shadows them. nil only if the embedded
+	// dist/ somehow fails to read (see webui.New's doc comment: this is
+	// effectively unreachable in practice), in which case Handler serves
+	// the API/subpage surface with no SPA behind it rather than panicking.
+	webUI http.Handler
 }
 
 // New builds the handler tree.
@@ -117,6 +126,14 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		Hub:         hb,
 	})
 
+	webUI, err := webui.New(webui.Embedded(), cfg.BasePath)
+	if err != nil {
+		// See the webUI field's doc comment — unreachable outside a
+		// corrupted embed, logged rather than fatal so the API/subpage
+		// surface still comes up.
+		slog.Error("build webui handler", "err", err)
+	}
+
 	return &Server{
 		cfg:                cfg,
 		tc:                 tc,
@@ -136,6 +153,7 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		autoUpdater:        update.NewAutoUpdater(st, updateEngine),
 		runner:             runner,
 		telemtServiceName:  telemtServiceName,
+		webUI:              webUI,
 	}
 }
 
@@ -258,7 +276,49 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET /sub/{token}", s.subpageRateLimited(s.handleSubpage))
 	}
 
-	return apiJSONFallback(mux)
+	apiHandler := apiJSONFallback(mux)
+	if s.webUI == nil {
+		return apiHandler
+	}
+	// The embedded SPA (internal/webui) sits behind this mux, not
+	// registered as a "/" pattern on it directly: ServeMux's own
+	// most-specific-match algorithm can't tell "no /api/ route matches
+	// this path" apart from "the catch-all matched" once a catch-all
+	// exists on the same mux — that would swallow apiJSONFallback's
+	// pattern=="" 404/405 detection for /api/* and the plain-text 404 for
+	// an unmatched /sub/{token}. spaRouter (below) keeps mux exactly as it
+	// was pre-M3 (apiJSONFallback and /sub/*'s own behavior untouched) and
+	// only reaches for webUI once mux itself has no opinion at all about
+	// the path.
+	return &spaRouter{mux: mux, api: apiHandler, webUI: s.webUI}
+}
+
+// spaRouter is Handler()'s top-level dispatcher once the embedded SPA is
+// available: /api/* always goes through api (apiJSONFallback's JSON
+// {code,message} 404/405 for an unmatched route, unchanged from pre-M3);
+// any other path that mux itself would still route (currently only
+// /sub/{token}, when subpage.enabled) goes straight to mux, keeping that
+// handler's own error behavior (e.g. the subpage's plain-text 404 for an
+// unknown token) untouched; everything else — the SPA's own client-side
+// routes, and (a deliberate change from pre-M3) /sub/* when the subpage
+// module is disabled — falls through to webUI, which answers with the
+// app shell (index.html) or a hashed asset.
+type spaRouter struct {
+	mux   *http.ServeMux
+	api   http.Handler
+	webUI http.Handler
+}
+
+func (rt *spaRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		rt.api.ServeHTTP(w, r)
+		return
+	}
+	if _, pattern := rt.mux.Handler(r); pattern != "" {
+		rt.mux.ServeHTTP(w, r)
+		return
+	}
+	rt.webUI.ServeHTTP(w, r)
 }
 
 // headerCapture is a throwaway http.ResponseWriter used only to run
