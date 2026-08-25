@@ -40,6 +40,13 @@ type Server struct {
 	logSrc         host.LogSource
 	logStreams     *logStreamRegistry
 	privilegesMode string
+	// runner and telemtServiceName back POST /api/telemt/restart — the same
+	// Runner/service-name resolution the update engine uses for its own
+	// restart-after-install step (see New's telemtServiceName comment
+	// below), reused here for an admin-triggered restart with no update
+	// attached.
+	runner            host.Runner
+	telemtServiceName string
 	// logStreamHeartbeat is GET /api/events/logs' heartbeat period; defaults
 	// to logStreamHeartbeatInterval (logs_handler.go), overridable by tests
 	// in this package the same way svcMgr/logSrc are.
@@ -127,6 +134,8 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		logStreamHeartbeat: logStreamHeartbeatInterval,
 		updateEngine:       updateEngine,
 		autoUpdater:        update.NewAutoUpdater(st, updateEngine),
+		runner:             runner,
+		telemtServiceName:  telemtServiceName,
 	}
 }
 
@@ -210,9 +219,16 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/auth/sessions/{sessionId}", protect(s.handleRevokeSession))
 
 	mux.Handle("GET /api/telemt/info", protect(s.handleTelemtInfo))
+	mux.Handle("GET /api/telemt/config", protect(s.handleGetTelemtConfig))
+	mux.Handle("PATCH /api/telemt/config", protect(s.handlePatchTelemtConfig))
+	mux.Handle("POST /api/telemt/reload", protect(s.handleTelemtReload))
+	mux.Handle("GET /api/telemt/reload/{id}", protect(s.handleTelemtReloadStatus))
+	mux.Handle("POST /api/telemt/restart", protect(s.handleTelemtRestart))
 
 	mux.Handle("GET /api/host", protect(s.handleHost))
 	mux.Handle("GET /api/logs/tail", protect(s.handleLogsTail))
+	mux.Handle("GET /api/audit", protect(s.handleGetAudit))
+	mux.Handle("GET /api/history", protect(s.handleGetHistory))
 
 	mux.Handle("GET /api/updates", protect(s.handleGetUpdates))
 	mux.Handle("POST /api/updates/{target}/apply", protect(s.handleApplyUpdate))

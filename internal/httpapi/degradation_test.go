@@ -215,3 +215,125 @@ func TestAPIOnlyDegradation(t *testing.T) {
 		t.Error("the fake GitHub server was never hit — SetUpdateGithubBaseURL did not take effect, GET /api/updates may have hit the real network instead")
 	}
 }
+
+// TestAPIOnlyDegradation_M3Endpoints extends the invariant above to every
+// endpoint task-2 of the M3 milestone added: an unreachable Telemt must
+// never crash or hang any of them, and each must answer with its
+// documented envelope (a clean 502/400/503, or — for the two endpoints with
+// no Telemt dependency at all, GET /api/audit and GET /api/history — a
+// normal 200). Kept as its own test, alongside (not inside)
+// TestAPIOnlyDegradation, per that test's "do not weaken" note.
+func TestAPIOnlyDegradation_M3Endpoints(t *testing.T) {
+	hash, err := auth.HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	cfg := &config.Config{
+		Telemt: config.TelemtConfig{URL: "http://127.0.0.1:1", ConfigEditMode: "api"},
+		Auth:   config.AuthConfig{Username: "admin", PasswordHash: hash},
+		Host: config.HostConfig{
+			ServiceManager: "none",
+			TelemtService:  "telemt",
+			PanelService:   "telemt-panel",
+		},
+		Privileges: config.PrivilegesConfig{Mode: "auto", AgentSocket: "/nonexistent/agent.sock"},
+	}
+
+	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
+	st, err := store.NewMemory("")
+	if err != nil {
+		t.Fatalf("store.NewMemory: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	hb := hub.New(hub.Config{}, tc, st)
+	t.Cleanup(hb.Close)
+
+	srv := New(cfg, tc, st, hb, "test")
+	t.Cleanup(srv.limiter.Stop)
+	t.Cleanup(srv.subLimiter.Stop)
+	srv.svcMgr = host.NewNone()
+	srv.logSrc = host.NewNoneLog()
+	srv.privilegesMode = host.PrivilegesModeDegraded
+
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+	if cookie == nil {
+		t.Fatal("login failed")
+	}
+
+	do := func(method, path string, mutating bool, body []byte) *httptest.ResponseRecorder {
+		var r *http.Request
+		if body != nil {
+			r = httptest.NewRequest(method, path, strings.NewReader(string(body)))
+			r.Header.Set("Content-Type", "application/json")
+		} else {
+			r = httptest.NewRequest(method, path, nil)
+		}
+		if mutating {
+			r.Header.Set("Sec-Fetch-Site", "same-origin")
+		}
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+
+	// GET /api/telemt/config: 502 telemt_unreachable, not a panic.
+	w := do("GET", "/api/telemt/config", false, nil)
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("GET /api/telemt/config = %d, want 502: %s", w.Code, w.Body)
+	}
+
+	// PATCH /api/telemt/config: 502 telemt_unreachable once past the
+	// If-Match/body checks (this proves the handler doesn't hang trying to
+	// reach Telemt for the caps probe either).
+	r := httptest.NewRequest("PATCH", "/api/telemt/config", strings.NewReader(`{"sections":{"general":{"log_level":"debug"}}}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
+	r.Header.Set("If-Match", "some-revision")
+	r.AddCookie(cookie)
+	w2 := httptest.NewRecorder()
+	h.ServeHTTP(w2, r)
+	if w2.Code != http.StatusBadGateway {
+		t.Errorf("PATCH /api/telemt/config = %d, want 502: %s", w2.Code, w2.Body)
+	}
+
+	// POST /api/telemt/reload: 502 telemt_unreachable.
+	w = do("POST", "/api/telemt/reload", true, []byte(`{}`))
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("POST /api/telemt/reload = %d, want 502: %s", w.Code, w.Body)
+	}
+
+	// GET /api/telemt/reload/{id}: 502 telemt_unreachable for a
+	// well-formed id.
+	w = do("GET", "/api/telemt/reload/1", false, nil)
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("GET /api/telemt/reload/1 = %d, want 502: %s", w.Code, w.Body)
+	}
+
+	// POST /api/telemt/restart: no Telemt dependency at all — the host
+	// layer's own degraded caps (svcMgr=none) answer the request, 503
+	// manual_restart_required, without ever touching Telemt.
+	w = do("POST", "/api/telemt/restart", true, nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("POST /api/telemt/restart = %d, want 503: %s", w.Code, w.Body)
+	}
+	var restartErr struct{ Code string }
+	json.Unmarshal(w.Body.Bytes(), &restartErr)
+	if restartErr.Code != "manual_restart_required" {
+		t.Errorf("POST /api/telemt/restart code = %q, want manual_restart_required", restartErr.Code)
+	}
+
+	// GET /api/audit: no Telemt dependency, must still be a clean 200.
+	w = do("GET", "/api/audit", false, nil)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /api/audit = %d, want 200: %s", w.Code, w.Body)
+	}
+
+	// GET /api/history: no Telemt dependency, must still be a clean 200
+	// with an empty points array (nothing has been recorded).
+	w = do("GET", "/api/history?metric=connections&range=15m", false, nil)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /api/history = %d, want 200: %s", w.Code, w.Body)
+	}
+}
