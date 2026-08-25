@@ -5,7 +5,7 @@ import { AsyncState } from "../components/AsyncState";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { ru } from "../i18n/ru";
-import { useDisplayMode } from "../display-mode";
+import { useDisplayMode, visibleFor } from "../display-mode";
 import { useDebouncedValue } from "../people/useDebouncedValue";
 import { filterLogLines } from "./logFilter.helpers";
 import { useDefaultLevels } from "./useDefaultLevels";
@@ -90,7 +90,7 @@ export function LogTailFallback({ service, onServiceChange }: LogTailFallbackPro
               filtered.length === 0 ? (
                 <EmptyState title={ru.journal.emptyFilterTitle} description={ru.journal.emptyFilterDescription} />
               ) : (
-                <LogList lines={filtered} showUnit={mode === "extended"} />
+                <LogList lines={filtered} showUnit={visibleFor("extended", mode)} />
               )
             }
           </AsyncState>

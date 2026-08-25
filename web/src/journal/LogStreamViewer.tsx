@@ -3,7 +3,7 @@ import { ru } from "../i18n/ru";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { StatePill } from "../ui/StatePill";
-import { useDisplayMode } from "../display-mode";
+import { useDisplayMode, visibleFor } from "../display-mode";
 import { useDebouncedValue } from "../people/useDebouncedValue";
 import { createJournalState, journalReducer, pendingCount } from "./logRing";
 import { filterLogLines } from "./logFilter.helpers";
@@ -83,7 +83,7 @@ export function LogStreamViewer({ service, onServiceChange }: LogStreamViewerPro
       ) : filtered.length === 0 ? (
         <EmptyState title={ru.journal.emptyFilterTitle} description={ru.journal.emptyFilterDescription} />
       ) : (
-        <LogList lines={filtered} showUnit={mode === "extended"} />
+        <LogList lines={filtered} showUnit={visibleFor("extended", mode)} />
       )}
     </div>
   );

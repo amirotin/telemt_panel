@@ -6,7 +6,7 @@ import { Skeleton } from "../../ui/Skeleton";
 import { Gated } from "../../caps/Gated";
 import { useSnapshot } from "../../realtime";
 import type { SecurityTopic } from "../../realtime/topics";
-import { useDisplayMode } from "../../display-mode";
+import { useDisplayMode, visibleFor } from "../../display-mode";
 import { resolveGated } from "../../pulse/widgets/gated";
 import { securityGroups } from "../../pulse/diag/security.helpers";
 import { KVGroupList } from "../../pulse/diag/KVGroupList";
@@ -22,7 +22,7 @@ import { postureBadges } from "./posture.helpers";
 export function SecurityPage() {
   const topic = useSnapshot<SecurityTopic>("security");
   const { mode } = useDisplayMode();
-  const extended = mode === "extended";
+  const extended = visibleFor("extended", mode);
 
   if (!topic.data) {
     return (
