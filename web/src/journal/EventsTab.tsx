@@ -18,6 +18,9 @@ const PAGE_SIZE = 50;
 // always-empty next page.
 export function EventsTab() {
   const query = useInfiniteQuery({
+    // The tab stays mounted while hidden (so the logs stream survives tab
+    // switches) — do not refetch the audit log on every window focus.
+    refetchOnWindowFocus: false,
     ...getAuditInfiniteOptions({ query: { limit: PAGE_SIZE } }),
     // "" (not undefined) — the generated TPageParam type excludes
     // undefined; the queryFn only ever forwards a truthy `before` anyway

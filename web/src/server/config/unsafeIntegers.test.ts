@@ -7,6 +7,10 @@ describe("findUnsafeIntegerLiterals", () => {
     expect(findUnsafeIntegerLiterals(text)).toEqual([]);
   });
 
+  it("flags MAX_SAFE_INTEGER + 1, the first unsafe value", () => {
+    expect(findUnsafeIntegerLiterals('{"x":9007199254740992}')).toEqual(["9007199254740992"]);
+  });
+
   it("finds an integer literal beyond Number.MAX_SAFE_INTEGER", () => {
     const text = '{"general":{"upstream_id":9007199254740993}}'; // MAX_SAFE_INTEGER + 2
     expect(findUnsafeIntegerLiterals(text)).toEqual(["9007199254740993"]);

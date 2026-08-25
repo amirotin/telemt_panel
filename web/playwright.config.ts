@@ -12,8 +12,8 @@ export default defineConfig({
   testMatch: /.*\.spec\.ts/,
   fullyParallel: false, // one shared panel/mock stack — tests share server-side state (users, audit log)
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [["html", { open: "never" }], ["list"]] : [["list"]],
+  retries: process.env["CI"] ? 1 : 0,
+  reporter: process.env["CI"] ? [["html", { open: "never" }], ["list"]] : [["list"]],
   globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: BASE_URL,
