@@ -1,11 +1,18 @@
-import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import type { QueryClient } from "@tanstack/react-query";
 import { ToastViewport } from "../ui/Toast";
 
-// Root layout: just the outlet + the app-wide toast viewport. Navigation
-// shell (tab bar / sidebar), auth guard, and the SSE-backed status strip
-// are Task 4 — this route only has to prove the router/query/embed
-// plumbing works end to end.
-export const Route = createRootRoute({
+// RouterContext carries the app's QueryClient down to every route's
+// beforeLoad (auth/guards.ts's requireAuth/redirectIfAuthenticated read it
+// from `context`) — set once in main.tsx's createRouter({context}).
+export interface RouterContext {
+  queryClient: QueryClient;
+}
+
+// Root layout: outlet + the app-wide toast viewport. The tab bar/sidebar
+// shell lives one level down, in the `_authed` layout route (shell/Shell.tsx)
+// — /login renders without it.
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootComponent,
 });
 

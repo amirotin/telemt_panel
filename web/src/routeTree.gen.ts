@@ -10,12 +10,47 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedJournalRouteImport } from './routes/_authed/journal'
+import { Route as AuthedPeopleRouteImport } from './routes/_authed/people'
+import { Route as AuthedPulseRouteImport } from './routes/_authed/pulse'
+import { Route as AuthedServerRouteImport } from './routes/_authed/server'
 import { Route as DevUiRouteImport } from './routes/dev/ui'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedRoute = AuthedRouteImport.update({
+  id: '/_authed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedJournalRoute = AuthedJournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedPeopleRoute = AuthedPeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedPulseRoute = AuthedPulseRouteImport.update({
+  id: '/pulse',
+  path: '/pulse',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedServerRoute = AuthedServerRouteImport.update({
+  id: '/server',
+  path: '/server',
+  getParentRoute: () => AuthedRoute,
 } as any)
 const DevUiRoute = DevUiRouteImport.update({
   id: '/dev/ui',
@@ -25,27 +60,55 @@ const DevUiRoute = DevUiRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/journal': typeof AuthedJournalRoute
+  '/people': typeof AuthedPeopleRoute
+  '/pulse': typeof AuthedPulseRoute
+  '/server': typeof AuthedServerRoute
   '/dev/ui': typeof DevUiRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/journal': typeof AuthedJournalRoute
+  '/people': typeof AuthedPeopleRoute
+  '/pulse': typeof AuthedPulseRoute
+  '/server': typeof AuthedServerRoute
   '/dev/ui': typeof DevUiRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authed': typeof AuthedRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_authed/journal': typeof AuthedJournalRoute
+  '/_authed/people': typeof AuthedPeopleRoute
+  '/_authed/pulse': typeof AuthedPulseRoute
+  '/_authed/server': typeof AuthedServerRoute
   '/dev/ui': typeof DevUiRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dev/ui'
+  fullPaths:
+    '/' | '/login' | '/journal' | '/people' | '/pulse' | '/server' | '/dev/ui'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dev/ui'
-  id: '__root__' | '/' | '/dev/ui'
+  to: '/' | '/login' | '/journal' | '/people' | '/pulse' | '/server' | '/dev/ui'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authed'
+    | '/login'
+    | '/_authed/journal'
+    | '/_authed/people'
+    | '/_authed/pulse'
+    | '/_authed/server'
+    | '/dev/ui'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthedRoute: typeof AuthedRouteWithChildren
+  LoginRoute: typeof LoginRoute
   DevUiRoute: typeof DevUiRoute
 }
 
@@ -58,6 +121,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authed': {
+      id: '/_authed'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/journal': {
+      id: '/_authed/journal'
+      path: '/journal'
+      fullPath: '/journal'
+      preLoaderRoute: typeof AuthedJournalRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/people': {
+      id: '/_authed/people'
+      path: '/people'
+      fullPath: '/people'
+      preLoaderRoute: typeof AuthedPeopleRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/pulse': {
+      id: '/_authed/pulse'
+      path: '/pulse'
+      fullPath: '/pulse'
+      preLoaderRoute: typeof AuthedPulseRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/server': {
+      id: '/_authed/server'
+      path: '/server'
+      fullPath: '/server'
+      preLoaderRoute: typeof AuthedServerRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/dev/ui': {
       id: '/dev/ui'
       path: '/dev/ui'
@@ -68,8 +173,27 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthedRouteChildren {
+  AuthedJournalRoute: typeof AuthedJournalRoute
+  AuthedPeopleRoute: typeof AuthedPeopleRoute
+  AuthedPulseRoute: typeof AuthedPulseRoute
+  AuthedServerRoute: typeof AuthedServerRoute
+}
+
+const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedJournalRoute: AuthedJournalRoute,
+  AuthedPeopleRoute: AuthedPeopleRoute,
+  AuthedPulseRoute: AuthedPulseRoute,
+  AuthedServerRoute: AuthedServerRoute,
+}
+
+const AuthedRouteWithChildren =
+  AuthedRoute._addFileChildren(AuthedRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthedRoute: AuthedRouteWithChildren,
+  LoginRoute: LoginRoute,
   DevUiRoute: DevUiRoute,
 }
 export const routeTree = rootRouteImport
