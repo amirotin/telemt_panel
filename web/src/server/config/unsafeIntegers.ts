@@ -44,23 +44,24 @@ function maskStrings(json: string): string {
 
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER);
-// Bare integer tokens only — a literal with a fractional part or an
-// exponent isn't meant to be read as an exact integer in the first place,
-// so it's out of scope for this check.
-const INTEGER_TOKEN = /-?\d+/g;
+// A full JSON number token — integer part plus an optional fractional
+// and/or exponent tail — matched as one unit so a float/exponent literal
+// is never split into separate pieces. Matching only the leading digit
+// run (the previous approach) let the *fractional* digits of e.g.
+// "1.12345678901234567" be re-matched as their own bare-looking token on
+// the regex's next iteration and misjudged as a huge integer, even though
+// the integer part itself ("1") was correctly skipped.
+const NUMBER_TOKEN = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
 
 export function findUnsafeIntegerLiterals(jsonText: string): string[] {
   const masked = maskStrings(jsonText);
   const found = new Set<string>();
-  for (const match of masked.matchAll(INTEGER_TOKEN)) {
+  for (const match of masked.matchAll(NUMBER_TOKEN)) {
     const token = match[0];
-    // A bare integer immediately followed by '.' or 'e'/'E' is actually
-    // part of a float/exponent literal (e.g. the "123" in "123.45" or
-    // "123e10") — BigInt(token) alone would misjudge it as a huge exact
-    // integer. Skip those; the float/exponent form isn't this check's
-    // concern.
-    const after = masked[match.index + token.length];
-    if (after === "." || after === "e" || after === "E") continue;
+    // A literal with a fractional part or an exponent isn't meant to be
+    // read as an exact integer in the first place, so it's out of scope
+    // for this check — skip the whole token, not just its integer part.
+    if (token.includes(".") || token.includes("e") || token.includes("E")) continue;
     const value = BigInt(token);
     if (value > MAX_SAFE || value < MIN_SAFE) found.add(token);
   }

@@ -41,6 +41,16 @@ describe("findUnsafeIntegerLiterals", () => {
     expect(findUnsafeIntegerLiterals(text)).toEqual([]);
   });
 
+  it("does not flag a long fractional digit run as its own unsafe integer", () => {
+    // Regression: an earlier version only checked the character *after* a
+    // matched digit run for '.'/'e', which correctly skipped the "1" in
+    // "1.12345678901234567" but then re-matched the 17-digit fraction tail
+    // on the regex's next iteration as an independent, unflagged-by-that-
+    // check token — and misjudged it as a huge integer literal.
+    const text = '{"a":1.12345678901234567,"b":1e999999999999999}';
+    expect(findUnsafeIntegerLiterals(text)).toEqual([]);
+  });
+
   it("finds multiple distinct unsafe literals, de-duplicated", () => {
     const text = '{"a":9007199254740993,"b":9007199254740994,"c":9007199254740993}';
     expect(findUnsafeIntegerLiterals(text)).toEqual(["9007199254740993", "9007199254740994"]);
