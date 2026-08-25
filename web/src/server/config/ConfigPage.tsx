@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ServerShell } from "../ServerShell";
 import { ru, errorMessage } from "../../i18n/ru";
@@ -20,6 +20,7 @@ import { useConfigEditor } from "./useConfigEditor";
 import { useReloadPolling } from "./useReloadPolling";
 import { buildConfigPatch } from "./configPatch.helpers";
 import { diffChangedSectionKeys } from "./configConflict.helpers";
+import { rebaseEdits } from "./rebaseEdits";
 import { DEFAULT_RELOAD_POLICY, toPatchReloadQuery, type ReloadPolicyState } from "./reloadPolicy";
 import {
   getTelemtConfigOptions,
@@ -41,6 +42,10 @@ type Tab = "quick" | "raw";
 interface ConflictState {
   changedKeys: string[];
   fresh: TelemtConfig;
+  /** freshBase with the admin's pending patch reapplied on top (rebaseEdits.ts) — what the working copy becomes if "reapply" is chosen. */
+  rebased: Record<string, unknown>;
+  /** "section.key" paths where the admin's pending edit and the server's own change collide — [] means reapplying is unambiguous. */
+  overlapping: string[];
 }
 
 export function ConfigPage() {
@@ -51,11 +56,21 @@ export function ConfigPage() {
 
   const [tab, setTab] = useState<Tab>("quick");
   const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(DEFAULT_RELOAD_POLICY);
-  const [rawInvalid, setRawInvalid] = useState(false);
+  const [rawIssue, setRawIssue] = useState<{ kind: "parse_error" } | { kind: "unsafe_integer"; tokens: string[] } | null>(
+    null,
+  );
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [patchResult, setPatchResult] = useState<TelemtConfigPatchResult | null>(null);
   const [activeReloadId, setActiveReloadId] = useState<number | null>(null);
   const [patchErrorCode, setPatchErrorCode] = useState<string | null>(null);
+  // Snapshot of the `sections` patch actually sent with the in-flight
+  // PATCH — read from a ref, not recomputed from `editor.edited`, inside
+  // onError: the admin can keep typing into the form while the request is
+  // in flight, and TanStack Query's onError always calls the LATEST
+  // render's callback, so recomputing here would rebase against edits
+  // made *after* the request that actually failed, not the ones that were
+  // actually sent.
+  const pendingPatchRef = useRef<Record<string, unknown>>({});
 
   const isDesktop = useIsDesktop();
   const canRestartTelemt = hostQuery.data?.caps.restart_telemt ?? false;
@@ -81,10 +96,13 @@ export function ConfigPage() {
       if (err.code === "revision_conflict" && editor.baseline) {
         const fresh = await getTelemtConfig();
         if (fresh.data) {
-          setConflict({
-            changedKeys: diffChangedSectionKeys(editor.baseline.sections, fresh.data.sections),
-            fresh: fresh.data,
-          });
+          const changedKeys = diffChangedSectionKeys(editor.baseline.sections, fresh.data.sections);
+          const { edited: rebased, overlapping } = rebaseEdits(
+            fresh.data.sections,
+            pendingPatchRef.current,
+            changedKeys,
+          );
+          setConflict({ changedKeys, fresh: fresh.data, rebased, overlapping });
         }
         return;
       }
@@ -96,6 +114,19 @@ export function ConfigPage() {
       setPatchErrorCode(err.code ?? "internal_error");
     },
   });
+
+  // submitPatch is the one place that actually fires the mutation — used
+  // by both `save()` (the normal path) and the conflict banner's
+  // "reapply" action (a rebase-then-retry, so a single click really does
+  // retry rather than just repositioning for a second manual Save).
+  function submitPatch(revision: string, sections: Record<string, unknown>) {
+    pendingPatchRef.current = sections;
+    patchMutation.mutate({
+      headers: { "If-Match": revision },
+      query: toPatchReloadQuery(reloadPolicy),
+      body: { sections },
+    });
+  }
 
   const reloadNowMutation = useMutation({
     ...reloadTelemtMutation(),
@@ -145,13 +176,15 @@ export function ConfigPage() {
   const hasChanges = Object.keys(patch).length > 0;
 
   function save() {
-    if (!editor.baseline || rawInvalid) return;
+    if (!editor.baseline || rawIssue) return;
+    // Clear any stale notice from a *previous* save before starting a new
+    // one — otherwise a lingering success banner (changed keys, a reload
+    // stepper stuck on an old run) sits next to this new in-flight save,
+    // implying it already finished.
     setPatchErrorCode(null);
-    patchMutation.mutate({
-      headers: { "If-Match": editor.baseline.revision },
-      query: toPatchReloadQuery(reloadPolicy),
-      body: { sections: patch },
-    });
+    setPatchResult(null);
+    setActiveReloadId(null);
+    submitPatch(editor.baseline.revision, patch);
   }
 
   return (
@@ -159,7 +192,22 @@ export function ConfigPage() {
       {conflict && (
         <ConflictBanner
           changedKeys={conflict.changedKeys}
-          onReload={() => {
+          overlapping={conflict.overlapping}
+          pending={patchMutation.isPending}
+          onReapply={() => {
+            const rebasedConfig: TelemtConfig = { revision: conflict.fresh.revision, sections: conflict.rebased };
+            const retryPatch = buildConfigPatch(conflict.fresh.sections, conflict.rebased);
+            editor.seed(rebasedConfig);
+            setConflict(null);
+            // Nothing left to send only when the admin's pending edit
+            // turned out to already match the fresh server state exactly
+            // (rare) — otherwise this is the actual retry with the
+            // corrected If-Match, not just a reposition for another click.
+            if (Object.keys(retryPatch).length > 0) {
+              submitPatch(rebasedConfig.revision, retryPatch);
+            }
+          }}
+          onDiscard={() => {
             editor.seed(conflict.fresh);
             setConflict(null);
           }}
@@ -224,12 +272,25 @@ export function ConfigPage() {
             <p className="text-xs text-text-faint">{ru.server.config.rawEditorTitle}</p>
             <RawConfigEditor
               initialText={JSON.stringify(editor.edited, null, 2)}
-              onChange={(parsed) => {
-                setRawInvalid(parsed === null);
-                if (parsed !== null) editor.setEdited(parsed);
+              onChange={(result) => {
+                if (result.status === "ok") {
+                  setRawIssue(null);
+                  editor.setEdited(result.value);
+                } else if (result.status === "parse_error") {
+                  setRawIssue({ kind: "parse_error" });
+                } else {
+                  setRawIssue({ kind: "unsafe_integer", tokens: result.tokens });
+                }
               }}
             />
-            {rawInvalid && <p className="text-sm text-error">{ru.server.config.rawParseError}</p>}
+            {rawIssue?.kind === "parse_error" && (
+              <p className="text-sm text-error">{ru.server.config.rawParseError}</p>
+            )}
+            {rawIssue?.kind === "unsafe_integer" && (
+              <p className="text-sm text-error">
+                {ru.server.config.rawUnsafeInteger}: {rawIssue.tokens.join(", ")}
+              </p>
+            )}
           </div>
         </Suspense>
       ) : (
@@ -240,7 +301,7 @@ export function ConfigPage() {
         <ReloadPolicyPicker value={reloadPolicy} onChange={setReloadPolicy} />
         <div className="flex items-center gap-2">
           {!hasChanges && <span className="text-xs text-text-faint">{ru.server.config.noChanges}</span>}
-          <Button onClick={save} disabled={!hasChanges || rawInvalid || patchMutation.isPending}>
+          <Button onClick={save} disabled={!hasChanges || rawIssue !== null || patchMutation.isPending}>
             {patchMutation.isPending ? ru.server.config.saving : ru.server.config.save}
           </Button>
         </div>

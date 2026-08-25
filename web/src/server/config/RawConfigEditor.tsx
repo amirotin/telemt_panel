@@ -2,12 +2,22 @@ import { useEffect, useRef } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { json } from "@codemirror/lang-json";
+import { findUnsafeIntegerLiterals } from "./unsafeIntegers";
+
+export type RawConfigEditorResult =
+  | { status: "ok"; value: Record<string, unknown> }
+  | { status: "parse_error" }
+  // Found before the value is even parsed — a huge integer literal has
+  // already been silently rounded to the nearest representable double by
+  // the time JSON.parse returns, so there is nothing left in a parsed
+  // value to detect this from (unsafeIntegers.ts's own doc comment).
+  | { status: "unsafe_integer"; tokens: string[] };
 
 export interface RawConfigEditorProps {
   /** Initial JSON text — the editor owns its own text state after mount, never re-synced from a changing prop. */
   initialText: string;
-  /** Called on every doc change with the parsed value, or null when the current text isn't valid JSON. */
-  onChange: (parsed: Record<string, unknown> | null) => void;
+  /** Called on every doc change with the outcome of validating the current text. */
+  onChange: (result: RawConfigEditorResult) => void;
 }
 
 // RawConfigEditor — the `lg:`-only raw view of GET /api/telemt/config's
@@ -41,15 +51,25 @@ export function RawConfigEditor({ initialText, onChange }: RawConfigEditorProps)
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           const text = update.state.doc.toString();
+
+          // Checked on the source text before parsing — see this file's
+          // own RawConfigEditorResult doc comment for why parsing first
+          // would be too late.
+          const unsafe = findUnsafeIntegerLiterals(text);
+          if (unsafe.length > 0) {
+            onChangeRef.current({ status: "unsafe_integer", tokens: unsafe });
+            return;
+          }
+
           try {
             const parsed: unknown = JSON.parse(text);
-            onChangeRef.current(
-              parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-                ? (parsed as Record<string, unknown>)
-                : null,
-            );
+            if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+              onChangeRef.current({ status: "ok", value: parsed as Record<string, unknown> });
+            } else {
+              onChangeRef.current({ status: "parse_error" });
+            }
           } catch {
-            onChangeRef.current(null);
+            onChangeRef.current({ status: "parse_error" });
           }
         }),
       ],
