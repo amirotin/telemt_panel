@@ -367,34 +367,59 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtInfo" } } }
 
   /api/telemt/config:
-    x-status: planned
     get:
       tags: [telemt]
       operationId: getTelemtConfig
+      description: >
+        Passthrough of Telemt's GET /v1/config: editable sections plus the revision to
+        chain into a later PATCH's If-Match. api mode only in this release — file mode
+        (telemt.config_edit_mode=file) is not implemented yet.
       responses:
         "200":
-          description: Editable sections + revision (api mode) or file content (file mode)
+          description: Editable sections + revision
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfig" } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — this Telemt build/config does not expose the config API, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     patch:
       tags: [telemt]
       operationId: patchTelemtConfig
+      description: >
+        Passthrough of Telemt's PATCH /v1/config. The revision travels as an `If-Match`
+        header (required — from a prior GET's `revision`), not a body field. An inline
+        reload can be requested via query parameters, forwarded to Telemt's own
+        `reload`/`timeout_secs`/`failure_policy` query (07-telemt-sdk.md §Config);
+        omitting `reload` patches without reloading.
+      parameters:
+        - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
+        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatch" } } }
       responses:
         "200": { description: Applied, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "409":
           description: revision_conflict — re-read and merge
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "422":
+          description: >
+            access_not_editable | section_not_editable | field_not_editable |
+            config_patch_not_atomic | ambiguous_listeners — the patch itself is not
+            applicable, regardless of the HTTP status Telemt used internally.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — this Telemt build/config does not expose the config API, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/reload:
-    x-status: planned
     post:
       tags: [telemt]
       operationId: reloadTelemt
-      description: Config re-read via Telemt reload API (capability `reload_api`) — not a service restart.
+      description: >
+        Passthrough of Telemt's POST /v1/system/reload — config re-read via the reload
+        API (capability `reload_api`), not a service restart. `If-Match`, when sent, is
+        forwarded as the mutation's revision.
       requestBody:
         required: false
         content:
@@ -404,20 +429,41 @@ paths:
               properties:
                 mode: { type: string, enum: [instant, drain], default: instant }
                 timeout_secs: { type: integer, minimum: 1, maximum: 3600 }
+                failure_policy: { type: string, enum: [keep_new, rollback], default: keep_new }
       responses:
-        "202": { description: Reload accepted (progress via SSE topic `stats`) }
-        "409": { description: reload_in_progress }
-        "501": { description: Capability absent — offer service restart instead }
+        "202": { description: Reload accepted, content: { application/json: { schema: { $ref: "#/components/schemas/ReloadAccepted" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "409": { description: reload_in_progress, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: capability_absent — offer service restart instead, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+
+  /api/telemt/reload/{id}:
+    get:
+      tags: [telemt]
+      operationId: getTelemtReloadStatus
+      description: Passthrough of Telemt's GET /v1/system/reload/{id} — poll until State reaches a terminal phase.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64, minimum: 0 } }
+      responses:
+        "200": { description: Reload status, content: { application/json: { schema: { $ref: "#/components/schemas/ReloadStatus" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: reload_not_found — unknown or aged-out id, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/telemt/restart:
-    x-status: planned
     post:
       tags: [telemt]
       operationId: restartTelemtService
-      description: Service-level restart through the host layer; disabled when host cap restart_telemt=false.
+      description: >
+        Service-level restart through the host layer (01-host-matrix.md), independent of
+        the reload endpoints above — restarts the whole process rather than re-reading
+        config. Disabled when host cap restart_telemt=false.
       responses:
         "202": { description: Restart initiated }
-        "409": { description: Manual restart required on this platform (see /api/host hint) }
+        "503": { description: manual_restart_required — automatic restart unavailable on this host; message carries the manual command (same info as /api/host manual_commands), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: internal_error — the restart op itself failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   # ───────────────────────── host ─────────────────────────
   /api/host:
@@ -524,17 +570,21 @@ paths:
         "502": { description: telemt_unreachable — every requested topic's fetch failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/history:
-    x-status: planned
     get:
       tags: [realtime]
       operationId: getHistory
-      description: Metric history; 501 on the memory store profile beyond the RAM ring.
+      description: >
+        Metric history from the store's in-memory RAM ring (ruling R3: memory-profile
+        store keeps ~15 minutes of raw points per metric, recorded by the hub after each
+        "stats" topic poll). Never errors on empty/partial history — a metric with
+        nothing recorded yet (or a `range` longer than what's retained) is 200 with
+        however many points actually exist, even zero.
       parameters:
         - { name: metric, in: query, required: true, schema: { type: string, enum: [connections, traffic, health, active_users] } }
         - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 1h, 24h, 7d] } }
       responses:
-        "200": { description: Series, content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
-        "501": { description: Range unavailable on this store profile }
+        "200": { description: Series (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   # ───────────────────────── misc ─────────────────────────
   /api/health:
@@ -573,18 +623,29 @@ paths:
         "502": { description: log_source_error — the log source failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/audit:
-    x-status: planned
     get:
       tags: [misc]
       operationId: getAudit
+      description: >
+        Panel operation journal (logins, user changes, config patches, updates), newest
+        first, read from the store's audit ring (at most 500 entries retained).
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+        - name: before
+          in: query
+          description: >
+            Cursor for paging further back: an entry's own `ts` value from a previous
+            response (RFC3339Nano — the exact format encoding/json produces for a Go
+            time.Time). Returns entries strictly older than this timestamp. There is no
+            separate opaque cursor token; `ts` doubles as one.
+          schema: { type: string, format: date-time }
       responses:
         "200":
-          description: Panel operation journal (logins, user changes, updates)
+          description: Entries newest-first (possibly empty)
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   /api/geoip:
     x-status: planned
@@ -658,20 +719,24 @@ components:
             Machine code. Panel codes actually emitted today (grepped from every
             WriteError call site): bad_request, invalid_credentials, rate_limited,
             session_expired, csrf_rejected, internal_error, not_found,
-            telemt_unreachable, capability_absent, update_locked, sublink_unavailable,
+            telemt_unreachable, capability_absent, capability_unavailable,
+            manual_restart_required, update_locked, sublink_unavailable,
             log_tail_unavailable, log_stream_unavailable, log_source_error.
             Reserved for milestones not yet implemented: totp_required (TOTP login),
             telemt_auth_failed (superseded on /api/telemt/info by a reachable:false
-            body, not an error status — kept here for /api/telemt/config, M3),
-            revision_conflict, reload_in_progress, manual_restart_required
-            (/api/telemt/restart). A well-formed Telemt *APIError whose status is
-            4xx and isn't otherwise mapped above is passed through verbatim with
-            Telemt's own code — notably user_exists, last_user_forbidden, read_only,
-            plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request,
-            access_not_editable, section_not_editable, field_not_editable,
-            unauthorized, forbidden, method_not_allowed, revision_conflict,
-            reload_in_progress, config_patch_not_atomic, payload_too_large,
-            api_disabled, maestro_unavailable.
+            body, not an error status — kept here for /api/telemt/config, M3).
+            A well-formed Telemt *APIError whose status is 4xx and isn't otherwise
+            mapped above is passed through verbatim with Telemt's own code — notably
+            user_exists, last_user_forbidden, read_only, revision_conflict,
+            reload_in_progress, reload_not_found, ambiguous_listeners (the latter two
+            absent from Telemt's own documented error-code table but confirmed against
+            its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md):
+            bad_request, access_not_editable, section_not_editable, field_not_editable,
+            unauthorized, forbidden, method_not_allowed, config_patch_not_atomic,
+            payload_too_large, api_disabled, maestro_unavailable — except
+            access_not_editable/section_not_editable/field_not_editable/
+            config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config,
+            which the panel remaps to HTTP 422 regardless of Telemt's own status.
         message: { type: string }
 
     User:
@@ -785,41 +850,73 @@ components:
 
     TelemtConfig:
       type: object
-      required: [mode, revision]
+      description: >
+        api mode only in this release (file mode / telemt.config_edit_mode=file is not
+        implemented yet — see GET /api/telemt/config's description).
+      required: [revision, sections]
       properties:
-        mode: { type: string, enum: [api, file] }
         revision: { type: string }
         sections:
           type: object
           additionalProperties: true
-          description: api mode — editable sections as JSON (integers preserved)
-        raw:
-          type: string
-          description: file mode — full TOML text
+          description: Editable sections as JSON, straight from Telemt (integers preserved).
 
     TelemtConfigPatch:
       type: object
-      required: [revision]
+      description: >
+        The revision travels as the request's `If-Match` header (required), not a body
+        field here — see PATCH /api/telemt/config's description.
+      required: [sections]
       properties:
-        revision: { type: string, description: From the prior GET; forwarded as If-Match }
         sections:
           type: object
           additionalProperties: true
-          description: api mode — sparse section patch
-        raw:
-          type: string
-          description: file mode — full new TOML text (comment-preserving patch applied server-side)
-        reload: { type: string, enum: [none, instant, drain], default: instant }
+          description: Sparse map of section name → JSON Merge Patch value for that section.
 
     TelemtConfigPatchResult:
       type: object
+      description: Telemt's PATCH /v1/config response, passed through as-is.
       required: [revision, changed]
       properties:
         revision: { type: string }
         changed: { type: array, items: { type: string } }
+        restart_required: { type: boolean, description: Legacy field, still sent by current Telemt builds. }
         runtime_reload_required: { type: boolean }
         process_restart_required: { type: boolean }
         deferred_process_fields: { type: array, items: { type: string } }
+        reload:
+          description: Present only when the request's `reload` query parameter triggered an inline reload.
+          allOf: [{ $ref: "#/components/schemas/ReloadAccepted" }]
+
+    ReloadAccepted:
+      type: object
+      description: The 202 payload of Telemt's POST /v1/system/reload, passed through as-is.
+      required: [reload_id, target_generation, config_revision, state, mode, failure_policy]
+      properties:
+        reload_id: { type: integer, format: int64 }
+        target_generation: { type: integer, format: int64 }
+        config_revision: { type: string }
+        state: { type: string, enum: [accepted, preparing, activating, draining, succeeded, rolled_back, failed] }
+        mode: { type: string, enum: [instant, drain] }
+        failure_policy: { type: string, enum: [keep_new, rollback] }
+
+    ReloadStatus:
+      type: object
+      description: Telemt's GET /v1/system/reload/{id} response, passed through as-is.
+      required: [reload_id, target_generation, config_revision, state, mode, failure_policy, requested_at_epoch_secs]
+      properties:
+        reload_id: { type: integer, format: int64 }
+        target_generation: { type: integer, format: int64 }
+        config_revision: { type: string }
+        state: { type: string, enum: [accepted, preparing, activating, draining, succeeded, rolled_back, failed] }
+        mode: { type: string, enum: [instant, drain] }
+        failure_policy: { type: string, enum: [keep_new, rollback] }
+        requested_at_epoch_secs: { type: integer, format: int64 }
+        started_at_epoch_secs: { type: integer, format: int64 }
+        finished_at_epoch_secs: { type: integer, format: int64 }
+        deferred_process_fields: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+        error: { type: string }
 
     HostInfo:
       type: object
@@ -941,10 +1038,10 @@ components:
           type: array
           items:
             type: object
-            required: [ts, value]
+            required: [ts, v]
             properties:
               ts: { type: integer, format: int64, description: epoch seconds }
-              value: { type: number }
+              v: { type: number }
 
     GeoInfo:
       type: object
