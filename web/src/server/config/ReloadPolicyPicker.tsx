@@ -1,8 +1,18 @@
 import { ru } from "../../i18n/ru";
-import { Select } from "../../ui/Select";
+import { Chip } from "../../ui/Chip";
 import { Input } from "../../ui/Input";
+import { SectionLabel } from "../../ui/SectionLabel";
 import type { ReloadPolicyState, ReloadMode } from "./reloadPolicy";
 
+const MODES: ReadonlyArray<{ value: ReloadMode; label: string }> = [
+  { value: "none", label: ru.server.config.reloadPolicy.none },
+  { value: "instant", label: ru.server.config.reloadPolicy.instant },
+  { value: "drain", label: ru.server.config.reloadPolicy.drain },
+];
+
+// ReloadPolicyPicker — the prototype's segmented pill strip rather than a
+// <select>: three fixed, non-destructive choices that the admin re-picks
+// often, all worth seeing at once before pressing Сохранить.
 export function ReloadPolicyPicker({
   value,
   onChange,
@@ -11,31 +21,35 @@ export function ReloadPolicyPicker({
   onChange: (next: ReloadPolicyState) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-text-muted">{ru.server.config.reloadPolicy.label}</span>
-        <Select
-          value={value.mode}
-          onChange={(e) => onChange({ ...value, mode: e.target.value as ReloadMode })}
-          className="w-44"
-        >
-          <option value="none">{ru.server.config.reloadPolicy.none}</option>
-          <option value="instant">{ru.server.config.reloadPolicy.instant}</option>
-          <option value="drain">{ru.server.config.reloadPolicy.drain}</option>
-        </Select>
-      </label>
-      {value.mode === "drain" && (
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-text-muted">{ru.server.config.reloadPolicy.timeoutLabel}</span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            className="w-28"
-            value={value.timeoutSecs}
-            onChange={(e) => onChange({ ...value, timeoutSecs: Number(e.target.value) || 1 })}
-          />
-        </label>
-      )}
+    <div className="flex flex-col gap-2">
+      <SectionLabel>{ru.server.config.reloadPolicy.label}</SectionLabel>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {MODES.map((mode) => (
+          <Chip
+            key={mode.value}
+            active={value.mode === mode.value}
+            onClick={() => onChange({ ...value, mode: mode.value })}
+          >
+            {mode.label}
+          </Chip>
+        ))}
+        {value.mode === "drain" && (
+          <label className="flex items-center gap-2 pl-1">
+            <span className="text-micro text-text-muted">
+              {ru.server.config.reloadPolicy.timeoutLabel}
+            </span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              className="w-24"
+              value={value.timeoutSecs}
+              onChange={(e) =>
+                onChange({ ...value, timeoutSecs: Number(e.target.value) || 1 })
+              }
+            />
+          </label>
+        )}
+      </div>
     </div>
   );
 }

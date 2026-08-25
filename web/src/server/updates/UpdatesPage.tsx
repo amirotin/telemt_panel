@@ -13,9 +13,10 @@ import {
   getUpdatesQueryKey,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { UpdateRun } from "../../lib/api/generated/types.gen";
+import { Card, CardTitle } from "../../ui/Card";
 import { UpdateTarget } from "./UpdateTarget";
 import { AutoUpdateForm } from "./AutoUpdateForm";
-import { sortJournalDesc } from "./updatePhase.helpers";
+import { sortJournalDesc, updatePhaseStep } from "./updatePhase.helpers";
 import { formatAuditTimestamp } from "../../journal/timestamp.helpers";
 
 // UpdatesPage — /server/updates (06-ui.md §Обновления): both targets
@@ -56,7 +57,9 @@ export function UpdatesPage() {
     return (
       <ServerShell title={ru.server.updates.title}>
         <ErrorState
-          message={errorMessage(apiErrorCode(updatesQuery.error) ?? "internal_error")}
+          message={errorMessage(
+            apiErrorCode(updatesQuery.error) ?? "internal_error",
+          )}
           onRetry={() => updatesQuery.refetch()}
         />
       </ServerShell>
@@ -72,7 +75,7 @@ export function UpdatesPage() {
         <StatePill state="warn">{ru.server.updates.sseStale}</StatePill>
       )}
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2.5">
         {telemt && (
           <UpdateTarget
             target="telemt"
@@ -81,7 +84,9 @@ export function UpdatesPage() {
             hostCaps={hostQuery.data?.caps}
             manualCommands={hostQuery.data?.manual_commands}
             sseEvent={sse.data}
-            onApplied={() => queryClient.invalidateQueries({ queryKey: getUpdatesQueryKey() })}
+            onApplied={() =>
+              queryClient.invalidateQueries({ queryKey: getUpdatesQueryKey() })
+            }
           />
         )}
         {panel && (
@@ -92,47 +97,88 @@ export function UpdatesPage() {
             hostCaps={hostQuery.data?.caps}
             manualCommands={hostQuery.data?.manual_commands}
             sseEvent={sse.data}
-            onApplied={() => queryClient.invalidateQueries({ queryKey: getUpdatesQueryKey() })}
+            onApplied={() =>
+              queryClient.invalidateQueries({ queryKey: getUpdatesQueryKey() })
+            }
           />
         )}
       </div>
 
       <AutoUpdateForm />
 
-      <div className="flex flex-col gap-4">
-        {telemt && <JournalList title={ru.server.updates.targetNames.telemt} entries={telemt.journal ?? []} />}
-        {panel && <JournalList title={ru.server.updates.targetNames.panel} entries={panel.journal ?? []} />}
+      <div className="flex flex-col gap-2.5">
+        {telemt && (
+          <JournalList
+            title={ru.server.updates.targetNames.telemt}
+            entries={telemt.journal ?? []}
+          />
+        )}
+        {panel && (
+          <JournalList
+            title={ru.server.updates.targetNames.panel}
+            entries={panel.journal ?? []}
+          />
+        )}
       </div>
     </ServerShell>
   );
 }
 
-function JournalList({ title, entries }: { title: string; entries: UpdateRun[] }) {
+// DOT_CLASSES maps the run's outcome (via the already-tested
+// updatePhaseStep) to the prototype's 7px history dot — no second phase
+// classification lives here.
+const DOT_CLASSES: Record<string, string> = {
+  success: "bg-ok",
+  error: "bg-error",
+  rolling_back: "bg-warn",
+  running: "bg-accent",
+};
+
+function JournalList({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: UpdateRun[];
+}) {
   const sorted = sortJournalDesc(entries);
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
-      <h2 className="mb-2 text-sm font-semibold text-text">
+    <Card className="flex flex-col gap-1">
+      <CardTitle className="pb-1">
         {ru.server.updates.journalTitle} — {title}
-      </h2>
+      </CardTitle>
       {sorted.length === 0 ? (
-        <p className="text-sm text-text-muted">{ru.server.updates.journalEmpty}</p>
+        <p className="py-1 text-meta text-text-faint">
+          {ru.server.updates.journalEmpty}
+        </p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border">
+        <ul className="flex flex-col">
           {sorted.map((entry, i) => (
-            <li key={`${entry.run_id}-${entry.phase}-${i}`} className="flex flex-col gap-0.5 py-2 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-text">{ru.server.updates.phases[entry.phase]}</span>
-                <span className="tabular-nums text-xs text-text-faint">{formatAuditTimestamp(entry.started_at)}</span>
-              </div>
-              <span className="text-xs text-text-muted">
+            <li
+              key={`${entry.run_id}-${entry.phase}-${i}`}
+              className="flex min-h-[44px] flex-wrap items-center gap-x-2.5 gap-y-0.5 border-b border-border py-2 last:border-b-0"
+            >
+              <span
+                aria-hidden="true"
+                className={`h-[7px] w-[7px] shrink-0 rounded-full ${
+                  DOT_CLASSES[updatePhaseStep(entry.phase).outcome ?? "running"]
+                }`}
+              />
+              <span className="font-mono text-meta tabular-nums text-text">
                 {entry.version_from ? `${entry.version_from} → ` : ""}
                 {entry.version_to}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-micro text-text-muted">
+                {ru.server.updates.phases[entry.phase]}
                 {entry.detail ? ` · ${entry.detail}` : ""}
+              </span>
+              <span className="shrink-0 text-micro tabular-nums text-text-faint">
+                {formatAuditTimestamp(entry.started_at)}
               </span>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

@@ -526,7 +526,7 @@ export const ru = {
   },
   server: {
     title: "Сервер",
-    back: "← Сервер",
+    back: "Назад к разделу Сервер",
     menu: {
       config: {
         title: "Конфигурация",
@@ -639,6 +639,7 @@ export const ru = {
         rolled_back: "Откачено",
         failed: "Ошибка",
       },
+      availablePrefix: "Доступна версия",
       noActiveRun: "Обновление не выполняется",
       panelRestarting: "Панель перезапускается…",
       panelRestartTimeoutTitle: "Панель не ответила новой версией",
@@ -666,7 +667,6 @@ export const ru = {
       whitelistTitle: "Белый список",
       whitelistEmpty: "Белый список пуст или отключён",
       whitelistEntriesTotal: "Всего записей",
-      limitsTitle: "Действующие лимиты",
       tlsTitle: "TLS-отпечатки",
       editHint: "Правится в конфиге Telemt.",
       postureFields: {
@@ -716,7 +716,7 @@ export const ru = {
       lastSeen: "Последняя активность",
       created: "Создана",
       displayTitle: "Отображение",
-      dashboardTitle: "Дашборд",
+      dangerZoneTitle: "Опасная зона",
       resetLayout: "Сбросить раскладку дашборда",
       resetLayoutConfirm:
         "Сбросить раскладку дашборда Пульса к значениям по умолчанию?",

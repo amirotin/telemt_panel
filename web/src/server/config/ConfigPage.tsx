@@ -5,8 +5,11 @@ import { ru, errorMessage } from "../../i18n/ru";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/Button";
 import { Skeleton } from "../../ui/Skeleton";
+import { SectionLabel } from "../../ui/SectionLabel";
 import { ErrorState } from "../../ui/ErrorState";
 import { Gated } from "../../caps/Gated";
+import { Card } from "../../ui/Card";
+import { Notice } from "../Notice";
 import { pushToast } from "../../ui/Toast";
 import { apiErrorMessage } from "../../people/apiError";
 import { useIsDesktop } from "../useIsDesktop";
@@ -21,7 +24,11 @@ import { useReloadPolling } from "./useReloadPolling";
 import { buildConfigPatch } from "./configPatch.helpers";
 import { diffChangedSectionKeys } from "./configConflict.helpers";
 import { rebaseEdits } from "./rebaseEdits";
-import { DEFAULT_RELOAD_POLICY, toPatchReloadQuery, type ReloadPolicyState } from "./reloadPolicy";
+import {
+  DEFAULT_RELOAD_POLICY,
+  toPatchReloadQuery,
+  type ReloadPolicyState,
+} from "./reloadPolicy";
 import {
   getTelemtConfigOptions,
   getTelemtConfigQueryKey,
@@ -31,7 +38,10 @@ import {
   restartTelemtServiceMutation,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
 import { getTelemtConfig } from "../../lib/api/generated/sdk.gen";
-import type { TelemtConfig, TelemtConfigPatchResult } from "../../lib/api/generated/types.gen";
+import type {
+  TelemtConfig,
+  TelemtConfigPatchResult,
+} from "../../lib/api/generated/types.gen";
 
 const RawConfigEditor = lazy(() =>
   import("./RawConfigEditor").then((m) => ({ default: m.RawConfigEditor })),
@@ -55,12 +65,17 @@ export function ConfigPage() {
   const editor = useConfigEditor(configQuery.data);
 
   const [tab, setTab] = useState<Tab>("quick");
-  const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(DEFAULT_RELOAD_POLICY);
-  const [rawIssue, setRawIssue] = useState<{ kind: "parse_error" } | { kind: "unsafe_integer"; tokens: string[] } | null>(
-    null,
+  const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(
+    DEFAULT_RELOAD_POLICY,
   );
+  const [rawIssue, setRawIssue] = useState<
+    | { kind: "parse_error" }
+    | { kind: "unsafe_integer"; tokens: string[] }
+    | null
+  >(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
-  const [patchResult, setPatchResult] = useState<TelemtConfigPatchResult | null>(null);
+  const [patchResult, setPatchResult] =
+    useState<TelemtConfigPatchResult | null>(null);
   const [activeReloadId, setActiveReloadId] = useState<number | null>(null);
   const [patchErrorCode, setPatchErrorCode] = useState<string | null>(null);
   // Snapshot of the `sections` patch actually sent with the in-flight
@@ -96,7 +111,10 @@ export function ConfigPage() {
       if (err.code === "revision_conflict" && editor.baseline) {
         const fresh = await getTelemtConfig();
         if (fresh.data) {
-          const changedKeys = diffChangedSectionKeys(editor.baseline.sections, fresh.data.sections);
+          const changedKeys = diffChangedSectionKeys(
+            editor.baseline.sections,
+            fresh.data.sections,
+          );
           const { edited: rebased, overlapping } = rebaseEdits(
             fresh.data.sections,
             pendingPatchRef.current,
@@ -153,13 +171,20 @@ export function ConfigPage() {
     if (code === "capability_unavailable") {
       return (
         <ServerShell title={ru.server.config.title}>
-          <Gated enabled={false} reason={configQuery.error?.message} hint="config_api" />
+          <Gated
+            enabled={false}
+            reason={configQuery.error?.message}
+            hint="config_api"
+          />
         </ServerShell>
       );
     }
     return (
       <ServerShell title={ru.server.config.title}>
-        <ErrorState message={errorMessage(code)} onRetry={() => configQuery.refetch()} />
+        <ErrorState
+          message={errorMessage(code)}
+          onRetry={() => configQuery.refetch()}
+        />
       </ServerShell>
     );
   }
@@ -195,8 +220,14 @@ export function ConfigPage() {
           overlapping={conflict.overlapping}
           pending={patchMutation.isPending}
           onReapply={() => {
-            const rebasedConfig: TelemtConfig = { revision: conflict.fresh.revision, sections: conflict.rebased };
-            const retryPatch = buildConfigPatch(conflict.fresh.sections, conflict.rebased);
+            const rebasedConfig: TelemtConfig = {
+              revision: conflict.fresh.revision,
+              sections: conflict.rebased,
+            };
+            const retryPatch = buildConfigPatch(
+              conflict.fresh.sections,
+              conflict.rebased,
+            );
             editor.seed(rebasedConfig);
             setConflict(null);
             // Nothing left to send only when the admin's pending edit
@@ -215,9 +246,7 @@ export function ConfigPage() {
       )}
 
       {patchErrorCode && (
-        <div className="rounded-xl border border-error/30 bg-error/5 p-4">
-          <p className="text-sm text-error">{errorMessage(patchErrorCode)}</p>
-        </div>
+        <Notice tone="error" title={errorMessage(patchErrorCode)} />
       )}
 
       {patchResult && (
@@ -226,50 +255,51 @@ export function ConfigPage() {
           canRestartTelemt={canRestartTelemt}
           reloadPending={reloadNowMutation.isPending}
           restartPending={restartMutation.isPending}
-          onReloadNow={() => reloadNowMutation.mutate({ body: { mode: "instant" } })}
+          onReloadNow={() =>
+            reloadNowMutation.mutate({ body: { mode: "instant" } })
+          }
           onRestartNow={() => restartMutation.mutate({})}
         />
       )}
 
       {activeReloadId !== null && (
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <ReloadStepper status={reloadStatusQuery.data} errorCode={reloadStatusQuery.error?.code} />
-        </div>
+        <Card>
+          <ReloadStepper
+            status={reloadStatusQuery.data}
+            errorCode={reloadStatusQuery.error?.code}
+          />
+        </Card>
       )}
 
-      <div className="inline-flex w-fit rounded-lg border border-border bg-surface-2 p-0.5" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "quick"}
-          onClick={() => setTab("quick")}
-          className={cn(
-            "tap-target rounded-md px-4 text-sm font-medium transition-colors",
-            tab === "quick" ? "bg-accent text-accent-text" : "text-text-muted hover:text-text",
-          )}
-        >
-          {ru.server.config.tabs.quick}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "raw"}
-          onClick={() => setTab("raw")}
-          className={cn(
-            "tap-target rounded-md px-4 text-sm font-medium transition-colors",
-            tab === "raw" ? "bg-accent text-accent-text" : "text-text-muted hover:text-text",
-          )}
-        >
-          {ru.server.config.tabs.raw}
-        </button>
+      <div className="flex w-fit gap-1.5" role="tablist">
+        {(["quick", "raw"] as const).map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            onClick={() => setTab(name)}
+            className={cn(
+              "inline-flex h-[34px] shrink-0 items-center rounded-full px-3.5 text-xs font-semibold transition-colors",
+              tab === name
+                ? "bg-text text-bg"
+                : "bg-surface-2 text-text-muted hover:bg-surface-3 hover:text-text",
+            )}
+          >
+            {ru.server.config.tabs[name]}
+          </button>
+        ))}
       </div>
 
       {tab === "quick" ? (
-        <QuickSettingsForm sections={editor.edited} onChange={editor.setEdited} />
+        <QuickSettingsForm
+          sections={editor.edited}
+          onChange={editor.setEdited}
+        />
       ) : isDesktop ? (
         <Suspense fallback={<Skeleton className="h-64 w-full" />}>
           <div className="flex flex-col gap-2">
-            <p className="text-xs text-text-faint">{ru.server.config.rawEditorTitle}</p>
+            <SectionLabel>{ru.server.config.rawEditorTitle}</SectionLabel>
             <RawConfigEditor
               initialText={JSON.stringify(editor.edited, null, 2)}
               onChange={(result) => {
@@ -279,17 +309,22 @@ export function ConfigPage() {
                 } else if (result.status === "parse_error") {
                   setRawIssue({ kind: "parse_error" });
                 } else {
-                  setRawIssue({ kind: "unsafe_integer", tokens: result.tokens });
+                  setRawIssue({
+                    kind: "unsafe_integer",
+                    tokens: result.tokens,
+                  });
                 }
               }}
             />
             {rawIssue?.kind === "parse_error" && (
-              <p className="text-sm text-error">{ru.server.config.rawParseError}</p>
+              <Notice tone="error" title={ru.server.config.rawParseError} />
             )}
             {rawIssue?.kind === "unsafe_integer" && (
-              <p className="text-sm text-error">
-                {ru.server.config.rawUnsafeInteger}: {rawIssue.tokens.join(", ")}
-              </p>
+              <Notice tone="error" title={ru.server.config.rawUnsafeInteger}>
+                <p className="font-mono text-meta text-text">
+                  {rawIssue.tokens.join(", ")}
+                </p>
+              </Notice>
             )}
           </div>
         </Suspense>
@@ -297,15 +332,26 @@ export function ConfigPage() {
         <ReadOnlyJsonView sections={editor.edited} />
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4">
+      <Card className="flex flex-wrap items-end justify-between gap-3">
         <ReloadPolicyPicker value={reloadPolicy} onChange={setReloadPolicy} />
-        <div className="flex items-center gap-2">
-          {!hasChanges && <span className="text-xs text-text-faint">{ru.server.config.noChanges}</span>}
-          <Button onClick={save} disabled={!hasChanges || rawIssue !== null || patchMutation.isPending}>
-            {patchMutation.isPending ? ru.server.config.saving : ru.server.config.save}
+        <div className="flex items-center gap-2.5">
+          {!hasChanges && (
+            <span className="text-micro text-text-faint">
+              {ru.server.config.noChanges}
+            </span>
+          )}
+          <Button
+            onClick={save}
+            disabled={
+              !hasChanges || rawIssue !== null || patchMutation.isPending
+            }
+          >
+            {patchMutation.isPending
+              ? ru.server.config.saving
+              : ru.server.config.save}
           </Button>
         </div>
-      </div>
+      </Card>
     </ServerShell>
   );
 }

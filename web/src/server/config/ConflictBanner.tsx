@@ -1,5 +1,6 @@
 import { ru } from "../../i18n/ru";
 import { Button } from "../../ui/Button";
+import { Notice } from "../Notice";
 
 export interface ConflictBannerProps {
   changedKeys: string[];
@@ -23,34 +24,64 @@ export interface ConflictBannerProps {
 // explicit — reapply the admin's edit anyway (admin's value wins) or
 // discard it (server's value wins) — with honest labels: "discard" never
 // claims to "retry" anything, since nothing of the admin's is being sent.
-export function ConflictBanner({ changedKeys, overlapping, pending, onReapply, onDiscard }: ConflictBannerProps) {
+export function ConflictBanner({
+  changedKeys,
+  overlapping,
+  pending,
+  onReapply,
+  onDiscard,
+}: ConflictBannerProps) {
   const hasOverlap = overlapping.length > 0;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-warn/30 bg-warn/5 p-4">
-      <p className="text-sm font-medium text-warn">{ru.server.config.conflictTitle}</p>
-      <p className="text-sm text-text">{ru.server.config.conflictDescription}</p>
-      {changedKeys.length > 0 && <p className="font-mono text-xs text-text-muted">{changedKeys.join(", ")}</p>}
+    <Notice tone="warn" title={ru.server.config.conflictTitle}>
+      <p className="text-meta leading-relaxed text-text-muted">
+        {ru.server.config.conflictDescription}
+      </p>
+      {changedKeys.length > 0 && (
+        <p className="font-mono text-meta text-text">
+          {changedKeys.join(", ")}
+        </p>
+      )}
 
       {hasOverlap ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-error">
-            {ru.server.config.conflictOverlapWarning}: {overlapping.join(", ")}
+          <p className="text-meta text-error">
+            {ru.server.config.conflictOverlapWarning}:{" "}
+            <span className="font-mono">{overlapping.join(", ")}</span>
           </p>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={onDiscard} disabled={pending} className="flex-1">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onDiscard}
+              disabled={pending}
+              className="flex-1"
+            >
               {ru.server.config.conflictDiscardMine}
             </Button>
-            <Button variant="primary" onClick={onReapply} disabled={pending} className="flex-1">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onReapply}
+              disabled={pending}
+              className="flex-1"
+            >
               {ru.server.config.conflictReapplyMine}
             </Button>
           </div>
         </div>
       ) : (
-        <Button variant="secondary" onClick={onReapply} disabled={pending} className="self-start">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onReapply}
+          disabled={pending}
+          className="self-start"
+        >
           {ru.server.config.conflictReload}
         </Button>
       )}
-    </div>
+    </Notice>
   );
 }

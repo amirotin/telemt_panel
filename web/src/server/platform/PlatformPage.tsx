@@ -5,6 +5,7 @@ import { ru, errorMessage } from "../../i18n/ru";
 import { KVRow } from "../../ui/KVRow";
 import { StatePill } from "../../ui/StatePill";
 import { Button } from "../../ui/Button";
+import { Card, CardTitle } from "../../ui/Card";
 import { CopyField } from "../../ui/CopyField";
 import { ConfirmView } from "../../ui/ConfirmView";
 import { Skeleton } from "../../ui/Skeleton";
@@ -45,7 +46,10 @@ export function PlatformPage() {
   if (query.isError) {
     return (
       <ServerShell title={ru.server.platform.title}>
-        <ErrorState message={errorMessage(apiErrorCode(query.error) ?? "internal_error")} onRetry={() => query.refetch()} />
+        <ErrorState
+          message={errorMessage(apiErrorCode(query.error) ?? "internal_error")}
+          onRetry={() => query.refetch()}
+        />
       </ServerShell>
     );
   }
@@ -56,43 +60,62 @@ export function PlatformPage() {
 
   return (
     <ServerShell title={ru.server.platform.title}>
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex flex-col">
-          <KVRow label={ru.server.platform.serviceManager} value={info.service_manager} />
-          <KVRow label={ru.server.platform.logSource} value={info.log_source} />
-          <KVRow label={ru.server.platform.privilegesMode} value={info.privileges_mode} />
-          {info.os_release && <KVRow label={ru.server.platform.osRelease} value={info.os_release} />}
-        </div>
-      </section>
+      <div className="rounded-xl bg-surface px-4 py-1">
+        <KVRow
+          label={ru.server.platform.serviceManager}
+          value={info.service_manager}
+        />
+        <KVRow label={ru.server.platform.logSource} value={info.log_source} />
+        <KVRow
+          label={ru.server.platform.privilegesMode}
+          value={info.privileges_mode}
+        />
+        {info.os_release && (
+          <KVRow label={ru.server.platform.osRelease} value={info.os_release} />
+        )}
+      </div>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="mb-2 text-sm font-semibold text-text">{ru.server.platform.capsTitle}</h2>
-        <div className="flex flex-wrap gap-2">
+      <Card className="flex flex-col gap-2.5">
+        {/* Kept as an <h2> — e2e/mobile.spec.ts asserts this heading is what
+            /server/platform renders. */}
+        <h2 className="text-[13px] font-semibold text-text">
+          {ru.server.platform.capsTitle}
+        </h2>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {capKeys.map((key) => (
-            <StatePill key={key} state={caps[key] ? "ok" : "warn"}>
-              {ru.server.platform.caps[key]}
-            </StatePill>
+            <div
+              key={key}
+              className="flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2"
+            >
+              <span className="min-w-0 flex-1 truncate text-micro text-text-muted">
+                {ru.server.platform.caps[key]}
+              </span>
+              <StatePill state={caps[key] ? "ok" : "muted"}>
+                {caps[key] ? ru.common.yes : ru.common.no}
+              </StatePill>
+            </div>
           ))}
         </div>
-      </section>
+      </Card>
 
       {info.manual_commands && Object.keys(info.manual_commands).length > 0 && (
-        <section className="rounded-xl border border-border bg-surface p-4">
-          <h2 className="mb-2 text-sm font-semibold text-text">{ru.server.platform.manualCommandsTitle}</h2>
-          <div className="flex flex-col gap-3">
+        <Card className="flex flex-col gap-2.5">
+          <CardTitle>{ru.server.platform.manualCommandsTitle}</CardTitle>
+          <div className="flex flex-col gap-2.5">
             {Object.entries(info.manual_commands).map(([key, cmd]) => (
               <div key={key} className="flex flex-col gap-1">
-                <p className="text-xs text-text-muted">
-                  {ru.server.platform.caps[key as keyof HostInfo["caps"]] ?? key}
+                <p className="text-micro text-text-muted">
+                  {ru.server.platform.caps[key as keyof HostInfo["caps"]] ??
+                    key}
                 </p>
                 <CopyField value={cmd} />
               </div>
             ))}
           </div>
-        </section>
+        </Card>
       )}
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <Card>
         {confirming ? (
           <ConfirmView
             description={ru.server.platform.restartConfirm}
@@ -103,11 +126,15 @@ export function PlatformPage() {
             onConfirm={() => restartMutation.mutate({})}
           />
         ) : (
-          <Button variant="secondary" disabled={!caps.restart_telemt} onClick={() => setConfirming(true)}>
+          <Button
+            variant="secondary"
+            disabled={!caps.restart_telemt}
+            onClick={() => setConfirming(true)}
+          >
             {ru.server.platform.restartTelemt}
           </Button>
         )}
-      </section>
+      </Card>
     </ServerShell>
   );
 }
