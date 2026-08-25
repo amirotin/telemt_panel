@@ -14,7 +14,7 @@ import {
   setUserEnabledMutation,
 } from "../lib/api/generated/@tanstack/react-query.gen";
 import { apiErrorMessage } from "./apiError";
-import { pickTelegramLink } from "./linkSelection";
+import { pickTelegramLink, isSafeTelegramLink } from "./linkSelection";
 import { SublinkPanel } from "./SublinkPanel";
 import { ConfirmView } from "../ui/ConfirmView";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
@@ -123,6 +123,10 @@ export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: User
               const link = pickTelegramLink(user.links);
               if (!link) {
                 pushToast(ru.people.actions.noTelegramLink, "error");
+                return;
+              }
+              if (!isSafeTelegramLink(link)) {
+                pushToast(ru.people.actions.unsafeTelegramLink, "error");
                 return;
               }
               window.location.href = link;

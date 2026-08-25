@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickTelegramLink } from "./linkSelection";
+import { pickTelegramLink, isSafeTelegramLink } from "./linkSelection";
 
 function links(over: Partial<{ classic: string[]; secure: string[]; tls: string[] }> = {}) {
   return {
@@ -28,5 +28,23 @@ describe("pickTelegramLink", () => {
 
   it("is null when there are no links at all", () => {
     expect(pickTelegramLink(links())).toBeNull();
+  });
+});
+
+describe("isSafeTelegramLink", () => {
+  const cases: Array<[string, boolean]> = [
+    ["javascript:alert(1)", false],
+    ["https://evil.example/proxy", false],
+    ["tg://proxy?server=1.2.3.4&port=443&secret=abc", true],
+    ["https://t.me/proxy?server=1.2.3.4&port=443&secret=abc", true],
+    ["HTTPS://T.ME/proxy?server=1.2.3.4", true],
+    ["https://t.me.evil.example", false],
+    ["http://t.me/proxy", false],
+    ["not a url", false],
+    ["//evil.example", false],
+  ];
+
+  it.each(cases)("%s -> %s", (link, expected) => {
+    expect(isSafeTelegramLink(link)).toBe(expected);
   });
 });
