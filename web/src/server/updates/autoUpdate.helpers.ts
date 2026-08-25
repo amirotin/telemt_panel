@@ -10,15 +10,20 @@ export interface AutoUpdateFormState {
 
 export const DEFAULT_INTERVAL_HOURS = 6;
 
-// parseIntervalHours reads AutoUpdateSettings.interval — a Go duration
-// string, documented ">= 1h" (openapi) — into whole hours for the form's
-// numeric input. internal/update.GetAutoSettings always writes a plain
-// "<n>h" string (SetAutoSettings' own validation), so that's the only
-// shape this needs to round-trip; anything else (a value from a future
-// backend that started allowing sub-hour units, or garbage) falls back to
-// a safe default rather than crashing the settings form.
+// parseIntervalHours reads AutoUpdateSettings.interval into whole hours for
+// the form's numeric input. This PUTs a bare "<n>h" string, but Go's
+// time.Duration.String() — what internal/httpapi's handleGetAutoUpdate
+// actually formats the stored value with — always appends zero minute/
+// second components for a whole-hour duration (confirmed live: a fresh
+// install's 6h default GETs back as "6h0m0s", never "6h"), so the leading-
+// hour match is deliberately NOT anchored at the string's end. Any
+// trailing sub-hour remainder is truncated (this form has no sub-hour
+// input — a value set to e.g. "1h30m" through some other path displays as
+// 1h here); anything with no leading hour count at all (garbage, or a
+// pure "30m" duration below this form's 1h floor) falls back to a safe
+// default rather than crashing the settings form.
 export function parseIntervalHours(interval: string, fallbackHours = DEFAULT_INTERVAL_HOURS): number {
-  const m = /^(\d+)h$/.exec(interval.trim());
+  const m = /^(\d+)h/.exec(interval.trim());
   if (!m) return fallbackHours;
   const n = Number(m[1]);
   return Number.isFinite(n) && n >= 1 ? n : fallbackHours;

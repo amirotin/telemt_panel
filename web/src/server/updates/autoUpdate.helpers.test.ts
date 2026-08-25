@@ -7,10 +7,24 @@ import {
 } from "./autoUpdate.helpers";
 
 describe("parseIntervalHours", () => {
-  it("parses a plain hour duration", () => {
+  it("parses a plain hour duration (what this form itself PUTs)", () => {
     expect(parseIntervalHours("6h")).toBe(6);
     expect(parseIntervalHours("24h")).toBe(24);
     expect(parseIntervalHours("1h")).toBe(1);
+  });
+
+  it("parses Go's time.Duration.String() format with trailing 0m0s (what GET actually returns)", () => {
+    // Confirmed live against a real panel process: a fresh install's
+    // default settings GET back as "6h0m0s", never a bare "6h" — a naive
+    // end-anchored regex would silently fall back to the default here on
+    // every real response, which is exactly the bug this case guards.
+    expect(parseIntervalHours("6h0m0s")).toBe(6);
+    expect(parseIntervalHours("3h0m0s")).toBe(3);
+    expect(parseIntervalHours("12h0m0s")).toBe(12);
+  });
+
+  it("truncates a non-zero sub-hour remainder rather than rejecting it", () => {
+    expect(parseIntervalHours("1h30m0s")).toBe(1);
   });
 
   it("falls back to the default for garbage input", () => {
@@ -49,6 +63,13 @@ describe("toAutoUpdateFormState / serializeAutoUpdateForm round trip", () => {
     const form = toAutoUpdateFormState(settings);
     expect(form).toEqual({ telemt: "check", panel: "off", intervalHours: 12 });
     expect(serializeAutoUpdateForm(form)).toEqual(settings);
+  });
+
+  it("reads a real backend GET response (Go duration-string format) and writes back the form's own clean format", () => {
+    const settings = { telemt: "off" as const, panel: "off" as const, interval: "6h0m0s" };
+    const form = toAutoUpdateFormState(settings);
+    expect(form.intervalHours).toBe(6);
+    expect(serializeAutoUpdateForm(form).interval).toBe("6h");
   });
 
   it("serializes an apply/apply form", () => {
