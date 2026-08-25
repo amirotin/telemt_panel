@@ -13,7 +13,7 @@ import {
   regenerateUserSublinkMutation,
 } from "../lib/api/generated/@tanstack/react-query.gen";
 import { apiErrorMessage } from "./apiError";
-import { ConfirmView } from "./ConfirmView";
+import { ConfirmView } from "../ui/ConfirmView";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
 import { useRefreshTopic } from "../realtime";
 

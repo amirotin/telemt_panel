@@ -1,4 +1,4 @@
-import { Button } from "../ui/Button";
+import { Button } from "./Button";
 import { ru } from "../i18n/ru";
 
 export interface ConfirmViewProps {
@@ -12,11 +12,12 @@ export interface ConfirmViewProps {
 
 // ConfirmView — the one "are you sure?" step every irreversible/disruptive
 // action goes through (delete, reset quota, enable/disable, rotate secret,
-// regenerate sub-link): a description plus cancel/confirm, no native
-// confirm(). Extracted out of UserActionSheet so SublinkPanel's own
-// "перевыпустить" (which invalidates the currently distributed link) uses
-// the exact same confirmation step rather than a second copy that could
-// drift.
+// regenerate sub-link, reset dashboard layout): a description plus
+// cancel/confirm, no native confirm(). Originally extracted out of
+// UserActionSheet so SublinkPanel's own "перевыпустить" uses the exact
+// same confirmation step rather than a second copy that could drift;
+// promoted to ui/ (single-primitives-source rule) once pulse/PulseDashboard
+// needed the same step for its own "Сбросить к умолчанию" action.
 export function ConfirmView({
   description,
   confirmLabel,

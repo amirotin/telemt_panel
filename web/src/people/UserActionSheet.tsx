@@ -16,7 +16,7 @@ import {
 import { apiErrorMessage } from "./apiError";
 import { pickTelegramLink } from "./linkSelection";
 import { SublinkPanel } from "./SublinkPanel";
-import { ConfirmView } from "./ConfirmView";
+import { ConfirmView } from "../ui/ConfirmView";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
 import { useRefreshTopic } from "../realtime";
 import type { UsersTopicUser } from "../realtime/topics";
