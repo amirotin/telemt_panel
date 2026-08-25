@@ -9,6 +9,8 @@ export interface CopyFieldProps {
   value: string;
   label?: string;
   className?: string;
+  /** Stable hook for e2e (Playwright) — not read by anything else here. */
+  "data-testid"?: string;
 }
 
 // CopyField — monospace value (secret, IP, sub-link, server address) with
@@ -22,7 +24,7 @@ export interface CopyFieldProps {
 // document.execCommand("copy"), and when even that fails this component
 // selects the value's text (so a manual Ctrl+C still works) and tells the
 // user to do it themselves, rather than pretending the copy succeeded.
-export function CopyField({ value, label, className }: CopyFieldProps) {
+export function CopyField({ value, label, className, "data-testid": testId }: CopyFieldProps) {
   const [copied, setCopied] = useState(false);
   const valueRef = useRef<HTMLSpanElement>(null);
 
@@ -53,6 +55,7 @@ export function CopyField({ value, label, className }: CopyFieldProps) {
       <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
         <span
           ref={valueRef}
+          data-testid={testId}
           className="min-w-0 flex-1 truncate font-mono text-sm text-text"
         >
           {value}

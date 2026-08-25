@@ -57,6 +57,19 @@ export default tseslint.config(
     },
   },
   {
+    // e2e/ (Playwright, Task 9) isn't React code — its fixtures.ts extends
+    // @playwright/test's own `test` with a fixture whose second parameter
+    // Playwright's API requires to be literally named `use` (the fixture
+    // callback signature), which eslint-plugin-react-hooks' naming-based
+    // detection mistakes for React's own `use()` hook, flagging the
+    // enclosing (non-component, non-hook) fixture function.
+    files: ["e2e/**/*.ts", "playwright.config.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
     // TanStack Router's file-based routes define their component locally
     // and export only `Route` (createFileRoute(...).component wraps it) —
     // this rule has no escape hatch for that shape (allowExportNames only

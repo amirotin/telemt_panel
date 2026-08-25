@@ -36,6 +36,7 @@ export function UserCard({ user, quotaEntry, mode, now, onOpen, onActions }: Use
     <div
       role="button"
       tabIndex={0}
+      data-testid={`user-card-${user.username}`}
       className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-left"
       onClick={() => {
         if (longPress.consume()) return;
@@ -57,6 +58,7 @@ export function UserCard({ user, quotaEntry, mode, now, onOpen, onActions }: Use
         </div>
         <IconButton
           aria-label={ru.people.actions.menu}
+          data-testid={`user-card-actions-${user.username}`}
           onClick={(e) => {
             e.stopPropagation();
             onActions();

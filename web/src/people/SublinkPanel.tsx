@@ -73,7 +73,7 @@ export function SublinkPanel({ username }: { username: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <CopyField value={query.data.url} label={ru.people.share.linkLabel} />
+      <CopyField value={query.data.url} label={ru.people.share.linkLabel} data-testid="sublink-value" />
       <QR value={query.data.url} />
       <Button variant="secondary" onClick={() => setConfirming(true)}>
         {ru.people.share.regenerate}

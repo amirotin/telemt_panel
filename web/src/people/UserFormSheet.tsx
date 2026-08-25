@@ -220,6 +220,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
         <label className="flex flex-col gap-1 text-sm text-text-muted">
           {ru.people.form.username}
           <Input
+            data-testid="user-form-username"
             value={state.username}
             disabled={mode === "edit"}
             autoCapitalize="off"
@@ -354,7 +355,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
           </div>
         </details>
 
-        <Button type="submit" disabled={!canSubmit || pending}>
+        <Button type="submit" data-testid="user-form-submit" disabled={!canSubmit || pending}>
           {pending
             ? ru.people.form.submitting
             : mode === "create"

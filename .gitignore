@@ -7,6 +7,11 @@ release/
 web/node_modules/
 web/.openapi-filtered.yaml
 
+# Playwright e2e artifacts (web/e2e) — reports/traces from local runs.
+web/playwright-report/
+web/test-results/
+web/blob-report/
+
 # Built SPA embedded by internal/webui (vite.config.ts outDir) — everything
 # except the placeholder that lets `go build ./...` succeed before the
 # first `make web` (see internal/webui/embed.go).
