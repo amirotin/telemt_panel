@@ -68,6 +68,73 @@ jobs:
         env:
           CGO_ENABLED: "1"
 
+  # Playwright e2e (Task 9, R4): chromium only, against the real `make
+  # build` panel binary + cmd/telemt-mock — see web/e2e/stack.ts. A
+  # separate job (not a step tacked onto `build` above) so its own
+  # `make build` + browser install don't slow down the fast unit-test
+  # feedback loop above, and so a flaky e2e run's retry/artifact story
+  # stays isolated from it. `needs: build` — no point paying for browser
+  # download + a Go build on a commit that doesn't even lint/typecheck.
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Install frontend deps
+        working-directory: web
+        run: npm ci
+
+      # Playwright's own browser cache, keyed on the pinned
+      # @playwright/test version — avoids re-downloading Chromium on every
+      # run. --with-deps also installs the OS-level libraries Chromium
+      # needs on a bare Ubuntu runner.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # e2e/stack.ts expects the panel binary at ./telemt-panel (make
+      # build's output) and builds cmd/telemt-mock itself — see that
+      # file's own comment.
+      - name: Build panel + frontend
+        run: make build
+
+      - name: Run e2e
+        working-directory: web
+        run: npm run e2e
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7
+
   # Proves the release Makefile target and the self-updater's AssetMatcher
   # actually agree (P1.2 audit finding): builds every arch/variant tarball
   # exactly as a real release would, then verifies the updater can find,
