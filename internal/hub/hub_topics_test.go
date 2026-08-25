@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -285,6 +286,29 @@ func TestHistoryRecording(t *testing.T) {
 	}, tc, st)
 	t.Cleanup(h.Close)
 
+	// historyRecordedHook fires synchronously, once per stats poll, right
+	// after recordStatsHistory runs (hub.go) — a deterministic signal this
+	// test waits on instead of sleep-polling the store. Buffered so the
+	// poller goroutine never blocks on a slow test reader; set before the
+	// first Subscribe below starts the poller, so there is no race on the
+	// field itself (safe write-then-goroutine-start, no concurrent access
+	// until then).
+	recorded := make(chan struct{}, 64)
+	h.historyRecordedHook = func() {
+		select {
+		case recorded <- struct{}{}:
+		default:
+		}
+	}
+	awaitRecordedTick := func(t *testing.T) {
+		t.Helper()
+		select {
+		case <-recorded:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for a history recording tick")
+		}
+	}
+
 	// Subscribe both topics: "users" must have been polled at least once
 	// for the traffic metric to have a source (recordStatsHistory's
 	// documented degrade).
@@ -314,7 +338,7 @@ func TestHistoryRecording(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("timed out waiting for a connections history point")
 		}
-		time.Sleep(5 * time.Millisecond)
+		awaitRecordedTick(t)
 	}
 
 	for _, metric := range []string{metricConnections, metricActiveUsers} {
@@ -328,8 +352,9 @@ func TestHistoryRecording(t *testing.T) {
 	}
 
 	// traffic depends on the "users" topic's cache being populated, which
-	// races the stats poller's first tick — poll until it shows up rather
-	// than asserting on the very first stats event.
+	// races the stats poller's first tick — wait for recording ticks
+	// (each one hook-signaled, no sleeps) until it shows up rather than
+	// assuming the first tick already has it.
 	deadline = time.Now().Add(2 * time.Second)
 	for {
 		points, err := st.MetricRange(metricTraffic, 0)
@@ -342,7 +367,7 @@ func TestHistoryRecording(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("timed out waiting for a traffic history point")
 		}
-		time.Sleep(5 * time.Millisecond)
+		awaitRecordedTick(t)
 	}
 }
 
@@ -352,4 +377,240 @@ func TestHistoryRecording(t *testing.T) {
 func TestHistoryRecordingNilStoreIsNoop(t *testing.T) {
 	_, h := newTelemttestHub(t, telemttest.Scenario{}, nil)
 	subscribeAndAwait(t, h, "stats") // must not panic
+}
+
+// topicsPollInterval mirrors newTelemttestHub's fixed poll interval for
+// runtime/upstreams/security/stats — used below to size the "several polls
+// happened with no broadcast" quiet window the same way hub_test.go's own
+// TestSubscribeReceivesSnapshotThenUpdateOnChange does.
+const topicsPollInterval = 10 * time.Millisecond
+
+// assertNoBroadcast fails the test if an event arrives on ch within
+// quietFor — the established pattern for "several polls happen with
+// unchanged data: no further events" (hub_test.go's
+// TestSubscribeReceivesSnapshotThenUpdateOnChange), not a sleep: it's a
+// bounded wait on the real channel the poller broadcasts through.
+func assertNoBroadcast(t *testing.T, ch <-chan Event, quietFor time.Duration) {
+	t.Helper()
+	select {
+	case unexpected := <-ch:
+		t.Fatalf("unexpected broadcast: %+v", unexpected)
+	case <-time.After(quietFor):
+	}
+}
+
+// recvEventUntil waits on ch until match returns true for a received
+// event, or timeout elapses. Composite topics (runtime/upstreams/security)
+// fetch their several sub-payloads via separate sequential HTTP round
+// trips within one poll; a scenario change from a concurrent test
+// goroutine can legitimately land mid-poll, producing one "torn" composite
+// that mixes old and new sub-payloads — that snapshot genuinely differs
+// from the cached one, so the hub is correct to broadcast it, but it is
+// not yet the fully-settled state a "real change" test wants to assert on.
+// This tolerates that intermediate broadcast instead of assuming the very
+// next event already reflects the final state.
+func recvEventUntil(t *testing.T, ch <-chan Event, timeout time.Duration, match func(Event) bool) Event {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				t.Fatal("channel closed unexpectedly")
+			}
+			if match(ev) {
+				return ev
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for a matching event")
+		}
+	}
+}
+
+// TestRuntimeTopicVolatileTimestampAloneDoesNotBroadcast covers finding 1
+// of fix round 1: Telemt re-stamps every generated_at_epoch_secs field with
+// a fresh wall-clock value on (most) responses, independent of whether the
+// underlying data changed (confirmed against the Rust source — see
+// diffKey's doc comment in hub.go). Bumping only that field between polls
+// must not broadcast a second event; a real field change afterwards must.
+func TestRuntimeTopicVolatileTimestampAloneDoesNotBroadcast(t *testing.T) {
+	fake, h := newTelemttestHub(t, telemttest.Scenario{GeneratedAtEpochSecs: 1000}, nil)
+	ch, _, cancel, err := h.Subscribe([]string{"runtime"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	first := recvEvent(t, ch, 2*time.Second)
+	if first.Err != "" {
+		t.Fatalf("first event = %+v", first)
+	}
+
+	// Same underlying data, a different generated_at_epoch_secs on every
+	// Gated[T] field the runtime topic carries (MePoolState/MeQuality/
+	// NatStun/MeSelfTest): several polls happen, no further events.
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000})
+	assertNoBroadcast(t, ch, 10*topicsPollInterval)
+
+	// A real change (MinimalRuntimeOff closes MePoolState/MeQuality/
+	// NatStun/MeSelfTest's gates, dropping their Data) eventually produces
+	// an event reflecting the fully-settled new state. Not RuntimeEdge
+	// here: the SDK's Capabilities probe is cached for minutes
+	// (capabilities.go), so flipping the fake's scenario wouldn't be
+	// reflected in fetchRuntime's cached caps.RuntimeEdge check within
+	// this test's lifetime — MinimalRuntimeOff changes the payload
+	// directly, with no capability-cache layer between. recvEventUntil
+	// (not a plain recvEvent) because fetchRuntime's six sequential
+	// sub-calls mean the very next broadcast can be a torn intermediate
+	// composite straddling old and new state, not yet fully settled.
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000, MinimalRuntimeOff: true})
+	second := recvEventUntil(t, ch, 2*time.Second, func(ev Event) bool {
+		var snap runtimeSnapshot
+		if err := json.Unmarshal(ev.Data, &snap); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return snap.MePoolState != nil && !snap.MePoolState.Enabled
+	})
+	if second.Seq <= first.Seq {
+		t.Fatalf("second.Seq = %d, want > first.Seq = %d", second.Seq, first.Seq)
+	}
+}
+
+// TestUpstreamsTopicVolatileTimestampAloneDoesNotBroadcast is
+// TestRuntimeTopicVolatileTimestampAloneDoesNotBroadcast for the
+// "upstreams" topic (UpstreamsData/DcStatusData/MeWritersData's top-level
+// generated_at_epoch_secs fields), using MinimalRuntimeOff as the real
+// content change.
+func TestUpstreamsTopicVolatileTimestampAloneDoesNotBroadcast(t *testing.T) {
+	fake, h := newTelemttestHub(t, telemttest.Scenario{GeneratedAtEpochSecs: 1000}, nil)
+	ch, _, cancel, err := h.Subscribe([]string{"upstreams"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	first := recvEvent(t, ch, 2*time.Second)
+	if first.Err != "" {
+		t.Fatalf("first event = %+v", first)
+	}
+
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000})
+	assertNoBroadcast(t, ch, 10*topicsPollInterval)
+
+	// recvEventUntil (not a plain recvEvent): fetchUpstreams' three
+	// sequential sub-calls (Upstreams/DCs/MeWriters) mean the very next
+	// broadcast can be a torn intermediate composite, not yet settled.
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000, MinimalRuntimeOff: true})
+	second := recvEventUntil(t, ch, 2*time.Second, func(ev Event) bool {
+		var snap upstreamsSnapshot
+		if err := json.Unmarshal(ev.Data, &snap); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return snap.Upstreams != nil && !snap.Upstreams.Enabled
+	})
+	if second.Seq <= first.Seq {
+		t.Fatalf("second.Seq = %d, want > first.Seq = %d", second.Seq, first.Seq)
+	}
+}
+
+// TestSecurityTopicVolatileTimestampAloneDoesNotBroadcast is the security
+// topic's version: SecurityWhitelistData's top-level generated_at_epoch_secs
+// is the volatile field, and toggling ReadOnly (which SecurityPostureData's
+// APIReadOnly reflects directly — telemttest's handlePosture) is the real
+// content change.
+func TestSecurityTopicVolatileTimestampAloneDoesNotBroadcast(t *testing.T) {
+	fake, h := newTelemttestHub(t, telemttest.Scenario{GeneratedAtEpochSecs: 1000}, nil)
+	ch, _, cancel, err := h.Subscribe([]string{"security"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	first := recvEvent(t, ch, 2*time.Second)
+	if first.Err != "" {
+		t.Fatalf("first event = %+v", first)
+	}
+
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000})
+	assertNoBroadcast(t, ch, 10*topicsPollInterval)
+
+	// recvEventUntil (not a plain recvEvent): fetchSecurity's sequential
+	// sub-calls (Posture/Whitelist/EffectiveLimits) mean the very next
+	// broadcast can be a torn intermediate composite, not yet settled.
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000, ReadOnly: true})
+	second := recvEventUntil(t, ch, 2*time.Second, func(ev Event) bool {
+		var snap securitySnapshot
+		if err := json.Unmarshal(ev.Data, &snap); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return snap.Posture != nil && snap.Posture.APIReadOnly
+	})
+	if second.Seq <= first.Seq {
+		t.Fatalf("second.Seq = %d, want > first.Seq = %d", second.Seq, first.Seq)
+	}
+}
+
+// TestStatsTopicVolatileTimestampAloneDoesNotBroadcast is the stats topic's
+// version. RuntimeEdge is on from the start so connections_summary (a
+// Gated[T], carrying the volatile field) is actually present in the
+// payload; ReadOnly is the real content change (HealthData.ReadOnly).
+func TestStatsTopicVolatileTimestampAloneDoesNotBroadcast(t *testing.T) {
+	fake, h := newTelemttestHub(t, telemttest.Scenario{GeneratedAtEpochSecs: 1000, RuntimeEdge: true}, nil)
+	ch, _, cancel, err := h.Subscribe([]string{"stats"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	first := recvEvent(t, ch, 2*time.Second)
+	if first.Err != "" {
+		t.Fatalf("first event = %+v", first)
+	}
+	var firstSnap statsSnapshot
+	if err := json.Unmarshal(first.Data, &firstSnap); err != nil {
+		t.Fatalf("decode first: %v", err)
+	}
+	if firstSnap.ConnectionsSummary == nil {
+		t.Fatal("first event missing connections_summary with runtime_edge on — test setup invalid")
+	}
+
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000, RuntimeEdge: true})
+	assertNoBroadcast(t, ch, 10*topicsPollInterval)
+
+	// recvEventUntil (not a plain recvEvent): fetchStats' sequential
+	// sub-calls (Health/Summary/Ready/ConnectionsSummary) mean the very
+	// next broadcast can be a torn intermediate composite, not yet
+	// settled — same reasoning as the other three topics' tests above,
+	// even though ReadOnly here only actually varies the Health sub-call.
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000, RuntimeEdge: true, ReadOnly: true})
+	second := recvEventUntil(t, ch, 2*time.Second, func(ev Event) bool {
+		var snap statsSnapshot
+		if err := json.Unmarshal(ev.Data, &snap); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return snap.Health != nil && snap.Health.ReadOnly
+	})
+	if second.Seq <= first.Seq {
+		t.Fatalf("second.Seq = %d, want > first.Seq = %d", second.Seq, first.Seq)
+	}
+}
+
+// TestDiffKeyStripsVolatileTimestampAtAnyDepth is a focused unit test on
+// diffKey itself (hub.go), independent of the poller — proves the
+// normalization is generic (works on a nested generated_at_epoch_secs the
+// same as a top-level one) and leaves every other field, including other
+// int fields that just happen to be zero already, untouched.
+func TestDiffKeyStripsVolatileTimestampAtAnyDepth(t *testing.T) {
+	a := json.RawMessage(`{"generated_at_epoch_secs":1000,"nested":{"generated_at_epoch_secs":1000,"value":42},"list":[{"generated_at_epoch_secs":1000}]}`)
+	b := json.RawMessage(`{"generated_at_epoch_secs":2000,"nested":{"generated_at_epoch_secs":2000,"value":42},"list":[{"generated_at_epoch_secs":2000}]}`)
+
+	if !bytes.Equal(diffKey(a), diffKey(b)) {
+		t.Fatalf("diffKey(a)=%s, diffKey(b)=%s — want equal after stripping every generated_at_epoch_secs", diffKey(a), diffKey(b))
+	}
+
+	// A real change (nested.value) still produces a different key.
+	c := json.RawMessage(`{"generated_at_epoch_secs":1000,"nested":{"generated_at_epoch_secs":1000,"value":43},"list":[{"generated_at_epoch_secs":1000}]}`)
+	if bytes.Equal(diffKey(a), diffKey(c)) {
+		t.Fatal("diffKey(a) == diffKey(c) after a real field changed, want different keys")
+	}
 }

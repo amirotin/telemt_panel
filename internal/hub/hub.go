@@ -145,6 +145,7 @@ type topicState struct {
 
 	hasData   bool
 	lastData  json.RawMessage
+	lastKey   json.RawMessage
 	lastEvent Event
 }
 
@@ -175,6 +176,14 @@ type Hub struct {
 	nextSubID   uint64
 	seq         uint64
 	ring        []Event
+
+	// historyRecordedHook, if set, runs synchronously in pollWithContext
+	// immediately after every recordStatsHistory call (whether or not that
+	// call actually wrote a point — see recordStatsHistory's own degrade
+	// rules) — nil in production. Test-only: lets a test wait for "a stats
+	// poll's history recording just ran" deterministically instead of
+	// polling the store with a sleep loop.
+	historyRecordedHook func()
 }
 
 // New creates a Hub polling tc for this package's topic registry (users,
@@ -737,6 +746,9 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	// reentrant).
 	if t.name == "stats" {
 		h.recordStatsHistory(data)
+		if h.historyRecordedHook != nil {
+			h.historyRecordedHook()
+		}
 	}
 	h.recordFetchSuccess(t, data)
 	return true
@@ -745,15 +757,87 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if t.hasData && bytes.Equal(t.lastData, data) {
+	key := diffKey(data)
+	if t.hasData && bytes.Equal(t.lastKey, key) {
 		return
 	}
 	t.hasData = true
 	t.lastData = data
+	t.lastKey = key
 	ev := Event{Seq: h.nextSeqLocked(), Topic: t.name, Data: data, TS: time.Now().Unix()}
 	t.lastEvent = ev
 	h.appendRingLocked(ev)
 	h.broadcastLocked(ev)
+}
+
+// diffKey computes push-on-change's comparison key for a topic's raw
+// snapshot: a copy with every "generated_at_epoch_secs" field zeroed,
+// wherever it appears in the (possibly nested) JSON object. The payload
+// actually cached/broadcast to subscribers (t.lastData/ev.Data above) keeps
+// the real timestamps — only this comparison key strips them.
+//
+// Telemt stamps generated_at_epoch_secs with a fresh wall-clock read
+// (SystemTime::now(), Rust source: runtime_min.rs/runtime_edge.rs/
+// runtime_selftest.rs/runtime_stats.rs's now_epoch_secs()) on every
+// response that isn't served from one of its own short-lived per-endpoint
+// caches — independent of whether the underlying data changed at all. The
+// hub's poll intervals (10-30s for runtime/upstreams/security, 5s for
+// stats) are comparable to or longer than those cache windows, so without
+// this normalization, spec 02-hub-sse.md principle #3 ("push only on
+// change") would be routinely defeated: nearly every poll of runtime,
+// upstreams, security (and stats when runtime_edge is on) would broadcast
+// a "changed" event purely because Telemt re-stamped the time, even when
+// every other field is byte-identical.
+//
+// Implemented as a single generic JSON walk (decode, zero any key literally
+// named "generated_at_epoch_secs" at any depth, re-encode) rather than
+// per-fetcher special-casing, since the field appears in several different
+// shapes across the four affected topics: nested inside Gated[T]'s
+// generated_at_epoch_secs, and as a top-level field on the flat
+// DcStatusData/MeWritersData/UpstreamsData/SecurityWhitelistData structs.
+// This also means any *future* endpoint added to a topic with the same
+// field name is covered automatically, with no separate opt-in.
+func diffKey(data json.RawMessage) json.RawMessage {
+	var v any
+	if err := json.Unmarshal(data, &v); err != nil {
+		// data just came from this package's own json.Marshal a moment
+		// earlier (fetchFunc's return value) — this should be unreachable.
+		// Falling back to the raw bytes keeps diffing correct (just not
+		// robust to the volatile-timestamp issue) instead of panicking.
+		return data
+	}
+	stripVolatileTimestamps(v)
+	normalized, err := json.Marshal(v)
+	if err != nil {
+		return data
+	}
+	return normalized
+}
+
+// volatileTimestampKey is the JSON field name diffKey strips — see its doc
+// comment. A single named constant so every occurrence (Gated[T], the flat
+// stats-group structs) is covered by construction rather than requiring a
+// matching list to be kept in sync.
+const volatileTimestampKey = "generated_at_epoch_secs"
+
+// stripVolatileTimestamps recursively zeroes every volatileTimestampKey
+// entry in v (a json.Unmarshal-into-any result: nested map[string]any /
+// []any / scalars), in place.
+func stripVolatileTimestamps(v any) {
+	switch val := v.(type) {
+	case map[string]any:
+		for k, sub := range val {
+			if k == volatileTimestampKey {
+				val[k] = 0
+				continue
+			}
+			stripVolatileTimestamps(sub)
+		}
+	case []any:
+		for _, sub := range val {
+			stripVolatileTimestamps(sub)
+		}
+	}
 }
 
 func (h *Hub) recordFetchError(t *topicState, err error) {
