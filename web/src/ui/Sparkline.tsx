@@ -1,3 +1,5 @@
+import { ru } from "../i18n/ru";
+
 export interface SparklineProps {
   values: number[];
   width?: number;
@@ -33,7 +35,7 @@ export function Sparkline({ values, width = 96, height = 28, className }: Sparkl
       viewBox={`0 0 ${width} ${height}`}
       className={className}
       role="img"
-      aria-label="Динамика значения"
+      aria-label={ru.ui.sparklineLabel}
     >
       <polyline
         points={points}

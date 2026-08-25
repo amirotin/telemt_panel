@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
+import { ru } from "../i18n/ru";
 import { IconButton } from "./IconButton";
 
 export interface SheetProps {
@@ -85,7 +86,7 @@ export function Sheet({ open, onClose, title, children, className }: SheetProps)
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-base font-semibold text-text">{title}</h2>
-          <IconButton aria-label="Закрыть" onClick={onClose}>
+          <IconButton aria-label={ru.common.close} onClick={onClose}>
             ✕
           </IconButton>
         </div>

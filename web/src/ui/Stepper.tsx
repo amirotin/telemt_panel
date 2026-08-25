@@ -1,4 +1,5 @@
 import { cn } from "../lib/cn";
+import { ru } from "../i18n/ru";
 import { IconButton } from "./IconButton";
 
 export interface StepperProps {
@@ -33,7 +34,7 @@ export function Stepper({
       aria-label={label}
     >
       <IconButton
-        aria-label="Уменьшить"
+        aria-label={ru.ui.stepperDecrease}
         variant="solid"
         onClick={dec}
         disabled={value <= min}
@@ -42,7 +43,7 @@ export function Stepper({
       </IconButton>
       <span className="w-12 text-center text-base tabular-nums text-text">{value}</span>
       <IconButton
-        aria-label="Увеличить"
+        aria-label={ru.ui.stepperIncrease}
         variant="solid"
         onClick={inc}
         disabled={value >= max}

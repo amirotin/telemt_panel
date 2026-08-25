@@ -1,8 +1,10 @@
+import { ru } from "../i18n/ru";
+
 // formatBytes renders a byte count the way quotas/traffic are shown
 // throughout the app: binary units (1024-based), Russian abbreviations,
 // one decimal place under 10 of a unit, none above.
 export function formatBytes(n: number): string {
-  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+  const units = ru.ui.byteUnits;
   let value = n;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) {

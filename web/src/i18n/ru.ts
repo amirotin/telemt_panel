@@ -40,6 +40,16 @@ export const ru = {
     no: "нет",
     off: "выкл.",
   },
+  // ui — shared primitive components' own strings (Sheet reuses
+  // common.close above rather than duplicating it). F7, closing fix wave:
+  // these five were previously hardcoded Cyrillic literals in ui/*.tsx and
+  // lib/format.ts.
+  ui: {
+    sparklineLabel: "Динамика значения",
+    stepperDecrease: "Уменьшить",
+    stepperIncrease: "Увеличить",
+    byteUnits: ["Б", "КБ", "МБ", "ГБ", "ТБ"],
+  },
   auth: {
     username: "Имя пользователя",
     password: "Пароль",
