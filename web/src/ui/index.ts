@@ -3,6 +3,9 @@
 // источник").
 export * from "./Button";
 export * from "./Chip";
+export * from "./Card";
+export * from "./SectionLabel";
+export * from "./Toggle";
 export * from "./Avatar";
 export * from "./avatar.helpers";
 export * from "./icons";

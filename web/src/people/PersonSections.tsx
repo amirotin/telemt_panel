@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { quotaFillClass } from "../ui/quota.helpers";
@@ -11,18 +10,10 @@ import type { UserQuotaView } from "./users.helpers";
 // inside PersonDetail so the inspector is a second *layout* over the same
 // components, not a second implementation that can drift from it.
 
-export function SectionLabel({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <h2
-      className={cn(
-        "text-micro font-semibold uppercase tracking-[0.06em] text-text-faint",
-        className,
-      )}
-    >
-      {children}
-    </h2>
-  );
-}
+// SectionLabel moved to ui/ in D2 — Пульс, Журнал and Сервер caption their
+// blocks with the same rule. Re-exported here so this module stays the one
+// import site for the person sections.
+export { SectionLabel } from "../ui/SectionLabel";
 
 // PersonQuotaCard — the recessed quota card from the prototype: a caption
 // row (label left, figures right) over the fill bar.

@@ -297,3 +297,161 @@ export function IconSettings(props: IconProps) {
     </Icon>
   );
 }
+
+// --- Пульс / Журнал / Сервер (D2) ---
+
+export function IconChevronDown(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </Icon>
+  );
+}
+
+export function IconChevronUp(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m6 15 6-6 6 6" />
+    </Icon>
+  );
+}
+
+export function IconPause(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </Icon>
+  );
+}
+
+export function IconPlay(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7 4.5v15l12-7.5z" />
+    </Icon>
+  );
+}
+
+export function IconTrash(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+    </Icon>
+  );
+}
+
+export function IconRefresh(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20 11a8 8 0 1 0-.7 4.3" />
+      <path d="M20 4v7h-7" />
+    </Icon>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </Icon>
+  );
+}
+
+export function IconActivity(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <polyline points="2,12 7,12 10,5 14,19 17,12 22,12" />
+    </Icon>
+  );
+}
+
+export function IconTraffic(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 21V9m0 0L4.5 12.5M8 9l3.5 3.5" />
+      <path d="M16 3v12m0 0 3.5-3.5M16 15l-3.5-3.5" />
+    </Icon>
+  );
+}
+
+export function IconLink(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" />
+      <path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" />
+    </Icon>
+  );
+}
+
+export function IconGlobe(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18" />
+    </Icon>
+  );
+}
+
+export function IconDevice(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="2" width="14" height="20" rx="2" />
+      <path d="M12 18h.01" />
+    </Icon>
+  );
+}
+
+export function IconDesktop(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.5" y="4" width="19" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+    </Icon>
+  );
+}
+
+export function IconTerminal(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m5 8 4 4-4 4M12 16h7" />
+    </Icon>
+  );
+}
+
+export function IconWarning(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4.5 2.8 20h18.4z" />
+      <path d="M12 10v4M12 17.2h.01" />
+    </Icon>
+  );
+}
+
+export function IconInfo(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
+    </Icon>
+  );
+}
+
+export function IconUserPlus(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="8" r="3.4" />
+      <path d="M3.5 20c0-3.2 2.9-5.5 6.5-5.5" />
+      <path d="M17 13v6M14 16h6" />
+    </Icon>
+  );
+}
+
+export function IconTelegram(props: IconProps) {
+  return (
+    <Icon {...props} fill="currentColor" stroke="none">
+      <path d="M21.9 4.6 18.9 19c-.2 1-.8 1.2-1.6.8l-4.6-3.4-2.2 2.1c-.2.3-.5.5-.9.5l.3-4.6L18.3 7c.4-.3-.1-.5-.6-.2L7.4 13.3 3 11.9c-1-.3-1-1 .2-1.4l17.3-6.7c.8-.3 1.5.2 1.4.8z" />
+    </Icon>
+  );
+}
