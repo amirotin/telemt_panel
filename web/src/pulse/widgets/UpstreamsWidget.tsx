@@ -1,16 +1,26 @@
 import { useSnapshot } from "../../realtime";
-import type { UpstreamsTopic } from "../../realtime/topics";
+import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
 import { Gated } from "../../caps";
 import { StatePill } from "../../ui/StatePill";
+import { KVRow } from "../../ui/KVRow";
 import { Skeleton } from "../../ui/Skeleton";
 import { EmptyState } from "../../ui/EmptyState";
+import { useDisplayMode, visibleFor } from "../../display-mode";
 import { ru } from "../../i18n/ru";
 import { WidgetFrame } from "../WidgetFrame";
-import { computeUpstreams } from "./upstreams.helpers";
+import { computeUpstreams, upstreamQualitySuccessRate } from "./upstreams.helpers";
 
 export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
+  const runtime = useSnapshot<RuntimeTopic>("runtime");
+  const { mode } = useDisplayMode();
   const view = computeUpstreams(topic.data?.upstreams ?? null);
+  // upstream_quality (mini-task 2c) has no widget of its own — this is its
+  // one natural compact form, shown only in extended mode, only when it has
+  // ever attempted a connect (upstreamQualitySuccessRate's own null guard).
+  const successRate = visibleFor("extended", mode)
+    ? upstreamQualitySuccessRate(runtime.data?.upstream_quality)
+    : null;
 
   return (
     <WidgetFrame title={ru.pulse.widgets.upstreams} diagDomain="upstreams" onHide={onHide} stale={topic.stale}>
@@ -44,6 +54,9 @@ export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
             </tbody>
           </table>
         </div>
+      )}
+      {successRate !== null && (
+        <KVRow label={ru.pulse.upstreams.successRate} value={`${successRate}%`} />
       )}
     </WidgetFrame>
   );

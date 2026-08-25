@@ -16,6 +16,7 @@ export type GateHintKey =
   | "reload_api"
   | "user_enable_disable"
   | "rotate_secret"
-  | "log_stream";
+  | "log_stream"
+  | "minimal_runtime_enabled";
 
 export const gateHints: Record<GateHintKey, string> = { ...ru.gated.hints };

@@ -7,6 +7,7 @@ import type {
   RuntimeMePoolState,
   RuntimeMeQuality,
   RuntimeMeSelftest,
+  RuntimeMinimalMeRuntime,
 } from "../../realtime/topics";
 
 export interface MeGroupsInput {
@@ -16,6 +17,8 @@ export interface MeGroupsInput {
   meWriters?: MeWritersData;
   gates?: RuntimeGates;
   initialization?: RuntimeInitialization;
+  /** minimal.data.me_runtime (mini-task 2c) — undefined both when the "minimal" gate is off and when Telemt omits it (older builds predating this field). */
+  meRuntime?: RuntimeMinimalMeRuntime;
 }
 
 // meGroups is the ME domain's full-composition builder — combines four
@@ -67,6 +70,9 @@ export function meGroups(input: MeGroupsInput): KVGroup[] {
   }
   if (input.initialization) {
     groups.push({ title: ru.diag.groups.initialization, rows: flattenToRows(input.initialization) });
+  }
+  if (input.meRuntime) {
+    groups.push({ title: ru.diag.groups.meRuntimeTuning, rows: flattenToRows(input.meRuntime) });
   }
 
   return groups;

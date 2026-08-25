@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeUpstreams } from "./upstreams.helpers";
-import type { UpstreamStatus } from "../../realtime/topics";
+import { computeUpstreams, upstreamQualitySuccessRate } from "./upstreams.helpers";
+import type { RuntimeUpstreamQualityData, UpstreamStatus } from "../../realtime/topics";
 
 function upstream(overrides: Partial<UpstreamStatus> = {}): UpstreamStatus {
   return {
@@ -51,5 +51,36 @@ describe("computeUpstreams", () => {
   it("defaults to an empty list when upstreams is absent", () => {
     const view = computeUpstreams({ enabled: true });
     expect(view).toEqual({ status: "ok", upstreams: [], healthyTotal: 0, unhealthyTotal: 0 });
+  });
+});
+
+function quality(overrides: Partial<RuntimeUpstreamQualityData> = {}): RuntimeUpstreamQualityData {
+  return {
+    enabled: true,
+    generated_at_epoch_secs: 0,
+    policy: { connect_retry_attempts: 3, connect_retry_backoff_ms: 100, connect_budget_ms: 5000, unhealthy_fail_threshold: 3, connect_failfast_hard_errors: true },
+    counters: { connect_attempt_total: 10, connect_success_total: 9, connect_fail_total: 1, connect_failfast_hard_error_total: 0 },
+    ...overrides,
+  };
+}
+
+describe("upstreamQualitySuccessRate", () => {
+  it("is null when quality is absent or disabled", () => {
+    expect(upstreamQualitySuccessRate(null)).toBeNull();
+    expect(upstreamQualitySuccessRate(undefined)).toBeNull();
+    expect(upstreamQualitySuccessRate(quality({ enabled: false }))).toBeNull();
+  });
+
+  it("is null when there have been no connect attempts (avoids a misleading 0%)", () => {
+    expect(
+      upstreamQualitySuccessRate(quality({ counters: { connect_attempt_total: 0, connect_success_total: 0, connect_fail_total: 0, connect_failfast_hard_error_total: 0 } })),
+    ).toBeNull();
+  });
+
+  it("computes a rounded success percentage", () => {
+    expect(upstreamQualitySuccessRate(quality())).toBe(90);
+    expect(
+      upstreamQualitySuccessRate(quality({ counters: { connect_attempt_total: 3, connect_success_total: 1, connect_fail_total: 2, connect_failfast_hard_error_total: 0 } })),
+    ).toBe(33);
   });
 });

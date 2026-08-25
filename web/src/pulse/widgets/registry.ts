@@ -89,7 +89,10 @@ export const WIDGETS: WidgetDef[] = [
   {
     id: "upstreams",
     title: ru.pulse.widgets.upstreams,
-    topics: ["upstreams"],
+    // "runtime" is also subscribed for upstream_quality's compact
+    // extended-mode success-rate line (mini-task 2c) — a secondary source,
+    // not this widget's primary one.
+    topics: ["upstreams", "runtime"],
     minMode: "basic",
     formFactor: "table",
     hideable: true,

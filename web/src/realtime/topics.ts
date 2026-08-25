@@ -297,7 +297,7 @@ export interface RuntimeNatStun {
     nat_probe_disabled_runtime: boolean;
     nat_probe_attempts: number;
   };
-  servers: { configured: string[] | null; live: string[] | null; live_total: number };
+  servers: { configured: string[]; live: string[]; live_total: number };
   reflection: { v4?: RuntimeNatStunReflection; v6?: RuntimeNatStunReflection };
   stun_backoff_remaining_ms?: number;
 }
@@ -357,12 +357,103 @@ export interface RuntimeEdgeEventRecord {
 export interface RuntimeEdgeEvents {
   capacity: number;
   dropped_total: number;
-  events: RuntimeEdgeEventRecord[] | null;
+  events: RuntimeEdgeEventRecord[];
 }
 
-// RuntimeTopic mirrors hub.go's runtimeSnapshot. recent_events is present
-// only when runtime_edge is on (Go's omitempty on a nil pointer) — absent
-// from the wire, not null, so it's typed optional rather than nullable.
+// RuntimeMinimalDcPath is one DC's selected network path
+// (internal/telemt.MinimalDcPathData) — part of the "minimal" runtime
+// group's per-DC breakdown (mini-task 2c).
+export interface RuntimeMinimalDcPath {
+  dc: number;
+  ip_preference?: string;
+  selected_addr_v4?: string;
+  selected_addr_v6?: string;
+}
+
+// RuntimeMinimalMeRuntime mirrors internal/telemt.MinimalMeRuntimeData — a
+// ~50-field ME pool tuning-knob dump. Typed loosely (matching
+// EffectiveMiddleProxyLimits' precedent below) since its only consumer is
+// diag/rows.ts's flattenToRows, not a curated field-by-field render — no
+// call site needs individual field names.
+export type RuntimeMinimalMeRuntime = Record<string, unknown>;
+
+// RuntimeMinimalAll is the Gated[T] payload of GET /v1/stats/minimal/all
+// (internal/telemt.MinimalAllPayload), carried by the "runtime" topic's
+// `minimal` field (mini-task 2c). me_writers/dcs duplicate what the
+// "upstreams" topic's own me_writers/dcs fields already carry — only
+// me_runtime/network_path are new information the panel had no other
+// source for.
+export interface RuntimeMinimalAll {
+  me_writers: MeWritersData;
+  dcs: DcStatusData;
+  me_runtime?: RuntimeMinimalMeRuntime;
+  network_path: RuntimeMinimalDcPath[];
+}
+
+export interface RuntimeUpstreamQualityPolicy {
+  connect_retry_attempts: number;
+  connect_retry_backoff_ms: number;
+  connect_budget_ms: number;
+  unhealthy_fail_threshold: number;
+  connect_failfast_hard_errors: boolean;
+}
+
+export interface RuntimeUpstreamQualityCounters {
+  connect_attempt_total: number;
+  connect_success_total: number;
+  connect_fail_total: number;
+  connect_failfast_hard_error_total: number;
+}
+
+export interface RuntimeUpstreamQualitySummary {
+  configured_total: number;
+  healthy_total: number;
+  unhealthy_total: number;
+  direct_total: number;
+  socks4_total: number;
+  socks5_total: number;
+  shadowsocks_total: number;
+}
+
+export interface RuntimeUpstreamQualityDc {
+  dc: number;
+  latency_ema_ms: number | null;
+  ip_preference: string;
+}
+
+export interface RuntimeUpstreamQualityUpstream {
+  upstream_id: number;
+  route_kind: string;
+  address: string;
+  weight: number;
+  scopes: string;
+  healthy: boolean;
+  fails: number;
+  last_check_age_secs: number;
+  effective_latency_ms: number | null;
+  dc: RuntimeUpstreamQualityDc[];
+}
+
+// RuntimeUpstreamQualityData is the "runtime" topic's `upstream_quality`
+// field (internal/telemt.RuntimeUpstreamQualityData, mini-task 2c) — a
+// bespoke flat shape, NOT Gated[T] (policy/counters always present
+// alongside enabled/reason; summary/upstreams independently optional).
+export interface RuntimeUpstreamQualityData {
+  enabled: boolean;
+  reason?: string;
+  generated_at_epoch_secs: number;
+  policy: RuntimeUpstreamQualityPolicy;
+  counters: RuntimeUpstreamQualityCounters;
+  summary?: RuntimeUpstreamQualitySummary;
+  upstreams?: RuntimeUpstreamQualityUpstream[];
+}
+
+// RuntimeTopic mirrors hub.go's runtimeSnapshot. `minimal`/`upstream_quality`
+// are always attempted (unlike recent_events, which is capability-gated) —
+// their JSON keys are always present, `null` only when that poll's sub-call
+// itself failed. recent_events is present only when runtime_edge is on
+// (Go's omitempty on a nil pointer) — absent from the wire, not null, so
+// it's typed optional rather than nullable.
 export interface RuntimeTopic {
   gates: RuntimeGates | null;
   initialization: RuntimeInitialization | null;
@@ -370,6 +461,8 @@ export interface RuntimeTopic {
   me_quality: Gated<RuntimeMeQuality> | null;
   nat_stun: Gated<RuntimeNatStun> | null;
   me_selftest: Gated<RuntimeMeSelftest> | null;
+  minimal: Gated<RuntimeMinimalAll> | null;
+  upstream_quality: RuntimeUpstreamQualityData | null;
   recent_events?: Gated<RuntimeEdgeEvents>;
 }
 
@@ -458,7 +551,7 @@ export interface DcStatusData {
   middle_proxy_enabled: boolean;
   reason?: string;
   generated_at_epoch_secs: number;
-  dcs: DcStatus[] | null;
+  dcs: DcStatus[];
 }
 
 export interface MeWriterStatus {
@@ -592,10 +685,10 @@ export interface RuntimeEdgeTLSFingerprints {
   capacity: number;
   dropped_total: number;
   parse_error_total: number;
-  by_fingerprint: RuntimeEdgeTLSFingerprintRow[] | null;
-  by_ip: RuntimeEdgeTLSFingerprintRow[] | null;
-  by_cidr: RuntimeEdgeTLSFingerprintRow[] | null;
-  by_user: RuntimeEdgeTLSFingerprintRow[] | null;
+  by_fingerprint: RuntimeEdgeTLSFingerprintRow[];
+  by_ip: RuntimeEdgeTLSFingerprintRow[];
+  by_cidr: RuntimeEdgeTLSFingerprintRow[];
+  by_user: RuntimeEdgeTLSFingerprintRow[];
 }
 
 // SecurityTopic mirrors hub.go's securitySnapshot. tls_fingerprints is

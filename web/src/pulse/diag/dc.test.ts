@@ -42,7 +42,21 @@ describe("dcGroups", () => {
     expect(dcGroups([])).toEqual([]);
   });
 
-  it("returns no groups for a null list (nil Go slice on the wire)", () => {
-    expect(dcGroups(null)).toEqual([]);
+  it("merges a matching network_path entry into that DC's own group", () => {
+    const groups = dcGroups(
+      [dc({ dc: 2 }), dc({ dc: 4 })],
+      [{ dc: 2, ip_preference: "prefer_v4", selected_addr_v4: "1.2.3.4" }],
+    );
+    const dc2 = groups[0].rows.map((r) => r.key);
+    expect(dc2).toContain("network_path.ip_preference");
+    expect(dc2).toContain("network_path.selected_addr_v4");
+    const dc4 = groups[1].rows.map((r) => r.key);
+    expect(dc4.some((k) => k.startsWith("network_path."))).toBe(false);
+  });
+
+  it("leaves every DC's rows untouched when no network paths are given", () => {
+    const withDefault = dcGroups([dc({ dc: 2 })]);
+    const withEmpty = dcGroups([dc({ dc: 2 })], []);
+    expect(withDefault).toEqual(withEmpty);
   });
 });

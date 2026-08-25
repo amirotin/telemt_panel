@@ -19,7 +19,9 @@ export function MePage() {
     const pool = resolveGated(runtime.data.me_pool_state);
     const quality = resolveGated(runtime.data.me_quality);
     const selftest = resolveGated(runtime.data.me_selftest);
-    const allGated = pool.status === "gated" && quality.status === "gated" && selftest.status === "gated";
+    const minimal = resolveGated(runtime.data.minimal);
+    const allRuntimeEdgeGated =
+      pool.status === "gated" && quality.status === "gated" && selftest.status === "gated";
 
     const groups = meGroups({
       pool: pool.status === "ok" ? pool.data : undefined,
@@ -28,12 +30,20 @@ export function MePage() {
       meWriters: upstreams.data?.me_writers ?? undefined,
       gates: runtime.data.gates ?? undefined,
       initialization: runtime.data.initialization ?? undefined,
+      meRuntime: minimal.status === "ok" ? minimal.data.me_runtime : undefined,
     });
 
     body = (
       <div className="flex flex-col gap-4">
-        {allGated && <Gated enabled={false} reason={pool.reason} hint="runtime_edge" />}
+        {allRuntimeEdgeGated && <Gated enabled={false} reason={pool.reason} hint="runtime_edge" />}
         <KVGroupList groups={groups} />
+        {/* minimal is gated separately (minimal_runtime_enabled), independent of
+            runtime_edge above — its tuning-fields group simply doesn't appear in
+            `groups` when off, so this note explains the specific gap rather than
+            leaving it silently absent. */}
+        {minimal.status === "gated" && (
+          <Gated enabled={false} reason={minimal.reason} hint="minimal_runtime_enabled" />
+        )}
       </div>
     );
   }

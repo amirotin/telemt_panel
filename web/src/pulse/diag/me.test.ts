@@ -67,4 +67,21 @@ describe("meGroups", () => {
       "Гейты",
     ]);
   });
+
+  it("appends the me_runtime tuning group last when present", () => {
+    const groups = meGroups({ meRuntime: { hardswap_enabled: true, floor_mode: "adaptive" } });
+    expect(groups).toEqual([
+      {
+        title: "Тюнинг ME (minimal runtime)",
+        rows: [
+          { key: "hardswap_enabled", label: "hardswap enabled", value: "да" },
+          { key: "floor_mode", label: "floor mode", value: "adaptive" },
+        ],
+      },
+    ]);
+  });
+
+  it("omits the me_runtime group when absent", () => {
+    expect(meGroups({ pool }).map((g) => g.title)).not.toContain("Тюнинг ME (minimal runtime)");
+  });
 });

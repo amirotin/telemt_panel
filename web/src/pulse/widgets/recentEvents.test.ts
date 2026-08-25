@@ -30,8 +30,4 @@ describe("computeRecentEventsView", () => {
   it("carries dropped_total through", () => {
     expect(computeRecentEventsView(events({ dropped_total: 5 })).droppedTotal).toBe(5);
   });
-
-  it("degrades to an empty list for a null events field (nil Go slice on the wire)", () => {
-    expect(computeRecentEventsView(events({ events: null })).events).toEqual([]);
-  });
 });

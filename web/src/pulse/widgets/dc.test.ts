@@ -40,10 +40,6 @@ describe("computeDc", () => {
     const rows = [dc()];
     expect(computeDc({ middle_proxy_enabled: true, dcs: rows })).toEqual({ status: "ok", dcs: rows });
   });
-
-  it("normalizes a null dc list to empty (nil Go slice on the wire)", () => {
-    expect(computeDc({ middle_proxy_enabled: true, dcs: null })).toEqual({ status: "ok", dcs: [] });
-  });
 });
 
 describe("dcCoverageState", () => {

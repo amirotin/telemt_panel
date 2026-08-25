@@ -206,6 +206,7 @@ export const ru = {
     hide: "Скрыть",
     hideWidget: "Скрыть виджет",
     alwaysOn: "Всегда включён",
+    unavailableInMode: "Недоступно в текущем режиме",
     diagLink: "Диагностика →",
     emptyLayoutTitle: "Дашборд пуст",
     emptyLayoutDescription: "Включите виджеты в режиме «Настроить».",
@@ -246,6 +247,9 @@ export const ru = {
       notReady: "Telemt не готов",
       readOnly: "Telemt в режиме только для чтения",
       capabilityGap: "Недоступна возможность:",
+      connectionsBad: "Плохие соединения",
+      handshakeTimeouts: "Таймауты хендшейка",
+      connectionsBadByClass: "Плохие соединения",
     },
     activeSessions: {
       current: "Текущие соединения",
@@ -266,6 +270,7 @@ export const ru = {
       healthy: "Здоров",
       unhealthy: "Нездоров",
       empty: "Нет настроенных апстримов.",
+      successRate: "Успешность подключения",
     },
     mePool: {
       writersTotal: "Писателей всего",
@@ -368,6 +373,12 @@ export const ru = {
       middleProxy: "Middle proxy",
       pool: "Pool",
       desync: "Desync",
+      meRuntimeTuning: "Тюнинг ME (minimal runtime)",
+      networkPath: "Сетевой путь",
+      upstreamQualityPolicy: "Политика подключения",
+      upstreamQualityCounters: "Счётчики подключения",
+      upstreamQualitySummary: "Сводка по маршрутам",
+      upstreamQualityUpstream: "Качество апстрима",
     },
   },
   gated: {
@@ -391,6 +402,8 @@ export const ru = {
       rotate_secret: "Обновите Telemt — смена секрета через API появилась в более новой версии.",
       log_stream:
         "Живые логи недоступны на этой платформе — используйте разовый показ последних строк.",
+      minimal_runtime_enabled:
+        "Включите minimal_runtime_enabled = true в конфиге Telemt и перезапустите прокси.",
     },
   },
 } as const;

@@ -33,8 +33,4 @@ describe("topFingerprints", () => {
   it("is empty when by_fingerprint is empty", () => {
     expect(topFingerprints(payload({ by_fingerprint: [] }))).toEqual([]);
   });
-
-  it("degrades to empty for a null by_fingerprint (nil Go slice on the wire)", () => {
-    expect(topFingerprints(payload({ by_fingerprint: null }))).toEqual([]);
-  });
 });

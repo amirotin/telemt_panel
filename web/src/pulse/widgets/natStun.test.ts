@@ -30,9 +30,4 @@ describe("computeNatStunView", () => {
     expect(view.v4Addr).toBe("1.2.3.4");
     expect(view.v6Addr).toBe("::1");
   });
-
-  it("treats a null configured list as zero configured servers (nil Go slice on the wire)", () => {
-    const view = computeNatStunView(nat({ servers: { configured: null, live: [], live_total: 0 } }));
-    expect(view.configuredServers).toBe(0);
-  });
 });
