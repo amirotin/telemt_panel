@@ -5,8 +5,10 @@ import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Input } from "../ui/Input";
 import { IconButton } from "../ui/IconButton";
-import { IconArrowDown, IconArrowUp, IconPlus } from "../ui/icons";
-import { pluralTemplate, useStrings } from "../i18n";
+import { IconArrowDown, IconArrowUp, IconPlus, IconSort } from "../ui/icons";
+import { CardList, CardRow } from "../ui/Card";
+import { Sheet } from "../ui/Sheet";
+import { pluralTemplate, useStrings, type Dict } from "../i18n";
 import { useDisplayMode } from "../display-mode";
 import { useConnectionState } from "../realtime";
 import { useUsersTopic, findQuotaEntry } from "./useUsersTopic";
@@ -30,6 +32,7 @@ import {
   SORT_PRESET_ORDER,
   type UserFilter,
   type UserFilterInput,
+  type UserSortPreset,
 } from "./users.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
 
@@ -64,8 +67,11 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
   const [sort, setSort] = useState(() => getStoredUserSort());
   const [actionUser, setActionUser] = useState<UsersTopicUser | null>(null);
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
 
   const activePreset = sortPresetOf(sort);
+  const sortAscending = sort.direction === "asc";
+  const sortChipLabel = sortLabelFor(s, activePreset, true, sortAscending);
 
   function updateSort(next: typeof sort) {
     setSort(next);
@@ -121,14 +127,31 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
             </span>
           </div>
 
-          <div className="px-4 pb-2">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={pluralTemplate(s, counts.all, s.people.searchAmong)}
-              aria-label={s.people.searchPlaceholder}
-              autoCapitalize="off"
-            />
+          {/* Below `sm:` the sort control rides in the search row rather
+              than the chip strip below it: three filter chips with their
+              counts already fill 360px, so a fourth chip only ever sat
+              half-scrolled off the right edge — nothing on the first screen
+              said the list could be sorted at all (design review N2). Here
+              it is always visible and costs no extra row. */}
+          <div className="flex items-center gap-2 px-4 pb-2">
+            <div className="min-w-0 flex-1">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={pluralTemplate(s, counts.all, s.people.searchAmong)}
+                aria-label={s.people.searchPlaceholder}
+                autoCapitalize="off"
+              />
+            </div>
+            <Chip
+              className="h-[44px] shrink-0 sm:hidden"
+              icon={<IconSort className="h-3.5 w-3.5" />}
+              aria-label={sortChipLabel}
+              onClick={() => setSortSheetOpen(true)}
+            >
+              {s.people.sortPreset[activePreset]}
+              <SortArrow ascending={sortAscending} />
+            </Chip>
           </div>
 
           <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto px-4 pb-2.5">
@@ -142,11 +165,17 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
                 {s.people.filter[key]}
               </Chip>
             ))}
+            {/* Below `sm:` the three filter chips plus three sort chips do
+                not fit 360px, and the sort half scrolled off-screen at rest
+                — nothing on the first screen said the list could be sorted
+                at all. There, one chip naming the current sort stands in
+                and opens the same three choices in a Sheet; from `sm:` up
+                the original strip is unchanged. */}
             {/* Tapping the active sort chip flips its direction — the
                 arrow is both the current-direction readout and the
                 affordance for that, so ascending/descending stay reachable
                 for every field without a separate control. */}
-            <span className="ml-auto flex items-center gap-1.5">
+            <span className="ml-auto hidden items-center gap-1.5 sm:flex">
               {SORT_PRESET_ORDER.map((preset) => {
                 const active = activePreset === preset;
                 const ascending = active && sort.direction === "asc";
@@ -154,20 +183,11 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
                   <Chip
                     key={preset}
                     active={active}
-                    aria-label={`${s.people.sortLabel}: ${s.people.sortPreset[preset]}${
-                      active
-                        ? `, ${ascending ? s.people.sortAscending : s.people.sortDescending}`
-                        : ""
-                    }`}
+                    aria-label={sortLabelFor(s, preset, active, ascending)}
                     onClick={() => updateSort(nextSortState(sort, preset))}
                   >
                     {s.people.sortPreset[preset]}
-                    {active &&
-                      (ascending ? (
-                        <IconArrowUp className="h-3 w-3" />
-                      ) : (
-                        <IconArrowDown className="h-3 w-3" />
-                      ))}
+                    {active && <SortArrow ascending={ascending} />}
                   </Chip>
                 );
               })}
@@ -242,6 +262,40 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
         onEdit={(user) => setFormTarget({ mode: "edit", user })}
       />
 
+      <Sheet
+        open={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        title={s.people.sortLabel}
+      >
+        <CardList>
+          {SORT_PRESET_ORDER.map((preset) => {
+            const active = activePreset === preset;
+            const ascending = active && sortAscending;
+            return (
+              <CardRow key={preset}>
+                <button
+                  type="button"
+                  className="flex min-h-[44px] flex-1 items-center gap-2 text-left text-row text-text"
+                  aria-label={sortLabelFor(s, preset, active, ascending)}
+                  onClick={() => {
+                    updateSort(nextSortState(sort, preset));
+                    setSortSheetOpen(false);
+                  }}
+                >
+                  <span className="flex-1">{s.people.sortPreset[preset]}</span>
+                  {active && (
+                    <span className="flex items-center gap-1 text-meta text-text-muted">
+                      {ascending ? s.people.sortAscending : s.people.sortDescending}
+                      <SortArrow ascending={ascending} />
+                    </span>
+                  )}
+                </button>
+              </CardRow>
+            );
+          })}
+        </CardList>
+      </Sheet>
+
       <UserFormSheet
         open={formTarget !== null}
         mode={formTarget?.mode ?? "create"}
@@ -249,6 +303,22 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
         onClose={() => setFormTarget(null)}
       />
     </div>
+  );
+}
+
+// sortLabelFor is the accessible name both sort controls announce: the
+// visible cue for direction is the ↑/↓ glyph, which carries no text of its
+// own, so it has to be spelled out here.
+function sortLabelFor(s: Dict, preset: UserSortPreset, active: boolean, ascending: boolean): string {
+  const direction = active ? `, ${ascending ? s.people.sortAscending : s.people.sortDescending}` : "";
+  return `${s.people.sortLabel}: ${s.people.sortPreset[preset]}${direction}`;
+}
+
+function SortArrow({ ascending }: { ascending: boolean }) {
+  return ascending ? (
+    <IconArrowUp className="h-3 w-3" />
+  ) : (
+    <IconArrowDown className="h-3 w-3" />
   );
 }
 
