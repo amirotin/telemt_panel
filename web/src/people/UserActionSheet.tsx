@@ -21,6 +21,18 @@ import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
 import { useRefreshTopic } from "../realtime";
 import type { UsersTopicUser } from "../realtime/topics";
 
+// ActionSheetIntent lets a caller open the sheet straight at one step
+// instead of at the menu — the `lg:` Инспектор's Сброс квоты / Отключить /
+// Удалить buttons route through here so they run the exact same
+// confirmation and mutation as the menu, with no second copy of either.
+export type ActionSheetIntent =
+  | "menu"
+  | "share"
+  | "qr"
+  | "reset-quota"
+  | "toggle-enabled"
+  | "delete";
+
 export interface UserActionSheetProps {
   open: boolean;
   user: UsersTopicUser | null;
@@ -28,6 +40,8 @@ export interface UserActionSheetProps {
   onEdit: (user: UsersTopicUser) => void;
   /** Called after a successful delete — the caller navigates away from the detail page, if applicable. */
   onDeleted?: (username: string) => void;
+  /** Which step the sheet opens at (default: the action menu). */
+  intent?: ActionSheetIntent;
 }
 
 type View =
@@ -36,7 +50,7 @@ type View =
   | { kind: "qr" }
   | { kind: "confirm-delete" }
   | { kind: "confirm-reset-quota" }
-  | { kind: "confirm-toggle-enabled"; nextEnabled: boolean }
+  | { kind: "confirm-toggle-enabled" }
   | { kind: "confirm-rotate-secret" }
   | { kind: "new-secret"; secret: string };
 
@@ -45,8 +59,31 @@ type View =
 // Сбросить квоту, Отключить/Включить, Удалить — shared between the list
 // (People) and the detail screen so the action set/behavior never drifts
 // between the two entry points.
-export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: UserActionSheetProps) {
-  const [view, setView] = useState<View>({ kind: "menu" });
+const INTENT_VIEW: Record<ActionSheetIntent, View> = {
+  menu: { kind: "menu" },
+  share: { kind: "share" },
+  qr: { kind: "qr" },
+  "reset-quota": { kind: "confirm-reset-quota" },
+  "toggle-enabled": { kind: "confirm-toggle-enabled" },
+  delete: { kind: "confirm-delete" },
+};
+
+export function UserActionSheet({
+  open,
+  user,
+  onClose,
+  onEdit,
+  onDeleted,
+  intent = "menu",
+}: UserActionSheetProps) {
+  // Seeded from the intent, never re-derived: "which step am I on" belongs
+  // to one opening of the sheet, and a live `user` update from the SSE
+  // topic must not knock the admin out of a half-finished confirmation.
+  // Callers that can change the intent between openings (the Инспектор's
+  // three action buttons) remount the sheet with `key={intent}` so this
+  // initializer runs again — cheaper and less surprising than an effect
+  // that writes state back on every open.
+  const [view, setView] = useState<View>(() => INTENT_VIEW[intent]);
   const caps = useCaps();
   const refreshTopic = useRefreshTopic();
 
@@ -150,7 +187,7 @@ export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: User
             <Button
               variant="secondary"
               disabled={!caps.data?.capabilities.user_enable_disable}
-              onClick={() => setView({ kind: "confirm-toggle-enabled", nextEnabled: !user.enabled })}
+              onClick={() => setView({ kind: "confirm-toggle-enabled" })}
             >
               {user.enabled ? ru.people.actions.disable : ru.people.actions.enable}
             </Button>
@@ -203,13 +240,16 @@ export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: User
 
       {view.kind === "confirm-toggle-enabled" && (
         <ConfirmView
-          description={view.nextEnabled ? ru.people.actions.confirmEnable : ru.people.actions.confirmDisable}
-          confirmLabel={view.nextEnabled ? ru.people.actions.enable : ru.people.actions.disable}
-          danger={!view.nextEnabled}
+          description={user.enabled ? ru.people.actions.confirmDisable : ru.people.actions.confirmEnable}
+          confirmLabel={user.enabled ? ru.people.actions.disable : ru.people.actions.enable}
+          danger={user.enabled}
           pending={setEnabledMutation.isPending}
           onCancel={() => setView({ kind: "menu" })}
           onConfirm={() =>
-            setEnabledMutation.mutate({ path: { username: user.username }, body: { enabled: view.nextEnabled } })
+            setEnabledMutation.mutate({
+              path: { username: user.username },
+              body: { enabled: !user.enabled },
+            })
           }
         />
       )}

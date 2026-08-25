@@ -3,6 +3,7 @@ import {
   DEFAULT_USER_SORT,
   bytesToQuotaDisplay,
   computeUserStatus,
+  countUserFilters,
   filterUsersByQuery,
   formatBitsPerSecond,
   getStoredUserSort,
@@ -11,7 +12,10 @@ import {
   isQuotaExhausted,
   isValidSecret,
   isValidUsername,
+  matchesUserFilter,
   quotaUnitToBytes,
+  sortPresetOf,
+  SORT_PRESETS,
   setStoredUserSort,
   sortUsers,
   type UserQuotaView,
@@ -271,5 +275,66 @@ describe("validation", () => {
   it("rejects a malformed secret", () => {
     expect(isValidSecret("deadbeef")).toBe(false);
     expect(isValidSecret("zzadbeefdeadbeefdeadbeefdeadbeef")).toBe(false);
+  });
+});
+
+describe("filter segments", () => {
+  const entries = [
+    { user: user({ username: "online-ok", current_connections: 2 }), status: "active" as const },
+    { user: user({ username: "idle-ok", current_connections: 0 }), status: "active" as const },
+    { user: user({ username: "off", current_connections: 0 }), status: "disabled" as const },
+    { user: user({ username: "burnt", current_connections: 3 }), status: "quota_exhausted" as const },
+    { user: user({ username: "gone", current_connections: 0 }), status: "expired" as const },
+    { user: user({ username: "unloaded", current_connections: 0 }), status: "not_in_runtime" as const },
+  ];
+
+  it("counts every segment off one pass", () => {
+    expect(countUserFilters(entries)).toEqual({ all: 6, online: 2, issues: 4 });
+  });
+
+  it("counts an empty list as all-zero", () => {
+    expect(countUserFilters([])).toEqual({ all: 0, online: 0, issues: 0 });
+  });
+
+  it("counts a user who is both online and in trouble in both segments", () => {
+    const counts = countUserFilters([entries[3]!]);
+    expect(counts).toEqual({ all: 1, online: 1, issues: 1 });
+  });
+
+  it("matches the same users the counts describe", () => {
+    const kept = (filter: "all" | "online" | "issues") =>
+      entries.filter((e) => matchesUserFilter(e, filter)).map((e) => e.user.username);
+    expect(kept("all")).toHaveLength(6);
+    expect(kept("online")).toEqual(["online-ok", "burnt"]);
+    expect(kept("issues")).toEqual(["off", "burnt", "gone", "unloaded"]);
+  });
+});
+
+describe("sort presets", () => {
+  it("maps Активность to connections, descending", () => {
+    expect(SORT_PRESETS.activity).toEqual({ field: "connections", direction: "desc" });
+  });
+
+  it("round-trips a preset back out of a stored sort state", () => {
+    expect(sortPresetOf(SORT_PRESETS.activity)).toBe("activity");
+    expect(sortPresetOf(SORT_PRESETS.name)).toBe("name");
+    expect(sortPresetOf(SORT_PRESETS.traffic)).toBe("traffic");
+  });
+
+  it("returns null for a combination no chip offers", () => {
+    expect(sortPresetOf({ field: "traffic", direction: "asc" })).toBeNull();
+  });
+
+  it("defaults to Активность", () => {
+    expect(DEFAULT_USER_SORT).toEqual(SORT_PRESETS.activity);
+  });
+
+  it("orders the list by the preset it names", () => {
+    const users = [
+      user({ username: "a", current_connections: 1 }),
+      user({ username: "b", current_connections: 9 }),
+      user({ username: "c", current_connections: 4 }),
+    ];
+    expect(sortUsers(users, SORT_PRESETS.activity).map((u) => u.username)).toEqual(["b", "c", "a"]);
   });
 });

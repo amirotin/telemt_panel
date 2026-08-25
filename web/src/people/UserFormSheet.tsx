@@ -5,9 +5,10 @@ import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
 import { Stepper } from "../ui/Stepper";
+import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
+import { IconCopy, IconEye, IconEyeOff } from "../ui/icons";
 import { pushToast } from "../ui/Toast";
-import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { copyText } from "../lib/copyText";
 import {
@@ -240,7 +241,8 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
         {mode === "create" && (
           <div className="flex flex-col gap-1">
             <span className="text-sm text-text-muted">{ru.people.form.secret}</span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
               {/* type="password"/"text" toggling (not a manually-rendered
                   mask) so the field stays directly editable/pastable — an
                   admin can paste a custom hex secret instead of the
@@ -260,7 +262,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
                 aria-label={state.secretVisible ? ru.people.form.hide : ru.people.form.show}
                 onClick={() => setState((s) => ({ ...s, secretVisible: !s.secretVisible }))}
               >
-                {state.secretVisible ? "🙈" : "👁"}
+                {state.secretVisible ? <IconEyeOff /> : <IconEye />}
               </IconButton>
               <IconButton
                 type="button"
@@ -274,11 +276,14 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
                   else pushToast(ru.common.copied, "ok");
                 }}
               >
-                ⧉
+                <IconCopy />
               </IconButton>
+              </div>
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
+                className="self-start"
                 onClick={() => setState((s) => ({ ...s, secret: generateSecret() }))}
               >
                 {ru.people.form.secretRegenerate}
@@ -392,21 +397,11 @@ function FieldModeControl({
 }) {
   const options: FieldMode[] = formMode === "edit" ? ["keep", "clear", "set"] : ["clear", "set"];
   return (
-    <div className="flex gap-1" role="group" aria-label={label}>
+    <div className="flex gap-1.5" role="group" aria-label={label}>
       {options.map((m) => (
-        <button
-          key={m}
-          type="button"
-          onClick={() => onChange(m)}
-          className={cn(
-            "tap-target flex-1 rounded-lg border text-xs font-medium transition-colors",
-            mode === m
-              ? "border-accent bg-accent/10 text-accent"
-              : "border-border text-text-muted hover:bg-surface-2",
-          )}
-        >
+        <Chip key={m} active={mode === m} onClick={() => onChange(m)}>
           {modeLabel(m)}
-        </button>
+        </Chip>
       ))}
     </div>
   );

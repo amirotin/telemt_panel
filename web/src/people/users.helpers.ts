@@ -93,6 +93,52 @@ export function filterUsersByQuery(users: UsersTopicUser[], query: string): User
   return users.filter((u) => u.username.toLowerCase().includes(q));
 }
 
+// --- filter segments (Все / Онлайн / Проблемы) ---
+//
+// "Проблемы" reuses computeUserStatus rather than re-deriving the
+// conditions: anything that isn't "active" is something the admin may need
+// to act on (disabled / expired / quota exhausted / not loaded into the
+// running proxy), which is exactly the prototype's own segment.
+export type UserFilter = "all" | "online" | "issues";
+
+export function hasIssues(status: UserStatus): boolean {
+  return status !== "active";
+}
+
+export interface UserFilterCounts {
+  all: number;
+  online: number;
+  issues: number;
+}
+
+// Generic over the user shape so a caller can pass full topic users (the
+// list) or a minimal stub (tests) without either side widening.
+export interface UserFilterInput<T extends Pick<UsersTopicUser, "current_connections">> {
+  user: T;
+  status: UserStatus;
+}
+
+export function countUserFilters<T extends Pick<UsersTopicUser, "current_connections">>(
+  entries: readonly UserFilterInput<T>[],
+): UserFilterCounts {
+  let online = 0;
+  let issues = 0;
+  for (const entry of entries) {
+    if (isOnline(entry.user)) online++;
+    if (hasIssues(entry.status)) issues++;
+  }
+  return { all: entries.length, online, issues };
+}
+
+export function matchesUserFilter<T extends Pick<UsersTopicUser, "current_connections">>(
+  entry: UserFilterInput<T>,
+  filter: UserFilter,
+): boolean {
+  if (filter === "online") return isOnline(entry.user);
+  if (filter === "issues") return hasIssues(entry.status);
+  return true;
+}
+
 export type UserSortField = "name" | "traffic" | "connections";
 export type SortDirection = "asc" | "desc";
 
@@ -117,8 +163,38 @@ export function sortUsers(users: UsersTopicUser[], sort: UserSortState): UsersTo
   });
 }
 
+// --- sort presets (the list header's Активность / Имя / Трафик chips) ---
+//
+// The persisted shape stays {field, direction} — the chips are just the
+// three combinations the prototype offers, so a preset can be resolved
+// back out of an arbitrary stored state (including one written by the old
+// Select+direction control) instead of being a second stored key.
+export type UserSortPreset = "activity" | "name" | "traffic";
+
+export const SORT_PRESETS: Record<UserSortPreset, UserSortState> = {
+  activity: { field: "connections", direction: "desc" },
+  name: { field: "name", direction: "asc" },
+  traffic: { field: "traffic", direction: "desc" },
+};
+
+export const SORT_PRESET_ORDER: readonly UserSortPreset[] = ["activity", "name", "traffic"];
+
+// sortPresetOf returns null for a stored state that matches no chip (e.g.
+// "traffic ascending", reachable through the previous direction toggle) —
+// the list then shows no chip as active rather than lying about which one is.
+export function sortPresetOf(sort: UserSortState): UserSortPreset | null {
+  for (const preset of SORT_PRESET_ORDER) {
+    const p = SORT_PRESETS[preset];
+    if (p.field === sort.field && p.direction === sort.direction) return preset;
+  }
+  return null;
+}
+
 const SORT_STORAGE_KEY = "telemt-panel:people-sort:v1";
-export const DEFAULT_USER_SORT: UserSortState = { field: "name", direction: "asc" };
+// Активность first, matching the prototype's default: on a 30-second phone
+// session the people who are actually using the proxy right now are what
+// the admin came to see, not the alphabet.
+export const DEFAULT_USER_SORT: UserSortState = SORT_PRESETS.activity;
 
 function isSortField(v: unknown): v is UserSortField {
   return v === "name" || v === "traffic" || v === "connections";

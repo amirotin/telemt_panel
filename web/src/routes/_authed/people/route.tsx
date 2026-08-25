@@ -1,9 +1,29 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useParams } from "@tanstack/react-router";
+import { PeopleList } from "../../../people/PeopleList";
+import { useIsDesktop } from "../../../server/useIsDesktop";
 
-// Pathless-in-effect layout for /people and /people/$username — the
-// `_authed` guard already covers auth for the whole subtree; this route
-// exists only so TanStack Router's file convention can nest an index
-// (list) route and a $username (detail) route under one URL prefix.
+// Layout for /people and /people/$username — the `_authed` guard already
+// covers auth for the whole subtree.
+//
+// It also owns the desktop/mobile split for the детали: from `lg:` up the
+// prototype keeps the list on screen and shows the selected person in the
+// Инспектор panel beside it, so this route renders <PeopleList> itself and
+// hands it the child route's username. Doing the switch here (rather than
+// inside the $username route component) keeps ONE PeopleList instance
+// mounted across selections — its search text, filter and scroll position
+// survive clicking from person to person, which a remount would throw away.
+// Below `lg:` nothing changes: the child routes render as usual, the index
+// as the list and $username as the full-screen detail.
 export const Route = createFileRoute("/_authed/people")({
-  component: Outlet,
+  component: PeopleSection,
 });
+
+function PeopleSection() {
+  const isDesktop = useIsDesktop();
+  // strict:false — /people/ has no `username` param at all, so this is a
+  // deliberately loose read of "the child route's param, if there is one".
+  const params = useParams({ strict: false }) as { username?: string };
+
+  if (isDesktop) return <PeopleList selectedUsername={params.username ?? null} />;
+  return <Outlet />;
+}

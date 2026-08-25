@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { AsyncState } from "../components/AsyncState";
+import { Avatar } from "../ui/Avatar";
 import { IconButton } from "../ui/IconButton";
+import { IconChevronLeft, IconMore } from "../ui/icons";
 import { StatCard } from "../ui/StatCard";
-import { QuotaBar } from "../ui/QuotaBar";
 import { KVRow } from "../ui/KVRow";
 import { useDisplayMode, visibleFor, type DisplayMode } from "../display-mode";
 import { useConnectionState } from "../realtime";
@@ -16,14 +16,17 @@ import { UserActionSheet } from "./UserActionSheet";
 import { UserFormSheet } from "./UserFormSheet";
 import { SublinkPanel } from "./SublinkPanel";
 import { LinkCard } from "./LinkCard";
+import { ExpiryLine, IpCards, PersonQuotaCard, SectionLabel } from "./PersonSections";
 import { computeUserStatus, formatBitsPerSecond, getUserQuota, isOnline } from "./users.helpers";
-import { formatDurationApprox } from "./expiry";
+import { personAvatarTone } from "./personMeta.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
 
 // PersonDetail — /people/$username (06-ui.md §Люди): live metrics from the
 // "users" SSE topic, quota bar, IP cards, per-field connection links, and
 // sub-link management — everything the action sheet also offers, plus the
-// full data the list only summarizes.
+// full data the list only summarizes. This is the phone layout; on `lg:`
+// the same URL renders the list with the Инспектор panel instead
+// (routes/_authed/people/route.tsx), over the same components.
 export function PersonDetail({ username }: { username: string }) {
   const topic = useUsersTopic();
   const connection = useConnectionState();
@@ -35,9 +38,13 @@ export function PersonDetail({ username }: { username: string }) {
   const [formOpen, setFormOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-5">
-      <Link to="/people" className="w-fit text-sm text-text-muted hover:text-text">
-        ← {ru.nav.people}
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-3">
+      <Link
+        to="/people"
+        className="mb-3 inline-flex min-h-11 items-center text-meta font-medium text-text-muted hover:text-text"
+      >
+        <IconChevronLeft className="mr-1 h-4 w-4" />
+        {ru.nav.people}
       </Link>
 
       {/* data is the whole topic list, not the single user: AsyncState's
@@ -114,17 +121,19 @@ function PersonDetailBody({
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn("h-2.5 w-2.5 shrink-0 rounded-full", isOnline(user) ? "bg-ok" : "bg-muted")}
-            aria-label={isOnline(user) ? ru.people.online : ru.people.offline}
-          />
-          <h1 className="truncate text-lg font-semibold text-text">{user.username}</h1>
-          <UserStatusPill status={status} />
+      <header className="flex items-center gap-3">
+        <Avatar
+          name={user.username}
+          tone={personAvatarTone(user, status)}
+          online={isOnline(user)}
+          ringOn="bg"
+        />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-lg font-bold text-text">{user.username}</h1>
+          <UserStatusPill status={status} className="mt-1" />
         </div>
         <IconButton aria-label={ru.people.actions.menu} onClick={onOpenActions}>
-          ⋮
+          <IconMore />
         </IconButton>
       </header>
 
@@ -133,32 +142,31 @@ function PersonDetailBody({
         <StatCard label={ru.people.activeIps} value={user.active_unique_ips} />
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-text-muted">{ru.people.form.quota}</h2>
-        <QuotaBar usedBytes={quota.usedBytes} limitBytes={quota.limitBytes} />
-      </section>
+      <PersonQuotaCard quota={quota} />
 
       <section className="flex flex-col gap-1">
-        <h2 className="text-sm font-medium text-text-muted">{ru.people.form.expiry}</h2>
+        <SectionLabel>{ru.people.form.expiry}</SectionLabel>
         <ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />
       </section>
 
       {visibleFor("basic", mode) && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-text-muted">{ru.people.detail.activeIpsTitle}</h2>
-          <IPCardsList ips={activeIps} />
+          <SectionLabel>
+            {ru.people.detail.activeIpsTitle} · {activeIps.length}
+          </SectionLabel>
+          <IpCards ips={activeIps} />
         </section>
       )}
 
       {visibleFor("extended", mode) && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-text-muted">{ru.people.detail.recentIpsTitle}</h2>
-          <IPCardsList ips={recentIps} />
+          <SectionLabel>{ru.people.detail.recentIpsTitle}</SectionLabel>
+          <IpCards ips={recentIps} />
         </section>
       )}
 
       {visibleFor("extended", mode) && hasExtras && (
-        <section className="flex flex-col">
+        <section className="flex flex-col rounded-xl bg-surface px-3.5">
           {user.user_ad_tag && <KVRow label={ru.people.adTag} value={user.user_ad_tag} monospace />}
           {!!user.rate_limit_up_bps && (
             <KVRow label={ru.people.rateUp} value={formatBitsPerSecond(user.rate_limit_up_bps)} />
@@ -170,12 +178,12 @@ function PersonDetailBody({
       )}
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-text-muted">{ru.people.share.title}</h2>
+        <SectionLabel>{ru.people.share.title}</SectionLabel>
         <SublinkPanel username={user.username} />
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-text-muted">{ru.people.detail.linksTitle}</h2>
+        <SectionLabel>{ru.people.detail.linksTitle}</SectionLabel>
         {classicLink && <LinkCard label={ru.people.detail.linkTypeClassic} link={classicLink} />}
         {secureLink && <LinkCard label={ru.people.detail.linkTypeSecure} link={secureLink} />}
         {hasTlsDomains
@@ -189,39 +197,4 @@ function PersonDetailBody({
       {formSheet}
     </div>
   );
-}
-
-function IPCardsList({ ips }: { ips: string[] }) {
-  if (ips.length === 0) {
-    return <p className="text-sm text-text-faint">{ru.common.empty}</p>;
-  }
-  return (
-    <div className="flex flex-wrap gap-2">
-      {ips.map((ip) => (
-        <span
-          key={ip}
-          className="rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-sm text-text"
-        >
-          {ip}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function ExpiryLine({ expirationRfc3339, now }: { expirationRfc3339: string | undefined; now: number }) {
-  if (!expirationRfc3339) {
-    return <span className="text-sm text-text-muted">{ru.people.detail.noExpiry}</span>;
-  }
-  const target = Date.parse(expirationRfc3339);
-  if (Number.isNaN(target)) {
-    return <span className="text-sm text-text-muted">{ru.people.detail.noExpiry}</span>;
-  }
-  const expired = target <= now;
-  const amount = formatDurationApprox(Math.abs(target - now));
-  const text = (expired ? ru.people.detail.expiredAgoTemplate : ru.people.detail.expiresInTemplate).replace(
-    "{amount}",
-    amount,
-  );
-  return <span className={cn("text-sm", expired ? "text-error" : "text-text-muted")}>{text}</span>;
 }

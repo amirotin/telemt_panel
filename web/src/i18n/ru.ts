@@ -67,6 +67,9 @@ export const ru = {
     menu: "Меню",
     navLabel: "Основная навигация",
     connections: "Соединения",
+    // Abbreviated counter for the compact status readouts (sidebar card,
+    // mobile strip) — "713 соед · 18,3 ГБ" in the prototype.
+    connectionsShort: "соед",
     traffic: "Трафик",
     trafficUnavailable: "н/д",
     stale: "Устарело",
@@ -78,8 +81,39 @@ export const ru = {
   people: {
     title: "Люди",
     searchPlaceholder: "Поиск по имени",
+    // "{n}" is replaced with the total number of people — the prototype's
+    // «Поиск среди 1 234», which doubles as a size cue for the list.
+    searchAmongTemplate: "Поиск среди {n}",
     sortLabel: "Сортировка",
     sortField: { name: "Имя", traffic: "Трафик", connections: "Соединения" },
+    // The three sort chips above the list.
+    sortPreset: { activity: "Активность", name: "Имя", traffic: "Трафик" },
+    // The three filter segments, with live counts rendered after a "·".
+    filter: { all: "Все", online: "Онлайн", issues: "Проблемы" },
+    filterLabel: "Фильтр",
+    // Row/inspector meta line (people/personMeta.helpers.ts).
+    meta: {
+      of: "из",
+      ipShort: "IP",
+      idle: "Не в сети",
+      quotaExhausted: "Квота исчерпана",
+      expired: "Срок истёк",
+      disabled: "Отключён вручную",
+      notInRuntime: "Не загружен в прокси",
+    },
+    // Short badges at the row's right edge — kept to one word so the pill
+    // stays the width of a two-digit connection count.
+    badge: {
+      quota: "стоп",
+      expired: "срок",
+      disabled: "выкл",
+      notInRuntime: "н/з",
+    },
+    inspector: {
+      title: "Инспектор",
+      empty: "Выберите человека слева",
+      accessLink: "Ссылка доступа",
+    },
     create: "Создать",
     emptyTitle: "Пока нет пользователей",
     emptyDescription: "Создайте первого пользователя, чтобы выдать доступ к прокси.",
@@ -136,6 +170,9 @@ export const ru = {
       unavailableModule: "Страница подписки отключена в настройках панели.",
       unavailableNoLink: "У пользователя нет classic- или secure-ссылки, чтобы построить подписку.",
       regenerate: "Перевыпустить ссылку",
+      // Short form for the inspector's three-button row, where the full
+      // label would wrap onto two lines.
+      regenerateShort: "Перевыпуск",
       confirmRegenerate: "Перевыпустить ссылку? Старая ссылка перестанет работать.",
       linkLabel: "Ссылка подписки",
     },
@@ -189,6 +226,7 @@ export const ru = {
       metrics: "Метрики",
       quota: "Квота",
       activeIpsTitle: "Активные IP",
+      noActiveIps: "Нет активных соединений",
       recentIpsTitle: "Недавние IP",
       linksTitle: "Ссылки подключения",
       linkTypeClassic: "Обычная",
