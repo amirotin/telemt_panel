@@ -412,7 +412,7 @@ func TestServer_Run_ShutsDownPromptlyWithAnOpenLogStream(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 	tc := telemt.New("http://127.0.0.1:1", "")
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)
 	t.Cleanup(srv.subLimiter.Stop)

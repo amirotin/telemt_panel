@@ -222,7 +222,7 @@ func TestRunShutsDownPromptlyWithAnOpenSSEClient(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	hb := hub.New(hub.Config{Heartbeat: 15 * time.Millisecond}, tc)
+	hb := hub.New(hub.Config{Heartbeat: 15 * time.Millisecond}, tc, st)
 	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)
 	t.Cleanup(srv.subLimiter.Stop)

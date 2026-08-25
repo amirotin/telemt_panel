@@ -48,7 +48,7 @@ func newSubpageTestServer(t *testing.T, enabled bool) (*Server, *http.Cookie) {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
 	tc := newFakeTelemtHTTP(t, fixtureUsers())
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 
 	srv := New(cfg, tc, st, hb, "test")

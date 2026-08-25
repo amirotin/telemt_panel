@@ -349,7 +349,7 @@ func newUsersTestServer(t *testing.T, fake *fakeTelemt, subpageEnabled bool) (*S
 		t.Fatalf("store.NewMemory: %v", err)
 	}
 	tc := fake.server(t)
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 
 	srv := New(cfg, tc, st, hb, "test")
@@ -501,7 +501,7 @@ func TestHandleListUsersTelemtUnreachable(t *testing.T) {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
 	tc := telemt.New("http://127.0.0.1:1", "")
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)

@@ -136,7 +136,7 @@ func newUpdatesTestServer(t *testing.T, runner host.Runner, telemtVersion string
 	if err != nil {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 
 	srv := New(cfg, tc, st, hb, "1.0.0")
@@ -343,7 +343,7 @@ func TestNew_DockerServiceManager_RestartTargetsUseContainerNames(t *testing.T) 
 		t.Fatalf("store.NewMemory: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 
 	srv := New(cfg, tc, st, hb, "1.0.0")

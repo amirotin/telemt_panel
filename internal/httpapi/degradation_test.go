@@ -53,7 +53,7 @@ func TestAPIOnlyDegradation(t *testing.T) {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 
 	// New() itself probes the real host for its ServiceManager/LogSource/

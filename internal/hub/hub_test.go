@@ -286,7 +286,7 @@ func TestUsersTopicComposite(t *testing.T) {
 	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
 	f.setQuota(map[string]telemt.QuotaEntry{"alice": {DataQuotaBytes: 1024, UsedBytes: 512, LastResetEpochSecs: 100}})
 
-	h := New(Config{UsersInterval: 20 * time.Millisecond, StatsInterval: time.Hour}, tc)
+	h := New(Config{UsersInterval: 20 * time.Millisecond, StatsInterval: time.Hour}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
@@ -318,7 +318,7 @@ func TestUsersTopicDegradesQuotaWhenCapabilityAbsent(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
 
-	h := New(Config{UsersInterval: 20 * time.Millisecond, StatsInterval: time.Hour}, tc)
+	h := New(Config{UsersInterval: 20 * time.Millisecond, StatsInterval: time.Hour}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
@@ -348,7 +348,7 @@ func TestUsersTopicDegradesQuotaWhenCapabilityAbsent(t *testing.T) {
 
 func TestUnknownTopicRejected(t *testing.T) {
 	_, tc := newFakeTelemt(t)
-	h := New(Config{}, tc)
+	h := New(Config{}, tc, nil)
 	t.Cleanup(h.Close)
 
 	_, _, _, err := h.Subscribe([]string{"users", "bogus"})
@@ -380,7 +380,7 @@ func TestSubscribeReceivesSnapshotThenUpdateOnChange(t *testing.T) {
 	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
 
 	interval := 20 * time.Millisecond
-	h := New(Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: 200 * time.Millisecond}, tc)
+	h := New(Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: 200 * time.Millisecond}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, snapshots, cancel, err := h.Subscribe([]string{"users"})
@@ -423,7 +423,7 @@ func TestTwoSubscribersOnePollPerInterval(t *testing.T) {
 	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
 
 	interval := 20 * time.Millisecond
-	h := New(Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: time.Second}, tc)
+	h := New(Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: time.Second}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch1, _, cancel1, err := h.Subscribe([]string{"users"})
@@ -464,7 +464,7 @@ func TestReplayAfterReconnect(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "v1"}})
 
-	h := New(Config{UsersInterval: 15 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc)
+	h := New(Config{UsersInterval: 15 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
@@ -493,7 +493,7 @@ func TestReplayTooOldReturnsFalse(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "v0"}})
 
-	h := New(Config{UsersInterval: 5 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second, ReplayRingSize: 2}, tc)
+	h := New(Config{UsersInterval: 5 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second, ReplayRingSize: 2}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
@@ -525,7 +525,7 @@ func TestReplayStaleFutureIDFallsBackToFalse(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "v0"}})
 
-	h := New(Config{UsersInterval: 5 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc)
+	h := New(Config{UsersInterval: 5 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
@@ -552,7 +552,7 @@ func TestSlowSubscriberClosedPollerStaysAlive(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "v0"}})
 
-	h := New(Config{UsersInterval: 10 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second, SubscriberBuffer: 1}, tc)
+	h := New(Config{UsersInterval: 10 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second, SubscriberBuffer: 1}, tc, nil)
 	t.Cleanup(h.Close)
 
 	slowCh, _, slowCancel, err := h.Subscribe([]string{"users"})
@@ -582,7 +582,7 @@ func TestPollerStopsAfterGrace(t *testing.T) {
 
 	interval := 10 * time.Millisecond
 	grace := 30 * time.Millisecond
-	h := New(Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: grace}, tc)
+	h := New(Config{UsersInterval: interval, StatsInterval: time.Hour, Grace: grace}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
@@ -607,7 +607,7 @@ func TestSourceErrorOnUpstream500AndRecovery(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsersFailing(true)
 
-	h := New(Config{UsersInterval: 10 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc)
+	h := New(Config{UsersInterval: 10 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
@@ -640,7 +640,7 @@ func TestStatsTopicNullsFailedSubCall(t *testing.T) {
 	f.setHealthFailing(true)
 	f.summary = telemt.SummaryData{UptimeSeconds: 42}
 
-	h := New(Config{UsersInterval: time.Hour, StatsInterval: 10 * time.Millisecond, Grace: time.Second}, tc)
+	h := New(Config{UsersInterval: time.Hour, StatsInterval: 10 * time.Millisecond, Grace: time.Second}, tc, nil)
 	t.Cleanup(h.Close)
 
 	ch, _, cancel, err := h.Subscribe([]string{"stats"})
@@ -671,7 +671,7 @@ func TestStatsTopicSourceErrorsWhenBothSubCallsFail(t *testing.T) {
 	f.setSummaryFailing(true)
 
 	interval := 10 * time.Millisecond
-	h := New(Config{UsersInterval: time.Hour, StatsInterval: interval, Grace: time.Second}, tc)
+	h := New(Config{UsersInterval: time.Hour, StatsInterval: interval, Grace: time.Second}, tc, nil)
 	t.Cleanup(h.Close)
 
 	start := time.Now()
@@ -730,7 +730,7 @@ func TestSnapshotValidatesAllTopicsBeforeFetching(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
 
-	h := New(Config{}, tc)
+	h := New(Config{}, tc, nil)
 	t.Cleanup(h.Close)
 
 	_, err := h.Snapshot(t.Context(), []string{"users", "bogus"})
@@ -752,7 +752,7 @@ func TestSnapshotFetchesOnDemandForIdleTopic(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "alice"}})
 
-	h := New(Config{}, tc)
+	h := New(Config{}, tc, nil)
 	t.Cleanup(h.Close)
 
 	out, err := h.Snapshot(t.Context(), []string{"users"})
@@ -768,7 +768,7 @@ func TestCloseStopsRunningPollersAndClosesSubscribers(t *testing.T) {
 	f, tc := newFakeTelemt(t)
 	f.setUsers([]telemt.UserInfo{{Username: "v0"}})
 
-	h := New(Config{UsersInterval: 10 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc)
+	h := New(Config{UsersInterval: 10 * time.Millisecond, StatsInterval: time.Hour, Grace: time.Second}, tc, nil)
 
 	ch, _, cancel, err := h.Subscribe([]string{"users"})
 	if err != nil {

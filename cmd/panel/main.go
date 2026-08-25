@@ -71,7 +71,7 @@ func main() {
 	}
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	srv := httpapi.New(cfg, tc, st, hb, version)
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)

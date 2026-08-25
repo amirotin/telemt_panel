@@ -14,7 +14,12 @@ import (
 const (
 	auditCap   = 500
 	journalCap = 100
-	metricCap  = 900
+	// metricCap bounds each named metric series (RecordMetric/MetricRange).
+	// Ruling R3 (v2/specs/02-hub-sse.md, M3 task-2): the memory-store
+	// profile keeps 15 minutes of raw history per metric; at the hub's
+	// default 5s "stats" poll interval (internal/hub, recordStatsHistory)
+	// that's 15*60/5 = 180 points.
+	metricCap = 180
 )
 
 // touchMirrorDebounce caps how often a TouchSession-triggered mirror write

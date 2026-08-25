@@ -55,7 +55,7 @@ func newSSETestServer(t *testing.T, tc *telemt.Client, hubCfg hub.Config) (*Serv
 	if err != nil {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
-	hb := hub.New(hubCfg, tc)
+	hb := hub.New(hubCfg, tc, st)
 	t.Cleanup(hb.Close)
 	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)

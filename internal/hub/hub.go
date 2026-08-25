@@ -15,18 +15,29 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
 
 // Default poll intervals and lifecycle timings (spec 02-hub-sse.md). Tests
 // override these via Config with millisecond-scale values.
 const (
-	defaultUsersInterval    = 10 * time.Second
-	defaultStatsInterval    = 5 * time.Second
-	defaultGrace            = 30 * time.Second
-	defaultHeartbeat        = 25 * time.Second
-	defaultSubscriberBuffer = 64
-	defaultReplayRingSize   = 256
+	defaultUsersInterval     = 10 * time.Second
+	defaultStatsInterval     = 5 * time.Second
+	defaultRuntimeInterval   = 10 * time.Second
+	defaultUpstreamsInterval = 15 * time.Second
+	defaultSecurityInterval  = 30 * time.Second
+	defaultGrace             = 30 * time.Second
+	defaultHeartbeat         = 25 * time.Second
+	defaultSubscriberBuffer  = 64
+	defaultReplayRingSize    = 256
+
+	// defaultStatsSysInfoRefresh bounds how often the "stats" topic's poll
+	// re-fetches GET /v1/system/info for its version/uptime fields — every
+	// 5s stats poll would be wasteful for values that rarely change (spec
+	// task brief: "every 12th poll or 60s"). 60s at the default 5s stats
+	// interval is exactly the 12th-poll cadence the brief suggests.
+	defaultStatsSysInfoRefresh = 60 * time.Second
 
 	// maxBackoff caps the exponential backoff applied to a topic's poll
 	// interval while its upstream fetch keeps failing.
@@ -36,17 +47,30 @@ const (
 	// failure; the panel does not currently need finer-grained
 	// classification of the underlying Telemt error.
 	sourceErrorCode = "telemt_unreachable"
+
+	// History metric names (store.RecordMetric/MetricRange series keys),
+	// matching api/openapi.yaml GetHistory's `metric` enum values that this
+	// milestone actually records (see recordStatsHistory).
+	metricConnections = "connections"
+	metricActiveUsers = "active_users"
+	metricTraffic     = "traffic"
 )
 
 // Config configures the hub's poll intervals and lifecycle timings. Zero
 // fields fall back to the production defaults above.
 type Config struct {
-	UsersInterval    time.Duration
-	StatsInterval    time.Duration
-	Grace            time.Duration
-	Heartbeat        time.Duration
-	SubscriberBuffer int
-	ReplayRingSize   int
+	UsersInterval     time.Duration
+	StatsInterval     time.Duration
+	RuntimeInterval   time.Duration
+	UpstreamsInterval time.Duration
+	SecurityInterval  time.Duration
+	Grace             time.Duration
+	Heartbeat         time.Duration
+	SubscriberBuffer  int
+	ReplayRingSize    int
+	// StatsSysInfoRefresh overrides defaultStatsSysInfoRefresh; tests set
+	// this small to observe the refresh without a real 60s wait.
+	StatsSysInfoRefresh time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -55,6 +79,15 @@ func (c Config) withDefaults() Config {
 	}
 	if c.StatsInterval <= 0 {
 		c.StatsInterval = defaultStatsInterval
+	}
+	if c.RuntimeInterval <= 0 {
+		c.RuntimeInterval = defaultRuntimeInterval
+	}
+	if c.UpstreamsInterval <= 0 {
+		c.UpstreamsInterval = defaultUpstreamsInterval
+	}
+	if c.SecurityInterval <= 0 {
+		c.SecurityInterval = defaultSecurityInterval
 	}
 	if c.Grace <= 0 {
 		c.Grace = defaultGrace
@@ -67,6 +100,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.ReplayRingSize <= 0 {
 		c.ReplayRingSize = defaultReplayRingSize
+	}
+	if c.StatsSysInfoRefresh <= 0 {
+		c.StatsSysInfoRefresh = defaultStatsSysInfoRefresh
 	}
 	return c
 }
@@ -127,6 +163,7 @@ type subscriber struct {
 // subscribers. Call Close when done to stop every poller.
 type Hub struct {
 	cfg Config
+	st  store.Store
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -141,16 +178,22 @@ type Hub struct {
 }
 
 // New creates a Hub polling tc for this package's topic registry (users,
-// stats). No poller runs until the first Subscribe call for its topic.
-func New(cfg Config, tc *telemt.Client) *Hub {
+// stats, runtime, upstreams, security). No poller runs until the first
+// Subscribe call for its topic. st records the "stats" topic's history
+// points (recordStatsHistory) into the RAM ring GET /api/history reads;
+// nil is accepted (e.g. tests that don't exercise history) and simply
+// skips recording.
+func New(cfg Config, tc *telemt.Client, st store.Store) *Hub {
 	cfg = cfg.withDefaults()
 	ctx, cancel := context.WithCancel(context.Background())
 	h := &Hub{
 		cfg:         cfg,
+		st:          st,
 		ctx:         ctx,
 		cancel:      cancel,
 		subscribers: make(map[uint64]*subscriber),
 	}
+	sysInfo := &statsSysInfoRefresher{tc: tc, interval: cfg.StatsSysInfoRefresh, now: time.Now}
 	h.topics = map[string]*topicState{
 		"users": {
 			name:     "users",
@@ -160,7 +203,22 @@ func New(cfg Config, tc *telemt.Client) *Hub {
 		"stats": {
 			name:     "stats",
 			interval: cfg.StatsInterval,
-			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc) },
+			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc, sysInfo) },
+		},
+		"runtime": {
+			name:     "runtime",
+			interval: cfg.RuntimeInterval,
+			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchRuntime(ctx, tc) },
+		},
+		"upstreams": {
+			name:     "upstreams",
+			interval: cfg.UpstreamsInterval,
+			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchUpstreams(ctx, tc) },
+		},
+		"security": {
+			name:     "security",
+			interval: cfg.SecurityInterval,
+			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchSecurity(ctx, tc) },
 		},
 		// "update" is event-driven, not polled: the update engine and
 		// auto-updater push snapshots into it directly via PublishUpdate.
@@ -201,15 +259,28 @@ func fetchUsers(ctx context.Context, tc *telemt.Client) (json.RawMessage, error)
 	return json.Marshal(usersSnapshot{Users: users, Quota: quota, QuotaSupported: hasQuota})
 }
 
-// statsSnapshot is the "stats" topic's composite payload. Health and
-// StatsSummary are fetched independently; either may be null if its
-// sub-call failed — the topic still publishes rather than source_error-ing.
+// statsSnapshot is the "stats" topic's composite payload (spec
+// 02-hub-sse.md topic table, extended per M3 task-2's brief): Health,
+// StatsSummary and Ready are fetched independently, any of them may be
+// null if its sub-call failed — the topic still publishes as long as at
+// least one succeeds. ConnectionsSummary is included only when the
+// runtime_edge capability is on (its own Gated[T] wrapper already reports
+// "disabled" cleanly, but the brief scopes this field to when the capability
+// is actually available, to avoid every stats tick paying for and shipping
+// an always-closed gate object on a stock config). Version/UptimeSeconds
+// come from GET /v1/system/info, refreshed at most every
+// Config.StatsSysInfoRefresh (see statsSysInfoRefresher) rather than every
+// poll.
 type statsSnapshot struct {
-	Health  *telemt.HealthData  `json:"health"`
-	Summary *telemt.SummaryData `json:"summary"`
+	Health             *telemt.HealthData                                         `json:"health"`
+	Summary            *telemt.SummaryData                                        `json:"summary"`
+	Ready              *telemt.ReadyData                                          `json:"ready"`
+	ConnectionsSummary *telemt.Gated[telemt.RuntimeEdgeConnectionsSummaryPayload] `json:"connections_summary,omitempty"`
+	Version            string                                                     `json:"version,omitempty"`
+	UptimeSeconds      float64                                                    `json:"uptime_seconds,omitempty"`
 }
 
-func fetchStats(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRefresher) (json.RawMessage, error) {
 	var snap statsSnapshot
 	health, healthErr := tc.Health(ctx)
 	if healthErr == nil {
@@ -219,14 +290,292 @@ func fetchStats(ctx context.Context, tc *telemt.Client) (json.RawMessage, error)
 	if summaryErr == nil {
 		snap.Summary = &summary
 	}
-	// A single sub-call failing still publishes (the other field carries
-	// real data); both failing means Telemt itself is unreachable, so this
-	// must surface as a fetch error — the source_error/backoff path — not
-	// a silent {"health":null,"summary":null} snapshot.
-	if healthErr != nil && summaryErr != nil {
-		return nil, fmt.Errorf("stats: %w", errors.Join(healthErr, summaryErr))
+	ready, readyErr := tc.Ready(ctx)
+	if readyErr == nil {
+		snap.Ready = &ready
+	}
+	// Every primary sub-call failing means Telemt itself is unreachable, so
+	// this must surface as a fetch error — the source_error/backoff path —
+	// not a silent all-null snapshot. Any one succeeding still publishes.
+	if healthErr != nil && summaryErr != nil && readyErr != nil {
+		return nil, fmt.Errorf("stats: %w", errors.Join(healthErr, summaryErr, readyErr))
+	}
+
+	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
+		if cs, err := tc.ConnectionsSummary(ctx); err == nil {
+			snap.ConnectionsSummary = &cs
+		} else {
+			slog.Warn("hub: stats topic: connections summary", "err", err)
+		}
+	}
+
+	if version, uptime, ok := sysInfo.get(ctx); ok {
+		snap.Version = version
+		snap.UptimeSeconds = uptime
+	}
+
+	return json.Marshal(snap)
+}
+
+// statsSysInfoRefresher rate-limits GET /v1/system/info fetches inside the
+// "stats" topic's poll loop: version/uptime rarely change, so calling
+// SystemInfo on every 5s poll would be wasteful. Safe for concurrent use —
+// the poll loop and an on-demand Snapshot fetch can both call get.
+type statsSysInfoRefresher struct {
+	tc       *telemt.Client
+	interval time.Duration
+	now      func() time.Time
+
+	mu      sync.Mutex
+	lastAt  time.Time
+	version string
+	uptime  float64
+	hasData bool
+}
+
+// get returns the cached version/uptime if still fresh, otherwise re-fetches
+// GET /v1/system/info. ok is false only when there is neither a fresh nor a
+// stale cached value AND the fetch itself failed — the stats topic then
+// simply omits Version/UptimeSeconds for this tick rather than blocking on
+// it or failing the whole poll.
+func (r *statsSysInfoRefresher) get(ctx context.Context) (version string, uptime float64, ok bool) {
+	r.mu.Lock()
+	if r.hasData && r.now().Sub(r.lastAt) < r.interval {
+		version, uptime = r.version, r.uptime
+		r.mu.Unlock()
+		return version, uptime, true
+	}
+	r.mu.Unlock()
+
+	info, err := r.tc.SystemInfo(ctx)
+	if err != nil {
+		r.mu.Lock()
+		version, uptime, ok = r.version, r.uptime, r.hasData
+		r.mu.Unlock()
+		return version, uptime, ok
+	}
+
+	r.mu.Lock()
+	r.version, r.uptime, r.hasData, r.lastAt = info.Version, info.UptimeSeconds, true, r.now()
+	version, uptime = r.version, r.uptime
+	r.mu.Unlock()
+	return version, uptime, true
+}
+
+// runtimeSnapshot is the "runtime" topic's composite payload (spec
+// 02-hub-sse.md / M3 task-2 brief): the always-on Gates/Initialization
+// group plus the ME-pool/quality/NAT-STUN/self-test Gated[T] group. Any
+// sub-call failing leaves its field null and the topic still publishes;
+// every one of the six failing is treated as Telemt being unreachable.
+// RecentEvents is included only when the runtime_edge capability is on.
+type runtimeSnapshot struct {
+	Gates          *telemt.RuntimeGatesData                        `json:"gates"`
+	Initialization *telemt.RuntimeInitializationData               `json:"initialization"`
+	MePoolState    *telemt.Gated[telemt.RuntimeMePoolStatePayload] `json:"me_pool_state"`
+	MeQuality      *telemt.Gated[telemt.RuntimeMeQualityPayload]   `json:"me_quality"`
+	NatStun        *telemt.Gated[telemt.RuntimeNatStunPayload]     `json:"nat_stun"`
+	MeSelfTest     *telemt.Gated[telemt.RuntimeMeSelftestPayload]  `json:"me_selftest"`
+	RecentEvents   *telemt.Gated[telemt.RuntimeEdgeEventsPayload]  `json:"recent_events,omitempty"`
+}
+
+func fetchRuntime(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+	var snap runtimeSnapshot
+	var errs []error
+
+	if v, err := tc.Gates(ctx); err == nil {
+		snap.Gates = &v
+	} else {
+		errs = append(errs, err)
+	}
+	if v, err := tc.Initialization(ctx); err == nil {
+		snap.Initialization = &v
+	} else {
+		errs = append(errs, err)
+	}
+	if v, err := tc.MePoolState(ctx); err == nil {
+		snap.MePoolState = &v
+	} else {
+		errs = append(errs, err)
+	}
+	if v, err := tc.MeQuality(ctx); err == nil {
+		snap.MeQuality = &v
+	} else {
+		errs = append(errs, err)
+	}
+	if v, err := tc.NatStun(ctx); err == nil {
+		snap.NatStun = &v
+	} else {
+		errs = append(errs, err)
+	}
+	if v, err := tc.MeSelfTest(ctx); err == nil {
+		snap.MeSelfTest = &v
+	} else {
+		errs = append(errs, err)
+	}
+	if len(errs) == 6 {
+		return nil, fmt.Errorf("runtime: %w", errors.Join(errs...))
+	}
+
+	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
+		if v, err := tc.RecentEvents(ctx, 0); err == nil {
+			snap.RecentEvents = &v
+		} else {
+			slog.Warn("hub: runtime topic: recent events", "err", err)
+		}
+	}
+
+	return json.Marshal(snap)
+}
+
+// upstreamsSnapshot is the "upstreams" topic's composite payload: Upstreams
+// + DCs + MeWriters (spec 02-hub-sse.md / M3 task-2 brief). Any one failing
+// leaves its field null and the topic still publishes; all three failing is
+// treated as Telemt being unreachable.
+type upstreamsSnapshot struct {
+	Upstreams *telemt.UpstreamsData `json:"upstreams"`
+	DCs       *telemt.DcStatusData  `json:"dcs"`
+	MeWriters *telemt.MeWritersData `json:"me_writers"`
+}
+
+func fetchUpstreams(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+	var snap upstreamsSnapshot
+	var upstreamsErr, dcsErr, meWritersErr error
+
+	if v, err := tc.Upstreams(ctx); err == nil {
+		snap.Upstreams = &v
+	} else {
+		upstreamsErr = err
+	}
+	if v, err := tc.DCs(ctx); err == nil {
+		snap.DCs = &v
+	} else {
+		dcsErr = err
+	}
+	if v, err := tc.MeWriters(ctx); err == nil {
+		snap.MeWriters = &v
+	} else {
+		meWritersErr = err
+	}
+	if upstreamsErr != nil && dcsErr != nil && meWritersErr != nil {
+		return nil, fmt.Errorf("upstreams: %w", errors.Join(upstreamsErr, dcsErr, meWritersErr))
 	}
 	return json.Marshal(snap)
+}
+
+// securitySnapshot is the "security" topic's composite payload: Posture +
+// Whitelist + EffectiveLimits (spec 02-hub-sse.md / M3 task-2 brief), plus
+// TLSFingerprints when the runtime_edge capability is on. Any one of the
+// first three failing leaves its field null and the topic still publishes;
+// all three failing is treated as Telemt being unreachable.
+type securitySnapshot struct {
+	Posture         *telemt.SecurityPostureData                             `json:"posture"`
+	Whitelist       *telemt.SecurityWhitelistData                           `json:"whitelist"`
+	EffectiveLimits *telemt.EffectiveLimitsData                             `json:"effective_limits"`
+	TLSFingerprints *telemt.Gated[telemt.RuntimeEdgeTLSFingerprintsPayload] `json:"tls_fingerprints,omitempty"`
+}
+
+func fetchSecurity(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+	var snap securitySnapshot
+	var postureErr, whitelistErr, limitsErr error
+
+	if v, err := tc.Posture(ctx); err == nil {
+		snap.Posture = &v
+	} else {
+		postureErr = err
+	}
+	if v, err := tc.Whitelist(ctx); err == nil {
+		snap.Whitelist = &v
+	} else {
+		whitelistErr = err
+	}
+	if v, err := tc.EffectiveLimits(ctx); err == nil {
+		snap.EffectiveLimits = &v
+	} else {
+		limitsErr = err
+	}
+	if postureErr != nil && whitelistErr != nil && limitsErr != nil {
+		return nil, fmt.Errorf("security: %w", errors.Join(postureErr, whitelistErr, limitsErr))
+	}
+
+	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
+		if v, err := tc.TLSFingerprints(ctx, 0); err == nil {
+			snap.TLSFingerprints = &v
+		} else {
+			slog.Warn("hub: security topic: tls fingerprints", "err", err)
+		}
+	}
+
+	return json.Marshal(snap)
+}
+
+// recordStatsHistory appends one point to each history metric series
+// (ruling R3: RAM ring only) this milestone tracks from a just-fetched
+// "stats" topic snapshot: connections, active_users and traffic. A metric
+// this tick can't derive — no runtime_edge and the "users" topic hasn't
+// been polled yet — is simply skipped for this tick rather than recording
+// a misleading value; GET /api/history degrades to fewer points, never an
+// error. Documented choice of source field per metric:
+//   - connections/active_users: the runtime-edge ConnectionsSummary's live
+//     Totals when available (accurate concurrent counts); otherwise the
+//     coarser StatsSummary proxies (ConnectionsTotal is a cumulative
+//     counter, not concurrent; ConfiguredUsers is not "active" — both are
+//     the closest fields StatsSummary actually exposes without runtime_edge).
+//   - traffic: StatsSummary/ConnectionsSummary expose no byte-traffic
+//     aggregate at all, so this sums TotalOctets across the "users" topic's
+//     latest cached snapshot (already polled independently) — skipped
+//     entirely until that topic has been fetched at least once.
+func (h *Hub) recordStatsHistory(data json.RawMessage) {
+	if h.st == nil {
+		return
+	}
+	var snap statsSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		slog.Warn("hub: history: decode stats snapshot", "err", err)
+		return
+	}
+	ts := time.Now().Unix()
+
+	switch {
+	case snap.ConnectionsSummary != nil && snap.ConnectionsSummary.Enabled && snap.ConnectionsSummary.Data != nil:
+		totals := snap.ConnectionsSummary.Data.Totals
+		h.recordMetric(metricConnections, ts, float64(totals.CurrentConnections))
+		h.recordMetric(metricActiveUsers, ts, float64(totals.ActiveUsers))
+	case snap.Summary != nil:
+		h.recordMetric(metricConnections, ts, float64(snap.Summary.ConnectionsTotal))
+		h.recordMetric(metricActiveUsers, ts, float64(snap.Summary.ConfiguredUsers))
+	}
+
+	if traffic, ok := h.usersTrafficTotal(); ok {
+		h.recordMetric(metricTraffic, ts, traffic)
+	}
+}
+
+// usersTrafficTotal sums TotalOctets across the "users" topic's latest
+// cached snapshot. ok is false when that topic has never been polled yet
+// (hasData false) or its cached payload fails to decode.
+func (h *Hub) usersTrafficTotal() (total float64, ok bool) {
+	h.mu.Lock()
+	t := h.topics["users"]
+	hasData, data := t.hasData, t.lastData
+	h.mu.Unlock()
+	if !hasData {
+		return 0, false
+	}
+	var snap usersSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return 0, false
+	}
+	var sum uint64
+	for _, u := range snap.Users {
+		sum += u.TotalOctets
+	}
+	return float64(sum), true
+}
+
+func (h *Hub) recordMetric(name string, ts int64, value float64) {
+	if err := h.st.RecordMetric(name, store.MetricPoint{TS: ts, Value: value}); err != nil {
+		slog.Warn("hub: record metric", "metric", name, "err", err)
+	}
 }
 
 // HeartbeatInterval returns the configured SSE heartbeat period.
@@ -381,6 +730,13 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	if err != nil {
 		h.recordFetchError(t, err)
 		return false
+	}
+	// recordStatsHistory reads the "users" topic's cache under h.mu itself
+	// (usersTrafficTotal) — it must run before recordFetchSuccess takes
+	// that same lock below, not while holding it (sync.Mutex isn't
+	// reentrant).
+	if t.name == "stats" {
+		h.recordStatsHistory(data)
 	}
 	h.recordFetchSuccess(t, data)
 	return true

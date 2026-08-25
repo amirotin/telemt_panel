@@ -32,7 +32,7 @@ func newTelemtInfoTestServer(t *testing.T, tc *telemt.Client) (*Server, *http.Co
 	if err != nil {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
-	hb := hub.New(hub.Config{}, tc)
+	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 	srv := New(cfg, tc, st, hb, "test")
 	t.Cleanup(srv.limiter.Stop)
