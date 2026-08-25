@@ -1,4 +1,6 @@
 import { cn } from "../lib/cn";
+import { ru } from "../i18n/ru";
+import { currentPhaseIndex } from "./phaseSteps.helpers";
 
 export type PhaseStepState = "done" | "active" | "pending";
 
@@ -47,14 +49,32 @@ export function PhaseSteps({
   className,
 }: PhaseStepsProps) {
   const clamped = Math.max(0, Math.min(1, progress));
+  const currentIndex = currentPhaseIndex(steps);
+  const current = currentIndex >= 0 ? steps[currentIndex] : undefined;
+  const counter = ru.server.phaseStepTemplate
+    .replace("{n}", String(currentIndex + 1))
+    .replace("{total}", String(steps.length));
+  // Also the progressbar's aria-valuetext: "38%" tells a screen reader
+  // nothing about WHICH phase is running, and the dot list below is a
+  // separate node a caller may be reading past.
+  const valueText = current ? `${counter} · ${current.label}` : counter;
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <div className={cn("flex flex-col gap-2", className)}>
+      {current && (
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="min-w-0 truncate text-meta font-semibold text-text">
+            {current.label}
+          </span>
+          <span className="shrink-0 text-micro tabular-nums text-text-faint">{counter}</span>
+        </div>
+      )}
       <div
         className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
         role="progressbar"
         aria-label={label}
         aria-valuenow={Math.round(clamped * 100)}
+        aria-valuetext={valueText}
         aria-valuemin={0}
         aria-valuemax={100}
       >
