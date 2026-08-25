@@ -465,6 +465,20 @@ paths:
         "503": { description: manual_restart_required — automatic restart unavailable on this host; message carries the manual command (same info as /api/host manual_commands), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { description: internal_error — the restart op itself failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/telemt/zero:
+    get:
+      tags: [telemt]
+      operationId: getTelemtZero
+      description: >
+        Passthrough of Telemt's GET /v1/stats/zero/all — the deep counter dump
+        (core/upstream/middle_proxy/pool/desync). Display-only: the panel never
+        branches on these values, only shows them (web's Диагностика → Счётчики page).
+        Fetched on visit, not a hub topic.
+      responses:
+        "200": { description: Deep counter dump, content: { application/json: { schema: { $ref: "#/components/schemas/ZeroAllData" } } } }
+        "501": { description: capability_absent — this Telemt build/config does not expose zero/all, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+
   # ───────────────────────── host ─────────────────────────
   /api/host:
     get:
@@ -892,6 +906,22 @@ components:
         hint:
           type: string
           description: Actionable diagnostic (e.g. "check [server.api].whitelist — connection dropped").
+
+    ZeroAllData:
+      type: object
+      description: >
+        GET /v1/stats/zero/all's deep counter dump, passed through as-is. Only the top
+        level (five named sections) is typed — each section's leaves are a display-only
+        object mixing u64 counters with bools/strings/nested arrays (07-telemt-sdk.md),
+        never branched on by the panel.
+      required: [generated_at_epoch_secs, core, upstream, middle_proxy, pool, desync]
+      properties:
+        generated_at_epoch_secs: { type: integer }
+        core: { type: object, additionalProperties: true }
+        upstream: { type: object, additionalProperties: true }
+        middle_proxy: { type: object, additionalProperties: true }
+        pool: { type: object, additionalProperties: true }
+        desync: { type: object, additionalProperties: true }
 
     TelemtConfig:
       type: object

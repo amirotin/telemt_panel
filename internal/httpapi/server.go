@@ -242,6 +242,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/telemt/reload", protect(s.handleTelemtReload))
 	mux.Handle("GET /api/telemt/reload/{id}", protect(s.handleTelemtReloadStatus))
 	mux.Handle("POST /api/telemt/restart", protect(s.handleTelemtRestart))
+	mux.Handle("GET /api/telemt/zero", protect(s.handleGetTelemtZero))
 
 	mux.Handle("GET /api/host", protect(s.handleHost))
 	mux.Handle("GET /api/logs/tail", protect(s.handleLogsTail))
