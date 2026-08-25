@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, ListSessionsData, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses } from './types.gen';
+import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, ListSessionsData, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -290,6 +290,20 @@ export const restartTelemtService = <ThrowOnError extends boolean = false>(optio
             type: 'apiKey'
         }],
     url: '/api/telemt/restart',
+    ...options
+});
+
+/**
+ * Passthrough of Telemt's GET /v1/stats/zero/all — the deep counter dump (core/upstream/middle_proxy/pool/desync). Display-only: the panel never branches on these values, only shows them (web's Диагностика → Счётчики page). Fetched on visit, not a hub topic.
+ *
+ */
+export const getTelemtZero = <ThrowOnError extends boolean = false>(options?: Options<GetTelemtZeroData, ThrowOnError>): RequestResult<GetTelemtZeroResponses, GetTelemtZeroErrors, ThrowOnError> => (options?.client ?? client).get<GetTelemtZeroResponses, GetTelemtZeroErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/zero',
     ...options
 });
 

@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtInfo, getTelemtReloadStatus, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchUser, putAutoUpdate, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchUserData, PatchUserError, PatchUserResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
+import { applyUpdate, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtInfo, getTelemtReloadStatus, getTelemtZero, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchUser, putAutoUpdate, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchUserData, PatchUserError, PatchUserResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
 
 export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
     const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
@@ -390,6 +390,25 @@ export const restartTelemtServiceMutation = (options?: Partial<Options<RestartTe
     };
     return mutationOptions;
 };
+
+export const getTelemtZeroQueryKey = (options?: Options<GetTelemtZeroData>) => createQueryKey('getTelemtZero', options);
+
+/**
+ * Passthrough of Telemt's GET /v1/stats/zero/all — the deep counter dump (core/upstream/middle_proxy/pool/desync). Display-only: the panel never branches on these values, only shows them (web's Диагностика → Счётчики page). Fetched on visit, not a hub topic.
+ *
+ */
+export const getTelemtZeroOptions = (options?: Options<GetTelemtZeroData>) => queryOptions<GetTelemtZeroResponse, GetTelemtZeroError, GetTelemtZeroResponse, ReturnType<typeof getTelemtZeroQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtZero({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtZeroQueryKey(options)
+});
 
 export const getHostQueryKey = (options?: Options<GetHostData>) => createQueryKey('getHost', options);
 

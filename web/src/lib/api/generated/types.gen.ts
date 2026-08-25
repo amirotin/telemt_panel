@@ -119,6 +119,29 @@ export type TelemtInfo = {
 };
 
 /**
+ * GET /v1/stats/zero/all's deep counter dump, passed through as-is. Only the top level (five named sections) is typed — each section's leaves are a display-only object mixing u64 counters with bools/strings/nested arrays (07-telemt-sdk.md), never branched on by the panel.
+ *
+ */
+export type ZeroAllData = {
+    generated_at_epoch_secs: number;
+    core: {
+        [key: string]: unknown;
+    };
+    upstream: {
+        [key: string]: unknown;
+    };
+    middle_proxy: {
+        [key: string]: unknown;
+    };
+    pool: {
+        [key: string]: unknown;
+    };
+    desync: {
+        [key: string]: unknown;
+    };
+};
+
+/**
  * api mode only in this release (file mode / telemt.config_edit_mode=file is not implemented yet — see GET /api/telemt/config's description).
  *
  */
@@ -1027,6 +1050,35 @@ export type RestartTelemtServiceResponses = {
      */
     202: unknown;
 };
+
+export type GetTelemtZeroData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/zero';
+};
+
+export type GetTelemtZeroErrors = {
+    /**
+     * capability_absent — this Telemt build/config does not expose zero/all
+     */
+    501: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+};
+
+export type GetTelemtZeroError = GetTelemtZeroErrors[keyof GetTelemtZeroErrors];
+
+export type GetTelemtZeroResponses = {
+    /**
+     * Deep counter dump
+     */
+    200: ZeroAllData;
+};
+
+export type GetTelemtZeroResponse = GetTelemtZeroResponses[keyof GetTelemtZeroResponses];
 
 export type GetHostData = {
     body?: never;
