@@ -14,8 +14,11 @@
 // that doesn't match the current name, so a bump is what makes a deployed
 // update actually replace a previously-cached shell rather than serving it
 // forever. v2 (Task 9): added the PNG icons generated for the manifest/
-// apple-touch-icon.
-const CACHE_NAME = "telemt-panel-shell-v2";
+// apple-touch-icon. v3 (design pass D1/D2): icon.svg and every generated
+// PNG were redrawn for the new brand mark, and the manifest gained separate
+// `any`/`maskable` icon entries — without a bump the precache keeps serving
+// the OLD artwork to anyone who installed the app before.
+const CACHE_NAME = "telemt-panel-shell-v3";
 const SCOPE_PATH = new URL(self.registration.scope).pathname;
 const SHELL_URLS = [
   "./",
