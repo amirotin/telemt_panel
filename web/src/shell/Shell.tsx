@@ -1,84 +1,154 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { StatusStrip } from "./StatusStrip";
 import { HeaderMenu } from "./HeaderMenu";
 import { useKeyboardInset } from "./useKeyboardInset";
+import { useLogout } from "../auth/useLogout";
+import {
+  IconJournal,
+  IconLogout,
+  IconPeople,
+  IconPulse,
+  IconServer,
+  type IconProps,
+} from "../ui/icons";
 
-const NAV_ITEMS = [
-  { to: "/people", label: ru.nav.people, icon: "👤" },
-  { to: "/pulse", label: ru.nav.pulse, icon: "❤" },
-  { to: "/journal", label: ru.nav.journal, icon: "📄" },
-  { to: "/server", label: ru.nav.server, icon: "⚙" },
-] as const;
+const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; Icon: ComponentType<IconProps> }> = [
+  { to: "/people", label: ru.nav.people, Icon: IconPeople },
+  { to: "/pulse", label: ru.nav.pulse, Icon: IconPulse },
+  { to: "/journal", label: ru.nav.journal, Icon: IconJournal },
+  { to: "/server", label: ru.nav.server, Icon: IconServer },
+];
+
+// BrandMark — the square "T" tile from the prototype's sidebar/login. The
+// letter is the product name's own initial rather than a separate asset, so
+// there is nothing to keep in sync and nothing extra to ship.
+export function BrandMark({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "brand-gradient inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
+        "text-[13px] font-bold leading-none text-white",
+        className,
+      )}
+    >
+      {ru.app.title.slice(0, 1)}
+    </span>
+  );
+}
 
 // Shell — the app frame every authed route renders inside (_authed.tsx):
 // bottom tab bar on mobile, sidebar from `lg:` up, plus the global status
-// strip and header menu (design-brief.md §Навигация). Mobile-first: the
+// readout and header menu (design-brief.md §Навигация). Mobile-first: the
 // sidebar is `hidden lg:flex`, the tab bar is `lg:hidden`.
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const keyboardInset = useKeyboardInset();
+  const logout = useLogout();
+  const ownsLayout = pathname === "/people" || pathname.startsWith("/people/");
 
   return (
-    <div className="flex min-h-dvh flex-col lg:flex-row">
-      <aside className="hidden w-56 shrink-0 flex-col gap-4 border-r border-border bg-surface p-4 lg:flex">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-text">{ru.app.title}</span>
-          <HeaderMenu />
+    <div className="flex h-dvh flex-col overflow-hidden lg:flex-row">
+      <aside className="hidden w-[216px] shrink-0 flex-col border-r border-border bg-surface px-2.5 py-4 lg:flex">
+        <div className="flex items-center gap-2.5 px-2.5 pb-4">
+          <BrandMark />
+          <span className="flex-1 truncate text-sm font-bold text-text">{ru.app.title}</span>
         </div>
-        <StatusStrip className="flex-col items-start gap-2" />
-        <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
+
+        {/* Deliberately unlabelled: the tab bar below owns the
+            "Основная навигация" accessible name, and only ever one of the
+            two is rendered (`hidden lg:flex` / `lg:hidden`) — two
+            same-named navigation landmarks would be a worse a11y tree, not
+            a better one, and e2e/desktop.spec.ts asserts the tab bar is
+            the hidden one at `lg:`. */}
+        <nav className="flex flex-col gap-0.5">
+          {NAV_ITEMS.map(({ to, label, Icon }) => (
             <Link
-              key={item.to}
-              to={item.to}
+              key={to}
+              to={to}
               className={cn(
-                "tap-target flex items-center gap-3 rounded-lg px-3 text-sm font-medium text-text-muted",
-                "hover:bg-surface-2 hover:text-text",
-                "data-[status=active]:bg-surface-2 data-[status=active]:text-text",
+                "flex min-h-10 items-center gap-2.5 rounded-md px-2.5 text-row font-semibold",
+                "text-text-faint transition-colors hover:bg-surface-2 hover:text-text",
+                "data-[status=active]:bg-accent/14 data-[status=active]:text-accent",
               )}
             >
-              <span aria-hidden="true">{item.icon}</span>
-              {item.label}
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
             </Link>
           ))}
         </nav>
+
+        <div className="mt-auto flex flex-col gap-2 pt-4">
+          <StatusStrip variant="card" />
+          {/* The overflow menu lives here rather than in the brand row:
+              216px of sidebar cannot hold a 44px target next to the
+              product name without truncating it. */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => logout.mutate({})}
+              disabled={logout.isPending}
+              className={cn(
+                "flex min-h-10 flex-1 items-center gap-2.5 rounded-md px-2.5 text-row font-medium",
+                "text-text-faint transition-colors hover:bg-surface-2 hover:text-text",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+              )}
+            >
+              <IconLogout className="h-4 w-4 shrink-0" />
+              {ru.auth.signOut}
+            </button>
+            <HeaderMenu />
+          </div>
+        </div>
       </aside>
 
-      <div className="flex min-h-dvh flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-2 pt-safe lg:hidden">
-          <span className="text-sm font-semibold text-text">{ru.app.title}</span>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center gap-2.5 border-b border-border bg-surface px-4 py-2 pt-safe lg:hidden">
+          <BrandMark />
+          <span className="flex-1 truncate text-sm font-bold text-text">{ru.app.title}</span>
           <HeaderMenu />
         </header>
-        <div className="border-b border-border bg-surface px-4 py-2 lg:hidden">
+        <div className="shrink-0 border-b border-border bg-surface px-4 py-2 lg:hidden">
           <StatusStrip />
         </div>
 
-        <main className="flex-1 overflow-y-auto px-4 py-4 pb-20 lg:pb-4">{children}</main>
+        {/* Люди owns its own box: on `lg:` it is a two-column layout (list
+            + Инспектор) whose columns scroll independently, and its rows
+            are full-bleed, so the shell must not impose padding or a
+            single outer scroller on it. Every other section gets the
+            standard page gutter and one scroller. */}
+        <main
+          className={cn(
+            "flex min-h-0 flex-1 flex-col",
+            ownsLayout ? "overflow-hidden" : "overflow-y-auto px-4 py-4 pb-[76px] lg:pb-4",
+          )}
+        >
+          {children}
+        </main>
 
         <nav
           className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-surface pb-safe lg:hidden"
           style={{ bottom: keyboardInset }}
           aria-label={ru.shell.navLabel}
         >
-          {NAV_ITEMS.map((item) => {
-            const active = pathname === item.to;
+          {NAV_ITEMS.map(({ to, label, Icon }) => {
+            const active = pathname === to || pathname.startsWith(`${to}/`);
             return (
               <Link
-                key={item.to}
-                to={item.to}
+                key={to}
+                to={to}
                 className={cn(
-                  "tap-target flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium",
-                  active ? "text-accent" : "text-text-muted",
+                  "tap-target flex flex-1 flex-col items-center justify-center gap-1 py-1.5",
+                  "text-[10px] font-semibold transition-colors",
+                  active ? "text-accent" : "text-text-faint",
                 )}
                 aria-current={active ? "page" : undefined}
               >
-                <span aria-hidden="true" className="text-base">
-                  {item.icon}
-                </span>
-                {item.label}
+                <Icon className="h-5 w-5" />
+                {label}
               </Link>
             );
           })}

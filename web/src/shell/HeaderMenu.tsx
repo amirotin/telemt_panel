@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { IconButton } from "../ui/IconButton";
+import { IconMore } from "../ui/icons";
 import { Sheet } from "../ui/Sheet";
 import { Button } from "../ui/Button";
 import { ru } from "../i18n/ru";
@@ -17,7 +18,7 @@ export function HeaderMenu() {
   return (
     <>
       <IconButton aria-label={ru.shell.menu} onClick={() => setOpen(true)}>
-        ⋮
+        <IconMore />
       </IconButton>
       <Sheet open={open} onClose={() => setOpen(false)} title={ru.shell.menu}>
         <div className="flex flex-col gap-4">

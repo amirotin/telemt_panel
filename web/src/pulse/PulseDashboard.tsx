@@ -3,6 +3,7 @@ import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
+import { IconArrowDown, IconArrowUp } from "../ui/icons";
 import { EmptyState } from "../ui/EmptyState";
 import { Sheet } from "../ui/Sheet";
 import { ConfirmView } from "../ui/ConfirmView";
@@ -169,14 +170,14 @@ function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }
             disabled={shownIndex === 0}
             onClick={() => onMove(row.id, "up")}
           >
-            ↑
+            <IconArrowUp />
           </IconButton>
           <IconButton
             aria-label={ru.pulse.moveDown}
             disabled={shownIndex === shownCount - 1}
             onClick={() => onMove(row.id, "down")}
           >
-            ↓
+            <IconArrowDown />
           </IconButton>
         </div>
       )}

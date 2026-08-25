@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ru } from "../../i18n/ru";
+import { IconChevronLeft } from "../../ui/icons";
 
 // DiagShell — the one page frame every Диагностика drill-down page renders
 // inside: back link + title. Kept deliberately minimal since each page's
@@ -14,7 +15,8 @@ export function DiagShell({ title, children }: { title: string; children: ReactN
           to="/pulse"
           className="tap-target flex items-center px-2 text-sm font-medium text-accent hover:underline"
         >
-          ← {ru.diag.back}
+          <IconChevronLeft className="mr-1 h-4 w-4" />
+          {ru.diag.back}
         </Link>
         <h1 className="text-lg font-semibold text-text">{title}</h1>
       </div>
