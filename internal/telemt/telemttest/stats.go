@@ -14,7 +14,7 @@ func rawInt(v int64) json.RawMessage {
 
 func (s *Server) handleZeroAll(w http.ResponseWriter) {
 	data := telemt.ZeroAllData{
-		GeneratedAtEpochSecs: 5000,
+		GeneratedAtEpochSecs: s.generatedAt(),
 		Core: telemt.ZeroSection{
 			"uptime_seconds":            rawInt(3600),
 			"connections_total":         rawInt(100),
@@ -35,7 +35,7 @@ func (s *Server) zeroUpstream() telemt.ZeroUpstreamData {
 
 func (s *Server) handleUpstreams(w http.ResponseWriter) {
 	data := telemt.UpstreamsData{
-		GeneratedAtEpochSecs: 5000,
+		GeneratedAtEpochSecs: s.generatedAt(),
 		Zero:                 s.zeroUpstream(),
 	}
 	if s.scenario.MinimalRuntimeOff {
@@ -57,12 +57,12 @@ func (s *Server) handleUpstreams(w http.ResponseWriter) {
 }
 
 func (s *Server) disabledMeWriters(reason string) telemt.MeWritersData {
-	return telemt.MeWritersData{MiddleProxyEnabled: false, Reason: reason, GeneratedAtEpochSecs: 5000, Writers: []telemt.MeWriterStatus{}}
+	return telemt.MeWritersData{MiddleProxyEnabled: false, Reason: reason, GeneratedAtEpochSecs: s.generatedAt(), Writers: []telemt.MeWriterStatus{}}
 }
 
 func (s *Server) enabledMeWriters() telemt.MeWritersData {
 	return telemt.MeWritersData{
-		MiddleProxyEnabled: true, GeneratedAtEpochSecs: 5000,
+		MiddleProxyEnabled: true, GeneratedAtEpochSecs: s.generatedAt(),
 		Summary: telemt.MeWritersSummary{ConfiguredDcGroups: 1, ConfiguredEndpoints: 2, AvailableEndpoints: 2, RequiredWriters: 2, AliveWriters: 2, CoveragePct: 100},
 		Writers: []telemt.MeWriterStatus{{WriterID: 1, Endpoint: "1.2.3.4:443", State: "alive", MatchesActiveGeneration: true}},
 	}
@@ -77,12 +77,12 @@ func (s *Server) handleMeWriters(w http.ResponseWriter) {
 }
 
 func (s *Server) disabledDCs(reason string) telemt.DcStatusData {
-	return telemt.DcStatusData{MiddleProxyEnabled: false, Reason: reason, GeneratedAtEpochSecs: 5000, DCs: []telemt.DcStatus{}}
+	return telemt.DcStatusData{MiddleProxyEnabled: false, Reason: reason, GeneratedAtEpochSecs: s.generatedAt(), DCs: []telemt.DcStatus{}}
 }
 
 func (s *Server) enabledDCs() telemt.DcStatusData {
 	return telemt.DcStatusData{
-		MiddleProxyEnabled: true, GeneratedAtEpochSecs: 5000,
+		MiddleProxyEnabled: true, GeneratedAtEpochSecs: s.generatedAt(),
 		DCs: []telemt.DcStatus{{DC: 2, Endpoints: []string{"1.2.3.4:443"}, AvailableEndpoints: 1, RequiredWriters: 2, AliveWriters: 2, CoveragePct: 100}},
 	}
 }
@@ -98,7 +98,7 @@ func (s *Server) handleDCs(w http.ResponseWriter) {
 func (s *Server) handleMinimalAll(w http.ResponseWriter) {
 	if s.scenario.MinimalRuntimeOff {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.MinimalAllPayload]{
-			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -108,6 +108,6 @@ func (s *Server) handleMinimalAll(w http.ResponseWriter) {
 		NetworkPath: []telemt.MinimalDcPathData{{DC: 2, IPPreference: "prefer_v4"}},
 	}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.MinimalAllPayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }

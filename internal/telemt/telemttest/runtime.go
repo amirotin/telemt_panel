@@ -38,7 +38,7 @@ func (s *Server) handleEffectiveLimits(w http.ResponseWriter) {
 func (s *Server) handleMePoolState(w http.ResponseWriter) {
 	if s.scenario.MinimalRuntimeOff {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMePoolStatePayload]{
-			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -49,14 +49,14 @@ func (s *Server) handleMePoolState(w http.ResponseWriter) {
 		Refill:      telemt.RuntimeMePoolStateRefillData{},
 	}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMePoolStatePayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }
 
 func (s *Server) handleMeQuality(w http.ResponseWriter) {
 	if s.scenario.MinimalRuntimeOff {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMeQualityPayload]{
-			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -65,13 +65,13 @@ func (s *Server) handleMeQuality(w http.ResponseWriter) {
 		DrainGate: telemt.RuntimeMeQualityDrainGateData{RouteQuorumOK: true, RedundancyOK: true, BlockReason: "none"},
 	}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMeQualityPayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }
 
 func (s *Server) handleUpstreamQuality(w http.ResponseWriter) {
 	data := telemt.RuntimeUpstreamQualityData{
-		GeneratedAtEpochSecs: 5000,
+		GeneratedAtEpochSecs: s.generatedAt(),
 		Policy:               telemt.RuntimeUpstreamQualityPolicyData{ConnectRetryAttempts: 3, ConnectBudgetMs: 5000},
 		Counters:             telemt.RuntimeUpstreamQualityCountersData{ConnectAttemptTotal: 50, ConnectSuccessTotal: 48},
 	}
@@ -90,7 +90,7 @@ func (s *Server) handleUpstreamQuality(w http.ResponseWriter) {
 func (s *Server) handleNatStun(w http.ResponseWriter) {
 	if s.scenario.MinimalRuntimeOff {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeNatStunPayload]{
-			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -102,14 +102,14 @@ func (s *Server) handleNatStun(w http.ResponseWriter) {
 		},
 	}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeNatStunPayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }
 
 func (s *Server) handleMeSelftest(w http.ResponseWriter) {
 	if s.scenario.MinimalRuntimeOff {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMeSelftestPayload]{
-			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -120,14 +120,14 @@ func (s *Server) handleMeSelftest(w http.ResponseWriter) {
 		Pid:      telemt.RuntimeMeSelftestPidData{PID: 4242, State: "ok"},
 	}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMeSelftestPayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }
 
 func (s *Server) handleConnectionsSummary(w http.ResponseWriter) {
 	if !s.scenario.RuntimeEdge {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeEdgeConnectionsSummaryPayload]{
-			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -138,14 +138,14 @@ func (s *Server) handleConnectionsSummary(w http.ResponseWriter) {
 		}},
 	}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeEdgeConnectionsSummaryPayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }
 
 func (s *Server) handleRecentEvents(w http.ResponseWriter, rawQuery string) {
 	if !s.scenario.RuntimeEdge {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeEdgeEventsPayload]{
-			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -163,14 +163,14 @@ func (s *Server) handleRecentEvents(w http.ResponseWriter, rawQuery string) {
 	}
 	payload := telemt.RuntimeEdgeEventsPayload{Capacity: 200, Events: events}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeEdgeEventsPayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }
 
 func (s *Server) handleTLSFingerprints(w http.ResponseWriter, rawQuery string) {
 	if !s.scenario.RuntimeEdge {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeEdgeTLSFingerprintsPayload]{
-			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: 5000,
+			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
 		return
 	}
@@ -190,6 +190,6 @@ func (s *Server) handleTLSFingerprints(w http.ResponseWriter, rawQuery string) {
 	}
 	payload := telemt.RuntimeEdgeTLSFingerprintsPayload{Limit: limit, RetentionSecs: 900, Capacity: 500, ByFingerprint: rows}
 	writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeEdgeTLSFingerprintsPayload]{
-		Enabled: true, GeneratedAtEpochSecs: 5000, Data: &payload,
+		Enabled: true, GeneratedAtEpochSecs: s.generatedAt(), Data: &payload,
 	}, s.revision())
 }

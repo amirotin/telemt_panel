@@ -40,9 +40,25 @@ type Scenario struct {
 	// config/defaults.rs::default_api_request_body_limit_bytes). Tests set
 	// this low to trigger payload_too_large without sending a huge body.
 	BodyLimitBytes int
+	// GeneratedAtEpochSecs overrides every fixture response's
+	// generated_at_epoch_secs field (default, when zero, is
+	// defaultGeneratedAtEpochSecs — see generatedAt). Real Telemt stamps
+	// this field with a fresh wall-clock read on (most) requests
+	// independent of whether the underlying data changed at all
+	// (confirmed against the Rust source — see internal/hub's diffKey doc
+	// comment); this knob lets a hub test drive that exact scenario
+	// (poll twice with identical data but a bumped timestamp, via
+	// SetScenario) without needing a real clock or a sleep.
+	GeneratedAtEpochSecs int64
 }
 
 const defaultBodyLimitBytes = 64 * 1024
+
+// defaultGeneratedAtEpochSecs is generatedAt's fallback when
+// Scenario.GeneratedAtEpochSecs is left at its zero value — the fixed
+// value every generated_at_epoch_secs field in this package used before
+// the field became scenario-controllable.
+const defaultGeneratedAtEpochSecs = 5000
 
 // Server is an in-memory fake Telemt instance. Create with New, point an
 // *telemt.Client at Server.URL, and Close when done.
@@ -121,6 +137,18 @@ func (s *Server) revision() string {
 func (s *Server) bumpRevision() string {
 	s.revisionSeq++
 	return s.revision()
+}
+
+// generatedAt returns the generated_at_epoch_secs value every fixture
+// response in this package uses — Scenario.GeneratedAtEpochSecs when set,
+// else defaultGeneratedAtEpochSecs. No locking of its own: every call site
+// is a handler method invoked from s.handle, which already holds s.mu for
+// the whole request (same pattern as revision/bodyLimit).
+func (s *Server) generatedAt() int64 {
+	if s.scenario.GeneratedAtEpochSecs != 0 {
+		return s.scenario.GeneratedAtEpochSecs
+	}
+	return defaultGeneratedAtEpochSecs
 }
 
 func writeOK(w http.ResponseWriter, status int, data any, revision string) {
