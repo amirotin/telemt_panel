@@ -80,6 +80,16 @@ export const ru = {
     rateLimits: "Ограничения скорости",
     rateUp: "Отдача",
     rateDown: "Приём",
+    // Bitrate units for formatBitsPerSecond (people/users.helpers.ts) —
+    // decimal (1000-based) SI steps, index 0 = bit/s up to index 3 = Gbit/s.
+    bitrateUnits: ["бит/с", "Кбит/с", "Мбит/с", "Гбит/с"],
+    // Coarse duration-unit abbreviations for formatDurationApprox
+    // (people/expiry.ts) — the detail screen's expiry countdown.
+    durationUnits: {
+      days: "дн.",
+      hours: "ч.",
+      minutes: "мин.",
+    },
     status: {
       active: "Активен",
       disabled: "Отключён",
@@ -129,6 +139,7 @@ export const ru = {
       hide: "Скрыть",
       quota: "Квота трафика",
       quotaUnlimited: "Без лимита",
+      quotaUnits: { MB: "МБ", GB: "ГБ" },
       expiry: "Срок действия",
       expiryPreset7d: "7 дней",
       expiryPreset30d: "30 дней",

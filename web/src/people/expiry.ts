@@ -12,6 +12,8 @@
 //    without this module ever reading or assuming one itself — see
 //    expiry.test.ts's round-trip test for why that's "timezone-safe".
 
+import { ru } from "../i18n/ru";
+
 export type ExpiryPreset = "7d" | "30d" | "none";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -61,13 +63,15 @@ const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 
 // formatDurationApprox renders a non-negative millisecond duration as a
-// single coarse unit (days, else hours, else minutes) — the detail
-// screen's expiry countdown (06-ui.md: "живые метрики"). Deliberately
-// approximate (one unit, not "2d 3h 4m") since the exact framing ("expires
-// in" / "expired ... ago") is the caller's job via ru.ts's templates.
+// single coarse unit (days, else hours, else minutes — labels from
+// ru.people.durationUnits, i18n/ru.ts) — the detail screen's expiry
+// countdown (06-ui.md: "живые метрики"). Deliberately approximate (one
+// unit, not "2d 3h 4m") since the exact framing ("expires in" / "expired
+// ... ago") is the caller's job via ru.ts's templates.
 export function formatDurationApprox(ms: number): string {
   const abs = Math.max(0, ms);
-  if (abs >= DAY_MS) return `${Math.floor(abs / DAY_MS)} дн.`;
-  if (abs >= HOUR_MS) return `${Math.floor(abs / HOUR_MS)} ч.`;
-  return `${Math.max(1, Math.floor(abs / MINUTE_MS))} мин.`;
+  const units = ru.people.durationUnits;
+  if (abs >= DAY_MS) return `${Math.floor(abs / DAY_MS)} ${units.days}`;
+  if (abs >= HOUR_MS) return `${Math.floor(abs / HOUR_MS)} ${units.hours}`;
+  return `${Math.max(1, Math.floor(abs / MINUTE_MS))} ${units.minutes}`;
 }
