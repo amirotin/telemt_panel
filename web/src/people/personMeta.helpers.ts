@@ -110,3 +110,12 @@ export function personAvatarTone(
   if (user.current_connections > 0) return "hue";
   return "idle";
 }
+
+// personHasExtras — whether the «Дополнительно» block (ad tag, rate limits)
+// has anything to say for this user. Both the detail screen and the
+// Инспектор ask before rendering the section header.
+export function personHasExtras(
+  user: Pick<UsersTopicUser, "user_ad_tag" | "rate_limit_up_bps" | "rate_limit_down_bps">,
+): boolean {
+  return !!user.user_ad_tag || !!user.rate_limit_up_bps || !!user.rate_limit_down_bps;
+}

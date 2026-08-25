@@ -91,9 +91,12 @@ export const ru = {
     sortField: { name: "Имя", traffic: "Трафик", connections: "Соединения" },
     // The three sort chips above the list.
     sortPreset: { activity: "Активность", name: "Имя", traffic: "Трафик" },
+    // Direction, announced in the active sort chip's accessible name (the
+    // visible cue is the ↑/↓ arrow, which carries no text of its own).
+    sortAscending: "по возрастанию",
+    sortDescending: "по убыванию",
     // The three filter segments, with live counts rendered after a "·".
     filter: { all: "Все", online: "Онлайн", issues: "Проблемы" },
-    filterLabel: "Фильтр",
     // Row/inspector meta line (people/personMeta.helpers.ts).
     meta: {
       of: "из",
@@ -128,7 +131,6 @@ export const ru = {
     activeIps: "Активные IP",
     recentIps: "Недавние IP",
     adTag: "Ad tag",
-    rateLimits: "Ограничения скорости",
     rateUp: "Отдача",
     rateDown: "Приём",
     // Bitrate units for formatBitsPerSecond (people/users.helpers.ts) —
@@ -239,6 +241,7 @@ export const ru = {
       noActiveIps: "Нет активных соединений",
       recentIpsTitle: "Недавние IP",
       linksTitle: "Ссылки подключения",
+      noLinks: "У пользователя пока нет ссылок подключения.",
       linkTypeClassic: "Обычная",
       linkTypeSecure: "Secure (dd)",
       linkTypeTls: "Fake-TLS (ee)",
@@ -319,14 +322,12 @@ export const ru = {
     },
     dc: {
       dc: "DC",
-      coverage: "Покрытие",
       writers: "Писатели",
       load: "Нагрузка",
       empty: "Нет данных по дата-центрам.",
     },
     upstreams: {
       route: "Маршрут",
-      address: "Адрес",
       healthy: "Здоров",
       unhealthy: "Нездоров",
       empty: "Нет настроенных апстримов.",
@@ -525,6 +526,9 @@ export const ru = {
     },
   },
   server: {
+    // Current-phase counter shown beside the update/reload progress bar
+    // (server/PhaseSteps.tsx) and used as its aria-valuetext.
+    phaseStepTemplate: "шаг {n} из {total}",
     title: "Сервер",
     back: "Назад к разделу Сервер",
     menu: {

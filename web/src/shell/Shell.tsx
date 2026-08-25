@@ -105,7 +105,12 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      {/* min-w-0 as well as min-h-0: a flex row item defaults to
+          min-width:auto, so without this the content column refuses to
+          shrink below its own min-content width and pushes the page wider
+          than the viewport — which clipped the right edge of Люди's
+          Инспектор panel off-screen. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-2.5 border-b border-border bg-surface px-4 py-2 pt-safe lg:hidden">
           <BrandMark />
           <span className="flex-1 truncate text-sm font-bold text-text">{ru.app.title}</span>

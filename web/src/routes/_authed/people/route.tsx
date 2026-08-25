@@ -14,6 +14,16 @@ import { useIsDesktop } from "../../../server/useIsDesktop";
 // survive clicking from person to person, which a remount would throw away.
 // Below `lg:` nothing changes: the child routes render as usual, the index
 // as the list and $username as the full-screen detail.
+//
+// Why a JS breakpoint (useIsDesktop) and not `hidden lg:block` / `lg:hidden`:
+// a CSS split has to render BOTH branches. At /people that means two live
+// PeopleList instances (the layout's and the index route's) — duplicate
+// rows, duplicate data-testids; at /people/$username it means mounting the
+// full PersonDetail on a desktop where the Инспектор already shows the same
+// user, which re-runs SublinkPanel and generates a QR per connection link
+// purely to keep it hidden. useIsDesktop is a useSyncExternalStore over
+// matchMedia, so it only re-renders when the viewport actually crosses
+// 1024px, and it renders exactly one of the two.
 export const Route = createFileRoute("/_authed/people")({
   component: PeopleSection,
 });

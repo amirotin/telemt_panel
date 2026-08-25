@@ -6,7 +6,6 @@ import { Avatar } from "../ui/Avatar";
 import { IconButton } from "../ui/IconButton";
 import { IconChevronLeft, IconMore } from "../ui/icons";
 import { StatCard } from "../ui/StatCard";
-import { KVRow } from "../ui/KVRow";
 import { useDisplayMode, visibleFor, type DisplayMode } from "../display-mode";
 import { useConnectionState } from "../realtime";
 import { useUsersTopic, findQuotaEntry } from "./useUsersTopic";
@@ -15,10 +14,16 @@ import { UserStatusPill } from "./UserStatusPill";
 import { UserActionSheet } from "./UserActionSheet";
 import { UserFormSheet } from "./UserFormSheet";
 import { SublinkPanel } from "./SublinkPanel";
-import { LinkCard } from "./LinkCard";
-import { ExpiryLine, IpCards, PersonQuotaCard, SectionLabel } from "./PersonSections";
-import { computeUserStatus, formatBitsPerSecond, getUserQuota, isOnline } from "./users.helpers";
-import { personAvatarTone } from "./personMeta.helpers";
+import {
+  ExpiryLine,
+  IpCards,
+  PersonExtras,
+  PersonLinks,
+  PersonQuotaCard,
+  SectionLabel,
+} from "./PersonSections";
+import { computeUserStatus, getUserQuota, isOnline } from "./users.helpers";
+import { personAvatarTone, personHasExtras } from "./personMeta.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
 
 // PersonDetail — /people/$username (06-ui.md §Люди): live metrics from the
@@ -112,12 +117,7 @@ function PersonDetailBody({
   const status = computeUserStatus(user, quota, now);
   const activeIps = user.active_unique_ips_list ?? [];
   const recentIps = user.recent_unique_ips_list ?? [];
-  const hasExtras = !!user.user_ad_tag || !!user.rate_limit_up_bps || !!user.rate_limit_down_bps;
-
-  const classicLink = user.links.classic[0];
-  const secureLink = user.links.secure[0];
-  const tlsLink = user.links.tls[0];
-  const hasTlsDomains = user.links.tls_domains.length > 0;
+  const hasExtras = personHasExtras(user);
 
   return (
     <div className="flex flex-col gap-5">
@@ -166,14 +166,9 @@ function PersonDetailBody({
       )}
 
       {visibleFor("extended", mode) && hasExtras && (
-        <section className="flex flex-col rounded-xl bg-surface px-3.5">
-          {user.user_ad_tag && <KVRow label={ru.people.adTag} value={user.user_ad_tag} monospace />}
-          {!!user.rate_limit_up_bps && (
-            <KVRow label={ru.people.rateUp} value={formatBitsPerSecond(user.rate_limit_up_bps)} />
-          )}
-          {!!user.rate_limit_down_bps && (
-            <KVRow label={ru.people.rateDown} value={formatBitsPerSecond(user.rate_limit_down_bps)} />
-          )}
+        <section className="flex flex-col gap-2">
+          <SectionLabel>{ru.people.form.advanced}</SectionLabel>
+          <PersonExtras user={user} />
         </section>
       )}
 
@@ -184,13 +179,7 @@ function PersonDetailBody({
 
       <section className="flex flex-col gap-3">
         <SectionLabel>{ru.people.detail.linksTitle}</SectionLabel>
-        {classicLink && <LinkCard label={ru.people.detail.linkTypeClassic} link={classicLink} />}
-        {secureLink && <LinkCard label={ru.people.detail.linkTypeSecure} link={secureLink} />}
-        {hasTlsDomains
-          ? user.links.tls_domains.map((d) => (
-              <LinkCard key={d.domain} label={`${ru.people.detail.linkTypeTls} — ${d.domain}`} link={d.link} />
-            ))
-          : tlsLink && <LinkCard label={ru.people.detail.linkTypeTls} link={tlsLink} />}
+        <PersonLinks links={user.links} />
       </section>
 
       {actionsSheet}
