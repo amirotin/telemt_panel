@@ -77,12 +77,15 @@ describe("connectionsLabel", () => {
       connections_summary: {
         enabled: true,
         data: {
+          cache: { ttl_ms: 0, served_from_cache: false, stale_cache_used: false },
           totals: {
             current_connections: 7,
             current_connections_me: 5,
             current_connections_direct: 2,
             active_users: 3,
           },
+          top: { limit: 0, by_connections: [], by_throughput: [] },
+          telemetry: { user_enabled: false, throughput_is_cumulative: false },
         },
       },
     };
