@@ -18,6 +18,7 @@ import {
   ErrorState,
 } from "../ui";
 import { pushToast, ToastViewport } from "../ui/Toast";
+import { ru } from "../i18n/ru";
 
 // /dev/ui — dev-only primitive showcase, replaces Storybook per 06-ui.md.
 // Every primitive, every documented state. Only ever imported behind the
@@ -140,6 +141,11 @@ export function UIShowcase() {
       <Section title="CopyField">
         <div className="max-w-sm">
           <CopyField label="Sub-ссылка" value="https://panel.example/sub/abc123def456" />
+          <p className="mt-2 text-xs text-text-muted">
+            Клик копирует через Clipboard API (HTTPS/localhost), иначе через
+            execCommand, иначе выделяет значение и показывает тост
+            «{ru.common.copyManually}» — см. src/lib/copyText.ts.
+          </p>
         </div>
       </Section>
 
