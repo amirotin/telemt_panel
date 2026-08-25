@@ -27,6 +27,14 @@ export interface LogListProps {
 // v1 lesson design-brief.md §3 calls out: a value merely tuned to look
 // right in one browser/device drifts out from under the tab bar's actual
 // (safe-area-dependent) height on another.
+//
+// At `lg:` the frame adds a fixed `w-56` sidebar (Shell.tsx) to the left
+// of the content column, so a viewport-wide `inset-x-0` centers the
+// button under the sidebar+content combined, visibly off-center from the
+// content the user is actually reading. `lg:left-56 lg:right-0` narrows
+// the centering box to the content column alone (viewport minus the
+// sidebar's own width, matching Shell's `w-56`), so `mx-auto` centers
+// against the same column instead.
 export function LogList({ lines, showUnit }: LogListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState(INITIAL_WINDOW);
@@ -104,6 +112,7 @@ export function LogList({ lines, showUnit }: LogListProps) {
             "tap-target fixed inset-x-0 z-30 mx-auto w-fit rounded-full bg-accent px-4 py-2",
             "text-sm font-medium text-accent-text shadow-lg",
             "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-6",
+            "lg:left-56 lg:right-0",
           )}
         >
           {ru.journal.newLinesTemplate.replace("{n}", String(newSinceScrolledUp))}
