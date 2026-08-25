@@ -1,7 +1,7 @@
 VERSION ?= 0.0.0-dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build test lint release clean
+.PHONY: build test lint release clean mock
 
 build:
 	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o telemt-panel ./cmd/panel
@@ -10,6 +10,13 @@ build:
 # CGO_ENABLED=0 release builds.
 test:
 	go test -race ./...
+
+# Dev-only fake Telemt API (internal/telemt/telemttest), replacing the 0.x
+# panel's .claude/mock-server.mjs — point telemt.url at it (default
+# http://127.0.0.1:9091) to run the panel/frontend without a real Telemt.
+# Never part of `release` — see that target and TestReleaseContract.
+mock:
+	go run ./cmd/telemt-mock -listen :9091 -scenario full
 
 # Single source of truth for formatting/vet — CI invokes this target.
 # The || guard propagates gofmt's own failure (e.g. an unparseable file),

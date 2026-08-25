@@ -80,6 +80,16 @@ func (s *Server) SetScenario(scenario Scenario) {
 	s.scenario = scenario
 }
 
+// Handler returns the fake's http.Handler directly, for a caller that wants
+// to host it on its own listener/address instead of the httptest.Server
+// New already started on an OS-assigned port — cmd/telemt-mock is the one
+// such caller (it needs a fixed, scriptable port for a dev frontend/panel
+// to point at). Tests within this module should keep using New and its
+// embedded *httptest.Server.URL/.Close as before.
+func (s *Server) Handler() http.Handler {
+	return http.HandlerFunc(s.handle)
+}
+
 func (s *Server) seedDefaultUser() {
 	quota := uint64(10 << 30)
 	s.users["alice"] = telemt.UserInfo{
