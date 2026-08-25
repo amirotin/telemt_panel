@@ -12,6 +12,12 @@ export const ru = {
     system: "Системная",
     toggle: "Тема",
   },
+  displayMode: {
+    label: "Детализация",
+    critical: "Критично",
+    basic: "Базово",
+    extended: "Расширенно",
+  },
   health: {
     ok: "Работает",
     degraded: "Деградация",
@@ -29,5 +35,98 @@ export const ru = {
     save: "Сохранить",
     error: "Ошибка",
     empty: "Пусто",
+    stale: "Данные устарели",
+  },
+  auth: {
+    username: "Имя пользователя",
+    password: "Пароль",
+    signIn: "Войти",
+    signingIn: "Вход…",
+    signOut: "Выйти",
+  },
+  nav: {
+    people: "Люди",
+    pulse: "Пульс",
+    journal: "Журнал",
+    server: "Сервер",
+  },
+  shell: {
+    menu: "Меню",
+    navLabel: "Основная навигация",
+    connections: "Соединения",
+    traffic: "Трафик",
+    trafficUnavailable: "н/д",
+    stale: "Устарело",
+    reconnecting: "Переподключение…",
+    polling: "Опрос",
+    retryConnection: "Переподключить",
+    placeholderDescription: "Экран появится в одной из следующих задач.",
+  },
+  gated: {
+    disabledPrefix: "Выключено: ",
+    defaultReason: "функция недоступна на этом сервере.",
+    howToEnable: "Как включить",
+    hideWidget: "Скрыть виджет",
   },
 } as const;
+
+// errorMessages maps every {code} the panel's JSON error envelope can carry
+// (api/openapi.yaml's Error schema description — grepped from every
+// WriteError call site plus every Telemt *APIError code passed through
+// verbatim) to a human Russian sentence. Kept as a plain Record (not `as
+// const`, unlike `ru` above) since it's looked up by a dynamic string key
+// coming off the wire. See ru.test.ts for the completeness check against
+// openapi.yaml's documented set.
+export const errorMessages: Record<string, string> = {
+  // Panel-native codes.
+  bad_request: "Некорректный запрос.",
+  invalid_credentials: "Неверное имя пользователя или пароль.",
+  rate_limited: "Слишком много попыток входа. Подождите минуту и повторите.",
+  session_expired: "Сессия истекла. Войдите снова.",
+  csrf_rejected: "Запрос отклонён проверкой безопасности — обновите страницу и повторите.",
+  internal_error: "Внутренняя ошибка панели. Попробуйте ещё раз.",
+  not_found: "Не найдено.",
+  telemt_unreachable: "Telemt недоступен — проверьте, что прокси запущен.",
+  capability_absent: "Эта версия Telemt не поддерживает данную функцию.",
+  capability_unavailable: "Функция сейчас недоступна на этом сервере.",
+  manual_restart_required: "Автоматический перезапуск недоступен — выполните команду вручную.",
+  update_locked: "Обновление уже выполняется.",
+  sublink_unavailable: "Страница подписки отключена.",
+  log_tail_unavailable: "Просмотр последних строк логов недоступен.",
+  log_stream_unavailable: "Живые логи недоступны на этой платформе.",
+  log_source_error: "Не удалось подключиться к источнику логов.",
+  // Reserved for milestones not yet implemented, kept so a stray response
+  // from a partially-rolled-out backend still shows something sensible.
+  totp_required: "Требуется код двухфакторной аутентификации.",
+  telemt_auth_failed: "Telemt отклонил авторизацию панели — проверьте auth_header в конфиге.",
+  // Telemt *APIError codes passed through verbatim.
+  user_exists: "Пользователь с таким именем уже существует.",
+  last_user_forbidden: "Нельзя удалить последнего пользователя.",
+  read_only: "Telemt работает в режиме только для чтения.",
+  revision_conflict: "Конфигурация изменена — обновите её и повторите попытку.",
+  reload_in_progress: "Перезагрузка конфигурации уже выполняется.",
+  reload_not_found: "Задача перезагрузки не найдена.",
+  ambiguous_listeners: "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
+  access_not_editable: "Этот раздел конфигурации нельзя изменить через API.",
+  section_not_editable: "Этот раздел конфигурации доступен только для чтения.",
+  field_not_editable: "Это поле нельзя изменить через API.",
+  unauthorized: "Telemt отклонил запрос авторизации.",
+  forbidden: "Операция запрещена.",
+  method_not_allowed: "Метод не поддерживается.",
+  config_patch_not_atomic: "Не удалось применить изменения конфигурации атомарно.",
+  payload_too_large: "Слишком большой запрос.",
+  api_disabled: "API Telemt отключён.",
+  maestro_unavailable: "Внутренний сервис Telemt недоступен.",
+  // Not an envelope code — synthesized client-side when fetch itself throws
+  // (offline, DNS failure, CORS) rather than returning any HTTP response.
+  network: "Нет соединения с сервером. Проверьте подключение и повторите.",
+  // Fallback for any code not in this table (a future backend code this
+  // build of the frontend doesn't know about yet).
+  default: "Не удалось выполнить запрос. Попробуйте ещё раз.",
+};
+
+// errorMessage looks up a human message for an envelope {code}, falling
+// back to errorMessages.default for anything unrecognized.
+export function errorMessage(code: string): string {
+  return errorMessages[code] ?? errorMessages["default"];
+}
