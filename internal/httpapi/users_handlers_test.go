@@ -413,6 +413,56 @@ func TestHandleListUsersRequiresSession(t *testing.T) {
 	}
 }
 
+// TestHandleListUsers_NoNullArraysOnTheWire covers mini-task 2c's
+// contract: array fields are always `[]`, never `null`, on the panel's own
+// JSON output — even though the fixture's UserInfo (bobFixture, below)
+// leaves every slice field at its Go zero value (nil), the actual wire
+// bytes GET /api/users returns must never spell that as `null`. Telemt's
+// own SDK-level normalization (internal/telemt/normalize.go, applied at
+// decode time inside Users()) is what makes this true here — this test
+// exercises it through the REST passthrough, not the SDK directly.
+func TestHandleListUsers_NoNullArraysOnTheWire(t *testing.T) {
+	fake := newFakeTelemt(bobFixture())
+	srv, cookie := newUsersTestServer(t, fake, false)
+
+	r := httptest.NewRequest("GET", "/api/users", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body)
+	}
+
+	body := w.Body.String()
+	for _, key := range []string{
+		`"active_unique_ips_list":null`,
+		`"recent_unique_ips_list":null`,
+		`"classic":null`,
+		`"secure":null`,
+		`"tls":null`,
+		`"tls_domains":null`,
+	} {
+		if strings.Contains(body, key) {
+			t.Errorf("response contains %q, want the array form ([]) instead: %s", key, body)
+		}
+	}
+
+	var users []userResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &users); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(users) != 1 {
+		t.Fatalf("users = %+v, want 1", users)
+	}
+	u := users[0]
+	if u.ActiveUniqueIPsList == nil || u.RecentUniqueIPsList == nil {
+		t.Errorf("ip lists = %#v / %#v, want non-nil empty slices", u.ActiveUniqueIPsList, u.RecentUniqueIPsList)
+	}
+	if u.Links.Classic == nil || u.Links.Secure == nil || u.Links.TLS == nil || u.Links.TLSDomains == nil {
+		t.Errorf("links = %#v, want every array field non-nil", u.Links)
+	}
+}
+
 func TestHandleListUsersMergesQuotaAndSubURL(t *testing.T) {
 	fake := newFakeTelemt(aliceFixture(), bobFixture())
 	fake.hasQuota = true
