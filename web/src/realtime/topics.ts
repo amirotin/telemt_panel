@@ -68,3 +68,60 @@ export interface StatsSnapshot {
   version?: string;
   uptime_seconds?: number;
 }
+
+// UserLinksWire mirrors api/openapi.yaml's UserLinks schema exactly (the
+// generated `UserLinks` type in lib/api/generated/types.gen.ts has the same
+// shape — re-declared here rather than imported so this file stays a
+// self-contained mirror of the wire topic payload, matching this file's own
+// convention for the other topics).
+export interface UserLinksWire {
+  classic: string[];
+  secure: string[];
+  tls: string[];
+  tls_domains: Array<{ domain: string; link: string }>;
+}
+
+// UsersTopicUser mirrors internal/telemt.UserInfo's json tags exactly (the
+// "users" topic publishes the raw Telemt list, task-2-report.md /
+// hub.go's usersSnapshot) — NOT httpapi's composite `User` REST schema,
+// which additionally merges a per-user `quota` object and `sub_url` in.
+// Optional fields here are Go's `omitempty` string/pointer fields; the two
+// *_list fields have no omitempty on the Go side (always present) but are
+// typed nullable defensively since a nil Go slice marshals to `null`.
+export interface UsersTopicUser {
+  username: string;
+  enabled: boolean;
+  in_runtime: boolean;
+  user_ad_tag?: string;
+  max_tcp_conns?: number;
+  expiration_rfc3339?: string;
+  data_quota_bytes?: number;
+  rate_limit_up_bps?: number;
+  rate_limit_down_bps?: number;
+  max_unique_ips?: number;
+  current_connections: number;
+  active_unique_ips: number;
+  active_unique_ips_list: string[] | null;
+  recent_unique_ips: number;
+  recent_unique_ips_list: string[] | null;
+  total_octets: number;
+  links: UserLinksWire;
+}
+
+// UsersTopicQuotaEntry mirrors internal/telemt.QuotaEntry.
+export interface UsersTopicQuotaEntry {
+  data_quota_bytes: number;
+  used_bytes: number;
+  last_reset_epoch_secs: number;
+}
+
+// UsersTopic is the "users" topic's composite payload (hub.go's
+// usersSnapshot): quota is an explicit JSON null (not omitted) when the
+// quota capability is unsupported or the probe failed for this poll —
+// quota_supported distinguishes "unsupported" from "supported but this
+// particular user has no quota entry" (an absent key in the map).
+export interface UsersTopic {
+  users: UsersTopicUser[];
+  quota: Record<string, UsersTopicQuotaEntry> | null;
+  quota_supported: boolean;
+}

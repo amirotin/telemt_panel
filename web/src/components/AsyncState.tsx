@@ -15,6 +15,8 @@ export interface AsyncStateProps<T> {
   isEmpty?: (data: T) => boolean;
   emptyTitle?: string;
   emptyDescription?: string;
+  /** Forwarded to EmptyState's own `action` (e.g. People's "+ Создать" onboarding CTA). */
+  emptyAction?: ReactNode;
   onRetry?: () => void;
   /** SSE topic staleness (useSnapshot's `.stale`) — shown as a non-blocking badge. */
   stale?: boolean;
@@ -37,6 +39,7 @@ export function AsyncState<T>({
   isEmpty,
   emptyTitle,
   emptyDescription,
+  emptyAction,
   onRetry,
   stale,
   staleLabel,
@@ -58,7 +61,7 @@ export function AsyncState<T>({
   }
   if (data === undefined) return null;
   if (isEmpty?.(data) && emptyTitle) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+    return <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />;
   }
   return (
     <>
