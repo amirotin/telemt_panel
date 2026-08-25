@@ -23,10 +23,15 @@ import (
 const telemtConfigRequestTimeout = 15 * time.Second
 
 // maxTelemtConfigPatchBody bounds PATCH /api/telemt/config and POST
-// /api/telemt/reload request bodies — generous for a config-sections patch
-// while still well under Telemt's own 64KiB default limit (07-telemt-sdk.md),
-// so an oversized body fails fast in the panel rather than round-tripping to
-// Telemt just to get payload_too_large back.
+// /api/telemt/reload request bodies. This is a DoS backstop on the panel's
+// own side, not a mirror of Telemt's limit — it's deliberately larger than
+// Telemt's own 64KiB default body-size limit (07-telemt-sdk.md,
+// config/defaults.rs::default_api_request_body_limit_bytes), so a
+// legitimately large config patch isn't truncated by the panel before it
+// even reaches Telemt; a patch that's still too big for Telemt's own limit
+// surfaces as a normal payload_too_large passthrough from that call
+// (writeTelemtConfigError → writeTelemtError's 4xx passthrough), not a
+// panel-side rejection.
 const maxTelemtConfigPatchBody = 256 << 10
 
 // telemtConfigView mirrors api/openapi.yaml TelemtConfig: a passthrough of
