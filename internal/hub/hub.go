@@ -1024,10 +1024,10 @@ func (h *Hub) ReplaySince(since uint64, topics []string) ([]Event, bool) {
 //     with — or run concurrently alongside — that topic's normal polling.
 //   - Topic has no live poller (no subscribers, t.running false): runs a
 //     one-shot synchronous fetch (the same on-demand path Snapshot uses
-//     for an idle topic) so the next GET /api/snapshot sees fresh data
-//     immediately, rather than no-op-ing and leaving Snapshot to serve
-//     whatever was last cached (possibly nothing, for a topic no one has
-//     subscribed to yet). Narrow, accepted race: if a new subscriber
+//     for an idle topic) so the cached snapshot is warm. Note that
+//     Snapshot re-fetches an idle topic on every call anyway, so this
+//     branch mainly keeps the cache and the source_error/backoff state
+//     current; it is cheap and harmless. Narrow, accepted race: if a new subscriber
 //     starts this topic's poller in the brief window between this check
 //     and the fetch actually running, both fetches proceed independently
 //     — recordFetchSuccess is safe under concurrent callers (Hub.mu), so

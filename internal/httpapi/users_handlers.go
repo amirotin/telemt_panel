@@ -30,6 +30,17 @@ import (
 // rather than fired synchronously.
 const userMutationPokeDelay = 150 * time.Millisecond
 
+// userMutationPokeRetryDelay is a second, later poke for slow hosts (routers
+// under load) where Telemt's file-watcher debounce may exceed the first
+// delay. Poke coalescing and the per-topic floor make it essentially free.
+const userMutationPokeRetryDelay = 1 * time.Second
+
+// pokeUsersAfterMutation schedules both refresh pokes for the users topic.
+func (s *Server) pokeUsersAfterMutation() {
+	s.hub.PokeAfter("users", userMutationPokeDelay)
+	s.hub.PokeAfter("users", userMutationPokeRetryDelay)
+}
+
 // maxUserPatchBody bounds the PATCH /api/users/{username} request body —
 // well above any legitimate patch, just enough to stop an abusive caller
 // from streaming an unbounded body into json.Unmarshal.
@@ -166,7 +177,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.appendAudit("user.create", u.Username, "")
-	s.hub.PokeAfter("users", userMutationPokeDelay)
+	s.pokeUsersAfterMutation()
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
 	writeJSON(w, http.StatusCreated, userSecretResponse{
@@ -220,7 +231,7 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.appendAudit("user.patch", username, "")
-	s.hub.PokeAfter("users", userMutationPokeDelay)
+	s.pokeUsersAfterMutation()
 
 	if _, secretChanged := patch["secret"]; secretChanged {
 		// A secret patch revokes the old subpage token the same way
@@ -250,7 +261,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.appendAudit("user.delete", username, "")
-	s.hub.PokeAfter("users", userMutationPokeDelay)
+	s.pokeUsersAfterMutation()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -267,7 +278,7 @@ func (s *Server) handleResetQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.appendAudit("quota.reset", username, "")
-	s.hub.PokeAfter("users", userMutationPokeDelay)
+	s.pokeUsersAfterMutation()
 
 	writeJSON(w, http.StatusOK, struct {
 		Username           string `json:"username"`
@@ -292,7 +303,7 @@ func (s *Server) handleRotateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.appendAudit("secret.rotate", username, "")
-	s.hub.PokeAfter("users", userMutationPokeDelay)
+	s.pokeUsersAfterMutation()
 
 	// Force an immediate index rebuild, mirroring sublink rotation's own
 	// best-effort refresh below: a failed refresh here just leaves the
@@ -336,7 +347,7 @@ func (s *Server) handleSetEnabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.appendAudit("user.enabled", username, fmt.Sprintf("enabled=%t", enabled))
-	s.hub.PokeAfter("users", userMutationPokeDelay)
+	s.pokeUsersAfterMutation()
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
 	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota))
