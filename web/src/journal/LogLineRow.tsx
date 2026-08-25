@@ -107,6 +107,9 @@ export function LogLineRow({ line, showUnit }: LogLineRowProps) {
       <span
         className={cn(
           "order-4 font-mono text-[10px] font-semibold uppercase lg:order-none lg:text-[10.5px]",
+          // A grid item's min-width is auto, so without this the longest
+          // label would push the message column rather than clip.
+          "lg:min-w-0 lg:truncate",
           LEVEL_TEXT_CLASSES[tone],
         )}
       >
