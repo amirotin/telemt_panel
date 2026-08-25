@@ -13,6 +13,7 @@ import {
   isValidSecret,
   isValidUsername,
   matchesUserFilter,
+  nextSortState,
   quotaUnitToBytes,
   sortPresetOf,
   SORT_PRESETS,
@@ -321,8 +322,20 @@ describe("sort presets", () => {
     expect(sortPresetOf(SORT_PRESETS.traffic)).toBe("traffic");
   });
 
-  it("returns null for a combination no chip offers", () => {
-    expect(sortPresetOf({ field: "traffic", direction: "asc" })).toBeNull();
+  it("maps every stored field+direction onto a chip", () => {
+    // Total by construction: one preset per UserSortField, direction is a
+    // separate axis — a persisted "traffic ascending" must still light a
+    // chip up rather than leaving the header with nothing active.
+    const fields = ["name", "traffic", "connections"] as const;
+    const directions = ["asc", "desc"] as const;
+    for (const field of fields) {
+      for (const direction of directions) {
+        expect(sortPresetOf({ field, direction })).toBeTruthy();
+      }
+    }
+    expect(sortPresetOf({ field: "traffic", direction: "asc" })).toBe("traffic");
+    expect(sortPresetOf({ field: "name", direction: "desc" })).toBe("name");
+    expect(sortPresetOf({ field: "connections", direction: "asc" })).toBe("activity");
   });
 
   it("defaults to Активность", () => {
@@ -336,5 +349,56 @@ describe("sort presets", () => {
       user({ username: "c", current_connections: 4 }),
     ];
     expect(sortUsers(users, SORT_PRESETS.activity).map((u) => u.username)).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("nextSortState", () => {
+  it("switches to a preset's initial direction when the field changes", () => {
+    expect(nextSortState(SORT_PRESETS.activity, "name")).toEqual(SORT_PRESETS.name);
+    expect(nextSortState(SORT_PRESETS.name, "traffic")).toEqual(SORT_PRESETS.traffic);
+    expect(nextSortState(SORT_PRESETS.traffic, "activity")).toEqual(SORT_PRESETS.activity);
+  });
+
+  it("flips the direction when the already-active chip is tapped", () => {
+    expect(nextSortState(SORT_PRESETS.activity, "activity")).toEqual({
+      field: "connections",
+      direction: "asc",
+    });
+    expect(nextSortState(SORT_PRESETS.name, "name")).toEqual({
+      field: "name",
+      direction: "desc",
+    });
+    expect(nextSortState(SORT_PRESETS.traffic, "traffic")).toEqual({
+      field: "traffic",
+      direction: "asc",
+    });
+  });
+
+  it("makes every field+direction combination reachable in at most two taps", () => {
+    const seen = new Set<string>();
+    let state = DEFAULT_USER_SORT;
+    for (const preset of ["activity", "name", "traffic"] as const) {
+      state = nextSortState(state, preset);
+      seen.add(`${state.field}:${state.direction}`);
+      state = nextSortState(state, preset);
+      seen.add(`${state.field}:${state.direction}`);
+    }
+    expect(seen).toEqual(
+      new Set([
+        "connections:desc",
+        "connections:asc",
+        "name:asc",
+        "name:desc",
+        "traffic:desc",
+        "traffic:asc",
+      ]),
+    );
+  });
+
+  it("round-trips through the persisted key", () => {
+    const flipped = nextSortState(SORT_PRESETS.traffic, "traffic");
+    setStoredUserSort(flipped);
+    expect(getStoredUserSort()).toEqual(flipped);
+    expect(sortPresetOf(getStoredUserSort())).toBe("traffic");
   });
 });

@@ -165,12 +165,23 @@ export function sortUsers(users: UsersTopicUser[], sort: UserSortState): UsersTo
 
 // --- sort presets (the list header's Активность / Имя / Трафик chips) ---
 //
-// The persisted shape stays {field, direction} — the chips are just the
-// three combinations the prototype offers, so a preset can be resolved
-// back out of an arbitrary stored state (including one written by the old
-// Select+direction control) instead of being a second stored key.
+// A preset names the FIELD only; direction is a separate axis the chip
+// toggles. Every stored {field, direction} therefore maps onto exactly one
+// chip plus an arrow — there is no state the header can't represent, and
+// no combination the admin can't reach (tapping the active chip flips it).
+// The persisted shape stays {field, direction}: the chips are a control
+// over the existing key, not a second one.
 export type UserSortPreset = "activity" | "name" | "traffic";
 
+const PRESET_FIELD: Record<UserSortPreset, UserSortField> = {
+  activity: "connections",
+  name: "name",
+  traffic: "traffic",
+};
+
+// SORT_PRESETS is each chip's *initial* state — the direction that reads
+// as the useful one when you first pick that field: busiest first, A→Z,
+// heaviest first.
 export const SORT_PRESETS: Record<UserSortPreset, UserSortState> = {
   activity: { field: "connections", direction: "desc" },
   name: { field: "name", direction: "asc" },
@@ -179,15 +190,24 @@ export const SORT_PRESETS: Record<UserSortPreset, UserSortState> = {
 
 export const SORT_PRESET_ORDER: readonly UserSortPreset[] = ["activity", "name", "traffic"];
 
-// sortPresetOf returns null for a stored state that matches no chip (e.g.
-// "traffic ascending", reachable through the previous direction toggle) —
-// the list then shows no chip as active rather than lying about which one is.
-export function sortPresetOf(sort: UserSortState): UserSortPreset | null {
+// sortPresetOf is total: UserSortField has exactly one preset per value, so
+// every stored (and every garbage-recovered) sort state resolves to a chip.
+export function sortPresetOf(sort: UserSortState): UserSortPreset {
   for (const preset of SORT_PRESET_ORDER) {
-    const p = SORT_PRESETS[preset];
-    if (p.field === sort.field && p.direction === sort.direction) return preset;
+    if (PRESET_FIELD[preset] === sort.field) return preset;
   }
-  return null;
+  return "activity";
+}
+
+// nextSortState is what a tap on a sort chip produces: picking a different
+// field switches to that field's initial direction, tapping the field
+// you're already on flips the direction.
+export function nextSortState(current: UserSortState, preset: UserSortPreset): UserSortState {
+  if (sortPresetOf(current) !== preset) return SORT_PRESETS[preset];
+  return {
+    field: current.field,
+    direction: current.direction === "asc" ? "desc" : "asc",
+  };
 }
 
 const SORT_STORAGE_KEY = "telemt-panel:people-sort:v1";

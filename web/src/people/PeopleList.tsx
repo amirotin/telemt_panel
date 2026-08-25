@@ -5,7 +5,7 @@ import { Button } from "../ui/Button";
 import { Chip } from "../ui/Chip";
 import { Input } from "../ui/Input";
 import { IconButton } from "../ui/IconButton";
-import { IconPlus, IconSort } from "../ui/icons";
+import { IconArrowDown, IconArrowUp, IconPlus } from "../ui/icons";
 import { ru } from "../i18n/ru";
 import { useDisplayMode } from "../display-mode";
 import { useConnectionState } from "../realtime";
@@ -24,9 +24,9 @@ import {
   getUserQuota,
   matchesUserFilter,
   setStoredUserSort,
+  nextSortState,
   sortPresetOf,
   sortUsers,
-  SORT_PRESETS,
   SORT_PRESET_ORDER,
   type UserFilter,
   type UserFilterInput,
@@ -141,18 +141,35 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
                 {ru.people.filter[key]}
               </Chip>
             ))}
+            {/* Tapping the active sort chip flips its direction — the
+                arrow is both the current-direction readout and the
+                affordance for that, so ascending/descending stay reachable
+                for every field without a separate control. */}
             <span className="ml-auto flex items-center gap-1.5">
-              {SORT_PRESET_ORDER.map((preset) => (
-                <Chip
-                  key={preset}
-                  active={activePreset === preset}
-                  icon={preset === "activity" ? <IconSort className="h-3 w-3" /> : undefined}
-                  aria-label={`${ru.people.sortLabel}: ${ru.people.sortPreset[preset]}`}
-                  onClick={() => updateSort(SORT_PRESETS[preset])}
-                >
-                  {ru.people.sortPreset[preset]}
-                </Chip>
-              ))}
+              {SORT_PRESET_ORDER.map((preset) => {
+                const active = activePreset === preset;
+                const ascending = active && sort.direction === "asc";
+                return (
+                  <Chip
+                    key={preset}
+                    active={active}
+                    aria-label={`${ru.people.sortLabel}: ${ru.people.sortPreset[preset]}${
+                      active
+                        ? `, ${ascending ? ru.people.sortAscending : ru.people.sortDescending}`
+                        : ""
+                    }`}
+                    onClick={() => updateSort(nextSortState(sort, preset))}
+                  >
+                    {ru.people.sortPreset[preset]}
+                    {active &&
+                      (ascending ? (
+                        <IconArrowUp className="h-3 w-3" />
+                      ) : (
+                        <IconArrowDown className="h-3 w-3" />
+                      ))}
+                  </Chip>
+                );
+              })}
             </span>
           </div>
         </div>
