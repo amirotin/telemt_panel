@@ -7,7 +7,7 @@ import { Button } from "../../ui/Button";
 import { Skeleton } from "../../ui/Skeleton";
 import { ErrorState } from "../../ui/ErrorState";
 import { pushToast } from "../../ui/Toast";
-import { apiErrorMessage } from "../../people/apiError";
+import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import {
   getAutoUpdateOptions,
   getAutoUpdateQueryKey,
@@ -42,7 +42,9 @@ export function AutoUpdateForm() {
 
   if (query.isPending) return <Skeleton className="h-32 w-full" />;
   if (query.isError) {
-    return <ErrorState message={errorMessage("internal_error")} onRetry={() => query.refetch()} />;
+    return (
+      <ErrorState message={errorMessage(apiErrorCode(query.error) ?? "internal_error")} onRetry={() => query.refetch()} />
+    );
   }
   if (!form) return null;
 

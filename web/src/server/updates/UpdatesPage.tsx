@@ -4,6 +4,7 @@ import { ru, errorMessage } from "../../i18n/ru";
 import { Skeleton } from "../../ui/Skeleton";
 import { ErrorState } from "../../ui/ErrorState";
 import { StatePill } from "../../ui/StatePill";
+import { apiErrorCode } from "../../people/apiError";
 import { useConnectionState, useSnapshot } from "../../realtime";
 import type { UpdateTopicEvent } from "../../realtime/topics";
 import {
@@ -54,7 +55,10 @@ export function UpdatesPage() {
   if (updatesQuery.isError) {
     return (
       <ServerShell title={ru.server.updates.title}>
-        <ErrorState message={errorMessage("internal_error")} onRetry={() => updatesQuery.refetch()} />
+        <ErrorState
+          message={errorMessage(apiErrorCode(updatesQuery.error) ?? "internal_error")}
+          onRetry={() => updatesQuery.refetch()}
+        />
       </ServerShell>
     );
   }

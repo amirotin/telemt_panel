@@ -85,7 +85,10 @@ export function SettingsPage() {
         ) : sessionsQuery.isPending ? (
           <Skeleton className="h-24 w-full" />
         ) : sessionsQuery.isError ? (
-          <ErrorState message={errorMessage("internal_error")} onRetry={() => sessionsQuery.refetch()} />
+          <ErrorState
+            message={errorMessage(apiErrorCode(sessionsQuery.error) ?? "internal_error")}
+            onRetry={() => sessionsQuery.refetch()}
+          />
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {sortSessions(sessionsQuery.data).map((s) => (

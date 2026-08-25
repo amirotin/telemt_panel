@@ -10,7 +10,7 @@ import { ConfirmView } from "../../ui/ConfirmView";
 import { Skeleton } from "../../ui/Skeleton";
 import { ErrorState } from "../../ui/ErrorState";
 import { pushToast } from "../../ui/Toast";
-import { apiErrorMessage } from "../../people/apiError";
+import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import {
   getHostOptions,
   restartTelemtServiceMutation,
@@ -45,7 +45,7 @@ export function PlatformPage() {
   if (query.isError) {
     return (
       <ServerShell title={ru.server.platform.title}>
-        <ErrorState message={errorMessage("internal_error")} onRetry={() => query.refetch()} />
+        <ErrorState message={errorMessage(apiErrorCode(query.error) ?? "internal_error")} onRetry={() => query.refetch()} />
       </ServerShell>
     );
   }
