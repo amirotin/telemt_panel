@@ -15,11 +15,17 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedJournalRouteImport } from './routes/_authed/journal'
 import { Route as AuthedPeopleRouteRouteImport } from './routes/_authed/people/route'
 import { Route as AuthedPulseRouteRouteImport } from './routes/_authed/pulse/route'
-import { Route as AuthedServerRouteImport } from './routes/_authed/server'
+import { Route as AuthedServerRouteRouteImport } from './routes/_authed/server/route'
 import { Route as DevUiRouteImport } from './routes/dev/ui'
 import { Route as AuthedPeopleIndexRouteImport } from './routes/_authed/people/index'
 import { Route as AuthedPeopleUsernameRouteImport } from './routes/_authed/people/$username'
 import { Route as AuthedPulseIndexRouteImport } from './routes/_authed/pulse/index'
+import { Route as AuthedServerIndexRouteImport } from './routes/_authed/server/index'
+import { Route as AuthedServerConfigRouteImport } from './routes/_authed/server/config'
+import { Route as AuthedServerPlatformRouteImport } from './routes/_authed/server/platform'
+import { Route as AuthedServerSecurityRouteImport } from './routes/_authed/server/security'
+import { Route as AuthedServerSettingsRouteImport } from './routes/_authed/server/settings'
+import { Route as AuthedServerUpdatesRouteImport } from './routes/_authed/server/updates'
 import { Route as AuthedPulseDiagDomainRouteImport } from './routes/_authed/pulse/diag/$domain'
 
 const IndexRoute = IndexRouteImport.update({
@@ -51,7 +57,7 @@ const AuthedPulseRouteRoute = AuthedPulseRouteRouteImport.update({
   path: '/pulse',
   getParentRoute: () => AuthedRoute,
 } as any)
-const AuthedServerRoute = AuthedServerRouteImport.update({
+const AuthedServerRouteRoute = AuthedServerRouteRouteImport.update({
   id: '/server',
   path: '/server',
   getParentRoute: () => AuthedRoute,
@@ -76,6 +82,36 @@ const AuthedPulseIndexRoute = AuthedPulseIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthedPulseRouteRoute,
 } as any)
+const AuthedServerIndexRoute = AuthedServerIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthedServerRouteRoute,
+} as any)
+const AuthedServerConfigRoute = AuthedServerConfigRouteImport.update({
+  id: '/config',
+  path: '/config',
+  getParentRoute: () => AuthedServerRouteRoute,
+} as any)
+const AuthedServerPlatformRoute = AuthedServerPlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
+  getParentRoute: () => AuthedServerRouteRoute,
+} as any)
+const AuthedServerSecurityRoute = AuthedServerSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => AuthedServerRouteRoute,
+} as any)
+const AuthedServerSettingsRoute = AuthedServerSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthedServerRouteRoute,
+} as any)
+const AuthedServerUpdatesRoute = AuthedServerUpdatesRouteImport.update({
+  id: '/updates',
+  path: '/updates',
+  getParentRoute: () => AuthedServerRouteRoute,
+} as any)
 const AuthedPulseDiagDomainRoute = AuthedPulseDiagDomainRouteImport.update({
   id: '/diag/$domain',
   path: '/diag/$domain',
@@ -87,23 +123,34 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/people': typeof AuthedPeopleRouteRouteWithChildren
   '/pulse': typeof AuthedPulseRouteRouteWithChildren
+  '/server': typeof AuthedServerRouteRouteWithChildren
   '/journal': typeof AuthedJournalRoute
-  '/server': typeof AuthedServerRoute
   '/dev/ui': typeof DevUiRoute
   '/people/$username': typeof AuthedPeopleUsernameRoute
+  '/server/config': typeof AuthedServerConfigRoute
+  '/server/platform': typeof AuthedServerPlatformRoute
+  '/server/security': typeof AuthedServerSecurityRoute
+  '/server/settings': typeof AuthedServerSettingsRoute
+  '/server/updates': typeof AuthedServerUpdatesRoute
   '/people/': typeof AuthedPeopleIndexRoute
   '/pulse/': typeof AuthedPulseIndexRoute
+  '/server/': typeof AuthedServerIndexRoute
   '/pulse/diag/$domain': typeof AuthedPulseDiagDomainRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/journal': typeof AuthedJournalRoute
-  '/server': typeof AuthedServerRoute
   '/dev/ui': typeof DevUiRoute
   '/people/$username': typeof AuthedPeopleUsernameRoute
+  '/server/config': typeof AuthedServerConfigRoute
+  '/server/platform': typeof AuthedServerPlatformRoute
+  '/server/security': typeof AuthedServerSecurityRoute
+  '/server/settings': typeof AuthedServerSettingsRoute
+  '/server/updates': typeof AuthedServerUpdatesRoute
   '/people': typeof AuthedPeopleIndexRoute
   '/pulse': typeof AuthedPulseIndexRoute
+  '/server': typeof AuthedServerIndexRoute
   '/pulse/diag/$domain': typeof AuthedPulseDiagDomainRoute
 }
 export interface FileRoutesById {
@@ -113,12 +160,18 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authed/people': typeof AuthedPeopleRouteRouteWithChildren
   '/_authed/pulse': typeof AuthedPulseRouteRouteWithChildren
+  '/_authed/server': typeof AuthedServerRouteRouteWithChildren
   '/_authed/journal': typeof AuthedJournalRoute
-  '/_authed/server': typeof AuthedServerRoute
   '/dev/ui': typeof DevUiRoute
   '/_authed/people/$username': typeof AuthedPeopleUsernameRoute
+  '/_authed/server/config': typeof AuthedServerConfigRoute
+  '/_authed/server/platform': typeof AuthedServerPlatformRoute
+  '/_authed/server/security': typeof AuthedServerSecurityRoute
+  '/_authed/server/settings': typeof AuthedServerSettingsRoute
+  '/_authed/server/updates': typeof AuthedServerUpdatesRoute
   '/_authed/people/': typeof AuthedPeopleIndexRoute
   '/_authed/pulse/': typeof AuthedPulseIndexRoute
+  '/_authed/server/': typeof AuthedServerIndexRoute
   '/_authed/pulse/diag/$domain': typeof AuthedPulseDiagDomainRoute
 }
 export interface FileRouteTypes {
@@ -128,23 +181,34 @@ export interface FileRouteTypes {
     | '/login'
     | '/people'
     | '/pulse'
-    | '/journal'
     | '/server'
+    | '/journal'
     | '/dev/ui'
     | '/people/$username'
+    | '/server/config'
+    | '/server/platform'
+    | '/server/security'
+    | '/server/settings'
+    | '/server/updates'
     | '/people/'
     | '/pulse/'
+    | '/server/'
     | '/pulse/diag/$domain'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/journal'
-    | '/server'
     | '/dev/ui'
     | '/people/$username'
+    | '/server/config'
+    | '/server/platform'
+    | '/server/security'
+    | '/server/settings'
+    | '/server/updates'
     | '/people'
     | '/pulse'
+    | '/server'
     | '/pulse/diag/$domain'
   id:
     | '__root__'
@@ -153,12 +217,18 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authed/people'
     | '/_authed/pulse'
-    | '/_authed/journal'
     | '/_authed/server'
+    | '/_authed/journal'
     | '/dev/ui'
     | '/_authed/people/$username'
+    | '/_authed/server/config'
+    | '/_authed/server/platform'
+    | '/_authed/server/security'
+    | '/_authed/server/settings'
+    | '/_authed/server/updates'
     | '/_authed/people/'
     | '/_authed/pulse/'
+    | '/_authed/server/'
     | '/_authed/pulse/diag/$domain'
   fileRoutesById: FileRoutesById
 }
@@ -217,7 +287,7 @@ declare module '@tanstack/react-router' {
       id: '/_authed/server'
       path: '/server'
       fullPath: '/server'
-      preLoaderRoute: typeof AuthedServerRouteImport
+      preLoaderRoute: typeof AuthedServerRouteRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/dev/ui': {
@@ -247,6 +317,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/pulse/'
       preLoaderRoute: typeof AuthedPulseIndexRouteImport
       parentRoute: typeof AuthedPulseRouteRoute
+    }
+    '/_authed/server/': {
+      id: '/_authed/server/'
+      path: '/'
+      fullPath: '/server/'
+      preLoaderRoute: typeof AuthedServerIndexRouteImport
+      parentRoute: typeof AuthedServerRouteRoute
+    }
+    '/_authed/server/config': {
+      id: '/_authed/server/config'
+      path: '/config'
+      fullPath: '/server/config'
+      preLoaderRoute: typeof AuthedServerConfigRouteImport
+      parentRoute: typeof AuthedServerRouteRoute
+    }
+    '/_authed/server/platform': {
+      id: '/_authed/server/platform'
+      path: '/platform'
+      fullPath: '/server/platform'
+      preLoaderRoute: typeof AuthedServerPlatformRouteImport
+      parentRoute: typeof AuthedServerRouteRoute
+    }
+    '/_authed/server/security': {
+      id: '/_authed/server/security'
+      path: '/security'
+      fullPath: '/server/security'
+      preLoaderRoute: typeof AuthedServerSecurityRouteImport
+      parentRoute: typeof AuthedServerRouteRoute
+    }
+    '/_authed/server/settings': {
+      id: '/_authed/server/settings'
+      path: '/settings'
+      fullPath: '/server/settings'
+      preLoaderRoute: typeof AuthedServerSettingsRouteImport
+      parentRoute: typeof AuthedServerRouteRoute
+    }
+    '/_authed/server/updates': {
+      id: '/_authed/server/updates'
+      path: '/updates'
+      fullPath: '/server/updates'
+      preLoaderRoute: typeof AuthedServerUpdatesRouteImport
+      parentRoute: typeof AuthedServerRouteRoute
     }
     '/_authed/pulse/diag/$domain': {
       id: '/_authed/pulse/diag/$domain'
@@ -284,18 +396,39 @@ const AuthedPulseRouteRouteChildren: AuthedPulseRouteRouteChildren = {
 const AuthedPulseRouteRouteWithChildren =
   AuthedPulseRouteRoute._addFileChildren(AuthedPulseRouteRouteChildren)
 
+interface AuthedServerRouteRouteChildren {
+  AuthedServerConfigRoute: typeof AuthedServerConfigRoute
+  AuthedServerPlatformRoute: typeof AuthedServerPlatformRoute
+  AuthedServerSecurityRoute: typeof AuthedServerSecurityRoute
+  AuthedServerSettingsRoute: typeof AuthedServerSettingsRoute
+  AuthedServerUpdatesRoute: typeof AuthedServerUpdatesRoute
+  AuthedServerIndexRoute: typeof AuthedServerIndexRoute
+}
+
+const AuthedServerRouteRouteChildren: AuthedServerRouteRouteChildren = {
+  AuthedServerConfigRoute: AuthedServerConfigRoute,
+  AuthedServerPlatformRoute: AuthedServerPlatformRoute,
+  AuthedServerSecurityRoute: AuthedServerSecurityRoute,
+  AuthedServerSettingsRoute: AuthedServerSettingsRoute,
+  AuthedServerUpdatesRoute: AuthedServerUpdatesRoute,
+  AuthedServerIndexRoute: AuthedServerIndexRoute,
+}
+
+const AuthedServerRouteRouteWithChildren =
+  AuthedServerRouteRoute._addFileChildren(AuthedServerRouteRouteChildren)
+
 interface AuthedRouteChildren {
   AuthedPeopleRouteRoute: typeof AuthedPeopleRouteRouteWithChildren
   AuthedPulseRouteRoute: typeof AuthedPulseRouteRouteWithChildren
+  AuthedServerRouteRoute: typeof AuthedServerRouteRouteWithChildren
   AuthedJournalRoute: typeof AuthedJournalRoute
-  AuthedServerRoute: typeof AuthedServerRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedPeopleRouteRoute: AuthedPeopleRouteRouteWithChildren,
   AuthedPulseRouteRoute: AuthedPulseRouteRouteWithChildren,
+  AuthedServerRouteRoute: AuthedServerRouteRouteWithChildren,
   AuthedJournalRoute: AuthedJournalRoute,
-  AuthedServerRoute: AuthedServerRoute,
 }
 
 const AuthedRouteWithChildren =
