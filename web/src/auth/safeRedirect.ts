@@ -26,6 +26,10 @@ export function safeRedirectTarget(raw: string | undefined): string {
   // and anything with a scheme ("https:...", "javascript:...", which don't
   // start with "/" at all).
   if (!raw.startsWith("/") || raw.startsWith("//")) return FALLBACK;
+  // No dot-dot segments and no percent-encoded slashes/backslashes: both
+  // resolve same-origin (so the URL check below accepts them) but are
+  // exactly the shapes bypass attempts take — reject them outright.
+  if (/(^|\/)\.\.(\/|$)/.test(raw) || /%(2f|5c)/i.test(raw)) return FALLBACK;
 
   // Defense in depth: confirm a real URL parser resolves `raw` against an
   // arbitrary base to something still on that base's origin — catches any
