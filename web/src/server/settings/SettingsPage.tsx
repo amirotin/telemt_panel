@@ -13,7 +13,7 @@ import { IconDevice } from "../../ui/icons";
 import { pushToast } from "../../ui/Toast";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { ThemeToggle } from "../../components/ThemeToggle";
-import { DisplayModeSwitch } from "../../display-mode";
+import { DisplayModeSwitch, useDisplayMode, visibleFor } from "../../display-mode";
 import { useLogout } from "../../auth/useLogout";
 import { resetLayout } from "../../pulse/layout";
 import { formatAuditTimestamp } from "../../journal/timestamp.helpers";
@@ -23,7 +23,7 @@ import {
   revokeSessionMutation,
   revokeOtherSessionsMutation,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
-import { sessionDeviceLabel, sortSessions } from "./sessions.helpers";
+import { sessionDeviceLabel, sessionUserAgentRaw, sortSessions } from "./sessions.helpers";
 
 // SettingsPage — /server/settings (06-ui.md §Сервер): sessions/devices,
 // theme, display mode, dashboard layout reset, sign out. No passkeys/TOTP
@@ -36,6 +36,7 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const sessionsQuery = useQuery(listSessionsOptions());
   const logout = useLogout();
+  const { mode } = useDisplayMode();
 
   const [confirmRevoke, setConfirmRevoke] = useState<string | "others" | null>(
     null,
@@ -111,7 +112,9 @@ export function SettingsPage() {
           />
         ) : (
           <ul className="flex flex-col">
-            {sortSessions(sessionsQuery.data).map((s) => (
+            {sortSessions(sessionsQuery.data).map((s) => {
+              const rawAgent = sessionUserAgentRaw(s);
+              return (
               <li
                 key={s.id}
                 className="flex flex-col gap-2 border-b border-border py-2 last:border-b-0"
@@ -125,7 +128,12 @@ export function SettingsPage() {
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="flex min-w-0 items-center gap-2 text-[13px] text-text">
-                      <span className="truncate">{sessionDeviceLabel(s)}</span>
+                      {/* title carries the full User-Agent the label was
+                          derived from, so identifying an unfamiliar device
+                          never needs a round trip to the API. */}
+                      <span className="truncate" title={rawAgent ?? undefined}>
+                        {sessionDeviceLabel(s)}
+                      </span>
                       {s.current && (
                         <StatePill state="ok" className="shrink-0 whitespace-nowrap">
                           {ru.server.settings.currentSessionLabel}
@@ -155,6 +163,14 @@ export function SettingsPage() {
                     </Button>
                   )}
                 </div>
+                {/* Extended mode spells the agent out in full — the
+                    tooltip above is mouse-only, and this is the one screen
+                    where "which device is this?" is the whole question. */}
+                {rawAgent && visibleFor("extended", mode) && (
+                  <p className="break-all font-mono text-micro leading-relaxed text-text-faint">
+                    {rawAgent}
+                  </p>
+                )}
                 {confirmRevoke === s.id && (
                   <ConfirmView
                     description={ru.server.settings.revokeConfirm}
@@ -168,7 +184,8 @@ export function SettingsPage() {
                   />
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Card>
@@ -186,6 +203,10 @@ export function SettingsPage() {
         <SectionLabel className="text-error">
           {ru.server.settings.dangerZoneTitle}
         </SectionLabel>
+        {/* Only the раскладка button swaps for its confirmation — «Выйти»
+            stays reachable throughout. It used to share the branch, so
+            starting a layout reset hid the one action an admin might be on
+            this page for. */}
         {confirmResetLayout ? (
           <ConfirmView
             description={ru.server.settings.resetLayoutConfirm}
@@ -201,22 +222,22 @@ export function SettingsPage() {
             }}
           />
         ) : (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="danger"
-              onClick={() => setConfirmResetLayout(true)}
-            >
-              {ru.server.settings.resetLayout}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => logout.mutate({})}
-              disabled={logout.isPending}
-            >
-              {ru.server.settings.signOut}
-            </Button>
-          </div>
+          <Button
+            variant="danger"
+            className="self-start"
+            onClick={() => setConfirmResetLayout(true)}
+          >
+            {ru.server.settings.resetLayout}
+          </Button>
         )}
+        <Button
+          variant="danger"
+          className="self-start"
+          onClick={() => logout.mutate({})}
+          disabled={logout.isPending}
+        >
+          {ru.server.settings.signOut}
+        </Button>
         {layoutResetDone && (
           <p className="text-micro text-text-faint">
             {ru.server.settings.resetLayoutDone}
