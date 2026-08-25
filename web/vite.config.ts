@@ -62,5 +62,11 @@ export default defineConfig({
     environment: "jsdom",
     globals: false,
     css: true,
+    setupFiles: ["./src/testSetup.ts"],
+    // e2e/ (Task 9, Playwright — playwright.config.ts) matches vitest's
+    // own default *.spec.ts discovery pattern; those specs use
+    // @playwright/test's own `test`/`expect`, not vitest's, and must only
+    // ever run through `npm run e2e`.
+    exclude: ["node_modules/**", "e2e/**"],
   },
 });
