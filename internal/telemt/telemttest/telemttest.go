@@ -127,7 +127,10 @@ func (s *Server) seedDefaultUser() {
 		},
 	}
 	s.secrets["alice"] = "deadbeefdeadbeefdeadbeefdeadbeef"
-	s.quota["alice"] = telemt.QuotaEntry{DataQuotaBytes: quota, UsedBytes: 1 << 20, LastResetEpochSecs: 1000}
+	// A realistic epoch, not a token 1000: the subscription page renders
+	// this as the "квота сброшена" date, and 1000 showed up as 1 января 1970
+	// on every screenshot taken against the mock.
+	s.quota["alice"] = telemt.QuotaEntry{DataQuotaBytes: quota, UsedBytes: 1 << 20, LastResetEpochSecs: 1700000000}
 }
 
 func (s *Server) revision() string {
