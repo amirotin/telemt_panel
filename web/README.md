@@ -79,6 +79,19 @@ light / system via `[data-theme]`) mapped into Tailwind's `@theme` in
 `src/styles/index.css`. Theme persistence: `src/lib/theme.ts` +
 `src/lib/useTheme.ts`.
 
+## Formatting
+
+Sources are hand-formatted; Prettier is **not** a dependency and there is no
+`format` script. `.prettierrc` exists only to pin the settings an editor (or a
+future contributor running `npx prettier`) would otherwise guess — above all
+`printWidth: 100`, which is what this tree was written to. Without it Prettier
+defaults to 80 and reflows nearly everything: measured against `src/` (generated
+code excluded), a run at width 100 touches 137 files, at width 80 it touches 193.
+
+The tree is deliberately *not* Prettier-clean — do not run `--write` across it.
+`.prettierignore` covers the two generated trees (`src/lib/api/generated/`,
+`src/routeTree.gen.ts`), which must never be reformatted at all.
+
 ## Dependencies
 
 Pinned to the plan's approved list (React, Vite, TanStack Router/Query,
