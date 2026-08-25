@@ -1,12 +1,12 @@
 import { useSnapshot, useRefreshTopic } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
-import { Gated } from "../../caps";
 import { ru } from "../../i18n/ru";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
 import { resolveGated } from "../widgets/gated";
 import { meGroups } from "./me.helpers";
+import { GatedNote } from "../GatedNote";
 
 export function MePage() {
   const runtime = useSnapshot<RuntimeTopic>("runtime");
@@ -41,14 +41,14 @@ export function MePage() {
 
           return (
             <div className="flex flex-col gap-4">
-              {allRuntimeEdgeGated && <Gated enabled={false} reason={pool.reason} hint="runtime_edge" />}
+              {allRuntimeEdgeGated && <GatedNote reason={pool.reason} hint="runtime_edge" />}
               <KVGroupList groups={groups} />
               {/* minimal is gated separately (minimal_runtime_enabled), independent of
                   runtime_edge above — its tuning-fields group simply doesn't appear in
                   `groups` when off, so this note explains the specific gap rather than
                   leaving it silently absent. */}
               {minimal.status === "gated" && (
-                <Gated enabled={false} reason={minimal.reason} hint="minimal_runtime_enabled" />
+                <GatedNote reason={minimal.reason} hint="minimal_runtime_enabled" />
               )}
             </div>
           );

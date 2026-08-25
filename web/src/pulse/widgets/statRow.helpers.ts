@@ -39,3 +39,13 @@ export function latestHistoryValue(series: HistorySeries | undefined): number | 
   if (!points || points.length === 0) return null;
   return points[points.length - 1].v;
 }
+
+// peakHistoryValue — the highest point in a series, for the row's "пик за
+// 15 мин — N" sub-line (the prototype's own secondary metric line). Only
+// meaningful for instantaneous gauges: on a cumulative counter the maximum
+// is simply the last point, so callers skip it there.
+export function peakHistoryValue(series: HistorySeries | undefined): number | null {
+  const points = series?.points;
+  if (!points || points.length === 0) return null;
+  return points.reduce((max, p) => (p.v > max ? p.v : max), points[0].v);
+}

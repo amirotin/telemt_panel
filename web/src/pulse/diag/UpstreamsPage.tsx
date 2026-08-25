@@ -1,11 +1,11 @@
 import { useSnapshot, useRefreshTopic } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
-import { Gated } from "../../caps";
 import { ru } from "../../i18n/ru";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
 import { upstreamsGroups } from "./upstreams.helpers";
+import { GatedNote } from "../GatedNote";
 
 export function UpstreamsPage() {
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
@@ -22,7 +22,7 @@ export function UpstreamsPage() {
       >
         {(upstreams) =>
           !upstreams.enabled ? (
-            <Gated enabled={false} reason={upstreams.reason} />
+            <GatedNote reason={upstreams.reason} />
           ) : (
             // upstream_quality (mini-task 2c) shares the same minimal_runtime_enabled
             // gate as data.upstreams above — passed through when present, silently

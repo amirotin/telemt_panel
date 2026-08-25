@@ -91,3 +91,15 @@ export function computeProblems(
 
   return items;
 }
+
+// problemSeverity maps a ProblemItem's stable `key` onto the app's one
+// status vocabulary (ok|warn|error|muted) so the widget can show the same
+// severity pills the rest of the UI uses. It reads the key rather than
+// adding a field to ProblemItem, because the key is already the item's
+// identity and computeProblems' callers (and its tests) treat ProblemItem
+// as a fixed shape.
+export function problemSeverity(key: string): "error" | "warn" | "muted" {
+  if (key === "not_ready") return "error";
+  if (key.startsWith("cap_")) return "muted";
+  return "warn";
+}

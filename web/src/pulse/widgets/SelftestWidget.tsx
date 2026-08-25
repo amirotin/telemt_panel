@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
-import { Gated } from "../../caps";
 import { KVRow } from "../../ui/KVRow";
 import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
@@ -9,6 +8,7 @@ import { ru } from "../../i18n/ru";
 import { WidgetFrame } from "../WidgetFrame";
 import { resolveGated } from "./gated";
 import { computeSelftestView, selftestPillState } from "./selftest.helpers";
+import { GatedNote } from "../GatedNote";
 
 export function SelftestWidget({ onHide }: { onHide?: () => void }) {
   const topic = useSnapshot<RuntimeTopic>("runtime");
@@ -24,7 +24,7 @@ export function SelftestWidget({ onHide }: { onHide?: () => void }) {
   const selftest = resolveGated(topic.data.me_selftest);
   let body: ReactNode;
   if (selftest.status === "gated") {
-    body = <Gated enabled={false} reason={selftest.reason} hint="runtime_edge" />;
+    body = <GatedNote reason={selftest.reason} hint="runtime_edge" />;
   } else {
     const view = computeSelftestView(selftest.data);
     body = (

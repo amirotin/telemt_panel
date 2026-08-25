@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeStatRowValues, latestHistoryValue, sparklineValues } from "./statRow.helpers";
+import { computeStatRowValues, latestHistoryValue, peakHistoryValue, sparklineValues } from "./statRow.helpers";
 import type { StatsSnapshot } from "../../realtime/topics";
 import type { HistorySeries } from "../../lib/api/generated/types.gen";
 
@@ -76,5 +76,24 @@ describe("sparklineValues / latestHistoryValue", () => {
     expect(sparklineValues(undefined)).toEqual([]);
     expect(latestHistoryValue(undefined)).toBeNull();
     expect(latestHistoryValue({ metric: "connections", range: "15m", points: [] })).toBeNull();
+  });
+});
+
+describe("peakHistoryValue", () => {
+  const withPoints = (points: HistorySeries["points"]): HistorySeries => ({
+    metric: "connections",
+    range: "15m",
+    points,
+  });
+
+  it("returns the highest point of the series", () => {
+    expect(
+      peakHistoryValue(withPoints([{ ts: 1, v: 3 }, { ts: 2, v: 9 }, { ts: 3, v: 4 }])),
+    ).toBe(9);
+  });
+
+  it("returns null for a missing or empty series", () => {
+    expect(peakHistoryValue(undefined)).toBeNull();
+    expect(peakHistoryValue(withPoints([]))).toBeNull();
   });
 });

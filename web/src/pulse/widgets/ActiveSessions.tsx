@@ -1,11 +1,11 @@
 import { useSnapshot } from "../../realtime";
 import type { StatsSnapshot } from "../../realtime/topics";
-import { Gated } from "../../caps";
 import { KVRow } from "../../ui/KVRow";
 import { Skeleton } from "../../ui/Skeleton";
 import { ru } from "../../i18n/ru";
 import { WidgetFrame } from "../WidgetFrame";
 import { computeActiveSessions } from "./activeSessions.helpers";
+import { GatedNote } from "../GatedNote";
 
 export function ActiveSessions({ onHide }: { onHide?: () => void }) {
   const stats = useSnapshot<StatsSnapshot>("stats");
@@ -20,7 +20,7 @@ export function ActiveSessions({ onHide }: { onHide?: () => void }) {
     >
       {view.status === "loading" && <Skeleton className="h-16 w-full" />}
       {view.status === "gated" && (
-        <Gated enabled={false} reason={view.reason} hint="runtime_edge" />
+        <GatedNote reason={view.reason} hint="runtime_edge" />
       )}
       {view.status === "ok" && (
         <div className="flex flex-col">

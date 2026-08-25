@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeProblems } from "./problems.helpers";
+import { computeProblems, problemSeverity } from "./problems.helpers";
 import type { StatsSnapshot } from "../../realtime/topics";
 
 function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
@@ -150,5 +150,18 @@ describe("computeProblems", () => {
       "connections_bad_rate_limited",
       "cap_runtime_edge",
     ]);
+  });
+});
+
+describe("problemSeverity", () => {
+  it("ranks a not-ready proxy as an error and a capability gap as muted", () => {
+    expect(problemSeverity("not_ready")).toBe("error");
+    expect(problemSeverity("cap_runtime_edge")).toBe("muted");
+  });
+
+  it("treats every other problem as a warning", () => {
+    expect(problemSeverity("read_only")).toBe("warn");
+    expect(problemSeverity("stale_stats")).toBe("warn");
+    expect(problemSeverity("handshake_tls")).toBe("warn");
   });
 });

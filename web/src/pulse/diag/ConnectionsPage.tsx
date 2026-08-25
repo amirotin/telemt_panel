@@ -1,12 +1,12 @@
 import { useSnapshot, useRefreshTopic } from "../../realtime";
 import type { StatsSnapshot } from "../../realtime/topics";
-import { Gated } from "../../caps";
 import { ru } from "../../i18n/ru";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
 import { resolveGated } from "../widgets/gated";
 import { connectionsGroups, summaryGroup } from "./connections.helpers";
+import { GatedNote } from "../GatedNote";
 
 // ConnectionsPage: the always-on stats.summary scalars (Сводка) render
 // first regardless of gate state, so the page stays useful even when
@@ -25,7 +25,7 @@ export function ConnectionsPage() {
             <>
               <KVGroupList groups={summaryGroup(data.summary)} />
               {result.status === "gated" ? (
-                <Gated enabled={false} reason={result.reason} hint="runtime_edge" className="mt-4" />
+                <GatedNote reason={result.reason} hint="runtime_edge" className="mt-4" />
               ) : (
                 <div className="mt-4">
                   <KVGroupList groups={connectionsGroups(result.data)} />

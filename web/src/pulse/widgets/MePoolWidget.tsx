@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
-import { Gated } from "../../caps";
 import { KVRow } from "../../ui/KVRow";
 import { Skeleton } from "../../ui/Skeleton";
 import { ru } from "../../i18n/ru";
 import { WidgetFrame } from "../WidgetFrame";
 import { resolveGated } from "./gated";
 import { computeMePoolView } from "./mePool.helpers";
+import { GatedNote } from "../GatedNote";
 
 export function MePoolWidget({ onHide }: { onHide?: () => void }) {
   const topic = useSnapshot<RuntimeTopic>("runtime");
@@ -23,7 +23,7 @@ export function MePoolWidget({ onHide }: { onHide?: () => void }) {
   const pool = resolveGated(topic.data.me_pool_state);
   let body: ReactNode;
   if (pool.status === "gated") {
-    body = <Gated enabled={false} reason={pool.reason} hint="runtime_edge" />;
+    body = <GatedNote reason={pool.reason} hint="runtime_edge" />;
   } else {
     const quality = resolveGated(topic.data.me_quality);
     const view = computeMePoolView(pool.data, quality.status === "ok" ? quality.data : undefined);

@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { IconButton } from "../ui/IconButton";
+import { IconChevronRight, IconClose } from "../ui/icons";
 import { StatePill } from "../ui/StatePill";
 import type { DiagDomain } from "./types";
 
@@ -14,6 +15,8 @@ export interface WidgetFrameProps {
   onHide?: () => void;
   /** SSE topic staleness (useSnapshot's `.stale`) — shown as a badge, data stays visible underneath. */
   stale?: boolean;
+  /** Trailing slot on the title row, before the actions (a count, a state pill). */
+  badge?: ReactNode;
   className?: string;
   children: ReactNode;
 }
@@ -24,34 +27,47 @@ export interface WidgetFrameProps {
 // вёрсток"). A widget in the Gated/loading/error state still renders inside
 // this frame (its own body decides what to show), so the title/hide/diag
 // affordances stay available regardless of the underlying data's state.
+//
+// The prototype's card is a flat `--sur` block with a 14px radius and no
+// outline — the border is kept because on the light theme `--surface` is
+// pure white against a near-white page and the card would otherwise have no
+// edge at all; `--border` is subtle enough on dark not to read as a
+// hairline box.
 export function WidgetFrame({
   title,
   diagDomain,
   onHide,
   stale,
+  badge,
   className,
   children,
 }: WidgetFrameProps) {
   return (
-    <div className={cn("flex flex-col gap-3 rounded-xl border border-border bg-surface p-4", className)}>
-      <div className="flex items-center justify-between gap-2">
+    <div className={cn("flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-3.5", className)}>
+      <div className="flex items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
+          <h3 className="truncate text-[13px] font-semibold text-text">{title}</h3>
+          {badge}
           {stale && <StatePill state="warn">{ru.common.stale}</StatePill>}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {diagDomain && (
             <Link
               to="/pulse/diag/$domain"
               params={{ domain: diagDomain }}
-              className="tap-target flex items-center px-2 text-xs font-medium text-accent hover:underline"
+              className="inline-flex min-h-[32px] items-center gap-0.5 rounded-md px-2 text-micro font-semibold text-accent transition-colors hover:bg-accent/12"
             >
               {ru.pulse.diagLink}
+              <IconChevronRight className="h-3.5 w-3.5" />
             </Link>
           )}
           {onHide && (
-            <IconButton aria-label={ru.pulse.hideWidget} onClick={onHide}>
-              ×
+            <IconButton
+              aria-label={ru.pulse.hideWidget}
+              onClick={onHide}
+              className="text-[15px]"
+            >
+              <IconClose />
             </IconButton>
           )}
         </div>

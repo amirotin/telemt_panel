@@ -1,51 +1,74 @@
 import { useSnapshot } from "../../realtime";
 import type { UpstreamsTopic } from "../../realtime/topics";
-import { Gated } from "../../caps";
+import type { State } from "../../ui/StatePill";
 import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { EmptyState } from "../../ui/EmptyState";
 import { ru } from "../../i18n/ru";
+import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
+import { GatedNote } from "../GatedNote";
 import { computeDc, dcCoverageState } from "./dc.helpers";
+
+// The prototype shows the DCs as a strip of small tinted tiles rather than
+// a table — five of them fit a phone width, and the colour alone answers
+// "are the datacentres up". Ours carry one line more than the prototype's
+// (name / coverage) because the topic also reports writers and load, and
+// dropping them would make the widget less useful than the data allows.
+const TILE_TONE: Record<State, string> = {
+  ok: "bg-ok/10 text-ok",
+  warn: "bg-warn/12 text-warn",
+  error: "bg-error/12 text-error",
+  muted: "bg-surface-2 text-text-muted",
+};
 
 export function DcWidget({ onHide }: { onHide?: () => void }) {
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
   const view = computeDc(topic.data?.dcs ?? null);
+  const okCount =
+    view.status === "ok" ? view.dcs.filter((dc) => dcCoverageState(dc) === "ok").length : 0;
 
   return (
-    <WidgetFrame title={ru.pulse.widgets.dc} diagDomain="dc" onHide={onHide} stale={topic.stale}>
+    <WidgetFrame
+      title={ru.pulse.widgets.dc}
+      diagDomain="dc"
+      onHide={onHide}
+      stale={topic.stale}
+      badge={
+        view.status === "ok" && view.dcs.length > 0 ? (
+          <StatePill state={okCount === view.dcs.length ? "ok" : "warn"}>
+            {okCount}/{view.dcs.length}
+          </StatePill>
+        ) : undefined
+      }
+    >
       {view.status === "loading" && <Skeleton className="h-16 w-full" />}
-      {view.status === "disabled" && <Gated enabled={false} reason={view.reason} />}
-      {view.status === "ok" && view.dcs.length === 0 && (
-        <EmptyState title={ru.pulse.dc.empty} />
-      )}
+      {view.status === "disabled" && <GatedNote reason={view.reason} />}
+      {view.status === "ok" && view.dcs.length === 0 && <EmptyState title={ru.pulse.dc.empty} />}
       {view.status === "ok" && view.dcs.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-text-muted">
-                <th className="py-1.5 pr-3 font-medium">{ru.pulse.dc.dc}</th>
-                <th className="py-1.5 pr-3 font-medium">{ru.pulse.dc.coverage}</th>
-                <th className="py-1.5 pr-3 font-medium">{ru.pulse.dc.writers}</th>
-                <th className="py-1.5 font-medium">{ru.pulse.dc.load}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.dcs.map((dc) => (
-                <tr key={dc.dc} className="border-b border-border last:border-b-0">
-                  <td className="py-1.5 pr-3 tabular-nums text-text">{dc.dc}</td>
-                  <td className="py-1.5 pr-3">
-                    <StatePill state={dcCoverageState(dc)}>{dc.coverage_pct.toFixed(0)}%</StatePill>
-                  </td>
-                  <td className="py-1.5 pr-3 tabular-nums text-text-muted">
-                    {dc.alive_writers}/{dc.required_writers}
-                  </td>
-                  <td className="py-1.5 tabular-nums text-text-muted">{dc.load}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="flex flex-wrap gap-1.5">
+          {view.dcs.map((dc) => {
+            const state = dcCoverageState(dc);
+            return (
+              <li
+                key={dc.dc}
+                className={cn(
+                  "min-w-[64px] flex-1 rounded-md px-1 py-1.5 text-center font-mono text-[11px] tabular-nums",
+                  TILE_TONE[state],
+                )}
+              >
+                <span className="block font-semibold">
+                  {ru.pulse.dc.dc}
+                  {dc.dc}
+                </span>
+                <span className="block text-text-muted">{dc.coverage_pct.toFixed(0)}%</span>
+                <span className="block text-[10px] text-text-muted">
+                  {dc.alive_writers}/{dc.required_writers} · {dc.load}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </WidgetFrame>
   );

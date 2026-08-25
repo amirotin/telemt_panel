@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
-import { Gated } from "../../caps";
 import { KVRow } from "../../ui/KVRow";
 import { Skeleton } from "../../ui/Skeleton";
 import { ru } from "../../i18n/ru";
 import { WidgetFrame } from "../WidgetFrame";
 import { resolveGated } from "./gated";
 import { computeNatStunView } from "./natStun.helpers";
+import { GatedNote } from "../GatedNote";
 
 export function NatStunWidget({ onHide }: { onHide?: () => void }) {
   const topic = useSnapshot<RuntimeTopic>("runtime");
@@ -23,7 +23,7 @@ export function NatStunWidget({ onHide }: { onHide?: () => void }) {
   const nat = resolveGated(topic.data.nat_stun);
   let body: ReactNode;
   if (nat.status === "gated") {
-    body = <Gated enabled={false} reason={nat.reason} hint="runtime_edge" />;
+    body = <GatedNote reason={nat.reason} hint="runtime_edge" />;
   } else {
     const view = computeNatStunView(nat.data);
     body = (

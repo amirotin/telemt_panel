@@ -2,8 +2,9 @@ import { useState } from "react";
 import { cn } from "../lib/cn";
 import { ru } from "../i18n/ru";
 import { Button } from "../ui/Button";
+import { CardList } from "../ui/Card";
 import { IconButton } from "../ui/IconButton";
-import { IconArrowDown, IconArrowUp } from "../ui/icons";
+import { IconArrowDown, IconArrowUp, IconSettings } from "../ui/icons";
 import { EmptyState } from "../ui/EmptyState";
 import { Sheet } from "../ui/Sheet";
 import { ConfirmView } from "../ui/ConfirmView";
@@ -24,6 +25,11 @@ const SPAN_CLASSES: Record<FormFactor, string> = {
 // mode, rendered through the widget registry — plus the "Настроить" catalog
 // editor (06-ui.md §Пульс). No parallel widget list exists anywhere else;
 // both the normal grid and the catalog below read from WIDGETS/usePulseLayout.
+//
+// Header follows the prototype: the page title owns the first line on its
+// own, and the density switch sits under it as a pill strip with «Настроить»
+// as a quiet button at its right — previously the two controls shared the
+// title's line and outweighed it.
 export function PulseDashboard() {
   const { mode } = useDisplayMode();
   const { layout, move, show, hide, reset } = usePulseLayout();
@@ -34,11 +40,20 @@ export function PulseDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold text-text">{ru.pulse.title}</h1>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3">
+        <h1 className="text-title font-extrabold tracking-tight text-text">{ru.pulse.title}</h1>
+        {/* Three density chips plus «Настроить» do not fit 360px on one
+            line, so the row wraps on a phone and only pushes the button to
+            the far right once there is room for it. */}
+        <div className="flex flex-wrap items-center gap-2">
           <DisplayModeSwitch />
-          <Button variant="secondary" onClick={() => setConfiguring((v) => !v)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfiguring((v) => !v)}
+            className="ml-auto"
+          >
+            {!configuring && <IconSettings className="h-4 w-4" />}
             {configuring ? ru.pulse.done : ru.pulse.configure}
           </Button>
         </div>
@@ -108,21 +123,23 @@ function LayoutEditor({ layout, mode, onMove, onShow, onHide, onReset }: LayoutE
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-text-muted">{ru.pulse.catalogHint}</p>
-      <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
-        {rows.map((row) => (
-          <LayoutEditorRow
-            key={row.id}
-            row={row}
-            shownIndex={row.shown ? shownRows.findIndex((r) => r.id === row.id) : -1}
-            shownCount={shownRows.length}
-            onMove={onMove}
-            onShow={onShow}
-            onHide={onHide}
-          />
-        ))}
-      </ul>
-      <Button variant="ghost" onClick={onReset} className="self-start">
+      <p className="text-meta text-text-muted">{ru.pulse.catalogHint}</p>
+      <CardList>
+        <ul className="flex flex-col">
+          {rows.map((row) => (
+            <LayoutEditorRow
+              key={row.id}
+              row={row}
+              shownIndex={row.shown ? shownRows.findIndex((r) => r.id === row.id) : -1}
+              shownCount={shownRows.length}
+              onMove={onMove}
+              onShow={onShow}
+              onHide={onHide}
+            />
+          ))}
+        </ul>
+      </CardList>
+      <Button variant="ghost" size="sm" onClick={onReset} className="self-start">
         {ru.pulse.reset}
       </Button>
     </div>
@@ -139,36 +156,65 @@ interface LayoutEditorRowProps {
   onHide: (id: WidgetId) => void;
 }
 
+// The visibility control stays a real <input type="checkbox"> — restyled
+// with `appearance-none` into the prototype's 42×25 pill switch rather than
+// swapped for a role="switch" button, so it keeps the checkbox role that
+// assistive tech (and e2e/mobile.spec.ts's `.uncheck()`) addresses it by.
+const SWITCH_CLASSES = [
+  "relative h-[25px] w-[42px] shrink-0 cursor-pointer appearance-none rounded-full",
+  "bg-surface-3 transition-colors checked:bg-accent-strong",
+  "disabled:cursor-not-allowed disabled:opacity-50",
+  "before:absolute before:left-[2.5px] before:top-[2.5px] before:h-5 before:w-5",
+  "before:rounded-full before:bg-white before:transition-[left] before:content-['']",
+  "checked:before:left-[19.5px]",
+].join(" ");
+
 function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }: LayoutEditorRowProps) {
   const def = getWidgetDef(row.id);
   if (!def) return null;
 
+  const hint = !row.availableInMode
+    ? ru.pulse.unavailableInMode
+    : row.shown && !def.hideable
+      ? ru.pulse.alwaysOn
+      : null;
+
   return (
-    <li className={cn("flex items-center justify-between gap-2 px-3 py-2", !row.availableInMode && "opacity-60")}>
-      <label className="flex min-w-0 flex-1 items-center gap-2">
+    // Row markup mirrors ui/Card's CardRow, inlined because this one has to
+    // be an <li> inside the editor's list.
+    <li
+      className={cn(
+        "flex min-h-[46px] items-center gap-3 border-b border-border py-2 last:border-b-0",
+        !row.availableInMode && "opacity-60",
+      )}
+    >
+      <label className="flex min-w-0 flex-1 items-center gap-3">
         <input
           type="checkbox"
           checked={row.shown}
           disabled={row.shown && !def.hideable}
           onChange={() => (row.shown ? def.hideable && onHide(def.id) : onShow(def.id))}
-          className="h-5 w-5 shrink-0"
+          className={SWITCH_CLASSES}
         />
-        <span className={cn("truncate text-sm", row.availableInMode ? "text-text" : "text-text-muted")}>
-          {def.title}
+        <span className="min-w-0 flex-1">
+          <span
+            className={cn(
+              "block truncate text-row font-medium",
+              row.availableInMode ? "text-text" : "text-text-muted",
+            )}
+          >
+            {def.title}
+          </span>
+          {hint && <span className="block truncate text-micro text-text-muted">{hint}</span>}
         </span>
-        {row.shown && !def.hideable && (
-          <span className="shrink-0 text-xs text-text-faint">{ru.pulse.alwaysOn}</span>
-        )}
-        {!row.availableInMode && (
-          <span className="shrink-0 text-xs text-text-faint">{ru.pulse.unavailableInMode}</span>
-        )}
       </label>
       {row.shown && (
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           <IconButton
             aria-label={ru.pulse.moveUp}
             disabled={shownIndex === 0}
             onClick={() => onMove(row.id, "up")}
+            className="text-[16px]"
           >
             <IconArrowUp />
           </IconButton>
@@ -176,6 +222,7 @@ function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }
             aria-label={ru.pulse.moveDown}
             disabled={shownIndex === shownCount - 1}
             onClick={() => onMove(row.id, "down")}
+            className="text-[16px]"
           >
             <IconArrowDown />
           </IconButton>

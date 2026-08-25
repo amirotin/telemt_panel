@@ -1,11 +1,25 @@
 import { useSnapshot } from "../../realtime";
 import type { StatsSnapshot } from "../../realtime/topics";
 import { useCaps } from "../../caps";
-import { EmptyState } from "../../ui/EmptyState";
+import { CountBadge } from "../../ui/Chip";
 import { Skeleton } from "../../ui/Skeleton";
 import { ru } from "../../i18n/ru";
+import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
-import { computeProblems, type StaleTopicInput } from "./problems.helpers";
+import { computeProblems, problemSeverity, type StaleTopicInput } from "./problems.helpers";
+
+const SEVERITY_DOT: Record<ReturnType<typeof problemSeverity>, string> = {
+  error: "bg-error",
+  warn: "bg-warn",
+  muted: "bg-muted",
+};
+
+// A detail that is a bare count belongs in the right-hand badge column
+// (the prototype's ranked list); a detail that is a sentence — a readiness
+// reason, a topic's error code — is prose and stays inline under the label.
+function isCount(detail: string): boolean {
+  return /^\d+$/.test(detail);
+}
 
 // Problems — a ranked list of everything currently wrong (06-ui.md), or the
 // "всё в порядке" empty state. Non-hideable in the default layout's spirit
@@ -41,24 +55,59 @@ export function Problems({ onHide }: { onHide?: () => void }) {
   const items = computeProblems(stats.data, staleTopics, missingCapabilities);
 
   if (items.length === 0) {
+    // "Nothing is wrong" is the common state on a healthy server, so it
+    // gets a quiet ok-tinted line rather than the app's dashed EmptyState
+    // box — a large placeholder announcing good news reads as a defect.
     return (
       <WidgetFrame title={ru.pulse.widgets.problems} onHide={onHide}>
-        <EmptyState title={ru.pulse.problems.none} description={ru.pulse.problems.noneDescription} />
+        <div className="flex items-start gap-2.5 rounded-md bg-ok/10 px-3 py-2.5">
+          <span aria-hidden="true" className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ok" />
+          <div className="min-w-0">
+            <span className="block text-row font-semibold text-ok">{ru.pulse.problems.none}</span>
+            <span className="mt-0.5 block text-micro text-text-muted">
+              {ru.pulse.problems.noneDescription}
+            </span>
+          </div>
+        </div>
       </WidgetFrame>
     );
   }
 
   return (
-    <WidgetFrame title={ru.pulse.widgets.problems} onHide={onHide}>
-      <ul className="flex flex-col divide-y divide-border">
-        {items.map((item) => (
-          <li key={item.key} className="flex items-baseline justify-between gap-3 py-2 text-sm">
-            <span className="text-text">{item.label}</span>
-            {item.detail && (
-              <span className="shrink-0 truncate text-xs text-text-muted">{item.detail}</span>
-            )}
-          </li>
-        ))}
+    <WidgetFrame
+      title={ru.pulse.widgets.problems}
+      onHide={onHide}
+      badge={<CountBadge tone="warn">{items.length}</CountBadge>}
+    >
+      <ul className="flex flex-col">
+        {items.map((item) => {
+          const severity = problemSeverity(item.key);
+          const count = item.detail !== undefined && isCount(item.detail);
+          return (
+            <li
+              key={item.key}
+              className="flex items-start gap-2.5 border-b border-border py-2 last:border-b-0"
+            >
+              <span
+                aria-hidden="true"
+                className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", SEVERITY_DOT[severity])}
+              />
+              <div className="min-w-0 flex-1">
+                <span className="block text-row text-text">{item.label}</span>
+                {item.detail !== undefined && !count && (
+                  <span className="mt-0.5 block text-micro leading-relaxed text-text-muted">
+                    {item.detail}
+                  </span>
+                )}
+              </div>
+              {count && (
+                <CountBadge tone={severity === "error" ? "error" : "warn"} className="mt-0.5">
+                  {item.detail}
+                </CountBadge>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </WidgetFrame>
   );
