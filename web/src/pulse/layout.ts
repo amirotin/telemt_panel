@@ -115,3 +115,26 @@ export function hideWidget(layout: Layout, id: WidgetId): Layout {
   if (NON_HIDEABLE_IDS.includes(id)) return layout;
   return layout.filter((x) => x !== id);
 }
+
+export interface EditorRow {
+  id: WidgetId;
+  /** In the user's layout at all (checked in the catalog) — independent of availableInMode. */
+  shown: boolean;
+  /** def.minMode ≤ the current display mode — a shown-but-unavailable row must stay visible in the editor, greyed with a hint, never silently dropped (fix round 1, item 1). */
+  availableInMode: boolean;
+}
+
+// editorRows is the "Настроить" catalog's pure row list: every widget in
+// the layout (in the user's own order), followed by every registry widget
+// not yet shown (in registry order) — so a widget in the layout but
+// filtered out by the current display mode still appears (shown: true,
+// availableInMode: false) instead of looking indistinguishable from one
+// that was never added.
+export function editorRows(layout: Layout, mode: DisplayMode): EditorRow[] {
+  const shownSet = new Set(layout);
+  const ordered = [...layout.filter((id) => KNOWN_IDS.has(id)), ...WIDGETS.filter((w) => !shownSet.has(w.id)).map((w) => w.id)];
+  return ordered.map((id) => {
+    const def = getWidgetDef(id);
+    return { id, shown: shownSet.has(id), availableInMode: def !== undefined && visibleFor(def.minMode, mode) };
+  });
+}

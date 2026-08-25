@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   defaultLayout,
+  editorRows,
   getStoredLayout,
   hideWidget,
   migrateLayout,
@@ -11,7 +12,7 @@ import {
   visibleWidgetIds,
   type Layout,
 } from "./layout";
-import { DEFAULT_LAYOUT } from "./widgets/registry";
+import { DEFAULT_LAYOUT, WIDGETS } from "./widgets/registry";
 
 const STORAGE_KEY = "telemt-panel:pulse-layout:v1";
 
@@ -165,6 +166,49 @@ describe("visibleWidgetIds", () => {
 
   it("preserves the layout's own order", () => {
     expect(visibleWidgetIds(["stat_row", "health_hero"], "basic")).toEqual(["stat_row", "health_hero"]);
+  });
+});
+
+describe("editorRows", () => {
+  const layout: Layout = ["health_hero", "problems", "me_pool"];
+
+  it("marks every row in the layout as shown, in the layout's own order first", () => {
+    const rows = editorRows(layout, "extended");
+    expect(rows.slice(0, 3).map((r) => r.id)).toEqual(["health_hero", "problems", "me_pool"]);
+    expect(rows.slice(0, 3).every((r) => r.shown)).toBe(true);
+  });
+
+  it("appends every not-yet-shown widget, in registry order, marked shown:false", () => {
+    const rows = editorRows(layout, "extended");
+    const notShown = rows.slice(3);
+    expect(notShown.every((r) => !r.shown)).toBe(true);
+    expect(notShown[0].id).toBe("stat_row");
+  });
+
+  it("marks a shown widget unavailable when its minMode exceeds the current mode, without dropping it", () => {
+    // me_pool's minMode is "extended" — in critical mode it's still shown
+    // (present in the layout) but not available.
+    const rows = editorRows(layout, "critical");
+    const mePool = rows.find((r) => r.id === "me_pool");
+    expect(mePool).toEqual({ id: "me_pool", shown: true, availableInMode: false });
+  });
+
+  it("marks a shown widget available when its minMode is satisfied", () => {
+    const rows = editorRows(layout, "critical");
+    const healthHero = rows.find((r) => r.id === "health_hero");
+    expect(healthHero).toEqual({ id: "health_hero", shown: true, availableInMode: true });
+  });
+
+  it("computes availableInMode for not-shown rows too", () => {
+    const rows = editorRows(layout, "critical");
+    const statRow = rows.find((r) => r.id === "stat_row"); // minMode: basic
+    expect(statRow).toEqual({ id: "stat_row", shown: false, availableInMode: false });
+  });
+
+  it("returns exactly one row per registry widget, never duplicated", () => {
+    const rows = editorRows(layout, "basic");
+    expect(rows).toHaveLength(WIDGETS.length);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(WIDGETS.length);
   });
 });
 
