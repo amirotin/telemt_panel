@@ -74,6 +74,8 @@ every documented state; it's a dev-only route (`import.meta.env.DEV`-gated, see
 that file's comment) and stands in for Storybook, which this project doesn't
 add.
 
+UI strings live in `src/i18n/` — `ru.ts` is the source of truth for the shape, `en.ts` is typed from it (a missing key is a compile error); components read the active dictionary via `useStrings()`, helpers take `s: Dict`; the language (Русский / English / Browser) is chosen in Server → Panel settings and persisted per device. An eslint rule forbids importing `ru`/`en` outside `src/i18n/`, and `i18n.test.ts` sweeps `src/` for stray Cyrillic.
+
 Design tokens live in `src/styles/tokens.css` (RGB triplets, dark default /
 light / system via `[data-theme]`) mapped into Tailwind's `@theme` in
 `src/styles/index.css`. Theme persistence: `src/lib/theme.ts` +
@@ -100,7 +102,7 @@ Tailwind v4, hey-api, vitest) plus:
 - **qrcode** (+ `@types/qrcode`) — local QR generation for the QR primitive, no
   CDN/network, explicitly approved in the task brief.
 - **js-yaml** — used by `scripts/filter-openapi.mjs` (dev-time codegen input,
-  not shipped) and, since Task 4's fix round 1, `src/i18n/ru.test.ts` (parses
+  not shipped) and, since Task 4's fix round 1, `src/i18n/i18n.test.ts` (parses
   `../api/openapi.yaml`'s `Error.code` enum directly rather than
   hand-maintaining a second copy of the code list — see that test's own
   comment); no new package needed, just an ambient `src/types/js-yaml.d.ts`

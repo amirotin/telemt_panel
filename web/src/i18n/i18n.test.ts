@@ -152,8 +152,8 @@ describe("plural", () => {
     expect(countLabel(en, 1, en.pulse.securityPosture.whitelistEntries)).toBe("1 entry");
     expect(countLabel(en, 5, en.pulse.securityPosture.whitelistEntries)).toBe("5 entries");
     expect(countLabel(ru, 5, ru.pulse.securityPosture.whitelistEntries)).toBe("5 записей");
-    expect(pluralTemplate(en, 1, en.people.searchAmong)).toBe("Search 1 person");
-    expect(pluralTemplate(en, 3, en.people.searchAmong)).toBe("Search 3 people");
+    expect(pluralTemplate(en, 1, en.people.searchAmong)).toBe("Search among 1 user");
+    expect(pluralTemplate(en, 3, en.people.searchAmong)).toBe("Search among 3 users");
     // Grouping separators differ per locale — assert the digits survive
     // rather than pinning a particular (locale-data-dependent) space glyph.
     expect(formatNumber(en, 1234)).toBe("1,234");
