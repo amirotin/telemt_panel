@@ -3,89 +3,247 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0e1319" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#e9edf2" media="(prefers-color-scheme: light)">
 <title>{{.S.Title}} — {{.Username}}</title>
 <style>
-  :root { color-scheme: light dark; }
+  /* Standalone page: no shared bundle, no external asset, no font
+     download. The palette is the panel's own design tokens (web/src/styles/
+     tokens.css) inlined here as literals — dark by default, the light set
+     under prefers-color-scheme, since this page has no theme switcher of
+     its own. */
+  :root {
+    color-scheme: dark;
+    --bg: #0e1319;
+    --sur: #171e26;
+    --sur2: #1c242e;
+    --line: #1f2731;
+    --txt: #eef3f8;
+    --sec: #8fa0b0;
+    --mut: #7a8998;
+    --acc: #4a9bdd;
+    --acc-solid: #2b71ae;
+    --ok: #5ec97e;
+    --warn: #e0a63f;
+    --err: #e0655a;
+    --brand-a: #2e5c8a;
+    --brand-b: #4a9bdd;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #e9edf2;
+      --sur: #ffffff;
+      --sur2: #e7ecf1;
+      --line: #dbe2ea;
+      --txt: #17222c;
+      --sec: #54616f;
+      --mut: #626d79;
+      --acc: #1e6cb0;
+      --acc-solid: #1e6cb0;
+      --ok: #177a45;
+      --warn: #8a5c0a;
+      --err: #b53a2e;
+      --brand-a: #244c76;
+      --brand-b: #3880be;
+    }
+  }
+
+  * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    max-width: 640px; margin: 0 auto; padding: 1.5rem 1rem 3rem;
+    margin: 0;
+    background: var(--bg);
+    color: var(--txt);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
     line-height: 1.5;
   }
-  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; word-break: break-all; }
-  h2 { font-size: 1.1rem; margin-top: 2rem; }
-  h3 { font-size: 1rem; }
-  .status { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.85rem; }
-  .status-active { background: #d5f5e3; color: #146c43; }
-  .status-disabled, .status-expired, .status-quota_exhausted { background: #fadbd8; color: #a12622; }
-  .bar { background: #e5e5e5; border-radius: 999px; height: 0.6rem; overflow: hidden; margin: 0.5rem 0; }
-  .bar-fill { background: #146c43; height: 100%; }
-  .group { border: 1px solid #d9d9d9; border-radius: 0.5rem; padding: 1rem; margin: 0.75rem 0; }
-  .variant + .variant { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #d9d9d9; }
-  .domain { font-weight: 600; margin: 0 0 0.5rem; }
-  .btn {
-    display: inline-block; padding: 0.5rem 1rem; margin: 0.25rem 0.5rem 0.25rem 0;
-    border-radius: 0.4rem; text-decoration: none; font-size: 0.95rem;
+  main {
+    max-width: 430px;
+    margin: 0 auto;
+    padding: 28px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
-  .btn-primary { background: #2481cc; color: #fff; }
-  .btn-secondary { border: 1px solid #2481cc; color: #2481cc; }
-  .qr { display: block; margin: 0.75rem 0; width: 160px; height: 160px; }
-  dl.fields { margin: 0.5rem 0; }
-  dl.fields dt { font-size: 0.8rem; opacity: 0.7; margin-top: 0.5rem; }
-  dl.fields dd { margin: 0.1rem 0; display: flex; align-items: center; gap: 0.5rem; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
-  button.copy { font-size: 0.75rem; padding: 0.1rem 0.5rem; cursor: pointer; }
-  details.instructions { margin-top: 1rem; }
-  details.instructions summary { cursor: pointer; font-weight: 600; }
-  details.instructions p { margin: 0.5rem 0; }
+  :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+
+  /* --- header --------------------------------------------------------- */
+  header { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0 2px; }
+  .avatar {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 58px; height: 58px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--brand-a), var(--brand-b));
+    color: #fff; font-size: 19px; font-weight: 700;
+  }
+  h1 {
+    margin: 2px 0 0; font-size: 20px; font-weight: 800; letter-spacing: -0.02em;
+    text-align: center; word-break: break-all;
+  }
+  h1 .who { color: var(--sec); font-weight: 600; font-size: 13px; display: block; letter-spacing: 0; }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 99px; font-size: 12px; font-weight: 600;
+  }
+  .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .status-active { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .status-quota_exhausted { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .status-disabled,
+  .status-expired { color: var(--err); background: color-mix(in srgb, var(--err) 14%, transparent); }
+
+  /* --- cards ---------------------------------------------------------- */
+  .card { background: var(--sur); border-radius: 16px; padding: 16px; }
+  .card + .card { margin-top: 0; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; color: var(--sec); }
+  .row .v { color: var(--txt); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .quota { margin: 0; }
+  .expiry { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+  .bar { height: 8px; background: var(--sur2); border-radius: 99px; margin-top: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--acc); border-radius: 99px; }
+  .bar-fill.warn { background: var(--warn); }
+  .bar-fill.full { background: var(--err); }
+  .reset { margin: 10px 0 0; }
+
+  /* --- section captions ------------------------------------------------ */
+  .caption {
+    margin: 8px 0 -4px; font-size: 11.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--mut);
+  }
+  h2, h3 { margin: 0; }
+
+  /* --- connect --------------------------------------------------------- */
+  .connect { display: flex; flex-direction: column; gap: 14px; }
+  .variant { display: flex; flex-direction: column; gap: 10px; }
+  .domain {
+    margin: 0; align-self: flex-start;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px; color: var(--acc);
+    background: color-mix(in srgb, var(--acc) 12%, transparent);
+    padding: 4px 10px; border-radius: 99px; word-break: break-all;
+  }
+  .btn-primary {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; min-height: 54px; padding: 0 16px;
+    background: var(--acc-solid); color: #fff; text-decoration: none;
+    border-radius: 14px; font-size: 15px; font-weight: 700;
+  }
+  .btn-primary svg { flex: none; }
+  .btn-secondary {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; min-height: 44px;
+    background: var(--sur2); color: var(--txt); text-decoration: none;
+    border-radius: 12px; font-size: 13px; font-weight: 600;
+  }
+  .qr-card { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .qr { display: block; width: 180px; height: 180px; border-radius: 12px; background: #fff; padding: 8px; }
+  .qr-hint { font-size: 11.5px; color: var(--sec); text-align: center; }
+  .empty { margin: 0; font-size: 13px; color: var(--sec); }
+
+  /* --- manual parameters ---------------------------------------------- */
+  details.manual { background: var(--sur); border-radius: 16px; overflow: hidden; }
+  details.manual > summary {
+    display: flex; align-items: center; min-height: 52px; padding: 0 16px;
+    font-size: 13.5px; font-weight: 600; color: var(--txt); cursor: pointer;
+    list-style: none;
+  }
+  details.manual > summary::-webkit-details-marker { display: none; }
+  details.manual > summary::after {
+    content: ""; margin-left: auto; width: 8px; height: 8px;
+    border-right: 2px solid var(--mut); border-bottom: 2px solid var(--mut);
+    transform: rotate(45deg) translate(-2px, -2px);
+    transition: transform 0.15s;
+  }
+  details.manual[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+  .fields { margin: 0; padding: 6px 16px 14px; border-top: 1px solid var(--line); }
+  .fields dt {
+    font-size: 11px; color: var(--sec); padding-top: 10px;
+  }
+  .fields dd {
+    margin: 0; display: flex; align-items: center; gap: 10px; min-height: 40px;
+  }
+  .fields code {
+    flex: 1; min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px; color: var(--txt); word-break: break-all;
+  }
+  button.copy {
+    flex: none; background: var(--sur2); border: none; border-radius: 8px;
+    color: var(--acc); font-size: 11px; font-weight: 600; font-family: inherit;
+    min-height: 32px; padding: 0 12px; cursor: pointer;
+  }
+  button.copy:hover { background: var(--line); }
+
+  /* --- instructions ---------------------------------------------------- */
+  details.instructions { background: var(--sur); border-radius: 16px; overflow: hidden; }
+  details.instructions > summary {
+    display: flex; align-items: center; min-height: 52px; padding: 0 16px;
+    font-size: 13px; font-weight: 600; color: var(--sec); cursor: pointer;
+    list-style: none;
+  }
+  details.instructions > summary::-webkit-details-marker { display: none; }
+  details.instructions p {
+    margin: 0; padding: 10px 16px; font-size: 12px; line-height: 1.6; color: var(--sec);
+    border-top: 1px solid var(--line);
+  }
+  details.instructions strong { color: var(--txt); }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>{{.Username}}</h1>
-    <p><span class="status status-{{.Status.Key}}">{{.Status.Label}}</span></p>
+    <span class="avatar" aria-hidden="true">{{.Initial}}</span>
+    <h1><span class="who">{{.S.AccessFor}}</span>{{.Username}}</h1>
+    <span class="status status-{{.Status.Key}}">{{.Status.Label}}</span>
   </header>
 
-  {{if .Quota}}
-  <section class="quota">
-    <h2>{{$.S.QuotaHeading}}</h2>
-    <div class="bar"><div class="bar-fill" style="width:{{.Quota.Percent}}%"></div></div>
-    <p>{{.Quota.UsedHuman}} {{$.S.QuotaUsedOf}} {{.Quota.TotalHuman}}</p>
-    {{if .Quota.ResetHuman}}<p>{{$.S.QuotaResetLabel}}: {{.Quota.ResetHuman}}</p>{{end}}
-  </section>
-  {{end}}
-
-  {{if .Expiry}}
-  <section class="expiry">
-    <p>{{$.S.ExpiryLabel}}: {{.Expiry.Formatted}}</p>
-  </section>
+  {{if or .Quota .Expiry}}
+  <div class="card">
+    {{if .Quota}}
+    <section class="quota">
+      <div class="row"><span>{{$.S.QuotaHeading}}</span><span class="v">{{.Quota.UsedHuman}} {{$.S.QuotaUsedOf}} {{.Quota.TotalHuman}}</span></div>
+      <div class="bar"><div class="bar-fill{{if ge .Quota.Percent 100}} full{{else if ge .Quota.Percent 80}} warn{{end}}" style="width:{{.Quota.Percent}}%"></div></div>
+      {{if .Quota.ResetHuman}}<div class="row reset"><span>{{$.S.QuotaResetLabel}}:</span><span class="v">{{.Quota.ResetHuman}}</span></div>{{end}}
+    </section>
+    {{end}}
+    {{if .Expiry}}
+    <section class="expiry">
+      <div class="row"><span>{{$.S.ExpiryLabel}}</span><span class="v">{{.Expiry.Formatted}}</span></div>
+    </section>
+    {{end}}
+  </div>
   {{end}}
 
   <section class="connect">
-    <h2>{{.S.ConnectHeading}}</h2>
+    <h2 class="caption">{{.S.ConnectHeading}}</h2>
     {{if not .Groups}}
-    <p>{{.S.NoLinks}}</p>
+    <p class="empty">{{.S.NoLinks}}</p>
     {{end}}
     {{range .Groups}}
-    <div class="group">
-      <h3>{{.Title}}</h3>
-      {{range .Variants}}
-      <div class="variant">
-        {{if .Domain}}<p class="domain">{{.Domain}}</p>{{end}}
-        <a class="btn btn-primary" href="{{.TgURL}}">{{$.S.OpenInTelegram}}</a>
-        <a class="btn btn-secondary" href="{{.TMeURL}}">{{$.S.OpenViaTMe}}</a>
+    <h3 class="caption">{{.Title}}</h3>
+    {{range .Variants}}
+    <div class="variant">
+      {{if .Domain}}<p class="domain">{{.Domain}}</p>{{end}}
+      <a class="btn-primary" href="{{.TgURL}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.6 18.9 19c-.2 1-.8 1.2-1.6.8l-4.6-3.4-2.2 2.1c-.2.3-.5.5-.9.5l.3-4.6L18.3 7c.4-.3-.1-.5-.6-.2L7.4 13.3 3 11.9c-1-.3-1-1 .2-1.4l17.3-6.7c.8-.3 1.5.2 1.4.8z"></path></svg>{{$.S.OpenInTelegram}}</a>
+      <a class="btn-secondary" href="{{.TMeURL}}">{{$.S.OpenViaTMe}}</a>
+      <div class="card qr-card">
         <img class="qr" src="{{.QRDataURI}}" alt="QR" width="256" height="256">
+        <span class="qr-hint">{{$.S.ScanHint}}</span>
+      </div>
+      <details class="manual">
+        <summary>{{$.S.ManualParams}}</summary>
         <dl class="fields">
           <dt>{{$.S.FieldServer}}</dt>
-          <dd><code>{{.Server}}</code><button type="button" class="copy" data-copy>{{$.S.CopyButton}}</button></dd>
+          <dd><code>{{.Server}}</code><button type="button" class="copy" data-copy data-copied="{{$.S.CopiedButton}}">{{$.S.CopyButton}}</button></dd>
           <dt>{{$.S.FieldPort}}</dt>
-          <dd><code>{{.Port}}</code><button type="button" class="copy" data-copy>{{$.S.CopyButton}}</button></dd>
+          <dd><code>{{.Port}}</code><button type="button" class="copy" data-copy data-copied="{{$.S.CopiedButton}}">{{$.S.CopyButton}}</button></dd>
           <dt>{{$.S.FieldSecret}}</dt>
-          <dd><code>{{.Secret}}</code><button type="button" class="copy" data-copy>{{$.S.CopyButton}}</button></dd>
+          <dd><code>{{.Secret}}</code><button type="button" class="copy" data-copy data-copied="{{$.S.CopiedButton}}">{{$.S.CopyButton}}</button></dd>
         </dl>
-      </div>
-      {{end}}
+      </details>
     </div>
+    {{end}}
     {{end}}
   </section>
 
@@ -110,7 +268,7 @@ document.addEventListener('click', function (e) {
   if (!code || !navigator.clipboard) return;
   navigator.clipboard.writeText(code.textContent).then(function () {
     var prev = btn.textContent;
-    btn.textContent = '✓';
+    btn.textContent = btn.getAttribute('data-copied') || prev;
     setTimeout(function () { btn.textContent = prev; }, 1200);
   });
 });

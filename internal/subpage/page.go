@@ -25,10 +25,15 @@ type pageData struct {
 	InstructionsEN instructions
 
 	Username string
-	Status   statusView
-	Quota    *quotaView
-	Expiry   *expiryView
-	Groups   []linkGroupView
+	// Initial is Username's first rune, upper-cased — the letter the
+	// header's avatar tile shows (the prototype's subscription artboard).
+	// Rune-wise, not byte-wise, so a non-ASCII username still renders one
+	// whole character.
+	Initial string
+	Status  statusView
+	Quota   *quotaView
+	Expiry  *expiryView
+	Groups  []linkGroupView
 }
 
 type statusView struct {
@@ -114,6 +119,7 @@ func buildPageData(u telemt.UserInfo, quota *telemt.QuotaEntry, lang string, now
 		InstructionsRU: instructionsRU,
 		InstructionsEN: instructionsEN,
 		Username:       u.Username,
+		Initial:        firstInitial(u.Username),
 		Status:         buildStatus(u, quota, s, now),
 		Quota:          buildQuota(u, quota),
 		Expiry:         buildExpiry(u, now),
@@ -129,6 +135,15 @@ func quotaUsedBytes(u telemt.UserInfo, quota *telemt.QuotaEntry) uint64 {
 		return quota.UsedBytes
 	}
 	return u.TotalOctets
+}
+
+// firstInitial returns the first rune of name, upper-cased, or "?" for an
+// empty name — display-only, for the header avatar tile.
+func firstInitial(name string) string {
+	for _, r := range name {
+		return strings.ToUpper(string(r))
+	}
+	return "?"
 }
 
 func buildStatus(u telemt.UserInfo, quota *telemt.QuotaEntry, s uiStrings, now time.Time) statusView {

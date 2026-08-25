@@ -5,6 +5,7 @@ package subpage
 // (both languages, always both rendered) live separately in instructions.
 type uiStrings struct {
 	Title                string
+	AccessFor            string
 	StatusActive         string
 	StatusDisabled       string
 	StatusExpired        string
@@ -24,6 +25,9 @@ type uiStrings struct {
 	FieldPort            string
 	FieldSecret          string
 	CopyButton           string
+	CopiedButton         string
+	ManualParams         string
+	ScanHint             string
 }
 
 // instructions is one language's collapsed manual-setup walkthrough.
@@ -36,6 +40,7 @@ type instructions struct {
 
 var stringsRU = uiStrings{
 	Title:                "Доступ к прокси",
+	AccessFor:            "Доступ для",
 	StatusActive:         "Активен",
 	StatusDisabled:       "Отключён",
 	StatusExpired:        "Истёк",
@@ -55,10 +60,14 @@ var stringsRU = uiStrings{
 	FieldPort:            "Порт",
 	FieldSecret:          "Секрет",
 	CopyButton:           "Копировать",
+	CopiedButton:         "Скопировано",
+	ManualParams:         "Ручные параметры",
+	ScanHint:             "Отсканируйте камерой Telegram",
 }
 
 var stringsEN = uiStrings{
 	Title:                "Proxy access",
+	AccessFor:            "Access for",
 	StatusActive:         "Active",
 	StatusDisabled:       "Disabled",
 	StatusExpired:        "Expired",
@@ -78,6 +87,9 @@ var stringsEN = uiStrings{
 	FieldPort:            "Port",
 	FieldSecret:          "Secret",
 	CopyButton:           "Copy",
+	CopiedButton:         "Copied",
+	ManualParams:         "Manual parameters",
+	ScanHint:             "Scan it with the Telegram camera",
 }
 
 var instructionsRU = instructions{
