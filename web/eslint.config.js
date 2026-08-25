@@ -45,6 +45,7 @@ export default tseslint.config(
             "useTopic",
             "useSnapshot",
             "useConnectionState",
+            "useRefreshTopic",
             "resetSSEClient",
           ],
         },

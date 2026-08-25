@@ -29,6 +29,8 @@ import {
 import { datetimeLocalValueToISO, isoToDatetimeLocalValue, presetToExpiration } from "./expiry";
 import { generateSecret } from "./secret";
 import { apiErrorMessage } from "./apiError";
+import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
+import { useRefreshTopic } from "../realtime";
 import type { UsersTopicUser } from "../realtime/topics";
 
 export interface UserFormSheetProps {
@@ -136,12 +138,15 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
     setUsernameTouched(false);
   }
 
+  const refreshTopic = useRefreshTopic();
+
   const createMutation = useMutation({
     ...createUserMutation(),
     onSuccess: (data) => {
       pushToast(ru.people.toast.created, "ok");
       onSaved?.(data.user.username);
       onClose();
+      refreshUsersAfterMutation(refreshTopic);
     },
     onError: (err) => pushToast(apiErrorMessage(err), "error"),
   });
@@ -152,6 +157,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
       pushToast(ru.people.toast.updated, "ok");
       onSaved?.(data.username);
       onClose();
+      refreshUsersAfterMutation(refreshTopic);
     },
     onError: (err) => pushToast(apiErrorMessage(err), "error"),
   });
@@ -502,8 +508,8 @@ function QuotaField({
             className="flex-1"
           />
           <Select value={unit} onChange={(e) => onChangeUnit(e.target.value as QuotaUnit)} className="w-24">
-            <option value="MB">МБ</option>
-            <option value="GB">ГБ</option>
+            <option value="MB">{ru.people.form.quotaUnits.MB}</option>
+            <option value="GB">{ru.people.form.quotaUnits.GB}</option>
           </Select>
         </div>
       )}

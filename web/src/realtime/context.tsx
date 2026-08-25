@@ -75,6 +75,16 @@ export function useConnectionState(): ConnectionSnapshot & { retry: () => void }
   return { ...state, retry };
 }
 
+// useRefreshTopic exposes SSEClient.refreshTopic — a stable per-topic
+// "refresh now" function, bound to the app-wide client. Mutation success
+// handlers (People's create/edit/delete/enable/rotate-secret/reset-quota/
+// sublink-regenerate) call `refreshTopic('users')` so the affected topic
+// doesn't sit on its own poll interval before the change is visible.
+export function useRefreshTopic(): (topic: TopicName) => Promise<void> {
+  const client = useSSEClient();
+  return useCallback((topic: TopicName) => client.refreshTopic(topic), [client]);
+}
+
 // resetSSEClient clears the app-wide client's cached data and closes its
 // connection — called from useLogout so no session-scoped realtime data
 // survives into the next login (deliverable A: "logout clears client state

@@ -41,6 +41,16 @@ export interface SSEClient {
   subscribeConnectionListener(cb: () => void): () => void;
   /** Manual "reconnect now" action for a visible reconnecting/polling state. */
   retry(): void;
+  /**
+   * Fetches `topic` via GET /api/snapshot right now and installs the
+   * result into the snapshot store (notifying subscribers) — a manual
+   * "refresh this one topic" action, independent of the topic's own poll
+   * interval or the >3-failures polling fallback. Resolves once the fetch
+   * attempt settles (success or failure — errors are swallowed, matching
+   * the fallback poller's own silent-retry behavior); callers needn't
+   * await it.
+   */
+  refreshTopic(topic: TopicName): Promise<void>;
   /** Clears all cached data/state (logout) — see useLogout. */
   reset(): void;
   /** Test/teardown only. */
@@ -156,8 +166,12 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
     void pollOnce();
   }
 
-  async function pollOnce() {
-    const topics = activeTopics();
+  // fetchAndInstall is the one GET /api/snapshot fetch-and-install
+  // implementation: the >3-failures polling fallback (pollOnce) and the
+  // manual refreshTopic() (fix round 1: called after every user mutation
+  // so a create/edit/delete doesn't wait out the topic's own poll interval
+  // to show up) both go through this, rather than each having its own copy.
+  async function fetchAndInstall(topics: TopicName[]) {
     if (topics.length === 0) return;
     try {
       const result = await fetchSnapshotFn(topics);
@@ -168,10 +182,14 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
       }
       onFrame();
     } catch {
-      // Silent — the next poll tick tries again, and the browser's own SSE
-      // reconnect attempts keep racing in parallel; markConnected() (via a
-      // real SSE frame) stops polling as soon as one succeeds.
+      // Silent — the next poll tick (pollOnce) or the caller's own retry
+      // (refreshTopic) tries again; the browser's own SSE reconnect
+      // attempts keep racing in parallel regardless.
     }
+  }
+
+  async function pollOnce() {
+    await fetchAndInstall(activeTopics());
   }
 
   function markConnected() {
@@ -327,6 +345,9 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
     retry() {
       consecutiveFailures = 0;
       rebuildNow(true);
+    },
+    refreshTopic(topic) {
+      return fetchAndInstall([topic]);
     },
     reset() {
       closeEventSource();

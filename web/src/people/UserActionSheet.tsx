@@ -16,6 +16,9 @@ import {
 import { apiErrorMessage } from "./apiError";
 import { pickTelegramLink } from "./linkSelection";
 import { SublinkPanel } from "./SublinkPanel";
+import { ConfirmView } from "./ConfirmView";
+import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
+import { useRefreshTopic } from "../realtime";
 import type { UsersTopicUser } from "../realtime/topics";
 
 export interface UserActionSheetProps {
@@ -45,6 +48,7 @@ type View =
 export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: UserActionSheetProps) {
   const [view, setView] = useState<View>({ kind: "menu" });
   const caps = useCaps();
+  const refreshTopic = useRefreshTopic();
 
   function close() {
     setView({ kind: "menu" });
@@ -57,6 +61,7 @@ export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: User
       pushToast(ru.people.toast.deleted, "ok");
       onDeleted?.(user!.username);
       close();
+      refreshUsersAfterMutation(refreshTopic);
     },
     onError: (err) => pushToast(apiErrorMessage(err), "error"),
   });
@@ -66,6 +71,7 @@ export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: User
     onSuccess: () => {
       pushToast(ru.people.toast.quotaReset, "ok");
       close();
+      refreshUsersAfterMutation(refreshTopic);
     },
     onError: (err) => pushToast(apiErrorMessage(err), "error"),
   });
@@ -75,6 +81,7 @@ export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: User
     onSuccess: (data) => {
       pushToast(data.enabled ? ru.people.toast.enabled : ru.people.toast.disabled, "ok");
       close();
+      refreshUsersAfterMutation(refreshTopic);
     },
     onError: (err) => pushToast(apiErrorMessage(err), "error"),
   });
@@ -84,6 +91,7 @@ export function UserActionSheet({ open, user, onClose, onEdit, onDeleted }: User
     onSuccess: (data) => {
       pushToast(ru.people.toast.secretRotated, "ok");
       setView({ kind: "new-secret", secret: data.secret });
+      refreshUsersAfterMutation(refreshTopic);
     },
     onError: (err) => pushToast(apiErrorMessage(err), "error"),
   });
@@ -235,32 +243,3 @@ function TelegramQRView({ user }: { user: UsersTopicUser }) {
   );
 }
 
-function ConfirmView({
-  description,
-  confirmLabel,
-  danger,
-  pending,
-  onCancel,
-  onConfirm,
-}: {
-  description: string;
-  confirmLabel: string;
-  danger?: boolean;
-  pending: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-text">{description}</p>
-      <div className="flex gap-2">
-        <Button variant="secondary" onClick={onCancel} disabled={pending} className="flex-1">
-          {ru.people.actions.cancel}
-        </Button>
-        <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} disabled={pending} className="flex-1">
-          {confirmLabel}
-        </Button>
-      </div>
-    </div>
-  );
-}

@@ -289,6 +289,70 @@ describe("fallback polling after persistent failures", () => {
   });
 });
 
+describe("refreshTopic (manual per-topic refresh, fix round 1)", () => {
+  it("fetches the given topic and installs the result into the snapshot store", async () => {
+    const fetchSnapshot = vi.fn().mockResolvedValue({
+      users: { v: { users: [{ username: "alice" }] }, ts: 42 },
+    });
+    client = makeClient({ fetchSnapshot });
+    client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    fetchSnapshot.mockClear();
+
+    await client.refreshTopic("users");
+
+    expect(fetchSnapshot).toHaveBeenCalledWith(["users"]);
+    expect(client.getTopicSnapshot("users").data).toEqual({ users: [{ username: "alice" }] });
+  });
+
+  it("notifies topic listeners subscribed to the refreshed topic", async () => {
+    const fetchSnapshot = vi.fn().mockResolvedValue({
+      users: { v: { users: [] }, ts: 1 },
+    });
+    client = makeClient({ fetchSnapshot });
+    client.subscribeTopic("users");
+    const listener = vi.fn();
+    client.subscribeTopicListener("users", listener);
+    await vi.advanceTimersByTimeAsync(20);
+    listener.mockClear();
+
+    await client.refreshTopic("users");
+
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("only refreshes the requested topic, leaving others untouched", async () => {
+    const fetchSnapshot = vi.fn().mockResolvedValue({
+      users: { v: { users: ["refreshed"] }, ts: 2 },
+    });
+    client = makeClient({ fetchSnapshot });
+    client.subscribeTopic("users");
+    client.subscribeTopic("stats");
+    await vi.advanceTimersByTimeAsync(20);
+
+    await client.refreshTopic("users");
+
+    expect(fetchSnapshot).toHaveBeenCalledWith(["users"]);
+    expect(client.getTopicSnapshot("stats").data).toBeNull();
+  });
+
+  it("resolves without throwing when the fetch fails, leaving prior data in place", async () => {
+    const fetchSnapshot = vi.fn().mockResolvedValue({
+      users: { v: { users: ["seed"] }, ts: 1 },
+    });
+    client = makeClient({ fetchSnapshot });
+    client.subscribeTopic("users");
+    // Seed real data via a successful refresh first — subscribeTopic alone
+    // only opens the SSE connection; it does not go through fetchSnapshot.
+    await client.refreshTopic("users");
+    expect(client.getTopicSnapshot("users").data).toEqual({ users: ["seed"] });
+
+    fetchSnapshot.mockRejectedValueOnce(new Error("network"));
+    await expect(client.refreshTopic("users")).resolves.toBeUndefined();
+    expect(client.getTopicSnapshot("users").data).toEqual({ users: ["seed"] });
+  });
+});
+
 describe("reset (logout)", () => {
   it("closes the connection and clears cached snapshots", async () => {
     client = makeClient();
