@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
@@ -23,7 +24,9 @@ import (
 // (via New, not a stripped-down test helper) in the worst-case environment
 // this milestone can produce — unreachable Telemt, no init system, no log
 // source, degraded privileges, no on-disk state mirror — and asserts every
-// surface degrades cleanly instead of panicking or hanging.
+// surface degrades cleanly instead of panicking or hanging, including the
+// hub-backed surfaces (GET /api/telemt/zero, GET /api/snapshot, GET
+// /api/events — the SSE endpoint) added by later M3 tasks.
 //
 // This test must stay green forever; do not delete or weaken it without an
 // explicit owner ruling superseding the invariant it encodes.
@@ -174,6 +177,75 @@ func TestAPIOnlyDegradation(t *testing.T) {
 	}
 	if usersErr.Code != "telemt_unreachable" {
 		t.Errorf("/api/users error code = %q, want telemt_unreachable", usersErr.Code)
+	}
+
+	// GET /api/telemt/zero: a clean 502 telemt_unreachable, same shape as
+	// /api/users above — writeTelemtError's default branch, since a dial
+	// failure never decodes as *telemt.APIError (F6, closing fix wave: this
+	// task-6 contract-gap passthrough had no degradation coverage yet).
+	r = httptest.NewRequest("GET", "/api/telemt/zero", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("GET /api/telemt/zero = %d, want 502: %s", w.Code, w.Body)
+	}
+	var zeroErr struct{ Code string }
+	if err := json.Unmarshal(w.Body.Bytes(), &zeroErr); err != nil {
+		t.Fatalf("decode /api/telemt/zero error: %v", err)
+	}
+	if zeroErr.Code != "telemt_unreachable" {
+		t.Errorf("/api/telemt/zero error code = %q, want telemt_unreachable", zeroErr.Code)
+	}
+
+	// GET /api/snapshot?topics=stats: nothing has ever fetched successfully
+	// (a fresh hub, unreachable Telemt), so the on-demand fetch fails and
+	// every requested topic ends up empty — handleSnapshot's own documented
+	// "all-empty" rule turns that into 502 telemt_unreachable, not a bare
+	// empty 200.
+	r = httptest.NewRequest("GET", "/api/snapshot?topics=stats", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("GET /api/snapshot?topics=stats = %d, want 502: %s", w.Code, w.Body)
+	}
+
+	// GET /api/events?topics=stats: the SSE endpoint itself must still
+	// answer 200 text/event-stream and degrade to a source_error frame
+	// (or, in principle, a heartbeat) instead of crashing or hanging.
+	// Exercised over a real connection — not the canceled-context
+	// ResponseRecorder trick used elsewhere in this package, which only
+	// captures a snapshot already cached before the handler runs and can't
+	// observe the poller's async broadcast — so this needs a real
+	// subscriber. Kept sleepless: readSSEFrames/nextFrame (sse_test.go,
+	// same package) bound the wait on a channel receive with a timeout,
+	// never time.Sleep. The topic's poller fires its first fetch
+	// immediately on subscribe (hub.go's runPoller starts its timer at 0),
+	// and a dial to 127.0.0.1:1 fails fast, so the source_error should
+	// arrive well within the bound.
+	panelSrv := httptest.NewServer(h)
+	t.Cleanup(panelSrv.Close)
+	sseReq, err := http.NewRequest("GET", panelSrv.URL+"/api/events?topics=stats", nil)
+	if err != nil {
+		t.Fatalf("build GET /api/events request: %v", err)
+	}
+	sseReq.AddCookie(cookie)
+	sseResp, err := http.DefaultClient.Do(sseReq)
+	if err != nil {
+		t.Fatalf("GET /api/events?topics=stats: %v", err)
+	}
+	t.Cleanup(func() { sseResp.Body.Close() })
+	if sseResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/events?topics=stats = %d, want 200", sseResp.StatusCode)
+	}
+	if ct := sseResp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("GET /api/events?topics=stats content-type = %q, want text/event-stream", ct)
+	}
+	frames := readSSEFrames(sseResp.Body)
+	frame := nextFrame(t, frames, 5*time.Second)
+	if frame.event != "source_error" && frame.event != "heartbeat" {
+		t.Fatalf("GET /api/events?topics=stats first frame event = %q, want source_error or heartbeat", frame.event)
 	}
 
 	// GET /api/logs/tail: 501, no LogSource capability at all.
