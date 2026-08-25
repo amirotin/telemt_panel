@@ -56,7 +56,16 @@
     border-color: rgb(var(--border));
   }
 
+  /* "system" (no [data-theme] — see src/lib/theme.ts's applyTheme): let
+     native form controls/scrollbars follow the OS preference directly
+     rather than hard-coding dark, matching tokens.css's own
+     prefers-color-scheme block for the custom palette. An explicit choice
+     ([data-theme="dark"|"light"]) pins color-scheme the same way it pins
+     the tokens. */
   html {
+    color-scheme: light dark;
+  }
+  [data-theme="dark"] {
     color-scheme: dark;
   }
   [data-theme="light"] {
