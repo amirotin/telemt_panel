@@ -37,7 +37,7 @@ export function SelftestWidget({ onHide }: { onHide?: () => void }) {
           label={ru.pulse.selftest.timeskew}
           value={
             <StatePill state={selftestPillState(view.timeskewState)}>
-              {view.maxSkewSecs15m !== null ? `${view.maxSkewSecs15m}с` : view.timeskewState}
+              {view.maxSkewSecs15m !== null ? `${view.maxSkewSecs15m}${ru.pulse.selftest.secondsSuffix}` : view.timeskewState}
             </StatePill>
           }
         />

@@ -11,6 +11,8 @@
 // the handful of fields that benefit from a Russian gloss (see each
 // domain's own helpers.ts).
 
+import { ru } from "../../i18n/ru";
+
 export interface KVRowItem {
   key: string;
   label: string;
@@ -24,11 +26,13 @@ export interface KVGroup {
 }
 
 // formatPrimitive renders one JSON leaf value the way every diagnostics
-// table shows it — booleans as да/нет (06-ui.md: Russian UI), missing/empty
-// as an em dash, everything else via String().
+// table shows it — booleans as да/нет (06-ui.md: Russian UI; ru.common.yes/no
+// per the single-strings-module rule), missing/empty as an em dash (matching
+// shell/StatusStrip.helpers.ts's own precedent for that one punctuation
+// character living inline rather than in ru.ts), everything else via String().
 export function formatPrimitive(value: unknown): string {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? "да" : "нет";
+  if (typeof value === "boolean") return value ? ru.common.yes : ru.common.no;
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "—";
   if (typeof value === "string") return value === "" ? "—" : value;
   return String(value);

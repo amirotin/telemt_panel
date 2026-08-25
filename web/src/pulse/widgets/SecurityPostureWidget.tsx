@@ -30,20 +30,20 @@ export function SecurityPostureWidget({ onHide }: { onHide?: () => void }) {
       <div className="flex flex-col">
         <KVRow
           label={ru.pulse.securityPosture.readOnly}
-          value={<StatePill state={view.readOnly ? "warn" : "ok"}>{view.readOnly ? "да" : "нет"}</StatePill>}
+          value={<StatePill state={view.readOnly ? "warn" : "ok"}>{view.readOnly ? ru.common.yes : ru.common.no}</StatePill>}
         />
         <KVRow
           label={ru.pulse.securityPosture.whitelist}
           value={
             view.whitelistEnabled
               ? `${view.whitelistEntries} ${ru.pulse.securityPosture.whitelistEntries}`
-              : "выкл."
+              : ru.common.off
           }
         />
-        <KVRow label={ru.pulse.securityPosture.authHeader} value={view.authHeaderEnabled ? "да" : "нет"} />
+        <KVRow label={ru.pulse.securityPosture.authHeader} value={view.authHeaderEnabled ? ru.common.yes : ru.common.no} />
         <KVRow
           label={ru.pulse.securityPosture.proxyProtocol}
-          value={view.proxyProtocolEnabled ? "да" : "нет"}
+          value={view.proxyProtocolEnabled ? ru.common.yes : ru.common.no}
         />
         <KVRow label={ru.pulse.securityPosture.logLevel} value={view.logLevel} monospace />
         <KVRow

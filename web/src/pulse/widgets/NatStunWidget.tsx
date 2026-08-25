@@ -28,7 +28,7 @@ export function NatStunWidget({ onHide }: { onHide?: () => void }) {
     const view = computeNatStunView(nat.data);
     body = (
       <div className="flex flex-col">
-        <KVRow label={ru.pulse.natStun.probeEnabled} value={view.probeEnabled ? "да" : "нет"} />
+        <KVRow label={ru.pulse.natStun.probeEnabled} value={view.probeEnabled ? ru.common.yes : ru.common.no} />
         <KVRow
           label={ru.pulse.natStun.liveServers}
           value={`${view.liveServers}/${view.configuredServers}`}

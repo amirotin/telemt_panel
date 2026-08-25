@@ -36,6 +36,9 @@ export const ru = {
     error: "Ошибка",
     empty: "Пусто",
     stale: "Данные устарели",
+    yes: "да",
+    no: "нет",
+    off: "выкл.",
   },
   auth: {
     username: "Имя пользователя",
@@ -282,6 +285,7 @@ export const ru = {
       kdf: "KDF",
       timeskew: "Расхождение времени",
       pid: "ME-процесс",
+      secondsSuffix: "с",
     },
     recentEvents: {
       empty: "Событий пока нет.",

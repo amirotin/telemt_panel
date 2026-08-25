@@ -32,7 +32,7 @@ export function MePoolWidget({ onHide }: { onHide?: () => void }) {
         <KVRow label={ru.pulse.mePool.writersTotal} value={view.writersTotal} />
         <KVRow label={ru.pulse.mePool.writersAlive} value={view.writersAlive} />
         <KVRow label={ru.pulse.mePool.writersDraining} value={view.writersDraining} />
-        <KVRow label={ru.pulse.mePool.hardswapPending} value={view.hardswapPending ? "да" : "нет"} />
+        <KVRow label={ru.pulse.mePool.hardswapPending} value={view.hardswapPending ? ru.common.yes : ru.common.no} />
         {view.reconnectSuccessTotal !== undefined && view.reconnectAttemptTotal !== undefined && (
           <KVRow
             label={ru.pulse.mePool.reconnects}
