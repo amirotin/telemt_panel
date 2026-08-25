@@ -103,7 +103,7 @@ export function EventsTab() {
                     </span>
                     <span className="text-micro text-text-muted">
                       <span className="tabular-nums">
-                        {formatAuditTimestamp(entry.ts)}
+                        {formatAuditTimestamp(entry.ts, s)}
                       </span>
                       {entry.detail &&
                         entry.action !== "user.enabled" &&

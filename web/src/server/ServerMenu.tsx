@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
-import { ru, useStrings } from "../i18n";
+import { useStrings, type Dict } from "../i18n";
 import {
   IconChevronRight,
   IconPlatform,
@@ -11,41 +11,29 @@ import {
   type IconProps,
 } from "../ui/icons";
 
+// `key` is the dictionary key each row's title/description is looked up
+// under at render time (s.server.menu[key]) — storing the resolved strings
+// here would freeze them to whichever language was active at import time.
 const ITEMS: ReadonlyArray<{
   to: string;
   Icon: ComponentType<IconProps>;
   tint: string;
-  item: { title: string; description: string };
+  key: keyof Dict["server"]["menu"];
 }> = [
-  {
-    to: "/server/config",
-    Icon: IconWrench,
-    tint: "bg-accent/14 text-accent",
-    item: ru.server.menu.config,
-  },
-  {
-    to: "/server/updates",
-    Icon: IconUpgrade,
-    tint: "bg-ok/12 text-ok",
-    item: ru.server.menu.updates,
-  },
-  {
-    to: "/server/security",
-    Icon: IconShield,
-    tint: "bg-warn/12 text-warn",
-    item: ru.server.menu.security,
-  },
+  { to: "/server/config", Icon: IconWrench, tint: "bg-accent/14 text-accent", key: "config" },
+  { to: "/server/updates", Icon: IconUpgrade, tint: "bg-ok/12 text-ok", key: "updates" },
+  { to: "/server/security", Icon: IconShield, tint: "bg-warn/12 text-warn", key: "security" },
   {
     to: "/server/platform",
     Icon: IconPlatform,
     tint: "bg-surface-2 text-text-muted",
-    item: ru.server.menu.platform,
+    key: "platform",
   },
   {
     to: "/server/settings",
     Icon: IconSettings,
     tint: "bg-surface-2 text-text-muted",
-    item: ru.server.menu.settings,
+    key: "settings",
   },
 ];
 
@@ -62,36 +50,33 @@ export function ServerMenu() {
   const s = useStrings();
   return (
     <div className="flex flex-col gap-3.5">
-      <h1 className="text-title font-extrabold tracking-tight text-text">
-        {s.server.title}
-      </h1>
+      <h1 className="text-title font-extrabold tracking-tight text-text">{s.server.title}</h1>
       <nav className="overflow-hidden rounded-2xl bg-surface">
-        {ITEMS.map(({ to, Icon, tint, item }) => (
-          <Link
-            key={to}
-            to={to}
-            className="flex min-h-[56px] items-center gap-3 border-b border-border px-3.5 py-2 transition-colors last:border-b-0 hover:bg-surface-2"
-          >
-            <span
-              aria-hidden="true"
-              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[16px] ${tint}`}
+        {ITEMS.map(({ to, Icon, tint, key }) => {
+          const item = s.server.menu[key];
+          return (
+            <Link
+              key={to}
+              to={to}
+              className="flex min-h-[56px] items-center gap-3 border-b border-border px-3.5 py-2 transition-colors last:border-b-0 hover:bg-surface-2"
             >
-              <Icon />
-            </span>
-            <span className="flex min-w-0 flex-col">
-              <span className="text-row font-medium text-text">
-                {item.title}
+              <span
+                aria-hidden="true"
+                className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[16px] ${tint}`}
+              >
+                <Icon />
               </span>
-              <span className="truncate text-micro text-text-muted">
-                {item.description}
+              <span className="flex min-w-0 flex-col">
+                <span className="text-row font-medium text-text">{item.title}</span>
+                <span className="truncate text-micro text-text-muted">{item.description}</span>
               </span>
-            </span>
-            <IconChevronRight
-              aria-hidden="true"
-              className="ml-auto h-4 w-4 shrink-0 text-text-faint"
-            />
-          </Link>
-        ))}
+              <IconChevronRight
+                aria-hidden="true"
+                className="ml-auto h-4 w-4 shrink-0 text-text-faint"
+              />
+            </Link>
+          );
+        })}
       </nav>
     </div>
   );

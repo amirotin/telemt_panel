@@ -206,7 +206,7 @@ function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }
               row.availableInMode ? "text-text" : "text-text-muted",
             )}
           >
-            {def.title}
+            {s.pulse.widgets[def.id]}
           </span>
           {hint && <span className="block truncate text-micro text-text-muted">{hint}</span>}
         </span>

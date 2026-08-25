@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru, useStrings } from "../i18n";
+import { useStrings, type Dict } from "../i18n";
 import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
 import { Input } from "../ui/Input";
@@ -21,14 +21,12 @@ const LEVEL_DOT: Record<LogLevel, string> = {
   debug: "bg-text-faint",
 };
 
-function serviceLabel(service: LogicalService): string {
-  return service === "telemt"
-    ? ru.journal.source.telemt
-    : ru.journal.source.panel;
+function serviceLabel(service: LogicalService, s: Dict): string {
+  return service === "telemt" ? s.journal.source.telemt : s.journal.source.panel;
 }
 
-function levelLabel(level: LogLevel): string {
-  return ru.journal.level[level];
+function levelLabel(level: LogLevel, s: Dict): string {
+  return s.journal.level[level];
 }
 
 export interface LogToolbarProps {
@@ -94,7 +92,7 @@ export function LogToolbar({
               active={service === opt}
               onClick={() => onServiceChange(opt)}
             >
-              {serviceLabel(opt)}
+              {serviceLabel(opt, s)}
             </Chip>
           ))}
         </div>
@@ -148,7 +146,7 @@ export function LogToolbar({
                 />
               }
             >
-              {levelLabel(level)}
+              {levelLabel(level, s)}
             </Chip>
           );
         })}

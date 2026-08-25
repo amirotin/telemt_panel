@@ -1,14 +1,8 @@
 import { cn } from "../lib/cn";
-import { ru, useStrings } from "../i18n";
+import { useStrings } from "../i18n";
 import { Chip } from "../ui/Chip";
 import { useDisplayMode } from "./DisplayModeContext";
 import type { DisplayMode } from "./mode";
-
-const OPTIONS: Array<{ value: DisplayMode; label: string }> = [
-  { value: "critical", label: ru.displayMode.critical },
-  { value: "basic", label: ru.displayMode.basic },
-  { value: "extended", label: ru.displayMode.extended },
-];
 
 // DisplayModeSwitch — the compact 3-way segmented control used in the
 // header menu (Task 4) and on Пульс's header. Always reads/writes through
@@ -24,13 +18,21 @@ export function DisplayModeSwitch({ className }: { className?: string }) {
   const s = useStrings();
   const { mode, setMode } = useDisplayMode();
 
+  // See ThemeToggle: the labels come from the active dictionary, so this
+  // cannot be a module constant.
+  const options: Array<{ value: DisplayMode; label: string }> = [
+    { value: "critical", label: s.displayMode.critical },
+    { value: "basic", label: s.displayMode.basic },
+    { value: "extended", label: s.displayMode.extended },
+  ];
+
   return (
     <div
       className={cn("inline-flex gap-1.5", className)}
       role="radiogroup"
       aria-label={s.displayMode.label}
     >
-      {OPTIONS.map((opt) => (
+      {options.map((opt) => (
         <Chip
           key={opt.value}
           role="radio"

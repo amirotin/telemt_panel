@@ -9,7 +9,7 @@ import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
 import { IconCopy, IconEye, IconEyeOff } from "../ui/icons";
 import { pushToast } from "../ui/Toast";
-import { ru, useStrings } from "../i18n";
+import { useStrings, type Dict } from "../i18n";
 import { copyText } from "../lib/copyText";
 import {
   createUserMutation,
@@ -373,12 +373,12 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
   );
 }
 
-function modeLabel(m: FieldMode): string {
+function modeLabel(m: FieldMode, s: Dict): string {
   return m === "keep"
-    ? ru.people.form.fieldModeKeep
+    ? s.people.form.fieldModeKeep
     : m === "clear"
-      ? ru.people.form.fieldModeClear
-      : ru.people.form.fieldModeSet;
+      ? s.people.form.fieldModeClear
+      : s.people.form.fieldModeSet;
 }
 
 // FieldModeControl is the explicit three/two-way switch every optional
@@ -396,12 +396,13 @@ function FieldModeControl({
   label: string;
   onChange: (m: FieldMode) => void;
 }) {
+  const s = useStrings();
   const options: FieldMode[] = formMode === "edit" ? ["keep", "clear", "set"] : ["clear", "set"];
   return (
     <div className="flex gap-1.5" role="group" aria-label={label}>
       {options.map((m) => (
         <Chip key={m} active={mode === m} onClick={() => onChange(m)}>
-          {modeLabel(m)}
+          {modeLabel(m, s)}
         </Chip>
       ))}
     </div>

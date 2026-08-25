@@ -175,7 +175,7 @@ function JournalList({
                 {entry.detail ? ` · ${entry.detail}` : ""}
               </span>
               <span className="shrink-0 text-micro tabular-nums text-text-faint">
-                {formatAuditTimestamp(entry.started_at)}
+                {formatAuditTimestamp(entry.started_at, s)}
               </span>
             </li>
           ))}

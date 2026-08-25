@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n";
+import { useStrings, type Dict } from "../i18n";
 import { gridColumnsClass } from "./logColumns";
 import { formatLogClock } from "./timestamp.helpers";
 import type { RingLine } from "./logRing";
@@ -32,18 +32,18 @@ const LEVEL_TEXT_CLASSES: Record<LogTone, string> = {
   muted: "text-text-muted",
 };
 
-function levelLabel(level: string | undefined): string {
+function levelLabel(level: string | undefined, s: Dict): string {
   switch (level) {
     case "error":
-      return ru.journal.level.error;
+      return s.journal.level.error;
     case "warn":
-      return ru.journal.level.warn;
+      return s.journal.level.warn;
     case "info":
-      return ru.journal.level.info;
+      return s.journal.level.info;
     case "debug":
-      return ru.journal.level.debug;
+      return s.journal.level.debug;
     default:
-      return ru.journal.unknownLevel;
+      return s.journal.unknownLevel;
   }
 }
 
@@ -79,6 +79,7 @@ export interface LogLineRowProps {
 // the desktop column order — so no JS breakpoint check is needed and a
 // 500-line feed is never rendered twice.
 export function LogLineRow({ line, showUnit }: LogLineRowProps) {
+  const s = useStrings();
   const tone = levelTone(line.level);
 
   return (
@@ -94,7 +95,7 @@ export function LogLineRow({ line, showUnit }: LogLineRowProps) {
       )}
     >
       <span className="order-2 font-mono text-[10px] tabular-nums text-text-faint lg:order-none lg:text-[11px]">
-        {formatLogClock(line.ts)}
+        {formatLogClock(line.ts, s)}
       </span>
       {/*
         The "·" separators belong to the narrow meta line only — the table
@@ -113,7 +114,7 @@ export function LogLineRow({ line, showUnit }: LogLineRowProps) {
           LEVEL_TEXT_CLASSES[tone],
         )}
       >
-        {levelLabel(line.level)}
+        {levelLabel(line.level, s)}
       </span>
       {/*
         Rendered whenever the unit column exists, even for a line that has

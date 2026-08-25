@@ -1,14 +1,8 @@
 import { useTheme } from "../lib/useTheme";
-import { ru, useStrings } from "../i18n";
+import { useStrings } from "../i18n";
 import { Chip } from "../ui/Chip";
 import { SectionLabel } from "../ui/SectionLabel";
 import type { Theme } from "../lib/theme";
-
-const OPTIONS: Array<{ value: Theme; label: string }> = [
-  { value: "dark", label: ru.theme.dark },
-  { value: "light", label: ru.theme.light },
-  { value: "system", label: ru.theme.system },
-];
 
 // ThemeToggle — the shell-level theme switcher (also reachable from
 // Настройки панели). Persists via lib/theme.ts. Rendered as the
@@ -19,6 +13,15 @@ export function ThemeToggle() {
   const s = useStrings();
   const [theme, setTheme] = useTheme();
 
+  // Built per render rather than as a module constant: the labels come from
+  // the ACTIVE dictionary, and a module constant would freeze whichever
+  // language happened to be resolved at import time.
+  const options: Array<{ value: Theme; label: string }> = [
+    { value: "dark", label: s.theme.dark },
+    { value: "light", label: s.theme.light },
+    { value: "system", label: s.theme.system },
+  ];
+
   return (
     <div className="flex flex-col gap-2">
       <SectionLabel>{s.theme.toggle}</SectionLabel>
@@ -27,7 +30,7 @@ export function ThemeToggle() {
         role="group"
         aria-label={s.theme.toggle}
       >
-        {OPTIONS.map((opt) => (
+        {options.map((opt) => (
           <Chip
             key={opt.value}
             active={theme === opt.value}

@@ -144,7 +144,7 @@ export function SettingsPage() {
                     </span>
                     <span className="text-micro text-text-faint">
                       {s.server.settings.lastSeen}:{" "}
-                      {formatAuditTimestamp(session.last_seen)}
+                      {formatAuditTimestamp(session.last_seen, s)}
                     </span>
                   </div>
                   {/* No revoke action for the current session — revoking it

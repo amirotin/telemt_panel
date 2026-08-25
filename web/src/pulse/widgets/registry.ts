@@ -1,5 +1,4 @@
 import type { FC } from "react";
-import { ru } from "../../i18n";
 import type { DisplayMode } from "../../display-mode";
 import type { TopicName } from "../../realtime";
 import type { DiagDomain, WidgetId } from "../types";
@@ -19,9 +18,8 @@ import { TlsFingerprintsWidget } from "./TlsFingerprintsWidget";
 export type FormFactor = "stat" | "card" | "wide" | "table";
 
 export interface WidgetDef {
+  /** Also the dictionary key its title comes from — `s.pulse.widgets[id]`. */
   id: WidgetId;
-  /** Resolved Russian label (ru.pulse.widgets[id]) — not a translation key, per the single-strings-module rule. */
-  title: string;
   topics: TopicName[];
   minMode: DisplayMode;
   formFactor: FormFactor;
@@ -35,13 +33,15 @@ export interface WidgetDef {
 // WIDGETS is the single registry driving the dashboard's catalog (layout
 // editor's checkbox list), its default/migrated layout, and its actual
 // rendering — 06-ui.md: "один реестр виджетов — каталог и раскладка
-// строятся из него, никакого дублирования". health_hero is always first
+// строятся из него, никакого дублирования". The title is NOT stored here:
+// it is `s.pulse.widgets[id]` in the active dictionary, resolved where it is
+// rendered, so a language switch does not need the registry rebuilt.
+// health_hero is always first
 // and non-hideable; layout.ts's migration/reset logic and the registry
 // invariants test both assume that.
 export const WIDGETS: WidgetDef[] = [
   {
     id: "health_hero",
-    title: ru.pulse.widgets.health_hero,
     topics: ["stats"],
     minMode: "critical",
     formFactor: "wide",
@@ -50,7 +50,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "stat_row",
-    title: ru.pulse.widgets.stat_row,
     topics: ["stats"],
     minMode: "basic",
     formFactor: "wide",
@@ -59,7 +58,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "problems",
-    title: ru.pulse.widgets.problems,
     topics: ["stats", "runtime", "upstreams", "security"],
     minMode: "critical",
     formFactor: "card",
@@ -68,7 +66,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "active_sessions",
-    title: ru.pulse.widgets.active_sessions,
     topics: ["stats"],
     minMode: "basic",
     formFactor: "card",
@@ -78,7 +75,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "dc",
-    title: ru.pulse.widgets.dc,
     topics: ["upstreams"],
     minMode: "basic",
     formFactor: "table",
@@ -88,7 +84,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "upstreams",
-    title: ru.pulse.widgets.upstreams,
     // "runtime" is also subscribed for upstream_quality's compact
     // extended-mode success-rate line (mini-task 2c) — a secondary source,
     // not this widget's primary one.
@@ -101,7 +96,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "security_posture",
-    title: ru.pulse.widgets.security_posture,
     topics: ["security"],
     minMode: "basic",
     formFactor: "card",
@@ -111,7 +105,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "me_pool",
-    title: ru.pulse.widgets.me_pool,
     topics: ["runtime"],
     minMode: "extended",
     formFactor: "card",
@@ -121,7 +114,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "nat_stun",
-    title: ru.pulse.widgets.nat_stun,
     topics: ["runtime"],
     minMode: "extended",
     formFactor: "card",
@@ -131,7 +123,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "selftest",
-    title: ru.pulse.widgets.selftest,
     topics: ["runtime"],
     minMode: "extended",
     formFactor: "card",
@@ -141,7 +132,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "recent_events",
-    title: ru.pulse.widgets.recent_events,
     topics: ["runtime"],
     minMode: "extended",
     formFactor: "card",
@@ -150,7 +140,6 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     id: "tls_fingerprints",
-    title: ru.pulse.widgets.tls_fingerprints,
     topics: ["security"],
     minMode: "extended",
     formFactor: "table",

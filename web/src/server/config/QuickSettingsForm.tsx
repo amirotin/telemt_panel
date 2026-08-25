@@ -1,4 +1,4 @@
-import { ru, useStrings } from "../../i18n";
+import { useStrings, type Dict } from "../../i18n";
 import { KVRow } from "../../ui/KVRow";
 import { Input } from "../../ui/Input";
 import { Toggle } from "../../ui/Toggle";
@@ -12,9 +12,9 @@ import {
 } from "./configFields";
 import { getSectionField, setSectionField } from "./configPatch.helpers";
 
-function formatUnknownValue(value: unknown): string {
+function formatUnknownValue(value: unknown, s: Dict): string {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? ru.common.yes : ru.common.no;
+  if (typeof value === "boolean") return value ? s.common.yes : s.common.no;
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -74,9 +74,7 @@ export function QuickSettingsForm({
                   <KVRow
                     key={key}
                     label={key}
-                    value={formatUnknownValue(
-                      getSectionField(sections, section, key),
-                    )}
+                    value={formatUnknownValue(getSectionField(sections, section, key), s)}
                     monospace
                   />
                 ))}
@@ -104,9 +102,7 @@ function FieldInput({
 }) {
   const s = useStrings();
   const label =
-    s.server.config.fields[
-      field.key as keyof typeof ru.server.config.fields
-    ] ?? field.key;
+    s.server.config.fields[field.key as keyof Dict["server"]["config"]["fields"]] ?? field.key;
 
   if (field.kind === "bool") {
     return (

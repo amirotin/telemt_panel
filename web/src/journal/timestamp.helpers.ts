@@ -1,20 +1,28 @@
+import { localeOf, type Dict } from "../i18n";
+
 // formatLogClock renders a LogLine's `ts` as a tabular HH:MM:SS clock —
 // live log lines are almost always "just now", so the date is noise; the
 // caller applies the `tabular-nums` utility class (design system rule: all
 // numbers) rather than this function padding digits itself.
-export function formatLogClock(ts: string): string {
+//
+// hour12 is pinned off in both languages: an operator scanning a log feed
+// reads elapsed time off it, and 12-hour clocks (English's Intl default)
+// make two lines an hour apart look identical.
+export function formatLogClock(ts: string, s: Dict): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
-  return d.toLocaleTimeString("ru-RU", { hour12: false });
+  return d.toLocaleTimeString(localeOf(s), { hour12: false });
 }
 
 // formatAuditTimestamp renders an AuditEntry's `ts` as date + clock — audit
 // entries (Task 7 deliverable D) can span days, unlike the live log feed,
-// so the date matters here.
-export function formatAuditTimestamp(ts: string): string {
+// so the date matters here. The day/month ORDER follows the locale (ru:
+// 26.08, en: 08/26), which is exactly why this goes through Intl rather
+// than a hand-built template.
+export function formatAuditTimestamp(ts: string, s: Dict): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
-  return d.toLocaleString("ru-RU", {
+  return d.toLocaleString(localeOf(s), {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",

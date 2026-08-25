@@ -54,6 +54,42 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // The UI is bilingual (D3): reading `ru` outside i18n/ pins a string
+      // to Russian forever — exactly the mixed-language screen 06-ui.md
+      // forbids, and one that type-checks and renders fine in Russian, so
+      // nothing else catches it. Components read `useStrings()`; helpers
+      // take an `s: Dict` parameter. Tests are exempt below.
+      "no-restricted-imports": "off",
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/i18n",
+              importNames: ["ru", "en"],
+              message:
+                "Read UI strings through useStrings() (components) or an `s: Dict` parameter (helpers) — importing a dictionary directly freezes the string to one language.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["**/i18n", "**/i18n/ru", "**/i18n/en"],
+              importNames: ["ru", "en"],
+              message:
+                "Read UI strings through useStrings() (components) or an `s: Dict` parameter (helpers) — importing a dictionary directly freezes the string to one language.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Tests and the i18n module itself legitimately name the dictionaries:
+    // a test pins the language it asserts against, and i18n/ is where they
+    // are defined, typed and compared.
+    files: ["src/i18n/**", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": "off",
     },
   },
   {

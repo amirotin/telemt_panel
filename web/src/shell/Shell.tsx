@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "../lib/cn";
-import { ru, useStrings } from "../i18n";
+import { useStrings, type Dict } from "../i18n";
 import { StatusStrip } from "./StatusStrip";
 import { HeaderMenu } from "./HeaderMenu";
 import { useKeyboardInset } from "./useKeyboardInset";
@@ -15,11 +15,18 @@ import {
   type IconProps,
 } from "../ui/icons";
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; Icon: ComponentType<IconProps> }> = [
-  { to: "/people", label: ru.nav.people, Icon: IconPeople },
-  { to: "/pulse", label: ru.nav.pulse, Icon: IconPulse },
-  { to: "/journal", label: ru.nav.journal, Icon: IconJournal },
-  { to: "/server", label: ru.nav.server, Icon: IconServer },
+// `labelKey` indexes the active dictionary at render time (s.nav[labelKey]):
+// a resolved label here would freeze the sidebar to whichever language was
+// active when the module was first imported.
+const NAV_ITEMS: ReadonlyArray<{
+  to: string;
+  labelKey: keyof Dict["nav"];
+  Icon: ComponentType<IconProps>;
+}> = [
+  { to: "/people", labelKey: "people", Icon: IconPeople },
+  { to: "/pulse", labelKey: "pulse", Icon: IconPulse },
+  { to: "/journal", labelKey: "journal", Icon: IconJournal },
+  { to: "/server", labelKey: "server", Icon: IconServer },
 ];
 
 // BrandMark — the square "T" tile from the prototype's sidebar/login. The
@@ -67,7 +74,7 @@ export function Shell({ children }: { children: ReactNode }) {
             a better one, and e2e/desktop.spec.ts asserts the tab bar is
             the hidden one at `lg:`. */}
         <nav className="flex flex-col gap-0.5">
-          {NAV_ITEMS.map(({ to, label, Icon }) => (
+          {NAV_ITEMS.map(({ to, labelKey, Icon }) => (
             <Link
               key={to}
               to={to}
@@ -78,7 +85,7 @@ export function Shell({ children }: { children: ReactNode }) {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {label}
+              {s.nav[labelKey]}
             </Link>
           ))}
         </nav>
@@ -141,7 +148,7 @@ export function Shell({ children }: { children: ReactNode }) {
           style={{ bottom: keyboardInset }}
           aria-label={s.shell.navLabel}
         >
-          {NAV_ITEMS.map(({ to, label, Icon }) => {
+          {NAV_ITEMS.map(({ to, labelKey, Icon }) => {
             const active = pathname === to || pathname.startsWith(`${to}/`);
             return (
               <Link
@@ -155,7 +162,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 aria-current={active ? "page" : undefined}
               >
                 <Icon className="h-5 w-5" />
-                {label}
+                {s.nav[labelKey]}
               </Link>
             );
           })}

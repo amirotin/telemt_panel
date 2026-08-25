@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import yaml from "js-yaml";
@@ -184,5 +184,48 @@ describe("locale resolution", () => {
   it("scans the whole language list for the first supported tag", () => {
     expect(localeFromLanguages(["de-DE", "ru-RU", "en"])).toBe("ru");
     expect(localeFromLanguages(["DE", "EN-us"])).toBe("en");
+  });
+});
+
+describe("no hardcoded UI text", () => {
+  // The lint rule (@typescript-eslint/no-restricted-imports) stops a module
+  // from importing a dictionary directly; this catches the other half — a
+  // Cyrillic literal typed straight into a component. Both are invisible in
+  // Russian and only show up as a mixed screen once the UI is in English,
+  // which is exactly why they need a check that does not need a human to
+  // look at the page. Comments are stripped first: they are allowed to
+  // quote the UI ("the «Настроить» chip").
+  it("has no Cyrillic outside i18n/ and tests", () => {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const srcRoot = path.join(here, "..");
+
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          // i18n/ owns the strings; generated/ is hey-api codegen.
+          if (entry.name === "i18n" || entry.name === "generated") continue;
+          walk(full);
+          continue;
+        }
+        if (!/\.tsx?$/.test(entry.name) || /\.test\.tsx?$/.test(entry.name)) continue;
+        files.push(full);
+      }
+    };
+    walk(srcRoot);
+    expect(files.length).toBeGreaterThan(100);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      const code = readFileSync(file, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^[ \t]*\/\/.*$/gm, "")
+        .replace(/\/\/[^\n"'`]*$/gm, "");
+      if (/[\u0400-\u04FF]/.test(code)) {
+        offenders.push(path.relative(srcRoot, file));
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

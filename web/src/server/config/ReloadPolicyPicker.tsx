@@ -1,14 +1,10 @@
-import { ru, useStrings } from "../../i18n";
+import { useStrings } from "../../i18n";
 import { Chip } from "../../ui/Chip";
 import { Input } from "../../ui/Input";
 import { SectionLabel } from "../../ui/SectionLabel";
 import type { ReloadPolicyState, ReloadMode } from "./reloadPolicy";
 
-const MODES: ReadonlyArray<{ value: ReloadMode; label: string }> = [
-  { value: "none", label: ru.server.config.reloadPolicy.none },
-  { value: "instant", label: ru.server.config.reloadPolicy.instant },
-  { value: "drain", label: ru.server.config.reloadPolicy.drain },
-];
+const MODES: readonly ReloadMode[] = ["none", "instant", "drain"];
 
 // ReloadPolicyPicker — the prototype's segmented pill strip rather than a
 // <select>: three fixed, non-destructive choices that the admin re-picks
@@ -27,11 +23,11 @@ export function ReloadPolicyPicker({
       <div className="flex flex-wrap items-center gap-1.5">
         {MODES.map((mode) => (
           <Chip
-            key={mode.value}
-            active={value.mode === mode.value}
-            onClick={() => onChange({ ...value, mode: mode.value })}
+            key={mode}
+            active={value.mode === mode}
+            onClick={() => onChange({ ...value, mode })}
           >
-            {mode.label}
+            {s.server.config.reloadPolicy[mode]}
           </Chip>
         ))}
         {value.mode === "drain" && (
