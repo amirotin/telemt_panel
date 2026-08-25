@@ -11,9 +11,15 @@ import { useUsersTopic, findQuotaEntry } from "./useUsersTopic";
 import { useNow } from "./useNow";
 import { SublinkPanel } from "./SublinkPanel";
 import { UserActionSheet, type ActionSheetIntent } from "./UserActionSheet";
-import { IpCards, PersonQuotaCard, SectionLabel } from "./PersonSections";
+import {
+  IpCards,
+  PersonExtras,
+  PersonLinks,
+  PersonQuotaCard,
+  SectionLabel,
+} from "./PersonSections";
 import { computeUserStatus, getUserQuota, isOnline } from "./users.helpers";
-import { personAvatarTone } from "./personMeta.helpers";
+import { personAvatarTone, personHasExtras } from "./personMeta.helpers";
 import { formatDurationApprox } from "./expiry";
 import type { UsersTopicUser } from "../realtime/topics";
 
@@ -81,7 +87,7 @@ export function PersonInspector({ username, onClose, onEdit }: PersonInspectorPr
           user={user}
           quotaEntry={findQuotaEntry(topic.quota, user.username)}
           now={now}
-          showRecent={visibleFor("extended", mode)}
+          showExtended={visibleFor("extended", mode)}
           onIntent={setIntent}
         />
       )}
@@ -103,13 +109,13 @@ function InspectorBody({
   user,
   quotaEntry,
   now,
-  showRecent,
+  showExtended,
   onIntent,
 }: {
   user: UsersTopicUser;
   quotaEntry: ReturnType<typeof findQuotaEntry>;
   now: number;
-  showRecent: boolean;
+  showExtended: boolean;
   onIntent: (intent: ActionSheetIntent) => void;
 }) {
   const quota = getUserQuota(user, quotaEntry);
@@ -142,7 +148,7 @@ function InspectorBody({
       </SectionLabel>
       <IpCards ips={activeIps} />
 
-      {showRecent && (
+      {showExtended && (
         <>
           <SectionLabel className="mb-1.5 mt-3.5">{ru.people.detail.recentIpsTitle}</SectionLabel>
           <IpCards ips={user.recent_unique_ips_list ?? []} />
@@ -168,6 +174,23 @@ function InspectorBody({
           {ru.people.actions.delete}
         </Button>
       </div>
+
+      {/* Below the actions, matching the prototype's inspector order
+          (header → quota → IPs → access link → actions): the per-field
+          connection links and the rarely-set extras. Before this, the `lg:`
+          Outlet never rendered, so PersonDetail's own copies of these were
+          simply unreachable on a desktop — same components, narrow layout. */}
+      <SectionLabel className="mb-1.5 mt-4">{ru.people.detail.linksTitle}</SectionLabel>
+      <div className="flex flex-col gap-2">
+        <PersonLinks links={user.links} compact />
+      </div>
+
+      {showExtended && personHasExtras(user) && (
+        <>
+          <SectionLabel className="mb-1.5 mt-4">{ru.people.form.advanced}</SectionLabel>
+          <PersonExtras user={user} />
+        </>
+      )}
     </>
   );
 }

@@ -19,19 +19,16 @@ import { SublinkPanel } from "./SublinkPanel";
 import { ConfirmView } from "../ui/ConfirmView";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
 import { useRefreshTopic } from "../realtime";
+import {
+  intentToView,
+  type ActionSheetIntent,
+  type ActionSheetView,
+} from "./actionSheet.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
 
-// ActionSheetIntent lets a caller open the sheet straight at one step
-// instead of at the menu — the `lg:` Инспектор's Сброс квоты / Отключить /
-// Удалить buttons route through here so they run the exact same
-// confirmation and mutation as the menu, with no second copy of either.
-export type ActionSheetIntent =
-  | "menu"
-  | "share"
-  | "qr"
-  | "reset-quota"
-  | "toggle-enabled"
-  | "delete";
+// ActionSheetIntent is re-exported so callers keep importing the sheet's
+// own vocabulary from the sheet.
+export type { ActionSheetIntent };
 
 export interface UserActionSheetProps {
   open: boolean;
@@ -44,30 +41,11 @@ export interface UserActionSheetProps {
   intent?: ActionSheetIntent;
 }
 
-type View =
-  | { kind: "menu" }
-  | { kind: "share" }
-  | { kind: "qr" }
-  | { kind: "confirm-delete" }
-  | { kind: "confirm-reset-quota" }
-  | { kind: "confirm-toggle-enabled" }
-  | { kind: "confirm-rotate-secret" }
-  | { kind: "new-secret"; secret: string };
-
 // UserActionSheet is the "⋮"/long-press action sheet for one user
 // (06-ui.md §Люди): Поделиться (primary), QR, Открыть в Telegram, Изменить,
 // Сбросить квоту, Отключить/Включить, Удалить — shared between the list
 // (People) and the detail screen so the action set/behavior never drifts
 // between the two entry points.
-const INTENT_VIEW: Record<ActionSheetIntent, View> = {
-  menu: { kind: "menu" },
-  share: { kind: "share" },
-  qr: { kind: "qr" },
-  "reset-quota": { kind: "confirm-reset-quota" },
-  "toggle-enabled": { kind: "confirm-toggle-enabled" },
-  delete: { kind: "confirm-delete" },
-};
-
 export function UserActionSheet({
   open,
   user,
@@ -83,7 +61,7 @@ export function UserActionSheet({
   // three action buttons) remount the sheet with `key={intent}` so this
   // initializer runs again — cheaper and less surprising than an effect
   // that writes state back on every open.
-  const [view, setView] = useState<View>(() => INTENT_VIEW[intent]);
+  const [view, setView] = useState<ActionSheetView>(() => intentToView(intent, user));
   const caps = useCaps();
   const refreshTopic = useRefreshTopic();
 
@@ -187,7 +165,9 @@ export function UserActionSheet({
             <Button
               variant="secondary"
               disabled={!caps.data?.capabilities.user_enable_disable}
-              onClick={() => setView({ kind: "confirm-toggle-enabled" })}
+              onClick={() =>
+                setView({ kind: "confirm-toggle-enabled", nextEnabled: !user.enabled })
+              }
             >
               {user.enabled ? ru.people.actions.disable : ru.people.actions.enable}
             </Button>
@@ -240,15 +220,19 @@ export function UserActionSheet({
 
       {view.kind === "confirm-toggle-enabled" && (
         <ConfirmView
-          description={user.enabled ? ru.people.actions.confirmDisable : ru.people.actions.confirmEnable}
-          confirmLabel={user.enabled ? ru.people.actions.disable : ru.people.actions.enable}
-          danger={user.enabled}
+          description={
+            view.nextEnabled ? ru.people.actions.confirmEnable : ru.people.actions.confirmDisable
+          }
+          confirmLabel={
+            view.nextEnabled ? ru.people.actions.enable : ru.people.actions.disable
+          }
+          danger={!view.nextEnabled}
           pending={setEnabledMutation.isPending}
           onCancel={() => setView({ kind: "menu" })}
           onConfirm={() =>
             setEnabledMutation.mutate({
               path: { username: user.username },
-              body: { enabled: !user.enabled },
+              body: { enabled: view.nextEnabled },
             })
           }
         />
