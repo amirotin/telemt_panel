@@ -1,0 +1,250 @@
+import { Suspense, lazy, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ServerShell } from "../ServerShell";
+import { ru, errorMessage } from "../../i18n/ru";
+import { cn } from "../../lib/cn";
+import { Button } from "../../ui/Button";
+import { Skeleton } from "../../ui/Skeleton";
+import { ErrorState } from "../../ui/ErrorState";
+import { Gated } from "../../caps/Gated";
+import { pushToast } from "../../ui/Toast";
+import { apiErrorMessage } from "../../people/apiError";
+import { useIsDesktop } from "../useIsDesktop";
+import { QuickSettingsForm } from "./QuickSettingsForm";
+import { ReadOnlyJsonView } from "./ReadOnlyJsonView";
+import { ReloadPolicyPicker } from "./ReloadPolicyPicker";
+import { ReloadStepper } from "./ReloadStepper";
+import { PatchResultNotice } from "./PatchResultNotice";
+import { ConflictBanner } from "./ConflictBanner";
+import { useConfigEditor } from "./useConfigEditor";
+import { useReloadPolling } from "./useReloadPolling";
+import { buildConfigPatch } from "./configPatch.helpers";
+import { diffChangedSectionKeys } from "./configConflict.helpers";
+import { DEFAULT_RELOAD_POLICY, toPatchReloadQuery, type ReloadPolicyState } from "./reloadPolicy";
+import {
+  getTelemtConfigOptions,
+  getTelemtConfigQueryKey,
+  getHostOptions,
+  patchTelemtConfigMutation,
+  reloadTelemtMutation,
+  restartTelemtServiceMutation,
+} from "../../lib/api/generated/@tanstack/react-query.gen";
+import { getTelemtConfig } from "../../lib/api/generated/sdk.gen";
+import type { TelemtConfig, TelemtConfigPatchResult } from "../../lib/api/generated/types.gen";
+
+const RawConfigEditor = lazy(() =>
+  import("./RawConfigEditor").then((m) => ({ default: m.RawConfigEditor })),
+);
+
+type Tab = "quick" | "raw";
+
+interface ConflictState {
+  changedKeys: string[];
+  fresh: TelemtConfig;
+}
+
+export function ConfigPage() {
+  const queryClient = useQueryClient();
+  const configQuery = useQuery(getTelemtConfigOptions());
+  const hostQuery = useQuery(getHostOptions());
+  const editor = useConfigEditor(configQuery.data);
+
+  const [tab, setTab] = useState<Tab>("quick");
+  const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(DEFAULT_RELOAD_POLICY);
+  const [rawInvalid, setRawInvalid] = useState(false);
+  const [conflict, setConflict] = useState<ConflictState | null>(null);
+  const [patchResult, setPatchResult] = useState<TelemtConfigPatchResult | null>(null);
+  const [activeReloadId, setActiveReloadId] = useState<number | null>(null);
+  const [patchErrorCode, setPatchErrorCode] = useState<string | null>(null);
+
+  const isDesktop = useIsDesktop();
+  const canRestartTelemt = hostQuery.data?.caps.restart_telemt ?? false;
+
+  const reloadStatusQuery = useReloadPolling(activeReloadId);
+
+  const patchMutation = useMutation({
+    ...patchTelemtConfigMutation(),
+    onSuccess: async (result) => {
+      setPatchResult(result);
+      setConflict(null);
+      setPatchErrorCode(null);
+      if (result.reload) setActiveReloadId(result.reload.reload_id);
+      queryClient.invalidateQueries({ queryKey: getTelemtConfigQueryKey() });
+      // Re-baseline to a fresh revision explicitly (useConfigEditor never
+      // auto-reseeds from the query cache — see that hook's own doc
+      // comment) so the next PATCH's If-Match sends the revision this
+      // PATCH just produced, not the stale one it started from.
+      const fresh = await getTelemtConfig();
+      if (fresh.data) editor.seed(fresh.data);
+    },
+    onError: async (err) => {
+      if (err.code === "revision_conflict" && editor.baseline) {
+        const fresh = await getTelemtConfig();
+        if (fresh.data) {
+          setConflict({
+            changedKeys: diffChangedSectionKeys(editor.baseline.sections, fresh.data.sections),
+            fresh: fresh.data,
+          });
+        }
+        return;
+      }
+      // Every other failure — read_only, the 422 "not editable"/ambiguous-
+      // listeners codes, a stray network error — renders as a persistent
+      // inline banner (below), not just a toast: read_only in particular
+      // describes an ongoing state (Telemt stays read-only until its own
+      // config changes), so a 4s toast alone would under-communicate it.
+      setPatchErrorCode(err.code ?? "internal_error");
+    },
+  });
+
+  const reloadNowMutation = useMutation({
+    ...reloadTelemtMutation(),
+    onSuccess: (accepted) => setActiveReloadId(accepted.reload_id),
+    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+  });
+
+  const restartMutation = useMutation({
+    ...restartTelemtServiceMutation(),
+    onSuccess: () => pushToast(ru.server.platform.restarted, "ok"),
+    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+  });
+
+  if (configQuery.isPending) {
+    return (
+      <ServerShell title={ru.server.config.title}>
+        <Skeleton className="h-40 w-full" />
+      </ServerShell>
+    );
+  }
+
+  if (configQuery.isError) {
+    const code = configQuery.error?.code ?? "internal_error";
+    if (code === "capability_unavailable") {
+      return (
+        <ServerShell title={ru.server.config.title}>
+          <Gated enabled={false} reason={configQuery.error?.message} hint="config_api" />
+        </ServerShell>
+      );
+    }
+    return (
+      <ServerShell title={ru.server.config.title}>
+        <ErrorState message={errorMessage(code)} onRetry={() => configQuery.refetch()} />
+      </ServerShell>
+    );
+  }
+
+  if (!editor.baseline || !editor.edited) {
+    return (
+      <ServerShell title={ru.server.config.title}>
+        <Skeleton className="h-40 w-full" />
+      </ServerShell>
+    );
+  }
+
+  const patch = buildConfigPatch(editor.baseline.sections, editor.edited);
+  const hasChanges = Object.keys(patch).length > 0;
+
+  function save() {
+    if (!editor.baseline || rawInvalid) return;
+    setPatchErrorCode(null);
+    patchMutation.mutate({
+      headers: { "If-Match": editor.baseline.revision },
+      query: toPatchReloadQuery(reloadPolicy),
+      body: { sections: patch },
+    });
+  }
+
+  return (
+    <ServerShell title={ru.server.config.title}>
+      {conflict && (
+        <ConflictBanner
+          changedKeys={conflict.changedKeys}
+          onReload={() => {
+            editor.seed(conflict.fresh);
+            setConflict(null);
+          }}
+        />
+      )}
+
+      {patchErrorCode && (
+        <div className="rounded-xl border border-error/30 bg-error/5 p-4">
+          <p className="text-sm text-error">{errorMessage(patchErrorCode)}</p>
+        </div>
+      )}
+
+      {patchResult && (
+        <PatchResultNotice
+          result={patchResult}
+          canRestartTelemt={canRestartTelemt}
+          reloadPending={reloadNowMutation.isPending}
+          restartPending={restartMutation.isPending}
+          onReloadNow={() => reloadNowMutation.mutate({ body: { mode: "instant" } })}
+          onRestartNow={() => restartMutation.mutate({})}
+        />
+      )}
+
+      {activeReloadId !== null && (
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <ReloadStepper status={reloadStatusQuery.data} errorCode={reloadStatusQuery.error?.code} />
+        </div>
+      )}
+
+      <div className="inline-flex w-fit rounded-lg border border-border bg-surface-2 p-0.5" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "quick"}
+          onClick={() => setTab("quick")}
+          className={cn(
+            "tap-target rounded-md px-4 text-sm font-medium transition-colors",
+            tab === "quick" ? "bg-accent text-accent-text" : "text-text-muted hover:text-text",
+          )}
+        >
+          {ru.server.config.tabs.quick}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "raw"}
+          onClick={() => setTab("raw")}
+          className={cn(
+            "tap-target rounded-md px-4 text-sm font-medium transition-colors",
+            tab === "raw" ? "bg-accent text-accent-text" : "text-text-muted hover:text-text",
+          )}
+        >
+          {ru.server.config.tabs.raw}
+        </button>
+      </div>
+
+      {tab === "quick" ? (
+        <QuickSettingsForm sections={editor.edited} onChange={editor.setEdited} />
+      ) : isDesktop ? (
+        <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-text-faint">{ru.server.config.rawEditorTitle}</p>
+            <RawConfigEditor
+              initialText={JSON.stringify(editor.edited, null, 2)}
+              onChange={(parsed) => {
+                setRawInvalid(parsed === null);
+                if (parsed !== null) editor.setEdited(parsed);
+              }}
+            />
+            {rawInvalid && <p className="text-sm text-error">{ru.server.config.rawParseError}</p>}
+          </div>
+        </Suspense>
+      ) : (
+        <ReadOnlyJsonView sections={editor.edited} />
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4">
+        <ReloadPolicyPicker value={reloadPolicy} onChange={setReloadPolicy} />
+        <div className="flex items-center gap-2">
+          {!hasChanges && <span className="text-xs text-text-faint">{ru.server.config.noChanges}</span>}
+          <Button onClick={save} disabled={!hasChanges || rawInvalid || patchMutation.isPending}>
+            {patchMutation.isPending ? ru.server.config.saving : ru.server.config.save}
+          </Button>
+        </div>
+      </div>
+    </ServerShell>
+  );
+}

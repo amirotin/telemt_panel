@@ -97,6 +97,22 @@ Tailwind v4, hey-api, vitest) plus:
 - **@eslint/js**, **globals**, **typescript-eslint**, **eslint-plugin-react-hooks**,
   **eslint-plugin-react-refresh** — standard ESLint flat-config wiring, no
   Prettier (see `eslint.config.js`'s comment).
+- **@codemirror/state 6.7.1**, **@codemirror/view 6.43.9**,
+  **@codemirror/lang-json 6.0.2** — Task 8's Конфигурация raw editor
+  (`src/server/config/RawConfigEditor.tsx`), exactly the three packages the
+  task brief named as approved. `GET /api/telemt/config`'s `sections` is
+  JSON (api/openapi.yaml's `TelemtConfig.sections`), not a TOML file string
+  — this is a JSON editor over that object, not a pretend TOML editor —
+  hence `@codemirror/lang-json`, no TOML language mode. No
+  `@codemirror/commands` (not in the approved list): basic typing/selection
+  works through CM6's own DOM input handling without it, but there is no
+  Ctrl+Z undo-history stack or Tab-indent keymap — see
+  `RawConfigEditor.tsx`'s own doc comment and task-8-report.md's CodeMirror
+  decision section. Lazy-loaded (`React.lazy`) and gated behind a
+  `min-width: 1024px` check (`src/server/useIsDesktop.ts`) so the ~89KB gz
+  chunk never even downloads on a phone — the mobile view is a plain
+  read-only `<pre>` (`ReadOnlyJsonView.tsx`), per the brief's own "mobile
+  gets read-only, `lg:` gets the editor" split.
 
 No state-management library (zustand, redux, etc.) — `Toast` and, in Task 4,
 the SSE topic store use `useSyncExternalStore` directly, per the plan's ruling.
