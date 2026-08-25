@@ -12,9 +12,21 @@ import (
 	"errors"
 	"html"
 	"io/fs"
+	"mime"
 	"net/http"
 	"strings"
 )
+
+// init registers the Web App Manifest's MIME type. Go's builtin mime map
+// has no association for ".webmanifest", so http.FileServer (serveAsset,
+// via mime.TypeByExtension) falls back to content sniffing and serves the
+// file as text/plain — browsers require application/manifest+json (or
+// application/json) to actually treat it as a manifest. Carried from Task
+// 3's review (task-3-report.md: "carry to T4: .webmanifest served as
+// text/plain").
+func init() {
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 // assetsPrefix is Vite's content-hashed bundle directory (web/vite.config.ts's
 // build.assetsDir — kept as this one constant rather than a literal

@@ -93,6 +93,26 @@ func TestNonAssetFileNoCache(t *testing.T) {
 	}
 }
 
+// Task 4 deliverable G / carried from Task 3's review: Go's builtin mime
+// map has no association for ".webmanifest", so without the init()
+// registration in webui.go this would fall back to sniffed text/plain —
+// browsers require application/manifest+json to treat the file as a PWA
+// manifest at all.
+func TestManifestServedWithCorrectContentType(t *testing.T) {
+	h, err := New(fixtureFS(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/manifest.webmanifest", nil))
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/manifest+json") {
+		t.Errorf("Content-Type = %q, want application/manifest+json", ct)
+	}
+}
+
 func TestETagRevalidation(t *testing.T) {
 	h, err := New(fixtureFS(), "")
 	if err != nil {
