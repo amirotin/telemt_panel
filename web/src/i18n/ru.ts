@@ -497,9 +497,14 @@ export const ru = {
       conflictDescription:
         "Пока вы редактировали конфигурацию, она изменилась на сервере. Изменившиеся ключи:",
       conflictReload: "Перезагрузить и повторить",
+      conflictOverlapWarning: "Эти же ключи изменили и вы — выберите, что оставить",
+      conflictReapplyMine: "Применить мои изменения поверх",
+      conflictDiscardMine: "Отменить мои изменения",
       rawEditorDesktopOnly: "Raw-редактор доступен только на компьютере — здесь только просмотр.",
       rawEditorTitle: "Raw JSON (секции конфигурации)",
       rawParseError: "Некорректный JSON — изменения не будут сохранены, пока ошибка не исправлена.",
+      rawUnsafeInteger:
+        "Число вне безопасного диапазона (потеряет точность) — редактируйте это поле иначе",
       reload: {
         title: "Статус перезагрузки",
         states: {
@@ -538,7 +543,10 @@ export const ru = {
       },
       noActiveRun: "Обновление не выполняется",
       panelRestarting: "Панель перезапускается…",
-      panelRestartWaiting: "Ожидаем ответ обновлённой панели…",
+      panelRestartTimeoutTitle: "Панель не ответила новой версией",
+      panelRestartTimeoutDescription:
+        "Обновлённая панель не подтвердила запуск за отведённое время. Проверьте сервис вручную или откатитесь на резервную копию бинарника (файл с расширением .bak рядом с текущим).",
+      panelRestartRetry: "Повторить проверку",
       journalTitle: "Журнал прошлых запусков",
       journalEmpty: "Запусков ещё не было",
       autoUpdate: {

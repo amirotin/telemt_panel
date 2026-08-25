@@ -64,10 +64,10 @@ export function UpdateTarget({
   const otherRunBlocking = lockHeld && !runIsActive;
 
   const restarting = target === "panel" && activeRun?.phase === "restarting";
-  const restartWatch = usePanelRestartWatch(restarting);
+  const restartWatch = usePanelRestartWatch(restarting, activeRun?.version_to ?? "");
   useEffect(() => {
-    if (restartWatch.data) window.location.reload();
-  }, [restartWatch.data]);
+    if (restartWatch.status === "reload") window.location.reload();
+  }, [restartWatch.status]);
 
   return (
     <section className="rounded-xl border border-border bg-surface p-4">
@@ -82,10 +82,19 @@ export function UpdateTarget({
         />
       </div>
 
-      {restarting && (
-        <p className="mt-3 text-sm text-warn">
-          {restartWatch.data ? ru.server.updates.panelRestartWaiting : ru.server.updates.panelRestarting}
-        </p>
+      {restarting && restartWatch.status === "wait" && (
+        <p className="mt-3 text-sm text-warn">{ru.server.updates.panelRestarting}</p>
+      )}
+
+      {restarting && restartWatch.status === "timeout" && (
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-error/30 bg-error/5 p-3">
+          <p className="text-sm font-medium text-error">{ru.server.updates.panelRestartTimeoutTitle}</p>
+          <p className="text-xs text-text-muted">{ru.server.updates.panelRestartTimeoutDescription}</p>
+          {manualCommands?.["restart_panel"] && <CopyField value={manualCommands["restart_panel"]} />}
+          <Button variant="secondary" onClick={restartWatch.retry} className="self-start">
+            {ru.server.updates.panelRestartRetry}
+          </Button>
+        </div>
       )}
 
       {activeRun ? (
