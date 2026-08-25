@@ -55,6 +55,14 @@ export class FakeEventSource {
     this.dispatch("heartbeat", { data: "{}" } as MessageEvent);
   }
 
+  // emitLog — the `event: log` frame shape used by GET /api/events/logs
+  // (journal/logStream.ts's own client), reusing this fake rather than a
+  // second one per the M3 plan's "share the stale/heartbeat logic where
+  // sensible" instruction.
+  emitLog(line: unknown) {
+    this.dispatch("log", { data: JSON.stringify(line) } as MessageEvent);
+  }
+
   emitSourceError(topic: string, code: string) {
     this.dispatch("source_error", { data: JSON.stringify({ topic, code }) } as MessageEvent);
   }

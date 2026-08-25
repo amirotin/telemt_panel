@@ -381,6 +381,49 @@ export const ru = {
       upstreamQualityUpstream: "Качество апстрима",
     },
   },
+  journal: {
+    tabs: { logs: "Логи", events: "События" },
+    source: { telemt: "Telemt", panel: "Панель" },
+    sourceLabel: "Источник",
+    level: {
+      error: "Ошибка",
+      warn: "Предупреждение",
+      info: "Инфо",
+      debug: "Отладка",
+    },
+    levelLabel: "Уровень",
+    unknownLevel: "н/д",
+    searchPlaceholder: "Поиск по логам",
+    unitColumn: "Юнит",
+    pause: "Пауза",
+    resume: "Продолжить",
+    clear: "Очистить",
+    // {n} — see journal/timestamp.helpers.ts-adjacent helpers for the
+    // substitution; kept as a template string here per the single-strings-
+    // module rule rather than a function (ru.ts stays plain data).
+    newLinesTemplate: "+{n} новых — к новым",
+    showEarlier: "Показать раньше",
+    showMore: "Показать ещё",
+    reconnecting: "Переподключение…",
+    streamClosedTitle: "Поток логов остановлен",
+    retryStream: "Переподключить",
+    tailFallback: {
+      title: "Живые логи недоступны на этой платформе",
+      loadButton: "Загрузить хвост",
+      loadMoreButton: "Обновить",
+    },
+    gatedTitle: "Логи недоступны на этом хосте",
+    emptyTitle: "Логи ещё не поступали",
+    emptyFilterTitle: "Ничего не найдено",
+    emptyFilterDescription: "Измените фильтр по уровню или поисковый запрос.",
+    events: {
+      emptyTitle: "Событий пока нет",
+      emptyDescription: "Действия администратора появятся здесь.",
+      unknownAction: "Неизвестное действие",
+      enabledTrue: "включён",
+      enabledFalse: "отключён",
+    },
+  },
   gated: {
     disabledPrefix: "Выключено: ",
     defaultReason: "функция недоступна на этом сервере.",
@@ -468,3 +511,30 @@ export const errorMessages: Record<string, string> = {
 export function errorMessage(code: string): string {
   return errorMessages[code] ?? errorMessages["default"];
 }
+
+// auditActionLabels maps every AuditEntry.action string the panel's own
+// store.appendAudit call sites emit (api/openapi.yaml's AuditEntry.action
+// is a free-text field, not an enum, so there's no schema to walk the way
+// errorMessages' completeness test walks Error.code — see
+// journal/auditActions.test.ts's own hardcoded, commented list of backend
+// call sites for the completeness check). Kept as a plain Record (not `as
+// const`, same reasoning as errorMessages above) since journal/
+// auditActions.ts looks it up by a dynamic action string coming off the
+// wire.
+export const auditActionLabels: Record<string, string> = {
+  login: "Вход",
+  "login.failed": "Неудачный вход",
+  logout: "Выход",
+  "user.create": "Создан пользователь",
+  "user.patch": "Изменён пользователь",
+  "user.delete": "Удалён пользователь",
+  "quota.reset": "Сброшена квота",
+  "secret.rotate": "Обновлён секрет",
+  "user.enabled": "Изменён статус пользователя",
+  "sublink.rotate": "Перевыпущена ссылка подписки",
+  "config.patch": "Изменена конфигурация Telemt",
+  "telemt.reload": "Перезагружена конфигурация Telemt",
+  "telemt.restart": "Перезапущен Telemt",
+  "update.apply": "Запущено обновление",
+  "update.auto_change": "Изменены настройки авто-обновления",
+};
