@@ -11,7 +11,8 @@ import { Input } from "../ui/Input";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
-    redirect: typeof search["redirect"] === "string" ? search["redirect"] : undefined,
+    redirect:
+      typeof search["redirect"] === "string" ? search["redirect"] : undefined,
   }),
   beforeLoad: async ({ context, search }) => {
     await redirectIfAuthenticated(context.queryClient, search.redirect);
@@ -52,16 +53,42 @@ function LoginPage() {
     mutation.mutate({ body: { username, password } });
   }
 
-  const canSubmit = username.length > 0 && password.length > 0 && !mutation.isPending;
+  const canSubmit =
+    username.length > 0 && password.length > 0 && !mutation.isPending;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 px-4 py-10">
-      <h1 className="text-center text-xl font-semibold text-text">{ru.app.title}</h1>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-        <label className="flex flex-col gap-1 text-sm text-text-muted">
-          {ru.auth.username}
+    <main className="mx-auto flex min-h-dvh w-full max-w-[360px] flex-col justify-center gap-3.5 px-4 py-10">
+      <div className="flex flex-col items-center gap-1.5 pb-1">
+        <span
+          className="brand-gradient inline-flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white"
+          aria-hidden="true"
+        >
+          T
+        </span>
+        <h1 className="mt-1 text-xl font-extrabold tracking-tight text-text">
+          {ru.app.title}
+        </h1>
+        <p className="text-meta text-text-muted">{ru.auth.tagline}</p>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-2.5 rounded-2xl bg-surface p-4"
+        noValidate
+      >
+        {formError && (
+          <p
+            role="alert"
+            className="rounded-lg border border-error/30 bg-error/10 px-3 py-2.5 text-meta text-error"
+          >
+            {formError}
+          </p>
+        )}
+        <label className="contents">
+          <span className="sr-only">{ru.auth.username}</span>
           <Input
             name="username"
+            placeholder={ru.auth.username}
             autoComplete="username"
             autoCapitalize="off"
             autoCorrect="off"
@@ -70,23 +97,19 @@ function LoginPage() {
             required
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm text-text-muted">
-          {ru.auth.password}
+        <label className="contents">
+          <span className="sr-only">{ru.auth.password}</span>
           <Input
             type="password"
             name="password"
+            placeholder={ru.auth.password}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
         </label>
-        {formError && (
-          <p role="alert" className="text-sm text-error">
-            {formError}
-          </p>
-        )}
-        <Button type="submit" disabled={!canSubmit}>
+        <Button type="submit" disabled={!canSubmit} className="mt-1 w-full">
           {mutation.isPending ? ru.auth.signingIn : ru.auth.signIn}
         </Button>
       </form>

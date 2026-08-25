@@ -56,6 +56,9 @@ export const ru = {
     signIn: "Войти",
     signingIn: "Вход…",
     signOut: "Выйти",
+    // Prototype's login artboard: the brand mark carries a one-line
+    // subtitle under the product name.
+    tagline: "Управление MTProxy",
   },
   nav: {
     people: "Люди",
@@ -116,7 +119,8 @@ export const ru = {
     },
     create: "Создать",
     emptyTitle: "Пока нет пользователей",
-    emptyDescription: "Создайте первого пользователя, чтобы выдать доступ к прокси.",
+    emptyDescription:
+      "Создайте первого пользователя, чтобы выдать доступ к прокси.",
     notFoundTitle: "Пользователь не найден",
     online: "Онлайн",
     offline: "Оффлайн",
@@ -156,24 +160,30 @@ export const ru = {
       delete: "Удалить",
       cancel: "Отмена",
       confirmDelete: "Удалить пользователя?",
-      confirmDeleteDescription: "Доступ будет отозван немедленно. Действие необратимо.",
+      confirmDeleteDescription:
+        "Доступ будет отозван немедленно. Действие необратимо.",
       confirmResetQuota: "Сбросить использованную квоту трафика?",
-      confirmDisable: "Отключить пользователя? Активные соединения будут прерваны.",
+      confirmDisable:
+        "Отключить пользователя? Активные соединения будут прерваны.",
       confirmEnable: "Включить пользователя?",
-      confirmRotateSecret: "Перевыпустить секрет? Старая ссылка подключения перестанет работать.",
+      confirmRotateSecret:
+        "Перевыпустить секрет? Старая ссылка подключения перестанет работать.",
       noTelegramLink: "У пользователя нет ссылки для подключения.",
-      unsafeTelegramLink: "Ссылка подключения имеет неожиданный формат — переход отменён.",
+      unsafeTelegramLink:
+        "Ссылка подключения имеет неожиданный формат — переход отменён.",
       rotateSecret: "Сменить секрет",
     },
     share: {
       title: "Поделиться доступом",
       unavailableModule: "Страница подписки отключена в настройках панели.",
-      unavailableNoLink: "У пользователя нет classic- или secure-ссылки, чтобы построить подписку.",
+      unavailableNoLink:
+        "У пользователя нет classic- или secure-ссылки, чтобы построить подписку.",
       regenerate: "Перевыпустить ссылку",
       // Short form for the inspector's three-button row, where the full
       // label would wrap onto two lines.
       regenerateShort: "Перевыпуск",
-      confirmRegenerate: "Перевыпустить ссылку? Старая ссылка перестанет работать.",
+      confirmRegenerate:
+        "Перевыпустить ссылку? Старая ссылка перестанет работать.",
       linkLabel: "Ссылка подписки",
     },
     form: {
@@ -256,7 +266,7 @@ export const ru = {
     hideWidget: "Скрыть виджет",
     alwaysOn: "Всегда включён",
     unavailableInMode: "Недоступно в текущем режиме",
-    diagLink: "Диагностика →",
+    diagLink: "Диагностика",
     emptyLayoutTitle: "Дашборд пуст",
     emptyLayoutDescription: "Включите виджеты в режиме «Настроить».",
     widgets: {
@@ -286,6 +296,7 @@ export const ru = {
       activeUsers: "Активные пользователи",
       activeUsersApprox: "Активные пользователи (оценка)",
       traffic: "Трафик (15 мин)",
+      peak15m: "пик за 15 мин",
       uptime: "Аптайм",
     },
     problems: {
@@ -373,7 +384,8 @@ export const ru = {
     searchPlaceholder: "Поиск по ключу",
     noResults: "Ничего не найдено по запросу.",
     extendedOnlyTitle: "Доступно в расширенном режиме",
-    extendedOnlyDescription: "Полный дамп счётчиков показывается только в расширенном режиме отображения.",
+    extendedOnlyDescription:
+      "Полный дамп счётчиков показывается только в расширенном режиме отображения.",
     switchToExtended: "Переключить на расширенный режим",
     emptyTitle: "Нет данных",
     emptyDescription: "Данные ещё не загружены или источник недоступен.",
@@ -443,6 +455,11 @@ export const ru = {
     levelLabel: "Уровень",
     unknownLevel: "н/д",
     searchPlaceholder: "Поиск по логам",
+    // Column captions for the desktop feed's header row (the prototype's
+    // ВРЕМЯ / УРОВЕНЬ / СООБЩЕНИЕ strip above the lines).
+    timeColumn: "Время",
+    levelColumn: "Уровень",
+    messageColumn: "Сообщение",
     unitColumn: "Юнит",
     pause: "Пауза",
     resume: "Продолжить",
@@ -450,7 +467,10 @@ export const ru = {
     // {n} — see journal/timestamp.helpers.ts-adjacent helpers for the
     // substitution; kept as a template string here per the single-strings-
     // module rule rather than a function (ru.ts stays plain data).
-    newLinesTemplate: "+{n} новых — к новым",
+    // newLinesTemplate captions the centered pill above a paused feed;
+    // jumpToNewTemplate is the floating button that scrolls back down.
+    newLinesTemplate: "+{n} новых",
+    jumpToNewTemplate: "к новым · {n}",
     showEarlier: "Показать раньше",
     showMore: "Показать ещё",
     reconnecting: "Переподключение…",
@@ -458,10 +478,14 @@ export const ru = {
     retryStream: "Переподключить",
     tailFallback: {
       title: "Живые логи недоступны на этой платформе",
+      description:
+        "Источник логов умеет отдать только последние строки — их можно загрузить вручную и обновлять по кнопке.",
       loadButton: "Загрузить хвост",
       loadMoreButton: "Обновить",
     },
     gatedTitle: "Логи недоступны на этом хосте",
+    gatedDescription:
+      "Платформа не даёт панели читать журнал службы. Выполните команду ниже на сервере, чтобы посмотреть логи вручную.",
     emptyTitle: "Логи ещё не поступали",
     emptyFilterTitle: "Ничего не найдено",
     emptyFilterDescription: "Измените фильтр по уровню или поисковый запрос.",
@@ -486,12 +510,14 @@ export const ru = {
       runtime_edge:
         "Включите runtime_edge_enabled = true в конфиге Telemt и перезапустите прокси.",
       quota: "Обновите Telemt — квоты трафика появились в более новой версии.",
-      config_api: "Обновите Telemt или включите редактирование конфигурации через его API.",
+      config_api:
+        "Обновите Telemt или включите редактирование конфигурации через его API.",
       reload_api:
         "Обновите Telemt — горячая перезагрузка конфигурации появилась в более новой версии.",
       user_enable_disable:
         "Обновите Telemt — включение и отключение пользователей появилось в более новой версии.",
-      rotate_secret: "Обновите Telemt — смена секрета через API появилась в более новой версии.",
+      rotate_secret:
+        "Обновите Telemt — смена секрета через API появилась в более новой версии.",
       log_stream:
         "Живые логи недоступны на этой платформе — используйте разовый показ последних строк.",
       minimal_runtime_enabled:
@@ -502,16 +528,35 @@ export const ru = {
     title: "Сервер",
     back: "← Сервер",
     menu: {
-      config: { title: "Конфигурация", description: "Быстрые настройки и raw-редактор" },
-      updates: { title: "Обновления", description: "Версии, обновление, автообновление" },
-      security: { title: "Безопасность", description: "Посадка API, белые списки, TLS" },
-      platform: { title: "Платформа", description: "Хост, привилегии, ручные команды" },
-      settings: { title: "Настройки панели", description: "Сессии, тема, раскладка дашборда" },
+      config: {
+        title: "Конфигурация",
+        description: "Быстрые настройки и raw-редактор",
+      },
+      updates: {
+        title: "Обновления",
+        description: "Версии, обновление, автообновление",
+      },
+      security: {
+        title: "Безопасность",
+        description: "Посадка API, белые списки, TLS",
+      },
+      platform: {
+        title: "Платформа",
+        description: "Хост, привилегии, ручные команды",
+      },
+      settings: {
+        title: "Настройки панели",
+        description: "Сессии, тема, раскладка дашборда",
+      },
     },
     config: {
       title: "Конфигурация",
       tabs: { quick: "Быстрые настройки", raw: "Raw" },
-      sections: { general: "Общее", timeouts: "Таймауты (с)", censorship: "Маскировка" },
+      sections: {
+        general: "Общее",
+        timeouts: "Таймауты (с)",
+        censorship: "Маскировка",
+      },
       fields: {
         use_middle_proxy: "Middle proxy",
         ad_tag: "Ad Tag",
@@ -538,7 +583,8 @@ export const ru = {
       noChanges: "Нет изменений",
       saved: "Конфигурация обновлена",
       changedTitle: "Изменённые ключи",
-      runtimeReloadNotice: "Требуется перезагрузка конфигурации для применения изменений.",
+      runtimeReloadNotice:
+        "Требуется перезагрузка конфигурации для применения изменений.",
       processRestartNotice: "Часть изменений требует перезапуска Telemt:",
       reloadNow: "Перезагрузить сейчас",
       restartNow: "Перезапустить Telemt",
@@ -546,12 +592,15 @@ export const ru = {
       conflictDescription:
         "Пока вы редактировали конфигурацию, она изменилась на сервере. Изменившиеся ключи:",
       conflictReload: "Перезагрузить и повторить",
-      conflictOverlapWarning: "Эти же ключи изменили и вы — выберите, что оставить",
+      conflictOverlapWarning:
+        "Эти же ключи изменили и вы — выберите, что оставить",
       conflictReapplyMine: "Применить мои изменения поверх",
       conflictDiscardMine: "Отменить мои изменения",
-      rawEditorDesktopOnly: "Raw-редактор доступен только на компьютере — здесь только просмотр.",
+      rawEditorDesktopOnly:
+        "Raw-редактор доступен только на компьютере — здесь только просмотр.",
       rawEditorTitle: "Raw JSON (секции конфигурации)",
-      rawParseError: "Некорректный JSON — изменения не будут сохранены, пока ошибка не исправлена.",
+      rawParseError:
+        "Некорректный JSON — изменения не будут сохранены, пока ошибка не исправлена.",
       rawUnsafeInteger:
         "Число вне безопасного диапазона (потеряет точность) — редактируйте это поле иначе",
       reload: {
@@ -600,7 +649,11 @@ export const ru = {
       journalEmpty: "Запусков ещё не было",
       autoUpdate: {
         title: "Автообновление",
-        modes: { off: "Выкл.", check: "Только уведомлять", apply: "Устанавливать автоматически" },
+        modes: {
+          off: "Выкл.",
+          check: "Только уведомлять",
+          apply: "Устанавливать автоматически",
+        },
         intervalLabel: "Интервал проверки, ч",
         save: "Сохранить",
         saved: "Настройки автообновления сохранены",
@@ -626,7 +679,8 @@ export const ru = {
       },
       logLevel: "Уровень логирования",
       telemetryMeLevel: "Телеметрия ME",
-      tlsExtendedOnly: "TLS-отпечатки показываются только в расширенном режиме.",
+      tlsExtendedOnly:
+        "TLS-отпечатки показываются только в расширенном режиме.",
     },
     platform: {
       title: "Платформа",
@@ -644,7 +698,8 @@ export const ru = {
       },
       manualCommandsTitle: "Ручные команды",
       restartTelemt: "Перезапустить Telemt",
-      restartConfirm: "Перезапустить Telemt сейчас? Активные соединения будут разорваны.",
+      restartConfirm:
+        "Перезапустить Telemt сейчас? Активные соединения будут разорваны.",
       restarted: "Telemt перезапускается",
     },
     settings: {
@@ -663,7 +718,8 @@ export const ru = {
       displayTitle: "Отображение",
       dashboardTitle: "Дашборд",
       resetLayout: "Сбросить раскладку дашборда",
-      resetLayoutConfirm: "Сбросить раскладку дашборда Пульса к значениям по умолчанию?",
+      resetLayoutConfirm:
+        "Сбросить раскладку дашборда Пульса к значениям по умолчанию?",
       resetLayoutDone: "Раскладка сброшена",
       signOut: "Выйти",
     },
@@ -683,13 +739,15 @@ export const errorMessages: Record<string, string> = {
   invalid_credentials: "Неверное имя пользователя или пароль.",
   rate_limited: "Слишком много попыток входа. Подождите минуту и повторите.",
   session_expired: "Сессия истекла. Войдите снова.",
-  csrf_rejected: "Запрос отклонён проверкой безопасности — обновите страницу и повторите.",
+  csrf_rejected:
+    "Запрос отклонён проверкой безопасности — обновите страницу и повторите.",
   internal_error: "Внутренняя ошибка панели. Попробуйте ещё раз.",
   not_found: "Не найдено.",
   telemt_unreachable: "Telemt недоступен — проверьте, что прокси запущен.",
   capability_absent: "Эта версия Telemt не поддерживает данную функцию.",
   capability_unavailable: "Функция сейчас недоступна на этом сервере.",
-  manual_restart_required: "Автоматический перезапуск недоступен — выполните команду вручную.",
+  manual_restart_required:
+    "Автоматический перезапуск недоступен — выполните команду вручную.",
   update_locked: "Обновление уже выполняется.",
   sublink_unavailable: "Страница подписки отключена.",
   log_tail_unavailable: "Просмотр последних строк логов недоступен.",
@@ -698,7 +756,8 @@ export const errorMessages: Record<string, string> = {
   // Reserved for milestones not yet implemented, kept so a stray response
   // from a partially-rolled-out backend still shows something sensible.
   totp_required: "Требуется код двухфакторной аутентификации.",
-  telemt_auth_failed: "Telemt отклонил авторизацию панели — проверьте auth_header в конфиге.",
+  telemt_auth_failed:
+    "Telemt отклонил авторизацию панели — проверьте auth_header в конфиге.",
   // Telemt *APIError codes passed through verbatim.
   user_exists: "Пользователь с таким именем уже существует.",
   last_user_forbidden: "Нельзя удалить последнего пользователя.",
@@ -706,14 +765,16 @@ export const errorMessages: Record<string, string> = {
   revision_conflict: "Конфигурация изменена — обновите её и повторите попытку.",
   reload_in_progress: "Перезагрузка конфигурации уже выполняется.",
   reload_not_found: "Задача перезагрузки не найдена.",
-  ambiguous_listeners: "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
+  ambiguous_listeners:
+    "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
   access_not_editable: "Этот раздел конфигурации нельзя изменить через API.",
   section_not_editable: "Этот раздел конфигурации доступен только для чтения.",
   field_not_editable: "Это поле нельзя изменить через API.",
   unauthorized: "Telemt отклонил запрос авторизации.",
   forbidden: "Операция запрещена.",
   method_not_allowed: "Метод не поддерживается.",
-  config_patch_not_atomic: "Не удалось применить изменения конфигурации атомарно.",
+  config_patch_not_atomic:
+    "Не удалось применить изменения конфигурации атомарно.",
   payload_too_large: "Слишком большой запрос.",
   api_disabled: "API Telemt отключён.",
   maestro_unavailable: "Внутренний сервис Telemt недоступен.",
