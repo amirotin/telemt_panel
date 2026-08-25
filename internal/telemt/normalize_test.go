@@ -183,3 +183,16 @@ func TestNormalizeSlices_RealSDKType(t *testing.T) {
 		t.Errorf("marshaled by_dc = %#v, want []", v)
 	}
 }
+
+// TestNormalizeSlices_DescendsIntoFixedArrays guards the reflect.Array
+// branch: a nil slice inside a fixed-size array element is normalized.
+func TestNormalizeSlices_DescendsIntoFixedArrays(t *testing.T) {
+	type leaf struct{ Items []int }
+	var v struct{ Pair [2]leaf }
+	normalizeSlices(&v)
+	for i := range v.Pair {
+		if v.Pair[i].Items == nil {
+			t.Fatalf("Pair[%d].Items still nil after normalize", i)
+		}
+	}
+}

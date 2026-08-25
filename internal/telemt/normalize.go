@@ -34,9 +34,18 @@ func normalizeSlices(v any) {
 }
 
 // normalizeValue is normalizeSlices' recursive step over an addressable
-// reflect.Value.
+// reflect.Value. Invariant: the value came straight out of json.Unmarshal,
+// so the pointer graph is a tree (JSON cannot encode back-references) and
+// the walk needs no cycle guard. Interface-typed fields are not descended
+// into: a struct held in an interface is not settable through it, and no
+// SDK type uses one — the default branch is the deliberate "unsupported
+// kind, leave as is" edge.
 func normalizeValue(v reflect.Value) {
 	switch v.Kind() {
+	case reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			normalizeValue(v.Index(i))
+		}
 	case reflect.Slice:
 		// []byte / json.RawMessage (Elem().Kind() == Uint8) are opaque
 		// JSON-value containers, not JSON arrays — ConfigSections' section
