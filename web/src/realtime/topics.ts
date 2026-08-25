@@ -701,3 +701,20 @@ export interface SecurityTopic {
   tls_fingerprints?: Gated<RuntimeEdgeTLSFingerprints>;
 }
 
+// UpdateTopicEvent mirrors internal/update/engine.go's runEventWire — the
+// "update" topic is event-driven (hub.go's PublishUpdate), not polled, and
+// carries only the single latest phase-transition across BOTH targets (the
+// update engine holds one global lock, so at most one target is ever
+// actually running); a consumer must check `.target` before treating this
+// as progress for the target it cares about.
+export interface UpdateTopicEvent {
+  run_id: string;
+  target: "telemt" | "panel";
+  phase: "checking" | "downloading" | "verifying" | "staging" | "installing" | "restarting" | "health" | "done" | "rolling_back" | "rolled_back" | "failed";
+  version_from?: string;
+  version_to: string;
+  started_at: string;
+  finished_at?: string;
+  detail?: string;
+}
+
