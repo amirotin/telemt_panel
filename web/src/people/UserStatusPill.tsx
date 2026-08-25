@@ -1,5 +1,5 @@
 import { StatePill, type State } from "../ui/StatePill";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import type { UserStatus } from "./users.helpers";
 
 const STATE_BY_STATUS: Record<UserStatus, State> = {
@@ -11,9 +11,10 @@ const STATE_BY_STATUS: Record<UserStatus, State> = {
 };
 
 export function UserStatusPill({ status, className }: { status: UserStatus; className?: string }) {
+  const s = useStrings();
   return (
     <StatePill state={STATE_BY_STATUS[status]} className={className}>
-      {ru.people.status[status]}
+      {s.people.status[status]}
     </StatePill>
   );
 }

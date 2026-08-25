@@ -1,5 +1,5 @@
 import { useTheme } from "../lib/useTheme";
-import { ru } from "../i18n/ru";
+import { ru, useStrings } from "../i18n";
 import { Chip } from "../ui/Chip";
 import { SectionLabel } from "../ui/SectionLabel";
 import type { Theme } from "../lib/theme";
@@ -16,15 +16,16 @@ const OPTIONS: Array<{ value: Theme; label: string }> = [
 // choices whose effect is instant and visible, so hiding two of them
 // behind a dropdown buys nothing.
 export function ThemeToggle() {
+  const s = useStrings();
   const [theme, setTheme] = useTheme();
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionLabel>{ru.theme.toggle}</SectionLabel>
+      <SectionLabel>{s.theme.toggle}</SectionLabel>
       <div
         className="flex flex-wrap gap-1.5"
         role="group"
-        aria-label={ru.theme.toggle}
+        aria-label={s.theme.toggle}
       >
         {OPTIONS.map((opt) => (
           <Chip

@@ -1,4 +1,4 @@
-import { ru } from "../i18n/ru";
+import { countLabel, formatNumber, type Dict } from "../i18n";
 import { formatBytes } from "../lib/format";
 import type { UserQuotaView, UserStatus } from "./users.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
@@ -29,48 +29,48 @@ export interface PersonMetaInput {
   quota: UserQuotaView;
 }
 
-function quotaPhrase(quota: UserQuotaView): string {
-  if (quota.limitBytes === null) return formatBytes(quota.usedBytes);
-  return `${formatBytes(quota.usedBytes)} ${ru.people.meta.of} ${formatBytes(quota.limitBytes)}`;
+function quotaPhrase(quota: UserQuotaView, s: Dict): string {
+  if (quota.limitBytes === null) return formatBytes(quota.usedBytes, s);
+  return `${formatBytes(quota.usedBytes, s)} ${s.people.meta.of} ${formatBytes(quota.limitBytes, s)}`;
 }
 
 // quotaSummary is the Инспектор's «12,4 из 50 ГБ» header figure and the
 // detail screen's caption under the bar — one phrasing for both, and
 // unlike quotaPhrase it names an absent limit instead of staying silent
 // about it (the row's meta line has no room, a quota card does).
-export function quotaSummary(quota: UserQuotaView): string {
+export function quotaSummary(quota: UserQuotaView, s: Dict): string {
   if (quota.limitBytes === null) {
-    return `${formatBytes(quota.usedBytes)} · ${ru.people.form.quotaUnlimited}`;
+    return `${formatBytes(quota.usedBytes, s)} · ${s.people.form.quotaUnlimited}`;
   }
-  return quotaPhrase(quota);
+  return quotaPhrase(quota, s);
 }
 
 // personMeta: the status-driven line wins over the activity line — a
 // disabled or expired access is the thing to act on, and showing "2 соед"
 // for it would bury that.
-export function personMeta({ user, status, quota }: PersonMetaInput): PersonMeta {
+export function personMeta({ user, status, quota }: PersonMetaInput, s: Dict): PersonMeta {
   switch (status) {
     case "quota_exhausted":
-      return { text: `${ru.people.meta.quotaExhausted} · ${quotaPhrase(quota)}`, tone: "error" };
+      return { text: `${s.people.meta.quotaExhausted} · ${quotaPhrase(quota, s)}`, tone: "error" };
     case "expired":
-      return { text: ru.people.meta.expired, tone: "warn" };
+      return { text: s.people.meta.expired, tone: "warn" };
     case "disabled":
-      return { text: ru.people.meta.disabled, tone: "faint" };
+      return { text: s.people.meta.disabled, tone: "faint" };
     case "not_in_runtime":
-      return { text: ru.people.meta.notInRuntime, tone: "warn" };
+      return { text: s.people.meta.notInRuntime, tone: "warn" };
     case "active":
       break;
   }
 
   if (user.current_connections > 0) {
     const parts = [
-      `${user.current_connections} ${ru.shell.connectionsShort}`,
-      `${user.active_unique_ips} ${ru.people.meta.ipShort}`,
-      quotaPhrase(quota),
+      countLabel(s, user.current_connections, s.shell.connectionsUnit),
+      `${formatNumber(s, user.active_unique_ips)} ${s.people.meta.ipShort}`,
+      quotaPhrase(quota, s),
     ];
     return { text: parts.join(" · "), tone: "muted" };
   }
-  return { text: `${ru.people.meta.idle} · ${quotaPhrase(quota)}`, tone: "muted" };
+  return { text: `${s.people.meta.idle} · ${quotaPhrase(quota, s)}`, tone: "muted" };
 }
 
 export type PersonBadge = { text: string; tone: "accent" | "error" | "warn" | "muted" } | null;
@@ -79,21 +79,21 @@ export type PersonBadge = { text: string; tone: "accent" | "error" | "warn" | "m
 // count for someone online, a word for a state that needs attention, and
 // nothing at all for an idle-but-healthy access (the prototype leaves that
 // slot empty rather than printing a zero).
-export function personBadge({ user, status }: Omit<PersonMetaInput, "quota">): PersonBadge {
+export function personBadge({ user, status }: Omit<PersonMetaInput, "quota">, s: Dict): PersonBadge {
   switch (status) {
     case "quota_exhausted":
-      return { text: ru.people.badge.quota, tone: "error" };
+      return { text: s.people.badge.quota, tone: "error" };
     case "expired":
-      return { text: ru.people.badge.expired, tone: "warn" };
+      return { text: s.people.badge.expired, tone: "warn" };
     case "disabled":
-      return { text: ru.people.badge.disabled, tone: "muted" };
+      return { text: s.people.badge.disabled, tone: "muted" };
     case "not_in_runtime":
-      return { text: ru.people.badge.notInRuntime, tone: "warn" };
+      return { text: s.people.badge.notInRuntime, tone: "warn" };
     case "active":
       break;
   }
   if (user.current_connections > 0) {
-    return { text: String(user.current_connections), tone: "accent" };
+    return { text: formatNumber(s, user.current_connections), tone: "accent" };
   }
   return null;
 }

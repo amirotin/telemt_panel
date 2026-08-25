@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { StatePill } from "../ui/StatePill";
 import { Skeleton } from "../ui/Skeleton";
 import { useSnapshot, useConnectionState } from "../realtime";
@@ -30,20 +30,21 @@ export interface StatusStripProps {
 // traffic stays an honest «н/д» until Task 6's history-backed figure exists
 // rather than showing a number that would mean something else.
 export function StatusStrip({ variant = "strip", className }: StatusStripProps) {
+  const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const connection = useConnectionState();
   const isStale = stats.stale || connection.stale;
 
   const state = healthPillState(stats.data?.health?.status);
-  const counters = `${connectionsLabel(stats.data)} ${ru.shell.connectionsShort} · ${ru.shell.trafficUnavailable}`;
+  const counters = `${connectionsLabel(stats.data, s)} · ${s.shell.trafficUnavailable}`;
 
   const flags = (
     <>
-      {isStale && <StatePill state="warn">{ru.shell.stale}</StatePill>}
+      {isStale && <StatePill state="warn">{s.shell.stale}</StatePill>}
       {connection.status === "reconnecting" && (
-        <StatePill state="warn">{ru.shell.reconnecting}</StatePill>
+        <StatePill state="warn">{s.shell.reconnecting}</StatePill>
       )}
-      {connection.status === "polling" && <StatePill state="muted">{ru.shell.polling}</StatePill>}
+      {connection.status === "polling" && <StatePill state="muted">{s.shell.polling}</StatePill>}
     </>
   );
 
@@ -58,7 +59,7 @@ export function StatusStrip({ variant = "strip", className }: StatusStripProps) 
                 aria-hidden="true"
               />
               <span className="text-meta font-semibold text-text">
-                {healthLabel(stats.data.health?.status)}
+                {healthLabel(stats.data.health?.status, s)}
               </span>
             </div>
           ) : (
@@ -82,7 +83,7 @@ export function StatusStrip({ variant = "strip", className }: StatusStripProps) 
             aria-hidden="true"
           />
           <span className="text-meta font-semibold text-text">
-            {healthLabel(stats.data.health?.status)}
+            {healthLabel(stats.data.health?.status, s)}
           </span>
         </>
       ) : (

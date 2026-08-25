@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { securityGroups } from "./security.helpers";
 import type { SecurityPosture, SecurityWhitelist } from "../../realtime/topics";
+import { ru as s } from "../../i18n";
 
 const posture: SecurityPosture = {
   api_read_only: false,
@@ -18,11 +19,11 @@ const whitelist: SecurityWhitelist = { generated_at_epoch_secs: 0, enabled: true
 
 describe("securityGroups", () => {
   it("returns no groups for an empty input", () => {
-    expect(securityGroups({})).toEqual([]);
+    expect(securityGroups({}, s)).toEqual([]);
   });
 
   it("includes only the provided sub-payloads' groups", () => {
-    expect(securityGroups({ posture }).map((g) => g.title)).toEqual(["Посадка безопасности"]);
+    expect(securityGroups({ posture }, s).map((g) => g.title)).toEqual(["Посадка безопасности"]);
   });
 
   it("orders posture, whitelist, effective limits, then the four TLS scopes", () => {
@@ -50,7 +51,7 @@ describe("securityGroups", () => {
         by_cidr: [],
         by_user: [],
       },
-    });
+    }, s);
     expect(groups.map((g) => g.title)).toEqual([
       "Посадка безопасности",
       "Белый список",

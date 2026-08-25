@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { ru, useStrings } from "../i18n";
 import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
 import { Input } from "../ui/Input";
@@ -64,6 +64,7 @@ export function LogToolbar({
   onTogglePause,
   onClear,
 }: LogToolbarProps) {
+  const s = useStrings();
   function toggleLevel(level: LogLevel) {
     const next = new Set(levels);
     if (next.has(level)) next.delete(level);
@@ -82,7 +83,7 @@ export function LogToolbar({
         <div
           className="flex min-w-0 flex-wrap items-center gap-1.5"
           role="radiogroup"
-          aria-label={ru.journal.sourceLabel}
+          aria-label={s.journal.sourceLabel}
         >
           {SERVICE_OPTIONS.map((opt) => (
             <Chip
@@ -111,12 +112,12 @@ export function LogToolbar({
             )}
           >
             {paused ? <IconPlay /> : <IconPause />}
-            {paused ? ru.journal.resume : ru.journal.pause}
+            {paused ? s.journal.resume : s.journal.pause}
           </button>
         )}
         {onClear && (
           <IconButton
-            aria-label={ru.journal.clear}
+            aria-label={s.journal.clear}
             onClick={onClear}
             className={cn("shrink-0", !onTogglePause && "ml-auto")}
           >
@@ -128,7 +129,7 @@ export function LogToolbar({
       <div
         className="flex flex-wrap items-center gap-1.5"
         role="group"
-        aria-label={ru.journal.levelLabel}
+        aria-label={s.journal.levelLabel}
       >
         {visibleLevelChips(mode).map((level) => {
           const active = levels.has(level);
@@ -162,8 +163,8 @@ export function LogToolbar({
           type="search"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={ru.journal.searchPlaceholder}
-          aria-label={ru.journal.searchPlaceholder}
+          placeholder={s.journal.searchPlaceholder}
+          aria-label={s.journal.searchPlaceholder}
           className="pl-10"
         />
       </div>

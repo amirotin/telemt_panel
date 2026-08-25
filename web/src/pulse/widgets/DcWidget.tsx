@@ -4,7 +4,7 @@ import type { State } from "../../ui/StatePill";
 import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { EmptyState } from "../../ui/EmptyState";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
@@ -23,6 +23,7 @@ const TILE_TONE: Record<State, string> = {
 };
 
 export function DcWidget({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
   const view = computeDc(topic.data?.dcs ?? null);
   const okCount =
@@ -30,7 +31,7 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
 
   return (
     <WidgetFrame
-      title={ru.pulse.widgets.dc}
+      title={s.pulse.widgets.dc}
       diagDomain="dc"
       onHide={onHide}
       stale={topic.stale}
@@ -44,7 +45,7 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
     >
       {view.status === "loading" && <Skeleton className="h-16 w-full" />}
       {view.status === "disabled" && <GatedNote reason={view.reason} />}
-      {view.status === "ok" && view.dcs.length === 0 && <EmptyState title={ru.pulse.dc.empty} />}
+      {view.status === "ok" && view.dcs.length === 0 && <EmptyState title={s.pulse.dc.empty} />}
       {view.status === "ok" && view.dcs.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
           {view.dcs.map((dc) => {
@@ -58,7 +59,7 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
                 )}
               >
                 <span className="block font-semibold">
-                  {ru.pulse.dc.dc}
+                  {s.pulse.dc.dc}
                   {dc.dc}
                 </span>
                 <span className="block text-text-muted">{dc.coverage_pct.toFixed(0)}%</span>

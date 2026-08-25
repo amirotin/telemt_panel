@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { Notice } from "../Notice";
 
@@ -31,12 +31,13 @@ export function ConflictBanner({
   onReapply,
   onDiscard,
 }: ConflictBannerProps) {
+  const s = useStrings();
   const hasOverlap = overlapping.length > 0;
 
   return (
-    <Notice tone="warn" title={ru.server.config.conflictTitle}>
+    <Notice tone="warn" title={s.server.config.conflictTitle}>
       <p className="text-meta leading-relaxed text-text-muted">
-        {ru.server.config.conflictDescription}
+        {s.server.config.conflictDescription}
       </p>
       {changedKeys.length > 0 && (
         <p className="font-mono text-meta text-text">
@@ -47,7 +48,7 @@ export function ConflictBanner({
       {hasOverlap ? (
         <div className="flex flex-col gap-2">
           <p className="text-meta text-error">
-            {ru.server.config.conflictOverlapWarning}:{" "}
+            {s.server.config.conflictOverlapWarning}:{" "}
             <span className="font-mono">{overlapping.join(", ")}</span>
           </p>
           <div className="flex gap-2">
@@ -58,7 +59,7 @@ export function ConflictBanner({
               disabled={pending}
               className="flex-1"
             >
-              {ru.server.config.conflictDiscardMine}
+              {s.server.config.conflictDiscardMine}
             </Button>
             <Button
               variant="primary"
@@ -67,7 +68,7 @@ export function ConflictBanner({
               disabled={pending}
               className="flex-1"
             >
-              {ru.server.config.conflictReapplyMine}
+              {s.server.config.conflictReapplyMine}
             </Button>
           </div>
         </div>
@@ -79,7 +80,7 @@ export function ConflictBanner({
           disabled={pending}
           className="self-start"
         >
-          {ru.server.config.conflictReload}
+          {s.server.config.conflictReload}
         </Button>
       )}
     </Notice>

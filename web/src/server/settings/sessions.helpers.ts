@@ -1,5 +1,5 @@
 import type { SessionInfo } from "../../lib/api/generated/types.gen";
-import { ru } from "../../i18n/ru";
+import type { Dict } from "../../i18n";
 
 // sortSessions puts the current session first, then orders the rest by
 // most-recently-active — the list an admin scans to find a stale/unknown
@@ -81,9 +81,9 @@ export function parseUserAgent(userAgent: string | undefined): ParsedUserAgent {
 // when it could be recognised, otherwise the raw User-Agent (still more
 // useful than a placeholder for spotting an unknown device), and only then
 // the generic fallback — never a blank row.
-export function sessionDeviceLabel(session: SessionInfo): string {
+export function sessionDeviceLabel(session: SessionInfo, s: Dict): string {
   const raw = session.user_agent_label?.trim();
-  if (!raw) return ru.server.settings.unknownDevice;
+  if (!raw) return s.server.settings.unknownDevice;
   return parseUserAgent(raw).label ?? raw;
 }
 

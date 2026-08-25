@@ -1,4 +1,4 @@
-import { ru, errorMessage } from "../../i18n/ru";
+import { errorMessage, useStrings } from "../../i18n";
 import { Skeleton } from "../../ui/Skeleton";
 import { StatePill } from "../../ui/StatePill";
 import { PhaseSteps, type PhaseStep } from "../PhaseSteps";
@@ -25,8 +25,9 @@ export function ReloadStepper({
   status: ReloadStatus | null | undefined;
   errorCode?: string;
 }) {
+  const s = useStrings();
   if (errorCode)
-    return <p className="text-meta text-error">{errorMessage(errorCode)}</p>;
+    return <p className="text-meta text-error">{errorMessage(s, errorCode)}</p>;
   if (!status) return <Skeleton className="h-6 w-full" />;
 
   const info = reloadStepInfo(status.state);
@@ -35,7 +36,7 @@ export function ReloadStepper({
     return (
       <div className="flex flex-col gap-1.5">
         <StatePill state="error">
-          {ru.server.config.reload.states[status.state]}
+          {s.server.config.reload.states[status.state]}
         </StatePill>
         {status.error && (
           <p className="text-meta text-text-muted">{status.error}</p>
@@ -46,7 +47,7 @@ export function ReloadStepper({
 
   const steps: PhaseStep[] = HAPPY_STEPS.map((step, i) => ({
     key: step,
-    label: ru.server.config.reload.states[step],
+    label: s.server.config.reload.states[step],
     state:
       i < info.stepIndex ? "done" : i === info.stepIndex ? "active" : "pending",
   }));
@@ -54,7 +55,7 @@ export function ReloadStepper({
   return (
     <PhaseSteps
       steps={steps}
-      label={ru.server.config.reload.title}
+      label={s.server.config.reload.title}
       progress={(info.stepIndex + 1) / HAPPY_STEPS.length}
       succeeded={info.outcome === "success"}
     />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { Chip } from "../ui/Chip";
 import { LogsTab } from "./LogsTab";
 import { EventsTab } from "./EventsTab";
@@ -14,12 +14,13 @@ const TABS: JournalTab[] = ["logs", "events"];
 // screen with an internal source/tab switcher, matching the People and
 // Пульс screens' own header controls rather than a route-per-tab.
 export function JournalPage() {
+  const s = useStrings();
   const [tab, setTab] = useState<JournalTab>("logs");
 
   return (
     <div className="flex flex-col gap-3">
       <h1 className="text-title font-extrabold tracking-tight text-text">
-        {ru.nav.journal}
+        {s.nav.journal}
       </h1>
 
       {/*
@@ -32,7 +33,7 @@ export function JournalPage() {
       <div
         className="flex flex-wrap items-center gap-1.5"
         role="tablist"
-        aria-label={ru.nav.journal}
+        aria-label={s.nav.journal}
       >
         {TABS.map((id) => (
           <Chip
@@ -43,7 +44,7 @@ export function JournalPage() {
             active={tab === id}
             onClick={() => setTab(id)}
           >
-            {ru.journal.tabs[id]}
+            {s.journal.tabs[id]}
           </Chip>
         ))}
       </div>

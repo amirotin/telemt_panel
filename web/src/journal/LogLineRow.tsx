@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { ru } from "../i18n";
 import { gridColumnsClass } from "./logColumns";
 import { formatLogClock } from "./timestamp.helpers";
 import type { RingLine } from "./logRing";

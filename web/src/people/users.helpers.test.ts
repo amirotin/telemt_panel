@@ -22,6 +22,7 @@ import {
   type UserQuotaView,
 } from "./users.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
+import { ru as s } from "../i18n";
 
 function user(overrides: Partial<UsersTopicUser> = {}): UsersTopicUser {
   return {
@@ -152,13 +153,13 @@ describe("quota unit conversion", () => {
 
 describe("formatBitsPerSecond", () => {
   it("formats sub-1000 values as bit/s", () => {
-    expect(formatBitsPerSecond(500)).toBe("500 бит/с");
+    expect(formatBitsPerSecond(500, s)).toBe("500 бит/с");
   });
   it("formats thousands as Kbit/s", () => {
-    expect(formatBitsPerSecond(1500)).toBe("1.5 Кбит/с");
+    expect(formatBitsPerSecond(1500, s)).toBe("1.5 Кбит/с");
   });
   it("formats millions as Mbit/s (keeps a decimal below 10 of a unit, matching formatBytes)", () => {
-    expect(formatBitsPerSecond(2_000_000)).toBe("2.0 Мбит/с");
+    expect(formatBitsPerSecond(2_000_000, s)).toBe("2.0 Мбит/с");
   });
 });
 

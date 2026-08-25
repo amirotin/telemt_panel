@@ -1,4 +1,4 @@
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 
 export interface SparklineProps {
   values: number[];
@@ -11,6 +11,7 @@ export interface SparklineProps {
 // slot, fed from GET /api/history in later tasks). Renders nothing
 // meaningful for 0-1 points rather than dividing by zero.
 export function Sparkline({ values, width = 96, height = 28, className }: SparklineProps) {
+  const s = useStrings();
   if (values.length < 2) {
     return <svg width={width} height={height} className={className} aria-hidden="true" />;
   }
@@ -35,7 +36,7 @@ export function Sparkline({ values, width = 96, height = 28, className }: Sparkl
       viewBox={`0 0 ${width} ${height}`}
       className={className}
       role="img"
-      aria-label={ru.ui.sparklineLabel}
+      aria-label={s.ui.sparklineLabel}
     >
       <polyline
         points={points}

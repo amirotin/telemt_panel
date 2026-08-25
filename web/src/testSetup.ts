@@ -19,3 +19,13 @@ declare global {
 }
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Pin the UI language for the whole vitest run. Every component test in
+// this repo predates D3 and asserts the Russian strings it was written
+// against; jsdom's navigator.language is "en-US", so without this the
+// browser-language default (i18n/locale.ts) would flip them all to English.
+// Written straight to localStorage — i18n/store.ts resolves the locale
+// lazily on its first read, so a value seeded here wins even though the
+// store module is imported before any test body runs. A test that wants the
+// other language calls setLocalePreference("en") itself.
+localStorage.setItem("telemt-panel:locale:v1", "ru");

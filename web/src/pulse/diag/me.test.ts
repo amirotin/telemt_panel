@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { meGroups } from "./me.helpers";
 import type { RuntimeMePoolState, RuntimeMeSelftest } from "../../realtime/topics";
+import { ru as s } from "../../i18n";
 
 const pool: RuntimeMePoolState = {
   generations: { active_generation: 1, warm_generation: 1, pending_hardswap_generation: 0, pending_hardswap_age_secs: null, draining_generations: [] },
@@ -19,21 +20,21 @@ const selftest: RuntimeMeSelftest = {
 
 describe("meGroups", () => {
   it("returns no groups when every input is absent", () => {
-    expect(meGroups({})).toEqual([]);
+    expect(meGroups({}, s)).toEqual([]);
   });
 
   it("includes the four pool sub-groups when pool is present", () => {
-    const groups = meGroups({ pool });
+    const groups = meGroups({ pool }, s);
     expect(groups.map((g) => g.title)).toEqual(["Поколения", "Hardswap", "Писатели", "Довыгрузка (refill)"]);
   });
 
   it("omits bnd/selftestUpstreams groups when those fields are null/absent", () => {
-    const groups = meGroups({ selftest });
+    const groups = meGroups({ selftest }, s);
     expect(groups.map((g) => g.title)).toEqual(["KDF", "Расхождение времени", "Определённый IP", "ME-процесс"]);
   });
 
   it("includes bnd when present", () => {
-    const groups = meGroups({ selftest: { ...selftest, bnd: { addr_state: "ok", port_state: "ok" } } });
+    const groups = meGroups({ selftest: { ...selftest, bnd: { addr_state: "ok", port_state: "ok" } } }, s);
     expect(groups.map((g) => g.title)).toContain("Bind-адрес");
   });
 
@@ -54,7 +55,7 @@ describe("meGroups", () => {
         startup_stage: "done",
         startup_progress_pct: 100,
       },
-    });
+    }, s);
     expect(groups.map((g) => g.title)).toEqual([
       "Поколения",
       "Hardswap",
@@ -69,7 +70,7 @@ describe("meGroups", () => {
   });
 
   it("appends the me_runtime tuning group last when present", () => {
-    const groups = meGroups({ meRuntime: { hardswap_enabled: true, floor_mode: "adaptive" } });
+    const groups = meGroups({ meRuntime: { hardswap_enabled: true, floor_mode: "adaptive" } }, s);
     expect(groups).toEqual([
       {
         title: "Тюнинг ME (minimal runtime)",
@@ -82,6 +83,6 @@ describe("meGroups", () => {
   });
 
   it("omits the me_runtime group when absent", () => {
-    expect(meGroups({ pool }).map((g) => g.title)).not.toContain("Тюнинг ME (minimal runtime)");
+    expect(meGroups({ pool }, s).map((g) => g.title)).not.toContain("Тюнинг ME (minimal runtime)");
   });
 });

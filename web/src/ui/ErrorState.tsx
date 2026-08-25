@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { Button } from "./Button";
 
 export interface ErrorStateProps {
@@ -12,6 +12,7 @@ export interface ErrorStateProps {
 // state: an envelope error code turned into Russian text by the caller,
 // never the raw {code,message} shown verbatim).
 export function ErrorState({ message, onRetry, className }: ErrorStateProps) {
+  const s = useStrings();
   return (
     <div
       className={cn(
@@ -22,7 +23,7 @@ export function ErrorState({ message, onRetry, className }: ErrorStateProps) {
       <p className="text-sm text-error">{message}</p>
       {onRetry && (
         <Button variant="secondary" onClick={onRetry}>
-          {ru.common.retry}
+          {s.common.retry}
         </Button>
       )}
     </div>

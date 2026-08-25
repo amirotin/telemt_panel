@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeProblems, problemSeverity } from "./problems.helpers";
 import type { StatsSnapshot } from "../../realtime/topics";
+import { ru as s } from "../../i18n";
 
 function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
   return { health: null, summary: null, ready: null, ...overrides };
@@ -8,8 +9,8 @@ function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
 
 describe("computeProblems", () => {
   it("returns nothing when there is nothing to report", () => {
-    expect(computeProblems(null, [], [])).toEqual([]);
-    expect(computeProblems(stats(), [], [])).toEqual([]);
+    expect(computeProblems(null, [], [], s)).toEqual([]);
+    expect(computeProblems(stats(), [], [], s)).toEqual([]);
   });
 
   it("reports not-ready with its reason first", () => {
@@ -17,12 +18,13 @@ describe("computeProblems", () => {
       stats({ ready: { ready: false, status: "not_ready", reason: "no upstreams", admission_open: false, healthy_upstreams: 0, total_upstreams: 1 } }),
       [],
       [],
+      s,
     );
     expect(items[0]).toEqual({ key: "not_ready", label: "Telemt не готов", detail: "no upstreams" });
   });
 
   it("reports read_only", () => {
-    const items = computeProblems(stats({ health: { status: "ok", read_only: true } }), [], []);
+    const items = computeProblems(stats({ health: { status: "ok", read_only: true } }), [], [], s);
     expect(items.some((i) => i.key === "read_only")).toBe(true);
   });
 
@@ -31,6 +33,7 @@ describe("computeProblems", () => {
       stats({ ready: { ready: true, status: "ready", admission_open: true, healthy_upstreams: 1, total_upstreams: 1 } }),
       [],
       [],
+      s,
     );
     expect(items).toEqual([]);
   });
@@ -44,6 +47,7 @@ describe("computeProblems", () => {
         { topic: "upstreams", stale: false, error: null },
       ],
       [],
+      s,
     );
     expect(items.map((i) => i.key)).toEqual(["stale_runtime", "stale_security"]);
     expect(items[1].detail).toBe("telemt_unreachable");
@@ -67,12 +71,13 @@ describe("computeProblems", () => {
       }),
       [],
       [],
+      s,
     );
     expect(items.map((i) => i.key)).toEqual(["handshake_bad_secret", "handshake_timeout"]);
   });
 
   it("reports missing capabilities last", () => {
-    const items = computeProblems(stats(), [], ["runtime_edge", "quota"]);
+    const items = computeProblems(stats(), [], ["runtime_edge", "quota"], s);
     expect(items.map((i) => i.key)).toEqual(["cap_runtime_edge", "cap_quota"]);
   });
 
@@ -81,6 +86,7 @@ describe("computeProblems", () => {
       stats({ summary: { uptime_seconds: 0, connections_total: 0, connections_bad_total: 0, handshake_timeouts_total: 0, configured_users: 0 } }),
       [],
       [],
+      s,
     );
     expect(zero).toEqual([]);
 
@@ -88,6 +94,7 @@ describe("computeProblems", () => {
       stats({ summary: { uptime_seconds: 0, connections_total: 0, connections_bad_total: 4, handshake_timeouts_total: 2, configured_users: 0 } }),
       [],
       [],
+      s,
     );
     expect(nonZero.map((i) => i.key)).toEqual(["connections_bad_total", "handshake_timeouts_total"]);
     expect(nonZero[0].detail).toBe("4");
@@ -97,7 +104,7 @@ describe("computeProblems", () => {
   it("does not treat a null summary (failed sub-call) as zero bad connections", () => {
     // stats() defaults summary to null — a distinct case from an explicit
     // summary object whose counters happen to be 0.
-    expect(computeProblems(stats(), [], [])).toEqual([]);
+    expect(computeProblems(stats(), [], [], s)).toEqual([]);
   });
 
   it("ranks connections_bad_by_class descending by count and drops zero-count classes", () => {
@@ -118,6 +125,7 @@ describe("computeProblems", () => {
       }),
       [],
       [],
+      s,
     );
     expect(items.map((i) => i.key)).toEqual(["connections_bad_quota_exceeded", "connections_bad_rate_limited"]);
   });
@@ -139,6 +147,7 @@ describe("computeProblems", () => {
       }),
       [{ topic: "runtime", stale: true, error: null }],
       ["runtime_edge"],
+      s,
     );
     expect(items.map((i) => i.key)).toEqual([
       "not_ready",

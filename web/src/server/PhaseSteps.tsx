@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { currentPhaseIndex } from "./phaseSteps.helpers";
 
 export type PhaseStepState = "done" | "active" | "pending";
@@ -48,10 +48,11 @@ export function PhaseSteps({
   succeeded,
   className,
 }: PhaseStepsProps) {
+  const s = useStrings();
   const clamped = Math.max(0, Math.min(1, progress));
   const currentIndex = currentPhaseIndex(steps);
   const current = currentIndex >= 0 ? steps[currentIndex] : undefined;
-  const counter = ru.server.phaseStepTemplate
+  const counter = s.server.phaseStepTemplate
     .replace("{n}", String(currentIndex + 1))
     .replace("{total}", String(steps.length));
   // Also the progressbar's aria-valuetext: "38%" tells a screen reader

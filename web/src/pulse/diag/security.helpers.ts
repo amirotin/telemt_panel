@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import type { Dict } from "../../i18n";
 import { flattenToRows, type KVGroup } from "./rows";
 import type {
   EffectiveLimits,
@@ -19,18 +19,18 @@ export interface SecurityGroupsInput {
 // is runtime-edge-gated and extended-mode-only, split into its four scopes
 // (by_fingerprint/by_ip/by_cidr/by_user) — full breakdown, unlike the
 // widget's single top-N-by-fingerprint table.
-export function securityGroups(input: SecurityGroupsInput): KVGroup[] {
+export function securityGroups(input: SecurityGroupsInput, s: Dict): KVGroup[] {
   const groups: KVGroup[] = [];
-  if (input.posture) groups.push({ title: ru.diag.groups.posture, rows: flattenToRows(input.posture) });
-  if (input.whitelist) groups.push({ title: ru.diag.groups.whitelist, rows: flattenToRows(input.whitelist) });
+  if (input.posture) groups.push({ title: s.diag.groups.posture, rows: flattenToRows(input.posture, s) });
+  if (input.whitelist) groups.push({ title: s.diag.groups.whitelist, rows: flattenToRows(input.whitelist, s) });
   if (input.effectiveLimits) {
-    groups.push({ title: ru.diag.groups.effectiveLimits, rows: flattenToRows(input.effectiveLimits) });
+    groups.push({ title: s.diag.groups.effectiveLimits, rows: flattenToRows(input.effectiveLimits, s) });
   }
   if (input.tlsFingerprints) {
-    groups.push({ title: ru.diag.groups.tlsByFingerprint, rows: flattenToRows(input.tlsFingerprints.by_fingerprint) });
-    groups.push({ title: ru.diag.groups.tlsByIp, rows: flattenToRows(input.tlsFingerprints.by_ip) });
-    groups.push({ title: ru.diag.groups.tlsByCidr, rows: flattenToRows(input.tlsFingerprints.by_cidr) });
-    groups.push({ title: ru.diag.groups.tlsByUser, rows: flattenToRows(input.tlsFingerprints.by_user) });
+    groups.push({ title: s.diag.groups.tlsByFingerprint, rows: flattenToRows(input.tlsFingerprints.by_fingerprint, s) });
+    groups.push({ title: s.diag.groups.tlsByIp, rows: flattenToRows(input.tlsFingerprints.by_ip, s) });
+    groups.push({ title: s.diag.groups.tlsByCidr, rows: flattenToRows(input.tlsFingerprints.by_cidr, s) });
+    groups.push({ title: s.diag.groups.tlsByUser, rows: flattenToRows(input.tlsFingerprints.by_user, s) });
   }
   return groups;
 }

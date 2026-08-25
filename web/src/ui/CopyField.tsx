@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { IconButton } from "./IconButton";
 import { IconCheck, IconCopy } from "./icons";
 import { copyText } from "../lib/copyText";
@@ -26,6 +26,7 @@ export interface CopyFieldProps {
 // selects the value's text (so a manual Ctrl+C still works) and tells the
 // user to do it themselves, rather than pretending the copy succeeded.
 export function CopyField({ value, label, className, "data-testid": testId }: CopyFieldProps) {
+  const s = useStrings();
   const [copied, setCopied] = useState(false);
   const valueRef = useRef<HTMLSpanElement>(null);
 
@@ -33,7 +34,7 @@ export function CopyField({ value, label, className, "data-testid": testId }: Co
     const result = await copyText(value);
     if (result === "failed") {
       selectValueText();
-      pushToast(ru.common.copyManually, "error");
+      pushToast(s.common.copyManually, "error");
       return;
     }
     setCopied(true);
@@ -62,7 +63,7 @@ export function CopyField({ value, label, className, "data-testid": testId }: Co
           {value}
         </span>
         <IconButton
-          aria-label={copied ? ru.common.copied : ru.common.copy}
+          aria-label={copied ? s.common.copied : s.common.copy}
           onClick={copy}
           className={copied ? "text-ok" : undefined}
         >

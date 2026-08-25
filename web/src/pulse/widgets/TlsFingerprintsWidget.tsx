@@ -4,18 +4,19 @@ import type { SecurityTopic } from "../../realtime/topics";
 import { CountBadge } from "../../ui/Chip";
 import { EmptyState } from "../../ui/EmptyState";
 import { Skeleton } from "../../ui/Skeleton";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
 import { resolveGated } from "./gated";
 import { topFingerprints } from "./tlsFingerprints.helpers";
 
 export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const topic = useSnapshot<SecurityTopic>("security");
 
   if (!topic.data) {
     return (
-      <WidgetFrame title={ru.pulse.widgets.tls_fingerprints} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.tls_fingerprints} onHide={onHide}>
         <Skeleton className="h-16 w-full" />
       </WidgetFrame>
     );
@@ -29,7 +30,7 @@ export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
     const rows = topFingerprints(fp.data);
     body =
       rows.length === 0 ? (
-        <EmptyState title={ru.pulse.tlsFingerprints.empty} />
+        <EmptyState title={s.pulse.tlsFingerprints.empty} />
       ) : (
         <ul className="flex flex-col">
           {rows.map((r) => (
@@ -49,7 +50,7 @@ export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
 
   return (
     <WidgetFrame
-      title={ru.pulse.widgets.tls_fingerprints}
+      title={s.pulse.widgets.tls_fingerprints}
       diagDomain="security"
       onHide={onHide}
       stale={topic.stale}

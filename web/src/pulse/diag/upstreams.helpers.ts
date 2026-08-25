@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import type { Dict } from "../../i18n";
 import { flattenToRows, group, type KVGroup } from "./rows";
 import type { RuntimeUpstreamQualityData, UpstreamsData } from "../../realtime/topics";
 
@@ -10,24 +10,28 @@ import type { RuntimeUpstreamQualityData, UpstreamsData } from "../../realtime/t
 // as `data` itself), its policy/counters and one group per upstream's own
 // quality row (latency-by-DC breakdown, distinct from stats/upstreams'
 // per-upstream rows above).
-export function upstreamsGroups(data: UpstreamsData, quality?: RuntimeUpstreamQualityData): KVGroup[] {
+export function upstreamsGroups(
+  data: UpstreamsData,
+  s: Dict,
+  quality?: RuntimeUpstreamQualityData,
+): KVGroup[] {
   const groups: KVGroup[] = [
-    ...group(ru.diag.groups.summary, data.summary),
-    ...group(ru.diag.groups.zeroCounters, data.zero),
+    ...group(s.diag.groups.summary, data.summary, s),
+    ...group(s.diag.groups.zeroCounters, data.zero, s),
     ...(data.upstreams ?? []).map((u) => ({
-      title: `${ru.diag.groups.upstreams} #${u.upstream_id}`,
-      rows: flattenToRows(u),
+      title: `${s.diag.groups.upstreams} #${u.upstream_id}`,
+      rows: flattenToRows(u, s),
     })),
   ];
 
   if (quality?.enabled) {
-    groups.push({ title: ru.diag.groups.upstreamQualityPolicy, rows: flattenToRows(quality.policy) });
-    groups.push({ title: ru.diag.groups.upstreamQualityCounters, rows: flattenToRows(quality.counters) });
-    groups.push(...group(ru.diag.groups.upstreamQualitySummary, quality.summary));
+    groups.push({ title: s.diag.groups.upstreamQualityPolicy, rows: flattenToRows(quality.policy, s) });
+    groups.push({ title: s.diag.groups.upstreamQualityCounters, rows: flattenToRows(quality.counters, s) });
+    groups.push(...group(s.diag.groups.upstreamQualitySummary, quality.summary, s));
     for (const u of quality.upstreams ?? []) {
       groups.push({
-        title: `${ru.diag.groups.upstreamQualityUpstream} #${u.upstream_id}`,
-        rows: flattenToRows(u),
+        title: `${s.diag.groups.upstreamQualityUpstream} #${u.upstream_id}`,
+        rows: flattenToRows(u, s),
       });
     }
   }

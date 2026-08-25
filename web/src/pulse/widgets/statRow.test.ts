@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeStatRowValues, latestHistoryValue, peakHistoryValue, sparklineValues } from "./statRow.helpers";
 import type { StatsSnapshot } from "../../realtime/topics";
 import type { HistorySeries } from "../../lib/api/generated/types.gen";
+import { ru as s } from "../../i18n";
 
 function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
   return { health: null, summary: null, ready: null, ...overrides };
@@ -9,7 +10,7 @@ function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
 
 describe("computeStatRowValues", () => {
   it("returns nulls/approx for a not-yet-loaded topic", () => {
-    expect(computeStatRowValues(null)).toEqual({
+    expect(computeStatRowValues(null, s)).toEqual({
       connections: null,
       connectionsApprox: true,
       activeUsers: null,
@@ -21,6 +22,7 @@ describe("computeStatRowValues", () => {
   it("falls back to the summary's coarse proxies when runtime_edge is off", () => {
     const view = computeStatRowValues(
       stats({ summary: { uptime_seconds: 3661, connections_total: 42, connections_bad_total: 0, handshake_timeouts_total: 0, configured_users: 7 } }),
+      s,
     );
     expect(view.connections).toBe(42);
     expect(view.connectionsApprox).toBe(true);
@@ -38,6 +40,7 @@ describe("computeStatRowValues", () => {
           data: { cache: { ttl_ms: 0, served_from_cache: false, stale_cache_used: false }, totals: { current_connections: 5, current_connections_me: 3, current_connections_direct: 2, active_users: 4 }, top: { limit: 0, by_connections: [], by_throughput: [] }, telemetry: { user_enabled: false, throughput_is_cumulative: false } },
         },
       }),
+      s,
     );
     expect(view.connections).toBe(5);
     expect(view.connectionsApprox).toBe(false);
@@ -51,6 +54,7 @@ describe("computeStatRowValues", () => {
         summary: { uptime_seconds: 0, connections_total: 9, connections_bad_total: 0, handshake_timeouts_total: 0, configured_users: 3 },
         connections_summary: { enabled: false, reason: "minimal runtime disabled", generated_at_epoch_secs: 0, data: null },
       }),
+      s,
     );
     expect(view.connections).toBe(9);
     expect(view.connectionsApprox).toBe(true);
@@ -59,6 +63,7 @@ describe("computeStatRowValues", () => {
   it("prefers stats.uptime_seconds (SystemInfo) over summary.uptime_seconds when both exist", () => {
     const view = computeStatRowValues(
       stats({ uptime_seconds: 7200, summary: { uptime_seconds: 1, connections_total: 0, connections_bad_total: 0, handshake_timeouts_total: 0, configured_users: 0 } }),
+      s,
     );
     expect(view.uptimeLabel).toBe("2 ч.");
   });

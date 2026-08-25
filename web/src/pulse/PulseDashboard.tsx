@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 import { CardList } from "../ui/Card";
 import { IconButton } from "../ui/IconButton";
@@ -31,6 +31,7 @@ const SPAN_CLASSES: Record<FormFactor, string> = {
 // as a quiet button at its right — previously the two controls shared the
 // title's line and outweighed it.
 export function PulseDashboard() {
+  const s = useStrings();
   const { mode } = useDisplayMode();
   const { layout, move, show, hide, reset } = usePulseLayout();
   const [configuring, setConfiguring] = useState(false);
@@ -41,7 +42,7 @@ export function PulseDashboard() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
-        <h1 className="text-title font-extrabold tracking-tight text-text">{ru.pulse.title}</h1>
+        <h1 className="text-title font-extrabold tracking-tight text-text">{s.pulse.title}</h1>
         {/* Three density chips plus «Настроить» do not fit 360px on one
             line, so the row wraps on a phone and only pushes the button to
             the far right once there is room for it. */}
@@ -54,7 +55,7 @@ export function PulseDashboard() {
             className="ml-auto"
           >
             {!configuring && <IconSettings className="h-4 w-4" />}
-            {configuring ? ru.pulse.done : ru.pulse.configure}
+            {configuring ? s.pulse.done : s.pulse.configure}
           </Button>
         </div>
       </div>
@@ -69,7 +70,7 @@ export function PulseDashboard() {
           onReset={() => setConfirmingReset(true)}
         />
       ) : visibleIds.length === 0 ? (
-        <EmptyState title={ru.pulse.emptyLayoutTitle} description={ru.pulse.emptyLayoutDescription} />
+        <EmptyState title={s.pulse.emptyLayoutTitle} description={s.pulse.emptyLayoutDescription} />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {visibleIds.map((id) => {
@@ -85,10 +86,10 @@ export function PulseDashboard() {
         </div>
       )}
 
-      <Sheet open={confirmingReset} onClose={() => setConfirmingReset(false)} title={ru.pulse.reset}>
+      <Sheet open={confirmingReset} onClose={() => setConfirmingReset(false)} title={s.pulse.reset}>
         <ConfirmView
-          description={ru.pulse.resetConfirm}
-          confirmLabel={ru.pulse.reset}
+          description={s.pulse.resetConfirm}
+          confirmLabel={s.pulse.reset}
           pending={false}
           onCancel={() => setConfirmingReset(false)}
           onConfirm={() => {
@@ -118,12 +119,13 @@ interface LayoutEditorProps {
 // текущем режиме" hint and its checkbox still toggleable — never silently
 // dropped from the list (fix round 1, item 1).
 function LayoutEditor({ layout, mode, onMove, onShow, onHide, onReset }: LayoutEditorProps) {
+  const s = useStrings();
   const rows = editorRows(layout, mode);
   const shownRows = rows.filter((r) => r.shown);
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-meta text-text-muted">{ru.pulse.catalogHint}</p>
+      <p className="text-meta text-text-muted">{s.pulse.catalogHint}</p>
       <CardList>
         <ul className="flex flex-col">
           {rows.map((row) => (
@@ -140,7 +142,7 @@ function LayoutEditor({ layout, mode, onMove, onShow, onHide, onReset }: LayoutE
         </ul>
       </CardList>
       <Button variant="ghost" size="sm" onClick={onReset} className="self-start">
-        {ru.pulse.reset}
+        {s.pulse.reset}
       </Button>
     </div>
   );
@@ -170,13 +172,14 @@ const SWITCH_CLASSES = [
 ].join(" ");
 
 function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }: LayoutEditorRowProps) {
+  const s = useStrings();
   const def = getWidgetDef(row.id);
   if (!def) return null;
 
   const hint = !row.availableInMode
-    ? ru.pulse.unavailableInMode
+    ? s.pulse.unavailableInMode
     : row.shown && !def.hideable
-      ? ru.pulse.alwaysOn
+      ? s.pulse.alwaysOn
       : null;
 
   return (
@@ -211,7 +214,7 @@ function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }
       {row.shown && (
         <div className="flex shrink-0 items-center gap-0.5">
           <IconButton
-            aria-label={ru.pulse.moveUp}
+            aria-label={s.pulse.moveUp}
             disabled={shownIndex === 0}
             onClick={() => onMove(row.id, "up")}
             className="text-[16px]"
@@ -219,7 +222,7 @@ function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }
             <IconArrowUp />
           </IconButton>
           <IconButton
-            aria-label={ru.pulse.moveDown}
+            aria-label={s.pulse.moveDown}
             disabled={shownIndex === shownCount - 1}
             onClick={() => onMove(row.id, "down")}
             className="text-[16px]"

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -35,6 +35,30 @@
         if (t !== "system") {
           document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
         }
+
+        // Same idea for the UI language (src/i18n/locale.ts owns this at
+        // runtime): a stored preference wins, "auto"/absent follows the
+        // browser, anything the panel doesn't ship falls back to en. Set
+        // before first paint so assistive tech and the browser's own
+        // hyphenation never read the first frame in the wrong language.
+        var l = null;
+        try {
+          l = localStorage.getItem("telemt-panel:locale:v1");
+        } catch (e) {}
+        if (l !== "ru" && l !== "en") {
+          var tags = (navigator.languages && navigator.languages.length
+            ? navigator.languages
+            : [navigator.language || ""]);
+          l = "en";
+          for (var i = 0; i < tags.length; i++) {
+            var p = String(tags[i]).toLowerCase().split("-")[0];
+            if (p === "ru" || p === "en") {
+              l = p;
+              break;
+            }
+          }
+        }
+        document.documentElement.lang = l;
       })();
     </script>
   </head>

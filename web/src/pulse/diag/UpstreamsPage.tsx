@@ -1,6 +1,6 @@
 import { useSnapshot, useRefreshTopic } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
@@ -8,12 +8,13 @@ import { upstreamsGroups } from "./upstreams.helpers";
 import { GatedNote } from "../GatedNote";
 
 export function UpstreamsPage() {
+  const s = useStrings();
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
   const runtime = useSnapshot<RuntimeTopic>("runtime");
   const refreshTopic = useRefreshTopic();
 
   return (
-    <DiagShell title={ru.diag.domains.upstreams}>
+    <DiagShell title={s.diag.domains.upstreams}>
       <DiagTopicState
         data={topic.data?.upstreams}
         error={topic.error}
@@ -28,7 +29,7 @@ export function UpstreamsPage() {
             // gate as data.upstreams above — passed through when present, silently
             // contributing no extra groups otherwise (upstreamsGroups' own `quality?.
             // enabled` check), never blocking the page.
-            <KVGroupList groups={upstreamsGroups(upstreams, runtime.data?.upstream_quality ?? undefined)} />
+            <KVGroupList groups={upstreamsGroups(upstreams, s, runtime.data?.upstream_quality ?? undefined)} />
           )
         }
       </DiagTopicState>

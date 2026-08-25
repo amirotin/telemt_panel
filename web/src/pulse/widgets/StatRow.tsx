@@ -4,7 +4,7 @@ import type { StatsSnapshot } from "../../realtime/topics";
 import { Sparkline } from "../../ui/Sparkline";
 import { Skeleton } from "../../ui/Skeleton";
 import { IconActivity, IconClock, IconPeople, IconTraffic } from "../../ui/icons";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import { WidgetFrame } from "../WidgetFrame";
@@ -83,6 +83,7 @@ function MetricRow({ icon, tone, label, value, sub, series }: MetricRowProps) {
 // dashboard reads the same on a phone and a desktop, and so a long Russian
 // label ("Активные пользователи (оценка)") has somewhere to go.
 export function StatRow({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const connectionsHistory = useHistorySeries("connections");
   const usersHistory = useHistorySeries("active_users");
@@ -90,28 +91,28 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
 
   if (!stats.data) {
     return (
-      <WidgetFrame title={ru.pulse.widgets.stat_row} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.stat_row} onHide={onHide}>
         <Skeleton className="h-20 w-full" />
       </WidgetFrame>
     );
   }
 
-  const values = computeStatRowValues(stats.data);
+  const values = computeStatRowValues(stats.data, s);
   const traffic = latestHistoryValue(trafficHistory.data);
   // Peak is only meaningful for the two instantaneous gauges: the traffic
   // series is a cumulative counter, whose maximum is just its last point.
   const connectionsPeak = peakHistoryValue(connectionsHistory.data);
   const usersPeak = peakHistoryValue(usersHistory.data);
   const peakLabel = (peak: number | null) =>
-    peak === null ? undefined : `${ru.pulse.stat.peak15m} — ${peak}`;
+    peak === null ? undefined : `${s.pulse.stat.peak15m} — ${peak}`;
 
   return (
-    <WidgetFrame title={ru.pulse.widgets.stat_row} onHide={onHide} stale={stats.stale}>
+    <WidgetFrame title={s.pulse.widgets.stat_row} onHide={onHide} stale={stats.stale}>
       <div className="flex flex-col">
         <MetricRow
           icon={<IconActivity />}
           tone="accent"
-          label={values.connectionsApprox ? ru.pulse.stat.connectionsApprox : ru.pulse.stat.connections}
+          label={values.connectionsApprox ? s.pulse.stat.connectionsApprox : s.pulse.stat.connections}
           value={values.connections ?? "—"}
           sub={peakLabel(connectionsPeak)}
           series={sparklineValues(connectionsHistory.data)}
@@ -119,7 +120,7 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
         <MetricRow
           icon={<IconPeople />}
           tone="ok"
-          label={values.activeUsersApprox ? ru.pulse.stat.activeUsersApprox : ru.pulse.stat.activeUsers}
+          label={values.activeUsersApprox ? s.pulse.stat.activeUsersApprox : s.pulse.stat.activeUsers}
           value={values.activeUsers ?? "—"}
           sub={peakLabel(usersPeak)}
           series={sparklineValues(usersHistory.data)}
@@ -127,14 +128,14 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
         <MetricRow
           icon={<IconTraffic />}
           tone="accent"
-          label={ru.pulse.stat.traffic}
-          value={traffic !== null ? formatBytes(traffic) : "—"}
+          label={s.pulse.stat.traffic}
+          value={traffic !== null ? formatBytes(traffic, s) : "—"}
           series={sparklineValues(trafficHistory.data)}
         />
         <MetricRow
           icon={<IconClock />}
           tone="muted"
-          label={ru.pulse.stat.uptime}
+          label={s.pulse.stat.uptime}
           value={values.uptimeLabel}
         />
       </div>

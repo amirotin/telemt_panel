@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 import { IconArrowDown } from "../ui/icons";
 import { isScrolledToBottom } from "./autoscroll.helpers";
@@ -38,6 +38,7 @@ export interface LogListProps {
 // sidebar's own width, matching Shell's `w-56`), so `mx-auto` centers
 // against the same column instead.
 export function LogList({ lines, showUnit }: LogListProps) {
+  const s = useStrings();
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState(INITIAL_WINDOW);
   const [atBottom, setAtBottom] = useState(true);
@@ -121,10 +122,10 @@ export function LogList({ lines, showUnit }: LogListProps) {
           )}
           aria-hidden="true"
         >
-          <span>{ru.journal.timeColumn}</span>
-          <span>{ru.journal.levelColumn}</span>
-          {showUnit && <span>{ru.journal.unitColumn}</span>}
-          <span>{ru.journal.messageColumn}</span>
+          <span>{s.journal.timeColumn}</span>
+          <span>{s.journal.levelColumn}</span>
+          {showUnit && <span>{s.journal.unitColumn}</span>}
+          <span>{s.journal.messageColumn}</span>
         </div>
 
         {hiddenCount > 0 && (
@@ -133,7 +134,7 @@ export function LogList({ lines, showUnit }: LogListProps) {
               variant="ghost"
               onClick={() => setWindowSize((w) => w + WINDOW_STEP)}
             >
-              {ru.journal.showEarlier} ({hiddenCount})
+              {s.journal.showEarlier} ({hiddenCount})
             </Button>
           </div>
         )}
@@ -164,7 +165,7 @@ export function LogList({ lines, showUnit }: LogListProps) {
           )}
         >
           <IconArrowDown aria-hidden="true" />
-          {ru.journal.jumpToNewTemplate.replace(
+          {s.journal.jumpToNewTemplate.replace(
             "{n}",
             String(newSinceScrolledUp),
           )}

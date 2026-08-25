@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { connectionsGroups, summaryGroup } from "./connections.helpers";
 import type { RuntimeEdgeConnectionsSummary, StatsSummary } from "../../realtime/topics";
+import { ru as s } from "../../i18n";
 
 const data: RuntimeEdgeConnectionsSummary = {
   cache: { ttl_ms: 1000, served_from_cache: true, stale_cache_used: false },
@@ -15,7 +16,7 @@ const data: RuntimeEdgeConnectionsSummary = {
 
 describe("connectionsGroups", () => {
   it("emits one group per sub-object, in a stable order", () => {
-    const groups = connectionsGroups(data);
+    const groups = connectionsGroups(data, s);
     expect(groups.map((g) => g.title)).toEqual([
       "Итого",
       "Кэш",
@@ -26,7 +27,7 @@ describe("connectionsGroups", () => {
   });
 
   it("flattens the totals into individual rows", () => {
-    const groups = connectionsGroups(data);
+    const groups = connectionsGroups(data, s);
     const totals = groups[0];
     expect(totals.rows).toEqual([
       { key: "current_connections", label: "current connections", value: "5" },
@@ -37,7 +38,7 @@ describe("connectionsGroups", () => {
   });
 
   it("expands the by_connections array by index", () => {
-    const groups = connectionsGroups(data);
+    const groups = connectionsGroups(data, s);
     const top = groups[2];
     expect(top.rows.map((r) => r.key)).toEqual([
       "[0].username",
@@ -47,7 +48,7 @@ describe("connectionsGroups", () => {
   });
 
   it("still emits an (empty) group for an empty array field", () => {
-    const groups = connectionsGroups(data);
+    const groups = connectionsGroups(data, s);
     expect(groups[3]).toEqual({ title: "Топ по трафику", rows: [] });
   });
 });
@@ -64,11 +65,11 @@ describe("summaryGroup", () => {
   };
 
   it("returns no group when summary is null (sub-call failed this poll)", () => {
-    expect(summaryGroup(null)).toEqual([]);
+    expect(summaryGroup(null, s)).toEqual([]);
   });
 
   it("flattens every summary scalar/array under one Сводка group", () => {
-    const groups = summaryGroup(summary);
+    const groups = summaryGroup(summary, s);
     expect(groups).toHaveLength(1);
     expect(groups[0].title).toBe("Сводка");
     const keys = groups[0].rows.map((r) => r.key);

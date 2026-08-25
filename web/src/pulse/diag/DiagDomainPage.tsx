@@ -1,5 +1,5 @@
 import { EmptyState } from "../../ui/EmptyState";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import type { DiagDomain } from "../types";
 import { ConnectionsPage } from "./ConnectionsPage";
 import { DcPage } from "./DcPage";
@@ -27,8 +27,9 @@ function isDiagDomain(v: string): v is DiagDomain {
 // matching full-composition page — the one place that maps a URL segment to
 // a domain page component.
 export function DiagDomainPage({ domain }: { domain: string }) {
+  const s = useStrings();
   if (!isDiagDomain(domain)) {
-    return <EmptyState title={ru.diag.notFoundTitle} />;
+    return <EmptyState title={s.diag.notFoundTitle} />;
   }
   const Page = PAGES[domain];
   return <Page />;

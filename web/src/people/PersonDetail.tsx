@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { AsyncState } from "../components/AsyncState";
 import { Avatar } from "../ui/Avatar";
 import { IconButton } from "../ui/IconButton";
@@ -33,6 +33,7 @@ import type { UsersTopicUser } from "../realtime/topics";
 // the same URL renders the list with the Инспектор panel instead
 // (routes/_authed/people/route.tsx), over the same components.
 export function PersonDetail({ username }: { username: string }) {
+  const s = useStrings();
   const topic = useUsersTopic();
   const connection = useConnectionState();
   const { mode } = useDisplayMode();
@@ -49,7 +50,7 @@ export function PersonDetail({ username }: { username: string }) {
         className="mb-3 inline-flex min-h-11 items-center text-meta font-medium text-text-muted hover:text-text"
       >
         <IconChevronLeft className="mr-1 h-4 w-4" />
-        {ru.nav.people}
+        {s.nav.people}
       </Link>
 
       {/* data is the whole topic list, not the single user: AsyncState's
@@ -65,7 +66,7 @@ export function PersonDetail({ username }: { username: string }) {
         errorCode={topic.errorCode ?? undefined}
         data={topic.users}
         isEmpty={(users) => !users.some((u) => u.username === username)}
-        emptyTitle={ru.people.notFoundTitle}
+        emptyTitle={s.people.notFoundTitle}
         stale={topic.stale || connection.stale}
         onRetry={connection.retry}
       >
@@ -113,6 +114,7 @@ function PersonDetailBody({
   actionsSheet: ReactNode;
   formSheet: ReactNode;
 }) {
+  const s = useStrings();
   const quota = getUserQuota(user, quotaEntry);
   const status = computeUserStatus(user, quota, now);
   const activeIps = user.active_unique_ips_list ?? [];
@@ -132,27 +134,27 @@ function PersonDetailBody({
           <h1 className="truncate text-lg font-bold text-text">{user.username}</h1>
           <UserStatusPill status={status} className="mt-1" />
         </div>
-        <IconButton aria-label={ru.people.actions.menu} onClick={onOpenActions}>
+        <IconButton aria-label={s.people.actions.menu} onClick={onOpenActions}>
           <IconMore />
         </IconButton>
       </header>
 
       <section className="grid grid-cols-2 gap-3">
-        <StatCard label={ru.people.connections} value={user.current_connections} />
-        <StatCard label={ru.people.activeIps} value={user.active_unique_ips} />
+        <StatCard label={s.people.connections} value={user.current_connections} />
+        <StatCard label={s.people.activeIps} value={user.active_unique_ips} />
       </section>
 
       <PersonQuotaCard quota={quota} />
 
       <section className="flex flex-col gap-1">
-        <SectionLabel>{ru.people.form.expiry}</SectionLabel>
+        <SectionLabel>{s.people.form.expiry}</SectionLabel>
         <ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />
       </section>
 
       {visibleFor("basic", mode) && (
         <section className="flex flex-col gap-2">
           <SectionLabel>
-            {ru.people.detail.activeIpsTitle} · {activeIps.length}
+            {s.people.detail.activeIpsTitle} · {activeIps.length}
           </SectionLabel>
           <IpCards ips={activeIps} />
         </section>
@@ -160,25 +162,25 @@ function PersonDetailBody({
 
       {visibleFor("extended", mode) && (
         <section className="flex flex-col gap-2">
-          <SectionLabel>{ru.people.detail.recentIpsTitle}</SectionLabel>
+          <SectionLabel>{s.people.detail.recentIpsTitle}</SectionLabel>
           <IpCards ips={recentIps} />
         </section>
       )}
 
       {visibleFor("extended", mode) && hasExtras && (
         <section className="flex flex-col gap-2">
-          <SectionLabel>{ru.people.form.advanced}</SectionLabel>
+          <SectionLabel>{s.people.form.advanced}</SectionLabel>
           <PersonExtras user={user} />
         </section>
       )}
 
       <section className="flex flex-col gap-2">
-        <SectionLabel>{ru.people.share.title}</SectionLabel>
+        <SectionLabel>{s.people.share.title}</SectionLabel>
         <SublinkPanel username={user.username} />
       </section>
 
       <section className="flex flex-col gap-3">
-        <SectionLabel>{ru.people.detail.linksTitle}</SectionLabel>
+        <SectionLabel>{s.people.detail.linksTitle}</SectionLabel>
         <PersonLinks links={user.links} />
       </section>
 

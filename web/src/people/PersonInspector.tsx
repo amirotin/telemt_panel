@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { countLabel, fill, useStrings, type Dict } from "../i18n";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
@@ -44,6 +44,7 @@ const STATUS_TONE = {
 // the matching confirmation step, so the mutation, the wording and the
 // toast are literally the ones the mobile sheet uses.
 export function PersonInspector({ username, onClose, onEdit }: PersonInspectorProps) {
+  const s = useStrings();
   const topic = useUsersTopic();
   const now = useNow();
   const { mode } = useDisplayMode();
@@ -53,18 +54,18 @@ export function PersonInspector({ username, onClose, onEdit }: PersonInspectorPr
 
   return (
     <aside
-      aria-label={ru.people.inspector.title}
+      aria-label={s.people.inspector.title}
       className="hidden w-[348px] shrink-0 flex-col overflow-y-auto border-l border-border bg-surface p-4 lg:flex"
     >
       <div className="flex shrink-0 items-center gap-1">
-        <span className="flex-1 text-[15px] font-bold text-text">{ru.people.inspector.title}</span>
+        <span className="flex-1 text-[15px] font-bold text-text">{s.people.inspector.title}</span>
         {user && (
           <Button variant="ghost" size="sm" onClick={() => onEdit(user)}>
-            {ru.people.actions.edit}
+            {s.people.actions.edit}
           </Button>
         )}
         <IconButton
-          aria-label={ru.common.close}
+          aria-label={s.common.close}
           className="h-9 w-9 min-h-9 min-w-9"
           onClick={onClose}
         >
@@ -80,7 +81,7 @@ export function PersonInspector({ username, onClose, onEdit }: PersonInspectorPr
             <Skeleton className="h-24 w-full" />
           </div>
         ) : (
-          <p className="mt-6 text-meta text-text-muted">{ru.people.notFoundTitle}</p>
+          <p className="mt-6 text-meta text-text-muted">{s.people.notFoundTitle}</p>
         )
       ) : (
         <InspectorBody
@@ -118,6 +119,7 @@ function InspectorBody({
   showExtended: boolean;
   onIntent: (intent: ActionSheetIntent) => void;
 }) {
+  const s = useStrings();
   const quota = getUserQuota(user, quotaEntry);
   const status = computeUserStatus(user, quota, now);
   const online = isOnline(user);
@@ -136,7 +138,7 @@ function InspectorBody({
         <div className="min-w-0 flex-1">
           <div className="truncate text-[15px] font-bold text-text">{user.username}</div>
           <div className={cn("mt-0.5 truncate text-micro", STATUS_TONE[status])}>
-            {inspectorStatusLine(user, status, online, now)}
+            {inspectorStatusLine(user, status, online, now, s)}
           </div>
         </div>
       </div>
@@ -144,23 +146,23 @@ function InspectorBody({
       <PersonQuotaCard quota={quota} className="mt-3.5" />
 
       <SectionLabel className="mb-1.5 mt-3.5">
-        {ru.people.detail.activeIpsTitle} · {activeIps.length}
+        {s.people.detail.activeIpsTitle} · {activeIps.length}
       </SectionLabel>
       <IpCards ips={activeIps} />
 
       {showExtended && (
         <>
-          <SectionLabel className="mb-1.5 mt-3.5">{ru.people.detail.recentIpsTitle}</SectionLabel>
+          <SectionLabel className="mb-1.5 mt-3.5">{s.people.detail.recentIpsTitle}</SectionLabel>
           <IpCards ips={user.recent_unique_ips_list ?? []} />
         </>
       )}
 
-      <SectionLabel className="mb-1.5 mt-3.5">{ru.people.inspector.accessLink}</SectionLabel>
+      <SectionLabel className="mb-1.5 mt-3.5">{s.people.inspector.accessLink}</SectionLabel>
       <SublinkPanel username={user.username} compact />
 
       <div className="mt-3.5 flex gap-1.5">
         <Button size="sm" variant="secondary" className="flex-1" onClick={() => onIntent("reset-quota")}>
-          {ru.people.actions.resetQuota}
+          {s.people.actions.resetQuota}
         </Button>
         <Button
           size="sm"
@@ -168,10 +170,10 @@ function InspectorBody({
           className="flex-1 text-warn"
           onClick={() => onIntent("toggle-enabled")}
         >
-          {user.enabled ? ru.people.actions.disable : ru.people.actions.enable}
+          {user.enabled ? s.people.actions.disable : s.people.actions.enable}
         </Button>
         <Button size="sm" variant="danger" className="flex-1" onClick={() => onIntent("delete")}>
-          {ru.people.actions.delete}
+          {s.people.actions.delete}
         </Button>
       </div>
 
@@ -180,14 +182,14 @@ function InspectorBody({
           connection links and the rarely-set extras. Before this, the `lg:`
           Outlet never rendered, so PersonDetail's own copies of these were
           simply unreachable on a desktop — same components, narrow layout. */}
-      <SectionLabel className="mb-1.5 mt-4">{ru.people.detail.linksTitle}</SectionLabel>
+      <SectionLabel className="mb-1.5 mt-4">{s.people.detail.linksTitle}</SectionLabel>
       <div className="flex flex-col gap-2">
         <PersonLinks links={user.links} compact />
       </div>
 
       {showExtended && personHasExtras(user) && (
         <>
-          <SectionLabel className="mb-1.5 mt-4">{ru.people.form.advanced}</SectionLabel>
+          <SectionLabel className="mb-1.5 mt-4">{s.people.form.advanced}</SectionLabel>
           <PersonExtras user={user} />
         </>
       )}
@@ -204,18 +206,19 @@ function inspectorStatusLine(
   status: ReturnType<typeof computeUserStatus>,
   online: boolean,
   now: number,
+  s: Dict,
 ): string {
-  if (status !== "active") return ru.people.status[status];
+  if (status !== "active") return s.people.status[status];
 
   const parts = [
     online
-      ? `${ru.people.online.toLowerCase()} · ${user.current_connections} ${ru.shell.connectionsShort}`
-      : ru.people.offline.toLowerCase(),
+      ? `${s.people.online.toLowerCase()} · ${countLabel(s, user.current_connections, s.shell.connectionsUnit)}`
+      : s.people.offline.toLowerCase(),
   ];
   const target = user.expiration_rfc3339 ? Date.parse(user.expiration_rfc3339) : NaN;
   if (!Number.isNaN(target)) {
     parts.push(
-      ru.people.detail.expiresInTemplate.replace("{amount}", formatDurationApprox(target - now)),
+      fill(s.people.detail.expiresInTemplate, { amount: formatDurationApprox(target - now, s) }),
     );
   }
   return parts.join(" · ");

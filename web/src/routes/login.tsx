@@ -5,7 +5,7 @@ import { loginMutation } from "../lib/api/generated/@tanstack/react-query.gen";
 import type { LoginError } from "../lib/api/generated/types.gen";
 import { getMeQueryKey, redirectIfAuthenticated } from "../auth/guards";
 import { safeRedirectTarget } from "../auth/safeRedirect";
-import { ru, errorMessage, errorMessages } from "../i18n/ru";
+import { errorMessage, useStrings, type Dict } from "../i18n";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 
@@ -26,6 +26,7 @@ export const Route = createFileRoute("/login")({
 // its message, bad_request, and a synthesized "network" message when fetch
 // itself never got a response at all).
 function LoginPage() {
+  const s = useStrings();
   const { redirect } = Route.useSearch();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -42,7 +43,7 @@ function LoginPage() {
       await router.navigate({ href: safeRedirectTarget(redirect) });
     },
     onError: (err: LoginError) => {
-      setFormError(loginErrorMessage(err));
+      setFormError(loginErrorMessage(err, s));
     },
   });
 
@@ -63,8 +64,8 @@ function LoginPage() {
         >
           T
         </span>
-        <h1 className="mt-1 text-xl font-extrabold tracking-tight text-text">{ru.app.title}</h1>
-        <p className="text-meta text-text-muted">{ru.auth.tagline}</p>
+        <h1 className="mt-1 text-xl font-extrabold tracking-tight text-text">{s.app.title}</h1>
+        <p className="text-meta text-text-muted">{s.auth.tagline}</p>
       </div>
 
       <form
@@ -81,10 +82,10 @@ function LoginPage() {
           </p>
         )}
         <label className="contents">
-          <span className="sr-only">{ru.auth.username}</span>
+          <span className="sr-only">{s.auth.username}</span>
           <Input
             name="username"
-            placeholder={ru.auth.username}
+            placeholder={s.auth.username}
             autoComplete="username"
             autoCapitalize="off"
             autoCorrect="off"
@@ -94,11 +95,11 @@ function LoginPage() {
           />
         </label>
         <label className="contents">
-          <span className="sr-only">{ru.auth.password}</span>
+          <span className="sr-only">{s.auth.password}</span>
           <Input
             type="password"
             name="password"
-            placeholder={ru.auth.password}
+            placeholder={s.auth.password}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -106,18 +107,18 @@ function LoginPage() {
           />
         </label>
         <Button type="submit" disabled={!canSubmit} className="mt-1 w-full">
-          {mutation.isPending ? ru.auth.signingIn : ru.auth.signIn}
+          {mutation.isPending ? s.auth.signingIn : s.auth.signIn}
         </Button>
       </form>
     </main>
   );
 }
 
-function loginErrorMessage(err: LoginError | undefined): string {
+function loginErrorMessage(err: LoginError | undefined, s: Dict): string {
   // A well-formed envelope error always has a non-empty `code` (openapi.yaml's
   // Error schema requires it); no `err` at all — or one that isn't shaped
   // like the envelope — means fetch itself never got a response (offline,
   // DNS, CORS), not a documented error code.
-  if (!err || typeof err.code !== "string") return errorMessages["network"];
-  return errorMessage(err.code);
+  if (!err || typeof err.code !== "string") return errorMessage(s, "network");
+  return errorMessage(s, err.code);
 }

@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { ru, useStrings } from "../i18n";
 import { StatusStrip } from "./StatusStrip";
 import { HeaderMenu } from "./HeaderMenu";
 import { useKeyboardInset } from "./useKeyboardInset";
@@ -26,6 +26,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; Icon: ComponentType<
 // letter is the product name's own initial rather than a separate asset, so
 // there is nothing to keep in sync and nothing extra to ship.
 export function BrandMark({ className }: { className?: string }) {
+  const s = useStrings();
   return (
     <span
       aria-hidden="true"
@@ -35,7 +36,7 @@ export function BrandMark({ className }: { className?: string }) {
         className,
       )}
     >
-      {ru.app.title.slice(0, 1)}
+      {s.app.title.slice(0, 1)}
     </span>
   );
 }
@@ -45,7 +46,8 @@ export function BrandMark({ className }: { className?: string }) {
 // readout and header menu (design-brief.md §Навигация). Mobile-first: the
 // sidebar is `hidden lg:flex`, the tab bar is `lg:hidden`.
 export function Shell({ children }: { children: ReactNode }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const s = useStrings();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const keyboardInset = useKeyboardInset();
   const logout = useLogout();
   const ownsLayout = pathname === "/people" || pathname.startsWith("/people/");
@@ -55,7 +57,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <aside className="hidden w-[216px] shrink-0 flex-col border-r border-border bg-surface px-2.5 py-4 lg:flex">
         <div className="flex items-center gap-2.5 px-2.5 pb-4">
           <BrandMark />
-          <span className="flex-1 truncate text-sm font-bold text-text">{ru.app.title}</span>
+          <span className="flex-1 truncate text-sm font-bold text-text">{s.app.title}</span>
         </div>
 
         {/* Deliberately unlabelled: the tab bar below owns the
@@ -98,7 +100,7 @@ export function Shell({ children }: { children: ReactNode }) {
               )}
             >
               <IconLogout className="h-4 w-4 shrink-0" />
-              {ru.auth.signOut}
+              {s.auth.signOut}
             </button>
             <HeaderMenu />
           </div>
@@ -113,7 +115,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-2.5 border-b border-border bg-surface px-4 py-2 pt-safe lg:hidden">
           <BrandMark />
-          <span className="flex-1 truncate text-sm font-bold text-text">{ru.app.title}</span>
+          <span className="flex-1 truncate text-sm font-bold text-text">{s.app.title}</span>
           <HeaderMenu />
         </header>
         <div className="shrink-0 border-b border-border bg-surface px-4 py-2 lg:hidden">
@@ -137,7 +139,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <nav
           className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-surface pb-safe lg:hidden"
           style={{ bottom: keyboardInset }}
-          aria-label={ru.shell.navLabel}
+          aria-label={s.shell.navLabel}
         >
           {NAV_ITEMS.map(({ to, label, Icon }) => {
             const active = pathname === to || pathname.startsWith(`${to}/`);

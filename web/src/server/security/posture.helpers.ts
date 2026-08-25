@@ -1,6 +1,6 @@
 import type { SecurityPosture } from "../../realtime/topics";
 import type { State } from "../../ui/StatePill";
-import { ru } from "../../i18n/ru";
+import type { Dict } from "../../i18n";
 
 export interface PostureBadge {
   key: string;
@@ -15,42 +15,42 @@ export interface PostureBadge {
 // header configured) get an ok/warn semantic split; api_read_only and
 // proxy_protocol/telemetry flags are informational either way — "on" isn't
 // inherently safer or worse — so they render as a neutral `muted` pill.
-export function postureBadges(posture: SecurityPosture): PostureBadge[] {
-  const yn = (v: boolean) => (v ? ru.common.yes : ru.common.no);
+export function postureBadges(posture: SecurityPosture, s: Dict): PostureBadge[] {
+  const yn = (v: boolean) => (v ? s.common.yes : s.common.no);
   return [
     {
       key: "api_whitelist_enabled",
-      label: ru.server.security.postureFields.apiWhitelistEnabled,
+      label: s.server.security.postureFields.apiWhitelistEnabled,
       state: posture.api_whitelist_enabled ? "ok" : "warn",
       text: yn(posture.api_whitelist_enabled),
     },
     {
       key: "api_auth_header_enabled",
-      label: ru.server.security.postureFields.apiAuthHeaderEnabled,
+      label: s.server.security.postureFields.apiAuthHeaderEnabled,
       state: posture.api_auth_header_enabled ? "ok" : "warn",
       text: yn(posture.api_auth_header_enabled),
     },
     {
       key: "api_read_only",
-      label: ru.server.security.postureFields.apiReadOnly,
+      label: s.server.security.postureFields.apiReadOnly,
       state: "muted",
       text: yn(posture.api_read_only),
     },
     {
       key: "proxy_protocol_enabled",
-      label: ru.server.security.postureFields.proxyProtocolEnabled,
+      label: s.server.security.postureFields.proxyProtocolEnabled,
       state: "muted",
       text: yn(posture.proxy_protocol_enabled),
     },
     {
       key: "telemetry_core_enabled",
-      label: ru.server.security.postureFields.telemetryCoreEnabled,
+      label: s.server.security.postureFields.telemetryCoreEnabled,
       state: "muted",
       text: yn(posture.telemetry_core_enabled),
     },
     {
       key: "telemetry_user_enabled",
-      label: ru.server.security.postureFields.telemetryUserEnabled,
+      label: s.server.security.postureFields.telemetryUserEnabled,
       state: "muted",
       text: yn(posture.telemetry_user_enabled),
     },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_LAYOUT, WIDGETS, getWidgetDef } from "./registry";
-import { ru } from "../../i18n/ru";
+import { ru } from "../../i18n";
 
 const KNOWN_TOPICS = new Set(["users", "stats", "runtime", "upstreams", "security", "update"]);
 

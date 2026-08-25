@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ServerShell } from "../ServerShell";
-import { ru, errorMessage } from "../../i18n/ru";
+import { errorMessage, useStrings } from "../../i18n";
 import { Skeleton } from "../../ui/Skeleton";
 import { ErrorState } from "../../ui/ErrorState";
 import { StatePill } from "../../ui/StatePill";
@@ -26,6 +26,7 @@ import { formatAuditTimestamp } from "../../journal/timestamp.helpers";
 // simpler and just as correct as re-deriving it from two independent
 // per-target signals), auto-update settings, and each target's journal.
 export function UpdatesPage() {
+  const s = useStrings();
   const queryClient = useQueryClient();
   const connection = useConnectionState();
   const sse = useSnapshot<UpdateTopicEvent>("update");
@@ -47,7 +48,7 @@ export function UpdatesPage() {
 
   if (updatesQuery.isPending || hostQuery.isPending) {
     return (
-      <ServerShell title={ru.server.updates.title}>
+      <ServerShell title={s.server.updates.title}>
         <Skeleton className="h-40 w-full" />
       </ServerShell>
     );
@@ -55,9 +56,9 @@ export function UpdatesPage() {
 
   if (updatesQuery.isError) {
     return (
-      <ServerShell title={ru.server.updates.title}>
+      <ServerShell title={s.server.updates.title}>
         <ErrorState
-          message={errorMessage(
+          message={errorMessage(s, 
             apiErrorCode(updatesQuery.error) ?? "internal_error",
           )}
           onRetry={() => updatesQuery.refetch()}
@@ -70,9 +71,9 @@ export function UpdatesPage() {
   const panel = updatesQuery.data.targets.find((t) => t.target === "panel");
 
   return (
-    <ServerShell title={ru.server.updates.title}>
+    <ServerShell title={s.server.updates.title}>
       {connection.status !== "open" && (
-        <StatePill state="warn">{ru.server.updates.sseStale}</StatePill>
+        <StatePill state="warn">{s.server.updates.sseStale}</StatePill>
       )}
 
       <div className="flex flex-col gap-2.5">
@@ -109,13 +110,13 @@ export function UpdatesPage() {
       <div className="flex flex-col gap-2.5">
         {telemt && (
           <JournalList
-            title={ru.server.updates.targetNames.telemt}
+            title={s.server.updates.targetNames.telemt}
             entries={telemt.journal ?? []}
           />
         )}
         {panel && (
           <JournalList
-            title={ru.server.updates.targetNames.panel}
+            title={s.server.updates.targetNames.panel}
             entries={panel.journal ?? []}
           />
         )}
@@ -141,15 +142,16 @@ function JournalList({
   title: string;
   entries: UpdateRun[];
 }) {
+  const s = useStrings();
   const sorted = sortJournalDesc(entries);
   return (
     <Card className="flex flex-col gap-1">
       <CardTitle className="pb-1">
-        {ru.server.updates.journalTitle} — {title}
+        {s.server.updates.journalTitle} — {title}
       </CardTitle>
       {sorted.length === 0 ? (
         <p className="py-1 text-meta text-text-faint">
-          {ru.server.updates.journalEmpty}
+          {s.server.updates.journalEmpty}
         </p>
       ) : (
         <ul className="flex flex-col">
@@ -169,7 +171,7 @@ function JournalList({
                 {entry.version_to}
               </span>
               <span className="min-w-0 flex-1 truncate text-micro text-text-muted">
-                {ru.server.updates.phases[entry.phase]}
+                {s.server.updates.phases[entry.phase]}
                 {entry.detail ? ` · ${entry.detail}` : ""}
               </span>
               <span className="shrink-0 text-micro tabular-nums text-text-faint">

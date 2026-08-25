@@ -6,7 +6,7 @@ import { Chip } from "../ui/Chip";
 import { Input } from "../ui/Input";
 import { IconButton } from "../ui/IconButton";
 import { IconArrowDown, IconArrowUp, IconPlus } from "../ui/icons";
-import { ru } from "../i18n/ru";
+import { pluralTemplate, useStrings } from "../i18n";
 import { useDisplayMode } from "../display-mode";
 import { useConnectionState } from "../realtime";
 import { useUsersTopic, findQuotaEntry } from "./useUsersTopic";
@@ -51,6 +51,7 @@ export interface PeopleListProps {
 // person at every width, and — from `lg:` up — the Инспектор panel showing
 // the selected person beside the list instead of navigating away from it.
 export function PeopleList({ selectedUsername = null }: PeopleListProps) {
+  const s = useStrings();
   const topic = useUsersTopic();
   const connection = useConnectionState();
   const { mode } = useDisplayMode();
@@ -102,7 +103,7 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="shrink-0 border-b border-border">
           <div className="flex items-center gap-2.5 px-4 pb-2 pt-3">
-            <h1 className="text-title font-extrabold tracking-tight text-text">{ru.people.title}</h1>
+            <h1 className="text-title font-extrabold tracking-tight text-text">{s.people.title}</h1>
             <span className="font-mono text-micro tabular-nums text-text-faint">{counts.all}</span>
             {/* Wrapped rather than given `hidden lg:inline-flex` directly:
                 IconButton's own base class already sets `inline-flex`, and
@@ -111,7 +112,7 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
             <span className="ml-auto hidden lg:block">
               <IconButton
                 variant="accent"
-                aria-label={ru.people.create}
+                aria-label={s.people.create}
                 className="h-[42px] w-[42px]"
                 onClick={() => setFormTarget({ mode: "create" })}
               >
@@ -124,8 +125,8 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={ru.people.searchAmongTemplate.replace("{n}", String(counts.all))}
-              aria-label={ru.people.searchPlaceholder}
+              placeholder={pluralTemplate(s, counts.all, s.people.searchAmong)}
+              aria-label={s.people.searchPlaceholder}
               autoCapitalize="off"
             />
           </div>
@@ -138,7 +139,7 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
                 count={counts[key]}
                 onClick={() => setFilter(key)}
               >
-                {ru.people.filter[key]}
+                {s.people.filter[key]}
               </Chip>
             ))}
             {/* Tapping the active sort chip flips its direction — the
@@ -153,14 +154,14 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
                   <Chip
                     key={preset}
                     active={active}
-                    aria-label={`${ru.people.sortLabel}: ${ru.people.sortPreset[preset]}${
+                    aria-label={`${s.people.sortLabel}: ${s.people.sortPreset[preset]}${
                       active
-                        ? `, ${ascending ? ru.people.sortAscending : ru.people.sortDescending}`
+                        ? `, ${ascending ? s.people.sortAscending : s.people.sortDescending}`
                         : ""
                     }`}
                     onClick={() => updateSort(nextSortState(sort, preset))}
                   >
-                    {ru.people.sortPreset[preset]}
+                    {s.people.sortPreset[preset]}
                     {active &&
                       (ascending ? (
                         <IconArrowUp className="h-3 w-3" />
@@ -184,11 +185,11 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
             errorCode={topic.errorCode ?? undefined}
             data={visibleUsers}
             isEmpty={(d) => d.length === 0}
-            emptyTitle={isNarrowed ? ru.common.empty : ru.people.emptyTitle}
-            emptyDescription={isNarrowed ? undefined : ru.people.emptyDescription}
+            emptyTitle={isNarrowed ? s.common.empty : s.people.emptyTitle}
+            emptyDescription={isNarrowed ? undefined : s.people.emptyDescription}
             emptyAction={
               isNarrowed ? undefined : (
-                <Button onClick={() => setFormTarget({ mode: "create" })}>{ru.people.create}</Button>
+                <Button onClick={() => setFormTarget({ mode: "create" })}>{s.people.create}</Button>
               )
             }
             stale={topic.stale || connection.stale}
@@ -217,7 +218,7 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
         <span className="fixed bottom-[84px] right-4 z-30 lg:hidden">
           <IconButton
             variant="accent"
-            aria-label={ru.people.create}
+            aria-label={s.people.create}
             className="h-14 w-14 text-[22px]"
             onClick={() => setFormTarget({ mode: "create" })}
           >

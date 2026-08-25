@@ -2,18 +2,19 @@ import { useSnapshot } from "../../realtime";
 import type { StatsSnapshot } from "../../realtime/topics";
 import { KVRow } from "../../ui/KVRow";
 import { Skeleton } from "../../ui/Skeleton";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { WidgetFrame } from "../WidgetFrame";
 import { computeActiveSessions } from "./activeSessions.helpers";
 import { GatedNote } from "../GatedNote";
 
 export function ActiveSessions({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const view = computeActiveSessions(stats.data);
 
   return (
     <WidgetFrame
-      title={ru.pulse.widgets.active_sessions}
+      title={s.pulse.widgets.active_sessions}
       diagDomain="connections"
       onHide={onHide}
       stale={stats.stale}
@@ -24,10 +25,10 @@ export function ActiveSessions({ onHide }: { onHide?: () => void }) {
       )}
       {view.status === "ok" && (
         <div className="flex flex-col">
-          <KVRow label={ru.pulse.activeSessions.current} value={view.current} />
-          <KVRow label={ru.pulse.activeSessions.viaMe} value={view.viaMe} />
-          <KVRow label={ru.pulse.activeSessions.direct} value={view.direct} />
-          <KVRow label={ru.pulse.activeSessions.activeUsers} value={view.activeUsers} />
+          <KVRow label={s.pulse.activeSessions.current} value={view.current} />
+          <KVRow label={s.pulse.activeSessions.viaMe} value={view.viaMe} />
+          <KVRow label={s.pulse.activeSessions.direct} value={view.direct} />
+          <KVRow label={s.pulse.activeSessions.activeUsers} value={view.activeUsers} />
         </div>
       )}
     </WidgetFrame>

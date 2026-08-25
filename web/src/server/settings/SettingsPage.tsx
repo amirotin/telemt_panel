@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ServerShell } from "../ServerShell";
-import { ru, errorMessage } from "../../i18n/ru";
+import { errorMessage, useStrings } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { Card, CardTitle } from "../../ui/Card";
 import { StatePill } from "../../ui/StatePill";
@@ -33,6 +33,7 @@ import { sessionDeviceLabel, sessionUserAgentRaw, sortSessions } from "./session
 // separate error-tinted block at the bottom rather than being scattered
 // among the display preferences — the prototype's own "danger zone" shape.
 export function SettingsPage() {
+  const s = useStrings();
   const queryClient = useQueryClient();
   const sessionsQuery = useQuery(listSessionsOptions());
   const logout = useLogout();
@@ -51,17 +52,17 @@ export function SettingsPage() {
   const revokeMutation = useMutation({
     ...revokeSessionMutation(),
     onSuccess: () => {
-      pushToast(ru.server.settings.sessionRevoked, "ok");
+      pushToast(s.server.settings.sessionRevoked, "ok");
       setConfirmRevoke(null);
       invalidateSessions();
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const revokeOthersMutation = useMutation({
     ...revokeOtherSessionsMutation(),
     onSuccess: () => {
-      pushToast(ru.server.settings.sessionsRevoked, "ok");
+      pushToast(s.server.settings.sessionsRevoked, "ok");
       setConfirmRevoke(null);
       invalidateSessions();
     },
@@ -71,11 +72,11 @@ export function SettingsPage() {
     // through apiErrorCode first (journal/LogsTab.tsx's own precedent for
     // this exact "no documented error schema" shape).
     onError: (err) =>
-      pushToast(errorMessage(apiErrorCode(err) ?? "internal_error"), "error"),
+      pushToast(errorMessage(s, apiErrorCode(err) ?? "internal_error"), "error"),
   });
 
   return (
-    <ServerShell title={ru.server.settings.title}>
+    <ServerShell title={s.server.settings.title}>
       <Card className="flex flex-col gap-1">
         <CardTitle
           className="pb-1"
@@ -85,17 +86,17 @@ export function SettingsPage() {
               size="sm"
               onClick={() => setConfirmRevoke("others")}
             >
-              {ru.server.settings.revokeOthers}
+              {s.server.settings.revokeOthers}
             </Button>
           }
         >
-          {ru.server.settings.sessionsTitle}
+          {s.server.settings.sessionsTitle}
         </CardTitle>
 
         {confirmRevoke === "others" ? (
           <ConfirmView
-            description={ru.server.settings.revokeOthersConfirm}
-            confirmLabel={ru.server.settings.revokeOthers}
+            description={s.server.settings.revokeOthersConfirm}
+            confirmLabel={s.server.settings.revokeOthers}
             danger
             pending={revokeOthersMutation.isPending}
             onCancel={() => setConfirmRevoke(null)}
@@ -105,18 +106,18 @@ export function SettingsPage() {
           <Skeleton className="h-24 w-full" />
         ) : sessionsQuery.isError ? (
           <ErrorState
-            message={errorMessage(
+            message={errorMessage(s, 
               apiErrorCode(sessionsQuery.error) ?? "internal_error",
             )}
             onRetry={() => sessionsQuery.refetch()}
           />
         ) : (
           <ul className="flex flex-col">
-            {sortSessions(sessionsQuery.data).map((s) => {
-              const rawAgent = sessionUserAgentRaw(s);
+            {sortSessions(sessionsQuery.data).map((session) => {
+              const rawAgent = sessionUserAgentRaw(session);
               return (
               <li
-                key={s.id}
+                key={session.id}
                 className="flex flex-col gap-2 border-b border-border py-2 last:border-b-0"
               >
                 <div className="flex min-h-[52px] items-center gap-3">
@@ -132,17 +133,17 @@ export function SettingsPage() {
                           derived from, so identifying an unfamiliar device
                           never needs a round trip to the API. */}
                       <span className="truncate" title={rawAgent ?? undefined}>
-                        {sessionDeviceLabel(s)}
+                        {sessionDeviceLabel(session, s)}
                       </span>
-                      {s.current && (
+                      {session.current && (
                         <StatePill state="ok" className="shrink-0 whitespace-nowrap">
-                          {ru.server.settings.currentSessionLabel}
+                          {s.server.settings.currentSessionLabel}
                         </StatePill>
                       )}
                     </span>
                     <span className="text-micro text-text-faint">
-                      {ru.server.settings.lastSeen}:{" "}
-                      {formatAuditTimestamp(s.last_seen)}
+                      {s.server.settings.lastSeen}:{" "}
+                      {formatAuditTimestamp(session.last_seen)}
                     </span>
                   </div>
                   {/* No revoke action for the current session — revoking it
@@ -153,13 +154,13 @@ export function SettingsPage() {
                       simply not offering this button here rather than
                       special-casing a DELETE the backend itself doesn't
                       reject. */}
-                  {!s.current && (
+                  {!session.current && (
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => setConfirmRevoke(s.id)}
+                      onClick={() => setConfirmRevoke(session.id)}
                     >
-                      {ru.server.settings.revoke}
+                      {s.server.settings.revoke}
                     </Button>
                   )}
                 </div>
@@ -171,15 +172,15 @@ export function SettingsPage() {
                     {rawAgent}
                   </p>
                 )}
-                {confirmRevoke === s.id && (
+                {confirmRevoke === session.id && (
                   <ConfirmView
-                    description={ru.server.settings.revokeConfirm}
-                    confirmLabel={ru.server.settings.revoke}
+                    description={s.server.settings.revokeConfirm}
+                    confirmLabel={s.server.settings.revoke}
                     danger
                     pending={revokeMutation.isPending}
                     onCancel={() => setConfirmRevoke(null)}
                     onConfirm={() =>
-                      revokeMutation.mutate({ path: { sessionId: s.id } })
+                      revokeMutation.mutate({ path: { sessionId: session.id } })
                     }
                   />
                 )}
@@ -191,17 +192,17 @@ export function SettingsPage() {
       </Card>
 
       <Card className="flex flex-col gap-4">
-        <CardTitle>{ru.server.settings.displayTitle}</CardTitle>
+        <CardTitle>{s.server.settings.displayTitle}</CardTitle>
         <ThemeToggle />
         <div className="flex flex-col gap-2">
-          <SectionLabel>{ru.displayMode.label}</SectionLabel>
+          <SectionLabel>{s.displayMode.label}</SectionLabel>
           <DisplayModeSwitch />
         </div>
       </Card>
 
       <Card className="flex flex-col gap-2.5 border border-error/25">
         <SectionLabel className="text-error">
-          {ru.server.settings.dangerZoneTitle}
+          {s.server.settings.dangerZoneTitle}
         </SectionLabel>
         {/* Only the раскладка button swaps for its confirmation — «Выйти»
             stays reachable throughout. It used to share the branch, so
@@ -209,8 +210,8 @@ export function SettingsPage() {
             this page for. */}
         {confirmResetLayout ? (
           <ConfirmView
-            description={ru.server.settings.resetLayoutConfirm}
-            confirmLabel={ru.server.settings.resetLayout}
+            description={s.server.settings.resetLayoutConfirm}
+            confirmLabel={s.server.settings.resetLayout}
             danger
             pending={false}
             onCancel={() => setConfirmResetLayout(false)}
@@ -218,7 +219,7 @@ export function SettingsPage() {
               resetLayout();
               setConfirmResetLayout(false);
               setLayoutResetDone(true);
-              pushToast(ru.server.settings.resetLayoutDone, "ok");
+              pushToast(s.server.settings.resetLayoutDone, "ok");
             }}
           />
         ) : (
@@ -227,7 +228,7 @@ export function SettingsPage() {
             className="self-start"
             onClick={() => setConfirmResetLayout(true)}
           >
-            {ru.server.settings.resetLayout}
+            {s.server.settings.resetLayout}
           </Button>
         )}
         <Button
@@ -236,11 +237,11 @@ export function SettingsPage() {
           onClick={() => logout.mutate({})}
           disabled={logout.isPending}
         >
-          {ru.server.settings.signOut}
+          {s.server.settings.signOut}
         </Button>
         {layoutResetDone && (
           <p className="text-micro text-text-faint">
-            {ru.server.settings.resetLayoutDone}
+            {s.server.settings.resetLayoutDone}
           </p>
         )}
       </Card>

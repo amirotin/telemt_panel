@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { IconButton } from "../ui/IconButton";
 import { IconChevronRight, IconClose } from "../ui/icons";
 import { StatePill } from "../ui/StatePill";
@@ -42,13 +42,14 @@ export function WidgetFrame({
   className,
   children,
 }: WidgetFrameProps) {
+  const s = useStrings();
   return (
     <div className={cn("flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-3.5", className)}>
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <h3 className="truncate text-[13px] font-semibold text-text">{title}</h3>
           {badge}
-          {stale && <StatePill state="warn">{ru.common.stale}</StatePill>}
+          {stale && <StatePill state="warn">{s.common.stale}</StatePill>}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {diagDomain && (
@@ -57,13 +58,13 @@ export function WidgetFrame({
               params={{ domain: diagDomain }}
               className="inline-flex min-h-[32px] items-center gap-0.5 rounded-md px-2 text-micro font-semibold text-accent transition-colors hover:bg-accent/12"
             >
-              {ru.pulse.diagLink}
+              {s.pulse.diagLink}
               <IconChevronRight className="h-3.5 w-3.5" />
             </Link>
           )}
           {onHide && (
             <IconButton
-              aria-label={ru.pulse.hideWidget}
+              aria-label={s.pulse.hideWidget}
               onClick={onHide}
               className="text-[15px]"
             >

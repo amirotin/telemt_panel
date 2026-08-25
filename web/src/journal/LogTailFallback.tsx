@@ -6,7 +6,7 @@ import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { EmptyState } from "../ui/EmptyState";
 import { IconInfo, IconRefresh } from "../ui/icons";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { useDisplayMode, visibleFor } from "../display-mode";
 import { useDebouncedValue } from "../people/useDebouncedValue";
 import { filterLogLines } from "./logFilter.helpers";
@@ -33,6 +33,7 @@ export function LogTailFallback({
   service,
   onServiceChange,
 }: LogTailFallbackProps) {
+  const s = useStrings();
   const { mode } = useDisplayMode();
   const [levels, setLevels] = useDefaultLevels(mode);
   const [search, setSearch] = useState("");
@@ -78,16 +79,16 @@ export function LogTailFallback({
           </span>
           <div className="flex min-w-0 flex-col gap-1">
             <p className="text-[13px] font-semibold text-text-muted">
-              {ru.journal.tailFallback.title}
+              {s.journal.tailFallback.title}
             </p>
             <p className="text-meta leading-relaxed text-text-faint">
-              {ru.journal.tailFallback.description}
+              {s.journal.tailFallback.description}
             </p>
             <Button
               className="mt-2 self-start"
               onClick={() => void query.refetch()}
             >
-              {ru.journal.tailFallback.loadButton}
+              {s.journal.tailFallback.loadButton}
             </Button>
           </div>
         </Card>
@@ -102,7 +103,7 @@ export function LogTailFallback({
                 disabled={query.isFetching}
               >
                 <IconRefresh aria-hidden="true" />
-                {ru.journal.tailFallback.loadMoreButton}
+                {s.journal.tailFallback.loadMoreButton}
               </Button>
             </div>
           )}
@@ -113,13 +114,13 @@ export function LogTailFallback({
             data={query.data}
             onRetry={() => void query.refetch()}
             isEmpty={(d) => d.length === 0}
-            emptyTitle={ru.journal.emptyTitle}
+            emptyTitle={s.journal.emptyTitle}
           >
             {() =>
               filtered.length === 0 ? (
                 <EmptyState
-                  title={ru.journal.emptyFilterTitle}
-                  description={ru.journal.emptyFilterDescription}
+                  title={s.journal.emptyFilterTitle}
+                  description={s.journal.emptyFilterDescription}
                 />
               ) : (
                 <LogList

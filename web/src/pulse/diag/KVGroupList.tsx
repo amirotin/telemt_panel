@@ -2,7 +2,7 @@ import { Card } from "../../ui/Card";
 import { KVRow } from "../../ui/KVRow";
 import { SectionLabel } from "../../ui/SectionLabel";
 import { EmptyState } from "../../ui/EmptyState";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import type { KVGroup } from "./rows";
 
 // KVGroupList renders every Диагностика page's actual content — one card
@@ -10,8 +10,9 @@ import type { KVGroup } from "./rows";
 // (06-ui.md: "полный состав данных каталога — KVRow-группы"). The one
 // shared renderer every domain page's helpers.ts feeds groups into.
 export function KVGroupList({ groups }: { groups: KVGroup[] }) {
+  const s = useStrings();
   if (groups.length === 0) {
-    return <EmptyState title={ru.diag.emptyTitle} description={ru.diag.emptyDescription} />;
+    return <EmptyState title={s.diag.emptyTitle} description={s.diag.emptyDescription} />;
   }
   return (
     <div className="flex flex-col gap-4">

@@ -1,6 +1,6 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
-import { gateHints, type GateHintKey } from "../caps/gateHints";
+import { useStrings } from "../i18n";
+import { gateHint, type GateHintKey } from "../caps/gateHints";
 
 export interface GatedNoteProps {
   /** Telemt's own Gated[T] `reason`, passed through as-is when present. */
@@ -18,18 +18,19 @@ export interface GatedNoteProps {
 //
 // caps/Gated is the same state as a standalone *card* (it renders on the
 // bare page, and carries the optional "hide" action for gated actions);
-// this is the nested variant, which is why it reuses gateHints rather than
+// this is the nested variant, which is why it reuses gateHint rather than
 // restating them.
 export function GatedNote({ reason, hint, className }: GatedNoteProps) {
+  const s = useStrings();
   return (
     <div className={cn("rounded-md bg-bg px-3.5 py-3 opacity-75", className)}>
       <p className="text-meta leading-relaxed text-text-muted">
-        {ru.gated.disabledPrefix}
-        {reason ?? ru.gated.defaultReason}
+        {s.gated.disabledPrefix}
+        {reason ?? s.gated.defaultReason}
       </p>
       {hint && (
         <p className="mt-1 text-micro leading-relaxed text-text-faint">
-          {ru.gated.howToEnable}: {gateHints[hint]}
+          {s.gated.howToEnable}: {gateHint(s, hint)}
         </p>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { Card, CardTitle } from "../../ui/Card";
 import { CopyField } from "../../ui/CopyField";
@@ -54,6 +54,7 @@ export function UpdateTarget({
   sseEvent,
   onApplied,
 }: UpdateTargetProps) {
+  const s = useStrings();
   const [confirming, setConfirming] = useState(false);
 
   const applyMutation = useMutation({
@@ -62,7 +63,7 @@ export function UpdateTarget({
       setConfirming(false);
       onApplied();
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const latest = pickLatestRelease(data.releases);
@@ -86,30 +87,30 @@ export function UpdateTarget({
 
   return (
     <Card className="flex flex-col gap-3">
-      <CardTitle>{ru.server.updates.targetNames[target]}</CardTitle>
+      <CardTitle>{s.server.updates.targetNames[target]}</CardTitle>
 
       <div className="grid grid-cols-2 gap-2.5">
         <VersionCard
-          label={ru.server.updates.currentVersion}
+          label={s.server.updates.currentVersion}
           value={data.current_version}
         />
         <VersionCard
-          label={ru.server.updates.latestVersion}
-          value={latest ? latest.version : ru.server.updates.upToDate}
+          label={s.server.updates.latestVersion}
+          value={latest ? latest.version : s.server.updates.upToDate}
           muted={!latest}
         />
       </div>
 
       {restarting && restartWatch.status === "wait" && (
         <p className="text-meta text-warn">
-          {ru.server.updates.panelRestarting}
+          {s.server.updates.panelRestarting}
         </p>
       )}
 
       {restarting && restartWatch.status === "timeout" && (
-        <Notice tone="error" title={ru.server.updates.panelRestartTimeoutTitle}>
+        <Notice tone="error" title={s.server.updates.panelRestartTimeoutTitle}>
           <p className="text-meta leading-relaxed text-text-muted">
-            {ru.server.updates.panelRestartTimeoutDescription}
+            {s.server.updates.panelRestartTimeoutDescription}
           </p>
           {manualCommands?.["restart_panel"] && (
             <CopyField value={manualCommands["restart_panel"]} />
@@ -120,7 +121,7 @@ export function UpdateTarget({
             onClick={restartWatch.retry}
             className="self-start"
           >
-            {ru.server.updates.panelRestartRetry}
+            {s.server.updates.panelRestartRetry}
           </Button>
         </Notice>
       )}
@@ -134,7 +135,7 @@ export function UpdateTarget({
         </div>
       ) : (
         <p className="text-meta text-text-faint">
-          {ru.server.updates.noActiveRun}
+          {s.server.updates.noActiveRun}
         </p>
       )}
 
@@ -142,8 +143,8 @@ export function UpdateTarget({
         latest &&
         (confirming ? (
           <ConfirmView
-            description={`${ru.server.updates.confirmPrefix} ${latest.version}?`}
-            confirmLabel={ru.server.updates.update}
+            description={`${s.server.updates.confirmPrefix} ${latest.version}?`}
+            confirmLabel={s.server.updates.update}
             pending={applyMutation.isPending}
             onCancel={() => setConfirming(false)}
             onConfirm={() =>
@@ -164,10 +165,10 @@ export function UpdateTarget({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-row font-bold text-text">
-                  {ru.server.updates.availablePrefix} {latest.version}
+                  {s.server.updates.availablePrefix} {latest.version}
                 </p>
                 <p className="truncate font-mono text-micro text-text-muted">
-                  {ru.server.updates.targetNames[target]} ·{" "}
+                  {s.server.updates.targetNames[target]} ·{" "}
                   {data.current_version} → {latest.version}
                 </p>
               </div>
@@ -177,17 +178,17 @@ export function UpdateTarget({
               disabled={!canSelfUpdate || otherRunBlocking}
               className="w-full"
             >
-              {ru.server.updates.update}
+              {s.server.updates.update}
             </Button>
             {!canSelfUpdate && manualCommands?.["self_update"] && (
               <div className="flex flex-col gap-1.5">
-                <SectionLabel>{ru.server.updates.manualOnly}</SectionLabel>
+                <SectionLabel>{s.server.updates.manualOnly}</SectionLabel>
                 <CopyField value={manualCommands["self_update"]} />
               </div>
             )}
             {canSelfUpdate && otherRunBlocking && (
               <p className="text-micro text-text-faint">
-                {ru.server.updates.lockHeld}
+                {s.server.updates.lockHeld}
               </p>
             )}
           </div>

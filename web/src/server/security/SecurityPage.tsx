@@ -1,5 +1,5 @@
 import { ServerShell } from "../ServerShell";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { KVRow } from "../../ui/KVRow";
 import { StatePill } from "../../ui/StatePill";
 import { Card, CardTitle } from "../../ui/Card";
@@ -21,13 +21,14 @@ import { postureBadges } from "./posture.helpers";
 // Everything on this page is read-only with a "правится в конфиге Telemt"
 // note — there is no edit path for security posture through the panel.
 export function SecurityPage() {
+  const s = useStrings();
   const topic = useSnapshot<SecurityTopic>("security");
   const { mode } = useDisplayMode();
   const extended = visibleFor("extended", mode);
 
   if (!topic.data) {
     return (
-      <ServerShell title={ru.server.security.title}>
+      <ServerShell title={s.server.security.title}>
         <Skeleton className="h-40 w-full" />
       </ServerShell>
     );
@@ -36,20 +37,20 @@ export function SecurityPage() {
   const tls = resolveGated(topic.data.tls_fingerprints);
 
   return (
-    <ServerShell title={ru.server.security.title}>
+    <ServerShell title={s.server.security.title}>
       <div className="flex flex-wrap items-center gap-2">
-        {topic.stale && <StatePill state="warn">{ru.common.stale}</StatePill>}
+        {topic.stale && <StatePill state="warn">{s.common.stale}</StatePill>}
         <p className="text-micro text-text-faint">
-          {ru.server.security.editHint}
+          {s.server.security.editHint}
         </p>
       </div>
 
       {topic.data.posture && (
         <Card className="flex flex-col gap-1">
           <CardTitle className="pb-1">
-            {ru.server.security.postureTitle}
+            {s.server.security.postureTitle}
           </CardTitle>
-          {postureBadges(topic.data.posture).map((b) => (
+          {postureBadges(topic.data.posture, s).map((b) => (
             <KVRow
               key={b.key}
               label={b.label}
@@ -57,12 +58,12 @@ export function SecurityPage() {
             />
           ))}
           <KVRow
-            label={ru.server.security.logLevel}
+            label={s.server.security.logLevel}
             value={topic.data.posture.log_level}
             monospace
           />
           <KVRow
-            label={ru.server.security.telemetryMeLevel}
+            label={s.server.security.telemetryMeLevel}
             value={topic.data.posture.telemetry_me_level}
             monospace
           />
@@ -75,17 +76,17 @@ export function SecurityPage() {
             action={
               topic.data.whitelist.entries.length > 0 ? (
                 <span className="text-micro tabular-nums text-text-faint">
-                  {ru.server.security.whitelistEntriesTotal}:{" "}
+                  {s.server.security.whitelistEntriesTotal}:{" "}
                   {topic.data.whitelist.entries_total}
                 </span>
               ) : undefined
             }
           >
-            {ru.server.security.whitelistTitle}
+            {s.server.security.whitelistTitle}
           </CardTitle>
           {topic.data.whitelist.entries.length === 0 ? (
             <p className="text-meta text-text-muted">
-              {ru.server.security.whitelistEmpty}
+              {s.server.security.whitelistEmpty}
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -109,12 +110,12 @@ export function SecurityPage() {
         groups={securityGroups({
           effectiveLimits: topic.data.effective_limits ?? undefined,
           tlsFingerprints: extended && tls.status === "ok" ? tls.data : undefined,
-        })}
+        }, s)}
       />
 
       {!extended && (
         <p className="text-micro text-text-faint">
-          {ru.server.security.tlsExtendedOnly}
+          {s.server.security.tlsExtendedOnly}
         </p>
       )}
       {extended && tls.status === "gated" && (

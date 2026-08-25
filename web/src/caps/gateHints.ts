@@ -1,4 +1,4 @@
-import { ru } from "../i18n/ru";
+import type { Dict } from "../i18n";
 
 // GateHintKey enumerates the panel's static "как включить" hints for a
 // disabled capability/gate — Telemt's own Gated[T] wrapper (07-telemt-sdk.md)
@@ -6,9 +6,9 @@ import { ru } from "../i18n/ru";
 // "minimal runtime gate disabled"), shown as-is by <Gated>; the entries here
 // are the panel-authored follow-up text for the capability flags exposed by
 // GET /api/telemt/info (07-telemt-sdk.md §SDK-3) and the runtime_edge gate
-// that unlocks several of the payloads underneath it. The Russian text
-// itself lives in ru.ts (ru.gated.hints) — this module only owns the key
-// enumeration and the typed lookup, per the single-strings-module rule.
+// that unlocks several of the payloads underneath it. The text itself lives
+// in the dictionaries (gated.hints) — this module only owns the key
+// enumeration and the typed lookup.
 export type GateHintKey =
   | "runtime_edge"
   | "quota"
@@ -19,4 +19,6 @@ export type GateHintKey =
   | "log_stream"
   | "minimal_runtime_enabled";
 
-export const gateHints: Record<GateHintKey, string> = { ...ru.gated.hints };
+export function gateHint(s: Dict, key: GateHintKey): string {
+  return s.gated.hints[key];
+}

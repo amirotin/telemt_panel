@@ -1,8 +1,19 @@
-// Single source of Russian UI strings (06-ui.md: one UI language, no
-// i18n framework — just constants, so a translation stays possible later
-// without a rewrite). Code/identifiers stay English; only user-facing text
-// lives here. Grouped by feature area as the app grows past Task 3's shell.
+// The Russian dictionary — and the source of truth for the dictionary
+// SHAPE: `Dict = Widen<typeof ru>` (i18n/dict.ts) is what types en.ts, so a
+// key added here is a compile error in en.ts until it is translated
+// (06-ui.md §Дизайн-система: "словари-константы ru.ts/en.ts одной формы,
+// типизированы от ru", no ICU framework — just constants). Code and
+// identifiers stay English; only user-facing text lives here. Grouped by
+// feature area.
+//
+// Countable strings are 3-slot [one, few, many] tuples fed to
+// i18n/plural.ts's plural()/countLabel()/pluralTemplate(); Russian uses all
+// three slots, English repeats the plural in the last two.
 export const ru = {
+  // The dictionary carries its own BCP-47 tag so a helper only ever needs
+  // ONE parameter (`s: Dict`) to both look a string up and pick the right
+  // plural form / Intl formatter — see i18n/plural.ts's localeOf.
+  locale: "ru",
   app: {
     title: "Telemt Panel",
   },
@@ -17,6 +28,15 @@ export const ru = {
     critical: "Критично",
     basic: "Базово",
     extended: "Расширенно",
+  },
+  // Language picker in Настройки панели (06-ui.md §Дизайн-система). Both
+  // language names stay in their own language — that is how a person who
+  // landed on the wrong one finds their way back.
+  language: {
+    label: "Язык",
+    auto: "Как в браузере",
+    ru: "Русский",
+    en: "English",
   },
   health: {
     ok: "Работает",
@@ -71,8 +91,8 @@ export const ru = {
     navLabel: "Основная навигация",
     connections: "Соединения",
     // Abbreviated counter for the compact status readouts (sidebar card,
-    // mobile strip) — "713 соед · 18,3 ГБ" in the prototype.
-    connectionsShort: "соед",
+    // mobile strip) — "713 соед. · 18,3 ГБ" in the prototype.
+    connectionsUnit: ["соед.", "соед.", "соед."],
     traffic: "Трафик",
     trafficUnavailable: "н/д",
     stale: "Устарело",
@@ -86,7 +106,7 @@ export const ru = {
     searchPlaceholder: "Поиск по имени",
     // "{n}" is replaced with the total number of people — the prototype's
     // «Поиск среди 1 234», which doubles as a size cue for the list.
-    searchAmongTemplate: "Поиск среди {n}",
+    searchAmong: ["Поиск среди {n}", "Поиск среди {n}", "Поиск среди {n}"],
     sortLabel: "Сортировка",
     sortField: { name: "Имя", traffic: "Трафик", connections: "Соединения" },
     // The three sort chips above the list.
@@ -139,9 +159,9 @@ export const ru = {
     // Coarse duration-unit abbreviations for formatDurationApprox
     // (people/expiry.ts) — the detail screen's expiry countdown.
     durationUnits: {
-      days: "дн.",
-      hours: "ч.",
-      minutes: "мин.",
+      days: ["дн.", "дн.", "дн."],
+      hours: ["ч.", "ч.", "ч."],
+      minutes: ["мин.", "мин.", "мин."],
     },
     status: {
       active: "Активен",
@@ -360,7 +380,7 @@ export const ru = {
     securityPosture: {
       readOnly: "Только чтение",
       whitelist: "Белый список",
-      whitelistEntries: "записей",
+      whitelistEntries: ["запись", "записи", "записей"],
       authHeader: "Заголовок авторизации",
       proxyProtocol: "PROXY protocol",
       logLevel: "Уровень логов",
@@ -470,7 +490,7 @@ export const ru = {
     // module rule rather than a function (ru.ts stays plain data).
     // newLinesTemplate captions the centered pill above a paused feed;
     // jumpToNewTemplate is the floating button that scrolls back down.
-    newLinesTemplate: "+{n} новых",
+    newLines: ["+{n} новая", "+{n} новые", "+{n} новых"],
     jumpToNewTemplate: "к новым · {n}",
     showEarlier: "Показать раньше",
     showMore: "Показать ещё",
@@ -728,97 +748,102 @@ export const ru = {
       signOut: "Выйти",
     },
   },
+  // errors maps every {code} the panel's JSON error envelope can carry
+  // (api/openapi.yaml's Error schema) to a human sentence. Lives inside the
+  // dictionary so en.ts must translate every one of them or fail to
+  // compile; i18n/messages.ts owns the dynamic lookup. See i18n/i18n.test.ts
+  // for the completeness check against openapi.yaml.
+  // dev — /dev/ui's own showcase copy (dev/UIShowcase.tsx). Dev-only, but
+  // it goes through the dictionaries like everything else: the showcase is
+  // where a mixed-language screen would be spotted first.
+  dev: {
+    title: "/dev/ui — витрина примитивов",
+    example: "Пример",
+    inputPlain: "Обычный",
+    inputMono: "Моноширинный",
+    inputDisabled: "Отключён",
+    openSheet: "Открыть Sheet",
+    sheetTitle: "Пример Sheet",
+    sheetBody: "Нижняя шторка на мобайле, модал на lg:. Escape и клик по фону закрывают.",
+    toastDefault: "Обычное уведомление",
+    toastOk: "Успешно",
+    version: "Версия",
+    copyFieldNote:
+      "Клик копирует через Clipboard API (HTTPS/localhost), иначе через execCommand, иначе выделяет значение и показывает тост «{manual}» — см. src/lib/copyText.ts.",
+  },
+  errors: {
+    // Panel-native codes.
+    bad_request: "Некорректный запрос.",
+    invalid_credentials: "Неверное имя пользователя или пароль.",
+    rate_limited: "Слишком много попыток входа. Подождите минуту и повторите.",
+    session_expired: "Сессия истекла. Войдите снова.",
+    csrf_rejected:
+      "Запрос отклонён проверкой безопасности — обновите страницу и повторите.",
+    internal_error: "Внутренняя ошибка панели. Попробуйте ещё раз.",
+    not_found: "Не найдено.",
+    telemt_unreachable: "Telemt недоступен — проверьте, что прокси запущен.",
+    capability_absent: "Эта версия Telemt не поддерживает данную функцию.",
+    capability_unavailable: "Функция сейчас недоступна на этом сервере.",
+    manual_restart_required:
+      "Автоматический перезапуск недоступен — выполните команду вручную.",
+    update_locked: "Обновление уже выполняется.",
+    sublink_unavailable: "Страница подписки отключена.",
+    log_tail_unavailable: "Просмотр последних строк логов недоступен.",
+    log_stream_unavailable: "Живые логи недоступны на этой платформе.",
+    log_source_error: "Не удалось подключиться к источнику логов.",
+    // Reserved for milestones not yet implemented, kept so a stray response
+    // from a partially-rolled-out backend still shows something sensible.
+    totp_required: "Требуется код двухфакторной аутентификации.",
+    telemt_auth_failed:
+      "Telemt отклонил авторизацию панели — проверьте auth_header в конфиге.",
+    // Telemt *APIError codes passed through verbatim.
+    user_exists: "Пользователь с таким именем уже существует.",
+    last_user_forbidden: "Нельзя удалить последнего пользователя.",
+    read_only: "Telemt работает в режиме только для чтения.",
+    revision_conflict: "Конфигурация изменена — обновите её и повторите попытку.",
+    reload_in_progress: "Перезагрузка конфигурации уже выполняется.",
+    reload_not_found: "Задача перезагрузки не найдена.",
+    ambiguous_listeners:
+      "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
+    access_not_editable: "Этот раздел конфигурации нельзя изменить через API.",
+    section_not_editable: "Этот раздел конфигурации доступен только для чтения.",
+    field_not_editable: "Это поле нельзя изменить через API.",
+    unauthorized: "Telemt отклонил запрос авторизации.",
+    forbidden: "Операция запрещена.",
+    method_not_allowed: "Метод не поддерживается.",
+    config_patch_not_atomic:
+      "Не удалось применить изменения конфигурации атомарно.",
+    payload_too_large: "Слишком большой запрос.",
+    api_disabled: "API Telemt отключён.",
+    maestro_unavailable: "Внутренний сервис Telemt недоступен.",
+    // Not an envelope code — synthesized client-side when fetch itself throws
+    // (offline, DNS failure, CORS) rather than returning any HTTP response.
+    network: "Нет соединения с сервером. Проверьте подключение и повторите.",
+    // Fallback for any code not in this table (a future backend code this
+    // build of the frontend doesn't know about yet).
+    default: "Не удалось выполнить запрос. Попробуйте ещё раз.",
+  },
+
+  // auditActions maps every AuditEntry.action string the panel's own
+  // store.appendAudit call sites emit (api/openapi.yaml's AuditEntry.action
+  // is free text, not an enum, so there is no schema to walk the way the
+  // errors table's completeness test walks Error.code — see
+  // journal/auditActions.test.ts's own list of backend call sites).
+  auditActions: {
+    login: "Вход",
+    "login.failed": "Неудачный вход",
+    logout: "Выход",
+    "user.create": "Создан пользователь",
+    "user.patch": "Изменён пользователь",
+    "user.delete": "Удалён пользователь",
+    "quota.reset": "Сброшена квота",
+    "secret.rotate": "Обновлён секрет",
+    "user.enabled": "Изменён статус пользователя",
+    "sublink.rotate": "Перевыпущена ссылка подписки",
+    "config.patch": "Изменена конфигурация Telemt",
+    "telemt.reload": "Перезагружена конфигурация Telemt",
+    "telemt.restart": "Перезапущен Telemt",
+    "update.apply": "Запущено обновление",
+    "update.auto_change": "Изменены настройки авто-обновления",
+  },
 } as const;
-
-// errorMessages maps every {code} the panel's JSON error envelope can carry
-// (api/openapi.yaml's Error schema description — grepped from every
-// WriteError call site plus every Telemt *APIError code passed through
-// verbatim) to a human Russian sentence. Kept as a plain Record (not `as
-// const`, unlike `ru` above) since it's looked up by a dynamic string key
-// coming off the wire. See ru.test.ts for the completeness check against
-// openapi.yaml's documented set.
-export const errorMessages: Record<string, string> = {
-  // Panel-native codes.
-  bad_request: "Некорректный запрос.",
-  invalid_credentials: "Неверное имя пользователя или пароль.",
-  rate_limited: "Слишком много попыток входа. Подождите минуту и повторите.",
-  session_expired: "Сессия истекла. Войдите снова.",
-  csrf_rejected:
-    "Запрос отклонён проверкой безопасности — обновите страницу и повторите.",
-  internal_error: "Внутренняя ошибка панели. Попробуйте ещё раз.",
-  not_found: "Не найдено.",
-  telemt_unreachable: "Telemt недоступен — проверьте, что прокси запущен.",
-  capability_absent: "Эта версия Telemt не поддерживает данную функцию.",
-  capability_unavailable: "Функция сейчас недоступна на этом сервере.",
-  manual_restart_required:
-    "Автоматический перезапуск недоступен — выполните команду вручную.",
-  update_locked: "Обновление уже выполняется.",
-  sublink_unavailable: "Страница подписки отключена.",
-  log_tail_unavailable: "Просмотр последних строк логов недоступен.",
-  log_stream_unavailable: "Живые логи недоступны на этой платформе.",
-  log_source_error: "Не удалось подключиться к источнику логов.",
-  // Reserved for milestones not yet implemented, kept so a stray response
-  // from a partially-rolled-out backend still shows something sensible.
-  totp_required: "Требуется код двухфакторной аутентификации.",
-  telemt_auth_failed:
-    "Telemt отклонил авторизацию панели — проверьте auth_header в конфиге.",
-  // Telemt *APIError codes passed through verbatim.
-  user_exists: "Пользователь с таким именем уже существует.",
-  last_user_forbidden: "Нельзя удалить последнего пользователя.",
-  read_only: "Telemt работает в режиме только для чтения.",
-  revision_conflict: "Конфигурация изменена — обновите её и повторите попытку.",
-  reload_in_progress: "Перезагрузка конфигурации уже выполняется.",
-  reload_not_found: "Задача перезагрузки не найдена.",
-  ambiguous_listeners:
-    "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
-  access_not_editable: "Этот раздел конфигурации нельзя изменить через API.",
-  section_not_editable: "Этот раздел конфигурации доступен только для чтения.",
-  field_not_editable: "Это поле нельзя изменить через API.",
-  unauthorized: "Telemt отклонил запрос авторизации.",
-  forbidden: "Операция запрещена.",
-  method_not_allowed: "Метод не поддерживается.",
-  config_patch_not_atomic:
-    "Не удалось применить изменения конфигурации атомарно.",
-  payload_too_large: "Слишком большой запрос.",
-  api_disabled: "API Telemt отключён.",
-  maestro_unavailable: "Внутренний сервис Telemt недоступен.",
-  // Not an envelope code — synthesized client-side when fetch itself throws
-  // (offline, DNS failure, CORS) rather than returning any HTTP response.
-  network: "Нет соединения с сервером. Проверьте подключение и повторите.",
-  // Fallback for any code not in this table (a future backend code this
-  // build of the frontend doesn't know about yet).
-  default: "Не удалось выполнить запрос. Попробуйте ещё раз.",
-};
-
-// errorMessage looks up a human message for an envelope {code}, falling
-// back to errorMessages.default for anything unrecognized.
-export function errorMessage(code: string): string {
-  return errorMessages[code] ?? errorMessages["default"];
-}
-
-// auditActionLabels maps every AuditEntry.action string the panel's own
-// store.appendAudit call sites emit (api/openapi.yaml's AuditEntry.action
-// is a free-text field, not an enum, so there's no schema to walk the way
-// errorMessages' completeness test walks Error.code — see
-// journal/auditActions.test.ts's own hardcoded, commented list of backend
-// call sites for the completeness check). Kept as a plain Record (not `as
-// const`, same reasoning as errorMessages above) since journal/
-// auditActions.ts looks it up by a dynamic action string coming off the
-// wire.
-export const auditActionLabels: Record<string, string> = {
-  login: "Вход",
-  "login.failed": "Неудачный вход",
-  logout: "Выход",
-  "user.create": "Создан пользователь",
-  "user.patch": "Изменён пользователь",
-  "user.delete": "Удалён пользователь",
-  "quota.reset": "Сброшена квота",
-  "secret.rotate": "Обновлён секрет",
-  "user.enabled": "Изменён статус пользователя",
-  "sublink.rotate": "Перевыпущена ссылка подписки",
-  "config.patch": "Изменена конфигурация Telemt",
-  "telemt.reload": "Перезагружена конфигурация Telemt",
-  "telemt.restart": "Перезапущен Telemt",
-  "update.apply": "Запущено обновление",
-  "update.auto_change": "Изменены настройки авто-обновления",
-};

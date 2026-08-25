@@ -3,18 +3,19 @@ import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
 import { KVRow } from "../../ui/KVRow";
 import { Skeleton } from "../../ui/Skeleton";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { WidgetFrame } from "../WidgetFrame";
 import { resolveGated } from "./gated";
 import { computeMePoolView } from "./mePool.helpers";
 import { GatedNote } from "../GatedNote";
 
 export function MePoolWidget({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const topic = useSnapshot<RuntimeTopic>("runtime");
 
   if (!topic.data) {
     return (
-      <WidgetFrame title={ru.pulse.widgets.me_pool} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.me_pool} onHide={onHide}>
         <Skeleton className="h-16 w-full" />
       </WidgetFrame>
     );
@@ -29,13 +30,13 @@ export function MePoolWidget({ onHide }: { onHide?: () => void }) {
     const view = computeMePoolView(pool.data, quality.status === "ok" ? quality.data : undefined);
     body = (
       <div className="flex flex-col">
-        <KVRow label={ru.pulse.mePool.writersTotal} value={view.writersTotal} />
-        <KVRow label={ru.pulse.mePool.writersAlive} value={view.writersAlive} />
-        <KVRow label={ru.pulse.mePool.writersDraining} value={view.writersDraining} />
-        <KVRow label={ru.pulse.mePool.hardswapPending} value={view.hardswapPending ? ru.common.yes : ru.common.no} />
+        <KVRow label={s.pulse.mePool.writersTotal} value={view.writersTotal} />
+        <KVRow label={s.pulse.mePool.writersAlive} value={view.writersAlive} />
+        <KVRow label={s.pulse.mePool.writersDraining} value={view.writersDraining} />
+        <KVRow label={s.pulse.mePool.hardswapPending} value={view.hardswapPending ? s.common.yes : s.common.no} />
         {view.reconnectSuccessTotal !== undefined && view.reconnectAttemptTotal !== undefined && (
           <KVRow
-            label={ru.pulse.mePool.reconnects}
+            label={s.pulse.mePool.reconnects}
             value={`${view.reconnectSuccessTotal}/${view.reconnectAttemptTotal}`}
           />
         )}
@@ -44,7 +45,7 @@ export function MePoolWidget({ onHide }: { onHide?: () => void }) {
   }
 
   return (
-    <WidgetFrame title={ru.pulse.widgets.me_pool} diagDomain="me" onHide={onHide} stale={topic.stale}>
+    <WidgetFrame title={s.pulse.widgets.me_pool} diagDomain="me" onHide={onHide} stale={topic.stale}>
       {body}
     </WidgetFrame>
   );

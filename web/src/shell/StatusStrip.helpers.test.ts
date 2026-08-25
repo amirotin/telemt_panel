@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { connectionsLabel, healthLabel, healthPillState } from "./StatusStrip.helpers";
 import type { StatsSnapshot } from "../realtime/topics";
+import { ru as s } from "../i18n";
 
 describe("healthPillState", () => {
   it("is muted when there is no status yet", () => {
@@ -22,30 +23,30 @@ describe("healthPillState", () => {
 
 describe("healthLabel", () => {
   it("falls back to the unknown label when there is no status yet", () => {
-    expect(healthLabel(undefined)).toBe("Нет данных");
+    expect(healthLabel(undefined, s)).toBe("Нет данных");
   });
 
   it.each(["ok", "healthy"])("shows the ok label for %s", (status) => {
-    expect(healthLabel(status)).toBe("Работает");
+    expect(healthLabel(status, s)).toBe("Работает");
   });
 
   it("shows the starting label while starting", () => {
-    expect(healthLabel("starting")).toBe("Запускается");
+    expect(healthLabel("starting", s)).toBe("Запускается");
   });
 
   it("shows the degraded label for anything else", () => {
-    expect(healthLabel("degraded")).toBe("Деградация");
+    expect(healthLabel("degraded", s)).toBe("Деградация");
   });
 });
 
 describe("connectionsLabel", () => {
   it("is an em dash before any data has arrived", () => {
-    expect(connectionsLabel(null)).toBe("—");
+    expect(connectionsLabel(null, s)).toBe("—");
   });
 
   it("is an em dash when neither figure is present", () => {
     const data: StatsSnapshot = { health: null, summary: null, ready: null };
-    expect(connectionsLabel(data)).toBe("—");
+    expect(connectionsLabel(data, s)).toBe("—");
   });
 
   it("falls back to the cumulative summary total without runtime_edge", () => {
@@ -60,7 +61,7 @@ describe("connectionsLabel", () => {
       },
       ready: null,
     };
-    expect(connectionsLabel(data)).toBe("42");
+    expect(connectionsLabel(data, s)).toBe("42 соед.");
   });
 
   it("prefers the live runtime_edge total when enabled", () => {
@@ -89,7 +90,7 @@ describe("connectionsLabel", () => {
         },
       },
     };
-    expect(connectionsLabel(data)).toBe("7");
+    expect(connectionsLabel(data, s)).toBe("7 соед.");
   });
 
   it("falls back to the summary total when connections_summary is gated off", () => {
@@ -105,6 +106,6 @@ describe("connectionsLabel", () => {
       ready: null,
       connections_summary: { enabled: false, reason: "runtime_edge disabled", data: null },
     };
-    expect(connectionsLabel(data)).toBe("42");
+    expect(connectionsLabel(data, s)).toBe("42 соед.");
   });
 });

@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { Card } from "../../ui/Card";
 import { CardTitle } from "../../ui/Card";
 import { IconInfo } from "../../ui/icons";
@@ -13,6 +13,7 @@ export function ReadOnlyJsonView({
 }: {
   sections: Record<string, unknown>;
 }) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-2.5">
       <Card className="flex items-start gap-2.5">
@@ -21,12 +22,12 @@ export function ReadOnlyJsonView({
           className="mt-0.5 h-4 w-4 shrink-0 text-text-faint"
         />
         <p className="text-meta leading-relaxed text-text-muted">
-          {ru.server.config.rawEditorDesktopOnly}
+          {s.server.config.rawEditorDesktopOnly}
         </p>
       </Card>
       <div className="overflow-hidden rounded-xl bg-surface p-4">
         <CardTitle className="mb-2.5">
-          {ru.server.config.rawEditorTitle}
+          {s.server.config.rawEditorTitle}
         </CardTitle>
         <pre className="max-h-[60vh] overflow-auto rounded-md bg-surface-sunken p-3 font-mono text-[11.5px] leading-relaxed text-text-muted">
           {JSON.stringify(sections, null, 2)}

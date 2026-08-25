@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { Avatar } from "../ui/Avatar";
 import { CountBadge } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
@@ -45,12 +45,13 @@ export function UserCard({
   onOpen,
   onActions,
 }: UserCardProps) {
+  const s = useStrings();
   const quota = getUserQuota(user, quotaEntry);
   const status = computeUserStatus(user, quota, now);
   const online = isOnline(user);
   const longPress = useLongPress(onActions);
-  const meta = personMeta({ user, status, quota });
-  const badge = personBadge({ user, status });
+  const meta = personMeta({ user, status, quota }, s);
+  const badge = personBadge({ user, status }, s);
 
   // No bar for an uncapped user: a permanently full track says nothing.
   const hasBar =
@@ -96,7 +97,7 @@ export function UserCard({
             {user.username}
           </span>
           {online && (
-            <span className="shrink-0 text-micro text-ok">{ru.people.online}</span>
+            <span className="shrink-0 text-micro text-ok">{s.people.online}</span>
           )}
         </div>
 
@@ -118,17 +119,17 @@ export function UserCard({
 
         {visibleFor("extended", mode) && (
           <div className="mt-1.5 truncate text-micro tabular-nums text-text-faint">
-            {ru.people.recentIps}: {user.recent_unique_ips}
-            {user.user_ad_tag ? ` · ${ru.people.adTag}: ${user.user_ad_tag}` : ""}
+            {s.people.recentIps}: {user.recent_unique_ips}
+            {user.user_ad_tag ? ` · ${s.people.adTag}: ${user.user_ad_tag}` : ""}
             {user.rate_limit_up_bps || user.rate_limit_down_bps
-              ? ` · ${ru.people.rateUp} ${formatBitsPerSecond(user.rate_limit_up_bps ?? 0)} / ${ru.people.rateDown} ${formatBitsPerSecond(user.rate_limit_down_bps ?? 0)}`
+              ? ` · ${s.people.rateUp} ${formatBitsPerSecond(user.rate_limit_up_bps ?? 0, s)} / ${s.people.rateDown} ${formatBitsPerSecond(user.rate_limit_down_bps ?? 0, s)}`
               : ""}
           </div>
         )}
       </div>
 
       <IconButton
-        aria-label={ru.people.actions.menu}
+        aria-label={s.people.actions.menu}
         data-testid={`user-card-actions-${user.username}`}
         className="h-11 w-9 min-w-9 rounded-md"
         onClick={(e) => {

@@ -1,6 +1,7 @@
 import { formatDurationApprox } from "../../people/expiry";
 import type { StatsSnapshot } from "../../realtime/topics";
 import type { HistorySeries } from "../../lib/api/generated/types.gen";
+import type { Dict } from "../../i18n";
 
 export interface StatRowValues {
   connections: number | null;
@@ -16,7 +17,7 @@ export interface StatRowValues {
 // always-on summary's coarser proxies — same rule StatusStrip.helpers.ts's
 // connectionsLabel uses, kept independent here since this widget also needs
 // the active-users figure and the approx flag that StatusStrip doesn't).
-export function computeStatRowValues(stats: StatsSnapshot | null): StatRowValues {
+export function computeStatRowValues(stats: StatsSnapshot | null, s: Dict): StatRowValues {
   const live = stats?.connections_summary?.enabled ? stats.connections_summary.data?.totals : undefined;
   const connections = live ? live.current_connections : (stats?.summary?.connections_total ?? null);
   const activeUsers = live ? live.active_users : (stats?.summary?.configured_users ?? null);
@@ -26,7 +27,7 @@ export function computeStatRowValues(stats: StatsSnapshot | null): StatRowValues
     connectionsApprox: !live,
     activeUsers,
     activeUsersApprox: !live,
-    uptimeLabel: uptimeSeconds === null ? "—" : formatDurationApprox(uptimeSeconds * 1000),
+    uptimeLabel: uptimeSeconds === null ? "—" : formatDurationApprox(uptimeSeconds * 1000, s),
   };
 }
 

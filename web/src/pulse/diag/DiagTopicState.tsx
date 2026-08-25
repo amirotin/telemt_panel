@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Skeleton } from "../../ui/Skeleton";
 import { ErrorState } from "../../ui/ErrorState";
 import { StatePill } from "../../ui/StatePill";
-import { ru, errorMessage } from "../../i18n/ru";
+import { errorMessage, useStrings } from "../../i18n";
 import { decideDiagTopicState } from "./DiagTopicState.helpers";
 
 export interface DiagTopicStateProps<T> {
@@ -30,16 +30,17 @@ export interface DiagTopicStateProps<T> {
 // branching inside `children` — this only replaces the hand-rolled
 // Skeleton-or-nothing check every page used to open with.
 export function DiagTopicState<T>({ data, error, stale, onRetry, skeleton, children }: DiagTopicStateProps<T>) {
+  const s = useStrings();
   const decision = decideDiagTopicState(data, error, stale);
   if (decision.kind === "skeleton") return <>{skeleton ?? <Skeleton className="h-24 w-full" />}</>;
   if (decision.kind === "error") {
-    return <ErrorState message={errorMessage(error ?? "internal_error")} onRetry={onRetry} />;
+    return <ErrorState message={errorMessage(s, error ?? "internal_error")} onRetry={onRetry} />;
   }
   return (
     <>
       {decision.stale && (
         <StatePill state="warn" className="mb-2">
-          {ru.common.stale}
+          {s.common.stale}
         </StatePill>
       )}
       {children(data as T)}

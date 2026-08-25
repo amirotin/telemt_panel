@@ -1,4 +1,4 @@
-import { ru } from "../i18n/ru";
+import { countLabel, type Dict } from "../i18n";
 import type { State } from "../ui/StatePill";
 import type { StatsSnapshot } from "../realtime/topics";
 
@@ -12,11 +12,11 @@ export function healthPillState(status: string | undefined): State {
   return "error";
 }
 
-export function healthLabel(status: string | undefined): string {
-  if (!status) return ru.health.unknown;
-  if (status === "ok" || status === "healthy") return ru.health.ok;
-  if (status === "starting") return ru.health.starting;
-  return ru.health.degraded;
+export function healthLabel(status: string | undefined, s: Dict): string {
+  if (!status) return s.health.unknown;
+  if (status === "ok" || status === "healthy") return s.health.ok;
+  if (status === "starting") return s.health.starting;
+  return s.health.degraded;
 }
 
 // connectionsLabel picks the best connections figure actually available in
@@ -24,11 +24,12 @@ export function healthLabel(status: string | undefined): string {
 // the live current_connections total when runtime_edge's connections
 // summary is enabled, otherwise the cumulative (not concurrent)
 // connections_total from the always-on summary. "—" when nothing is
-// available yet.
-export function connectionsLabel(data: StatsSnapshot | null): string {
+// available yet. Returns the whole "713 conns" phrase — the count and its
+// unit have to agree on the plural form, so they are built together.
+export function connectionsLabel(data: StatsSnapshot | null, s: Dict): string {
   if (!data) return "—";
   const live = data.connections_summary?.data?.totals.current_connections;
-  if (typeof live === "number") return String(live);
-  if (data.summary) return String(data.summary.connections_total);
+  if (typeof live === "number") return countLabel(s, live, s.shell.connectionsUnit);
+  if (data.summary) return countLabel(s, data.summary.connections_total, s.shell.connectionsUnit);
   return "—";
 }

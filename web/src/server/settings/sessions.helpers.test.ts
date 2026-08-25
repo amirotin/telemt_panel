@@ -5,7 +5,7 @@ import {
   sessionUserAgentRaw,
   sortSessions,
 } from "./sessions.helpers";
-import { ru } from "../../i18n/ru";
+import { ru, ru as s } from "../../i18n";
 import type { SessionInfo } from "../../lib/api/generated/types.gen";
 
 function session(overrides: Partial<SessionInfo>): SessionInfo {
@@ -46,15 +46,15 @@ describe("sortSessions", () => {
 
 describe("sessionDeviceLabel", () => {
   it("returns the parsed label when present", () => {
-    expect(sessionDeviceLabel(session({ user_agent_label: "iPhone · Safari" }))).toBe("iPhone · Safari");
+    expect(sessionDeviceLabel(session({ user_agent_label: "iPhone · Safari" }), s)).toBe("iPhone · Safari");
   });
 
   it("falls back for an absent label", () => {
-    expect(sessionDeviceLabel(session({}))).not.toBe("");
+    expect(sessionDeviceLabel(session({}), s)).not.toBe("");
   });
 
   it("falls back for a blank/whitespace-only label", () => {
-    expect(sessionDeviceLabel(session({ user_agent_label: "   " }))).not.toBe("   ");
+    expect(sessionDeviceLabel(session({ user_agent_label: "   " }), s)).not.toBe("   ");
   });
 });
 
@@ -141,19 +141,19 @@ describe("sessionDeviceLabel / sessionUserAgentRaw", () => {
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
   it("shows the parsed label and keeps the raw string for the tooltip", () => {
-    const s = { ...base, user_agent_label: chromeUA };
-    expect(sessionDeviceLabel(s)).toBe("Chrome · Linux");
-    expect(sessionUserAgentRaw(s)).toBe(chromeUA);
+    const session = { ...base, user_agent_label: chromeUA };
+    expect(sessionDeviceLabel(session, s)).toBe("Chrome · Linux");
+    expect(sessionUserAgentRaw(session)).toBe(chromeUA);
   });
 
   it("falls back to the raw agent when nothing matched, without repeating it", () => {
-    const s = { ...base, user_agent_label: "SomeInternalProbe/1.0" };
-    expect(sessionDeviceLabel(s)).toBe("SomeInternalProbe/1.0");
-    expect(sessionUserAgentRaw(s)).toBeNull();
+    const session = { ...base, user_agent_label: "SomeInternalProbe/1.0" };
+    expect(sessionDeviceLabel(session, s)).toBe("SomeInternalProbe/1.0");
+    expect(sessionUserAgentRaw(session)).toBeNull();
   });
 
   it("falls back to the generic label when there is no agent at all", () => {
-    expect(sessionDeviceLabel({ ...base })).toBe(ru.server.settings.unknownDevice);
+    expect(sessionDeviceLabel({ ...base }, s)).toBe(ru.server.settings.unknownDevice);
     expect(sessionUserAgentRaw({ ...base })).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { Button } from "./Button";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 
 export interface ConfirmViewProps {
   description: string;
@@ -26,12 +26,13 @@ export function ConfirmView({
   onCancel,
   onConfirm,
 }: ConfirmViewProps) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-text">{description}</p>
       <div className="flex gap-2">
         <Button variant="secondary" onClick={onCancel} disabled={pending} className="flex-1">
-          {ru.people.actions.cancel}
+          {s.people.actions.cancel}
         </Button>
         <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} disabled={pending} className="flex-1">
           {confirmLabel}

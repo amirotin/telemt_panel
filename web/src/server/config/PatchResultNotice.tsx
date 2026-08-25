@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { SectionLabel } from "../../ui/SectionLabel";
 import { Notice } from "../Notice";
@@ -27,11 +27,12 @@ export function PatchResultNotice({
   reloadPending,
   restartPending,
 }: PatchResultNoticeProps) {
+  const s = useStrings();
   return (
-    <Notice tone="ok" title={ru.server.config.saved}>
+    <Notice tone="ok" title={s.server.config.saved}>
       {result.changed.length > 0 && (
         <div className="flex flex-col gap-1">
-          <SectionLabel>{ru.server.config.changedTitle}</SectionLabel>
+          <SectionLabel>{s.server.config.changedTitle}</SectionLabel>
           <p className="font-mono text-meta text-text">
             {result.changed.join(", ")}
           </p>
@@ -40,7 +41,7 @@ export function PatchResultNotice({
       {result.runtime_reload_required && !result.reload && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-meta text-text-muted">
-            {ru.server.config.runtimeReloadNotice}
+            {s.server.config.runtimeReloadNotice}
           </p>
           <Button
             variant="secondary"
@@ -48,14 +49,14 @@ export function PatchResultNotice({
             onClick={onReloadNow}
             disabled={reloadPending}
           >
-            {ru.server.config.reloadNow}
+            {s.server.config.reloadNow}
           </Button>
         </div>
       )}
       {result.process_restart_required && (
         <div className="flex flex-col gap-2">
           <p className="text-meta text-text-muted">
-            {ru.server.config.processRestartNotice}{" "}
+            {s.server.config.processRestartNotice}{" "}
             <span className="font-mono text-text">
               {(result.deferred_process_fields ?? []).join(", ")}
             </span>
@@ -67,7 +68,7 @@ export function PatchResultNotice({
             onClick={onRestartNow}
             className="self-start"
           >
-            {ru.server.config.restartNow}
+            {s.server.config.restartNow}
           </Button>
         </div>
       )}

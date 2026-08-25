@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { StatePill } from "../../ui/StatePill";
 import { PhaseSteps, type PhaseStep } from "../PhaseSteps";
 import { updatePhaseStep, type UpdatePhase } from "./updatePhase.helpers";
@@ -26,13 +26,14 @@ export function UpdateStepper({
   phase: UpdatePhase;
   detail?: string;
 }) {
+  const s = useStrings();
   const step = updatePhaseStep(phase);
 
   if (step.outcome === "error" || step.outcome === "rolling_back") {
     return (
       <div className="flex flex-col gap-1.5">
         <StatePill state={step.outcome === "error" ? "error" : "warn"}>
-          {ru.server.updates.phases[phase]}
+          {s.server.updates.phases[phase]}
         </StatePill>
         {detail && <p className="text-meta text-text-muted">{detail}</p>}
       </div>
@@ -41,7 +42,7 @@ export function UpdateStepper({
 
   const steps: PhaseStep[] = HAPPY_PHASES.map((p, i) => ({
     key: p,
-    label: ru.server.updates.phases[p],
+    label: s.server.updates.phases[p],
     state:
       i < step.stepIndex ? "done" : i === step.stepIndex ? "active" : "pending",
   }));
@@ -50,7 +51,7 @@ export function UpdateStepper({
     <div className="flex flex-col gap-2">
       <PhaseSteps
         steps={steps}
-        label={ru.server.updates.title}
+        label={s.server.updates.title}
         progress={(step.stepIndex + 1) / HAPPY_PHASES.length}
         succeeded={step.outcome === "success"}
       />

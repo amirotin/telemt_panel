@@ -12,7 +12,7 @@
 //    without this module ever reading or assuming one itself — see
 //    expiry.test.ts's round-trip test for why that's "timezone-safe".
 
-import { ru } from "../i18n/ru";
+import { countLabel, type Dict } from "../i18n";
 
 export type ExpiryPreset = "7d" | "30d" | "none";
 
@@ -63,15 +63,16 @@ const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 
 // formatDurationApprox renders a non-negative millisecond duration as a
-// single coarse unit (days, else hours, else minutes — labels from
-// ru.people.durationUnits, i18n/ru.ts) — the detail screen's expiry
-// countdown (06-ui.md: "живые метрики"). Deliberately approximate (one
-// unit, not "2d 3h 4m") since the exact framing ("expires in" / "expired
-// ... ago") is the caller's job via ru.ts's templates.
-export function formatDurationApprox(ms: number): string {
+// single coarse unit (days, else hours, else minutes — labels from the
+// active dictionary's people.durationUnits, pluralized per locale) — the
+// detail screen's expiry countdown (06-ui.md: "живые метрики").
+// Deliberately approximate (one unit, not "2d 3h 4m") since the exact
+// framing ("expires in" / "expired … ago") is the caller's job via the
+// dictionaries' templates.
+export function formatDurationApprox(ms: number, s: Dict): string {
   const abs = Math.max(0, ms);
-  const units = ru.people.durationUnits;
-  if (abs >= DAY_MS) return `${Math.floor(abs / DAY_MS)} ${units.days}`;
-  if (abs >= HOUR_MS) return `${Math.floor(abs / HOUR_MS)} ${units.hours}`;
-  return `${Math.max(1, Math.floor(abs / MINUTE_MS))} ${units.minutes}`;
+  const units = s.people.durationUnits;
+  if (abs >= DAY_MS) return countLabel(s, Math.floor(abs / DAY_MS), units.days);
+  if (abs >= HOUR_MS) return countLabel(s, Math.floor(abs / HOUR_MS), units.hours);
+  return countLabel(s, Math.max(1, Math.floor(abs / MINUTE_MS)), units.minutes);
 }

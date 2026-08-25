@@ -1,5 +1,5 @@
 import { useMemo, useReducer, useState } from "react";
-import { ru } from "../i18n/ru";
+import { pluralTemplate, useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { StatePill } from "../ui/StatePill";
@@ -28,6 +28,7 @@ export function LogStreamViewer({
   service,
   onServiceChange,
 }: LogStreamViewerProps) {
+  const s = useStrings();
   const { mode } = useDisplayMode();
   const [state, dispatch] = useReducer(
     journalReducer,
@@ -76,18 +77,18 @@ export function LogStreamViewer({
       {hasStreamNotice && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {streamState.status === "reconnecting" && (
-            <StatePill state="warn">{ru.journal.reconnecting}</StatePill>
+            <StatePill state="warn">{s.journal.reconnecting}</StatePill>
           )}
           {streamState.stale && streamState.status !== "reconnecting" && (
-            <StatePill state="warn">{ru.common.stale}</StatePill>
+            <StatePill state="warn">{s.common.stale}</StatePill>
           )}
           {streamState.status === "closed" && (
             <>
               <StatePill state="error">
-                {ru.journal.streamClosedTitle}
+                {s.journal.streamClosedTitle}
               </StatePill>
               <Button variant="secondary" size="sm" onClick={streamState.retry}>
-                {ru.journal.retryStream}
+                {s.journal.retryStream}
               </Button>
             </>
           )}
@@ -102,16 +103,16 @@ export function LogStreamViewer({
       */}
       {state.paused && pending > 0 && (
         <span className="self-center rounded-full bg-surface-2 px-3 py-1 text-micro font-semibold text-text-muted">
-          {ru.journal.newLinesTemplate.replace("{n}", String(pending))}
+          {pluralTemplate(s, pending, s.journal.newLines)}
         </span>
       )}
 
       {state.lines.length === 0 ? (
-        <EmptyState title={ru.journal.emptyTitle} />
+        <EmptyState title={s.journal.emptyTitle} />
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={ru.journal.emptyFilterTitle}
-          description={ru.journal.emptyFilterDescription}
+          title={s.journal.emptyFilterTitle}
+          description={s.journal.emptyFilterDescription}
         />
       ) : (
         <LogList lines={filtered} showUnit={visibleFor("extended", mode)} />

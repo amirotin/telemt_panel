@@ -5,6 +5,7 @@ import {
   isoToDatetimeLocalValue,
   presetToExpiration,
 } from "./expiry";
+import { ru as s } from "../i18n";
 
 describe("presetToExpiration", () => {
   const now = new Date("2026-08-25T12:00:00.000Z");
@@ -63,18 +64,18 @@ describe("isoToDatetimeLocalValue", () => {
 
 describe("formatDurationApprox", () => {
   it("renders multi-day durations in days", () => {
-    expect(formatDurationApprox(3 * 24 * 60 * 60 * 1000)).toBe("3 дн.");
+    expect(formatDurationApprox(3 * 24 * 60 * 60 * 1000, s)).toBe("3 дн.");
   });
   it("renders sub-day durations in hours", () => {
-    expect(formatDurationApprox(5 * 60 * 60 * 1000)).toBe("5 ч.");
+    expect(formatDurationApprox(5 * 60 * 60 * 1000, s)).toBe("5 ч.");
   });
   it("renders sub-hour durations in minutes", () => {
-    expect(formatDurationApprox(30 * 60 * 1000)).toBe("30 мин.");
+    expect(formatDurationApprox(30 * 60 * 1000, s)).toBe("30 мин.");
   });
   it("floors to at least 1 minute for a near-zero duration", () => {
-    expect(formatDurationApprox(500)).toBe("1 мин.");
+    expect(formatDurationApprox(500, s)).toBe("1 мин.");
   });
   it("treats a negative duration as zero", () => {
-    expect(formatDurationApprox(-1000)).toBe("1 мин.");
+    expect(formatDurationApprox(-1000, s)).toBe("1 мин.");
   });
 });

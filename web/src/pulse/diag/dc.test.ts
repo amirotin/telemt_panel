@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dcGroups } from "./dc.helpers";
 import type { DcStatus } from "../../realtime/topics";
+import { ru as s } from "../../i18n";
 
 function dc(overrides: Partial<DcStatus> = {}): DcStatus {
   return {
@@ -26,12 +27,12 @@ function dc(overrides: Partial<DcStatus> = {}): DcStatus {
 
 describe("dcGroups", () => {
   it("returns one group per DC, titled 'DC <id>'", () => {
-    const groups = dcGroups([dc({ dc: 2 }), dc({ dc: 4 })]);
+    const groups = dcGroups([dc({ dc: 2 }), dc({ dc: 4 })], s);
     expect(groups.map((g) => g.title)).toEqual(["DC 2", "DC 4"]);
   });
 
   it("flattens every field of the DC, including nested endpoint_writers", () => {
-    const groups = dcGroups([dc()]);
+    const groups = dcGroups([dc()], s);
     const keys = groups[0].rows.map((r) => r.key);
     expect(keys).toContain("coverage_pct");
     expect(keys).toContain("endpoint_writers[0].endpoint");
@@ -39,12 +40,13 @@ describe("dcGroups", () => {
   });
 
   it("returns no groups for an empty list", () => {
-    expect(dcGroups([])).toEqual([]);
+    expect(dcGroups([], s)).toEqual([]);
   });
 
   it("merges a matching network_path entry into that DC's own group", () => {
     const groups = dcGroups(
       [dc({ dc: 2 }), dc({ dc: 4 })],
+      s,
       [{ dc: 2, ip_preference: "prefer_v4", selected_addr_v4: "1.2.3.4" }],
     );
     const dc2 = groups[0].rows.map((r) => r.key);
@@ -55,8 +57,8 @@ describe("dcGroups", () => {
   });
 
   it("leaves every DC's rows untouched when no network paths are given", () => {
-    const withDefault = dcGroups([dc({ dc: 2 })]);
-    const withEmpty = dcGroups([dc({ dc: 2 })], []);
+    const withDefault = dcGroups([dc({ dc: 2 })], s);
+    const withEmpty = dcGroups([dc({ dc: 2 })], s, []);
     expect(withDefault).toEqual(withEmpty);
   });
 });

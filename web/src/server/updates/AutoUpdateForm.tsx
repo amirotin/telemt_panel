@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ru, errorMessage } from "../../i18n/ru";
+import { errorMessage, useStrings } from "../../i18n";
 import { Chip } from "../../ui/Chip";
 import { Input } from "../../ui/Input";
 import { Button } from "../../ui/Button";
@@ -32,6 +32,7 @@ type Mode = (typeof MODES)[number];
 // prototype's segmented pill strip instead of a Toggle — same language,
 // one more state.
 export function AutoUpdateForm() {
+  const s = useStrings();
   const queryClient = useQueryClient();
   const query = useQuery(getAutoUpdateOptions());
   const [form, setForm] = useState<AutoUpdateFormState | null>(null);
@@ -45,17 +46,17 @@ export function AutoUpdateForm() {
   const saveMutation = useMutation({
     ...putAutoUpdateMutation(),
     onSuccess: () => {
-      pushToast(ru.server.updates.autoUpdate.saved, "ok");
+      pushToast(s.server.updates.autoUpdate.saved, "ok");
       queryClient.invalidateQueries({ queryKey: getAutoUpdateQueryKey() });
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   if (query.isPending) return <Skeleton className="h-32 w-full" />;
   if (query.isError) {
     return (
       <ErrorState
-        message={errorMessage(apiErrorCode(query.error) ?? "internal_error")}
+        message={errorMessage(s, apiErrorCode(query.error) ?? "internal_error")}
         onRetry={() => query.refetch()}
       />
     );
@@ -65,23 +66,23 @@ export function AutoUpdateForm() {
   return (
     <Card className="flex flex-col gap-1">
       <CardTitle className="pb-1">
-        {ru.server.updates.autoUpdate.title}
+        {s.server.updates.autoUpdate.title}
       </CardTitle>
 
       <ModeRow
-        label={ru.server.updates.targetNames.telemt}
+        label={s.server.updates.targetNames.telemt}
         value={form.telemt}
         onChange={(telemt) => setForm({ ...form, telemt })}
       />
       <ModeRow
-        label={ru.server.updates.targetNames.panel}
+        label={s.server.updates.targetNames.panel}
         value={form.panel}
         onChange={(panel) => setForm({ ...form, panel })}
       />
 
       <label className="flex min-h-[52px] items-center gap-3 py-2">
         <span className="min-w-0 flex-1 text-meta text-text-muted">
-          {ru.server.updates.autoUpdate.intervalLabel}
+          {s.server.updates.autoUpdate.intervalLabel}
         </span>
         <Input
           type="number"
@@ -102,7 +103,7 @@ export function AutoUpdateForm() {
         disabled={saveMutation.isPending}
         className="mt-1 self-start"
       >
-        {ru.server.updates.autoUpdate.save}
+        {s.server.updates.autoUpdate.save}
       </Button>
     </Card>
   );
@@ -117,6 +118,7 @@ function ModeRow({
   value: Mode;
   onChange: (next: Mode) => void;
 }) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-2 border-b border-border py-2.5">
       <span className="text-meta text-text-muted">{label}</span>
@@ -127,7 +129,7 @@ function ModeRow({
             active={value === mode}
             onClick={() => onChange(mode)}
           >
-            {ru.server.updates.autoUpdate.modes[mode]}
+            {s.server.updates.autoUpdate.modes[mode]}
           </Chip>
         ))}
       </div>

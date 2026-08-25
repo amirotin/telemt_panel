@@ -7,7 +7,7 @@ import { Input } from "../../ui/Input";
 import { IconSearch } from "../../ui/icons";
 import { Skeleton } from "../../ui/Skeleton";
 import { ErrorState } from "../../ui/ErrorState";
-import { ru, errorMessage } from "../../i18n/ru";
+import { errorMessage, useStrings } from "../../i18n";
 import { DiagShell } from "./DiagShell";
 import { KVGroupList } from "./KVGroupList";
 import { countersGroups } from "./counters.helpers";
@@ -18,6 +18,7 @@ import { filterGroups } from "./rows";
 // contract-gap note), fetched on visit rather than a topic (06-ui.md:
 // extended-mode only, not a live SSE source), with a key-search filter.
 export function CountersPage() {
+  const s = useStrings();
   const { mode } = useDisplayMode();
   const [query, setQuery] = useState("");
   const extended = visibleFor("extended", mode);
@@ -31,9 +32,9 @@ export function CountersPage() {
     // prototype uses for an unavailable section, not as a warning box.
     body = (
       <Card className="opacity-90">
-        <p className="text-[13px] font-semibold text-text-muted">{ru.diag.extendedOnlyTitle}</p>
+        <p className="text-[13px] font-semibold text-text-muted">{s.diag.extendedOnlyTitle}</p>
         <p className="mt-1 text-meta leading-relaxed text-text-muted">
-          {ru.diag.extendedOnlyDescription}
+          {s.diag.extendedOnlyDescription}
         </p>
       </Card>
     );
@@ -42,12 +43,12 @@ export function CountersPage() {
   } else if (zero.isError) {
     body = (
       <ErrorState
-        message={errorMessage(zero.error?.code ?? "internal_error")}
+        message={errorMessage(s, zero.error?.code ?? "internal_error")}
         onRetry={() => zero.refetch()}
       />
     );
   } else {
-    const groups = filterGroups(countersGroups(zero.data), query);
+    const groups = filterGroups(countersGroups(zero.data, s), query);
     body = (
       <div className="flex flex-col gap-4">
         <div className="relative">
@@ -58,13 +59,13 @@ export function CountersPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={ru.diag.searchPlaceholder}
+            placeholder={s.diag.searchPlaceholder}
             inputMode="search"
             className="pl-10"
           />
         </div>
         {groups.length === 0 && query.trim() !== "" ? (
-          <p className="text-meta text-text-muted">{ru.diag.noResults}</p>
+          <p className="text-meta text-text-muted">{s.diag.noResults}</p>
         ) : (
           <KVGroupList groups={groups} />
         )}
@@ -72,5 +73,5 @@ export function CountersPage() {
     );
   }
 
-  return <DiagShell title={ru.diag.domains.counters}>{body}</DiagShell>;
+  return <DiagShell title={s.diag.domains.counters}>{body}</DiagShell>;
 }

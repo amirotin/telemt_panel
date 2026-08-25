@@ -5,7 +5,7 @@ import { Button } from "../ui/Button";
 import { CopyField } from "../ui/CopyField";
 import { QR } from "../ui/QR";
 import { pushToast } from "../ui/Toast";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { useCaps } from "../caps/useCaps";
 import {
   deleteUserMutation,
@@ -54,6 +54,7 @@ export function UserActionSheet({
   onDeleted,
   intent = "menu",
 }: UserActionSheetProps) {
+  const s = useStrings();
   // Seeded from the intent, never re-derived: "which step am I on" belongs
   // to one opening of the sheet, and a live `user` update from the SSE
   // topic must not knock the admin out of a half-finished confirmation.
@@ -73,81 +74,81 @@ export function UserActionSheet({
   const deleteMutation = useMutation({
     ...deleteUserMutation(),
     onSuccess: () => {
-      pushToast(ru.people.toast.deleted, "ok");
+      pushToast(s.people.toast.deleted, "ok");
       onDeleted?.(user!.username);
       close();
       refreshUsersAfterMutation(refreshTopic);
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const resetQuotaMutation = useMutation({
     ...resetUserQuotaMutation(),
     onSuccess: () => {
-      pushToast(ru.people.toast.quotaReset, "ok");
+      pushToast(s.people.toast.quotaReset, "ok");
       close();
       refreshUsersAfterMutation(refreshTopic);
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const setEnabledMutation = useMutation({
     ...setUserEnabledMutation(),
     onSuccess: (data) => {
-      pushToast(data.enabled ? ru.people.toast.enabled : ru.people.toast.disabled, "ok");
+      pushToast(data.enabled ? s.people.toast.enabled : s.people.toast.disabled, "ok");
       close();
       refreshUsersAfterMutation(refreshTopic);
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const rotateSecretMutation = useMutation({
     ...rotateUserSecretMutation(),
     onSuccess: (data) => {
-      pushToast(ru.people.toast.secretRotated, "ok");
+      pushToast(s.people.toast.secretRotated, "ok");
       setView({ kind: "new-secret", secret: data.secret });
       refreshUsersAfterMutation(refreshTopic);
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   if (!user) return null;
 
   const title =
     view.kind === "menu"
-      ? ru.people.actions.menu
+      ? s.people.actions.menu
       : view.kind === "share"
-        ? ru.people.share.title
+        ? s.people.share.title
         : view.kind === "qr"
-          ? ru.people.actions.qr
+          ? s.people.actions.qr
           : view.kind === "new-secret"
-            ? ru.people.newSecret.title
+            ? s.people.newSecret.title
             : user.username;
 
   return (
     <Sheet open={open} onClose={close} title={title}>
       {view.kind === "menu" && (
         <div className="flex flex-col gap-2">
-          <Button onClick={() => setView({ kind: "share" })}>{ru.people.actions.share}</Button>
+          <Button onClick={() => setView({ kind: "share" })}>{s.people.actions.share}</Button>
           <Button variant="secondary" onClick={() => setView({ kind: "qr" })}>
-            {ru.people.actions.qr}
+            {s.people.actions.qr}
           </Button>
           <Button
             variant="secondary"
             onClick={() => {
               const link = pickTelegramLink(user.links);
               if (!link) {
-                pushToast(ru.people.actions.noTelegramLink, "error");
+                pushToast(s.people.actions.noTelegramLink, "error");
                 return;
               }
               if (!isSafeTelegramLink(link)) {
-                pushToast(ru.people.actions.unsafeTelegramLink, "error");
+                pushToast(s.people.actions.unsafeTelegramLink, "error");
                 return;
               }
               window.location.href = link;
             }}
           >
-            {ru.people.actions.openTelegram}
+            {s.people.actions.openTelegram}
           </Button>
           <Button
             variant="secondary"
@@ -156,10 +157,10 @@ export function UserActionSheet({
               close();
             }}
           >
-            {ru.people.actions.edit}
+            {s.people.actions.edit}
           </Button>
           <Button variant="secondary" onClick={() => setView({ kind: "confirm-reset-quota" })}>
-            {ru.people.actions.resetQuota}
+            {s.people.actions.resetQuota}
           </Button>
           <div className="flex flex-col gap-1">
             <Button
@@ -169,10 +170,10 @@ export function UserActionSheet({
                 setView({ kind: "confirm-toggle-enabled", nextEnabled: !user.enabled })
               }
             >
-              {user.enabled ? ru.people.actions.disable : ru.people.actions.enable}
+              {user.enabled ? s.people.actions.disable : s.people.actions.enable}
             </Button>
             {caps.data && !caps.data.capabilities.user_enable_disable && (
-              <p className="text-xs text-text-faint">{ru.gated.hints.user_enable_disable}</p>
+              <p className="text-xs text-text-faint">{s.gated.hints.user_enable_disable}</p>
             )}
           </div>
           <div className="flex flex-col gap-1">
@@ -181,14 +182,14 @@ export function UserActionSheet({
               disabled={!caps.data?.capabilities.rotate_secret}
               onClick={() => setView({ kind: "confirm-rotate-secret" })}
             >
-              {ru.people.actions.rotateSecret}
+              {s.people.actions.rotateSecret}
             </Button>
             {caps.data && !caps.data.capabilities.rotate_secret && (
-              <p className="text-xs text-text-faint">{ru.gated.hints.rotate_secret}</p>
+              <p className="text-xs text-text-faint">{s.gated.hints.rotate_secret}</p>
             )}
           </div>
           <Button variant="danger" onClick={() => setView({ kind: "confirm-delete" })}>
-            {ru.people.actions.delete}
+            {s.people.actions.delete}
           </Button>
         </div>
       )}
@@ -199,8 +200,8 @@ export function UserActionSheet({
 
       {view.kind === "confirm-delete" && (
         <ConfirmView
-          description={ru.people.actions.confirmDeleteDescription}
-          confirmLabel={ru.people.actions.delete}
+          description={s.people.actions.confirmDeleteDescription}
+          confirmLabel={s.people.actions.delete}
           danger
           pending={deleteMutation.isPending}
           onCancel={() => setView({ kind: "menu" })}
@@ -210,8 +211,8 @@ export function UserActionSheet({
 
       {view.kind === "confirm-reset-quota" && (
         <ConfirmView
-          description={ru.people.actions.confirmResetQuota}
-          confirmLabel={ru.people.actions.resetQuota}
+          description={s.people.actions.confirmResetQuota}
+          confirmLabel={s.people.actions.resetQuota}
           pending={resetQuotaMutation.isPending}
           onCancel={() => setView({ kind: "menu" })}
           onConfirm={() => resetQuotaMutation.mutate({ path: { username: user.username } })}
@@ -221,10 +222,10 @@ export function UserActionSheet({
       {view.kind === "confirm-toggle-enabled" && (
         <ConfirmView
           description={
-            view.nextEnabled ? ru.people.actions.confirmEnable : ru.people.actions.confirmDisable
+            view.nextEnabled ? s.people.actions.confirmEnable : s.people.actions.confirmDisable
           }
           confirmLabel={
-            view.nextEnabled ? ru.people.actions.enable : ru.people.actions.disable
+            view.nextEnabled ? s.people.actions.enable : s.people.actions.disable
           }
           danger={!view.nextEnabled}
           pending={setEnabledMutation.isPending}
@@ -240,8 +241,8 @@ export function UserActionSheet({
 
       {view.kind === "confirm-rotate-secret" && (
         <ConfirmView
-          description={ru.people.actions.confirmRotateSecret}
-          confirmLabel={ru.people.actions.rotateSecret}
+          description={s.people.actions.confirmRotateSecret}
+          confirmLabel={s.people.actions.rotateSecret}
           danger
           pending={rotateSecretMutation.isPending}
           onCancel={() => setView({ kind: "menu" })}
@@ -251,9 +252,9 @@ export function UserActionSheet({
 
       {view.kind === "new-secret" && (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-warn">{ru.people.newSecret.warning}</p>
-          <CopyField value={view.secret} label={ru.people.form.secret} />
-          <Button onClick={close}>{ru.people.newSecret.close}</Button>
+          <p className="text-sm text-warn">{s.people.newSecret.warning}</p>
+          <CopyField value={view.secret} label={s.people.form.secret} />
+          <Button onClick={close}>{s.people.newSecret.close}</Button>
         </div>
       )}
     </Sheet>
@@ -261,8 +262,9 @@ export function UserActionSheet({
 }
 
 function TelegramQRView({ user }: { user: UsersTopicUser }) {
+  const s = useStrings();
   const link = pickTelegramLink(user.links);
-  if (!link) return <p className="text-sm text-text-muted">{ru.people.actions.noTelegramLink}</p>;
+  if (!link) return <p className="text-sm text-text-muted">{s.people.actions.noTelegramLink}</p>;
   return (
     <div className="flex flex-col gap-3">
       <CopyField value={link} />

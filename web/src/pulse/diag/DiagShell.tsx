@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { IconChevronLeft } from "../../ui/icons";
 
 // DiagShell — the one page frame every Диагностика drill-down page renders
@@ -12,12 +12,13 @@ import { IconChevronLeft } from "../../ui/icons";
 // chevron immediately left of an 18px bold title, no separate "Назад" word
 // competing with it (the word stays as the link's accessible name).
 export function DiagShell({ title, children }: { title: string; children: ReactNode }) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-1">
         <Link
           to="/pulse"
-          aria-label={ru.diag.back}
+          aria-label={s.diag.back}
           className="tap-target -ml-2.5 flex items-center justify-center rounded-full text-[20px] text-accent transition-colors hover:bg-accent/12"
         >
           <IconChevronLeft />

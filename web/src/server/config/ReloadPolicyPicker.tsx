@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import { ru, useStrings } from "../../i18n";
 import { Chip } from "../../ui/Chip";
 import { Input } from "../../ui/Input";
 import { SectionLabel } from "../../ui/SectionLabel";
@@ -20,9 +20,10 @@ export function ReloadPolicyPicker({
   value: ReloadPolicyState;
   onChange: (next: ReloadPolicyState) => void;
 }) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-2">
-      <SectionLabel>{ru.server.config.reloadPolicy.label}</SectionLabel>
+      <SectionLabel>{s.server.config.reloadPolicy.label}</SectionLabel>
       <div className="flex flex-wrap items-center gap-1.5">
         {MODES.map((mode) => (
           <Chip
@@ -36,7 +37,7 @@ export function ReloadPolicyPicker({
         {value.mode === "drain" && (
           <label className="flex items-center gap-2 pl-1">
             <span className="text-micro text-text-muted">
-              {ru.server.config.reloadPolicy.timeoutLabel}
+              {s.server.config.reloadPolicy.timeoutLabel}
             </span>
             <Input
               type="number"

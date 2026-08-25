@@ -1,4 +1,4 @@
-import { ru } from "../../i18n/ru";
+import { ru, useStrings } from "../../i18n";
 import { KVRow } from "../../ui/KVRow";
 import { Input } from "../../ui/Input";
 import { Toggle } from "../../ui/Toggle";
@@ -39,6 +39,7 @@ export function QuickSettingsForm({
   sections,
   onChange,
 }: QuickSettingsFormProps) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-2.5">
       {QUICK_SETTINGS_SECTIONS.map((section) => {
@@ -50,7 +51,7 @@ export function QuickSettingsForm({
             className="rounded-xl bg-surface px-4 pb-1 pt-3.5"
           >
             <CardTitle className="pb-1">
-              {ru.server.config.sections[section]}
+              {s.server.config.sections[section]}
             </CardTitle>
             {fields.map((field) => (
               <FieldInput
@@ -67,7 +68,7 @@ export function QuickSettingsForm({
             {unknownKeys.length > 0 && (
               <div className="border-t border-border pt-2.5">
                 <SectionLabel className="mb-0.5">
-                  {ru.server.config.unknownFieldsTitle}
+                  {s.server.config.unknownFieldsTitle}
                 </SectionLabel>
                 {unknownKeys.map((key) => (
                   <KVRow
@@ -101,8 +102,9 @@ function FieldInput({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  const s = useStrings();
   const label =
-    ru.server.config.fields[
+    s.server.config.fields[
       field.key as keyof typeof ru.server.config.fields
     ] ?? field.key;
 

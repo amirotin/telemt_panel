@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { ru, useStrings } from "../i18n";
 import { Chip } from "../ui/Chip";
 import { useDisplayMode } from "./DisplayModeContext";
 import type { DisplayMode } from "./mode";
@@ -21,13 +21,14 @@ const OPTIONS: Array<{ value: DisplayMode; label: string }> = [
 // instead, so `aria-pressed={undefined}` is passed deliberately — Chip
 // spreads the rest props last, which drops the attribute.
 export function DisplayModeSwitch({ className }: { className?: string }) {
+  const s = useStrings();
   const { mode, setMode } = useDisplayMode();
 
   return (
     <div
       className={cn("inline-flex gap-1.5", className)}
       role="radiogroup"
-      aria-label={ru.displayMode.label}
+      aria-label={s.displayMode.label}
     >
       {OPTIONS.map((opt) => (
         <Chip

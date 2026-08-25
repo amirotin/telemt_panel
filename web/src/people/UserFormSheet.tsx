@@ -9,7 +9,7 @@ import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
 import { IconCopy, IconEye, IconEyeOff } from "../ui/icons";
 import { pushToast } from "../ui/Toast";
-import { ru } from "../i18n/ru";
+import { ru, useStrings } from "../i18n";
 import { copyText } from "../lib/copyText";
 import {
   createUserMutation,
@@ -118,6 +118,7 @@ function initialEditState(user: UsersTopicUser): FormState {
 // (buildUserPatch.ts) are the pure serializers this component's Submit
 // handler feeds into.
 export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSheetProps) {
+  const s = useStrings();
   const [state, setState] = useState<FormState>(() =>
     mode === "edit" && user ? initialEditState(user) : initialCreateState(),
   );
@@ -144,23 +145,23 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
   const createMutation = useMutation({
     ...createUserMutation(),
     onSuccess: (data) => {
-      pushToast(ru.people.toast.created, "ok");
+      pushToast(s.people.toast.created, "ok");
       onSaved?.(data.user.username);
       onClose();
       refreshUsersAfterMutation(refreshTopic);
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const patchMutation = useMutation({
     ...patchUserMutation(),
     onSuccess: (data) => {
-      pushToast(ru.people.toast.updated, "ok");
+      pushToast(s.people.toast.updated, "ok");
       onSaved?.(data.username);
       onClose();
       refreshUsersAfterMutation(refreshTopic);
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const pending = createMutation.isPending || patchMutation.isPending;
@@ -216,10 +217,10 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={mode === "create" ? ru.people.form.createTitle : ru.people.form.editTitle}>
+    <Sheet open={open} onClose={onClose} title={mode === "create" ? s.people.form.createTitle : s.people.form.editTitle}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         <label className="flex flex-col gap-1 text-sm text-text-muted">
-          {ru.people.form.username}
+          {s.people.form.username}
           <Input
             data-testid="user-form-username"
             value={state.username}
@@ -228,19 +229,19 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
             autoCorrect="off"
             onChange={(e) => {
               setUsernameTouched(true);
-              setState((s) => ({ ...s, username: e.target.value }));
+              setState((prev) => ({ ...prev, username: e.target.value }));
             }}
           />
           <span className="text-xs text-text-faint">
             {usernameTouched && !usernameValid && state.username.length > 0
-              ? ru.people.form.usernameInvalid
-              : ru.people.form.usernameHint}
+              ? s.people.form.usernameInvalid
+              : s.people.form.usernameHint}
           </span>
         </label>
 
         {mode === "create" && (
           <div className="flex flex-col gap-1">
-            <span className="text-sm text-text-muted">{ru.people.form.secret}</span>
+            <span className="text-sm text-text-muted">{s.people.form.secret}</span>
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
               {/* type="password"/"text" toggling (not a manually-rendered
@@ -254,26 +255,26 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
                 autoCorrect="off"
                 spellCheck={false}
                 value={state.secret}
-                onChange={(e) => setState((s) => ({ ...s, secret: e.target.value.trim() }))}
+                onChange={(e) => setState((prev) => ({ ...prev, secret: e.target.value.trim() }))}
                 className="flex-1"
               />
               <IconButton
                 type="button"
-                aria-label={state.secretVisible ? ru.people.form.hide : ru.people.form.show}
-                onClick={() => setState((s) => ({ ...s, secretVisible: !s.secretVisible }))}
+                aria-label={state.secretVisible ? s.people.form.hide : s.people.form.show}
+                onClick={() => setState((prev) => ({ ...prev, secretVisible: !prev.secretVisible }))}
               >
                 {state.secretVisible ? <IconEyeOff /> : <IconEye />}
               </IconButton>
               <IconButton
                 type="button"
-                aria-label={ru.common.copy}
+                aria-label={s.common.copy}
                 // Always copies the current secret directly (not via
                 // CopyField, which would need the raw value passed into a
                 // visible span regardless of the show/hide toggle above).
                 onClick={async () => {
                   const result = await copyText(state.secret);
-                  if (result === "failed") pushToast(ru.common.copyManually, "error");
-                  else pushToast(ru.common.copied, "ok");
+                  if (result === "failed") pushToast(s.common.copyManually, "error");
+                  else pushToast(s.common.copied, "ok");
                 }}
               >
                 <IconCopy />
@@ -284,13 +285,13 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
                 variant="secondary"
                 size="sm"
                 className="self-start"
-                onClick={() => setState((s) => ({ ...s, secret: generateSecret() }))}
+                onClick={() => setState((prev) => ({ ...prev, secret: generateSecret() }))}
               >
-                {ru.people.form.secretRegenerate}
+                {s.people.form.secretRegenerate}
               </Button>
             </div>
             {state.secret.length > 0 && !isValidSecret(state.secret) && (
-              <span className="text-xs text-error">{ru.people.form.secretInvalid}</span>
+              <span className="text-xs text-error">{s.people.form.secretInvalid}</span>
             )}
           </div>
         )}
@@ -299,73 +300,73 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
           formMode={mode}
           amount={state.quotaAmount}
           unit={state.quotaUnit}
-          onChangeAmount={(f) => setState((s) => ({ ...s, quotaAmount: f }))}
-          onChangeUnit={(unit) => setState((s) => ({ ...s, quotaUnit: unit }))}
+          onChangeAmount={(f) => setState((prev) => ({ ...prev, quotaAmount: f }))}
+          onChangeUnit={(unit) => setState((prev) => ({ ...prev, quotaUnit: unit }))}
         />
 
         <ExpiryField
           formMode={mode}
           field={state.expiration}
-          onChange={(f) => setState((s) => ({ ...s, expiration: f }))}
+          onChange={(f) => setState((prev) => ({ ...prev, expiration: f }))}
         />
 
         <NumericLimitField
-          label={ru.people.form.maxConnections}
+          label={s.people.form.maxConnections}
           formMode={mode}
           field={state.maxTcpConns}
           min={1}
           max={1000}
-          onChange={(f) => setState((s) => ({ ...s, maxTcpConns: f }))}
+          onChange={(f) => setState((prev) => ({ ...prev, maxTcpConns: f }))}
         />
 
         <NumericLimitField
-          label={ru.people.form.maxIps}
+          label={s.people.form.maxIps}
           formMode={mode}
           field={state.maxUniqueIps}
           min={1}
           max={1000}
-          onChange={(f) => setState((s) => ({ ...s, maxUniqueIps: f }))}
+          onChange={(f) => setState((prev) => ({ ...prev, maxUniqueIps: f }))}
         />
 
         <details className="rounded-lg border border-border">
           <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-text">
-            {ru.people.form.advanced}
+            {s.people.form.advanced}
           </summary>
           <div className="flex flex-col gap-5 border-t border-border px-3 py-3">
             <TextLimitField
-              label={ru.people.adTag}
+              label={s.people.adTag}
               formMode={mode}
               field={state.userAdTag}
               monospace
-              onChange={(f) => setState((s) => ({ ...s, userAdTag: f }))}
+              onChange={(f) => setState((prev) => ({ ...prev, userAdTag: f }))}
             />
             <NumericLimitField
-              label={ru.people.form.rateUpLabel}
+              label={s.people.form.rateUpLabel}
               formMode={mode}
               field={state.rateLimitUpBps}
               min={0}
               max={10_000_000_000}
               step={1000}
-              onChange={(f) => setState((s) => ({ ...s, rateLimitUpBps: f }))}
+              onChange={(f) => setState((prev) => ({ ...prev, rateLimitUpBps: f }))}
             />
             <NumericLimitField
-              label={ru.people.form.rateDownLabel}
+              label={s.people.form.rateDownLabel}
               formMode={mode}
               field={state.rateLimitDownBps}
               min={0}
               max={10_000_000_000}
               step={1000}
-              onChange={(f) => setState((s) => ({ ...s, rateLimitDownBps: f }))}
+              onChange={(f) => setState((prev) => ({ ...prev, rateLimitDownBps: f }))}
             />
           </div>
         </details>
 
         <Button type="submit" data-testid="user-form-submit" disabled={!canSubmit || pending}>
           {pending
-            ? ru.people.form.submitting
+            ? s.people.form.submitting
             : mode === "create"
-              ? ru.people.form.submitCreate
-              : ru.people.form.submitEdit}
+              ? s.people.form.submitCreate
+              : s.people.form.submitEdit}
         </Button>
       </form>
     </Sheet>
@@ -484,13 +485,14 @@ function QuotaField({
   onChangeAmount: (f: FieldState<number>) => void;
   onChangeUnit: (u: QuotaUnit) => void;
 }) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm text-text-muted">{ru.people.form.quota}</span>
+      <span className="text-sm text-text-muted">{s.people.form.quota}</span>
       <FieldModeControl
         formMode={formMode}
         mode={amount.mode}
-        label={ru.people.form.quota}
+        label={s.people.form.quota}
         onChange={(mode) => onChangeAmount({ ...amount, mode })}
       />
       {amount.mode === "set" && (
@@ -504,12 +506,12 @@ function QuotaField({
             className="flex-1"
           />
           <Select value={unit} onChange={(e) => onChangeUnit(e.target.value as QuotaUnit)} className="w-24">
-            <option value="MB">{ru.people.form.quotaUnits.MB}</option>
-            <option value="GB">{ru.people.form.quotaUnits.GB}</option>
+            <option value="MB">{s.people.form.quotaUnits.MB}</option>
+            <option value="GB">{s.people.form.quotaUnits.GB}</option>
           </Select>
         </div>
       )}
-      {amount.mode !== "set" && <span className="text-xs text-text-faint">{ru.people.form.quotaUnlimited}</span>}
+      {amount.mode !== "set" && <span className="text-xs text-text-faint">{s.people.form.quotaUnlimited}</span>}
     </div>
   );
 }
@@ -523,13 +525,14 @@ function ExpiryField({
   field: FieldState<string>;
   onChange: (f: FieldState<string>) => void;
 }) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm text-text-muted">{ru.people.form.expiry}</span>
+      <span className="text-sm text-text-muted">{s.people.form.expiry}</span>
       <FieldModeControl
         formMode={formMode}
         mode={f.mode}
-        label={ru.people.form.expiry}
+        label={s.people.form.expiry}
         onChange={(mode) => onChange({ ...f, mode })}
       />
       {f.mode === "set" && (
@@ -549,7 +552,7 @@ function ExpiryField({
               className="flex-1"
               onClick={() => onChange({ ...f, value: presetToExpiration("7d", new Date())! })}
             >
-              {ru.people.form.expiryPreset7d}
+              {s.people.form.expiryPreset7d}
             </Button>
             <Button
               type="button"
@@ -557,12 +560,12 @@ function ExpiryField({
               className="flex-1"
               onClick={() => onChange({ ...f, value: presetToExpiration("30d", new Date())! })}
             >
-              {ru.people.form.expiryPreset30d}
+              {s.people.form.expiryPreset30d}
             </Button>
           </div>
         </div>
       )}
-      {f.mode !== "set" && <span className="text-xs text-text-faint">{ru.people.form.expiryPresetNone}</span>}
+      {f.mode !== "set" && <span className="text-xs text-text-faint">{s.people.form.expiryPresetNone}</span>}
     </div>
   );
 }

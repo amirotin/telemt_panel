@@ -3,13 +3,13 @@ import { Skeleton } from "../ui/Skeleton";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { StatePill } from "../ui/StatePill";
-import { ru, errorMessage } from "../i18n/ru";
+import { errorMessage, useStrings } from "../i18n";
 import { Gated, type GatedProps } from "../caps/Gated";
 
 export interface AsyncStateProps<T> {
   isPending: boolean;
   isError: boolean;
-  /** The failed query's envelope {code}, when available — mapped via errorMessage(). */
+  /** The failed query's envelope {code}, when available — mapped via errorMessage(s). */
   errorCode?: string;
   data: T | undefined;
   isEmpty?: (data: T) => boolean;
@@ -47,6 +47,7 @@ export function AsyncState<T>({
   skeleton,
   children,
 }: AsyncStateProps<T>) {
+  const s = useStrings();
   if (gate && !gate.enabled) {
     return <Gated enabled={false} reason={gate.reason} hint={gate.hint} />;
   }
@@ -54,7 +55,7 @@ export function AsyncState<T>({
   if (isError) {
     return (
       <ErrorState
-        message={errorCode ? errorMessage(errorCode) : errorMessage("internal_error")}
+        message={errorCode ? errorMessage(s, errorCode) : errorMessage(s, "internal_error")}
         onRetry={onRetry}
       />
     );
@@ -67,7 +68,7 @@ export function AsyncState<T>({
     <>
       {stale && (
         <StatePill state="warn" className="mb-2">
-          {staleLabel ?? ru.common.stale}
+          {staleLabel ?? s.common.stale}
         </StatePill>
       )}
       {children(data)}

@@ -12,7 +12,7 @@ import {
   IconUserPlus,
   type IconProps,
 } from "../ui/icons";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { apiErrorCode } from "../people/apiError";
 import {
   auditActionFamily,
@@ -43,6 +43,7 @@ const FAMILY_ICONS: Record<AuditFamily, ComponentType<IconProps>> = {
 // exhausted, so getNextPageParam stops there instead of looping on an
 // always-empty next page.
 export function EventsTab() {
+  const s = useStrings();
   const query = useInfiniteQuery({
     // The tab stays mounted while hidden (so the logs stream survives tab
     // switches) — do not refetch the audit log on every window focus.
@@ -71,8 +72,8 @@ export function EventsTab() {
       data={entries}
       onRetry={() => void query.refetch()}
       isEmpty={(d) => d.length === 0}
-      emptyTitle={ru.journal.events.emptyTitle}
-      emptyDescription={ru.journal.events.emptyDescription}
+      emptyTitle={s.journal.events.emptyTitle}
+      emptyDescription={s.journal.events.emptyDescription}
     >
       {(list) => (
         <div className="flex flex-col gap-2">
@@ -98,7 +99,7 @@ export function EventsTab() {
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5 border-b border-border pt-1 pb-3">
                     <span className="text-[13px] text-text">
-                      {renderAuditAction(entry)}
+                      {renderAuditAction(entry, s)}
                     </span>
                     <span className="text-micro text-text-muted">
                       <span className="tabular-nums">
@@ -120,7 +121,7 @@ export function EventsTab() {
               onClick={() => void query.fetchNextPage()}
               disabled={query.isFetchingNextPage}
             >
-              {ru.journal.showMore}
+              {s.journal.showMore}
             </Button>
           )}
         </div>

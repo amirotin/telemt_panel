@@ -1,7 +1,7 @@
 import { Suspense, lazy, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ServerShell } from "../ServerShell";
-import { ru, errorMessage } from "../../i18n/ru";
+import { errorMessage, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/Button";
 import { Skeleton } from "../../ui/Skeleton";
@@ -59,6 +59,7 @@ interface ConflictState {
 }
 
 export function ConfigPage() {
+  const s = useStrings();
   const queryClient = useQueryClient();
   const configQuery = useQuery(getTelemtConfigOptions());
   const hostQuery = useQuery(getHostOptions());
@@ -149,18 +150,18 @@ export function ConfigPage() {
   const reloadNowMutation = useMutation({
     ...reloadTelemtMutation(),
     onSuccess: (accepted) => setActiveReloadId(accepted.reload_id),
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   const restartMutation = useMutation({
     ...restartTelemtServiceMutation(),
-    onSuccess: () => pushToast(ru.server.platform.restarted, "ok"),
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onSuccess: () => pushToast(s.server.platform.restarted, "ok"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   if (configQuery.isPending) {
     return (
-      <ServerShell title={ru.server.config.title}>
+      <ServerShell title={s.server.config.title}>
         <Skeleton className="h-40 w-full" />
       </ServerShell>
     );
@@ -170,7 +171,7 @@ export function ConfigPage() {
     const code = configQuery.error?.code ?? "internal_error";
     if (code === "capability_unavailable") {
       return (
-        <ServerShell title={ru.server.config.title}>
+        <ServerShell title={s.server.config.title}>
           <Gated
             enabled={false}
             reason={configQuery.error?.message}
@@ -180,9 +181,9 @@ export function ConfigPage() {
       );
     }
     return (
-      <ServerShell title={ru.server.config.title}>
+      <ServerShell title={s.server.config.title}>
         <ErrorState
-          message={errorMessage(code)}
+          message={errorMessage(s, code)}
           onRetry={() => configQuery.refetch()}
         />
       </ServerShell>
@@ -191,7 +192,7 @@ export function ConfigPage() {
 
   if (!editor.baseline || !editor.edited) {
     return (
-      <ServerShell title={ru.server.config.title}>
+      <ServerShell title={s.server.config.title}>
         <Skeleton className="h-40 w-full" />
       </ServerShell>
     );
@@ -213,7 +214,7 @@ export function ConfigPage() {
   }
 
   return (
-    <ServerShell title={ru.server.config.title}>
+    <ServerShell title={s.server.config.title}>
       {conflict && (
         <ConflictBanner
           changedKeys={conflict.changedKeys}
@@ -246,7 +247,7 @@ export function ConfigPage() {
       )}
 
       {patchErrorCode && (
-        <Notice tone="error" title={errorMessage(patchErrorCode)} />
+        <Notice tone="error" title={errorMessage(s, patchErrorCode)} />
       )}
 
       {patchResult && (
@@ -286,7 +287,7 @@ export function ConfigPage() {
                 : "bg-surface-2 text-text-muted hover:bg-surface-3 hover:text-text",
             )}
           >
-            {ru.server.config.tabs[name]}
+            {s.server.config.tabs[name]}
           </button>
         ))}
       </div>
@@ -299,7 +300,7 @@ export function ConfigPage() {
       ) : isDesktop ? (
         <Suspense fallback={<Skeleton className="h-64 w-full" />}>
           <div className="flex flex-col gap-2">
-            <SectionLabel>{ru.server.config.rawEditorTitle}</SectionLabel>
+            <SectionLabel>{s.server.config.rawEditorTitle}</SectionLabel>
             <RawConfigEditor
               initialText={JSON.stringify(editor.edited, null, 2)}
               onChange={(result) => {
@@ -317,10 +318,10 @@ export function ConfigPage() {
               }}
             />
             {rawIssue?.kind === "parse_error" && (
-              <Notice tone="error" title={ru.server.config.rawParseError} />
+              <Notice tone="error" title={s.server.config.rawParseError} />
             )}
             {rawIssue?.kind === "unsafe_integer" && (
-              <Notice tone="error" title={ru.server.config.rawUnsafeInteger}>
+              <Notice tone="error" title={s.server.config.rawUnsafeInteger}>
                 <p className="font-mono text-meta text-text">
                   {rawIssue.tokens.join(", ")}
                 </p>
@@ -337,7 +338,7 @@ export function ConfigPage() {
         <div className="flex items-center gap-2.5">
           {!hasChanges && (
             <span className="text-micro text-text-faint">
-              {ru.server.config.noChanges}
+              {s.server.config.noChanges}
             </span>
           )}
           <Button
@@ -347,8 +348,8 @@ export function ConfigPage() {
             }
           >
             {patchMutation.isPending
-              ? ru.server.config.saving
-              : ru.server.config.save}
+              ? s.server.config.saving
+              : s.server.config.save}
           </Button>
         </div>
       </Card>

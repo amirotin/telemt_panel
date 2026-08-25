@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { formatBytes } from "../lib/format";
 import { isUnlimitedQuota, quotaFillClass, quotaRatio } from "./quota.helpers";
+import { useStrings } from "../i18n";
 
 export type QuotaBarSize = "sm" | "md";
 
@@ -31,6 +32,7 @@ export function QuotaBar({
   label,
   className,
 }: QuotaBarProps) {
+  const s = useStrings();
   const limit = limitBytes ?? null;
   const unlimited = isUnlimitedQuota(limit);
   const ratio = quotaRatio(usedBytes, limit);
@@ -49,7 +51,7 @@ export function QuotaBar({
       </div>
       {showLabel && (
         <span className="text-meta tabular-nums text-text-muted">
-          {label ?? `${formatBytes(usedBytes)} / ${limit === null ? "∞" : formatBytes(limit)}`}
+          {label ?? `${formatBytes(usedBytes, s)} / ${limit === null ? "∞" : formatBytes(limit, s)}`}
         </span>
       )}
     </div>

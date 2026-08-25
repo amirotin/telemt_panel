@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { IconButton } from "./IconButton";
 import { IconMinus, IconPlus } from "./icons";
 
@@ -25,6 +25,7 @@ export function Stepper({
   label,
   className,
 }: StepperProps) {
+  const s = useStrings();
   const dec = () => onChange(Math.max(min, value - step));
   const inc = () => onChange(Math.min(max, value + step));
 
@@ -35,7 +36,7 @@ export function Stepper({
       aria-label={label}
     >
       <IconButton
-        aria-label={ru.ui.stepperDecrease}
+        aria-label={s.ui.stepperDecrease}
         variant="solid"
         onClick={dec}
         disabled={value <= min}
@@ -44,7 +45,7 @@ export function Stepper({
       </IconButton>
       <span className="w-12 text-center text-base tabular-nums text-text">{value}</span>
       <IconButton
-        aria-label={ru.ui.stepperIncrease}
+        aria-label={s.ui.stepperIncrease}
         variant="solid"
         onClick={inc}
         disabled={value >= max}

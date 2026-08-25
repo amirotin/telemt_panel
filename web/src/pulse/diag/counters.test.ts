@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { countersGroups } from "./counters.helpers";
 import { filterGroups } from "./rows";
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
+import { ru as s } from "../../i18n";
 
 const data: ZeroAllData = {
   generated_at_epoch_secs: 100,
@@ -14,7 +15,7 @@ const data: ZeroAllData = {
 
 describe("countersGroups", () => {
   it("emits the five named sections in order", () => {
-    expect(countersGroups(data).map((g) => g.title)).toEqual([
+    expect(countersGroups(data, s).map((g) => g.title)).toEqual([
       "Ядро",
       "Апстримы",
       "Middle proxy",
@@ -24,7 +25,7 @@ describe("countersGroups", () => {
   });
 
   it("flattens each section's leaves", () => {
-    const core = countersGroups(data)[0];
+    const core = countersGroups(data, s)[0];
     expect(core.rows).toEqual([
       { key: "connections_total", label: "connections total", value: "5" },
       { key: "telemetry_me_level", label: "telemetry me level", value: "basic" },
@@ -32,7 +33,7 @@ describe("countersGroups", () => {
   });
 
   it("composes with filterGroups for the search box", () => {
-    const groups = countersGroups(data);
+    const groups = countersGroups(data, s);
     expect(filterGroups(groups, "keepalive").map((g) => g.title)).toEqual(["Middle proxy"]);
   });
 });

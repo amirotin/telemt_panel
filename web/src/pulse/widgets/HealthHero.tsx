@@ -3,7 +3,7 @@ import type { StatsSnapshot } from "../../realtime/topics";
 import type { State } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { StatePill } from "../../ui/StatePill";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { computeHealthHero } from "./healthHero.helpers";
 
@@ -40,13 +40,14 @@ const TONE: Record<State, { wash: string; border: string; dot: string; glow: str
 };
 
 function HeroShell({ children }: { children: React.ReactNode }) {
+  const s = useStrings();
   return (
     <section className="flex flex-col gap-1.5">
       {/* The caption keeps the widget's registry title on screen (the layout
           editor and the shell both name this block «Статус»); the prototype
           hero carries no title of its own. */}
       <h3 className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint">
-        {ru.pulse.widgets.health_hero}
+        {s.pulse.widgets.health_hero}
       </h3>
       {children}
     </section>
@@ -59,8 +60,9 @@ function HeroShell({ children }: { children: React.ReactNode }) {
 // Unlike every other widget it does NOT sit inside WidgetFrame: the
 // prototype's hero is a full-bleed tinted panel, not a titled card.
 export function HealthHero() {
+  const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
-  const view = computeHealthHero(stats.data);
+  const view = computeHealthHero(stats.data, s);
 
   if (!view) {
     return (
@@ -72,7 +74,7 @@ export function HealthHero() {
 
   const tone = TONE[view.pillState];
   const reason =
-    view.ready === false ? (view.readyReason ?? ru.pulse.health.noReason) : undefined;
+    view.ready === false ? (view.readyReason ?? s.pulse.health.noReason) : undefined;
 
   return (
     <HeroShell>
@@ -89,12 +91,12 @@ export function HealthHero() {
           <span className="text-[17px] font-bold text-text">{view.label}</span>
           {view.ready !== null && (
             <StatePill state={view.ready ? "ok" : "error"}>
-              {ru.pulse.health.readyLabel}:{" "}
-              {view.ready ? ru.pulse.health.ready : ru.pulse.health.notReady}
+              {s.pulse.health.readyLabel}:{" "}
+              {view.ready ? s.pulse.health.ready : s.pulse.health.notReady}
             </StatePill>
           )}
-          {view.readOnly && <StatePill state="warn">{ru.pulse.health.readOnly}</StatePill>}
-          {stats.stale && <StatePill state="warn">{ru.common.stale}</StatePill>}
+          {view.readOnly && <StatePill state="warn">{s.pulse.health.readOnly}</StatePill>}
+          {stats.stale && <StatePill state="warn">{s.common.stale}</StatePill>}
         </div>
         {reason && <p className="mt-1.5 text-meta leading-relaxed text-text-muted">{reason}</p>}
       </div>

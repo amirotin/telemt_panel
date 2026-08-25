@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { ru } from "../../i18n/ru";
+import { ru } from "../../i18n";
 import type { DisplayMode } from "../../display-mode";
 import type { TopicName } from "../../realtime";
 import type { DiagDomain, WidgetId } from "../types";

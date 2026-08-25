@@ -6,7 +6,7 @@ import { QR } from "../ui/QR";
 import { Skeleton } from "../ui/Skeleton";
 import { ErrorState } from "../ui/ErrorState";
 import { pushToast } from "../ui/Toast";
-import { ru, errorMessage } from "../i18n/ru";
+import { errorMessage, useStrings } from "../i18n";
 import { copyText } from "../lib/copyText";
 import {
   getUserSublinkOptions,
@@ -40,6 +40,7 @@ export interface SublinkPanelProps {
 // it goes through the same ConfirmView step as delete/disable/rotate-secret
 // rather than firing on a single tap.
 export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
+  const s = useStrings();
   const queryClient = useQueryClient();
   const refreshTopic = useRefreshTopic();
   const query = useQuery(getUserSublinkOptions({ path: { username } }));
@@ -49,12 +50,12 @@ export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
   const regenerate = useMutation({
     ...regenerateUserSublinkMutation(),
     onSuccess: () => {
-      pushToast(ru.people.toast.sublinkRegenerated, "ok");
+      pushToast(s.people.toast.sublinkRegenerated, "ok");
       setConfirming(false);
       queryClient.invalidateQueries({ queryKey: getUserSublinkQueryKey({ path: { username } }) });
       refreshUsersAfterMutation(refreshTopic);
     },
-    onError: (err) => pushToast(apiErrorMessage(err), "error"),
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
   if (query.isPending) return <Skeleton className="h-24 w-full" />;
@@ -62,19 +63,19 @@ export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
   if (query.isError) {
     const code = query.error?.code;
     const message =
-      code === "sublink_unavailable" ? ru.people.share.unavailableNoLink : errorMessage(code ?? "internal_error");
+      code === "sublink_unavailable" ? s.people.share.unavailableNoLink : errorMessage(s, code ?? "internal_error");
     return <ErrorState message={message} onRetry={() => query.refetch()} />;
   }
 
   if (!query.data.enabled) {
-    return <p className="text-meta text-text-muted">{ru.people.share.unavailableModule}</p>;
+    return <p className="text-meta text-text-muted">{s.people.share.unavailableModule}</p>;
   }
 
   if (confirming) {
     return (
       <ConfirmView
-        description={ru.people.share.confirmRegenerate}
-        confirmLabel={ru.people.share.regenerate}
+        description={s.people.share.confirmRegenerate}
+        confirmLabel={s.people.share.regenerate}
         danger
         pending={regenerate.isPending}
         onCancel={() => setConfirming(false)}
@@ -98,15 +99,15 @@ export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
             onClick={async () => {
               const result = await copyText(url);
               pushToast(
-                result === "failed" ? ru.common.copyManually : ru.common.copied,
+                result === "failed" ? s.common.copyManually : s.common.copied,
                 result === "failed" ? "error" : "ok",
               );
             }}
           >
-            {ru.common.copy}
+            {s.common.copy}
           </Button>
           <Button size="sm" variant="secondary" className="flex-1" onClick={() => setQrOpen((v) => !v)}>
-            {ru.people.actions.qr}
+            {s.people.actions.qr}
           </Button>
           <Button
             size="sm"
@@ -114,7 +115,7 @@ export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
             className="flex-1 text-warn"
             onClick={() => setConfirming(true)}
           >
-            {ru.people.share.regenerateShort}
+            {s.people.share.regenerateShort}
           </Button>
         </div>
         {qrOpen && (
@@ -128,10 +129,10 @@ export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <CopyField value={url} label={ru.people.share.linkLabel} data-testid="sublink-value" />
+      <CopyField value={url} label={s.people.share.linkLabel} data-testid="sublink-value" />
       <QR value={url} />
       <Button variant="secondary" onClick={() => setConfirming(true)}>
-        {ru.people.share.regenerate}
+        {s.people.share.regenerate}
       </Button>
     </div>
   );

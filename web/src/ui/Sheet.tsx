@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { IconButton } from "./IconButton";
 import { IconClose } from "./icons";
 
@@ -23,6 +23,7 @@ const FOCUSABLE =
 // a minimal focus trap + Escape-to-close, since none of this project's
 // approved dependencies (see web/README.md) include a dialog primitive.
 export function Sheet({ open, onClose, title, children, className }: SheetProps) {
+  const s = useStrings();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -95,7 +96,7 @@ export function Sheet({ open, onClose, title, children, className }: SheetProps)
         />
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-[15px] font-bold text-text">{title}</h2>
-          <IconButton aria-label={ru.common.close} onClick={onClose}>
+          <IconButton aria-label={s.common.close} onClick={onClose}>
             <IconClose />
           </IconButton>
         </div>

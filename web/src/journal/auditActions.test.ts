@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { auditActionFamily, isKnownAuditAction, renderAuditAction } from "./auditActions";
+import { auditActionFamily, renderAuditAction } from "./auditActions";
 import type { AuditEntry } from "../lib/api/generated/types.gen";
+import { isKnownAuditAction, ru as s } from "../i18n";
 
 // KNOWN_BACKEND_ACTIONS mirrors every literal string passed as the first
 // argument to `s.appendAudit(...)` across internal/httpapi/*.go (excluding
@@ -45,33 +46,33 @@ describe("audit action dictionary completeness", () => {
 
 describe("renderAuditAction", () => {
   it("renders label + subject for a plain action", () => {
-    expect(renderAuditAction(entry({ action: "user.create", subject: "alice" }))).toBe(
+    expect(renderAuditAction(entry({ action: "user.create", subject: "alice" }), s)).toBe(
       "Создан пользователь — alice",
     );
   });
 
   it("omits the subject segment when there is none", () => {
-    expect(renderAuditAction(entry({ action: "telemt.restart" }))).toBe("Перезапущен Telemt");
+    expect(renderAuditAction(entry({ action: "telemt.restart" }), s)).toBe("Перезапущен Telemt");
   });
 
   it("renders the enabled/disabled branch for user.enabled from its detail string", () => {
     expect(
-      renderAuditAction(entry({ action: "user.enabled", subject: "bob", detail: "enabled=true" })),
+      renderAuditAction(entry({ action: "user.enabled", subject: "bob", detail: "enabled=true" }), s),
     ).toBe("Изменён статус пользователя — bob — включён");
     expect(
-      renderAuditAction(entry({ action: "user.enabled", subject: "bob", detail: "enabled=false" })),
+      renderAuditAction(entry({ action: "user.enabled", subject: "bob", detail: "enabled=false" }), s),
     ).toBe("Изменён статус пользователя — bob — отключён");
   });
 
   it("falls back to a labeled raw action string for an unrecognized action", () => {
-    expect(renderAuditAction(entry({ action: "future.action", subject: "x" }))).toBe(
+    expect(renderAuditAction(entry({ action: "future.action", subject: "x" }), s)).toBe(
       "Неизвестное действие: future.action — x",
     );
   });
 
   it("every known action renders a non-empty string without throwing", () => {
     for (const action of KNOWN_BACKEND_ACTIONS) {
-      const rendered = renderAuditAction(entry({ action, subject: "s", detail: "enabled=true" }));
+      const rendered = renderAuditAction(entry({ action, subject: "s", detail: "enabled=true" }), s);
       expect(rendered.length).toBeGreaterThan(0);
     }
   });

@@ -3,18 +3,19 @@ import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
 import { EmptyState } from "../../ui/EmptyState";
 import { Skeleton } from "../../ui/Skeleton";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
 import { resolveGated } from "./gated";
 import { computeRecentEventsView } from "./recentEvents.helpers";
 
 export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const topic = useSnapshot<RuntimeTopic>("runtime");
 
   if (!topic.data) {
     return (
-      <WidgetFrame title={ru.pulse.widgets.recent_events} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.recent_events} onHide={onHide}>
         <Skeleton className="h-16 w-full" />
       </WidgetFrame>
     );
@@ -28,7 +29,7 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
     const view = computeRecentEventsView(events.data);
     body =
       view.events.length === 0 ? (
-        <EmptyState title={ru.pulse.recentEvents.empty} />
+        <EmptyState title={s.pulse.recentEvents.empty} />
       ) : (
         <div className="flex flex-col">
           <ul className="flex flex-col">
@@ -46,7 +47,7 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
           </ul>
           {view.droppedTotal > 0 && (
             <p className="pt-2 text-micro text-text-muted">
-              {view.droppedTotal} {ru.pulse.recentEvents.dropped}
+              {view.droppedTotal} {s.pulse.recentEvents.dropped}
             </p>
           )}
         </div>
@@ -54,7 +55,7 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
   }
 
   return (
-    <WidgetFrame title={ru.pulse.widgets.recent_events} onHide={onHide} stale={topic.stale}>
+    <WidgetFrame title={s.pulse.widgets.recent_events} onHide={onHide} stale={topic.stale}>
       {body}
     </WidgetFrame>
   );

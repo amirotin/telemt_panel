@@ -3,16 +3,17 @@ import type { SecurityTopic } from "../../realtime/topics";
 import { KVRow } from "../../ui/KVRow";
 import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { WidgetFrame } from "../WidgetFrame";
 import { computeSecurityPostureView } from "./securityPosture.helpers";
 
 export function SecurityPostureWidget({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const topic = useSnapshot<SecurityTopic>("security");
 
   if (!topic.data?.posture) {
     return (
-      <WidgetFrame title={ru.pulse.widgets.security_posture} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.security_posture} onHide={onHide}>
         <Skeleton className="h-16 w-full" />
       </WidgetFrame>
     );
@@ -22,32 +23,32 @@ export function SecurityPostureWidget({ onHide }: { onHide?: () => void }) {
 
   return (
     <WidgetFrame
-      title={ru.pulse.widgets.security_posture}
+      title={s.pulse.widgets.security_posture}
       diagDomain="security"
       onHide={onHide}
       stale={topic.stale}
     >
       <div className="flex flex-col">
         <KVRow
-          label={ru.pulse.securityPosture.readOnly}
-          value={<StatePill state={view.readOnly ? "warn" : "ok"}>{view.readOnly ? ru.common.yes : ru.common.no}</StatePill>}
+          label={s.pulse.securityPosture.readOnly}
+          value={<StatePill state={view.readOnly ? "warn" : "ok"}>{view.readOnly ? s.common.yes : s.common.no}</StatePill>}
         />
         <KVRow
-          label={ru.pulse.securityPosture.whitelist}
+          label={s.pulse.securityPosture.whitelist}
           value={
             view.whitelistEnabled
-              ? `${view.whitelistEntries} ${ru.pulse.securityPosture.whitelistEntries}`
-              : ru.common.off
+              ? `${view.whitelistEntries} ${s.pulse.securityPosture.whitelistEntries}`
+              : s.common.off
           }
         />
-        <KVRow label={ru.pulse.securityPosture.authHeader} value={view.authHeaderEnabled ? ru.common.yes : ru.common.no} />
+        <KVRow label={s.pulse.securityPosture.authHeader} value={view.authHeaderEnabled ? s.common.yes : s.common.no} />
         <KVRow
-          label={ru.pulse.securityPosture.proxyProtocol}
-          value={view.proxyProtocolEnabled ? ru.common.yes : ru.common.no}
+          label={s.pulse.securityPosture.proxyProtocol}
+          value={view.proxyProtocolEnabled ? s.common.yes : s.common.no}
         />
-        <KVRow label={ru.pulse.securityPosture.logLevel} value={view.logLevel} monospace />
+        <KVRow label={s.pulse.securityPosture.logLevel} value={view.logLevel} monospace />
         <KVRow
-          label={ru.pulse.securityPosture.telemetry}
+          label={s.pulse.securityPosture.telemetry}
           value={`${view.telemetryCoreEnabled ? "core" : "—"} / ${view.telemetryUserEnabled ? "user" : "—"}`}
         />
       </div>

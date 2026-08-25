@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { IconChevronLeft } from "../ui/icons";
 
 // ServerShell — the page frame every Сервер subpage renders inside: back
@@ -18,12 +18,13 @@ export function ServerShell({
   title: string;
   children: ReactNode;
 }) {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-2.5">
       <div className="-ml-2 flex items-center gap-0.5">
         <Link
           to="/server"
-          aria-label={ru.server.back}
+          aria-label={s.server.back}
           className="tap-target flex items-center justify-center text-[20px] text-accent"
         >
           <IconChevronLeft aria-hidden="true" />

@@ -4,12 +4,13 @@ import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { EmptyState } from "../../ui/EmptyState";
 import { useDisplayMode, visibleFor } from "../../display-mode";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
 import { computeUpstreams, upstreamQualitySuccessRate } from "./upstreams.helpers";
 
 export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
   const runtime = useSnapshot<RuntimeTopic>("runtime");
   const { mode } = useDisplayMode();
@@ -25,7 +26,7 @@ export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
 
   return (
     <WidgetFrame
-      title={ru.pulse.widgets.upstreams}
+      title={s.pulse.widgets.upstreams}
       diagDomain="upstreams"
       onHide={onHide}
       stale={topic.stale}
@@ -34,7 +35,7 @@ export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
       {view.status === "loading" && <Skeleton className="h-16 w-full" />}
       {view.status === "disabled" && <GatedNote reason={view.reason} />}
       {view.status === "ok" && view.upstreams.length === 0 && (
-        <EmptyState title={ru.pulse.upstreams.empty} />
+        <EmptyState title={s.pulse.upstreams.empty} />
       )}
       {view.status === "ok" && view.upstreams.length > 0 && (
         // The prototype's upstream line: name on the left in the muted
@@ -47,7 +48,7 @@ export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
                 {u.address}
               </span>
               <StatePill state={u.healthy ? "ok" : "error"}>
-                {u.healthy ? ru.pulse.upstreams.healthy : ru.pulse.upstreams.unhealthy}
+                {u.healthy ? s.pulse.upstreams.healthy : s.pulse.upstreams.unhealthy}
               </StatePill>
             </li>
           ))}
@@ -55,7 +56,7 @@ export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
       )}
       {successRate !== null && (
         <div className="flex items-center gap-2 border-t border-border pt-2 text-meta">
-          <span className="min-w-0 flex-1 text-text-muted">{ru.pulse.upstreams.successRate}</span>
+          <span className="min-w-0 flex-1 text-text-muted">{s.pulse.upstreams.successRate}</span>
           <span className="shrink-0 font-mono tabular-nums text-text">{successRate}%</span>
         </div>
       )}

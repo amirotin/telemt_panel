@@ -3,7 +3,7 @@ import type { StatsSnapshot } from "../../realtime/topics";
 import { useCaps } from "../../caps";
 import { CountBadge } from "../../ui/Chip";
 import { Skeleton } from "../../ui/Skeleton";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
 import { computeProblems, problemSeverity, type StaleTopicInput } from "./problems.helpers";
@@ -27,6 +27,7 @@ function isCount(detail: string): boolean {
 // lets an operator hide it like any other widget — only health_hero is
 // pinned).
 export function Problems({ onHide }: { onHide?: () => void }) {
+  const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const runtime = useSnapshot("runtime");
   const upstreams = useSnapshot("upstreams");
@@ -35,7 +36,7 @@ export function Problems({ onHide }: { onHide?: () => void }) {
 
   if (!stats.data) {
     return (
-      <WidgetFrame title={ru.pulse.widgets.problems} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.problems} onHide={onHide}>
         <Skeleton className="h-16 w-full" />
       </WidgetFrame>
     );
@@ -52,20 +53,20 @@ export function Problems({ onHide }: { onHide?: () => void }) {
     ? (Object.keys(capabilities) as Array<keyof typeof capabilities>).filter((k) => !capabilities[k])
     : [];
 
-  const items = computeProblems(stats.data, staleTopics, missingCapabilities);
+  const items = computeProblems(stats.data, staleTopics, missingCapabilities, s);
 
   if (items.length === 0) {
     // "Nothing is wrong" is the common state on a healthy server, so it
     // gets a quiet ok-tinted line rather than the app's dashed EmptyState
     // box — a large placeholder announcing good news reads as a defect.
     return (
-      <WidgetFrame title={ru.pulse.widgets.problems} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.problems} onHide={onHide}>
         <div className="flex items-start gap-2.5 rounded-md bg-ok/10 px-3 py-2.5">
           <span aria-hidden="true" className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ok" />
           <div className="min-w-0">
-            <span className="block text-row font-semibold text-ok">{ru.pulse.problems.none}</span>
+            <span className="block text-row font-semibold text-ok">{s.pulse.problems.none}</span>
             <span className="mt-0.5 block text-micro text-text-muted">
-              {ru.pulse.problems.noneDescription}
+              {s.pulse.problems.noneDescription}
             </span>
           </div>
         </div>
@@ -75,7 +76,7 @@ export function Problems({ onHide }: { onHide?: () => void }) {
 
   return (
     <WidgetFrame
-      title={ru.pulse.widgets.problems}
+      title={s.pulse.widgets.problems}
       onHide={onHide}
       badge={<CountBadge tone="warn">{items.length}</CountBadge>}
     >

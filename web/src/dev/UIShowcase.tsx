@@ -31,7 +31,7 @@ import {
   IconStar,
 } from "../ui";
 import { pushToast, ToastViewport } from "../ui/Toast";
-import { ru } from "../i18n/ru";
+import { fill, useStrings } from "../i18n";
 
 // /dev/ui — dev-only primitive showcase, replaces Storybook per 06-ui.md.
 // Every primitive, every documented state. Only ever imported behind the
@@ -39,13 +39,14 @@ import { ru } from "../i18n/ru";
 // (and its only-here-for-the-showcase code) is tree-shaken out of
 // production builds.
 export function UIShowcase() {
+  const s = useStrings();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [stepperValue, setStepperValue] = useState(3);
   const [cardToggle, setCardToggle] = useState(true);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 p-6">
-      <h1 className="text-xl font-semibold text-text">/dev/ui — витрина примитивов</h1>
+      <h1 className="text-xl font-semibold text-text">{s.dev.title}</h1>
 
       <Section title="Button">
         <div className="flex flex-wrap gap-2">
@@ -70,16 +71,16 @@ export function UIShowcase() {
 
       <Section title="IconButton">
         <div className="flex gap-2">
-          <IconButton aria-label="Пример">
+          <IconButton aria-label={s.dev.example}>
             <IconStar />
           </IconButton>
-          <IconButton aria-label="Пример solid" variant="solid">
+          <IconButton aria-label={`${s.dev.example} solid`} variant="solid">
             <IconServer />
           </IconButton>
-          <IconButton aria-label="Пример accent" variant="accent">
+          <IconButton aria-label={`${s.dev.example} accent`} variant="accent">
             <IconPlus />
           </IconButton>
-          <IconButton aria-label="Пример disabled" disabled>
+          <IconButton aria-label={`${s.dev.example} disabled`} disabled>
             <IconStar />
           </IconButton>
         </div>
@@ -88,37 +89,37 @@ export function UIShowcase() {
       <Section title="Chip / CountBadge">
         <div className="flex flex-wrap items-center gap-2">
           <Chip active count={1234}>
-            Все
+            {s.people.filter.all}
           </Chip>
-          <Chip count={51}>Онлайн</Chip>
-          <Chip count={99}>Проблемы</Chip>
-          <Chip icon={<IconSort className="h-3 w-3" />}>Активность</Chip>
+          <Chip count={51}>{s.people.filter.online}</Chip>
+          <Chip count={99}>{s.people.filter.issues}</Chip>
+          <Chip icon={<IconSort className="h-3 w-3" />}>{s.people.sortPreset.activity}</Chip>
         </div>
         <div className="flex items-center gap-2">
           <CountBadge>3</CountBadge>
-          <CountBadge tone="error">стоп</CountBadge>
-          <CountBadge tone="warn">срок</CountBadge>
-          <CountBadge tone="muted">выкл</CountBadge>
+          <CountBadge tone="error">{s.people.badge.quota}</CountBadge>
+          <CountBadge tone="warn">{s.people.badge.expired}</CountBadge>
+          <CountBadge tone="muted">{s.people.badge.disabled}</CountBadge>
         </div>
       </Section>
 
       <Section title="Card / CardList / SectionLabel / Toggle">
-        <SectionLabel>{ru.nav.server}</SectionLabel>
+        <SectionLabel>{s.nav.server}</SectionLabel>
         <Card>
-          <CardTitle action={<StatePill state="ok">ok</StatePill>}>{ru.nav.pulse}</CardTitle>
-          <p className="mt-2 text-meta text-text-muted">{ru.gated.defaultReason}</p>
+          <CardTitle action={<StatePill state="ok">ok</StatePill>}>{s.nav.pulse}</CardTitle>
+          <p className="mt-2 text-meta text-text-muted">{s.gated.defaultReason}</p>
         </Card>
         <CardList>
           <CardRow>
-            <span className="flex-1 text-row">{ru.theme.dark}</span>
-            <Toggle checked={cardToggle} onChange={setCardToggle} aria-label={ru.theme.toggle} />
+            <span className="flex-1 text-row">{s.theme.dark}</span>
+            <Toggle checked={cardToggle} onChange={setCardToggle} aria-label={s.theme.toggle} />
           </CardRow>
           <CardRow>
-            <span className="flex-1 text-row">{ru.theme.light}</span>
+            <span className="flex-1 text-row">{s.theme.light}</span>
             <Toggle
               checked={!cardToggle}
               onChange={(v) => setCardToggle(!v)}
-              aria-label={ru.theme.toggle}
+              aria-label={s.theme.toggle}
             />
           </CardRow>
         </CardList>
@@ -138,17 +139,17 @@ export function UIShowcase() {
 
       <Section title="Input">
         <div className="flex max-w-xs flex-col gap-2">
-          <Input placeholder="Обычный" />
-          <Input placeholder="Моноширинный" monospace autoCapitalize="off" />
-          <Input placeholder="Отключён" disabled />
+          <Input placeholder={s.dev.inputPlain} />
+          <Input placeholder={s.dev.inputMono} monospace autoCapitalize="off" />
+          <Input placeholder={s.dev.inputDisabled} disabled />
         </div>
       </Section>
 
       <Section title="Select">
         <Select className="max-w-xs" defaultValue="gb">
-          <option value="mb">МБ</option>
-          <option value="gb">ГБ</option>
-          <option value="inf">Без лимита</option>
+          <option value="mb">{s.people.form.quotaUnits.MB}</option>
+          <option value="gb">{s.people.form.quotaUnits.GB}</option>
+          <option value="inf">{s.people.form.quotaUnlimited}</option>
         </Select>
       </Section>
 
@@ -157,23 +158,21 @@ export function UIShowcase() {
       </Section>
 
       <Section title="Sheet">
-        <Button onClick={() => setSheetOpen(true)}>Открыть Sheet</Button>
-        <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Пример Sheet">
-          <p className="text-sm text-text-muted">
-            Нижняя шторка на мобайле, модал на lg:. Escape и клик по фону закрывают.
-          </p>
+        <Button onClick={() => setSheetOpen(true)}>{s.dev.openSheet}</Button>
+        <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={s.dev.sheetTitle}>
+          <p className="text-sm text-text-muted">{s.dev.sheetBody}</p>
         </Sheet>
       </Section>
 
       <Section title="Toast">
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => pushToast("Обычное уведомление")}>
+          <Button variant="secondary" onClick={() => pushToast(s.dev.toastDefault)}>
             Default
           </Button>
-          <Button variant="secondary" onClick={() => pushToast("Успешно", "ok")}>
+          <Button variant="secondary" onClick={() => pushToast(s.dev.toastOk, "ok")}>
             Ok
           </Button>
-          <Button variant="secondary" onClick={() => pushToast("Ошибка", "error")}>
+          <Button variant="secondary" onClick={() => pushToast(s.common.error, "error")}>
             Error
           </Button>
         </div>
@@ -182,10 +181,10 @@ export function UIShowcase() {
 
       <Section title="StatCard">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Соединения" value={128} />
+          <StatCard label={s.shell.connections} value={128} />
           <StatCard
-            label="Трафик"
-            value="4.2 ГБ"
+            label={s.shell.traffic}
+            value={`4.2 ${s.ui.byteUnits[3]}`}
             delta="+3%"
             sparkline={<Sparkline values={[3, 5, 4, 8, 6, 9, 7, 10]} />}
           />
@@ -194,8 +193,8 @@ export function UIShowcase() {
 
       <Section title="KVRow">
         <div className="max-w-sm rounded-xl bg-surface px-3.5">
-          <KVRow label="Версия" value="2.0.0-draft1" />
-          <KVRow label="Секрет" value="a1b2c3d4e5f6" monospace />
+          <KVRow label={s.dev.version} value="2.0.0-draft1" />
+          <KVRow label={s.people.detail.secret} value="a1b2c3d4e5f6" monospace />
         </div>
       </Section>
 
@@ -219,11 +218,9 @@ export function UIShowcase() {
 
       <Section title="CopyField">
         <div className="max-w-sm">
-          <CopyField label="Sub-ссылка" value="https://panel.example/sub/abc123def456" />
+          <CopyField label={s.people.share.linkLabel} value="https://panel.example/sub/abc123def456" />
           <p className="mt-2 text-xs text-text-muted">
-            Клик копирует через Clipboard API (HTTPS/localhost), иначе через
-            execCommand, иначе выделяет значение и показывает тост
-            «{ru.common.copyManually}» — см. src/lib/copyText.ts.
+            {fill(s.dev.copyFieldNote, { manual: s.common.copyManually })}
           </p>
         </div>
       </Section>
@@ -246,14 +243,14 @@ export function UIShowcase() {
 
       <Section title="EmptyState">
         <EmptyState
-          title="Пользователей пока нет"
-          description="Создайте первого пользователя, чтобы выдать доступ"
-          action={<Button>Создать</Button>}
+          title={s.people.emptyTitle}
+          description={s.people.emptyDescription}
+          action={<Button>{s.people.create}</Button>}
         />
       </Section>
 
       <Section title="ErrorState">
-        <ErrorState message="Не удалось загрузить данные" onRetry={() => {}} />
+        <ErrorState message={s.errors.default} onRetry={() => {}} />
       </Section>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useSnapshot, useRefreshTopic } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
-import { ru } from "../../i18n/ru";
+import { useStrings } from "../../i18n";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
@@ -9,12 +9,13 @@ import { meGroups } from "./me.helpers";
 import { GatedNote } from "../GatedNote";
 
 export function MePage() {
+  const s = useStrings();
   const runtime = useSnapshot<RuntimeTopic>("runtime");
   const upstreams = useSnapshot<UpstreamsTopic>("upstreams");
   const refreshTopic = useRefreshTopic();
 
   return (
-    <DiagShell title={ru.diag.domains.me}>
+    <DiagShell title={s.diag.domains.me}>
       <DiagTopicState
         data={runtime.data}
         error={runtime.error}
@@ -37,7 +38,7 @@ export function MePage() {
             gates: data.gates ?? undefined,
             initialization: data.initialization ?? undefined,
             meRuntime: minimal.status === "ok" ? minimal.data.me_runtime : undefined,
-          });
+          }, s);
 
           return (
             <div className="flex flex-col gap-4">

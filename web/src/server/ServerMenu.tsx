@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
-import { ru } from "../i18n/ru";
+import { ru, useStrings } from "../i18n";
 import {
   IconChevronRight,
   IconPlatform,
@@ -59,10 +59,11 @@ const ITEMS: ReadonlyArray<{
 // separate-cards-with-gaps version D1 shipped read as five unrelated
 // panels rather than one menu.
 export function ServerMenu() {
+  const s = useStrings();
   return (
     <div className="flex flex-col gap-3.5">
       <h1 className="text-title font-extrabold tracking-tight text-text">
-        {ru.server.title}
+        {s.server.title}
       </h1>
       <nav className="overflow-hidden rounded-2xl bg-surface">
         {ITEMS.map(({ to, Icon, tint, item }) => (

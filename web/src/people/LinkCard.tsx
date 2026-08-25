@@ -1,7 +1,7 @@
 import { cn } from "../lib/cn";
 import { CopyField } from "../ui/CopyField";
 import { QR } from "../ui/QR";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { parseLink } from "./parseLink";
 
 export interface LinkCardProps {
@@ -21,6 +21,7 @@ export interface LinkCardProps {
 // showing just the raw link when it can't be parsed (an unexpected format
 // from a future Telemt version shouldn't hide the link entirely).
 export function LinkCard({ label, link, compact }: LinkCardProps) {
+  const s = useStrings();
   const parsed = parseLink(link);
 
   return (
@@ -33,13 +34,13 @@ export function LinkCard({ label, link, compact }: LinkCardProps) {
       <span className="text-xs font-medium text-text-muted">{label}</span>
       {parsed.type !== "unknown" ? (
         <div className={cn("grid gap-3", compact ? "grid-cols-1 gap-2" : "grid-cols-2")}>
-          {parsed.server && <CopyField value={parsed.server} label={ru.people.detail.server} />}
-          {parsed.port && <CopyField value={parsed.port} label={ru.people.detail.port} />}
-          {parsed.secret && <CopyField value={parsed.secret} label={ru.people.detail.secret} />}
-          {parsed.domain && <CopyField value={parsed.domain} label={ru.people.detail.domain} />}
+          {parsed.server && <CopyField value={parsed.server} label={s.people.detail.server} />}
+          {parsed.port && <CopyField value={parsed.port} label={s.people.detail.port} />}
+          {parsed.secret && <CopyField value={parsed.secret} label={s.people.detail.secret} />}
+          {parsed.domain && <CopyField value={parsed.domain} label={s.people.detail.domain} />}
         </div>
       ) : null}
-      <CopyField value={link} label={ru.people.share.linkLabel} />
+      <CopyField value={link} label={s.people.share.linkLabel} />
       <QR value={link} size={compact ? 120 : 140} className={compact ? "self-center" : undefined} />
     </div>
   );

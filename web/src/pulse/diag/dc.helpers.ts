@@ -1,4 +1,5 @@
 import { flattenToRows, type KVGroup } from "./rows";
+import type { Dict } from "../../i18n";
 import type { DcStatus, RuntimeMinimalDcPath } from "../../realtime/topics";
 
 // dcGroups gives every configured DC its own group (unlike the DC widget's
@@ -7,12 +8,18 @@ import type { DcStatus, RuntimeMinimalDcPath } from "../../realtime/topics";
 // network_path, mini-task 2c — "minimal" runtime gated, extended mode only)
 // merged into the same group under a `network_path.*` prefix when a
 // matching entry exists, rather than as a separate top-level group per DC.
-export function dcGroups(dcs: DcStatus[], networkPaths: RuntimeMinimalDcPath[] = []): KVGroup[] {
+export function dcGroups(
+  dcs: DcStatus[],
+  s: Dict,
+  networkPaths: RuntimeMinimalDcPath[] = [],
+): KVGroup[] {
   return dcs.map((dc) => {
     const path = networkPaths.find((p) => p.dc === dc.dc);
     return {
       title: `DC ${dc.dc}`,
-      rows: path ? [...flattenToRows(dc), ...flattenToRows(path, "network_path")] : flattenToRows(dc),
+      rows: path
+        ? [...flattenToRows(dc, s), ...flattenToRows(path, s, "network_path")]
+        : flattenToRows(dc, s),
     };
   });
 }

@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 import { IconInfo } from "../ui/icons";
-import { gateHints, type GateHintKey } from "./gateHints";
+import { gateHint, type GateHintKey } from "./gateHints";
 
 export interface GatedProps {
   /** Whether the gated data/action is actually available right now. */
@@ -28,6 +28,7 @@ export interface GatedProps {
 // (enabled/reason from the wire) or a /api/telemt/info capability flag
 // (enabled from useCaps(), reason/hint supplied by the caller).
 export function Gated({ enabled, reason, hint, onHide, className, children }: GatedProps) {
+  const s = useStrings();
   if (enabled) return <>{children}</>;
 
   // The prototype's quiet «Внутренние подсистемы» block: a normal card with
@@ -45,18 +46,18 @@ export function Gated({ enabled, reason, hint, onHide, className, children }: Ga
       <div className="flex items-start gap-2">
         <IconInfo className="mt-0.5 h-4 w-4 shrink-0 text-text-faint" />
         <p className="text-[13px] font-semibold leading-snug text-text-muted">
-          {ru.gated.disabledPrefix}
-          {reason ?? ru.gated.defaultReason}
+          {s.gated.disabledPrefix}
+          {reason ?? s.gated.defaultReason}
         </p>
       </div>
       {hint && (
         <p className="pl-6 text-meta leading-relaxed text-text-faint">
-          {ru.gated.howToEnable}: {gateHints[hint]}
+          {s.gated.howToEnable}: {gateHint(s, hint)}
         </p>
       )}
       {onHide && (
         <Button variant="ghost" size="sm" onClick={onHide} className="self-start">
-          {ru.gated.hideWidget}
+          {s.gated.hideWidget}
         </Button>
       )}
     </div>

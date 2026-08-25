@@ -4,7 +4,7 @@ import { Gated } from "../caps/Gated";
 import { Card } from "../ui/Card";
 import { CopyField } from "../ui/CopyField";
 import { IconInfo } from "../ui/icons";
-import { ru } from "../i18n/ru";
+import { useStrings } from "../i18n";
 import { apiErrorCode } from "../people/apiError";
 import { useHostInfo } from "./useHostInfo";
 import { LogStreamViewer } from "./LogStreamViewer";
@@ -19,6 +19,7 @@ import type { LogicalService } from "./types";
 // survives switching between those three branches (e.g. a host reporting
 // caps that flip mid-session after a config reload).
 export function LogsTab() {
+  const s = useStrings();
   const host = useHostInfo();
   const [service, setService] = useState<LogicalService>("telemt");
 
@@ -62,7 +63,7 @@ export function LogsTab() {
             */}
             <Gated
               enabled={false}
-              reason={ru.journal.gatedTitle}
+              reason={s.journal.gatedTitle}
               hint="log_stream"
             />
             <div className="flex items-start gap-3">
@@ -70,11 +71,11 @@ export function LogsTab() {
                 <IconInfo />
               </span>
               <p className="text-meta leading-relaxed text-text-faint">
-                {ru.journal.gatedDescription}
+                {s.journal.gatedDescription}
               </p>
             </div>
             {manual && (
-              <CopyField label={ru.journal.gatedTitle} value={manual} />
+              <CopyField label={s.journal.gatedTitle} value={manual} />
             )}
           </Card>
         );

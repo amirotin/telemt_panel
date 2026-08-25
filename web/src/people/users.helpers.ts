@@ -1,4 +1,4 @@
-import { ru } from "../i18n/ru";
+import type { Dict } from "../i18n";
 import type { UsersTopicQuotaEntry, UsersTopicUser } from "../realtime/topics";
 
 // UserStatus is the single status vocabulary the card/table/detail header
@@ -259,9 +259,9 @@ export function setStoredUserSort(sort: UserSortState): void {
 // formatBitsPerSecond renders rate_limit_up_bps/rate_limit_down_bps —
 // decimal (1000-based) SI units, matching networking convention for
 // bitrates (Kbps/Mbps), unlike formatBytes' binary (1024-based) byte units.
-// Unit labels live in ru.people.bitrateUnits (i18n/ru.ts), not here.
-export function formatBitsPerSecond(bps: number): string {
-  const units = ru.people.bitrateUnits;
+// Unit labels live in the dictionaries (people.bitrateUnits), not here.
+export function formatBitsPerSecond(bps: number, s: Dict): string {
+  const units = s.people.bitrateUnits;
   let value = bps;
   let unit = 0;
   while (value >= 1000 && unit < units.length - 1) {
