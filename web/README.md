@@ -109,6 +109,32 @@ proxy (built on Node's http-proxy, not a buffering reverse proxy) doesn't need
 extra configuration for this to work; there is no compression/response
 buffering in the dev server's proxy path to disable.
 
+## PWA
+
+`public/manifest.webmanifest` + `public/icon.svg` (name/icons/theme_color) and
+`public/sw.js` (app-shell caching: network-first for `index.html`, cache-first
+for the content-hashed `assets/` bundle, `/api/*` and `/sub/*` never touched —
+06-ui.md: "offline — последние снапшоты топиков из памяти вкладки", not a
+service-worker cache) are both static files Vite copies as-is; registration
+is `src/pwa/registerSW.ts`, called from `main.tsx`, production builds only.
+
+**Hand-written SW, not vite-plugin-pwa**: the whole caching policy is three
+rules, which is simpler to read, audit, and keep in sync with
+`internal/webui`'s own cache-header story (immutable `assets/`, no-cache
+elsewhere — `internal/webui/webui.go`) as ~70 lines of plain JS than to
+configure correctly through a plugin's Workbox strategy DSL, register its Vite
+plugin, and reason about what it generates. Revisit if a future task needs
+richer offline behavior (background sync, precache manifests with revisioning)
+that would make a hand-rolled SW harder to maintain than adopting the plugin.
+
+`internal/webui` registers `.webmanifest` → `application/manifest+json` (Go's
+builtin mime map has no association for it, so `http.FileServer` used to sniff
+it as `text/plain` — see that package's `init()`); `sw.js` gets Go's normal
+`.js` mime type and the same no-cache header as `manifest.webmanifest` (both
+are outside the `assets/` immutable-cache namespace, so a redeploy is always
+picked up — required for a service worker file specifically, not just
+incidental).
+
 ## Go integration
 
 See `internal/webui`'s package doc comment for the embed layout, base_path
