@@ -42,6 +42,7 @@ export default tseslint.config(
             "pushToast",
             "dismissToast",
             "useDisplayMode",
+            "useSSEClient",
             "useTopic",
             "useSnapshot",
             "useConnectionState",

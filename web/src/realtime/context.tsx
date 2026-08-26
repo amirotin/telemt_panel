@@ -32,7 +32,10 @@ export function SSEProvider({ client, children }: SSEProviderProps) {
   return <SSEClientContext.Provider value={value}>{children}</SSEClientContext.Provider>;
 }
 
-function useSSEClient(): SSEClient {
+// Exported for realtime/topicWindow.ts, which layers its own external store
+// (a sliding window of recent snapshots) directly on the same client rather
+// than re-deriving one from React state.
+export function useSSEClient(): SSEClient {
   const client = useContext(SSEClientContext);
   if (!client) {
     throw new Error("useTopic/useSnapshot/useConnectionState must be used within <SSEProvider>");

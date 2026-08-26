@@ -1,12 +1,23 @@
-import { useSnapshot } from "../../realtime";
+import { useSnapshot, useTopicWindow } from "../../realtime";
 import type { StatsSnapshot, UpstreamsTopic } from "../../realtime/topics";
 import { useCaps } from "../../caps";
+import { useDisplayMode, visibleFor } from "../../display-mode";
 import { CountBadge } from "../../ui/Chip";
 import { Skeleton } from "../../ui/Skeleton";
 import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
-import { computeProblems, problemSeverity, type StaleTopicInput } from "./problems.helpers";
+import {
+  computeProblems,
+  lifetimeCountersNote,
+  problemSeverity,
+  type StaleTopicInput,
+} from "./problems.helpers";
+
+// The rate window for the cumulative-counter rules — the same 15 minutes
+// every other "за 15 мин" figure on Пульс uses (the history ring's own
+// retention, ruling R3), so one glance at the dashboard covers one period.
+const COUNTER_WINDOW_MS = 15 * 60 * 1000;
 
 const SEVERITY_DOT: Record<ReturnType<typeof problemSeverity>, string> = {
   error: "bg-error",
@@ -33,6 +44,10 @@ export function Problems({ onHide }: { onHide?: () => void }) {
   const upstreams = useSnapshot<UpstreamsTopic>("upstreams");
   const security = useSnapshot("security");
   const caps = useCaps();
+  const { mode } = useDisplayMode();
+  // The oldest stats snapshot still inside the window is the baseline every
+  // cumulative counter is diffed against; null until a second one arrives.
+  const statsWindow = useTopicWindow<StatsSnapshot>("stats", COUNTER_WINDOW_MS);
 
   if (!stats.data) {
     return (
@@ -59,6 +74,14 @@ export function Problems({ onHide }: { onHide?: () => void }) {
     missingCapabilities,
     upstreams.data?.dcs ?? null,
     s,
+    statsWindow.oldest?.data ?? null,
+  );
+  // Extended mode only: computeProblems no longer alarms on counters that
+  // are not currently growing, so this is where their lifetime totals get
+  // acknowledged instead of silently vanishing.
+  const lifetimeNote = visibleFor("extended", mode) ? lifetimeCountersNote(stats.data, s) : null;
+  const note = lifetimeNote && (
+    <p className="mt-2 text-micro leading-relaxed text-text-faint">{lifetimeNote}</p>
   );
 
   if (items.length === 0) {
@@ -76,6 +99,7 @@ export function Problems({ onHide }: { onHide?: () => void }) {
             </span>
           </div>
         </div>
+        {note}
       </WidgetFrame>
     );
   }
@@ -89,7 +113,11 @@ export function Problems({ onHide }: { onHide?: () => void }) {
       <ul className="flex flex-col">
         {items.map((item) => {
           const severity = problemSeverity(item.key);
-          const count = item.detail !== undefined && isCount(item.detail);
+          // An explicit `count` wins; otherwise a bare-number `detail` still
+          // doubles as the badge, as it always has.
+          const badge =
+            item.count ?? (item.detail !== undefined && isCount(item.detail) ? item.detail : undefined);
+          const prose = item.detail !== undefined && item.detail !== badge ? item.detail : undefined;
           return (
             <li
               key={item.key}
@@ -101,9 +129,9 @@ export function Problems({ onHide }: { onHide?: () => void }) {
               />
               <div className="min-w-0 flex-1">
                 <span className="block text-row text-text">{item.label}</span>
-                {item.detail !== undefined && !count && (
+                {prose !== undefined && (
                   <span className="mt-0.5 block text-micro leading-relaxed text-text-muted">
-                    {item.detail}
+                    {prose}
                   </span>
                 )}
                 {item.hint !== undefined && (
@@ -112,15 +140,16 @@ export function Problems({ onHide }: { onHide?: () => void }) {
                   </span>
                 )}
               </div>
-              {count && (
+              {badge !== undefined && (
                 <CountBadge tone={severity === "error" ? "error" : "warn"} className="mt-0.5">
-                  {item.detail}
+                  {badge}
                 </CountBadge>
               )}
             </li>
           );
         })}
       </ul>
+      {note}
     </WidgetFrame>
   );
 }

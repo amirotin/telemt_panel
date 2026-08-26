@@ -1,10 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { computeProblems, problemSeverity } from "./problems.helpers";
-import type { DcStatus, DcStatusData, StatsSnapshot } from "../../realtime/topics";
+import {
+  computeProblems,
+  counterDelta,
+  lifetimeCountersNote,
+  problemSeverity,
+} from "./problems.helpers";
+import type { DcStatus, DcStatusData, StatsSnapshot, StatsSummary } from "../../realtime/topics";
 import { ru as s } from "../../i18n";
 
 function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
   return { health: null, summary: null, ready: null, ...overrides };
+}
+
+// summary fills every StatsSummary scalar with a neutral zero so a test only
+// states the counters it actually cares about.
+function summary(overrides: Partial<StatsSummary> = {}): StatsSummary {
+  return {
+    uptime_seconds: 0,
+    connections_total: 0,
+    connections_bad_total: 0,
+    handshake_timeouts_total: 0,
+    configured_users: 0,
+    ...overrides,
+  };
+}
+
+// withSummary is the pair the rate rules need: the current snapshot plus the
+// oldest one still inside the window (realtime/topicWindow.ts's baseline).
+function withSummary(current: Partial<StatsSummary>, baseline: Partial<StatsSummary>) {
+  return {
+    current: stats({ summary: summary(current) }),
+    baseline: stats({ summary: summary(baseline) }),
+  };
 }
 
 // mkDc fills every DcStatus field (internal/telemt/types_stats.go's DcStatus
@@ -100,55 +127,9 @@ describe("computeProblems", () => {
     expect(items[1].detail).toBe("telemt_unreachable");
   });
 
-  it("ranks handshake failures descending by count and drops zero-count classes", () => {
-    const items = computeProblems(
-      stats({
-        summary: {
-          uptime_seconds: 0,
-          connections_total: 0,
-          connections_bad_total: 0,
-          handshake_timeouts_total: 0,
-          configured_users: 0,
-          handshake_failures_by_class: [
-            { class: "timeout", total: 3 },
-            { class: "bad_secret", total: 10 },
-            { class: "unused", total: 0 },
-          ],
-        },
-      }),
-      [],
-      [],
-      null,
-      s,
-    );
-    expect(items.map((i) => i.key)).toEqual(["handshake_bad_secret", "handshake_timeout"]);
-  });
-
   it("reports missing capabilities last", () => {
     const items = computeProblems(stats(), [], ["runtime_edge", "quota"], null, s);
     expect(items.map((i) => i.key)).toEqual(["cap_runtime_edge", "cap_quota"]);
-  });
-
-  it("reports connections_bad_total and handshake_timeouts_total only when non-zero", () => {
-    const zero = computeProblems(
-      stats({ summary: { uptime_seconds: 0, connections_total: 0, connections_bad_total: 0, handshake_timeouts_total: 0, configured_users: 0 } }),
-      [],
-      [],
-      null,
-      s,
-    );
-    expect(zero).toEqual([]);
-
-    const nonZero = computeProblems(
-      stats({ summary: { uptime_seconds: 0, connections_total: 0, connections_bad_total: 4, handshake_timeouts_total: 2, configured_users: 0 } }),
-      [],
-      [],
-      null,
-      s,
-    );
-    expect(nonZero.map((i) => i.key)).toEqual(["connections_bad_total", "handshake_timeouts_total"]);
-    expect(nonZero[0].detail).toBe("4");
-    expect(nonZero[1].detail).toBe("2");
   });
 
   it("does not treat a null summary (failed sub-call) as zero bad connections", () => {
@@ -157,49 +138,27 @@ describe("computeProblems", () => {
     expect(computeProblems(stats(), [], [], null, s)).toEqual([]);
   });
 
-  it("ranks connections_bad_by_class descending by count and drops zero-count classes", () => {
-    const items = computeProblems(
-      stats({
-        summary: {
-          uptime_seconds: 0,
-          connections_total: 0,
-          connections_bad_total: 0,
-          handshake_timeouts_total: 0,
-          configured_users: 0,
-          connections_bad_by_class: [
-            { class: "rate_limited", total: 2 },
-            { class: "quota_exceeded", total: 9 },
-            { class: "unused", total: 0 },
-          ],
-        },
-      }),
-      [],
-      [],
-      null,
-      s,
-    );
-    expect(items.map((i) => i.key)).toEqual(["connections_bad_quota_exceeded", "connections_bad_rate_limited"]);
-  });
-
   it("orders: not_ready, read_only, stale topics, handshake failures, bad-connections scalars, bad-by-class, capabilities", () => {
+    const { current, baseline } = withSummary(
+      {
+        connections_bad_total: 3,
+        handshake_timeouts_total: 1,
+        handshake_failures_by_class: [{ class: "timeout", total: 1 }],
+        connections_bad_by_class: [{ class: "rate_limited", total: 1 }],
+      },
+      {},
+    );
     const items = computeProblems(
-      stats({
+      {
+        ...current,
         ready: { ready: false, status: "not_ready", admission_open: false, healthy_upstreams: 0, total_upstreams: 1 },
         health: { status: "degraded", read_only: true },
-        summary: {
-          uptime_seconds: 0,
-          connections_total: 0,
-          connections_bad_total: 3,
-          handshake_timeouts_total: 1,
-          configured_users: 0,
-          handshake_failures_by_class: [{ class: "timeout", total: 1 }],
-          connections_bad_by_class: [{ class: "rate_limited", total: 1 }],
-        },
-      }),
+      },
       [{ topic: "runtime", stale: true, error: null }],
       ["runtime_edge"],
       null,
       s,
+      baseline,
     );
     expect(items.map((i) => i.key)).toEqual([
       "not_ready",
@@ -211,6 +170,162 @@ describe("computeProblems", () => {
       "connections_bad_rate_limited",
       "cap_runtime_edge",
     ]);
+  });
+});
+
+describe("counterDelta", () => {
+  it("is null without a baseline — 'unknown' is not 'unchanged'", () => {
+    expect(counterDelta(undefined, 37_086)).toBeNull();
+  });
+
+  it("is the growth across the window", () => {
+    expect(counterDelta(37_074, 37_086)).toBe(12);
+    expect(counterDelta(37_086, 37_086)).toBe(0);
+  });
+
+  it("treats a counter reset as everything accumulated since it", () => {
+    expect(counterDelta(37_086, 4)).toBe(4);
+  });
+});
+
+describe("computeProblems — cumulative counters are ranked by rate, not by lifetime total", () => {
+  it("reports nothing at all while the window holds fewer than two snapshots", () => {
+    const { current } = withSummary(
+      {
+        connections_bad_total: 1_175,
+        handshake_timeouts_total: 3_585,
+        handshake_failures_by_class: [{ class: "unexpected_eof", total: 37_086 }],
+      },
+      {},
+    );
+    expect(computeProblems(current, [], [], null, s)).toEqual([]);
+  });
+
+  it("stays silent on the real VPS numbers when nothing moved in 15 minutes", () => {
+    // Field report: Telemt 3.4.25, 20 days of uptime, 1.7M lifetime
+    // connections. 37 086 unexpected_eof handshake failures, 1 175 bad
+    // connections and 3 585 handshake timeouts are 20 days of internet
+    // background scanning, not a problem happening now.
+    const lifetime = {
+      connections_bad_total: 1_175,
+      handshake_timeouts_total: 3_585,
+      handshake_failures_by_class: [{ class: "unexpected_eof", total: 37_086 }],
+      connections_bad_by_class: [{ class: "rate_limited", total: 812 }],
+    };
+    const { current, baseline } = withSummary(lifetime, lifetime);
+    expect(computeProblems(current, [], [], null, s, baseline)).toEqual([]);
+  });
+
+  it("warns with the delta, and keeps the lifetime total in the detail line, once a counter moves", () => {
+    const { current, baseline } = withSummary(
+      { handshake_failures_by_class: [{ class: "unexpected_eof", total: 37_098 }] },
+      { handshake_failures_by_class: [{ class: "unexpected_eof", total: 37_086 }] },
+    );
+    const items = computeProblems(current, [], [], null, s, baseline);
+    expect(items).toEqual([
+      {
+        key: "handshake_unexpected_eof",
+        label: "Ошибки хендшейка: unexpected_eof",
+        detail: "+12 за 15 мин · всего 37098",
+        count: "+12",
+      },
+    ]);
+    expect(problemSeverity("handshake_unexpected_eof")).toBe("warn");
+  });
+
+  it("ranks moving handshake-failure classes descending by lifetime total and drops the static ones", () => {
+    const { current, baseline } = withSummary(
+      {
+        handshake_failures_by_class: [
+          { class: "timeout", total: 3 },
+          { class: "bad_secret", total: 10 },
+          { class: "unexpected_eof", total: 37_086 },
+        ],
+      },
+      {
+        handshake_failures_by_class: [
+          { class: "bad_secret", total: 4 },
+          { class: "unexpected_eof", total: 37_086 },
+        ],
+      },
+    );
+    const items = computeProblems(current, [], [], null, s, baseline);
+    // bad_secret grew by 6, timeout is a brand-new class (absent from the
+    // baseline = a genuine zero) and grew by 3; unexpected_eof did not move.
+    expect(items.map((i) => i.key)).toEqual(["handshake_bad_secret", "handshake_timeout"]);
+    expect(items.map((i) => i.count)).toEqual(["+6", "+3"]);
+  });
+
+  it("reports the bad-connection scalars only for their growth", () => {
+    const { current, baseline } = withSummary(
+      { connections_bad_total: 1_179, handshake_timeouts_total: 3_585 },
+      { connections_bad_total: 1_175, handshake_timeouts_total: 3_585 },
+    );
+    const items = computeProblems(current, [], [], null, s, baseline);
+    expect(items.map((i) => i.key)).toEqual(["connections_bad_total"]);
+    expect(items[0].count).toBe("+4");
+    expect(items[0].detail).toBe("+4 за 15 мин · всего 1179");
+  });
+
+  it("ranks connections_bad_by_class by growth only", () => {
+    const { current, baseline } = withSummary(
+      {
+        connections_bad_by_class: [
+          { class: "rate_limited", total: 2 },
+          { class: "quota_exceeded", total: 9 },
+          { class: "unused", total: 0 },
+        ],
+      },
+      { connections_bad_by_class: [{ class: "quota_exceeded", total: 8 }] },
+    );
+    const items = computeProblems(current, [], [], null, s, baseline);
+    expect(items.map((i) => i.key)).toEqual([
+      "connections_bad_quota_exceeded",
+      "connections_bad_rate_limited",
+    ]);
+    expect(items.map((i) => i.count)).toEqual(["+1", "+2"]);
+  });
+
+  it("reports the post-reset counter after Telemt restarted mid-window", () => {
+    const { current, baseline } = withSummary(
+      { connections_bad_total: 6 },
+      { connections_bad_total: 1_175 },
+    );
+    const items = computeProblems(current, [], [], null, s, baseline);
+    expect(items.map((i) => i.key)).toEqual(["connections_bad_total"]);
+    expect(items[0].count).toBe("+6");
+  });
+
+  it("stays silent when the baseline snapshot had no summary of its own", () => {
+    const { current } = withSummary({ connections_bad_total: 1_175 }, {});
+    expect(computeProblems(current, [], [], null, s, stats())).toEqual([]);
+  });
+});
+
+describe("lifetimeCountersNote", () => {
+  it("is null without a summary or when every counter is genuinely zero", () => {
+    expect(lifetimeCountersNote(null, s)).toBeNull();
+    expect(lifetimeCountersNote(stats(), s)).toBeNull();
+    expect(lifetimeCountersNote(stats({ summary: summary() }), s)).toBeNull();
+  });
+
+  it("names the non-zero lifetime counters and points at the Соединения page", () => {
+    const note = lifetimeCountersNote(
+      stats({
+        summary: summary({
+          connections_bad_total: 1_175,
+          handshake_timeouts_total: 3_585,
+          handshake_failures_by_class: [
+            { class: "unexpected_eof", total: 37_086 },
+            { class: "timeout", total: 14 },
+          ],
+        }),
+      }),
+      s,
+    );
+    expect(note).toBe(
+      "Счётчики за всё время: Плохие соединения (всего) — 1175 · Таймауты хендшейка — 3585 · Ошибки хендшейка — 37100 (см. Соединения)",
+    );
   });
 });
 
