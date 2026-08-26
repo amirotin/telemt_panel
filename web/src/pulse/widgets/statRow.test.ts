@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeStatRowValues, latestHistoryValue, peakHistoryValue, sparklineValues } from "./statRow.helpers";
+import {
+  computeStatRowValues,
+  deltaSparklineValues,
+  historyWindowDelta,
+  peakHistoryValue,
+  sparklineValues,
+} from "./statRow.helpers";
 import type { StatsSnapshot } from "../../realtime/topics";
 import type { HistorySeries } from "../../lib/api/generated/types.gen";
 import { ru as s } from "../../i18n";
@@ -69,18 +75,65 @@ describe("computeStatRowValues", () => {
   });
 });
 
-describe("sparklineValues / latestHistoryValue", () => {
+describe("sparklineValues", () => {
   const series: HistorySeries = { metric: "connections", range: "15m", points: [{ ts: 1, v: 1 }, { ts: 2, v: 5 }] };
 
-  it("extracts the value series and the last point", () => {
+  it("extracts the raw value series", () => {
     expect(sparklineValues(series)).toEqual([1, 5]);
-    expect(latestHistoryValue(series)).toBe(5);
   });
 
-  it("degrades to empty/null when there's no history yet", () => {
+  it("degrades to empty when there's no history yet", () => {
     expect(sparklineValues(undefined)).toEqual([]);
-    expect(latestHistoryValue(undefined)).toBeNull();
-    expect(latestHistoryValue({ metric: "connections", range: "15m", points: [] })).toBeNull();
+  });
+});
+
+describe("historyWindowDelta", () => {
+  const traffic = (values: number[]): HistorySeries => ({
+    metric: "traffic",
+    range: "15m",
+    points: values.map((v, i) => ({ ts: i + 1, v })),
+  });
+
+  it("returns newest − oldest across a monotonic cumulative series", () => {
+    expect(historyWindowDelta(traffic([1_000, 1_500, 4_000]))).toBe(3_000);
+  });
+
+  it("is null with fewer than two points — never the cumulative value itself", () => {
+    expect(historyWindowDelta(undefined)).toBeNull();
+    expect(historyWindowDelta(traffic([]))).toBeNull();
+    // The VPS defect: one point holding a 256 GB lifetime total must render
+    // as «—», not as "traffic over the last 15 minutes".
+    expect(historyWindowDelta(traffic([274_877_906_944]))).toBeNull();
+  });
+
+  it("treats a counter reset as the amount accumulated since the reset", () => {
+    expect(historyWindowDelta(traffic([9_000, 9_500, 120]))).toBe(120);
+  });
+
+  it("is zero for a flat series — a real 'no traffic this window' answer", () => {
+    expect(historyWindowDelta(traffic([4_000, 4_000, 4_000]))).toBe(0);
+  });
+});
+
+describe("deltaSparklineValues", () => {
+  const traffic = (values: number[]): HistorySeries => ({
+    metric: "traffic",
+    range: "15m",
+    points: values.map((v, i) => ({ ts: i + 1, v })),
+  });
+
+  it("plots per-step deltas (the rate shape), not the cumulative ramp", () => {
+    expect(deltaSparklineValues(traffic([100, 150, 400, 400]))).toEqual([50, 250, 0]);
+  });
+
+  it("has no steps at all below two points", () => {
+    expect(deltaSparklineValues(undefined)).toEqual([]);
+    expect(deltaSparklineValues(traffic([]))).toEqual([]);
+    expect(deltaSparklineValues(traffic([42]))).toEqual([]);
+  });
+
+  it("takes the post-reset value as that step's delta instead of going negative", () => {
+    expect(deltaSparklineValues(traffic([500, 900, 30, 80]))).toEqual([400, 30, 50]);
   });
 });
 

@@ -1,20 +1,23 @@
 import { useSnapshot, useRefreshTopic } from "../../realtime";
-import type { StatsSnapshot } from "../../realtime/topics";
+import type { StatsSnapshot, UsersTopic } from "../../realtime/topics";
 import { useStrings } from "../../i18n";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
 import { resolveGated } from "../widgets/gated";
-import { connectionsGroups, summaryGroup } from "./connections.helpers";
+import { connectionsGroups, summaryGroup, usersTrafficTotal } from "./connections.helpers";
 import { GatedNote } from "../GatedNote";
 
 // ConnectionsPage: the always-on stats.summary scalars (Сводка) render
 // first regardless of gate state, so the page stays useful even when
 // connections_summary itself is gated off — only the runtime-edge-gated
-// connections_summary groups fall back to the Gated block below it.
+// connections_summary groups fall back to the Gated block below it. The
+// users topic is subscribed purely for the lifetime traffic total the
+// Сводка group carries (see summaryGroup).
 export function ConnectionsPage() {
   const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
+  const users = useSnapshot<UsersTopic>("users");
   const refreshTopic = useRefreshTopic();
 
   return (
@@ -24,7 +27,9 @@ export function ConnectionsPage() {
           const result = resolveGated(data.connections_summary);
           return (
             <>
-              <KVGroupList groups={summaryGroup(data.summary, s)} />
+              <KVGroupList
+                groups={summaryGroup(data.summary, usersTrafficTotal(users.data), s)}
+              />
               {result.status === "gated" ? (
                 <GatedNote reason={result.reason} hint="runtime_edge" className="mt-4" />
               ) : (

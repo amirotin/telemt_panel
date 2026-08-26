@@ -124,7 +124,13 @@ describe("trafficLabel", () => {
     expect(trafficLabel(series([]), s)).toBe("н/д");
   });
 
-  it("formats the latest point with formatBytes — the same figure StatRow's traffic row shows", () => {
-    expect(trafficLabel(series([{ ts: 1, v: 1024 }, { ts: 2, v: 50_233 }]), s)).toBe("49 КБ");
+  it("formats the window delta with formatBytes — the same figure StatRow's traffic row shows", () => {
+    expect(trafficLabel(series([{ ts: 1, v: 1024 }, { ts: 2, v: 51_257 }]), s)).toBe("49 КБ");
+  });
+
+  it("shows н/д rather than the cumulative total when only one point exists", () => {
+    // The live-VPS defect: the recorded series is a lifetime total, so a
+    // single point would have read "256 ГБ" as the 15-minute figure.
+    expect(trafficLabel(series([{ ts: 1, v: 274_877_906_944 }]), s)).toBe("н/д");
   });
 });

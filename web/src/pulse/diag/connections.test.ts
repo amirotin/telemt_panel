@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { connectionsGroups, summaryGroup } from "./connections.helpers";
-import type { RuntimeEdgeConnectionsSummary, StatsSummary } from "../../realtime/topics";
+import { connectionsGroups, summaryGroup, usersTrafficTotal } from "./connections.helpers";
+import type { RuntimeEdgeConnectionsSummary, StatsSummary, UsersTopic } from "../../realtime/topics";
 import { ru as s } from "../../i18n";
 
 const data: RuntimeEdgeConnectionsSummary = {
@@ -65,11 +65,11 @@ describe("summaryGroup", () => {
   };
 
   it("returns no group when summary is null (sub-call failed this poll)", () => {
-    expect(summaryGroup(null, s)).toEqual([]);
+    expect(summaryGroup(null, null, s)).toEqual([]);
   });
 
   it("flattens every summary scalar/array under one Сводка group", () => {
-    const groups = summaryGroup(summary, s);
+    const groups = summaryGroup(summary, null, s);
     expect(groups).toHaveLength(1);
     expect(groups[0].title).toBe("Сводка");
     const keys = groups[0].rows.map((r) => r.key);
@@ -82,5 +82,35 @@ describe("summaryGroup", () => {
       "connections_bad_by_class.rate_limited",
       "handshake_failures_by_class.tls",
     ]);
+  });
+
+  it("appends the lifetime traffic total — the figure Пульс's 15-min row no longer shows", () => {
+    const groups = summaryGroup(summary, 274_877_906_944, s);
+    const last = groups[0].rows[groups[0].rows.length - 1];
+    expect(last).toEqual({ key: "users_traffic_total", label: "Трафик всего", value: "256 ГБ" });
+  });
+
+  it("still shows the traffic total when the summary sub-call failed", () => {
+    expect(summaryGroup(null, 1024, s)).toEqual([
+      { title: "Сводка", rows: [{ key: "users_traffic_total", label: "Трафик всего", value: "1.0 КБ" }] },
+    ]);
+  });
+});
+
+describe("usersTrafficTotal", () => {
+  it("is null until the users topic has loaded — an absent payload is not 0 B", () => {
+    expect(usersTrafficTotal(null)).toBeNull();
+  });
+
+  it("sums total_octets across every user", () => {
+    expect(
+      usersTrafficTotal({
+        users: [
+          { username: "alice", total_octets: 100 },
+          { username: "bob", total_octets: 25 },
+        ] as UsersTopic["users"],
+        quota: null,
+      } as UsersTopic),
+    ).toBe(125);
   });
 });

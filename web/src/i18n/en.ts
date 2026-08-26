@@ -303,6 +303,8 @@ export const en: Dict = {
       meCoverageLow: "Low middle-proxy coverage",
       meCoverageLowDetail: "{alive}/{floor} writers, {pct}% coverage",
       meSplitTraffic: "Some connections are going direct, bypassing ME",
+      deltaDetail: "+{delta} over 15 min · {total} lifetime",
+      lifetimeCounters: "Lifetime counters: {value} (see Connections)",
     },
     activeSessions: {
       current: "Current connections",
@@ -380,6 +382,7 @@ export const en: Dict = {
     emptyTitle: "No data",
     emptyDescription: "Nothing has loaded yet, or the source is unavailable.",
     notFoundTitle: "Diagnostics section not found",
+    trafficTotal: "Traffic (lifetime)",
     groups: {
       totals: "Totals",
       cache: "Cache",

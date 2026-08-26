@@ -35,10 +35,45 @@ export function sparklineValues(series: HistorySeries | undefined): number[] {
   return series?.points.map((p) => p.v) ?? [];
 }
 
-export function latestHistoryValue(series: HistorySeries | undefined): number | null {
+// historyWindowDelta turns a CUMULATIVE counter series into the amount it
+// grew across the window /api/history returned (range=15m — ruling R3's RAM
+// ring). The `traffic` metric is the sum of every user's total_octets at
+// each poll (internal/hub/hub.go's usersTrafficTotal), i.e. a lifetime
+// total: on a 20-day-old server its last point is ~256 GB, which is what the
+// "Трафик (15 мин)" row used to show. The honest 15-min figure is
+// newest − oldest.
+//
+// Returns null with fewer than two points: one point carries no delta, and
+// showing the raw cumulative value there would be exactly the defect this
+// replaces — «—» is the correct answer until a second point lands.
+//
+// Counter resets (Telemt restarted, a user removed) make newest < oldest.
+// Rather than render a negative "traffic", the newest value is taken as the
+// amount accumulated since the reset — a lower bound on the real window
+// total, never a nonsense figure.
+export function historyWindowDelta(series: HistorySeries | undefined): number | null {
   const points = series?.points;
-  if (!points || points.length === 0) return null;
-  return points[points.length - 1].v;
+  if (!points || points.length < 2) return null;
+  const oldest = points[0].v;
+  const newest = points[points.length - 1].v;
+  return newest < oldest ? newest : newest - oldest;
+}
+
+// deltaSparklineValues plots the same counter as a RATE: one value per
+// step, so the sparkline shows the shape of traffic over the window instead
+// of the cumulative ramp (which on a lifetime counter is a near-flat line
+// nudging upward, carrying no information). Same reset rule as
+// historyWindowDelta; a series shorter than two points has no steps at all.
+export function deltaSparklineValues(series: HistorySeries | undefined): number[] {
+  const points = series?.points;
+  if (!points || points.length < 2) return [];
+  const out: number[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].v;
+    const cur = points[i].v;
+    out.push(cur < prev ? cur : cur - prev);
+  }
+  return out;
 }
 
 // peakHistoryValue — the highest point in a series, for the row's "пик за

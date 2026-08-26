@@ -3,7 +3,7 @@ import type { State } from "../ui/StatePill";
 import type { StatsSnapshot } from "../realtime/topics";
 import type { HistorySeries } from "../lib/api/generated/types.gen";
 import { formatBytes } from "../lib/format";
-import { latestHistoryValue } from "../pulse/widgets/statRow.helpers";
+import { historyWindowDelta } from "../pulse/widgets/statRow.helpers";
 
 // Pure helpers factored out of StatusStrip.tsx per the project's
 // colocated-helpers-with-tests convention (06-ui.md / web/README.md).
@@ -37,13 +37,16 @@ export function connectionsLabel(data: StatsSnapshot | null, s: Dict): string {
   return "—";
 }
 
-// trafficLabel reuses StatRow's own 15-min /api/history figure (same
-// useHistorySeries("traffic") query + latestHistoryValue helper it uses)
-// rather than the permanent «н/д» this readout showed before that history
-// endpoint existed — see StatusStrip.tsx's own useHistorySeries call. Falls
-// back to trafficUnavailable only when the 15-min ring genuinely has no
-// points yet (covers both "still loading" and "no traffic recorded").
+// trafficLabel reuses StatRow's own 15-min /api/history figure — the same
+// useHistorySeries("traffic") query and the same historyWindowDelta helper,
+// so the sidebar card and the Пульс row can never disagree. The recorded
+// series is a cumulative lifetime total (internal/hub/hub.go sums every
+// user's total_octets per tick), so the window figure is newest − oldest;
+// see historyWindowDelta for the reset rule. Falls back to
+// trafficUnavailable while the ring holds fewer than two points — the
+// cumulative value is NOT an acceptable stand-in, it is the 256-GB figure
+// this card used to show for "15 минут".
 export function trafficLabel(series: HistorySeries | undefined, s: Dict): string {
-  const traffic = latestHistoryValue(series);
+  const traffic = historyWindowDelta(series);
   return traffic === null ? s.shell.trafficUnavailable : formatBytes(traffic, s);
 }

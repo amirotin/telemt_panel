@@ -11,6 +11,15 @@ test("sidebar is visible and the raw config editor (CodeMirror) mounts at lg:", 
 
   const sidebar = page.locator("aside");
   await expect(sidebar).toBeVisible();
+
+  // The sidebar status card owns its own GET /api/history query
+  // (StatusStrip.tsx), so its traffic counter is populated here on /people —
+  // the landing route — without ever visiting Пульс. It used to read «н/д»
+  // everywhere except the one page that happened to mount that query.
+  const traffic = sidebar.locator('[aria-label^="Трафик за 15 минут"]');
+  await expect(traffic).toBeVisible();
+  // A real formatted figure, not the «н/д» placeholder and not an empty node.
+  await expect(traffic).toHaveText(/\d/, { timeout: 30_000 });
   await expect(sidebar.getByRole("link", { name: "Люди" })).toBeVisible();
   await expect(sidebar.getByRole("link", { name: "Пульс" })).toBeVisible();
   await expect(sidebar.getByRole("link", { name: "Журнал" })).toBeVisible();

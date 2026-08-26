@@ -11,7 +11,8 @@ import { WidgetFrame } from "../WidgetFrame";
 import { useHistorySeries } from "../useHistorySeries";
 import {
   computeStatRowValues,
-  latestHistoryValue,
+  deltaSparklineValues,
+  historyWindowDelta,
   peakHistoryValue,
   sparklineValues,
 } from "./statRow.helpers";
@@ -73,10 +74,12 @@ function MetricRow({ icon, tone, label, value, sub, series }: MetricRowProps) {
 
 // StatRow — connections/active users/traffic/uptime, each with a sparkline
 // from GET /api/history (06-ui.md's default second widget). Traffic is
-// explicitly labeled "(15 мин)": the RAM ring only ever holds ~15 minutes of
-// raw points (ruling R3), and its own figure is a cumulative total summed
-// across users on each stats tick, not a per-window delta — see
-// statRow.helpers.ts and task-2-report.md's traffic-metric caveat.
+// explicitly labeled "(15 мин)" and shows exactly that: the recorded series
+// is a cumulative lifetime total summed across users on each stats tick
+// (internal/hub/hub.go), so the row renders newest − oldest over the window
+// and its sparkline plots per-step deltas — see statRow.helpers.ts's
+// historyWindowDelta/deltaSparklineValues. The honest lifetime figure lives
+// on the Соединения diagnostics page instead.
 //
 // Rendered as the prototype's metric *rows* at every width. The prototype
 // also has a 4-up tile grid for wide screens; rows are used for both so the
@@ -98,7 +101,7 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
   }
 
   const values = computeStatRowValues(stats.data, s);
-  const traffic = latestHistoryValue(trafficHistory.data);
+  const traffic = historyWindowDelta(trafficHistory.data);
   // Peak is only meaningful for the two instantaneous gauges: the traffic
   // series is a cumulative counter, whose maximum is just its last point.
   const connectionsPeak = peakHistoryValue(connectionsHistory.data);
@@ -130,7 +133,7 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
           tone="accent"
           label={s.pulse.stat.traffic}
           value={traffic !== null ? formatBytes(traffic, s) : "—"}
-          series={sparklineValues(trafficHistory.data)}
+          series={deltaSparklineValues(trafficHistory.data)}
         />
         <MetricRow
           icon={<IconClock />}
