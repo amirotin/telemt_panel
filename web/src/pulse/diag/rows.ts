@@ -47,13 +47,37 @@ export function humanizeKey(key: string): string {
   return key.replace(/_/g, " ");
 }
 
+// ClassTotal is Telemt's recurring `*_by_class` array element — a class name
+// and its counter (StatsSummary.connections_bad_by_class /
+// handshake_failures_by_class). Flattened by index it produces the unreadable
+// "connections bad by class[0].class" / "[0].total" pair of rows; the
+// name and its number belong on ONE row.
+interface ClassTotal {
+  class: string;
+  total: number;
+}
+
+function isClassTotalList(value: unknown[]): value is ClassTotal[] {
+  return value.every((v) => {
+    if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+    const entry = v as Record<string, unknown>;
+    return (
+      Object.keys(entry).length === 2 &&
+      typeof entry["class"] === "string" &&
+      typeof entry["total"] === "number"
+    );
+  });
+}
+
 // flattenToRows walks a JSON-like value into a flat list of leaf rows, each
 // labeled by its dotted/indexed path from `prefix`. This is the completeness
 // backbone: no matter how deep or irregular a payload's shape is, every leaf
 // value it carries ends up as exactly one row, so nothing lands in the
 // generic dump silently unreadable. Arrays of primitives collapse to one
-// comma-joined row (a list of DC ids, not one row per id); arrays of objects
-// expand to one flattened sub-block per index instead.
+// comma-joined row (a list of DC ids, not one row per id); a `{class, total}`
+// list collapses to one row per class (a compact two-column class → total
+// list, the shape an operator actually reads it as); any other array of
+// objects expands to one flattened sub-block per index.
 export function flattenToRows(value: unknown, s: Dict, prefix = ""): KVRowItem[] {
   if (value === null || value === undefined) {
     return prefix ? [{ key: prefix, label: humanizeKey(prefix), value: "—" }] : [];
@@ -61,6 +85,16 @@ export function flattenToRows(value: unknown, s: Dict, prefix = ""): KVRowItem[]
   if (Array.isArray(value)) {
     if (value.length === 0) {
       return prefix ? [{ key: prefix, label: humanizeKey(prefix), value: "—" }] : [];
+    }
+    if (prefix && isClassTotalList(value)) {
+      // The class stays in the label rather than becoming its own row, so
+      // the group reads as "<field>: <class> → N" and two different
+      // *_by_class arrays in one group can't be confused for each other.
+      return value.map((entry) => ({
+        key: `${prefix}.${entry.class}`,
+        label: `${humanizeKey(prefix)}: ${entry.class}`,
+        value: String(entry.total),
+      }));
     }
     if (value.every((v) => v === null || typeof v !== "object")) {
       return [

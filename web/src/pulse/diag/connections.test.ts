@@ -79,10 +79,8 @@ describe("summaryGroup", () => {
       "connections_bad_total",
       "handshake_timeouts_total",
       "configured_users",
-      "connections_bad_by_class[0].class",
-      "connections_bad_by_class[0].total",
-      "handshake_failures_by_class[0].class",
-      "handshake_failures_by_class[0].total",
+      "connections_bad_by_class.rate_limited",
+      "handshake_failures_by_class.tls",
     ]);
   });
 });

@@ -73,6 +73,39 @@ describe("flattenToRows", () => {
     ]);
   });
 
+  it("collapses a {class,total} list into one row per class instead of index rows", () => {
+    const rows = flattenToRows(
+      {
+        connections_bad_by_class: [
+          { class: "rate_limited", total: 812 },
+          { class: "quota_exceeded", total: 9 },
+        ],
+      },
+      s,
+    );
+    expect(rows).toEqual([
+      {
+        key: "connections_bad_by_class.rate_limited",
+        label: "connections bad by class: rate_limited",
+        value: "812",
+      },
+      {
+        key: "connections_bad_by_class.quota_exceeded",
+        label: "connections bad by class: quota_exceeded",
+        value: "9",
+      },
+    ]);
+  });
+
+  it("still expands by index when the objects carry more than class/total", () => {
+    const rows = flattenToRows({ by_class: [{ class: "tls", total: 1, stage: "handshake" }] }, s);
+    expect(rows.map((r) => r.key)).toEqual([
+      "by_class[0].class",
+      "by_class[0].total",
+      "by_class[0].stage",
+    ]);
+  });
+
   it("treats null/undefined leaves as an em dash row", () => {
     expect(flattenToRows({ last_error: null }, s)).toEqual([
       { key: "last_error", label: "last error", value: "—" },
