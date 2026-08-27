@@ -204,8 +204,11 @@ describe("no hardcoded UI text", () => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          // i18n/ owns the strings; generated/ is hey-api codegen.
-          if (entry.name === "i18n" || entry.name === "generated") continue;
+          // i18n/ owns the strings; generated/ is hey-api codegen;
+          // __fixtures__/ holds sanitized Telemt payloads and layout-stress
+          // sample text — data a page renders THROUGH the dictionaries, not
+          // UI copy that could bypass them.
+          if (entry.name === "i18n" || entry.name === "generated" || entry.name === "__fixtures__") continue;
           walk(full);
           continue;
         }
