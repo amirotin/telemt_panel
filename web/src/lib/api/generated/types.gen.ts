@@ -6,7 +6,7 @@ export type ClientOptions = {
 
 export type Error = {
     /**
-     * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the panel checked the SDK's cached Capabilities probe proactively, before ever calling Telemt, and the config API specifically was already known unavailable (GET/PATCH /api/telemt/config only). Reserved for milestones not yet implemented: totp_required (TOTP login), telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status.
+     * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: totp_required (TOTP login), telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status.
      *
      */
     code: 'bad_request' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable';
@@ -139,6 +139,46 @@ export type ZeroAllData = {
     desync: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * One aggregated JA3/JA4 row. `scope` is present only in the by_ip/by_cidr/by_user lists (the grouping key), absent in by_fingerprint — TELEMT_LIVE_API_DATA.md §19.
+ *
+ */
+export type TlsFingerprintRow = {
+    scope?: string;
+    ja3: string;
+    ja3_raw: string;
+    ja4: string;
+    ja4_raw: string;
+    total: number;
+    auth_success: number;
+    bad_or_probe: number;
+    first_seen_epoch_secs: number;
+    last_seen_epoch_secs: number;
+};
+
+export type TlsFingerprints = {
+    limit: number;
+    retention_secs: number;
+    capacity: number;
+    dropped_total: number;
+    parse_error_total: number;
+    by_fingerprint: Array<TlsFingerprintRow>;
+    by_ip: Array<TlsFingerprintRow>;
+    by_cidr: Array<TlsFingerprintRow>;
+    by_user: Array<TlsFingerprintRow>;
+};
+
+/**
+ * Telemt's Gated[T] wrapper, passed through as-is: `data` is omitted when the source is off or unavailable, and `reason` says why (07-telemt-sdk.md).
+ *
+ */
+export type GatedTlsFingerprints = {
+    enabled: boolean;
+    reason?: string;
+    generated_at_epoch_secs: number;
+    data?: TlsFingerprints;
 };
 
 /**
@@ -1079,6 +1119,45 @@ export type GetTelemtZeroResponses = {
 };
 
 export type GetTelemtZeroResponse = GetTelemtZeroResponses[keyof GetTelemtZeroResponses];
+
+export type GetTelemtTlsFingerprintsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        limit?: number;
+    };
+    url: '/api/telemt/tls-fingerprints';
+};
+
+export type GetTelemtTlsFingerprintsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * capability_absent — this Telemt build predates the runtime edge routes
+     */
+    501: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable — runtime_edge_enabled is off
+     */
+    503: Error;
+};
+
+export type GetTelemtTlsFingerprintsError = GetTelemtTlsFingerprintsErrors[keyof GetTelemtTlsFingerprintsErrors];
+
+export type GetTelemtTlsFingerprintsResponses = {
+    /**
+     * Gated TLS fingerprint aggregates
+     */
+    200: GatedTlsFingerprints;
+};
+
+export type GetTelemtTlsFingerprintsResponse = GetTelemtTlsFingerprintsResponses[keyof GetTelemtTlsFingerprintsResponses];
 
 export type GetHostData = {
     body?: never;

@@ -479,6 +479,29 @@ paths:
         "501": { description: capability_absent — this Telemt build/config does not expose zero/all, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
+  /api/telemt/tls-fingerprints:
+    get:
+      tags: [telemt]
+      operationId: getTelemtTlsFingerprints
+      description: >
+        Passthrough of Telemt's GET /v1/runtime/tls-fingerprints — JA3/JA4 aggregates
+        grouped by fingerprint, IP, CIDR and user. Deliberately NOT part of the `security`
+        SSE topic: the live payload is ~120 KB per call (four lists of 50), so it is
+        fetched on visit at the page's own cadence instead of polled for every client.
+        Gated behind Telemt's runtime_edge_enabled — a build/config with it off answers
+        503 capability_unavailable, which the UI renders as its Gated hint, not an error.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      responses:
+        "200": { description: Gated TLS fingerprint aggregates, content: { application/json: { schema: { $ref: "#/components/schemas/GatedTlsFingerprints" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "501": { description: capability_absent — this Telemt build predates the runtime edge routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — runtime_edge_enabled is off, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   # ───────────────────────── host ─────────────────────────
   /api/host:
     get:
@@ -778,9 +801,13 @@ components:
             with no error envelope — detected reactively, after attempting
             the call: rotate-secret, enable/disable, POST /api/telemt/reload,
             GET /api/telemt/reload/{id}); capability_unavailable means the
-            panel checked the SDK's cached Capabilities probe proactively,
-            before ever calling Telemt, and the config API specifically was
-            already known unavailable (GET/PATCH /api/telemt/config only).
+            route exists but the feature behind it is switched off on this
+            Telemt — either known up front from the SDK's cached Capabilities
+            probe (GET/PATCH /api/telemt/config, config_api) or reported by
+            the response itself (GET /api/telemt/tls-fingerprints, whose
+            enabled:false means runtime_edge_enabled is off; read from the
+            response rather than probed so an unreachable Telemt still maps
+            to 502 telemt_unreachable).
             Reserved for milestones not yet implemented: totp_required (TOTP login),
             telemt_auth_failed (superseded on /api/telemt/info by a reachable:false
             body, not an error status — kept here for /api/telemt/config, M3).
@@ -922,6 +949,50 @@ components:
         middle_proxy: { type: object, additionalProperties: true }
         pool: { type: object, additionalProperties: true }
         desync: { type: object, additionalProperties: true }
+
+    TlsFingerprintRow:
+      type: object
+      description: >
+        One aggregated JA3/JA4 row. `scope` is present only in the by_ip/by_cidr/by_user
+        lists (the grouping key), absent in by_fingerprint — TELEMT_LIVE_API_DATA.md §19.
+      required: [ja3, ja3_raw, ja4, ja4_raw, total, auth_success, bad_or_probe, first_seen_epoch_secs, last_seen_epoch_secs]
+      properties:
+        scope: { type: string }
+        ja3: { type: string }
+        ja3_raw: { type: string }
+        ja4: { type: string }
+        ja4_raw: { type: string }
+        total: { type: integer }
+        auth_success: { type: integer }
+        bad_or_probe: { type: integer }
+        first_seen_epoch_secs: { type: integer }
+        last_seen_epoch_secs: { type: integer }
+
+    TlsFingerprints:
+      type: object
+      required: [limit, retention_secs, capacity, dropped_total, parse_error_total, by_fingerprint, by_ip, by_cidr, by_user]
+      properties:
+        limit: { type: integer }
+        retention_secs: { type: integer }
+        capacity: { type: integer }
+        dropped_total: { type: integer }
+        parse_error_total: { type: integer }
+        by_fingerprint: { type: array, items: { $ref: "#/components/schemas/TlsFingerprintRow" } }
+        by_ip: { type: array, items: { $ref: "#/components/schemas/TlsFingerprintRow" } }
+        by_cidr: { type: array, items: { $ref: "#/components/schemas/TlsFingerprintRow" } }
+        by_user: { type: array, items: { $ref: "#/components/schemas/TlsFingerprintRow" } }
+
+    GatedTlsFingerprints:
+      type: object
+      description: >
+        Telemt's Gated[T] wrapper, passed through as-is: `data` is omitted when the
+        source is off or unavailable, and `reason` says why (07-telemt-sdk.md).
+      required: [enabled, generated_at_epoch_secs]
+      properties:
+        enabled: { type: boolean }
+        reason: { type: string }
+        generated_at_epoch_secs: { type: integer }
+        data: { $ref: "#/components/schemas/TlsFingerprints" }
 
     TelemtConfig:
       type: object

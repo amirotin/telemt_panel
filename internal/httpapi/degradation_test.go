@@ -198,6 +198,36 @@ func TestAPIOnlyDegradation(t *testing.T) {
 		t.Errorf("/api/telemt/zero error code = %q, want telemt_unreachable", zeroErr.Code)
 	}
 
+	// GET /api/telemt/tls-fingerprints: same rule for the fetch-on-visit
+	// TLS passthrough (M4 task 1). An unreachable Telemt must read as
+	// unreachable, never as the runtime_edge capability merely being off —
+	// the frontend renders those two states differently (error retry vs a
+	// Gated hint), so conflating them would hide a real outage.
+	r = httptest.NewRequest("GET", "/api/telemt/tls-fingerprints", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("GET /api/telemt/tls-fingerprints = %d, want 502: %s", w.Code, w.Body)
+	}
+	var tlsErr struct{ Code string }
+	if err := json.Unmarshal(w.Body.Bytes(), &tlsErr); err != nil {
+		t.Fatalf("decode /api/telemt/tls-fingerprints error: %v", err)
+	}
+	if tlsErr.Code != "telemt_unreachable" {
+		t.Errorf("/api/telemt/tls-fingerprints error code = %q, want telemt_unreachable", tlsErr.Code)
+	}
+
+	// A malformed limit is rejected by the panel itself, before Telemt is
+	// ever contacted — so it stays a 400 even with Telemt down.
+	r = httptest.NewRequest("GET", "/api/telemt/tls-fingerprints?limit=9999", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("GET /api/telemt/tls-fingerprints?limit=9999 = %d, want 400: %s", w.Code, w.Body)
+	}
+
 	// GET /api/snapshot?topics=stats: nothing has ever fetched successfully
 	// (a fresh hub, unreachable Telemt), so the on-demand fetch fails and
 	// every requested topic ends up empty — handleSnapshot's own documented

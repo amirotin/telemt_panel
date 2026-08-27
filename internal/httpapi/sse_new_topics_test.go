@@ -79,12 +79,21 @@ func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 		// minimal/upstream_quality: mini-task 2c.
 		`"minimal"`, `"upstream_quality"`,
 		`"upstreams"`, `"dcs"`, `"me_writers"`,
-		`"posture"`, `"whitelist"`, `"effective_limits"`, `"tls_fingerprints"`,
+		`"posture"`, `"whitelist"`, `"effective_limits"`,
 		`"ready"`, `"connections_summary"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing field %s:\n%s", want, body)
 		}
+	}
+
+	// tls_fingerprints was deliberately removed from the "security" topic
+	// (M4 task 1 / owner ruling 2026-08-26): ~120 KB per poll for data the
+	// dashboard reads on visit through GET /api/telemt/tls-fingerprints.
+	// This fixture has RuntimeEdge on, which used to be exactly when the
+	// field appeared — so its absence here is the meaningful assertion.
+	if strings.Contains(body, `"tls_fingerprints"`) {
+		t.Errorf("security topic still carries tls_fingerprints:\n%s", body)
 	}
 }
 

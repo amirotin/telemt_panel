@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtInfo, getTelemtReloadStatus, getTelemtZero, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchUser, putAutoUpdate, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchUserData, PatchUserError, PatchUserResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
+import { applyUpdate, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtZero, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchUser, putAutoUpdate, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchUserData, PatchUserError, PatchUserResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
 
 export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
     const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
@@ -408,6 +408,25 @@ export const getTelemtZeroOptions = (options?: Options<GetTelemtZeroData>) => qu
         return data;
     },
     queryKey: getTelemtZeroQueryKey(options)
+});
+
+export const getTelemtTlsFingerprintsQueryKey = (options?: Options<GetTelemtTlsFingerprintsData>) => createQueryKey('getTelemtTlsFingerprints', options);
+
+/**
+ * Passthrough of Telemt's GET /v1/runtime/tls-fingerprints — JA3/JA4 aggregates grouped by fingerprint, IP, CIDR and user. Deliberately NOT part of the `security` SSE topic: the live payload is ~120 KB per call (four lists of 50), so it is fetched on visit at the page's own cadence instead of polled for every client. Gated behind Telemt's runtime_edge_enabled — a build/config with it off answers 503 capability_unavailable, which the UI renders as its Gated hint, not an error.
+ *
+ */
+export const getTelemtTlsFingerprintsOptions = (options?: Options<GetTelemtTlsFingerprintsData>) => queryOptions<GetTelemtTlsFingerprintsResponse, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, ReturnType<typeof getTelemtTlsFingerprintsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtTlsFingerprints({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtTlsFingerprintsQueryKey(options)
 });
 
 export const getHostQueryKey = (options?: Options<GetHostData>) => createQueryKey('getHost', options);
