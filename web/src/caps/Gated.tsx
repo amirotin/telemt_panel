@@ -16,6 +16,12 @@ export interface GatedProps {
   reason?: string;
   /** Static "как включить" hint, keyed by capability (see gateHints.ts). */
   hint?: GateHintKey;
+  /**
+   * `disabled` (default) — the feature exists on this build and is switched
+   * off. `unsupported` — the build predates it entirely, so the copy points
+   * at an update rather than at a setting (ruling R5).
+   */
+  variant?: "disabled" | "unsupported";
   /** Optional "скрыть виджет" action (06-ui.md: dashboard widgets offer this). */
   onHide?: () => void;
   className?: string;
@@ -27,9 +33,18 @@ export interface GatedProps {
 // bespoke one-off "unavailable" layout). Wraps a Telemt Gated[T] payload
 // (enabled/reason from the wire) or a /api/telemt/info capability flag
 // (enabled from useCaps(), reason/hint supplied by the caller).
-export function Gated({ enabled, reason, hint, onHide, className, children }: GatedProps) {
+export function Gated({
+  enabled,
+  reason,
+  hint,
+  variant = "disabled",
+  onHide,
+  className,
+  children,
+}: GatedProps) {
   const s = useStrings();
   if (enabled) return <>{children}</>;
+  const unsupported = variant === "unsupported";
 
   // The prototype's quiet «Внутренние подсистемы» block: a normal card with
   // muted copy — a gate is a fact about this server's build, not a failure,
@@ -46,8 +61,8 @@ export function Gated({ enabled, reason, hint, onHide, className, children }: Ga
       <div className="flex items-start gap-2">
         <IconInfo className="mt-0.5 h-4 w-4 shrink-0 text-text-faint" />
         <p className="text-[13px] font-semibold leading-snug text-text-muted">
-          {s.gated.disabledPrefix}
-          {reason ?? s.gated.defaultReason}
+          {unsupported ? s.gated.unsupportedPrefix : s.gated.disabledPrefix}
+          {reason ?? (unsupported ? s.gated.unsupportedReason : s.gated.defaultReason)}
         </p>
       </div>
       {hint && (

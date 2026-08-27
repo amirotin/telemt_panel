@@ -4,7 +4,7 @@ import { useStrings } from "../../i18n";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
-import { GatedNote } from "../GatedNote";
+import { TlsSourceNotice } from "../widgets/TlsSourceNotice";
 import { useTlsFingerprints } from "../widgets/useTlsFingerprints";
 import { securityGroups } from "./security.helpers";
 
@@ -36,7 +36,7 @@ export function SecurityPage() {
                 tlsFingerprints: tls.status === "ok" ? tls.data : undefined,
               }, s)}
             />
-            {tls.status === "gated" && <GatedNote reason={tls.reason} hint="runtime_edge" />}
+            <TlsSourceNotice state={tls} as="note" />
           </>
         )}
       </DiagTopicState>

@@ -485,11 +485,14 @@ export const en: Dict = {
   },
   gated: {
     disabledPrefix: "Turned off: ",
+    unsupportedPrefix: "Not available in this Telemt version: ",
     defaultReason: "this feature isn't available on this server.",
+    unsupportedReason: "this proxy build doesn't provide the data.",
     howToEnable: "How to enable",
     hideWidget: "Hide widget",
     hints: {
       runtime_edge: "Set runtime_edge_enabled = true in the Telemt config and restart the proxy.",
+      telemt_outdated: "Update Telemt — this section arrived in a newer version.",
       quota: "Update Telemt — traffic quotas arrived in a newer version.",
       config_api: "Update Telemt, or turn on config editing through its API.",
       reload_api: "Update Telemt — hot config reload arrived in a newer version.",

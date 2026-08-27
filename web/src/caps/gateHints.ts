@@ -11,6 +11,11 @@ import type { Dict } from "../i18n";
 // enumeration and the typed lookup.
 export type GateHintKey =
   | "runtime_edge"
+  // telemt_outdated is the one key that is not a capability name: it is the
+  // follow-up for `unsupported` (the route is absent from this build, 501
+  // capability_absent) as opposed to `disabled` (the feature exists and is
+  // switched off) — ruling R5.
+  | "telemt_outdated"
   | "quota"
   | "config_api"
   | "reload_api"

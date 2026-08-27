@@ -3,10 +3,20 @@ import { useStrings } from "../i18n";
 import { gateHint, type GateHintKey } from "../caps/gateHints";
 
 export interface GatedNoteProps {
-  /** Telemt's own Gated[T] `reason`, passed through as-is when present. */
+  /**
+   * Telemt's own Gated[T] `reason` (a short token like `feature_disabled`),
+   * printed as-is after the localized prefix. Never a sentence composed by
+   * the panel — that would put untranslated prose in a localized UI.
+   */
   reason?: string;
   /** Static "как включить" hint, keyed by capability (caps/gateHints.ts). */
   hint?: GateHintKey;
+  /**
+   * `disabled` (default) — the feature exists on this build and is switched
+   * off. `unsupported` — the build predates it entirely, so the copy points
+   * at an update rather than at a setting (ruling R5).
+   */
+  variant?: "disabled" | "unsupported";
   className?: string;
 }
 
@@ -20,13 +30,14 @@ export interface GatedNoteProps {
 // bare page, and carries the optional "hide" action for gated actions);
 // this is the nested variant, which is why it reuses gateHint rather than
 // restating them.
-export function GatedNote({ reason, hint, className }: GatedNoteProps) {
+export function GatedNote({ reason, hint, variant = "disabled", className }: GatedNoteProps) {
   const s = useStrings();
+  const unsupported = variant === "unsupported";
   return (
     <div className={cn("rounded-md bg-bg px-3.5 py-3 opacity-75", className)}>
       <p className="text-meta leading-relaxed text-text-muted">
-        {s.gated.disabledPrefix}
-        {reason ?? s.gated.defaultReason}
+        {unsupported ? s.gated.unsupportedPrefix : s.gated.disabledPrefix}
+        {reason ?? (unsupported ? s.gated.unsupportedReason : s.gated.defaultReason)}
       </p>
       {hint && (
         <p className="mt-1 text-micro leading-relaxed text-text-faint">

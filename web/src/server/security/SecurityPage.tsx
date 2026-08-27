@@ -4,10 +4,10 @@ import { KVRow } from "../../ui/KVRow";
 import { StatePill } from "../../ui/StatePill";
 import { Card, CardTitle } from "../../ui/Card";
 import { Skeleton } from "../../ui/Skeleton";
-import { Gated } from "../../caps/Gated";
 import { useSnapshot } from "../../realtime";
 import type { SecurityTopic } from "../../realtime/topics";
 import { useDisplayMode, visibleFor } from "../../display-mode";
+import { TlsSourceNotice } from "../../pulse/widgets/TlsSourceNotice";
 import { useTlsFingerprints } from "../../pulse/widgets/useTlsFingerprints";
 import { securityGroups } from "../../pulse/diag/security.helpers";
 import { KVGroupList } from "../../pulse/diag/KVGroupList";
@@ -120,9 +120,10 @@ export function SecurityPage() {
           {s.server.security.tlsExtendedOnly}
         </p>
       )}
-      {extended && tls.status === "gated" && (
-        <Gated enabled={false} reason={tls.reason} hint="runtime_edge" />
-      )}
+      {/* Switched off, absent from this build, or actually broken — each
+          rendered as itself. Without the last one an unreachable Telemt
+          would silently drop four sections from this page. */}
+      {extended && <TlsSourceNotice state={tls} as="card" />}
     </ServerShell>
   );
 }

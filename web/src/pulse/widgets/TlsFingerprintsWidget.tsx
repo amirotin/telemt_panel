@@ -1,20 +1,24 @@
 import type { ReactNode } from "react";
 import { CountBadge } from "../../ui/Chip";
 import { EmptyState } from "../../ui/EmptyState";
-import { ErrorState } from "../../ui/ErrorState";
 import { Skeleton } from "../../ui/Skeleton";
-import { errorMessage, useStrings } from "../../i18n";
+import { useStrings } from "../../i18n";
 import { WidgetFrame } from "../WidgetFrame";
-import { GatedNote } from "../GatedNote";
+import { TlsSourceNotice } from "./TlsSourceNotice";
 import { topFingerprints } from "./tlsFingerprints.helpers";
 import { useTlsFingerprints } from "./useTlsFingerprints";
 
 // TlsFingerprintsWidget reads GET /api/telemt/tls-fingerprints on its own
 // 60s cadence instead of the `security` SSE topic: the payload is ~120 KB
 // (TELEMT_LIVE_API_DATA.md §19) and used to be re-polled for every client
-// every 30s just to render five rows. The runtime_edge-off case still
-// renders the same GatedNote — the endpoint's 503 capability_unavailable
-// maps to the gated state, not to an error (tlsFingerprints.helpers.ts).
+// every 30s just to render five rows.
+//
+// All four non-empty states of that source are drawn, and drawn
+// differently: runtime_edge switched off is a GatedNote, an old build is
+// the same note pointing at an update instead of a setting (R5), a real
+// failure is an ErrorState with retry, and a failed refetch after a good
+// one keeps the last rows on screen behind a stale badge — the same rule
+// the SSE topics follow, which this widget must not lose by moving to REST.
 export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const fp = useTlsFingerprints();
@@ -22,10 +26,8 @@ export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
   let body: ReactNode;
   if (fp.status === "loading") {
     body = <Skeleton className="h-16 w-full" />;
-  } else if (fp.status === "gated") {
-    body = <GatedNote reason={fp.reason} hint="runtime_edge" />;
-  } else if (fp.status === "error") {
-    body = <ErrorState message={errorMessage(s, fp.code)} onRetry={fp.refetch} />;
+  } else if (fp.status !== "ok") {
+    body = <TlsSourceNotice state={fp} as="note" />;
   } else {
     const rows = topFingerprints(fp.data);
     body =
@@ -49,7 +51,12 @@ export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
   }
 
   return (
-    <WidgetFrame title={s.pulse.widgets.tls_fingerprints} diagDomain="security" onHide={onHide}>
+    <WidgetFrame
+      title={s.pulse.widgets.tls_fingerprints}
+      diagDomain="security"
+      onHide={onHide}
+      stale={fp.status === "ok" && fp.stale}
+    >
       {body}
     </WidgetFrame>
   );

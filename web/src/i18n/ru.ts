@@ -542,7 +542,12 @@ export const ru = {
   },
   gated: {
     disabledPrefix: "Выключено: ",
+    // unsupportedPrefix — отдельная формулировка для «этой версии Telemt
+    // такого просто нет» (ruling R5: unsupported ≠ disabled). «Выключено»
+    // подсказывало бы админу искать настройку, которой в его сборке нет.
+    unsupportedPrefix: "Недоступно в этой версии Telemt: ",
     defaultReason: "функция недоступна на этом сервере.",
+    unsupportedReason: "сборка прокси не отдаёт эти данные.",
     howToEnable: "Как включить",
     hideWidget: "Скрыть виджет",
     // Keyed by GateHintKey (web/src/caps/gateHints.ts) — the "как включить"
@@ -552,6 +557,7 @@ export const ru = {
     hints: {
       runtime_edge:
         "Включите runtime_edge_enabled = true в конфиге Telemt и перезапустите прокси.",
+      telemt_outdated: "Обновите Telemt — этот раздел появился в более новой версии.",
       quota: "Обновите Telemt — квоты трафика появились в более новой версии.",
       config_api:
         "Обновите Telemt или включите редактирование конфигурации через его API.",

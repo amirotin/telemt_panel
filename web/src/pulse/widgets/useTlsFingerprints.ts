@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { getTelemtTlsFingerprintsOptions } from "../../lib/api/generated/@tanstack/react-query.gen";
-import { resolveTlsFingerprintsQuery, type TlsFingerprintsState } from "./tlsFingerprints.helpers";
+import {
+  isCapabilityCode,
+  resolveTlsFingerprintsQuery,
+  type TlsFingerprintsState,
+} from "./tlsFingerprints.helpers";
 
 // tlsFingerprintsLimit mirrors the panel endpoint's own default and the
 // volume the live snapshot documents (TELEMT_LIVE_API_DATA.md §19: four
@@ -19,10 +23,17 @@ export const tlsFingerprintsRefetchMs = 60_000;
 // onto the widget/page state machine. `enabled: false` (extended-mode-only
 // surfaces) skips the request entirely and reports "loading" — no callers
 // render that branch, they gate on the mode first.
+//
+// The local `retry` override matters: the app-wide default retries once
+// (lib/query-client.ts), which for a switched-off capability means two
+// round trips before the panel can draw a hint it already knows how to
+// draw. 501/503 are settled answers about this build, not transport
+// hiccups, so they are never retried; everything else keeps the default.
 export function useTlsFingerprints(enabled = true): TlsFingerprintsState & { refetch: () => void } {
   const query = useQuery({
     ...getTelemtTlsFingerprintsOptions({ query: { limit: tlsFingerprintsLimit } }),
     refetchInterval: tlsFingerprintsRefetchMs,
+    retry: (failureCount, error) => !isCapabilityCode(error?.code) && failureCount < 1,
     enabled,
   });
   return { ...resolveTlsFingerprintsQuery(query), refetch: () => void query.refetch() };
