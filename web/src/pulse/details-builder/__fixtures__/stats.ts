@@ -17,6 +17,7 @@ import type {
   StatsSummary,
   UpstreamsData,
 } from "../../../realtime/topics";
+import type { ZeroAllData } from "../../../lib/api/generated/types.gen";
 import { rng, spread, times } from "./seed";
 
 // dcIds: the exact set the live snapshot showed — positive DCs, the 203
@@ -274,10 +275,11 @@ export const zeroMiddleProxyCount = 55;
 export const zeroPoolCount = 11;
 export const zeroDesyncCount = 8;
 
-// zeroAll — the forward-compatible counter dump. Typed as the generated
-// client's ZeroAllData shape (`Record<string, unknown>` per section), which
-// is what makes the generic fallback renderer necessary in the first place.
-export const zeroAll = {
+// zeroAll — the forward-compatible counter dump, typed from the generated
+// client. ZeroAllData types only the five section names; each section is an
+// open `Record<string, unknown>`, which is exactly why the Counters page
+// needs a generic fallback renderer rather than a curated field list.
+export const zeroAll: ZeroAllData = {
   generated_at_epoch_secs: 1756000000,
   core: {
     ...counterBlock("core", zeroCoreScalarCount, 0xc0e1),

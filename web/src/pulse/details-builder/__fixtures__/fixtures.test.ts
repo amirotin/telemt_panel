@@ -144,7 +144,7 @@ describe("fixture inventory: cardinalities (TELEMT_LIVE_API_DATA §24, spec §27
 
   it("keeps handshake_error_codes present but empty", () => {
     expect(zeroAll.middle_proxy).toHaveProperty("handshake_error_codes");
-    expect(zeroAll.middle_proxy.handshake_error_codes).toEqual([]);
+    expect(zeroAll.middle_proxy['handshake_error_codes']).toEqual([]);
   });
 
   it("has 50 events: 48 admission.state plus one reload and one user mutation", () => {
@@ -357,6 +357,6 @@ describe("fixture inventory: composition and determinism", () => {
     expect(meWriters.writers[45].bound_clients).toBe(11);
     expect(tlsFingerprints.by_fingerprint[0].ja3).toBe("531be4edbdf1f875c7e02fb660ccad74");
     expect(connectionsSummary.top.by_connections[0].total_octets).toBe(19350129967);
-    expect((zeroAll.core as Record<string, unknown>)['core_0_total']).toBe(356972);
+    expect(zeroAll.core['core_0_total']).toBe(356972);
   });
 });
