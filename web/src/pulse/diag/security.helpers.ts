@@ -1,21 +1,19 @@
 import type { Dict } from "../../i18n";
 import { flattenToRows, type KVGroup } from "./rows";
-import type {
-  EffectiveLimits,
-  RuntimeEdgeTLSFingerprints,
-  SecurityPosture,
-  SecurityWhitelist,
-} from "../../realtime/topics";
+import type { EffectiveLimits, SecurityPosture, SecurityWhitelist } from "../../realtime/topics";
+// TLS fingerprints are a REST payload (GET /api/telemt/tls-fingerprints),
+// not a topic field, since M4 task 1 — hence the generated client's type.
+import type { TlsFingerprints } from "../../lib/api/generated/types.gen";
 
 export interface SecurityGroupsInput {
   posture?: SecurityPosture;
   whitelist?: SecurityWhitelist;
   effectiveLimits?: EffectiveLimits;
-  tlsFingerprints?: RuntimeEdgeTLSFingerprints;
+  tlsFingerprints?: TlsFingerprints;
 }
 
 // securityGroups: posture/whitelist/effective_limits are always-on (never
-// Gated[T]) so they contribute unconditionally once loaded; tls_fingerprints
+// Gated[T]) so they contribute unconditionally once loaded; tlsFingerprints
 // is runtime-edge-gated and extended-mode-only, split into its four scopes
 // (by_fingerprint/by_ip/by_cidr/by_user) — full breakdown, unlike the
 // widget's single top-N-by-fingerprint table.

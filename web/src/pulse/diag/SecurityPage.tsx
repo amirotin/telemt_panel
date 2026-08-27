@@ -4,13 +4,19 @@ import { useStrings } from "../../i18n";
 import { DiagShell } from "./DiagShell";
 import { DiagTopicState } from "./DiagTopicState";
 import { KVGroupList } from "./KVGroupList";
-import { resolveGated } from "../widgets/gated";
+import { GatedNote } from "../GatedNote";
+import { useTlsFingerprints } from "../widgets/useTlsFingerprints";
 import { securityGroups } from "./security.helpers";
 
 export function SecurityPage() {
   const s = useStrings();
   const topic = useSnapshot<SecurityTopic>("security");
   const refreshTopic = useRefreshTopic();
+  // TLS fingerprints left the `security` topic in M4 task 1 (~120 KB per
+  // poll) — the page fetches them itself; posture/whitelist/limits still
+  // come from the topic, so the two sources render independently and one
+  // being gated never blanks the other.
+  const tls = useTlsFingerprints();
 
   return (
     <DiagShell title={s.diag.domains.security}>
@@ -20,9 +26,8 @@ export function SecurityPage() {
         stale={topic.stale}
         onRetry={() => refreshTopic("security")}
       >
-        {(data) => {
-          const tls = resolveGated(data.tls_fingerprints);
-          return (
+        {(data) => (
+          <>
             <KVGroupList
               groups={securityGroups({
                 posture: data.posture ?? undefined,
@@ -31,8 +36,9 @@ export function SecurityPage() {
                 tlsFingerprints: tls.status === "ok" ? tls.data : undefined,
               }, s)}
             />
-          );
-        }}
+            {tls.status === "gated" && <GatedNote reason={tls.reason} hint="runtime_edge" />}
+          </>
+        )}
       </DiagTopicState>
     </DiagShell>
   );

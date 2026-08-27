@@ -8,7 +8,7 @@ import { Gated } from "../../caps/Gated";
 import { useSnapshot } from "../../realtime";
 import type { SecurityTopic } from "../../realtime/topics";
 import { useDisplayMode, visibleFor } from "../../display-mode";
-import { resolveGated } from "../../pulse/widgets/gated";
+import { useTlsFingerprints } from "../../pulse/widgets/useTlsFingerprints";
 import { securityGroups } from "../../pulse/diag/security.helpers";
 import { KVGroupList } from "../../pulse/diag/KVGroupList";
 import { postureBadges } from "./posture.helpers";
@@ -25,6 +25,10 @@ export function SecurityPage() {
   const topic = useSnapshot<SecurityTopic>("security");
   const { mode } = useDisplayMode();
   const extended = visibleFor("extended", mode);
+  // TLS fingerprints are fetched on visit (GET /api/telemt/tls-fingerprints)
+  // rather than carried by the `security` topic — M4 task 1. Extended mode
+  // only, so the query is skipped entirely in the other modes.
+  const tls = useTlsFingerprints(extended);
 
   if (!topic.data) {
     return (
@@ -33,8 +37,6 @@ export function SecurityPage() {
       </ServerShell>
     );
   }
-
-  const tls = resolveGated(topic.data.tls_fingerprints);
 
   return (
     <ServerShell title={s.server.security.title}>
@@ -109,7 +111,7 @@ export function SecurityPage() {
       <KVGroupList
         groups={securityGroups({
           effectiveLimits: topic.data.effective_limits ?? undefined,
-          tlsFingerprints: extended && tls.status === "ok" ? tls.data : undefined,
+          tlsFingerprints: tls.status === "ok" ? tls.data : undefined,
         }, s)}
       />
 

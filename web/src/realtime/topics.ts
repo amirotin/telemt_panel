@@ -671,39 +671,16 @@ export interface EffectiveLimits {
   user_tcp_policy: EffectiveUserTCPPolicyLimits;
 }
 
-export interface RuntimeEdgeTLSFingerprintRow {
-  scope?: string;
-  ja3: string;
-  ja3_raw: string;
-  ja4: string;
-  ja4_raw: string;
-  total: number;
-  auth_success: number;
-  bad_or_probe: number;
-  first_seen_epoch_secs: number;
-  last_seen_epoch_secs: number;
-}
-
-export interface RuntimeEdgeTLSFingerprints {
-  limit: number;
-  retention_secs: number;
-  capacity: number;
-  dropped_total: number;
-  parse_error_total: number;
-  by_fingerprint: RuntimeEdgeTLSFingerprintRow[];
-  by_ip: RuntimeEdgeTLSFingerprintRow[];
-  by_cidr: RuntimeEdgeTLSFingerprintRow[];
-  by_user: RuntimeEdgeTLSFingerprintRow[];
-}
-
-// SecurityTopic mirrors hub.go's securitySnapshot. tls_fingerprints is
-// present only when runtime_edge is on — same omitempty rule as
-// RuntimeTopic.recent_events.
+// SecurityTopic mirrors hub.go's securitySnapshot.
+//
+// TLS fingerprints are deliberately NOT part of this topic (M4 task 1 /
+// owner ruling 2026-08-26): the live payload is ~120 KB per poll, so it is
+// fetched on visit through GET /api/telemt/tls-fingerprints instead and
+// typed from the generated client (`GatedTlsFingerprints`), not here.
 export interface SecurityTopic {
   posture: SecurityPosture | null;
   whitelist: SecurityWhitelist | null;
   effective_limits: EffectiveLimits | null;
-  tls_fingerprints?: Gated<RuntimeEdgeTLSFingerprints>;
 }
 
 // UpdateTopicEvent mirrors internal/update/engine.go's runEventWire — the
