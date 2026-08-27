@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -152,8 +155,7 @@ func TestUpstreamsTopicComposite(t *testing.T) {
 }
 
 // TestSecurityTopicComposite covers deliverable A's "security" topic:
-// Posture + Whitelist + EffectiveLimits always present; TLSFingerprints
-// only with runtime_edge on.
+// Posture + Whitelist + EffectiveLimits always present.
 func TestSecurityTopicComposite(t *testing.T) {
 	_, h := newTelemttestHub(t, telemttest.Scenario{}, nil)
 	data := subscribeAndAwait(t, h, "security")
@@ -165,21 +167,74 @@ func TestSecurityTopicComposite(t *testing.T) {
 	if snap.Posture == nil || snap.Whitelist == nil || snap.EffectiveLimits == nil {
 		t.Errorf("security snapshot missing a field: %+v", snap)
 	}
-	if snap.TLSFingerprints != nil {
-		t.Errorf("security snapshot has tls_fingerprints with runtime_edge off: %+v", snap.TLSFingerprints)
-	}
 }
 
-func TestSecurityTopicTLSFingerprintsWhenRuntimeEdge(t *testing.T) {
+// TestSecurityTopicHasNoTLSFingerprints pins the M4 ruling: the ~120 KB
+// TLS fingerprints payload (TELEMT_LIVE_API_DATA.md §19) is NOT part of
+// the polled "security" topic even when the runtime_edge capability is on
+// — it is fetch-on-visit through GET /api/telemt/tls-fingerprints. The key
+// must not reappear on the wire.
+func TestSecurityTopicHasNoTLSFingerprints(t *testing.T) {
 	_, h := newTelemttestHub(t, telemttest.Scenario{RuntimeEdge: true}, nil)
 	data := subscribeAndAwait(t, h, "security")
 
-	var snap securitySnapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		t.Fatalf("decode security snapshot: %v", err)
+	if bytes.Contains(data, []byte(`"tls_fingerprints"`)) {
+		t.Errorf("security snapshot still carries tls_fingerprints: %s", data)
 	}
-	if snap.TLSFingerprints == nil || !snap.TLSFingerprints.Enabled {
-		t.Errorf("security snapshot tls_fingerprints = %+v, want an enabled Gated payload", snap.TLSFingerprints)
+}
+
+// TestRuntimeTopicRecentEventsExplicitLimit pins deliverable C(a): the
+// "runtime" topic asks for events with an explicit ?limit=50 rather than
+// letting Telemt pick its own default.
+func TestRuntimeTopicRecentEventsExplicitLimit(t *testing.T) {
+	var mu sync.Mutex
+	var eventsQueries []string
+	fake := telemttest.New(telemttest.Scenario{RuntimeEdge: true})
+	t.Cleanup(fake.Close)
+	recorder := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/runtime/events/recent" {
+			mu.Lock()
+			eventsQueries = append(eventsQueries, r.URL.RawQuery)
+			mu.Unlock()
+		}
+		proxied, err := http.NewRequestWithContext(r.Context(), r.Method, fake.URL+r.URL.RequestURI(), nil)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		resp, err := http.DefaultClient.Do(proxied)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(recorder.Close)
+
+	h := New(Config{
+		UsersInterval:     time.Hour,
+		StatsInterval:     time.Hour,
+		RuntimeInterval:   10 * time.Millisecond,
+		UpstreamsInterval: time.Hour,
+		SecurityInterval:  time.Hour,
+		Grace:             time.Second,
+	}, telemt.New(recorder.URL, ""), nil)
+	t.Cleanup(h.Close)
+
+	subscribeAndAwait(t, h, "runtime")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(eventsQueries) == 0 {
+		t.Fatal("runtime poll never called /v1/runtime/events/recent")
+	}
+	want := "limit=" + strconv.Itoa(recentEventsLimit)
+	for _, q := range eventsQueries {
+		if q != want {
+			t.Errorf("events query = %q, want %q", q, want)
+		}
 	}
 }
 

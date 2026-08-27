@@ -47,6 +47,15 @@ const (
 	// the same topic beyond its normal interval — see Poke's doc comment.
 	defaultPokeFloor = 500 * time.Millisecond
 
+	// recentEventsLimit is the explicit ?limit= the "runtime" topic asks
+	// GET /v1/runtime/events/recent for. It matches Telemt's own
+	// EVENTS_DEFAULT_LIMIT (runtime_edge.rs) and the volume the live
+	// snapshot documents as the real working set — 50 events,
+	// TELEMT_LIVE_API_DATA.md §18 / §24 ("50 events" among the minimum
+	// prototype cardinalities). Passing it explicitly rather than 0 keeps
+	// the panel's payload size fixed even if Telemt's own default moves.
+	recentEventsLimit = 50
+
 	// sourceErrorCode is the SSE source_error event's code for any fetch
 	// failure; the panel does not currently need finer-grained
 	// classification of the underlying Telemt error.
@@ -496,7 +505,7 @@ func fetchRuntime(ctx context.Context, tc *telemt.Client) (json.RawMessage, erro
 	}
 
 	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
-		if v, err := tc.RecentEvents(ctx, 0); err == nil {
+		if v, err := tc.RecentEvents(ctx, recentEventsLimit); err == nil {
 			snap.RecentEvents = &v
 		} else {
 			slog.Warn("hub: runtime topic: recent events", "err", err)
@@ -542,15 +551,20 @@ func fetchUpstreams(ctx context.Context, tc *telemt.Client) (json.RawMessage, er
 }
 
 // securitySnapshot is the "security" topic's composite payload: Posture +
-// Whitelist + EffectiveLimits (spec 02-hub-sse.md / M3 task-2 brief), plus
-// TLSFingerprints when the runtime_edge capability is on. Any one of the
-// first three failing leaves its field null and the topic still publishes;
-// all three failing is treated as Telemt being unreachable.
+// Whitelist + EffectiveLimits (spec 02-hub-sse.md / M3 task-2 brief). Any
+// one failing leaves its field null and the topic still publishes; all
+// three failing is treated as Telemt being unreachable.
+//
+// TLS fingerprints deliberately do NOT belong here: the live payload is
+// ~120 KB / 1957 leaves per poll (TELEMT_LIVE_API_DATA.md §19), by far the
+// largest single endpoint, for data no dashboard needs every 30s. The
+// owner's 2026-08-26 ruling makes it fetch-on-visit instead — GET
+// /api/telemt/tls-fingerprints (telemt_tls_handler.go), which the widget
+// and the Security details page poll at their own cadence.
 type securitySnapshot struct {
-	Posture         *telemt.SecurityPostureData                             `json:"posture"`
-	Whitelist       *telemt.SecurityWhitelistData                           `json:"whitelist"`
-	EffectiveLimits *telemt.EffectiveLimitsData                             `json:"effective_limits"`
-	TLSFingerprints *telemt.Gated[telemt.RuntimeEdgeTLSFingerprintsPayload] `json:"tls_fingerprints,omitempty"`
+	Posture         *telemt.SecurityPostureData   `json:"posture"`
+	Whitelist       *telemt.SecurityWhitelistData `json:"whitelist"`
+	EffectiveLimits *telemt.EffectiveLimitsData   `json:"effective_limits"`
 }
 
 func fetchSecurity(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
@@ -574,14 +588,6 @@ func fetchSecurity(ctx context.Context, tc *telemt.Client) (json.RawMessage, err
 	}
 	if postureErr != nil && whitelistErr != nil && limitsErr != nil {
 		return nil, fmt.Errorf("security: %w", errors.Join(postureErr, whitelistErr, limitsErr))
-	}
-
-	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
-		if v, err := tc.TLSFingerprints(ctx, 0); err == nil {
-			snap.TLSFingerprints = &v
-		} else {
-			slog.Warn("hub: security topic: tls fingerprints", "err", err)
-		}
 	}
 
 	return json.Marshal(snap)
