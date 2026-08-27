@@ -4,8 +4,10 @@ export type GatedResult<T> = { status: "gated"; reason?: string } | { status: "o
 
 // resolveGated is the shared "is this Gated[T] payload actually usable"
 // check for every runtime/security widget built on Telemt's Gated[T]
-// wrapper (me_pool_state, me_quality, nat_stun, me_selftest, recent_events,
-// tls_fingerprints). `gated` being null/undefined covers two wire cases the
+// wrapper (me_pool_state, me_quality, nat_stun, me_selftest, recent_events).
+// TLS fingerprints are NOT in that list any more: they arrive over REST
+// since M4 task 1, and their gate is resolved from the HTTP envelope by
+// tlsFingerprints.helpers.ts instead. `gated` being null/undefined covers two wire cases the
 // caller does not need to tell apart here: the sub-call failed this poll
 // (hub.go leaves the field an explicit JSON null) or the field was omitted
 // entirely because the runtime_edge capability is off — both render the

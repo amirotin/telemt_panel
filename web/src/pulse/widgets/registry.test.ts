@@ -28,11 +28,21 @@ describe("WIDGETS registry invariants", () => {
 
   it("only declares topics from the known topic set", () => {
     for (const w of WIDGETS) {
+      // `topics` is optional: a REST-backed widget (tls_fingerprints, which
+      // fetches on its own cadence since M4 task 1) declares none. When it
+      // IS declared it must be non-empty and name real topics — an empty
+      // array would be a widget claiming to be SSE-backed by nothing.
+      if (w.topics === undefined) continue;
       expect(w.topics.length).toBeGreaterThan(0);
       for (const t of w.topics) {
         expect(KNOWN_TOPICS.has(t)).toBe(true);
       }
     }
+  });
+
+  it("declares topics for every widget except the REST-backed one", () => {
+    const withoutTopics = WIDGETS.filter((w) => w.topics === undefined).map((w) => w.id);
+    expect(withoutTopics).toEqual(["tls_fingerprints"]);
   });
 
   it("declares a valid formFactor for every widget", () => {

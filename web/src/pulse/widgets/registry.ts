@@ -20,7 +20,11 @@ export type FormFactor = "stat" | "card" | "wide" | "table";
 export interface WidgetDef {
   /** Also the dictionary key its title comes from — `s.pulse.widgets[id]`. */
   id: WidgetId;
-  topics: TopicName[];
+  /**
+   * SSE topics this widget reads. Omitted by a widget whose data comes from
+   * a REST endpoint on its own cadence instead of the hub (tls_fingerprints).
+   */
+  topics?: TopicName[];
   minMode: DisplayMode;
   formFactor: FormFactor;
   /** false only for health_hero — every other widget can be hidden from the layout editor. */
@@ -139,8 +143,9 @@ export const WIDGETS: WidgetDef[] = [
     render: RecentEventsWidget,
   },
   {
+    // No `topics`: this widget left the SSE topics in M4 task 1 and fetches
+    // GET /api/telemt/tls-fingerprints itself (useTlsFingerprints).
     id: "tls_fingerprints",
-    topics: ["security"],
     minMode: "extended",
     formFactor: "table",
     hideable: true,
