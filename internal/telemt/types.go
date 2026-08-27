@@ -12,17 +12,29 @@ type HealthData struct {
 }
 
 // SystemInfoData is the payload of GET /v1/system/info.
+//
+// BuildTimeUTC/RustcVersion/LastConfigReloadEpochSecs are Telemt's three
+// skip_serializing_if=None fields on this struct (api/runtime_zero.rs's
+// SystemInfoData): the first two come from optional build-time env vars and
+// were absent on all three production VPS snapshots, while
+// last_config_reload_epoch_secs is sent as soon as one reload has happened
+// and WAS present in the live snapshot (TELEMT_LIVE_API_DATA.md §5) — the
+// panel dropped it silently before this. All three are pointers so an
+// absent key stays distinguishable from a real 0.
 type SystemInfoData struct {
-	Version                  string  `json:"version"`
-	TargetArch               string  `json:"target_arch"`
-	TargetOS                 string  `json:"target_os"`
-	BuildProfile             string  `json:"build_profile"`
-	GitCommit                string  `json:"git_commit,omitempty"`
-	ProcessStartedAtEpochSec int64   `json:"process_started_at_epoch_secs"`
-	UptimeSeconds            float64 `json:"uptime_seconds"`
-	ConfigPath               string  `json:"config_path"`
-	ConfigHash               string  `json:"config_hash"`
-	ConfigReloadCount        uint64  `json:"config_reload_count"`
+	Version                   string  `json:"version"`
+	TargetArch                string  `json:"target_arch"`
+	TargetOS                  string  `json:"target_os"`
+	BuildProfile              string  `json:"build_profile"`
+	GitCommit                 string  `json:"git_commit,omitempty"`
+	BuildTimeUTC              string  `json:"build_time_utc,omitempty"`
+	RustcVersion              string  `json:"rustc_version,omitempty"`
+	ProcessStartedAtEpochSec  int64   `json:"process_started_at_epoch_secs"`
+	UptimeSeconds             float64 `json:"uptime_seconds"`
+	ConfigPath                string  `json:"config_path"`
+	ConfigHash                string  `json:"config_hash"`
+	ConfigReloadCount         uint64  `json:"config_reload_count"`
+	LastConfigReloadEpochSecs *int64  `json:"last_config_reload_epoch_secs,omitempty"`
 }
 
 // TLSDomainLink is one domain-fronted fake-TLS link.

@@ -66,6 +66,47 @@ func TestSystemInfoLegacyFlat(t *testing.T) {
 	}
 }
 
+// TestSystemInfoOptionalBuildAndReloadFields pins the three
+// skip_serializing_if=None fields Telemt's api/runtime_zero.rs
+// SystemInfoData can send: last_config_reload_epoch_secs (present in the
+// production snapshot, TELEMT_LIVE_API_DATA.md §5) plus the two build-env
+// fields. Absent keys must stay distinguishable from a real zero.
+func TestSystemInfoOptionalBuildAndReloadFields(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{"version":"3.5.2","target_arch":"x86_64","target_os":"linux",
+			"build_profile":"release","git_commit":"abc123","build_time_utc":"2026-08-01T00:00:00Z",
+			"rustc_version":"1.89.0","process_started_at_epoch_secs":1000,"uptime_seconds":3600,
+			"config_path":"/etc/telemt/telemt.toml","config_hash":"r1","config_reload_count":2,
+			"last_config_reload_epoch_secs":1755000000},"revision":"r1"}`))
+	})
+
+	info, err := c.SystemInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.BuildTimeUTC != "2026-08-01T00:00:00Z" || info.RustcVersion != "1.89.0" {
+		t.Errorf("build env fields = %+v", info)
+	}
+	if info.LastConfigReloadEpochSecs == nil || *info.LastConfigReloadEpochSecs != 1755000000 {
+		t.Errorf("last_config_reload_epoch_secs = %v, want 1755000000", info.LastConfigReloadEpochSecs)
+	}
+
+	// Never reloaded: Telemt omits the key entirely — a nil pointer, not 0.
+	c2 := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{"version":"3.5.2","config_reload_count":0},"revision":"r1"}`))
+	})
+	info2, err := c2.SystemInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info2.LastConfigReloadEpochSecs != nil {
+		t.Errorf("last_config_reload_epoch_secs = %v, want nil when omitted", *info2.LastConfigReloadEpochSecs)
+	}
+	if info2.BuildTimeUTC != "" || info2.RustcVersion != "" {
+		t.Errorf("build env fields = %+v, want empty when omitted", info2)
+	}
+}
+
 func TestUsers(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"ok":true,"data":[
