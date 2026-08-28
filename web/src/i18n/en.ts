@@ -667,6 +667,8 @@ export const en: Dict = {
       nonZeroOnly: "Non-zero only",
       deltaMode: "Change per second",
       deltaUnavailable: "The change appears after the second response.",
+      deltaRestarted:
+        "Telemt restarted and the counters started over — the comparison was re-anchored on the new run.",
       expandAll: "Expand all",
       collapseAll: "Collapse all",
       deltaSinceOpen: "Since page open",

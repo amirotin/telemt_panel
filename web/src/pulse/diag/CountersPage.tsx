@@ -8,6 +8,7 @@ import { countersPageDefinition } from "../details-builder/definitions/counters"
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
 import {
   computeCounterDeltas,
+  countersRestarted,
   readCounterValues,
   type CounterSnapshot,
 } from "./counters.helpers";
@@ -34,9 +35,18 @@ interface DeltaState {
   baseline: Reading | null;
   /** Bumped by the reset control; a change re-seeds `baseline`. */
   token: number;
+  /** A Telemt restart was observed during this visit (ruling R4's caveat). */
+  restarted: boolean;
 }
 
-const EMPTY: DeltaState = { atMs: 0, current: null, previous: null, baseline: null, token: 0 };
+const EMPTY: DeltaState = {
+  atMs: 0,
+  current: null,
+  previous: null,
+  baseline: null,
+  token: 0,
+  restarted: false,
+};
 
 // useCounterDeltas keeps R4's two comparison points in ROUTE MEMORY — this
 // component's own state, never the URL and never storage: a delta describes
@@ -54,24 +64,35 @@ function useCounterDeltas(data: ZeroAllData | undefined, dataUpdatedAt: number) 
   let next = state;
   if (data !== undefined && dataUpdatedAt > 0 && dataUpdatedAt !== state.atMs) {
     const reading: Reading = { values: readCounterValues(data), atMs: dataUpdatedAt };
+    // A restart makes both comparison points meaningless at once: the
+    // previous response is dropped rather than subtracted from, and the
+    // since-open baseline is re-anchored on the new run. The flag stays set
+    // for the rest of the visit so the map can say WHY the columns restarted
+    // instead of leaving the reader to guess.
+    const restarted =
+      state.current !== null && countersRestarted(state.current.values, reading.values);
     next = {
       atMs: dataUpdatedAt,
       current: reading,
-      previous: state.current,
+      previous: restarted ? null : state.current,
       // The first response IS the baseline: "since you opened the page"
       // starts at zero, not at whatever Telemt has counted since boot.
-      baseline: state.baseline ?? reading,
+      baseline: restarted ? reading : (state.baseline ?? reading),
       token: resetToken,
+      restarted: state.restarted || restarted,
     };
   }
   if (next.token !== resetToken && next.current !== null) {
-    next = { ...next, baseline: next.current, token: resetToken };
+    // A deliberate reset re-anchors the baseline AND retires the notice:
+    // the reader has just chosen the comparison point themselves.
+    next = { ...next, baseline: next.current, token: resetToken, restarted: false };
   }
   if (next !== state) setState(next);
 
   const reset = useCallback(() => setResetToken((n) => n + 1), []);
 
-  if (next.current === null) return { deltas: undefined, sinceOpen: undefined, reset };
+  if (next.current === null)
+    return { deltas: undefined, sinceOpen: undefined, restarted: false, reset };
   const { perSecond, sinceOpen } = computeCounterDeltas({
     previous: next.previous,
     baseline: next.baseline,
@@ -82,6 +103,7 @@ function useCounterDeltas(data: ZeroAllData | undefined, dataUpdatedAt: number) 
     // the map's own control says so rather than printing zeros.
     deltas: next.previous === null ? undefined : perSecond,
     sinceOpen: next.baseline === next.current ? undefined : sinceOpen,
+    restarted: next.restarted,
     reset,
   };
 }
@@ -94,7 +116,7 @@ function useCounterDeltas(data: ZeroAllData | undefined, dataUpdatedAt: number) 
 export function CountersPage() {
   const navigate = useNavigate();
   const zero = useQuery({ ...getTelemtZeroOptions(), refetchInterval: countersRefetchMs });
-  const { deltas, sinceOpen, reset } = useCounterDeltas(zero.data, zero.dataUpdatedAt);
+  const { deltas, sinceOpen, restarted, reset } = useCounterDeltas(zero.data, zero.dataUpdatedAt);
 
   const inputs: Record<string, DetailSourceInput> = {
     zero: {
@@ -117,6 +139,7 @@ export function CountersPage() {
       onRetry={() => zero.refetch()}
       {...(deltas !== undefined ? { deltas } : {})}
       {...(sinceOpen !== undefined ? { deltaSinceOpen: sinceOpen } : {})}
+      deltaRestarted={restarted}
       onResetDelta={reset}
     />
   );

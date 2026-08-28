@@ -51,6 +51,8 @@ export interface DetailPageProps<TPayload, TContext> {
   deltas?: Record<string, number>;
   /** Absolute counter change since the page opened, by normalized path (R4). */
   deltaSinceOpen?: Record<string, number>;
+  /** A Telemt restart zeroed the counters during this visit (R4). */
+  deltaRestarted?: boolean;
   /** Moves the since-open delta baseline to the current snapshot (R4). */
   onResetDelta?: () => void;
   /** Domain chart renderers for this page's CustomSections (§9.8). */
@@ -79,6 +81,7 @@ export function DetailPage<TPayload, TContext>({
   nowMs,
   deltas,
   deltaSinceOpen,
+  deltaRestarted,
   onResetDelta,
   customRenderers,
   disabledHints,
@@ -396,6 +399,7 @@ export function DetailPage<TPayload, TContext>({
                 raw={context}
                 {...(deltas !== undefined ? { deltas } : {})}
                 {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+                {...(deltaRestarted !== undefined ? { deltaRestarted } : {})}
                 {...(onResetDelta !== undefined ? { onResetDelta } : {})}
                 {...(customRenderers !== undefined ? { customRenderers } : {})}
               />

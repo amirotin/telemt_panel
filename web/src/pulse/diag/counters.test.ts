@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computeCounterDeltas, readCounterValues } from "./counters.helpers";
+import {
+  computeCounterDeltas,
+  countersRestarted,
+  readCounterValues,
+} from "./counters.helpers";
 import { zeroAll } from "../details-builder/__fixtures__";
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
 
@@ -85,14 +89,53 @@ describe("computeCounterDeltas (ruling R4)", () => {
     expect(result.sinceOpen).toEqual({});
   });
 
-  it("reports a decrease honestly, the way a restarted proxy produces one", () => {
+  it("reports a gauge going down honestly — that is not a reset", () => {
+    // `pool_drain_active` and `configured_users` live in the same five
+    // groups and legitimately fall. A blanket "negative means restart"
+    // would hide exactly the movement a reader opened the page for, so the
+    // uptime has to keep rising for the drop to be believed.
     const result = computeCounterDeltas({
-      previous: at(0, { "core.a_total": 500 }),
-      baseline: at(0, { "core.a_total": 500 }),
-      current: at(1_000, { "core.a_total": 0 }),
+      previous: at(0, { "pool.pool_drain_active": 12, "core.uptime_seconds": 900 }),
+      baseline: at(0, { "pool.pool_drain_active": 12, "core.uptime_seconds": 900 }),
+      current: at(1_000, { "pool.pool_drain_active": 4, "core.uptime_seconds": 901 }),
     });
-    expect(result.perSecond["core.a_total"]).toBe(-500);
-    expect(result.sinceOpen["core.a_total"]).toBe(-500);
+    expect(result.perSecond["pool.pool_drain_active"]).toBe(-8);
+    expect(result.sinceOpen["pool.pool_drain_active"]).toBe(-8);
+  });
+
+  it("prints no rate at all across a Telemt restart", () => {
+    // The live shape of the bug: a monotonic counter at 1 923 513 answers 0
+    // ten seconds later, which as arithmetic is «−192 351,3/с» — a rate no
+    // proxy can produce. Uptime fell from 3 600 s to 4 s, so the pair is
+    // dropped whole rather than subtracted.
+    const result = computeCounterDeltas({
+      previous: at(0, { "core.connections_total": 1_923_513, "core.uptime_seconds": 3_600 }),
+      baseline: at(0, { "core.connections_total": 1_923_513, "core.uptime_seconds": 3_600 }),
+      current: at(10_000, { "core.connections_total": 0, "core.uptime_seconds": 4 }),
+    });
+    expect(result.perSecond).toEqual({});
+    expect(result.sinceOpen).toEqual({});
+    expect(countersRestarted(
+      { "core.uptime_seconds": 3_600 },
+      { "core.uptime_seconds": 4 },
+    )).toBe(true);
+  });
+
+  it("keeps comparing once the new run is the one being read", () => {
+    const result = computeCounterDeltas({
+      previous: at(0, { "core.connections_total": 10, "core.uptime_seconds": 4 }),
+      baseline: at(0, { "core.connections_total": 10, "core.uptime_seconds": 4 }),
+      current: at(10_000, { "core.connections_total": 40, "core.uptime_seconds": 14 }),
+    });
+    expect(result.perSecond["core.connections_total"]).toBe(3);
+    expect(result.sinceOpen["core.connections_total"]).toBe(30);
+  });
+
+  it("cannot call a restart on a payload that reports no uptime", () => {
+    // A build that stops reporting `core.uptime_seconds` must not silently
+    // turn every negative delta into a suppressed one.
+    expect(countersRestarted({ "core.a_total": 500 }, { "core.a_total": 0 })).toBe(false);
+    expect(countersRestarted(undefined, { "core.uptime_seconds": 4 })).toBe(false);
   });
 
   it("rounds a rate to two decimals rather than printing a float tail", () => {

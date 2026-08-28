@@ -25,6 +25,32 @@ export function readCounterValues(data: ZeroAllData | undefined): CounterSnapsho
   return out;
 }
 
+/**
+ * The one counter that says how long the process it belongs to has been
+ * running. It is monotonic INSIDE a process and starts over at zero when
+ * Telemt is restarted, which makes it the only honest way to tell "this
+ * counter went down" from "every counter went back to zero".
+ */
+export const COUNTER_UPTIME_PATH = "core.uptime_seconds";
+
+// countersRestarted answers "did Telemt restart between these two readings".
+//
+// A blanket "a negative delta means a reset" would be wrong here: the same
+// five groups carry GAUGES that legitimately fall — `pool.pool_drain_active`
+// drops as a drain completes, `core.configured_users` drops when a user is
+// deleted — and suppressing those would hide the very movement a reader
+// opened the page for. Uptime going backwards is the process-level fact,
+// and it invalidates every counter at once rather than one at a time.
+export function countersRestarted(
+  before: CounterSnapshot | undefined,
+  after: CounterSnapshot,
+): boolean {
+  const wasUp = before?.[COUNTER_UPTIME_PATH];
+  const isUp = after[COUNTER_UPTIME_PATH];
+  if (wasUp === undefined || isUp === undefined) return false;
+  return isUp < wasUp;
+}
+
 export interface CounterDeltaInput {
   /** The reading two responses ago, and when it was taken (epoch ms). */
   previous: { values: CounterSnapshot; atMs: number } | null;
@@ -51,13 +77,17 @@ export interface CounterDeltas {
 //     rate for a counter Telemt only just started reporting;
 //   * a non-positive elapsed time yields no per-second column at all. Two
 //     responses stamped the same millisecond (a cache hit, a clock that did
-//     not move) would otherwise divide by zero and print Infinity.
+//     not move) would otherwise divide by zero and print Infinity;
+//   * a reading taken ACROSS a Telemt restart yields no delta at all. The
+//     counters started over at zero, so `value - before` is minus the whole
+//     of the previous run — "−192 351/с" — and the restart is exactly the
+//     moment a reader opens this page.
 export function computeCounterDeltas(input: CounterDeltaInput): CounterDeltas {
   const perSecond: CounterSnapshot = {};
   const sinceOpen: CounterSnapshot = {};
 
   const { previous, baseline, current } = input;
-  if (previous) {
+  if (previous && !countersRestarted(previous.values, current.values)) {
     const elapsedMs = current.atMs - previous.atMs;
     if (elapsedMs > 0) {
       const seconds = elapsedMs / 1000;
@@ -70,7 +100,7 @@ export function computeCounterDeltas(input: CounterDeltaInput): CounterDeltas {
       }
     }
   }
-  if (baseline) {
+  if (baseline && !countersRestarted(baseline.values, current.values)) {
     for (const [path, value] of Object.entries(current.values)) {
       const before = baseline.values[path];
       if (before === undefined) continue;

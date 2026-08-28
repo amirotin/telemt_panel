@@ -748,6 +748,8 @@ export const ru = {
       nonZeroOnly: "Только ненулевые",
       deltaMode: "Изменение за секунду",
       deltaUnavailable: "Изменение появится после второго ответа.",
+      deltaRestarted:
+        "Telemt перезапустился, счётчики начались заново — сравнение переустановлено на новый запуск.",
       expandAll: "Раскрыть все",
       collapseAll: "Свернуть все",
       deltaSinceOpen: "С момента открытия",

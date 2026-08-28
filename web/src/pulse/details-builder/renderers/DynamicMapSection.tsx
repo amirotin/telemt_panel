@@ -32,6 +32,12 @@ export interface DynamicMapSectionProps {
    * carries nothing.
    */
   deltaSinceOpen?: Record<string, number>;
+  /**
+   * The source restarted during this visit, so both comparison points were
+   * thrown away and re-anchored. A delta column that simply went quiet
+   * would read as a bug; §13.1 says the state gets named.
+   */
+  deltaRestarted?: boolean;
   /** Moves the since-open baseline to the current snapshot (R4). */
   onResetDelta?: () => void;
   /**
@@ -85,6 +91,7 @@ export function DynamicMapSection({
   ctx,
   deltas,
   deltaSinceOpen,
+  deltaRestarted,
   onResetDelta,
   hiddenNestedPaths,
 }: DynamicMapSectionProps) {
@@ -172,9 +179,17 @@ export function DynamicMapSection({
             </>
           )}
         </div>
-        {deltaView !== "off" && activeDeltas(deltaView, deltas, deltaSinceOpen) === undefined && (
-          <p className="text-micro text-text-faint">{s.details.map.deltaUnavailable}</p>
-        )}
+        {/* A restart explains the empty column better than "wait for the
+            second response" does, so it replaces that note rather than
+            stacking with it. */}
+        {deltaView !== "off" &&
+          (deltaRestarted === true ? (
+            <p className="text-micro text-text-faint">{s.details.map.deltaRestarted}</p>
+          ) : (
+            activeDeltas(deltaView, deltas, deltaSinceOpen) === undefined && (
+              <p className="text-micro text-text-faint">{s.details.map.deltaUnavailable}</p>
+            )
+          ))}
         <div className="flex flex-wrap gap-2">
           <Button
             variant="secondary"

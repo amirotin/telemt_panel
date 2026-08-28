@@ -89,11 +89,13 @@ let mounted: { container: HTMLElement; root: Root } | null = null;
 function Harness({
   deltas,
   deltaSinceOpen,
+  deltaRestarted,
   onResetDelta,
   production,
 }: {
   deltas?: Record<string, number>;
   deltaSinceOpen?: Record<string, number>;
+  deltaRestarted?: boolean;
   onResetDelta?: () => void;
   production?: boolean;
 }) {
@@ -123,6 +125,7 @@ function Harness({
       ctx={ctx}
       {...(deltas !== undefined ? { deltas } : {})}
       {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+      {...(deltaRestarted !== undefined ? { deltaRestarted } : {})}
       {...(onResetDelta !== undefined ? { onResetDelta } : {})}
     />
   );
@@ -225,6 +228,18 @@ describe("DynamicMapSection (spec §9.7, §11.2)", () => {
     )!;
     click(deltaChip);
     expect(el.textContent).toContain("Изменение появится после второго ответа.");
+  });
+
+  it("blames a restart rather than the second response when the source restarted", () => {
+    // Both tables are empty after a restart, and «появится после второго
+    // ответа» would be a lie the reader could only disprove by waiting.
+    const el = render(<Harness deltaRestarted />);
+    const deltaChip = Array.from(el.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Изменение за секунду"),
+    )!;
+    click(deltaChip);
+    expect(el.textContent).toContain("Telemt перезапустился");
+    expect(el.textContent).not.toContain("Изменение появится после второго ответа.");
   });
 
   it("renders a supplied delta beside the value", () => {

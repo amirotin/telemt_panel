@@ -33,6 +33,8 @@ export interface SectionListProps {
   deltas?: Record<string, number>;
   /** Absolute counter change since the page opened, by normalized path (R4). */
   deltaSinceOpen?: Record<string, number>;
+  /** A Telemt restart zeroed the counters during this visit (R4). */
+  deltaRestarted?: boolean;
   /** Moves the since-open delta baseline to the current snapshot (R4). */
   onResetDelta?: () => void;
   /** Domain chart renderers for CustomSection (§9.8). */
@@ -51,6 +53,7 @@ export function SectionList({
   raw,
   deltas,
   deltaSinceOpen,
+  deltaRestarted,
   onResetDelta,
   customRenderers,
 }: SectionListProps) {
@@ -95,6 +98,7 @@ export function SectionList({
           {...(raw !== undefined ? { raw } : {})}
           {...(deltas !== undefined ? { deltas } : {})}
           {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+          {...(deltaRestarted !== undefined ? { deltaRestarted } : {})}
           {...(onResetDelta !== undefined ? { onResetDelta } : {})}
           {...(customRenderers !== undefined ? { customRenderers } : {})}
         />
@@ -113,6 +117,7 @@ function SectionView({
   raw,
   deltas,
   deltaSinceOpen,
+  deltaRestarted,
   onResetDelta,
   customRenderers,
 }: {
@@ -125,6 +130,7 @@ function SectionView({
   raw?: unknown;
   deltas?: Record<string, number>;
   deltaSinceOpen?: Record<string, number>;
+  deltaRestarted?: boolean;
   onResetDelta?: () => void;
   customRenderers?: CustomSectionRegistry;
 }) {
@@ -184,6 +190,7 @@ function SectionView({
           hiddenNestedPaths={claimedPaths}
           {...(deltas !== undefined ? { deltas } : {})}
           {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+          {...(deltaRestarted !== undefined ? { deltaRestarted } : {})}
           {...(onResetDelta !== undefined ? { onResetDelta } : {})}
         />
       );
