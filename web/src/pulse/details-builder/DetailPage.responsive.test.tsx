@@ -82,6 +82,30 @@ const DC_READY: PageSourcesState = aggregateSources(dcPage.sources, {
   }),
 });
 
+// §10.5 turns the search box on at 21 elements, and the fixture's DCs top
+// out at ten endpoints — so the rotation test below runs against a widened
+// copy. Without one, `searchRequired` is false, there is no input to type
+// into, and the "keeps … the search" half of that test can only be skipped:
+// the Task 5 review's M1, where a guard hid the assertion instead of the
+// fixture making it possible.
+const WIDE_DCS: DcStatusData = {
+  ...dcs,
+  dcs: dcs.dcs.map((dc, i) => ({
+    ...dc,
+    endpoints: Array.from({ length: 24 }, (_, e) => `198.51.100.${10 + i}:${8443 + e}`),
+  })),
+};
+
+const WIDE_READY: PageSourcesState = aggregateSources(dcPage.sources, {
+  upstreams: resolveQuerySource("upstreams", {
+    kind: "query",
+    isPending: false,
+    isError: false,
+    data: WIDE_DCS,
+    dataUpdatedAt: FRESH_AT,
+  }),
+});
+
 interface Writer {
   writer_id: number;
   dc: number;
@@ -363,23 +387,31 @@ describe("entity paging (spec §16.2)", () => {
 describe("state across a rotation (spec §15.3, §19.1)", () => {
   it("keeps the entity, the tab, the accordion, the search and the open surface", async () => {
     const { container: el } = await mount(
-      <DetailPage definition={dcPage} payload={dcs} sources={DC_READY} nowMs={NOW} />,
+      <DetailPage definition={dcPage} payload={WIDE_DCS} sources={WIDE_READY} nowMs={NOW} />,
       "/page?entity=dc2&tab=endpoints",
     );
 
     // Set up a page in the middle of being read: an entity chosen, the
     // second tab open, its accordion collapsed by hand, a query typed and
-    // an entity surface open.
+    // an entity surface open. Every one of those is set up here and
+    // asserted unconditionally after the rotation — a guarded assertion
+    // would go green precisely when the thing it names stops working.
     expect(selected(el)).toBe("DC 2");
     const tab = () => el.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
     expect(tab()?.textContent).toBe("Точки");
 
-    const search = el.querySelector<HTMLInputElement>('input[type="search"]');
-    if (search) type(search, "edge");
+    // 24 endpoints on this DC, so §10.5 makes the search box mandatory and
+    // the query below is a real one that really narrows the list.
+    const search = el.querySelector<HTMLInputElement>('#endpoints-panel input[type="search"]');
+    expect(search).not.toBeNull();
+    type(search!, "8446");
+    const matched = el.querySelectorAll("#endpoints-panel button[aria-label]").length;
+    expect(matched).toBe(1);
 
     const row = el.querySelector<HTMLElement>("#endpoints-panel button[aria-label]");
-    if (row) click(row);
-    const surfaceOpen = document.querySelector('[role="dialog"]') !== null;
+    expect(row).not.toBeNull();
+    click(row!);
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
 
     const accordion = el.querySelector<HTMLElement>("#endpoints-panel")!;
     const header = accordion.previousElementSibling as HTMLElement;
@@ -399,10 +431,11 @@ describe("state across a rotation (spec §15.3, §19.1)", () => {
         "aria-expanded",
       ),
     ).toBe(expandedBefore);
-    if (search) {
-      expect(el.querySelector<HTMLInputElement>('input[type="search"]')?.value).toBe("edge");
-    }
-    expect(document.querySelector('[role="dialog"]') !== null).toBe(surfaceOpen);
+    expect(
+      el.querySelector<HTMLInputElement>('#endpoints-panel input[type="search"]')?.value,
+    ).toBe("8446");
+    expect(el.querySelectorAll("#endpoints-panel button[aria-label]")).toHaveLength(matched);
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
   it("keeps a ranking's own search and sort across a rotation", async () => {
