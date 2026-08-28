@@ -27,4 +27,10 @@ describe("dev field catalog", () => {
     expect(formatted.text).toContain("назад");
     expect(formatted.text).not.toContain("дн.");
   });
+
+  it("stops describing a moment as a duration", () => {
+    const field = describeField("drain_gate.updated_at_epoch_secs", ru, { catalog: devCatalog });
+    expect(field.unit).toBe("timestamp");
+    expect(field.description).not.toBe(ru.details.fields.families.seconds);
+  });
 });

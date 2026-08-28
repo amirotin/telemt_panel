@@ -29,14 +29,17 @@ export const dcKey = (dc: DcStatus): string => `dc${dc.dc}`;
 // A `*_epoch_secs` field is an absolute MOMENT, but the counters family the
 // catalog falls back to only sees the `_secs` suffix and reads it as a
 // duration, which is how `state_since_epoch_secs` rendered as "20 324 дн.".
-// Every one of these lives inside an array element, where a per-binding
-// `unit` cannot reach it, so the fix belongs in a catalog. The ME and TLS
-// domains get their real entries — descriptions included — in Tasks 7-8;
-// these carry the unit alone, which is what the rendering needs.
+// Most of them live inside an array element, where a per-binding `unit`
+// cannot reach them, and no binding can correct the DESCRIPTION at all:
+// `updated_at_epoch_secs` read "Длительность в секундах" above a value of
+// "2 мин. назад". Both are the catalog's job. The ME and TLS domains get
+// their real entries — descriptions included — in Tasks 7-8; these carry
+// the unit alone, which is what the rendering needs.
 export const devCatalog: FieldCatalog = {
   ...DEFAULT_FIELD_CATALOG,
   entries: [
     ...DEFAULT_FIELD_CATALOG.entries,
+    { path: "drain_gate.updated_at_epoch_secs", unit: "timestamp" },
     { path: "family_states.*.state_since_epoch_secs", unit: "timestamp" },
     { path: "by_fingerprint.*.first_seen_epoch_secs", unit: "timestamp" },
     { path: "by_fingerprint.*.last_seen_epoch_secs", unit: "timestamp" },
@@ -130,7 +133,7 @@ export const devMeQualityPage: DetailPageDefinition<RuntimeMeQuality, RuntimeMeQ
         { path: "drain_gate.route_quorum_ok" },
         { path: "drain_gate.redundancy_ok" },
         { path: "drain_gate.block_reason" },
-        { path: "drain_gate.updated_at_epoch_secs", unit: "timestamp" },
+        { path: "drain_gate.updated_at_epoch_secs" },
       ],
     },
     {
