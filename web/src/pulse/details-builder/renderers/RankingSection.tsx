@@ -12,7 +12,7 @@ import type { RankingSectionDefinition } from "../model";
 import { childPath, indexPath } from "../paths";
 import type { ClassifyContext, CollectionSectionInstance } from "../resolveSections";
 import { AdaptiveDetailSurface } from "../surfaces/AdaptiveDetailSurface";
-import { useRovingFocus } from "../surfaces/rovingFocus";
+import { useRovingFocus, type RovingItemProps } from "../surfaces/rovingFocus";
 import { SectionFrame } from "./SectionFrame";
 import { EmptyNote, NodeList, RevealMore } from "./NodeTree";
 import { buildRecordNodes } from "./unknownFields";
@@ -375,7 +375,7 @@ function RankingRow({
   openLabel: string;
   onOpen: () => void;
   /** Roving-tabindex membership (§21) — supplied by the section. */
-  rowProps: { tabIndex: 0 | -1 };
+  rowProps: RovingItemProps;
 }) {
   const s = useStrings();
   const score = formatValue(entry.score, s, { nowMs: ctx.nowMs, formatter: "integer" });

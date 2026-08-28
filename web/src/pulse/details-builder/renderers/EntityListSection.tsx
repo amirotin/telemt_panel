@@ -9,7 +9,7 @@ import type { EntityListSectionDefinition } from "../model";
 import { childPath, indexPath, readPath } from "../paths";
 import type { ClassifyContext, CollectionSectionInstance } from "../resolveSections";
 import { AdaptiveDetailSurface } from "../surfaces/AdaptiveDetailSurface";
-import { useRovingFocus } from "../surfaces/rovingFocus";
+import { useRovingFocus, type RovingItemProps } from "../surfaces/rovingFocus";
 import { SectionFrame } from "./SectionFrame";
 import { EmptyNote, NodeList, RevealMore } from "./NodeTree";
 import { buildRecordNodes } from "./unknownFields";
@@ -179,7 +179,7 @@ function EntityRow({
   onOpen: () => void;
   openLabel: string;
   /** Roving-tabindex membership (§21) — supplied by the section. */
-  rowProps: { tabIndex: 0 | -1 };
+  rowProps: RovingItemProps;
 }) {
   return (
     <button

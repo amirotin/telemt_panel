@@ -42,13 +42,24 @@ export function nextRovingIndex(
 /** Marks an element as a member of its container's roving group. */
 export const ROVING_ITEM_ATTR = "data-roving-item";
 
+/**
+ * What a member spreads. The marker attribute is part of the CONTRACT, not
+ * an implementation detail: `onKeyDown` finds the group's members by it, so
+ * a row that declares only `tabIndex` and drops the rest silently stops the
+ * arrow keys from moving anything — without a type error.
+ */
+export interface RovingItemProps {
+  tabIndex: 0 | -1;
+  [ROVING_ITEM_ATTR]: string;
+}
+
 export interface RovingFocusApi {
   /** Spread onto the group's container element. */
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
   /** `0` for the single tab stop, `-1` for every other member. */
   tabIndexFor: (index: number) => 0 | -1;
   /** Spread onto each member — the tab stop plus the marker attribute. */
-  itemProps: (index: number) => { tabIndex: 0 | -1; [ROVING_ITEM_ATTR]: string };
+  itemProps: (index: number) => RovingItemProps;
 }
 
 export interface UseRovingFocusOptions {

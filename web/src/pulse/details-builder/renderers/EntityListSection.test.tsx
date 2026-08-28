@@ -139,6 +139,16 @@ describe("EntityListSection (spec §9.3, §17)", () => {
     expect(first.textContent).not.toContain("generation");
   });
 
+  it("marks every row as a member of the roving group (§21)", () => {
+    const el = render(<Harness payload={meWriters} />);
+    const rows = entityRows(el);
+    // useRovingFocus.onKeyDown finds the rows by this attribute alone, so a
+    // row that lost it would keep its tab stop and quietly stop responding
+    // to the arrow keys.
+    expect(el.querySelectorAll("[data-roving-item]")).toHaveLength(rows.length);
+    expect(rows.filter((r) => r.tabIndex === 0)).toHaveLength(1);
+  });
+
   it("opens the adaptive surface on the row and shows the remaining fields", () => {
     const el = render(<Harness payload={meWriters} />);
     expect(dialog()).toBeNull();
