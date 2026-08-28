@@ -341,8 +341,12 @@ describe("DetailPage summary shortcut (spec §18.2)", () => {
     const chip = byText(el, "Только degraded");
     expect(chip.getAttribute("aria-pressed")).toBe("false");
 
-    // The tile is a button, and pressing it filters the ranking.
-    const tile = byText(el, "Degraded" + String(degradedWriters));
+    // The tile is a button, and pressing it filters the ranking. Matched
+    // by substring: a `warn`/`bad` tile also carries §21's non-colour cue —
+    // a marker glyph plus the tone as sr-only text.
+    const tile = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.startsWith("Degraded"),
+    )!;
     act(() => tile.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(rankingRows(el)).toHaveLength(degradedWriters);
 
