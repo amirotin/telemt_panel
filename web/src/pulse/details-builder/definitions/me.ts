@@ -515,7 +515,11 @@ export const mePageDefinition: DetailPageDefinition<MePagePayload, MePagePayload
     {
       kind: "array",
       id: "dc_rtt",
-      title: (s) => s.details.pages.me.dcRtt,
+      // Verbatim, like `writers[]` beside it: the array carries four
+      // coverage fields as well as the RTT, and a second heading reading
+      // «Покрытие по дата-центрам» under a chart titled «RTT по
+      // дата-центрам» reads as a mistake rather than as two views.
+      title: () => "dc_rtt[]",
       sourceId: "runtime_edge",
       path: "quality.dc_rtt",
       // Ordered, not read as it arrives: `path` still owns the leaves, and

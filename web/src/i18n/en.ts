@@ -590,7 +590,6 @@ export const en: Dict = {
         qualityCounters: "Quality counters",
         routeDrops: "Route drops",
         dcRttChart: "RTT by data center",
-        dcRtt: "Coverage by data center",
         familyStates: "Address families",
         drainGate: "Drain gate",
         init: "Proxy startup",
