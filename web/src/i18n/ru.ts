@@ -638,6 +638,8 @@ export const ru = {
       runtimeReloadNotice:
         "Требуется перезагрузка конфигурации для применения изменений.",
       processRestartNotice: "Часть изменений требует перезапуска Telemt:",
+      processRestartNoticeNoFields:
+        "Часть изменений требует перезапуска Telemt.",
       reloadNow: "Перезагрузить сейчас",
       restartNow: "Перезапустить Telemt",
       conflictTitle: "Конфигурация изменена на сервере",

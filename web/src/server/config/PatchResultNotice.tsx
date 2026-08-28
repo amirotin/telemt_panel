@@ -28,6 +28,7 @@ export function PatchResultNotice({
   restartPending,
 }: PatchResultNoticeProps) {
   const s = useStrings();
+  const deferred = result.deferred_process_fields ?? [];
   return (
     <Notice tone="ok" title={s.server.config.saved}>
       {result.changed.length > 0 && (
@@ -56,10 +57,19 @@ export function PatchResultNotice({
       {result.process_restart_required && (
         <div className="flex flex-col gap-2">
           <p className="text-meta text-text-muted">
-            {s.server.config.processRestartNotice}{" "}
-            <span className="font-mono text-text">
-              {(result.deferred_process_fields ?? []).join(", ")}
-            </span>
+            {deferred.length > 0 ? (
+              <>
+                {s.server.config.processRestartNotice}{" "}
+                <span className="font-mono text-text">
+                  {deferred.join(", ")}
+                </span>
+              </>
+            ) : (
+              // Telemt can report a restart as required without naming the
+              // fields; the sentence then has to stand on its own instead
+              // of trailing a colon into an empty monospace span.
+              s.server.config.processRestartNoticeNoFields
+            )}
           </p>
           <Button
             variant="secondary"

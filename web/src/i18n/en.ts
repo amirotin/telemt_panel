@@ -567,6 +567,7 @@ export const en: Dict = {
       changedTitle: "Changed keys",
       runtimeReloadNotice: "A config reload is needed to apply these changes.",
       processRestartNotice: "Some changes need a Telemt restart:",
+      processRestartNoticeNoFields: "Some changes need a Telemt restart.",
       reloadNow: "Reload now",
       restartNow: "Restart Telemt",
       conflictTitle: "The configuration changed on the server",
