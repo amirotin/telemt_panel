@@ -30,11 +30,23 @@ export const tlsFingerprintsRefetchMs = 60_000;
 // draw. 501/503 are settled answers about this build, not transport
 // hiccups, so they are never retried; everything else keeps the default.
 export function useTlsFingerprints(enabled = true): TlsFingerprintsState & { refetch: () => void } {
-  const query = useQuery({
+  const query = useTlsFingerprintsQuery(enabled);
+  return { ...resolveTlsFingerprintsQuery(query), refetch: () => void query.refetch() };
+}
+
+// useTlsFingerprintsQuery is the SAME request, handed over unmapped.
+//
+// The Details builder resolves every source — SSE and REST alike — through
+// its own §14 state machine (details-builder/sources.ts), which makes the
+// R5 disabled-vs-unsupported split in one place for all eight pages. Mapping
+// the query here first and re-deriving a status from the mapped result would
+// be that decision made twice. Both hooks share one query key, so a page
+// that uses both (none today) still issues a single request.
+export function useTlsFingerprintsQuery(enabled = true) {
+  return useQuery({
     ...getTelemtTlsFingerprintsOptions({ query: { limit: tlsFingerprintsLimit } }),
     refetchInterval: tlsFingerprintsRefetchMs,
     retry: (failureCount, error) => !isCapabilityCode(error?.code) && failureCount < 1,
     enabled,
   });
-  return { ...resolveTlsFingerprintsQuery(query), refetch: () => void query.refetch() };
 }

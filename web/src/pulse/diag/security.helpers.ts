@@ -1,6 +1,12 @@
 import type { Dict } from "../../i18n";
 import { flattenToRows, type KVGroup } from "./rows";
-import type { EffectiveLimits, SecurityPosture, SecurityWhitelist } from "../../realtime/topics";
+import type {
+  EffectiveLimits,
+  SecurityPosture,
+  SecurityTopic,
+  SecurityWhitelist,
+} from "../../realtime/topics";
+import type { SecurityPageData } from "../details-builder/definitions/security";
 // TLS fingerprints are a REST payload (GET /api/telemt/tls-fingerprints),
 // not a topic field, since M4 task 1 — hence the generated client's type.
 import type { TlsFingerprints } from "../../lib/api/generated/types.gen";
@@ -31,4 +37,27 @@ export function securityGroups(input: SecurityGroupsInput, s: Dict): KVGroup[] {
     groups.push({ title: s.diag.groups.tlsByUser, rows: flattenToRows(input.tlsFingerprints.by_user, s) });
   }
   return groups;
+}
+
+// securityPageData joins the `security` topic with the separately fetched
+// TLS aggregates into the ONE payload the Security Details page's
+// definition reads (details-builder/definitions/security.ts).
+//
+// The TLS half is SPREAD at the top level rather than nested: the field
+// catalog's TLS entries are endpoint-scoped (ruling R9) and keyed exactly
+// the way the REST payload spells them (`by_fingerprint.*.ja4`, `limit`,
+// `capacity`), so a `tls.` prefix here would orphan every one of those
+// descriptions. Absent halves stay absent — §13.1 keeps "no source" and
+// "no observations" apart, and the page's per-source states say which.
+export function securityPageData(
+  topic: SecurityTopic | null | undefined,
+  tls: TlsFingerprints | undefined,
+): SecurityPageData | null {
+  if (!topic && !tls) return null;
+  return {
+    ...(topic?.posture ? { posture: topic.posture } : {}),
+    ...(topic?.whitelist ? { whitelist: topic.whitelist } : {}),
+    ...(topic?.effective_limits ? { effective_limits: topic.effective_limits } : {}),
+    ...(tls ?? {}),
+  };
 }
