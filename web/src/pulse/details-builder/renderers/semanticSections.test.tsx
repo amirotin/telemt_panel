@@ -315,7 +315,7 @@ describe("TimelineSection (spec §9.5)", () => {
     expect(skipped.textContent).toContain("skipped");
   });
 
-  it("summarizes the sequence in the header the way the render does", () => {
+  it("summarizes the sequence as the section NOTE, never as header trailing", () => {
     const instance = instanceOf(page(initTimeline), initialization, "components");
     const el = render(
       <Harness
@@ -326,8 +326,41 @@ describe("TimelineSection (spec §9.5)", () => {
     );
     const header = el.querySelector("button[aria-expanded]")!;
     const ready = initialization.components.length - initializationSkippedCount;
-    expect(header.textContent).toContain(`${ready} ready`);
-    expect(header.textContent).toContain(`${initializationSkippedCount} skipped`);
+    // SectionFrame's header is [title block, trailing column]. The tally is
+    // DATA and can name three event types, so in the shrink-0 trailing
+    // column it squeezed the title to one letter per line at 360 px. It
+    // belongs under the title, where the render draws "14 ready · 2
+    // skipped" — after the title, not instead of it.
+    const [titleBlock, trailing] = Array.from(header.children);
+    const note = titleBlock.lastElementChild!;
+    expect(note).not.toBe(titleBlock.firstElementChild);
+    expect(titleBlock.firstElementChild!.textContent).toContain("Initialization sequence");
+    expect(note.textContent).toContain(`${ready} ready`);
+    expect(note.textContent).toContain(`${initializationSkippedCount} skipped`);
+    expect(trailing.textContent).not.toContain("ready");
+    expect(trailing.textContent).not.toContain("skipped");
+  });
+
+  it("draws the status WORD on screen, not only for a screen reader", () => {
+    const instance = instanceOf(page(eventTimeline), events, "events");
+    const el = render(
+      <Harness
+        render={(ctx) => (
+          <TimelineSection instance={instance} definition={eventTimeline as TimelineSectionDefinition<unknown, unknown>} ctx={ctx} />
+        )}
+      />,
+    );
+    // An event's own type is the only thing telling an `api.user.create.ok`
+    // from an `admission.state`; the marker cannot say it and the step text
+    // does not repeat it.
+    const first = el.querySelector("#events-panel li")!;
+    const status = events.events[0].event_type;
+    const drawn = Array.from(first.querySelectorAll("span")).filter(
+      (span) => span.textContent === status && !span.classList.contains("sr-only"),
+    );
+    expect(drawn).toHaveLength(1);
+    // Nothing is left hiding in sr-only text once the word is visible.
+    expect(first.querySelector(".sr-only")).toBeNull();
   });
 
   it("shows an event's time relatively, with the absolute stamp on the element", () => {
@@ -442,6 +475,21 @@ describe("RankingSection (spec §9.6, §18)", () => {
     expect(rankingRows(el)).toHaveLength(40);
     click(more);
     expect(rankingRows(el)).toHaveLength(tlsRowsPerScope);
+  });
+
+  it("prints the visible count ONCE, beside «Показать ещё»", () => {
+    const el = render(rankingTree(tlsInstance(tlsFingerprints)));
+    const panel = el.querySelector("#by-fingerprint-panel")!;
+    const counters = Array.from(panel.querySelectorAll("span")).filter((span) =>
+      /^Показано \d+ из \d+$/.test(span.textContent ?? ""),
+    );
+    expect(counters).toHaveLength(1);
+    // …and it is the one at the BOTTOM of the list, next to the reveal
+    // button, as in every other collection renderer.
+    const more = Array.from(panel.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Показать ещё"),
+    )!;
+    expect(counters[0].parentElement).toBe(more.parentElement);
   });
 
   it("filters by the search box without losing the ranking", () => {
@@ -745,6 +793,19 @@ describe("CustomSection and the renderer registry (spec §9.8)", () => {
     expect(panel.textContent).toContain("DC 1");
     expect(panel.textContent).toContain("медиана");
     expect(panel.querySelector("svg")).not.toBeNull();
+  });
+
+  it("gives a bar enough width for its label, and scrolls instead of shrinking", () => {
+    const instance = customInstance(qualityChartSection);
+    const el = render(<Harness render={(ctx) => <CustomSection instance={instance} ctx={ctx} />} />);
+    const bars = el.querySelector('[role="list"]')!;
+    // Twelve DC labels in one card: without a floor the columns shrink until
+    // "DC 1" truncates to "D…", which is a chart that says nothing.
+    expect(bars.className).toContain("overflow-x-auto");
+    const first = bars.querySelector('[role="listitem"]')!;
+    const floor = /min-w-\[(\d+)px\]/.exec(first.className);
+    expect(floor).not.toBeNull();
+    expect(Number(floor![1])).toBeGreaterThanOrEqual(40);
   });
 
   it("falls back to readable rows when nobody registered the id", () => {
