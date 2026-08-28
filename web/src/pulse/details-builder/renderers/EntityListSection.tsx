@@ -9,6 +9,7 @@ import type { EntityListSectionDefinition } from "../model";
 import { childPath, indexPath, readPath } from "../paths";
 import type { ClassifyContext, CollectionSectionInstance } from "../resolveSections";
 import { AdaptiveDetailSurface } from "../surfaces/AdaptiveDetailSurface";
+import { useRovingFocus } from "../surfaces/rovingFocus";
 import { SectionFrame } from "./SectionFrame";
 import { EmptyNote, NodeList, RevealMore } from "./NodeTree";
 import { buildRecordNodes } from "./unknownFields";
@@ -72,6 +73,11 @@ export function EntityListSection({
   const shown = filtered.slice(0, limit);
   const open = entries.find((e) => e.key === ctx.openSurfaceKey);
 
+  // §21: the rows are ONE tab stop with arrow-key movement inside it —
+  // forty-seven writers must not be forty-seven stops between the search
+  // box and the rest of the page.
+  const roving = useRovingFocus({ count: shown.length, orientation: "vertical" });
+
   return (
     <SectionFrame
       id={instance.id}
@@ -101,9 +107,11 @@ export function EntityListSection({
           {filtered.length === 0 ? (
             <EmptyNote text={s.details.entity.noMatches} />
           ) : (
-            shown.map((entry) => (
+            <div onKeyDown={roving.onKeyDown}>
+              {shown.map((entry, i) => (
               <EntityRow
                 key={entry.key}
+                rowProps={roving.itemProps(i)}
                 identity={entry.identity}
                 status={entry.status}
                 highlights={(definition?.highlights ?? []).map((path) => {
@@ -118,7 +126,8 @@ export function EntityListSection({
                 onOpen={() => ctx.openSurface(entry.key)}
                 openLabel={s.details.entity.openDetails}
               />
-            ))
+              ))}
+            </div>
           )}
           <RevealMore
             shown={shown.length}
@@ -162,18 +171,22 @@ function EntityRow({
   highlights,
   onOpen,
   openLabel,
+  rowProps,
 }: {
   identity: string;
   status: string | null;
   highlights: string[];
   onOpen: () => void;
   openLabel: string;
+  /** Roving-tabindex membership (§21) — supplied by the section. */
+  rowProps: { tabIndex: 0 | -1 };
 }) {
   return (
     <button
       type="button"
       onClick={onOpen}
       aria-label={`${openLabel}: ${identity}`}
+      {...rowProps}
       className={cn(
         "tap-target flex w-full items-center gap-2 border-b border-border py-2 text-left last:border-b-0",
         "hover:bg-surface-2",

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/Button";
@@ -11,18 +11,22 @@ import { useNow } from "../../people/useNow";
 import type { GateHintKey } from "../../caps";
 import { AttentionSummary } from "./AttentionSummary";
 import { DetailHeader } from "./DetailHeader";
+import { EntityPager, EntitySelector } from "./EntitySelector";
+import { SectionTabs } from "./SectionTabs";
 import { SummaryGrid } from "./SummaryGrid";
 import type { FieldCatalog } from "./fieldCatalog";
 import type { DetailPageDefinition, SectionDefinition, SummaryShortcut } from "./model";
 import { readPath } from "./paths";
 import { resolveSections } from "./resolveSections";
-import { sectionsForTab, withUnknownTail } from "./DetailPage.helpers";
+import { sectionsForTab, tabElementId, withUnknownTail } from "./DetailPage.helpers";
 import { createRenderContext } from "./renderers/context";
 import type { CustomSectionRegistry } from "./renderers/customRenderers";
 import { SectionList } from "./renderers/SectionList";
 import type { PageSourcesState } from "./sources";
 import { sourceStatusShortLabel } from "./sources";
 import { selectEntity, useDetailPageState } from "./state";
+import { useBoundedSwipe } from "./surfaces/useBoundedSwipe";
+import { isCompact, isSplitLayout, useLayoutMode } from "./surfaces/useLayoutMode";
 
 // The header's age ticks faster than the rows do: "актуально 2 сек назад"
 // is only useful if it moves, while re-rendering a 1900-leaf section list
@@ -75,6 +79,13 @@ export function DetailPage<TPayload, TContext>({
 }: DetailPageProps<TPayload, TContext>) {
   const s = useStrings();
   const { mode } = useDisplayMode();
+  // §15: the ONE viewport read on this page. Everything responsive below —
+  // the compressed landscape header, the rail, the sticky master pane, the
+  // sheet placement, whether the swipe is armed — is a function of it, and
+  // NOTHING here is remounted when it changes, which is what makes §15.3's
+  // "поворот не сбрасывает выбранную сущность, filters и expanded state"
+  // true by construction rather than by an effect that restores state.
+  const layout = useLayoutMode();
   const ticking = useNow(PAGE_CLOCK_MS);
   const clock = nowMs ?? ticking;
   const api = useDetailPageState({
@@ -96,6 +107,25 @@ export function DetailPage<TPayload, TContext>({
   const selection = selectEntity(keys, api.state.selectedEntityKey);
   const activeKey =
     selection.status === "selected" ? selection.key : (selection.fallback ?? undefined);
+
+  // --- entity paging: the pager and the swipe (§16.2) ---------------------
+  const activeIndex = activeKey === undefined ? 0 : Math.max(keys.indexOf(activeKey), 0);
+  const { selectEntityKey } = api;
+  const step = useCallback(
+    (delta: number) => {
+      if (keys.length === 0) return;
+      const next = keys[(activeIndex + delta + keys.length) % keys.length];
+      if (next !== undefined) selectEntityKey(next);
+    },
+    [keys, activeIndex, selectEntityKey],
+  );
+  const swipe = useBoundedSwipe({
+    onNext: () => step(1),
+    onPrevious: () => step(-1),
+    // §16.2 bounds the gesture to the hero of a touch layout. On a desktop
+    // the pager buttons are the whole story.
+    enabled: isCompact(layout) && keys.length > 1,
+  });
 
   // --- context ------------------------------------------------------------
   const context = useMemo<TContext | null>(() => {
@@ -168,6 +198,9 @@ export function DetailPage<TPayload, TContext>({
       title={definition.title(s)}
       {...(definition.description ? { description: definition.description(s) } : {})}
       {...(breadcrumb !== undefined ? { breadcrumb } : {})}
+      // §15.3: in compact landscape the lede and the secondary header text
+      // give their pixels back to the content.
+      compact={layout === "compact-landscape"}
       status={sources.status}
       freshnessMs={sources.freshnessMs}
       nowMs={clock}
@@ -208,69 +241,144 @@ export function DetailPage<TPayload, TContext>({
     );
   }
 
+  const summary = definition.summary && definition.summary.length > 0 && (
+    <SummaryGrid
+      metrics={definition.summary}
+      context={context}
+      mode={mode}
+      nowMs={clock}
+      onShortcut={applyShortcut}
+      lookup={ctx.lookup}
+      // §15.3: "summary cards уплотняются без удаления critical values".
+      dense={layout === "compact-landscape"}
+    />
+  );
+
+  const pager = entities && keys.length > 1 && (
+    <EntityPager
+      index={activeIndex}
+      total={keys.length}
+      previousLabel={entities.label(items[(activeIndex - 1 + items.length) % items.length])}
+      nextLabel={entities.label(items[(activeIndex + 1) % items.length])}
+      onPrevious={() => step(-1)}
+      onNext={() => step(1)}
+    />
+  );
+
+  // The hero is the bounded region §16.2 allows the gesture on — the
+  // summary plus the pager, never the page and never the horizontally
+  // scrolling selector strip (a swipe there would fight its own scroll).
+  // `touch-pan-y` keeps vertical scrolling native while the horizontal axis
+  // is ours to read.
+  const hero = (summary || pager) && (
+    <div
+      className="flex touch-pan-y flex-col gap-3"
+      data-testid="detail-hero"
+      onPointerDown={swipe.onPointerDown}
+      onPointerMove={swipe.onPointerMove}
+      onPointerUp={swipe.onPointerUp}
+      onPointerCancel={swipe.onPointerCancel}
+    >
+      {summary}
+      {pager}
+    </div>
+  );
+
+  const panelId = `${definition.id}-sections`;
+  const tabbed = tabs !== undefined && tabs.length > 1;
+
   return (
     <div className="flex flex-col gap-4">
       {header}
 
-      {definition.summary && definition.summary.length > 0 && (
-        <SummaryGrid
-          metrics={definition.summary}
-          context={context}
-          mode={mode}
-          nowMs={clock}
-          onShortcut={applyShortcut}
-          lookup={ctx.lookup}
-        />
-      )}
+      {/* §15.3/§15.4's master + detail split, and §15.2's single column —
+          ONE element tree in every mode. `display: contents` dissolves the
+          split wrapper where there is no split, so a rotation changes CSS
+          and nothing else: no section is remounted and nothing the reader
+          typed, opened or filtered is lost. */}
+      <div
+        className={cn(isSplitLayout(layout) ? "flex flex-row items-start gap-4" : "contents")}
+        data-layout={layout}
+      >
+        {entities && items.length > 0 && (
+          <EntitySelector
+            labels={items.map((item) => entities.label(item))}
+            keys={keys}
+            activeKey={selection.status === "gone" ? undefined : activeKey}
+            onSelect={api.selectEntityKey}
+            layout={layout}
+          />
+        )}
 
-      {entities && items.length > 0 && (
-        <EntitySelector
-          labels={items.map((item) => entities.label(item))}
-          keys={keys}
-          activeKey={selection.status === "gone" ? undefined : activeKey}
-          onSelect={api.selectEntityKey}
-        />
-      )}
-
-      {selection.status === "gone" && (
-        <Card className="flex flex-col gap-2">
-          <p className="text-sm font-semibold text-text">{s.details.entity.goneTitle}</p>
-          <p className="text-meta text-text-muted">{s.details.entity.goneDescription}</p>
-          {selection.fallback !== null && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="self-start"
-              onClick={() => api.selectEntityKey(selection.fallback ?? undefined)}
-            >
-              {s.details.entity.goneFallback}
-            </Button>
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-4",
+            isSplitLayout(layout) && "flex-1",
+            // §15.4: the detail column stops at a readable measure instead
+            // of stretching field descriptions across a 1920 px screen.
+            layout === "wide" && "detail-readable",
           )}
-        </Card>
-      )}
+        >
+          {hero}
 
-      {attention}
+          {selection.status === "gone" && (
+            <Card className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-text">{s.details.entity.goneTitle}</p>
+              <p className="text-meta text-text-muted">{s.details.entity.goneDescription}</p>
+              {selection.fallback !== null && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => api.selectEntityKey(selection.fallback ?? undefined)}
+                >
+                  {s.details.entity.goneFallback}
+                </Button>
+              )}
+            </Card>
+          )}
 
-      {tabs && tabs.length > 1 && (
-        <SectionTabs
-          tabs={tabs.map((tab) => ({ id: tab.id, label: tab.label(s) }))}
-          activeId={activeTab}
-          onSelect={api.setActiveTab}
-        />
-      )}
+          {attention}
 
-      {selection.status !== "gone" && (
-        <SectionList
-          sections={shown}
-          definitions={sectionDefinitions}
-          ctx={ctx}
-          searchQuery={api.state.searchQuery}
-          onSearchChange={api.setSearchQuery}
-          raw={context}
-          {...(deltas !== undefined ? { deltas } : {})}
-          {...(customRenderers !== undefined ? { customRenderers } : {})}
-        />
-      )}
+          {tabbed && (
+            <SectionTabs
+              tabs={tabs.map((tab) => ({ id: tab.id, label: tab.label(s) }))}
+              activeId={activeTab}
+              onSelect={api.setActiveTab}
+              panelId={panelId}
+              label={s.details.page.tabsLabel}
+            />
+          )}
+
+          {/* The tabs' panel (§21). Always the same element, tabs or not,
+              so switching layout or turning tabs on never remounts the
+              section list underneath it. */}
+          <div
+            id={panelId}
+            {...(tabbed
+              ? {
+                  role: "tabpanel",
+                  ...(activeTab !== undefined
+                    ? { "aria-labelledby": tabElementId(panelId, activeTab) }
+                    : {}),
+                }
+              : {})}
+          >
+            {selection.status !== "gone" && (
+              <SectionList
+                sections={shown}
+                definitions={sectionDefinitions}
+                ctx={ctx}
+                searchQuery={api.state.searchQuery}
+                onSearchChange={api.setSearchQuery}
+                raw={context}
+                {...(deltas !== undefined ? { deltas } : {})}
+                {...(customRenderers !== undefined ? { customRenderers } : {})}
+              />
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -285,74 +393,6 @@ function LoadingSkeleton() {
       </div>
       <Skeleton className="h-40 rounded-xl" />
       <Skeleton className="h-40 rounded-xl" />
-    </div>
-  );
-}
-
-// EntitySelector is §15.2's horizontal strip with scroll snap. Task 5 adds
-// the bounded swipe and the mandatory visible pager; the buttons here are
-// already the non-gesture path §16.1 requires.
-function EntitySelector({
-  labels,
-  keys,
-  activeKey,
-  onSelect,
-}: {
-  labels: string[];
-  keys: string[];
-  activeKey: string | undefined;
-  onSelect: (key: string) => void;
-}) {
-  return (
-    <div className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1">
-      {keys.map((key, i) => (
-        <button
-          key={key}
-          type="button"
-          aria-pressed={key === activeKey}
-          onClick={() => onSelect(key)}
-          className={cn(
-            "tap-target shrink-0 snap-start rounded-xl px-3 py-2 text-left font-mono text-[12.5px] font-semibold",
-            key === activeKey
-              ? "bg-surface-2 text-text ring-1 ring-accent"
-              : "bg-surface text-text-muted hover:bg-surface-2",
-          )}
-        >
-          {labels[i]}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// SectionTabs is the sticky segmented control of §15.2, wired as a real
-// tablist so the keyboard and screen-reader contract of §21 holds.
-function SectionTabs({
-  tabs,
-  activeId,
-  onSelect,
-}: {
-  tabs: { id: string; label: string }[];
-  activeId: string | undefined;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div role="tablist" className="-mx-4 flex gap-2 overflow-x-auto px-4">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={tab.id === activeId}
-          onClick={() => onSelect(tab.id)}
-          className={cn(
-            "tap-target shrink-0 rounded-lg px-3 text-meta font-semibold",
-            tab.id === activeId ? "bg-surface-2 text-text" : "text-text-muted hover:text-text",
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
     </div>
   );
 }

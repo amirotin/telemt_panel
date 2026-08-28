@@ -498,6 +498,17 @@ export const en: Dict = {
     page: {
       back: "Back",
       noData: "The panel received no data for this page.",
+      tabsLabel: "Page sections",
+    },
+    selector: {
+      label: "Entity selector",
+      previousTemplate: "Previous: {label}",
+      nextTemplate: "Next: {label}",
+      positionTemplate: "{index} / {total}",
+    },
+    summary: {
+      warn: "needs attention",
+      bad: "problem",
     },
     freshness: {
       updated: "updated",
@@ -516,6 +527,8 @@ export const en: Dict = {
       sortLabel: "Sort",
       sortByTemplate: "By {column}",
       byScore: "By rank",
+      defaultOrder: "Default order",
+      defaultOrderTemplate: "Default ({column})",
       noMatches: "No matches",
       refreshOrder: "Refresh order",
     },

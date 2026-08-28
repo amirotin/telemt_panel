@@ -1,4 +1,5 @@
 import { useStrings } from "../../i18n";
+import { cn } from "../../lib/cn";
 import { IconChevronLeft } from "../../ui/icons";
 import { SectionLabel } from "../../ui/SectionLabel";
 import { StatePill, type State } from "../../ui/StatePill";
@@ -24,10 +25,17 @@ const STATUS_TONE: Record<SourceStatus, State> = {
 
 export interface DetailHeaderProps {
   title: string;
-  /** The page's lede — hidden in compact landscape by Task 5 (§15.3). */
+  /** The page's lede — hidden in compact landscape (§15.3). */
   description?: string;
   /** Uppercase trail above the title ("ПУЛЬС / DETAILS"). */
   breadcrumb?: string;
+  /**
+   * §15.3's compressed header: on a phone in landscape the whole viewport
+   * is 390 px tall, so the secondary trail and the lede are dropped and the
+   * title steps down a size. Nothing that carries STATE goes away — the
+   * age, the status pill and the back affordance stay.
+   */
+  compact?: boolean;
   status: SourceStatus;
   /** Normalized epoch ms of the payload on screen (sources.ts). */
   freshnessMs: number | null;
@@ -44,6 +52,7 @@ export function DetailHeader({
   title,
   description,
   breadcrumb,
+  compact = false,
   status,
   freshnessMs,
   nowMs,
@@ -53,7 +62,7 @@ export function DetailHeader({
   const age = freshnessMs === null ? null : formatRelativeAge(freshnessMs, s, nowMs);
 
   return (
-    <header className="flex flex-col gap-2">
+    <header className={cn("flex flex-col", compact ? "gap-1" : "gap-2")}>
       {onBack && (
         <button
           type="button"
@@ -64,9 +73,18 @@ export function DetailHeader({
           {s.details.page.back}
         </button>
       )}
-      {breadcrumb !== undefined && <SectionLabel className="text-accent">{breadcrumb}</SectionLabel>}
+      {breadcrumb !== undefined && !compact && (
+        <SectionLabel className="text-accent">{breadcrumb}</SectionLabel>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h1 className="min-w-0 break-words text-title font-bold text-text">{title}</h1>
+        <h1
+          className={cn(
+            "min-w-0 break-words font-bold text-text",
+            compact ? "text-lg" : "text-title",
+          )}
+        >
+          {title}
+        </h1>
         <div className="flex shrink-0 items-center gap-2">
           {age && (
             <span className="text-meta tabular-nums text-text-muted" title={age.title}>
@@ -78,7 +96,7 @@ export function DetailHeader({
           </StatePill>
         </div>
       </div>
-      {description !== undefined && description !== "" && (
+      {description !== undefined && description !== "" && !compact && (
         <p className="max-w-prose text-meta leading-relaxed text-text-muted">{description}</p>
       )}
     </header>

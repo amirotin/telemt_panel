@@ -9,11 +9,25 @@ import { showsAtMode } from "./renderers/context";
 import { fieldLabel } from "./renderers/unknownFields";
 import type { DisplayMode } from "../../display-mode";
 
-const TONE_CLASSES: Record<NonNullable<SummaryMetricDefinition<unknown>["tone"]>, string> = {
+type MetricTone = NonNullable<SummaryMetricDefinition<unknown>["tone"]>;
+
+const TONE_CLASSES: Record<MetricTone, string> = {
   neutral: "",
   good: "text-ok",
   warn: "text-warn",
   bad: "text-error",
+};
+
+// §21: "status не кодируется только цветом". A tile that is amber because
+// something is wrong says so with a glyph AND with a word for a screen
+// reader; the colour is the third cue, not the only one. `good` gets no
+// marker on purpose — "nothing is wrong" is the default reading of a tile,
+// and a checkmark on every healthy number is noise.
+const TONE_MARKERS: Record<MetricTone, string> = {
+  neutral: "",
+  good: "",
+  warn: "!",
+  bad: "!",
 };
 
 export interface SummaryGridProps<T> {
@@ -25,6 +39,8 @@ export interface SummaryGridProps<T> {
   onShortcut?: (shortcut: SummaryShortcut) => void;
   /** Field-catalog scope, so an unlabelled metric is named the way the rows are. */
   lookup?: FieldLookupContext;
+  /** §15.3: compact landscape packs the tiles tighter, dropping nothing. */
+  dense?: boolean;
   className?: string;
 }
 
@@ -44,6 +60,7 @@ export function SummaryGrid<T>({
   nowMs,
   onShortcut,
   lookup,
+  dense = false,
   className,
 }: SummaryGridProps<T>) {
   const s = useStrings();
@@ -51,7 +68,13 @@ export function SummaryGrid<T>({
   if (visible.length === 0) return null;
 
   return (
-    <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-4", className)}>
+    <div
+      className={cn(
+        "grid",
+        dense ? "grid-cols-4 gap-2" : "grid-cols-2 gap-3 sm:grid-cols-4",
+        className,
+      )}
+    >
       {visible.map((metric) => {
         const path = metric.path ?? metric.id;
         const field = describeField(path, s, lookup ?? {});
@@ -66,10 +89,27 @@ export function SummaryGrid<T>({
           ...(metric.format !== undefined ? { formatter: metric.format } : {}),
           ...(metric.unit !== undefined ? { unit: metric.unit } : {}),
         });
+        const tone = metric.tone ?? "neutral";
+        const marker = TONE_MARKERS[tone];
         const card = (
           <StatCard
             label={label}
-            value={<span className={TONE_CLASSES[metric.tone ?? "neutral"]}>{formatted.text}</span>}
+            className={cn(dense && "gap-0.5 p-2")}
+            value={
+              <span className={cn("inline-flex items-baseline gap-1", TONE_CLASSES[tone])}>
+                {marker !== "" && (
+                  <>
+                    <span aria-hidden="true" className="text-sm">
+                      {marker}
+                    </span>
+                    <span className="sr-only">
+                      {tone === "bad" ? s.details.summary.bad : s.details.summary.warn}
+                    </span>
+                  </>
+                )}
+                <span className={cn(dense && "text-lg")}>{formatted.text}</span>
+              </span>
+            }
           />
         );
         if (metric.shortcut && onShortcut) {

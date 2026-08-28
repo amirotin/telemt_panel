@@ -39,3 +39,9 @@ export function sectionsForTab(
   const claimed = new Set(tabs.flatMap((t) => t.sections ?? []));
   return sections.filter((section) => !claimed.has(section.id));
 }
+
+// tabElementId names a tab button so its panel can point back at it with
+// `aria-labelledby` — the other half of §21's tablist/tab/tabpanel model.
+export function tabElementId(panelId: string, tabId: string): string {
+  return `${panelId}-tab-${tabId}`;
+}

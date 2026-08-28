@@ -44,7 +44,13 @@ export function SectionFrame({
   const panelId = `${id}-panel`;
   const header = (
     <div className="flex min-w-0 flex-1 flex-col items-start text-left">
-      <div className="flex min-w-0 max-w-full items-center gap-2">
+      {/* L9 (Task 4 review): on 360 px the badge used to sit in the middle
+          of a wrapped title and squeeze it into breaking mid-token —
+          `handshake_error_codes[]` came out as two ragged fragments.
+          Wrapping the row lets the title take the full width and drops the
+          badge onto the next line instead of stealing from it; `baseline`
+          keeps the two aligned while they share one. */}
+      <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-1">
         <span
           className={cn(
             "min-w-0 break-words font-semibold text-text",

@@ -12,6 +12,7 @@ import type { RankingSectionDefinition } from "../model";
 import { childPath, indexPath } from "../paths";
 import type { ClassifyContext, CollectionSectionInstance } from "../resolveSections";
 import { AdaptiveDetailSurface } from "../surfaces/AdaptiveDetailSurface";
+import { useRovingFocus } from "../surfaces/rovingFocus";
 import { SectionFrame } from "./SectionFrame";
 import { EmptyNote, NodeList, RevealMore } from "./NodeTree";
 import { buildRecordNodes } from "./unknownFields";
@@ -108,6 +109,10 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
   const limit = ctx.visibleLimit(instance.id, instance.paging.initial);
   const shown = ordered.slice(0, limit);
 
+  // §21: fifty ranked rows are ONE tab stop, with the arrow keys moving
+  // inside the list.
+  const roving = useRovingFocus({ count: shown.length, orientation: "vertical" });
+
   // §10.5 makes a search box mandatory above 21 elements; a ranking offers
   // one from the second element on, because "find this fingerprint" is the
   // question a ranking exists to answer.
@@ -165,16 +170,31 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
                     resync();
                   }}
                 >
-                  {scoreKey === SCORE_SORT_KEY && (
-                    <option value={SCORE_SORT_KEY}>{s.details.ranking.byScore}</option>
-                  )}
-                  {columns.map((column) => (
-                    <option key={column} value={column}>
-                      {fill(s.details.ranking.sortByTemplate, {
-                        column: columnLabel(instance.path, column, s, classifyCtx),
-                      })}
-                    </option>
-                  ))}
+                  {/* The default order is an OPTION of its own (carry-over
+                      L4 from the Task 4 review), always first and always
+                      named as the default. Before this, a reader who had
+                      sorted by a column could only pick another column —
+                      the option that happened to release the slot was the
+                      one labelled «По total», which reads like any other
+                      sort. Its VALUE is still the score key, so picking it
+                      empties the slot rather than filling it with a sort
+                      equal to the default. */}
+                  <option value={scoreKey}>
+                    {scoreKey === SCORE_SORT_KEY
+                      ? s.details.ranking.defaultOrder
+                      : fill(s.details.ranking.defaultOrderTemplate, {
+                          column: columnLabel(instance.path, scoreKey, s, classifyCtx),
+                        })}
+                  </option>
+                  {columns
+                    .filter((column) => column !== scoreKey)
+                    .map((column) => (
+                      <option key={column} value={column}>
+                        {fill(s.details.ranking.sortByTemplate, {
+                          column: columnLabel(instance.path, column, s, classifyCtx),
+                        })}
+                      </option>
+                    ))}
                 </Select>
               )}
             </div>
@@ -220,12 +240,13 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
           {ordered.length === 0 ? (
             <EmptyNote text={s.details.ranking.noMatches} />
           ) : (
-            <ol className="flex flex-col">
+            <ol className="flex flex-col" onKeyDown={roving.onKeyDown}>
               {shown.map((entry, i) => (
                 <RankingRow
                   key={entry.key}
                   rank={i + 1}
                   entry={entry}
+                  rowProps={roving.itemProps(i)}
                   ctx={ctx}
                   {...(definition?.scoreLabel ? { scoreLabel: definition.scoreLabel(s) } : {})}
                   openLabel={s.details.entity.openDetails}
@@ -345,6 +366,7 @@ function RankingRow({
   scoreLabel,
   openLabel,
   onOpen,
+  rowProps,
 }: {
   rank: number;
   entry: RankedEntry;
@@ -352,6 +374,8 @@ function RankingRow({
   scoreLabel?: string;
   openLabel: string;
   onOpen: () => void;
+  /** Roving-tabindex membership (§21) — supplied by the section. */
+  rowProps: { tabIndex: 0 | -1 };
 }) {
   const s = useStrings();
   const score = formatValue(entry.score, s, { nowMs: ctx.nowMs, formatter: "integer" });
@@ -361,6 +385,7 @@ function RankingRow({
         type="button"
         onClick={onOpen}
         aria-label={`${openLabel}: ${entry.identity}`}
+        {...rowProps}
         className={cn(
           "tap-target flex w-full items-center gap-3 border-b border-border py-2 text-left last:border-b-0",
           "hover:bg-surface-2",
