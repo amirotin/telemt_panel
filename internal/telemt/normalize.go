@@ -48,13 +48,11 @@ func normalizeValue(v reflect.Value) {
 		}
 	case reflect.Slice:
 		// []byte / json.RawMessage (Elem().Kind() == Uint8) are opaque
-		// JSON-value containers, not JSON arrays — ConfigSections' section
-		// fields are exactly this: a nil one means "section absent from
-		// the config file" (and must stay that way for `omitempty` to
-		// drop the key, and for callers like GetConfig's own test to see
-		// "absent" as absent rather than an empty value of ambiguous
-		// shape). Left untouched; only genuine element slices are
-		// normalized below.
+		// JSON-value containers, not JSON arrays: a nil one means "this
+		// JSON value was absent", which must stay absent rather than
+		// becoming an empty value of ambiguous shape (the config
+		// sections' raw values are exactly this kind of payload). Left
+		// untouched; only genuine element slices are normalized below.
 		if v.Type().Elem().Kind() == reflect.Uint8 {
 			return
 		}

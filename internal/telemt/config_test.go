@@ -25,15 +25,50 @@ func TestGetConfigIntegerRoundTrip(t *testing.T) {
 	if revision != "cfg-1" {
 		t.Errorf("revision = %q", revision)
 	}
-	if sections.Timeouts != nil {
-		t.Errorf("absent section must stay nil, got %s", sections.Timeouts)
+	if _, ok := sections["timeouts"]; ok {
+		t.Errorf("absent section must stay absent, got %s", sections["timeouts"])
 	}
 	var general map[string]json.RawMessage
-	if err := json.Unmarshal(sections.General, &general); err != nil {
+	if err := json.Unmarshal(sections["general"], &general); err != nil {
 		t.Fatal(err)
 	}
 	if string(general["upstream_connect_budget_ms"]) != "9007199254740993" {
 		t.Errorf("integer round-trip broken: got %s", general["upstream_connect_budget_ms"])
+	}
+}
+
+// TestGetConfigPassesUnknownSectionsThrough is the M4 T1b invariant: the
+// SDK holds config sections as a map, so a section the panel has never
+// heard of — `web` before this task, whatever Telemt adds after it —
+// reaches the caller byte-for-byte instead of being dropped by a fixed
+// struct's field set. A section Telemt sent as an explicit null is kept as
+// that literal null, not synthesized into an empty object.
+func TestGetConfigPassesUnknownSectionsThrough(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{` +
+			`"general":{"log_level":"info"},` +
+			`"web":{"enabled":true,"limits":{"max_sessions_global":128}},` +
+			`"future_section":{"nested":{"n":9007199254740993}},` +
+			`"censorship":null},"revision":"cfg-1"}`))
+	})
+
+	sections, _, err := c.GetConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"general":        `{"log_level":"info"}`,
+		"web":            `{"enabled":true,"limits":{"max_sessions_global":128}}`,
+		"future_section": `{"nested":{"n":9007199254740993}}`,
+		"censorship":     `null`,
+	}
+	if len(sections) != len(want) {
+		t.Fatalf("sections has %d entries, want %d: %v", len(sections), len(want), sections)
+	}
+	for name, raw := range want {
+		if string(sections[name]) != raw {
+			t.Errorf("sections[%q] = %s, want %s", name, sections[name], raw)
+		}
 	}
 }
 

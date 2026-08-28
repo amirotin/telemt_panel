@@ -16,7 +16,7 @@ func (c *Client) GetConfig(ctx context.Context) (ConfigSections, string, error) 
 
 // PatchConfig calls PATCH /v1/config. patch is a caller-built JSON Merge
 // Patch object over the editable sections (general/timeouts/censorship/
-// upstreams/dc_overrides/server.listeners) — deep-merged for tables,
+// upstreams/dc_overrides/web/server.listeners) — deep-merged for tables,
 // wholesale-replaced for arrays and scalars; unlike PatchUser, a nested
 // JSON null inside a config patch is silently dropped by Telemt rather than
 // removing a key (config_edit.rs json_to_toml), so there is no tri-state

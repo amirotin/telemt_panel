@@ -246,6 +246,33 @@ func TestBodyLimitBytesMapsToPayloadTooLarge(t *testing.T) {
 	}
 }
 
+// TestPatchWebLimitsIsProcessDeferred covers the fake's one deferred-field
+// rule: patching under `[web.limits]` succeeds but comes back reported as
+// restart-required, which is what drives the panel's "требуется рестарт"
+// banner and its field list.
+func TestPatchWebLimitsIsProcessDeferred(t *testing.T) {
+	_, c := newTestServer(t, Scenario{})
+	ctx := context.Background()
+
+	patch := map[string]any{"web": map[string]any{"limits": map[string]any{"max_sessions_global": 256}}}
+	result, _, err := c.PatchConfig(ctx, patch, "", telemt.ReloadQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ProcessRestartRequired || len(result.DeferredProcessFields) != 1 || result.DeferredProcessFields[0] != "web.limits" {
+		t.Errorf("result = %+v, want process_restart_required with deferred_process_fields [web.limits]", result)
+	}
+
+	// A patch that stays out of web.limits reloads in place.
+	plain, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{"log_level": "debug"}}, "", telemt.ReloadQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.ProcessRestartRequired || len(plain.DeferredProcessFields) != 0 {
+		t.Errorf("result = %+v, want no deferred fields", plain)
+	}
+}
+
 func TestPatchConfigRevisionConflictAgainstFake(t *testing.T) {
 	_, c := newTestServer(t, Scenario{})
 	ctx := context.Background()

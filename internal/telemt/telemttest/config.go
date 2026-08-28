@@ -11,10 +11,15 @@ import (
 )
 
 // sampleConfigSections is fixture TOML-shaped config data, marshaled through
-// telemt.ConfigSections's json.RawMessage fields so GetConfig's decode path
+// telemt.ConfigSections's json.RawMessage values so GetConfig's decode path
 // is exercised the same way it would be against real Telemt. request_body_limit_bytes
 // is deliberately a value that only survives round-trip as an integer (not a
-// float) — see the "known rakes" integer round-trip test.
+// float) — see the "known rakes" integer round-trip test. `web` is the
+// section Telemt 3.5.3+ made editable (API.md §ConfigData); it is here so
+// the dev stack and the handler tests exercise a section the panel knows
+// nothing about beyond passing it through, `web.limits` included (that
+// subtable is the process-deferred one Telemt reports in
+// deferred_process_fields).
 func sampleConfigSections() telemt.ConfigSections {
 	general, _ := json.Marshal(map[string]any{
 		"log_level":                  "info",
@@ -23,7 +28,16 @@ func sampleConfigSections() telemt.ConfigSections {
 		"upstream_connect_budget_ms": 5000,
 	})
 	timeouts, _ := json.Marshal(map[string]any{"client_handshake": 10, "client_keepalive": 60})
-	return telemt.ConfigSections{General: general, Timeouts: timeouts}
+	web, _ := json.Marshal(map[string]any{
+		"enabled":          true,
+		"carrier":          "https-lanes",
+		"carrier_learning": true,
+		"limits": map[string]any{
+			"max_sessions_global":     128,
+			"max_streams_per_session": 128,
+		},
+	})
+	return telemt.ConfigSections{"general": general, "timeouts": timeouts, "web": web}
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter) {
@@ -84,8 +98,9 @@ func (s *Server) handlePatchConfig(w http.ResponseWriter, r *http.Request, rawQu
 	mode := values.Get("reload")
 	result := telemt.PatchConfigResult{
 		Revision: s.bumpRevision(), RuntimeReloadRequired: true, Changed: changed,
-		DeferredProcessFields: []string{},
+		DeferredProcessFields: deferredProcessFields(patch),
 	}
+	result.ProcessRestartRequired = len(result.DeferredProcessFields) > 0
 	status := http.StatusOK
 	if mode != "" {
 		accepted := s.submitReload(mode, values.Get("timeout_secs"), values.Get("failure_policy"), result.Revision)
@@ -93,6 +108,25 @@ func (s *Server) handlePatchConfig(w http.ResponseWriter, r *http.Request, rawQu
 		status = http.StatusAccepted
 	}
 	writeOK(w, status, result, result.Revision)
+}
+
+// deferredProcessFields mirrors the one process-deferred config path real
+// Telemt reports today: any change under `[web.limits]` is accepted as
+// desired configuration but only takes effect after a process restart
+// (API.md §ConfigData). Everything else in this fake reloads in place.
+func deferredProcessFields(patch map[string]json.RawMessage) []string {
+	web, ok := patch["web"]
+	if !ok {
+		return []string{}
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(web, &fields); err != nil {
+		return []string{}
+	}
+	if _, ok := fields["limits"]; !ok {
+		return []string{}
+	}
+	return []string{"web.limits"}
 }
 
 func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {

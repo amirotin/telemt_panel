@@ -44,6 +44,33 @@ func TestScenarioFull(t *testing.T) {
 	}
 }
 
+// TestScenarioFullServesWebConfigSection pins the dev stack's config
+// payload to the Telemt 3.5.3+ shape: `/v1/config` carries a `[web]`
+// section (with the process-deferred `web.limits` subtable), so the panel's
+// raw config editor is exercised against a section it has no typed
+// knowledge of — the M4 T1b passthrough path.
+func TestScenarioFullServesWebConfigSection(t *testing.T) {
+	fake := telemttest.New(scenarios["full"])
+	defer fake.Close()
+
+	w := httptest.NewRecorder()
+	fake.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/config", nil))
+	var got struct {
+		Data struct {
+			Web struct {
+				Enabled bool            `json:"enabled"`
+				Limits  json.RawMessage `json:"limits"`
+			} `json:"web"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !got.Data.Web.Enabled || len(got.Data.Web.Limits) == 0 {
+		t.Errorf("full scenario: /v1/config web = %+v, want enabled with a limits table", got.Data.Web)
+	}
+}
+
 // TestScenarioEdgeOff covers the "edge-off" scenario: the stock-config
 // default, runtime_edge closed.
 func TestScenarioEdgeOff(t *testing.T) {

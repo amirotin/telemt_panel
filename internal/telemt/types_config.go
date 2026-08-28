@@ -3,23 +3,26 @@ package telemt
 import "encoding/json"
 
 // ConfigSections is the payload of GET /v1/config — the editable Telemt
-// config sections as raw JSON, so integers round-trip exactly rather than
-// going through a decode/re-encode that could turn a large u64 into a float
-// (07-telemt-sdk.md §Config: "Целые числа обязаны переживать round-trip как
-// целые"). A section absent from the config file is an absent (nil) field
-// here, never an explicit JSON null (API.md: "Sections absent from the
-// config file are absent from the response (not null)"). `access` and
-// `network` are never returned; under `server` only the nested `listeners`
-// allowlist is exposed, which is why Server holds `{"listeners": [...]}`
-// rather than the section being split into per-field entries.
-type ConfigSections struct {
-	General     json.RawMessage `json:"general,omitempty"`
-	Timeouts    json.RawMessage `json:"timeouts,omitempty"`
-	Censorship  json.RawMessage `json:"censorship,omitempty"`
-	Upstreams   json.RawMessage `json:"upstreams,omitempty"`
-	DCOverrides json.RawMessage `json:"dc_overrides,omitempty"`
-	Server      json.RawMessage `json:"server,omitempty"`
-}
+// config sections keyed by section name (`general`, `timeouts`,
+// `censorship`, `upstreams`, `dc_overrides`, `server`, and since Telemt
+// 3.5.3 `web`), each held as raw JSON so integers round-trip exactly rather
+// than going through a decode/re-encode that could turn a large u64 into a
+// float (07-telemt-sdk.md §Config: "Целые числа обязаны переживать
+// round-trip как целые"). A section absent from the config file is an
+// absent map key, never an explicit JSON null (API.md: "Sections absent
+// from the config file are absent from the response (not null)") — and a
+// section Telemt did send as null stays a literal `null` value rather than
+// being synthesized into something else.
+//
+// A map rather than a fixed struct so a section added by a newer Telemt
+// passes through untouched instead of being silently dropped on the way to
+// GET /api/telemt/config (decision 2026-08-28, M4 T1b — `web` was exactly
+// that case). Section *order* is a UI concern and lives on the frontend;
+// this type carries no order. `access` and `network` are never returned;
+// under `server` only the nested `listeners` allowlist is exposed, which is
+// why that section's value is `{"listeners": [...]}` rather than the
+// section being split into per-field entries.
+type ConfigSections map[string]json.RawMessage
 
 // ReloadQuery configures the optional inline reload PatchConfig triggers via
 // its query string (reload=instant|drain&timeout_secs=&failure_policy=,
