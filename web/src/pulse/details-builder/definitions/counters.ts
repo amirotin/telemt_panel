@@ -169,8 +169,8 @@ export const countersPageDefinition: DetailPageDefinition<ZeroAllData, ZeroAllDa
     },
     // The response's own generation stamp. It is NOT a counter, so it is a
     // row of its own rather than a sixth group — and declaring it is what
-    // keeps the map (which owns the whole context) from consuming a field
-    // nothing would then draw.
+    // puts the one top-level scalar of the dump on screen, since the map
+    // below claims only the five sections it actually draws.
     {
       kind: "scalars",
       id: "metadata",
@@ -185,6 +185,11 @@ export const countersPageDefinition: DetailPageDefinition<ZeroAllData, ZeroAllDa
       title: (s) => s.details.pages.counters.all,
       description: (s) => s.details.pages.counters.allDescription,
       sourceId: "zero",
+      // Anchored on the whole response, but every group below is BOUND to
+      // its own path, and a bound map claims only its groups. A section
+      // `zero/all` grows later therefore falls through to R2's extended
+      // tail — visible and explainable — instead of being swallowed by a
+      // map that would never draw it.
       path: "",
       defaultExpanded: true,
       supportsDelta: true,

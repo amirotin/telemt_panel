@@ -502,7 +502,17 @@ function resolveDynamicMapSection<T>(
     ...(section.minMode ? { minMode: section.minMode } : {}),
     defaultExpanded: section.defaultExpanded ?? false,
     path: section.path,
-    consumed: leafPathsUnder(context, section.path),
+    // A map that BINDS ITS GROUPS consumes exactly what those groups draw,
+    // never the whole subtree it is anchored on. Counters anchors on `""`
+    // and binds the five sections `zero/all` documents, so claiming the
+    // whole context would delete a SIXTH section a future Telemt adds:
+    // drawn by nobody, consumed by this, absent from the §24 tail — the
+    // lost leaf §27.4 exists to forbid. An ungrouped map still owns
+    // everything under its path, which is what makes it forward-compatible
+    // for new KEYS (§11.2).
+    consumed: section.groups
+      ? section.groups.flatMap((g) => leafPathsUnder(context, g.path))
+      : leafPathsUnder(context, section.path),
     groups,
     supportsDelta: section.supportsDelta ?? false,
   };

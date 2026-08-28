@@ -157,16 +157,20 @@ describe("checkpoint R5-Counters: completeness (§27.4, ruling R7)", () => {
     expect(result.extractedFromScalars).toEqual([]);
   });
 
-  it("keeps the tail empty for a build that reports a section we have never seen", () => {
+  it("hands a section we have never seen to the tail instead of swallowing it", () => {
     const future = {
       ...zeroAll,
       a_section_from_a_future_telemt: { some_total: 1 },
     } as unknown as ZeroAllData;
     const result = resolveFor(future);
     expect(result.lostPaths).toEqual([]);
-    // An unknown SECTION is not silently dropped: the map owns the whole
-    // context, so its leaves are consumed, and R2's extended-mode tail is
-    // where a reader finds them if the map's five groups do not cover it.
-    expect(result.consumedPaths).toContain("a_section_from_a_future_telemt.some_total");
+    // The observable outcome, not the mechanism: nobody draws a sixth
+    // section, so it MUST reach R2's extended-mode tail. Asserting only
+    // that it was consumed would pass on the very bug this guards — a map
+    // anchored on the whole context claiming a field no group renders.
+    expect(result.unknownPaths).toContain("a_section_from_a_future_telemt.some_total");
+    expect(result.consumedPaths).not.toContain("a_section_from_a_future_telemt.some_total");
+    // …and the five sections it does draw are untouched by the change.
+    expect(result.unknownPaths).toHaveLength(1);
   });
 });

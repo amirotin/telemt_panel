@@ -296,6 +296,21 @@ describe("checkpoint R5-ME: completeness (§27.4, ruling R7)", () => {
     expect(resolveFor(full).allPaths.length).toBe(1064);
   });
 
+  it("hands a section we have never seen to the tail instead of swallowing it", () => {
+    // The guard Counters needed, kept here so ME never loses it either: no
+    // section on this page is anchored on the whole payload, so a top-level
+    // group a future Telemt adds has to surface in R2's extended tail
+    // rather than disappear into somebody's claim.
+    const future = {
+      ...full,
+      a_section_from_a_future_telemt: { some_total: 1 },
+    } as unknown as MePagePayload;
+    const result = resolveFor(future);
+    expect(result.lostPaths).toEqual([]);
+    expect(result.unknownPaths).toEqual(["a_section_from_a_future_telemt.some_total"]);
+    expect(result.consumedPaths).not.toContain("a_section_from_a_future_telemt.some_total");
+  });
+
   it("keeps a nulled self-test branch out of the tail without pretending it rendered", () => {
     const context = mePagePayload({ selftest: selftestAllNullable }) as MePagePayload;
     const result = resolveFor(context);
