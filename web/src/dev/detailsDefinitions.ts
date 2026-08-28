@@ -17,33 +17,34 @@ import type {
   DcStatusData,
   RuntimeEdgeEventRecord,
   RuntimeEdgeEvents,
-  RuntimeInitialization,
-  RuntimeInitializationComponent,
-  RuntimeMeQuality,
 } from "../realtime/topics";
-import type {
-  TlsFingerprintRow,
-  ZeroAllData,
-} from "../lib/api/generated/types.gen";
+import type { TlsFingerprintRow, ZeroAllData } from "../lib/api/generated/types.gen";
 import type {
   DetailPageDefinition,
-  FieldCatalog,
   RankingSectionDefinition,
   SectionDefinition,
 } from "../pulse/details-builder";
-import { DEFAULT_FIELD_CATALOG, QUALITY_CHART_RENDERER } from "../pulse/details-builder";
+import { mePagePayload } from "../pulse/diag/me.helpers";
 import {
+  countersPageDefinition,
   dcPageDefinition,
+  mePageDefinition,
   securityPageDefinition,
   type DcPageContext,
   type DcPagePayload,
+  type MePagePayload,
   type SecurityPageData,
 } from "../pulse/details-builder/definitions";
 import {
   dcs,
   events,
+  gates,
   initialization,
+  mePoolState,
   meQuality,
+  meRuntime,
+  meSelftest,
+  meWriters,
   tlsFingerprints,
   zeroAll,
 } from "../pulse/details-builder/__fixtures__";
@@ -51,24 +52,6 @@ import {
 // Re-exported so the harness and the production page cannot key entities
 // two different ways.
 export { dcEntityKey as dcKey } from "../pulse/details-builder/definitions";
-
-// devCatalog — the seeded catalog plus the timestamps these fixtures carry.
-//
-// A `*_epoch_secs` field is an absolute MOMENT, but the counters family the
-// catalog falls back to only sees the `_secs` suffix and reads it as a
-// duration, which is how `state_since_epoch_secs` rendered as "20 324 дн.".
-// Most of them live inside an array element, where a per-binding `unit`
-// cannot reach them, and no binding can correct the DESCRIPTION at all.
-// The TLS domain now carries its own endpoint-scoped entries in the seeded
-// catalog; what is left here is the ME half, which Task 7 owns.
-export const devCatalog: FieldCatalog = {
-  ...DEFAULT_FIELD_CATALOG,
-  entries: [
-    ...DEFAULT_FIELD_CATALOG.entries,
-    { path: "drain_gate.updated_at_epoch_secs", unit: "timestamp" },
-    { path: "family_states.*.state_since_epoch_secs", unit: "timestamp" },
-  ],
-};
 
 // --- DC: the PRODUCTION definition, with one harness-only override ------
 
@@ -101,105 +84,26 @@ export const devDcPage: DetailPageDefinition<DcPagePayload, DcPageContext> = {
   ),
 };
 
-// --- ME quality: the reference CUSTOM chart + two counters maps (§23.2) --
+// --- ME: the PRODUCTION definition over the composed fixture (§23.2) -----
+//
+// Since M4 task 7 the ME page is real (pulse/diag/MePage.tsx renders
+// definitions/me.ts) and the harness renders the same definition rather
+// than the two drafts it used to carry — an "ME quality" page and an
+// "ME init" page, both of which are now tabs of this one.
 
-export const devMeQualityPage: DetailPageDefinition<RuntimeMeQuality, RuntimeMeQuality> = {
-  id: "dev.me-quality",
-  title: (s) => s.diag.domains.me,
-  sources: [{ id: "runtime", topic: "runtime", required: true }],
-  sections: [
-    // §9.8: the one thing the standard kinds cannot express — a per-DC RTT
-    // series read as a shape rather than as twelve rows. The definition
-    // adapts the domain record into the renderer's {label, value} series,
-    // so the chart itself stays domain-free.
-    {
-      kind: "custom",
-      id: "dc-rtt-chart",
-      title: () => "RTT · dc_rtt[]",
-      renderer: QUALITY_CHART_RENDERER,
-      consumes: ["dc_rtt"],
-      defaultExpanded: true,
-      select: (q) => q.dc_rtt.map((row) => ({ label: `DC ${row.dc}`, value: row.rtt_ema_ms })),
-    },
-    {
-      kind: "scalars",
-      id: "drain_gate",
-      title: (s) => s.diag.groups.drainGate,
-      defaultExpanded: true,
-      fields: [
-        { path: "drain_gate.route_quorum_ok" },
-        { path: "drain_gate.redundancy_ok" },
-        { path: "drain_gate.block_reason" },
-        { path: "drain_gate.updated_at_epoch_secs" },
-      ],
-    },
-    {
-      kind: "array",
-      id: "family_states",
-      title: (s) => s.diag.groups.familyStates,
-      path: "family_states",
-    },
-    // The same map, twice on purpose: as verbatim counter rows (§9.7) and
-    // as a §9.4 breakdown of where routing lost packets.
-    {
-      kind: "breakdown",
-      id: "route_drops_breakdown",
-      title: (s) => s.diag.groups.routeDrops,
-      path: "route_drops",
-      defaultExpanded: true,
-    },
-    {
-      kind: "dynamicMap",
-      id: "counters",
-      title: (s) => s.diag.domains.counters,
-      path: "counters",
-      defaultExpanded: true,
-      supportsDelta: true,
-      groups: [{ id: "counters", title: (s) => s.diag.groups.qualityCounters, path: "counters" }],
-    },
-  ],
-  unknownFields: { minMode: "extended", rawJson: true },
-};
+export const devMePayload = mePagePayload({
+  meWriters,
+  gates,
+  initialization,
+  pool: mePoolState,
+  quality: meQuality,
+  selftest: meSelftest,
+  meRuntime,
+}) as MePagePayload;
 
-// --- ME initialization: the timeline kind over 16 components (§23.2) -----
-
-const componentOf = (item: unknown) => item as RuntimeInitializationComponent;
-
-export const devInitPage: DetailPageDefinition<RuntimeInitialization, RuntimeInitialization> = {
-  id: "dev.me-init",
-  title: () => "Initialization sequence",
-  sources: [{ id: "runtime", topic: "runtime", required: true }],
-  summary: [
-    { id: "progress", label: () => "Progress", value: (p) => p.progress_pct, unit: "percent" },
-    {
-      id: "elapsed",
-      label: () => "Total elapsed",
-      value: (p) => p.total_elapsed_ms,
-      unit: "milliseconds",
-    },
-    {
-      id: "components",
-      label: () => "Components",
-      value: (p) => p.components?.length ?? 0,
-      format: "integer",
-    },
-    { id: "stage", label: () => "Stage", value: (p) => p.current_stage },
-  ],
-  sections: [
-    {
-      kind: "timeline",
-      id: "components",
-      title: () => "components[]",
-      path: "components",
-      defaultExpanded: true,
-      itemKey: (item) => componentOf(item).id,
-      status: (item) => componentOf(item).status,
-      step: (item) => componentOf(item).title,
-      details: (item) => componentOf(item).details ?? null,
-      durationMs: (item) => componentOf(item).duration_ms ?? null,
-    },
-  ],
-  unknownFields: { minMode: "extended", rawJson: true },
+export const devMePage: DetailPageDefinition<MePagePayload, MePagePayload> = {
+  ...mePageDefinition,
+  id: "dev.me",
 };
 
 // --- Events: the timeline kind over 50 sequenced records (§23.6) ---------
@@ -304,56 +208,17 @@ export const devTlsPage: DetailPageDefinition<SecurityPageData, SecurityPageData
 
 export { totalOf as devTlsTotalOf };
 
-// --- Counters: the five zero/all groups + three breakdowns (§23.4) -------
+// --- Counters: the PRODUCTION definition (§23.4) -------------------------
+//
+// Also real since M4 task 7. The harness keeps rendering it over the
+// fixture so the five groups, the search and the non-zero filter can be
+// screenshotted at production volume without a Telemt behind them; the
+// client-side deltas (R4) need two consecutive answers and therefore only
+// exist on the live page.
 
 export const devCountersPage: DetailPageDefinition<ZeroAllData, ZeroAllData> = {
+  ...countersPageDefinition,
   id: "dev.counters",
-  title: (s) => s.diag.domains.counters,
-  sources: [{ id: "stats", topic: "stats", required: true }],
-  sections: [
-    // Declared BEFORE the map they live inside: an explicit section owns
-    // its path, and DynamicMapSection stops showing the same array nested
-    // in its group.
-    {
-      kind: "breakdown",
-      id: "connections_bad_by_class",
-      title: () => "connections_bad_by_class[]",
-      path: "core.connections_bad_by_class",
-      defaultExpanded: true,
-    },
-    {
-      kind: "breakdown",
-      id: "handshake_failures_by_class",
-      title: () => "handshake_failures_by_class[]",
-      path: "core.handshake_failures_by_class",
-      defaultExpanded: true,
-    },
-    // Empty on every VPS: the section stays visible and says so, which is
-    // §10.3's "пустой массив ≠ отсутствующее поле".
-    {
-      kind: "breakdown",
-      id: "handshake_error_codes",
-      title: () => "handshake_error_codes[]",
-      path: "middle_proxy.handshake_error_codes",
-      defaultExpanded: true,
-    },
-    {
-      kind: "dynamicMap",
-      id: "all",
-      title: (s) => s.diag.domains.counters,
-      path: "",
-      defaultExpanded: true,
-      supportsDelta: true,
-      groups: [
-        { id: "core", title: (s) => s.diag.groups.core, path: "core" },
-        { id: "upstream", title: (s) => s.diag.groups.upstream, path: "upstream" },
-        { id: "middle_proxy", title: (s) => s.diag.groups.middleProxy, path: "middle_proxy" },
-        { id: "pool", title: (s) => s.diag.groups.pool, path: "pool" },
-        { id: "desync", title: (s) => s.diag.groups.desync, path: "desync" },
-      ],
-    },
-  ],
-  unknownFields: { minMode: "extended", rawJson: true },
 };
 
 // dcsWithAttention degrades the LAST data center of the rail on purpose.
@@ -375,8 +240,7 @@ const dcsWithAttention: DcStatusData = {
 
 export const devPayloads = {
   dc: dcsWithAttention,
-  meQuality,
-  initialization,
+  me: devMePayload,
   events,
   tls: tlsFingerprints,
   counters: zeroAll,
@@ -416,8 +280,7 @@ export function pushRevision(revision: number): DevPayloads {
       ...dcsWithAttention,
       dcs: dcsWithAttention.dcs.map((dc) => ({ ...dc, load: dc.load + bump, rtt_ms: dc.rtt_ms })),
     },
-    meQuality,
-    initialization,
+    me: devMePayload,
     events,
     tls: {
       ...tlsFingerprints,

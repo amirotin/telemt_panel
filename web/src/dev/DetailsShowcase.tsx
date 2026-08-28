@@ -12,12 +12,10 @@ import {
   type SourceStatus,
 } from "../pulse/details-builder/sources";
 import {
-  devCatalog,
   devCountersPage,
   devDcPage,
   devEventsPage,
-  devInitPage,
-  devMeQualityPage,
+  devMePage,
   devTlsPage,
   pushRevision,
 } from "./detailsDefinitions";
@@ -29,12 +27,11 @@ import {
 const FIXED_NOW = 1_756_000_000_000 + 125_000;
 const FRESH_AT = 1_756_000_000_000;
 
-type PageId = "dc" | "me" | "init" | "events" | "tls" | "counters";
+type PageId = "dc" | "me" | "events" | "tls" | "counters";
 
 const PAGES: { id: PageId; label: string }[] = [
   { id: "dc", label: "DC" },
-  { id: "me", label: "ME quality" },
-  { id: "init", label: "ME init" },
+  { id: "me", label: "ME" },
   { id: "events", label: "Events" },
   { id: "tls", label: "Security / TLS" },
   { id: "counters", label: "Counters" },
@@ -138,29 +135,16 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.dc : null}
             sources={sourcesFor(devDcPage.sources, status, devPayloads.dc)}
             breadcrumb="PULSE / DETAILS"
-            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
       case "me":
         return (
           <DetailPage
-            definition={devMeQualityPage}
-            payload={withData ? devPayloads.meQuality : null}
-            sources={sourcesFor(devMeQualityPage.sources, status, devPayloads.meQuality)}
+            definition={devMePage}
+            payload={withData ? devPayloads.me : null}
+            sources={sourcesFor(devMePage.sources, status, devPayloads.me)}
             breadcrumb="PULSE / DETAILS"
-            catalog={devCatalog}
-            nowMs={FIXED_NOW}
-          />
-        );
-      case "init":
-        return (
-          <DetailPage
-            definition={devInitPage}
-            payload={withData ? devPayloads.initialization : null}
-            sources={sourcesFor(devInitPage.sources, status, devPayloads.initialization)}
-            breadcrumb="PULSE / DETAILS"
-            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
@@ -171,7 +155,6 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.events : null}
             sources={sourcesFor(devEventsPage.sources, status, devPayloads.events)}
             breadcrumb="PULSE / DETAILS"
-            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
@@ -182,7 +165,6 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.tls : null}
             sources={sourcesFor(devTlsPage.sources, status, devPayloads.tls)}
             breadcrumb="PULSE / DETAILS"
-            catalog={devCatalog}
             // R9: the TLS descriptions are endpoint-scoped, because `total`
             // and `limit` mean something else on every other page.
             endpoint="/api/telemt/tls-fingerprints"
@@ -196,7 +178,6 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.counters : null}
             sources={sourcesFor(devCountersPage.sources, status, devPayloads.counters)}
             breadcrumb="PULSE / DETAILS"
-            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
