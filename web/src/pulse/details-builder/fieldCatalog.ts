@@ -45,6 +45,12 @@ export interface FieldCatalogEntry {
   descriptionKey?: string;
   /** Label override; by default a renderer humanizes the last path segment. */
   label?: string;
+  /**
+   * Dictionary key of a SHORT human name, read by the summary tiles alone —
+   * indexes `Dict["details"]["fields"]["shortLabels"]`. A §8.1 row is not
+   * affected: it keeps showing Telemt's own field name.
+   */
+  shortLabelKey?: string;
   format?: FormatterName;
   unit?: FieldUnit;
   sensitive?: boolean;
@@ -146,7 +152,7 @@ const DC_ENTRIES: FieldCatalogEntry[] = [
     descriptionKey: "dc.endpoint_writers.active_writers",
     format: "integer",
   },
-  ...dcField("available_endpoints", { format: "integer" }),
+  ...dcField("available_endpoints", { format: "integer", shortLabelKey: "dc.available_endpoints" }),
   ...dcField("available_pct", { unit: "percent" }),
   ...dcField("required_writers", { format: "integer" }),
   ...dcField("floor_min", { format: "integer" }),
@@ -154,13 +160,17 @@ const DC_ENTRIES: FieldCatalogEntry[] = [
   ...dcField("floor_max", { format: "integer" }),
   ...dcField("floor_capped", { format: "boolean" }),
   ...dcField("alive_writers", { format: "integer", zeroMeaningKey: "dc.alive_writers" }),
-  ...dcField("coverage_pct", { unit: "percent" }),
+  ...dcField("coverage_pct", { unit: "percent", shortLabelKey: "dc.coverage_pct" }),
   ...dcField("fresh_alive_writers", { format: "integer" }),
   ...dcField("fresh_coverage_pct", { unit: "percent" }),
   // rtt_ms is the §13.1 poster child: null means "never measured", which is
   // NOT the same as "no data" — the catalog says so instead of an em dash.
-  ...dcField("rtt_ms", { unit: "milliseconds", nullMeaningKey: "dc.rtt_ms" }),
-  ...dcField("load", { format: "decimal" }),
+  ...dcField("rtt_ms", {
+    unit: "milliseconds",
+    nullMeaningKey: "dc.rtt_ms",
+    shortLabelKey: "dc.rtt_ms",
+  }),
+  ...dcField("load", { format: "decimal", shortLabelKey: "dc.load" }),
   { path: "network_path.dc", descriptionKey: "dc.network_path.dc", format: "integer" },
   {
     path: "network_path.ip_preference",
@@ -365,11 +375,14 @@ export function describeField(path: string, s: Dict, ctx: FieldLookupContext = {
   const entry = result.entry;
   const nulls = s.details.fields.nullMeanings as unknown as Record<string, string | undefined>;
   const zeros = s.details.fields.zeroMeanings as unknown as Record<string, string | undefined>;
+  const shorts = s.details.fields.shortLabels as unknown as Record<string, string | undefined>;
   const nullMeaning = entry?.nullMeaningKey ? nulls[entry.nullMeaningKey] : undefined;
   const zeroMeaning = entry?.zeroMeaningKey ? zeros[entry.zeroMeaningKey] : undefined;
+  const shortLabel = entry?.shortLabelKey ? shorts[entry.shortLabelKey] : undefined;
   return {
     path,
     ...(entry?.label !== undefined ? { label: entry.label } : {}),
+    ...(shortLabel !== undefined ? { shortLabel } : {}),
     description: description(result, s),
     ...(entry?.format !== undefined ? { format: entry.format } : {}),
     ...(entry?.unit !== undefined ? { unit: entry.unit } : {}),

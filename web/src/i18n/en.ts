@@ -522,6 +522,12 @@ export const en: Dict = {
       zeroMeanings: {
         "dc.alive_writers": "no live writers at all",
       },
+      shortLabels: {
+        "dc.load": "Load",
+        "dc.coverage_pct": "Coverage",
+        "dc.rtt_ms": "RTT",
+        "dc.available_endpoints": "Available endpoints",
+      },
       descriptions: {
         "dc.middle_proxy_enabled": "Whether middle-proxy mode is on for this proxy.",
         "dc.reason": "Why middle-proxy mode is off, in Telemt's own words.",

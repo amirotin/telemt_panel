@@ -39,19 +39,21 @@ export const devDcPage: DetailPageDefinition<DcStatusData, DcStatus> = {
     selectEntity: (payload, key) =>
       payload.dcs.find((dc) => dcKey(dc) === key) ?? payload.dcs[0] ?? null,
   },
+  // No `label` anywhere: the tiles take their name from the field catalog,
+  // which is what a real definition (Tasks 6-8) should do too.
   summary: [
-    { id: "load", label: () => "load", value: (dc) => dc.load, format: "decimal" },
+    { id: "load", value: (dc) => dc.load, format: "decimal" },
     {
       id: "coverage",
-      label: () => "coverage_pct",
+      path: "coverage_pct",
       value: (dc) => dc.coverage_pct,
       unit: "percent",
       tone: "good",
     },
-    { id: "rtt", label: () => "rtt_ms", value: (dc) => dc.rtt_ms, unit: "milliseconds" },
+    { id: "rtt", path: "rtt_ms", value: (dc) => dc.rtt_ms, unit: "milliseconds" },
     {
       id: "endpoints",
-      label: () => "available_endpoints",
+      path: "available_endpoints",
       value: (dc) => dc.available_endpoints,
       format: "integer",
     },
@@ -140,13 +142,16 @@ export const devTlsPage: DetailPageDefinition<TlsFingerprints, TlsFingerprints> 
   id: "dev.tls",
   title: (s) => s.diag.domains.security,
   sources: [{ id: "tls", endpoint: "/api/telemt/tls-fingerprints", required: true }],
+  // The TLS domain is not in the catalog yet (Task 8), so these four tiles
+  // demonstrate the other half of the rule: no catalog entry, no invented
+  // name — the raw key stands in until Task 8 describes the fields.
   summary: [
-    { id: "limit", label: () => "limit", value: (p) => p.limit, format: "integer" },
-    { id: "capacity", label: () => "capacity", value: (p) => p.capacity, format: "integer" },
-    { id: "dropped", label: () => "dropped_total", value: (p) => p.dropped_total, format: "integer" },
+    { id: "limit", value: (p) => p.limit, format: "integer" },
+    { id: "capacity", value: (p) => p.capacity, format: "integer" },
+    { id: "dropped", path: "dropped_total", value: (p) => p.dropped_total, format: "integer" },
     {
       id: "parse_errors",
-      label: () => "parse_error_total",
+      path: "parse_error_total",
       value: (p) => p.parse_error_total,
       format: "integer",
     },

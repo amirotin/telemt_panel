@@ -1,9 +1,12 @@
 import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { StatCard } from "../../ui/StatCard";
+import { describeField } from "./fieldCatalog";
+import type { FieldLookupContext } from "./fieldCatalog";
 import { formatValue } from "./formatting";
 import type { FilterValue, SummaryMetricDefinition } from "./model";
 import { showsAtMode } from "./renderers/context";
+import { fieldLabel } from "./renderers/unknownFields";
 import type { DisplayMode } from "../../display-mode";
 
 const TONE_CLASSES: Record<NonNullable<SummaryMetricDefinition<unknown>["tone"]>, string> = {
@@ -20,6 +23,8 @@ export interface SummaryGridProps<T> {
   nowMs: number;
   /** §18.2: a metric MAY be a shortcut to a filter; the plain control stays. */
   onFilter?: (key: string, value: FilterValue) => void;
+  /** Field-catalog scope, so an unlabelled metric is named the way the rows are. */
+  lookup?: FieldLookupContext;
   className?: string;
 }
 
@@ -37,6 +42,7 @@ export function SummaryGrid<T>({
   mode,
   nowMs,
   onFilter,
+  lookup,
   className,
 }: SummaryGridProps<T>) {
   const s = useStrings();
@@ -46,6 +52,13 @@ export function SummaryGrid<T>({
   return (
     <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-4", className)}>
       {visible.map((metric) => {
+        const path = metric.path ?? metric.id;
+        const field = describeField(path, s, lookup ?? {});
+        // A tile is named by a HUMAN short label, not by the raw key the
+        // §8.1 rows show: the renders read "Fresh coverage", never
+        // `fresh_coverage_pct`. The key is the last resort, for a path the
+        // catalog has never heard of.
+        const label = metric.label ? metric.label(s) : (field.shortLabel ?? fieldLabel(path));
         const raw = metric.value(context);
         const formatted = formatValue(raw, s, {
           nowMs,
@@ -54,7 +67,7 @@ export function SummaryGrid<T>({
         });
         const card = (
           <StatCard
-            label={metric.label(s)}
+            label={label}
             value={<span className={TONE_CLASSES[metric.tone ?? "neutral"]}>{formatted.text}</span>}
           />
         );

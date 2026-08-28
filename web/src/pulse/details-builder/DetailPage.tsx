@@ -206,6 +206,7 @@ export function DetailPage<TPayload, TContext>({
           mode={mode}
           nowMs={clock}
           onFilter={api.setFilter}
+          lookup={ctx.lookup}
         />
       )}
 

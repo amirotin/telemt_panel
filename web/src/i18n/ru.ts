@@ -592,6 +592,15 @@ export const ru = {
       zeroMeanings: {
         "dc.alive_writers": "ни одного живого писателя",
       },
+      // Короткие человеческие названия для сводных плиток (§6). В строке
+      // §8.1 поле по-прежнему называется так, как его зовёт сам Telemt, —
+      // это отдельный регистр названий, а не замена имени поля.
+      shortLabels: {
+        "dc.load": "Нагрузка",
+        "dc.coverage_pct": "Покрытие",
+        "dc.rtt_ms": "RTT",
+        "dc.available_endpoints": "Доступные точки",
+      },
       descriptions: {
         "dc.middle_proxy_enabled": "Включён ли режим middle proxy у этого прокси.",
         "dc.reason": "Почему режим middle proxy выключен, словами Telemt.",

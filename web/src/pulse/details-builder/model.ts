@@ -87,6 +87,12 @@ export type FieldUnit = "percent" | "milliseconds" | "seconds" | "bytes" | "time
 export interface FieldDefinition {
   path: string;
   label?: string;
+  /**
+   * Short human name for compact surfaces — the §6 summary tiles read it.
+   * NEVER the row name: a §8.1 row shows Telemt's own field name, so `label`
+   * stays the row-level override and this one is a separate register.
+   */
+  shortLabel?: string;
   description: string;
   format?: FormatterName;
   unit?: FieldUnit;
@@ -332,7 +338,19 @@ export const DEFAULT_UNKNOWN_FIELDS_POLICY: Required<
 
 export interface SummaryMetricDefinition<T> {
   id: string;
-  label: Localized;
+  /**
+   * Normalized path the tile reads; defaults to `id`. It is what names the
+   * tile through the field catalog, so a metric whose id already IS the
+   * field name needs neither this nor `label`.
+   */
+  path?: string;
+  /**
+   * Tile name. Optional on purpose: with no label the catalog's short label
+   * for `path` names the tile — the renders show "Fresh coverage", never
+   * `fresh_coverage_pct` — and only a path the catalog knows nothing about
+   * falls back to the raw key.
+   */
+  label?: Localized;
   value: (context: T) => number | string | null;
   format?: FormatterName;
   unit?: FieldUnit;
