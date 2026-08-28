@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DisplayModeProvider } from "../../display-mode";
-import { dcs } from "./__fixtures__";
+import { dcs, meWriters } from "./__fixtures__";
 import { DetailPage } from "./DetailPage";
 import type { DetailPageDefinition } from "./model";
 import {
@@ -256,5 +256,102 @@ describe("DetailPage array rule (spec §10, §12.7)", () => {
     expect(text).not.toMatch(/\d+\s*items/i);
     // It IS rendered — as its own block.
     expect(text).toContain("endpoints[]");
+  });
+});
+
+// --- §18.2: a summary tile that shortcuts to a section's own control -----
+
+interface Writer {
+  writer_id: number;
+  dc: number;
+  degraded: boolean;
+  bound_clients: number;
+}
+
+const degradedWriters = meWriters.writers.filter((w) => w.degraded).length;
+
+// The tile "degraded" and the chip below it write the SAME filter key.
+// That is the whole of §18.2: the shortcut is a second way to reach a
+// state the ordinary control already offers, never a parallel mechanism.
+const writersDefinition: DetailPageDefinition<typeof meWriters, typeof meWriters> = {
+  id: "test.writers",
+  title: () => "Writers",
+  sources: [{ id: "tls", endpoint: "/api/telemt/tls-fingerprints", required: true }],
+  summary: [
+    {
+      id: "degraded",
+      label: () => "Degraded",
+      value: () => degradedWriters,
+      format: "integer",
+      tone: "warn",
+      shortcut: { filter: { key: "writers.degraded", value: true } },
+    },
+  ],
+  sections: [
+    {
+      kind: "ranking",
+      id: "writers",
+      title: () => "writers[]",
+      path: "writers",
+      defaultExpanded: true,
+      itemKey: (item) => `writer:${(item as Writer).writer_id}`,
+      identity: (item) => `writer #${(item as Writer).writer_id}`,
+      score: (item) => (item as Writer).bound_clients,
+      scoreKey: "bound_clients",
+      filters: [
+        {
+          key: "writers.degraded",
+          label: () => "Только degraded",
+          predicate: (item) => (item as Writer).degraded,
+        },
+      ],
+    },
+  ],
+  unknownFields: { minMode: "extended" },
+};
+
+const WRITERS_READY = aggregateSources(writersDefinition.sources, {
+  tls: resolveQuerySource("tls", {
+    kind: "query",
+    isPending: false,
+    isError: false,
+    data: meWriters,
+    dataUpdatedAt: FRESH_AT,
+  }),
+});
+
+function rankingRows(el: HTMLElement): HTMLElement[] {
+  return Array.from(el.querySelectorAll<HTMLElement>("#writers-panel li"));
+}
+
+function byText(el: HTMLElement, text: string): HTMLButtonElement {
+  const found = Array.from(el.querySelectorAll("button")).find((b) => b.textContent === text);
+  if (!found) throw new Error(`no button "${text}"`);
+  return found;
+}
+
+describe("DetailPage summary shortcut (spec §18.2)", () => {
+  it("applies the section's filter from the tile, leaving the ordinary control usable", async () => {
+    const { container: el } = await mount(
+      <DetailPage definition={writersDefinition} payload={meWriters} sources={WRITERS_READY} nowMs={NOW} />,
+    );
+    expect(degradedWriters).toBeGreaterThan(0);
+    expect(rankingRows(el)).toHaveLength(20);
+
+    const chip = byText(el, "Только degraded");
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+
+    // The tile is a button, and pressing it filters the ranking.
+    const tile = byText(el, "Degraded" + String(degradedWriters));
+    act(() => tile.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(rankingRows(el)).toHaveLength(degradedWriters);
+
+    // The plain control is still there, now showing the state the shortcut
+    // put it in — and one press clears it again.
+    expect(byText(el, "Только degraded").getAttribute("aria-pressed")).toBe("true");
+    act(() =>
+      byText(el, "Только degraded").dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(rankingRows(el)).toHaveLength(20);
   });
 });

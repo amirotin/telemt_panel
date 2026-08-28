@@ -220,6 +220,8 @@ export interface DetailPageStateApi {
   /** Convenience wrappers over dispatch, stable across renders. */
   setSearchQuery: (value: string) => void;
   setFilter: (key: string, value: FilterValue | undefined) => void;
+  /** The one sort slot; `SortState.sectionId` says which collection owns it. */
+  setSort: (sort: SortState | undefined) => void;
   toggleSection: (id: string) => void;
   toggleRecord: (id: string) => void;
   revealMore: (id: string, step: number, initial: number) => void;
@@ -291,6 +293,10 @@ export function useDetailPageState(options: UseDetailPageStateOptions): DetailPa
     (key: string, value: FilterValue | undefined) => dispatch({ type: "setFilter", key, value }),
     [],
   );
+  const setSort = useCallback(
+    (sort: SortState | undefined) => dispatch({ type: "setSort", sort }),
+    [],
+  );
   const toggleSection = useCallback((id: string) => dispatch({ type: "toggleSection", id }), []);
   const toggleRecord = useCallback((id: string) => dispatch({ type: "toggleRecord", id }), []);
   const revealMore = useCallback(
@@ -322,6 +328,7 @@ export function useDetailPageState(options: UseDetailPageStateOptions): DetailPa
     setActiveTab,
     setSearchQuery,
     setFilter,
+    setSort,
     toggleSection,
     toggleRecord,
     revealMore,

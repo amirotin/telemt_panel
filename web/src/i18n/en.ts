@@ -505,6 +505,24 @@ export const en: Dict = {
     attention: {
       degradedTemplate: "Sources with problems: {count}",
     },
+    breakdown: {
+      notPairs: "The elements of this block do not look like name → number pairs.",
+      delta: "per second",
+      lifetime: "lifetime",
+    },
+    ranking: {
+      searchLabel: "Search the ranking",
+      searchPlaceholder: "Filter the current group",
+      sortLabel: "Sort",
+      sortByTemplate: "By {column}",
+      byScore: "By rank",
+      noMatches: "No matches",
+      refreshOrder: "Refresh order",
+    },
+    chart: {
+      median: "median",
+      noSeries: "No numeric series to chart.",
+    },
     map: {
       searchLabel: "Search counters",
       searchPlaceholder: "For example: error, bytes, queue",

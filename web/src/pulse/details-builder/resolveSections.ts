@@ -312,6 +312,33 @@ function mergePaging(policy: Partial<PagingPolicy> | undefined): PagingPolicy {
   return { ...DEFAULT_PAGING, ...(policy ?? {}) };
 }
 
+/** One entry of a dynamic map read as a breakdown pair. */
+export interface BreakdownMapPair {
+  key: string;
+  value: unknown;
+}
+
+// breakdownPairs is the ONE place a non-array reaches a collection section,
+// and only for `breakdown`: §9.4's "label → total" is equally the shape of
+// a dynamic-map GROUP (`route_drops`, a `*_error_codes` map), where the
+// verbatim key is the label and its counter is the total. Turning the map
+// into pairs here — rather than teaching the renderer a second input shape
+// — keeps every collection renderer downstream working on an array, and
+// keeps consumed-path tracking unchanged (the section still owns its whole
+// subtree).
+//
+// Every other kind keeps the old behaviour: a non-array is not a
+// collection, and its leaves stay unconsumed for the generic fallback.
+function breakdownPairs(
+  kind: CollectionSectionInstance["kind"],
+  raw: unknown,
+): BreakdownMapPair[] {
+  if (kind !== "breakdown" || raw === null || typeof raw !== "object") return [];
+  return Object.entries(raw as Record<string, unknown>)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => ({ key, value }));
+}
+
 // --- section instantiation (step 4) -------------------------------------
 
 function resolveScalarSection<T>(
@@ -360,7 +387,7 @@ function resolveCollectionSection<T>(
 ): CollectionSectionInstance {
   const raw = section.select ? section.select(context) : readPath(context, section.path);
   const present = section.select ? raw !== undefined : hasPath(context, section.path);
-  const items = Array.isArray(raw) ? raw : [];
+  const items = Array.isArray(raw) ? raw : breakdownPairs(kind, raw);
   const presence: CollectionPresence = !present || raw === undefined || raw === null
     ? "absent"
     : items.length === 0

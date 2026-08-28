@@ -68,6 +68,10 @@ function Harness({ payload, search }: { payload: typeof meWriters; search?: stri
     toggleRecord: (id) => setRecords((prev) => toggled(prev, id)),
     visibleLimit: (_id, initial) => initial,
     revealMore: () => {},
+    filters: {},
+    setFilter: () => {},
+    sort: undefined,
+    setSort: () => {},
     openSurfaceKey: surface,
     openSurface: (key) => {
       opened.key = key;

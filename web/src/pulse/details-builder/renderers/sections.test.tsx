@@ -39,6 +39,10 @@ function Harness({ render }: { render: (ctx: DetailRenderContext) => ReactNode }
     visibleLimit: (id, initial) => limits[id] ?? initial,
     revealMore: (id, step, initial) =>
       setLimits((prev) => ({ ...prev, [id]: (prev[id] ?? initial) + step })),
+    filters: {},
+    setFilter: () => {},
+    sort: undefined,
+    setSort: () => {},
     openSurfaceKey: undefined,
     openSurface: () => {},
     closeSurface: () => {},

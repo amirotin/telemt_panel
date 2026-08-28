@@ -24,6 +24,13 @@ export interface DynamicMapSectionProps {
    * honestly that there is nothing to compare against yet.
    */
   deltas?: Record<string, number>;
+  /**
+   * Paths an explicitly declared section already renders. A map bound to a
+   * whole subtree would otherwise show a nested array twice — once inside
+   * its group, once as the BreakdownSection the page declared for it. The
+   * explicit section wins (§12: configured sections come first).
+   */
+  hiddenNestedPaths?: ReadonlySet<string>;
 }
 
 interface VisibleGroup {
@@ -63,7 +70,12 @@ function isZero(value: unknown): boolean {
 // and description, a zero/non-zero filter) live here rather than on the
 // page, because a page may carry more than one map. `Раскрыть все` /
 // `Свернуть все` mirror the prototype's counters screen.
-export function DynamicMapSection({ instance, ctx, deltas }: DynamicMapSectionProps) {
+export function DynamicMapSection({
+  instance,
+  ctx,
+  deltas,
+  hiddenNestedPaths,
+}: DynamicMapSectionProps) {
   const s = useStrings();
   const [query, setQuery] = useState("");
   const [nonZeroOnly, setNonZeroOnly] = useState(false);
@@ -81,7 +93,9 @@ export function DynamicMapSection({ instance, ctx, deltas }: DynamicMapSectionPr
           id: group.id,
           title: group.title?.(s) ?? group.id,
           entries,
-          nestedNodes: group.nested.flatMap((n) => buildValueNodes(n.value, n.path)),
+          nestedNodes: group.nested
+            .filter((n) => !(hiddenNestedPaths?.has(n.path) ?? false))
+            .flatMap((n) => buildValueNodes(n.value, n.path)),
           total: group.entries.reduce(
             (sum, e) => (typeof e.value === "number" ? sum + e.value : sum),
             0,
@@ -89,7 +103,7 @@ export function DynamicMapSection({ instance, ctx, deltas }: DynamicMapSectionPr
           matched: entries.length,
         };
       }),
-    [instance.groups, q, nonZeroOnly, s, ctx.lookup],
+    [instance.groups, q, nonZeroOnly, s, ctx.lookup, hiddenNestedPaths],
   );
 
   const visible = groups.filter((g) => g.matched > 0 || g.nestedNodes.length > 0);

@@ -13,11 +13,12 @@ import { AttentionSummary } from "./AttentionSummary";
 import { DetailHeader } from "./DetailHeader";
 import { SummaryGrid } from "./SummaryGrid";
 import type { FieldCatalog } from "./fieldCatalog";
-import type { DetailPageDefinition, SectionDefinition } from "./model";
+import type { DetailPageDefinition, SectionDefinition, SummaryShortcut } from "./model";
 import { readPath } from "./paths";
 import { resolveSections } from "./resolveSections";
 import { sectionsForTab, withUnknownTail } from "./DetailPage.helpers";
 import { createRenderContext } from "./renderers/context";
+import type { CustomSectionRegistry } from "./renderers/customRenderers";
 import { SectionList } from "./renderers/SectionList";
 import type { PageSourcesState } from "./sources";
 import { sourceStatusShortLabel } from "./sources";
@@ -44,6 +45,8 @@ export interface DetailPageProps<TPayload, TContext> {
   nowMs?: number;
   /** Per-second counter deltas, keyed by normalized path (ruling R4). */
   deltas?: Record<string, number>;
+  /** Domain chart renderers for this page's CustomSections (§9.8). */
+  customRenderers?: CustomSectionRegistry;
   disabledHints?: Record<string, GateHintKey>;
 }
 
@@ -67,6 +70,7 @@ export function DetailPage<TPayload, TContext>({
   endpoint,
   nowMs,
   deltas,
+  customRenderers,
   disabledHints,
 }: DetailPageProps<TPayload, TContext>) {
   const s = useStrings();
@@ -146,6 +150,14 @@ export function DetailPage<TPayload, TContext>({
     },
   });
 
+  // §18.2: a summary tile writes the SAME state slots the section's own
+  // controls write. It cannot express anything a control cannot, which is
+  // what keeps the ordinary control meaningful next to it.
+  const applyShortcut = (shortcut: SummaryShortcut) => {
+    if (shortcut.filter) api.setFilter(shortcut.filter.key, shortcut.filter.value);
+    if (shortcut.sort) api.setSort(shortcut.sort);
+  };
+
   const tabs = definition.navigation?.tabs;
   const activeTab = api.state.activeTab ?? tabs?.[0]?.id;
   const sections = resolved === null ? [] : withUnknownTail(resolved.sections, resolved.unknownFields);
@@ -206,7 +218,7 @@ export function DetailPage<TPayload, TContext>({
           context={context}
           mode={mode}
           nowMs={clock}
-          onFilter={api.setFilter}
+          onShortcut={applyShortcut}
           lookup={ctx.lookup}
         />
       )}
@@ -256,6 +268,7 @@ export function DetailPage<TPayload, TContext>({
           onSearchChange={api.setSearchQuery}
           raw={context}
           {...(deltas !== undefined ? { deltas } : {})}
+          {...(customRenderers !== undefined ? { customRenderers } : {})}
         />
       )}
     </div>

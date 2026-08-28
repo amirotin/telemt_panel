@@ -9,6 +9,7 @@ import type { DisplayMode } from "../../../display-mode";
 import { visibleFor } from "../../../display-mode";
 import type { FieldLookupContext } from "../fieldCatalog";
 import type { AbsenceKind } from "../formatting";
+import type { FilterValue, SortState } from "../model";
 import type { DetailPageStateApi } from "../state";
 
 /** Absence a SOURCE state forces onto every row it feeds (R5, §13.1). */
@@ -28,6 +29,19 @@ export interface DetailRenderContext {
 
   visibleLimit: (id: string, initial: number) => number;
   revealMore: (id: string, step: number, initial: number) => void;
+
+  /**
+   * Domain filters, by the key a FilterDefinition declares. Page state
+   * rather than section state on purpose: §18.2's summary shortcut must be
+   * able to write the very key the section's own control toggles, which is
+   * what makes "рядом остаётся обычный filter control" true rather than a
+   * second, parallel mechanism.
+   */
+  filters: Record<string, FilterValue>;
+  setFilter: (key: string, value: FilterValue | undefined) => void;
+  /** The ONE active sort, tagged with the section it belongs to (see SortState). */
+  sort: SortState | undefined;
+  setSort: (sort: SortState | undefined) => void;
 
   openSurfaceKey: string | undefined;
   openSurface: (key: string) => void;
@@ -84,6 +98,10 @@ export function createRenderContext(
     toggleRecord: api.toggleRecord,
     visibleLimit: api.visibleLimit,
     revealMore: api.revealMore,
+    filters: api.state.filters,
+    setFilter: api.setFilter,
+    sort: api.state.sort,
+    setSort: api.setSort,
     openSurfaceKey: api.state.openSurfaceKey,
     openSurface: api.openSurface,
     closeSurface: api.closeSurface,

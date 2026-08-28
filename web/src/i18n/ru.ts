@@ -570,6 +570,29 @@ export const ru = {
     attention: {
       degradedTemplate: "Источников с проблемами: {count}",
     },
+    // Разбивка «имя → число» (§9.4): одна строка на пару, доля от суммы
+    // рядом с числом.
+    breakdown: {
+      notPairs: "Элементы этого блока не выглядят парами «имя → число».",
+      delta: "за секунду",
+      lifetime: "за всё время",
+    },
+    // Рейтинг (§9.6). Порядок замораживается, пока читатель работает со
+    // списком, — §19.2.
+    ranking: {
+      searchLabel: "Поиск по рейтингу",
+      searchPlaceholder: "Фильтр по текущей группе",
+      sortLabel: "Сортировка",
+      // {column} — имя поля Telemt, показывается как есть (§11.2).
+      sortByTemplate: "По {column}",
+      byScore: "По рангу",
+      noMatches: "Совпадений нет",
+      refreshOrder: "Обновить порядок",
+    },
+    chart: {
+      median: "медиана",
+      noSeries: "Нет числового ряда для графика.",
+    },
     map: {
       searchLabel: "Поиск по счётчикам",
       searchPlaceholder: "Например: error, bytes, queue",

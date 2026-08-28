@@ -4,7 +4,7 @@ import { StatCard } from "../../ui/StatCard";
 import { describeField } from "./fieldCatalog";
 import type { FieldLookupContext } from "./fieldCatalog";
 import { formatValue } from "./formatting";
-import type { FilterValue, SummaryMetricDefinition } from "./model";
+import type { SummaryMetricDefinition, SummaryShortcut } from "./model";
 import { showsAtMode } from "./renderers/context";
 import { fieldLabel } from "./renderers/unknownFields";
 import type { DisplayMode } from "../../display-mode";
@@ -21,8 +21,8 @@ export interface SummaryGridProps<T> {
   context: T;
   mode: DisplayMode;
   nowMs: number;
-  /** §18.2: a metric MAY be a shortcut to a filter; the plain control stays. */
-  onFilter?: (key: string, value: FilterValue) => void;
+  /** §18.2: a metric MAY be a shortcut to a filter/sort; the plain control stays. */
+  onShortcut?: (shortcut: SummaryShortcut) => void;
   /** Field-catalog scope, so an unlabelled metric is named the way the rows are. */
   lookup?: FieldLookupContext;
   className?: string;
@@ -33,15 +33,16 @@ export interface SummaryGridProps<T> {
 // four from `sm:` up; the cards are the app's existing StatCard, not a new
 // dashboard primitive.
 //
-// A metric with a `filter` becomes a button that ALSO applies that filter
-// (§18.2's interactive shortcut) — the ordinary control it duplicates is
-// never removed.
+// A metric with a `shortcut` becomes a button that ALSO applies that
+// filter/sort (§18.2's interactive shortcut) — the ordinary control it
+// duplicates is never removed, and the shortcut can only reach states that
+// control can reach, because both write the same page-state slots.
 export function SummaryGrid<T>({
   metrics,
   context,
   mode,
   nowMs,
-  onFilter,
+  onShortcut,
   lookup,
   className,
 }: SummaryGridProps<T>) {
@@ -71,14 +72,14 @@ export function SummaryGrid<T>({
             value={<span className={TONE_CLASSES[metric.tone ?? "neutral"]}>{formatted.text}</span>}
           />
         );
-        if (metric.filter && onFilter) {
-          const filter = metric.filter;
+        if (metric.shortcut && onShortcut) {
+          const shortcut = metric.shortcut;
           return (
             <button
               key={metric.id}
               type="button"
               className="text-left"
-              onClick={() => onFilter(filter.key, filter.value)}
+              onClick={() => onShortcut(shortcut)}
             >
               {card}
             </button>

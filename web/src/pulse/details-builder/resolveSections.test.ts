@@ -6,6 +6,7 @@ import {
   dcAllFalsy,
   dcEndpointVariants,
   dcs,
+  events,
   initialization,
   meQuality,
   meWriters,
@@ -109,6 +110,29 @@ describe("classifyValue on the production fixtures (review M1)", () => {
     ["writerAllNull", writerAllNull, "writers[0]", "object"],
     ["selftestAllNullable.ip (empty object)", selftestAllNullable.ip, "ip", "object"],
     ["zeroAll.middle_proxy.handshake_error_codes", [], "handshake_error_codes", "primitiveArray"],
+    // Task 4's semantic renderers describe these four; the classification
+    // they rely on is asserted here rather than assumed by the renderer.
+    // A TLS record is a stable object (its identity leaves are strings),
+    // which is why RankingSection reads named fields off it.
+    [
+      "tlsFingerprints.by_fingerprint[0]",
+      tlsFingerprints.by_fingerprint[0],
+      "by_fingerprint[0]",
+      "object",
+    ],
+    ["tlsFingerprints.by_ip[0] (carries a scope)", tlsFingerprints.by_ip[0], "by_ip[0]", "object"],
+    // An initialization step and an event are objects too — a timeline
+    // reads status/title/details/duration off them by name.
+    [
+      "initialization.components[0]",
+      initialization.components[0],
+      "components[0]",
+      "object",
+    ],
+    ["events.events[0]", events.events[0], "events[0]", "object"],
+    // The two maps a BreakdownSection may be bound to instead of an array:
+    // verbatim keys with counters, i.e. exactly §9.4's label → total.
+    ["meQuality.route_drops (breakdown over a map)", meQuality.route_drops, "route_drops", "dynamicMap"],
   ];
 
   it.each(cases)("%s -> %s", (_name, value, path, expected) => {
@@ -380,6 +404,46 @@ describe("every section kind resolves against a production-size fixture", () => 
     expect(custom.kind).toBe("custom");
     expect(custom.consumed.length).toBeGreaterThan(0);
     expect(result.unknownPaths.some((p) => p.startsWith("network_path"))).toBe(false);
+    expect(result.lostPaths).toEqual([]);
+  });
+});
+
+describe("breakdown over a dynamic map (spec §9.4, §11.2)", () => {
+  const definition: DetailPageDefinition<typeof meQuality, typeof meQuality> = {
+    id: "test.route-drops",
+    title: () => "route_drops",
+    sources: [],
+    sections: [
+      { kind: "breakdown", id: "route-drops", title: () => "route_drops", path: "route_drops" },
+    ],
+  };
+
+  it("turns the map's entries into {key, value} pairs and consumes the subtree", () => {
+    const result = resolveSections({ definition, context: meQuality });
+    const section = sectionById(result, "route-drops") as CollectionSectionInstance;
+    expect(section.presence).toBe("present");
+    expect(section.items).toHaveLength(Object.keys(meQuality.route_drops).length);
+    expect(section.items[0]).toEqual({
+      key: "no_conn_total",
+      value: meQuality.route_drops.no_conn_total,
+    });
+    // Nothing leaks into the unknown tail, and nothing is lost.
+    expect(result.unknownPaths.some((p) => p.startsWith("route_drops"))).toBe(false);
+    expect(result.lostPaths).toEqual([]);
+  });
+
+  it("leaves a non-array bound to any OTHER collection kind alone", () => {
+    const asArray: DetailPageDefinition<typeof meQuality, typeof meQuality> = {
+      ...definition,
+      sections: [
+        { kind: "array", id: "route-drops", title: () => "route_drops", path: "route_drops" },
+      ],
+    };
+    const result = resolveSections({ definition: asArray, context: meQuality });
+    const section = sectionById(result, "route-drops") as CollectionSectionInstance;
+    // An object is not a list: the section stays empty and the leaves are
+    // still accounted for by the section that owns the path.
+    expect(section.items).toEqual([]);
     expect(result.lostPaths).toEqual([]);
   });
 });

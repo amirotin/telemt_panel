@@ -56,6 +56,14 @@ export type FilterValue = string | boolean | string[];
 export interface SortState {
   key: string;
   direction: "asc" | "desc";
+  /**
+   * Which section this sort belongs to. A page may carry several sortable
+   * collections (Security has four rankings), and only one of them is being
+   * sorted at a time — the one the reader is looking at. Leaving the slot
+   * single and TAGGING it is what lets a §18.2 summary shortcut aim a sort
+   * at a named section without giving every section its own state key.
+   */
+  sectionId?: string;
 }
 
 // PageState is the union of the two halves ruling R3 splits apart:
@@ -239,11 +247,17 @@ export interface EntityListSectionDefinition<T, TItem = unknown> extends Section
 
 // 9.4 BreakdownSection — `{class,total}` / `{stage,total}` pairs: ONE row
 // per entity, never two KV rows (§9.4).
+//
+// `label`/`total` are optional because the shape is recognizable on its
+// own: `readBreakdownPair` (renderers/breakdown.helpers.ts) is the
+// generalized `isClassTotalList` donor, and a dynamic-map group bound here
+// arrives as {key, value} pairs the same helper reads. A definition still
+// overrides either accessor when the pair is spelled unusually.
 export interface BreakdownSectionDefinition<T, TItem = unknown> extends SectionCommon<T> {
   kind: "breakdown";
   path: string;
-  label: (item: TItem) => string;
-  total: (item: TItem) => number;
+  label?: (item: TItem) => string;
+  total?: (item: TItem) => number;
   /** Lifetime counterpart shown beside a delta, where both exist. */
   lifetime?: (item: TItem) => number | null;
 }
@@ -269,9 +283,21 @@ export interface RankingSectionDefinition<T, TItem = unknown> extends SectionCom
   itemKey: (item: TItem, index: number) => string;
   identity: (item: TItem) => string;
   score: (item: TItem) => number;
+  /**
+   * The record key `score` reads, when it reads one. Naming it makes the
+   * default sort ONE of the numeric columns instead of a synthetic extra
+   * option — the render's sort control says «По total», not «По рангу».
+   */
+  scoreKey?: string;
+  /** What the score counts, printed under the number ("observed"). */
+  scoreLabel?: Localized;
+  /** Secondary line under the identity: "seen 2 мин. назад · bad/probe 0". */
+  meta?: (item: TItem) => string | null;
   paging?: Partial<PagingPolicy>;
   search?: SearchDefinition<TItem>;
   sort?: SortDefinition<TItem>[];
+  /** Domain-relevant filters only (§18.2) — a summary tile MAY shortcut to one. */
+  filters?: FilterDefinition<TItem>[];
 }
 
 // 9.7 DynamicMapSection — forward-compatible counters and maps with keys we
@@ -296,7 +322,12 @@ export interface DynamicMapSectionDefinition<T> extends SectionCommon<T> {
 // a11y contracts (§9.8).
 export interface CustomSectionDefinition<T> extends SectionCommon<T> {
   kind: "custom";
-  /** Renderer id resolved by the page's renderer registry (Task 4). */
+  /**
+   * Renderer id resolved by the page's registry
+   * (renderers/customRenderers.ts). An id nobody registered is NOT an
+   * error: the section falls back to the generic node tree, so a chart that
+   * has not shipped yet degrades to readable rows rather than a blank card.
+   */
   renderer: string;
   /** Paths this custom renderer covers, for consumed-path tracking. */
   consumes: string[];
@@ -355,9 +386,23 @@ export interface SummaryMetricDefinition<T> {
   format?: FormatterName;
   unit?: FieldUnit;
   tone?: "neutral" | "good" | "warn" | "bad";
-  /** §18.2: a metric MAY be a shortcut to an existing filter — the plain control stays. */
-  filter?: { key: string; value: FilterValue };
+  /** §18.2: a metric MAY be a shortcut to an EXISTING control — see SummaryShortcut. */
+  shortcut?: SummaryShortcut;
   minMode?: DisplayMode;
+}
+
+/**
+ * §18.2's interactive summary metric: the tile applies a filter and/or a
+ * sort that the section ALREADY offers through its own control. Both halves
+ * are deliberately expressed in the section's own vocabulary (a filter key
+ * a FilterDefinition declares, a sort key a numeric column carries), so a
+ * shortcut can never reach a state the ordinary control cannot reach —
+ * which is what "рядом остаётся обычный filter control" means in practice.
+ */
+export interface SummaryShortcut {
+  filter?: { key: string; value: FilterValue };
+  /** `sectionId` names the collection to sort; without it the sort is ignored. */
+  sort?: SortState;
 }
 
 export interface EntitySelectorDefinition<TPayload> {
