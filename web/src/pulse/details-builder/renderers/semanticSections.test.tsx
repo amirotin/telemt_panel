@@ -823,10 +823,12 @@ describe("RankingSection with duplicate identities (spec §5.3)", () => {
     );
   });
 
-  it("keys the rows without a React duplicate-key warning", () => {
+  it("keys the rows without a React duplicate-key warning, under StrictMode", () => {
+    // StrictMode on purpose: the double pass is the render React is
+    // strictest about, and it is where a key collision would surface first.
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      render(scopeTree(byCidr, tlsFingerprints));
+      render(scopeTree(byCidr, tlsFingerprints, true));
       expect(errors).not.toHaveBeenCalled();
     } finally {
       errors.mockRestore();
