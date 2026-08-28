@@ -466,7 +466,14 @@ function resolveCustomSection<T>(
 // container a container. `keep` decides membership: a node survives only if
 // at least one of its leaves is still unconsumed, which is what stops the
 // tail from re-showing a field a real section already rendered.
-function buildUnknownNodes(
+//
+// Exported because it is also the walker the RENDERERS need: an ArraySection
+// record card faces the same "objects stay groups, arrays stay array blocks,
+// scalars become described rows" problem (§10.4, §11.3), and calling this
+// with `keep: () => true` is the one way to be sure a record card and the
+// unknown tail agree about what a nested value looks like. See
+// renderers/unknownFields.ts.
+export function buildUnknownNodes(
   value: unknown,
   path: string,
   key: string,
@@ -528,7 +535,7 @@ function buildUnknownNodes(
   return [{ kind: "group", path, key, children }];
 }
 
-function unknownLeaves(nodes: UnknownNode[]): string[] {
+export function unknownLeaves(nodes: UnknownNode[]): string[] {
   const out: string[] = [];
   const walk = (node: UnknownNode) => {
     switch (node.kind) {
