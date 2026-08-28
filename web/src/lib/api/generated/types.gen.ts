@@ -188,13 +188,13 @@ export type GatedTlsFingerprints = {
 export type TelemtConfig = {
     revision: string;
     /**
-     * Map of section name → that section's JSON, straight from Telemt (integers preserved). Open-ended: a section a newer Telemt adds (`web`, since 3.5.3) passes through unchanged rather than being dropped.
+     * Map of section name → that section's JSON, straight from Telemt (integers preserved). Open-ended: a section a newer Telemt adds (`web`, since 3.5.3) passes through unchanged rather than being dropped, and a section value the panel received as null is passed on as null rather than synthesized into {}.
      *
      */
     sections: {
         [key: string]: {
             [key: string]: unknown;
-        };
+        } | null;
     };
 };
 

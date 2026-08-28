@@ -3,9 +3,9 @@ import { useState } from "react";
 /**
  * A revision plus the sections it describes — GET /api/telemt/config's
  * payload, widened: `sections` here is a plain JSON object rather than the
- * wire type's map-of-objects, because the raw editor hands back whatever
- * the admin typed (a section can transiently be any JSON value) and the
- * rebase merge produces the same open shape.
+ * wire type's map of section-object-or-null, because the raw editor hands
+ * back whatever the admin typed (a section can transiently be any JSON
+ * value) and the rebase merge produces the same open shape.
  */
 export interface ConfigSnapshot {
   revision: string;

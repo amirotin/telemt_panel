@@ -1004,11 +1004,12 @@ components:
         revision: { type: string }
         sections:
           type: object
-          additionalProperties: { type: object, additionalProperties: true }
+          additionalProperties: { type: [object, "null"], additionalProperties: true }
           description: >
             Map of section name → that section's JSON, straight from Telemt (integers
             preserved). Open-ended: a section a newer Telemt adds (`web`, since 3.5.3)
-            passes through unchanged rather than being dropped.
+            passes through unchanged rather than being dropped, and a section value the
+            panel received as null is passed on as null rather than synthesized into {}.
 
     TelemtConfigPatch:
       type: object
