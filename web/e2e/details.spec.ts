@@ -7,7 +7,9 @@ import type { Page } from "@playwright/test";
 //   tap entity · keyboard open/close · accordion preservation ·
 //   search/filter/sort preservation · swipe and pager · the system Back
 //   gesture from the left edge · portrait → landscape → portrait with an
-//   entity open · a realtime update during a scroll and with a surface open.
+//   entity open and with a SURFACE open · a swipe that must not page while
+//   that surface is up · a realtime update during a scroll and with a
+//   surface open.
 //
 // It runs against the vite DEV server rather than the built binary
 // (playwright.config.ts's `details` project): /dev/details is dropped from
@@ -226,6 +228,35 @@ test("portrait → landscape → portrait keeps the open entity and the layout f
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(layout).toHaveAttribute("data-layout", "compact-portrait");
+  await expect(selectedEntity(page)).toHaveText(chosen);
+});
+
+test("with a surface open, a swipe pages nothing and a rotation keeps it", async ({ page }) => {
+  await openHarness(page, "dc");
+  const chosen = (await selectedEntity(page).textContent()) ?? "";
+
+  const row = page.locator("#endpoint_writers-panel button[aria-label]").first();
+  await row.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  const title = await dialog.getByRole("heading").textContent();
+
+  // §16.2 + §17: the gesture is disarmed while the surface owns the screen.
+  // `dispatchEvent` reaches the hero regardless of the backdrop covering
+  // it, so this tests the guard rather than the stacking order.
+  const hero = '[data-testid="detail-hero"]';
+  const box = (await page.locator(hero).boundingBox())!;
+  const y = Math.round(box.y + box.height / 2);
+  await drag(page, hero, { x: 300, y }, { x: 300 - 140, y });
+  await expect(selectedEntity(page)).toHaveText(chosen);
+  await expect(dialog).toBeVisible();
+
+  // §17: rotating swaps the bottom sheet for the side sheet without closing
+  // it or changing the record it shows.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "compact-landscape");
+  await expect(dialog).toBeVisible();
+  expect(await dialog.getByRole("heading").textContent()).toBe(title);
   await expect(selectedEntity(page)).toHaveText(chosen);
 });
 

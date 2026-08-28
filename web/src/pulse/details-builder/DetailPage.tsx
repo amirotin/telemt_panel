@@ -124,7 +124,15 @@ export function DetailPage<TPayload, TContext>({
     onPrevious: () => step(-1),
     // §16.2 bounds the gesture to the hero of a touch layout. On a desktop
     // the pager buttons are the whole story.
-    enabled: isCompact(layout) && keys.length > 1,
+    //
+    // An open §17 surface disarms it entirely. Today every placement covers
+    // the viewport, so a real finger reaches the backdrop rather than the
+    // hero — but that is a property of the current sheet, not a guarantee:
+    // the moment a docked placement without a backdrop appears (§15.4 allows
+    // a sticky master pane), a swipe would page the entity underneath the
+    // open card and leave the reader holding a record for something they can
+    // no longer see.
+    enabled: isCompact(layout) && keys.length > 1 && api.state.openSurfaceKey === undefined,
   });
 
   // --- context ------------------------------------------------------------

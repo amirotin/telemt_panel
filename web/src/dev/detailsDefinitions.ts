@@ -13,6 +13,7 @@
 // production build and Rollup drops the whole graph.
 
 import type {
+  DcEndpointWriters,
   DcStatus,
   DcStatusData,
   RuntimeEdgeEventRecord,
@@ -116,11 +117,20 @@ export const devDcPage: DetailPageDefinition<DcStatusData, DcStatus> = {
       ],
     },
     { kind: "array", id: "endpoints", title: () => "endpoints[]", path: "endpoints" },
+    // §9.3 rather than §9.2, and deliberately: this is the only DC array
+    // whose rows are records, and it is the only way the harness can put a
+    // §17 surface on a page that ALSO carries an entity selector — which is
+    // what "a swipe does nothing while a surface is open" and "a rotation
+    // keeps the open surface" need in order to be driven end to end
+    // (e2e/details.spec.ts).
     {
-      kind: "array",
+      kind: "entityList",
       id: "endpoint_writers",
       title: () => "endpoint_writers[]",
       path: "endpoint_writers",
+      itemKey: (item, i) => `ew-${(item as DcEndpointWriters).endpoint}-${i}`,
+      identity: (item) => (item as DcEndpointWriters).endpoint,
+      highlights: ["active_writers"],
     },
   ],
   unknownFields: { minMode: "extended", rawJson: true },

@@ -369,6 +369,25 @@ describe("entity paging (spec §16.2)", () => {
     expect(selected(el)).toBe(`DC ${dcs.dcs[0].dc}`);
   });
 
+  it("does not page while a detail surface is open (§16.2, §17)", async () => {
+    const { container: el } = await mount(
+      <DetailPage definition={dcPage} payload={dcs} sources={DC_READY} nowMs={NOW} />,
+      "/page?tab=endpoints",
+    );
+    const row = el.querySelector<HTMLElement>("#endpoints-panel button[aria-label]");
+    expect(row).not.toBeNull();
+    click(row!);
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+    // The same drag that pages one entity with nothing open. jsdom does no
+    // hit testing, so this reaches the hero exactly the way a docked
+    // surface without a backdrop would let a real finger reach it.
+    await act(async () => swipe(hero(el), 300, 300 - 120));
+
+    expect(selected(el)).toBe(`DC ${dcs.dcs[0].dc}`);
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
   it("does not arm the gesture for a mouse, where the pager is the control", async () => {
     const { container: el } = await mount(
       <DetailPage definition={dcPage} payload={dcs} sources={DC_READY} nowMs={NOW} />,
