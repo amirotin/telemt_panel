@@ -25,6 +25,14 @@ export interface DescribedRowProps {
    * security / platform screens that label their own rows.
    */
   nameStyle?: DescribedRowNameStyle;
+  /**
+   * Draw the value in semibold. Defaults to ON for `nameStyle="field"` (the
+   * Details rows, where the value is the point of the row) and OFF for
+   * `nameStyle="label"`, which is the weight the standalone KVRow had — the
+   * config / security / platform screens must not change appearance just
+   * because they now share this component.
+   */
+  emphasizeValue?: boolean;
   monospaceValue?: boolean;
   /** Apply tabular numerals — set for any rendered number (spec §13). */
   numeric?: boolean;
@@ -54,11 +62,13 @@ export function DescribedRow({
   valueNote,
   valueTitle,
   nameStyle = "field",
+  emphasizeValue,
   monospaceValue,
   numeric,
   absent,
   className,
 }: DescribedRowProps) {
+  const emphasized = emphasizeValue ?? nameStyle === "field";
   return (
     <div
       className={cn(
@@ -87,7 +97,7 @@ export function DescribedRow({
             "break-words text-row",
             numeric && "tabular-nums",
             monospaceValue && "font-mono",
-            absent ? "text-text-faint" : "font-semibold text-text",
+            absent ? "text-text-faint" : cn("text-text", emphasized && "font-semibold"),
           )}
           title={valueTitle}
         >

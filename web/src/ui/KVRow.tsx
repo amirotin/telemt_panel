@@ -17,7 +17,9 @@ export interface KVRowProps {
 //
 // The one visible change from the standalone version: a long value wraps
 // instead of being truncated with an ellipsis (spec §13.2 — a value must
-// stay fully readable and selectable, and never widen the viewport).
+// stay fully readable and selectable, and never widen the viewport). The
+// value weight is deliberately NOT changed: `nameStyle="label"` leaves
+// DescribedRow's emphasis off, so these screens read exactly as before.
 export function KVRow({ label, value, monospace, className }: KVRowProps) {
   return (
     <DescribedRow

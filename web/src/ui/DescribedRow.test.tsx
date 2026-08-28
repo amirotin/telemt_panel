@@ -109,6 +109,27 @@ describe("KVRow stays a thin wrapper (compatibility)", () => {
     expect(el.querySelector("p")).toBeNull();
   });
 
+  it("keeps the pre-existing value weight — no emphasis on a labelled row", () => {
+    const el = render(<KVRow label="Порт" value="8443" />);
+    expect(el.firstElementChild!.children[1].firstElementChild!.className).not.toContain(
+      "font-semibold",
+    );
+  });
+
+  it("still emphasizes a Details field row, and lets a caller override either way", () => {
+    const field = render(<DescribedRow name="rtt_ms" value="4 ms" />);
+    expect(field.firstElementChild!.children[1].firstElementChild!.className).toContain(
+      "font-semibold",
+    );
+    act(() => mounted!.root.unmount());
+    mounted!.container.remove();
+    mounted = null;
+    const forced = render(<DescribedRow nameStyle="label" name="Порт" value="8443" emphasizeValue />);
+    expect(forced.firstElementChild!.children[1].firstElementChild!.className).toContain(
+      "font-semibold",
+    );
+  });
+
   it("no longer truncates — the value wraps (spec §13.2)", () => {
     const el = render(<KVRow label="Ключ" value={"a".repeat(120)} monospace />);
     const value = el.firstElementChild!.children[1].firstElementChild!;
