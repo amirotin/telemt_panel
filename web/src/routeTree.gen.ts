@@ -16,6 +16,7 @@ import { Route as AuthedJournalRouteImport } from './routes/_authed/journal'
 import { Route as AuthedPeopleRouteRouteImport } from './routes/_authed/people/route'
 import { Route as AuthedPulseRouteRouteImport } from './routes/_authed/pulse/route'
 import { Route as AuthedServerRouteRouteImport } from './routes/_authed/server/route'
+import { Route as DevDetailsRouteImport } from './routes/dev/details'
 import { Route as DevUiRouteImport } from './routes/dev/ui'
 import { Route as AuthedPeopleIndexRouteImport } from './routes/_authed/people/index'
 import { Route as AuthedPeopleUsernameRouteImport } from './routes/_authed/people/$username'
@@ -61,6 +62,11 @@ const AuthedServerRouteRoute = AuthedServerRouteRouteImport.update({
   id: '/server',
   path: '/server',
   getParentRoute: () => AuthedRoute,
+} as any)
+const DevDetailsRoute = DevDetailsRouteImport.update({
+  id: '/dev/details',
+  path: '/dev/details',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DevUiRoute = DevUiRouteImport.update({
   id: '/dev/ui',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/pulse': typeof AuthedPulseRouteRouteWithChildren
   '/server': typeof AuthedServerRouteRouteWithChildren
   '/journal': typeof AuthedJournalRoute
+  '/dev/details': typeof DevDetailsRoute
   '/dev/ui': typeof DevUiRoute
   '/people/$username': typeof AuthedPeopleUsernameRoute
   '/server/config': typeof AuthedServerConfigRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/journal': typeof AuthedJournalRoute
+  '/dev/details': typeof DevDetailsRoute
   '/dev/ui': typeof DevUiRoute
   '/people/$username': typeof AuthedPeopleUsernameRoute
   '/server/config': typeof AuthedServerConfigRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   '/_authed/pulse': typeof AuthedPulseRouteRouteWithChildren
   '/_authed/server': typeof AuthedServerRouteRouteWithChildren
   '/_authed/journal': typeof AuthedJournalRoute
+  '/dev/details': typeof DevDetailsRoute
   '/dev/ui': typeof DevUiRoute
   '/_authed/people/$username': typeof AuthedPeopleUsernameRoute
   '/_authed/server/config': typeof AuthedServerConfigRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | '/pulse'
     | '/server'
     | '/journal'
+    | '/dev/details'
     | '/dev/ui'
     | '/people/$username'
     | '/server/config'
@@ -199,6 +209,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/journal'
+    | '/dev/details'
     | '/dev/ui'
     | '/people/$username'
     | '/server/config'
@@ -219,6 +230,7 @@ export interface FileRouteTypes {
     | '/_authed/pulse'
     | '/_authed/server'
     | '/_authed/journal'
+    | '/dev/details'
     | '/dev/ui'
     | '/_authed/people/$username'
     | '/_authed/server/config'
@@ -236,6 +248,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  DevDetailsRoute: typeof DevDetailsRoute
   DevUiRoute: typeof DevUiRoute
 }
 
@@ -289,6 +302,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/server'
       preLoaderRoute: typeof AuthedServerRouteRouteImport
       parentRoute: typeof AuthedRoute
+    }
+    '/dev/details': {
+      id: '/dev/details'
+      path: '/dev/details'
+      fullPath: '/dev/details'
+      preLoaderRoute: typeof DevDetailsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/dev/ui': {
       id: '/dev/ui'
@@ -438,6 +458,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
+  DevDetailsRoute: DevDetailsRoute,
   DevUiRoute: DevUiRoute,
 }
 export const routeTree = rootRouteImport
