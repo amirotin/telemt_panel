@@ -1004,8 +1004,11 @@ components:
         revision: { type: string }
         sections:
           type: object
-          additionalProperties: true
-          description: Editable sections as JSON, straight from Telemt (integers preserved).
+          additionalProperties: { type: object, additionalProperties: true }
+          description: >
+            Map of section name → that section's JSON, straight from Telemt (integers
+            preserved). Open-ended: a section a newer Telemt adds (`web`, since 3.5.3)
+            passes through unchanged rather than being dropped.
 
     TelemtConfigPatch:
       type: object

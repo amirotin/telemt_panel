@@ -66,8 +66,25 @@ func TestHandleGetTelemtConfig_Passthrough(t *testing.T) {
 	if got.Revision == "" {
 		t.Error("revision is empty")
 	}
-	if len(got.Sections.General) == 0 {
+	if len(got.Sections["general"]) == 0 {
 		t.Error("sections.general is empty, want telemttest's sample config")
+	}
+	// M4 T1b: `web` is a section the panel has no typed knowledge of — it
+	// must still survive the GET passthrough byte-for-byte.
+	if string(got.Sections["web"]) == "" {
+		t.Fatal("sections.web is missing, want telemttest's sample [web] section")
+	}
+	var web struct {
+		Enabled bool `json:"enabled"`
+		Limits  struct {
+			MaxSessionsGlobal int64 `json:"max_sessions_global"`
+		} `json:"limits"`
+	}
+	if err := json.Unmarshal(got.Sections["web"], &web); err != nil {
+		t.Fatalf("decode sections.web: %v", err)
+	}
+	if !web.Enabled || web.Limits.MaxSessionsGlobal != 128 {
+		t.Errorf("sections.web = %s, want the sample [web] section intact", got.Sections["web"])
 	}
 }
 
