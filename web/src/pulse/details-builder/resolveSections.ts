@@ -35,6 +35,9 @@ import type { Localized } from "./model";
 import { childPath, indexPath, isUnderPath, readPath, hasPath, walkLeafPaths } from "./paths";
 import { lookupField } from "./fieldCatalog";
 import type { FieldCatalog, FieldLookupContext } from "./fieldCatalog";
+// Pure pair-reading logic, no rendering — the resolver has to agree with
+// BreakdownSection about what a pair is, and there must be ONE answer.
+import { buildBreakdownRows } from "./renderers/breakdown.helpers";
 
 // --- value classification (§12.6, §11) ----------------------------------
 
@@ -339,6 +342,25 @@ function breakdownPairs(
     .map(([key, value]) => ({ key, value }));
 }
 
+// readsAsPairs answers the question BreakdownSection's empty state asks:
+// does anything here actually read as a `label → total` pair? The renderer
+// and the resolver must agree, so this runs the renderer's own reader over
+// the same accessors the definition supplies.
+function readsAsPairs(section: object, items: readonly unknown[]): boolean {
+  const accessor = <R,>(name: "label" | "total"): ((item: unknown) => R) | undefined => {
+    const value = (section as Record<string, unknown>)[name];
+    return typeof value === "function" ? (value as (item: unknown) => R) : undefined;
+  };
+  const label = accessor<string>("label");
+  const total = accessor<number>("total");
+  return (
+    buildBreakdownRows(items, {
+      ...(label ? { label } : {}),
+      ...(total ? { total } : {}),
+    }).length > 0
+  );
+}
+
 // --- section instantiation (step 4) -------------------------------------
 
 function resolveScalarSection<T>(
@@ -399,6 +421,7 @@ function resolveCollectionSection<T>(
       : (_item: unknown, index: number) => String(index);
   const paging = mergePaging("paging" in section ? section.paging : undefined);
   const sizing = pagingForSize(items.length, paging);
+  const swallows = kind === "breakdown" && presence === "present" && !readsAsPairs(section, items);
   return {
     kind,
     id: section.id,
@@ -411,7 +434,12 @@ function resolveCollectionSection<T>(
     // A section bound to a path OWNS that path once the key exists — even
     // when the value arrived as null, which is a leaf of its own and must
     // not drift into the unknown tail.
-    consumed: present ? leafPathsUnder(context, section.path) : [],
+    //
+    // The one exception is a breakdown whose elements turn out not to be
+    // pairs: it draws nothing at all, so owning the subtree would delete
+    // those leaves from the page. It gives them back to the unknown tail
+    // instead, which is what its empty state promises (§27.4).
+    consumed: present && !swallows ? leafPathsUnder(context, section.path) : [],
     items,
     itemKeys: items.map((item, i) => keyer(item, i)),
     presence,

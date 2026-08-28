@@ -393,4 +393,55 @@ describe("SectionList applies the ONE display-mode predicate", () => {
     const extended = render(<Harness render={(ctx) => <SectionList sections={sections} ctx={ctx} />} />);
     expect(extended.textContent).toContain("Core counters");
   });
+
+  it("does not let a section the mode HIDES claim its array away from the map", () => {
+    const definition: DetailPageDefinition<typeof zeroAll, typeof zeroAll> = {
+      id: "test.claims",
+      title: () => "Claims",
+      sources: [{ id: "stats", required: true }],
+      sections: [
+        {
+          kind: "dynamicMap",
+          id: "all",
+          title: () => "All counters",
+          path: "",
+          defaultExpanded: true,
+          groups: [{ id: "core", title: () => "Core", path: "core" }],
+        },
+        {
+          kind: "breakdown",
+          id: "bad-by-class",
+          title: () => "Bad by class",
+          path: "core.connections_bad_by_class",
+          minMode: "extended",
+          defaultExpanded: true,
+        },
+      ],
+    };
+    const sections = resolve(definition, zeroAll);
+
+    // In extended mode the explicit section wins and the map gives the
+    // array away — the rule this claim exists for.
+    const extended = render(<Harness render={(ctx) => <SectionList sections={sections} ctx={ctx} />} />);
+    expect(extended.textContent).toContain("Bad by class");
+    expect(extended.querySelector("#all-panel")!.textContent).not.toContain(
+      "connections_bad_by_class[]",
+    );
+
+    act(() => mounted!.root.unmount());
+    mounted!.container.remove();
+    mounted = null;
+
+    // In basic mode it draws nothing at all, so it must not take the array
+    // off the screen: the map shows it again.
+    const basic = render(
+      <Harness
+        render={(ctx) => <SectionList sections={sections} ctx={{ ...ctx, mode: "basic" }} />}
+      />,
+    );
+    expect(basic.textContent).not.toContain("Bad by class");
+    expect(basic.querySelector("#all-panel")!.textContent).toContain(
+      "connections_bad_by_class[]",
+    );
+  });
 });

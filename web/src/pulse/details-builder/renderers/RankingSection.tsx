@@ -1,14 +1,15 @@
 import { useMemo, useState } from "react";
-import { fill, useStrings } from "../../../i18n";
+import { fill, useStrings, type Dict } from "../../../i18n";
 import { cn } from "../../../lib/cn";
 import { Button } from "../../../ui/Button";
 import { Chip } from "../../../ui/Chip";
 import { Input } from "../../../ui/Input";
 import { Select } from "../../../ui/Select";
 import { IconChevronRight } from "../../../ui/icons";
+import { describeField } from "../fieldCatalog";
 import { formatValue } from "../formatting";
 import type { RankingSectionDefinition } from "../model";
-import { indexPath } from "../paths";
+import { childPath, indexPath } from "../paths";
 import type { ClassifyContext, CollectionSectionInstance } from "../resolveSections";
 import { AdaptiveDetailSurface } from "../surfaces/AdaptiveDetailSurface";
 import { SectionFrame } from "./SectionFrame";
@@ -163,7 +164,9 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
                   )}
                   {columns.map((column) => (
                     <option key={column} value={column}>
-                      {fill(s.details.ranking.sortByTemplate, { column })}
+                      {fill(s.details.ranking.sortByTemplate, {
+                        column: columnLabel(instance.path, column, s, classifyCtx),
+                      })}
                     </option>
                   ))}
                 </Select>
@@ -261,6 +264,15 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
       </AdaptiveDetailSurface>
     </SectionFrame>
   );
+}
+
+// columnLabel names a sort column. Telemt's own key is the fallback and the
+// render's own wording — «По total», not «По рангу» — but where the catalog
+// carries a SHORT label for that field, the control says that instead: the
+// mechanism already exists for §14.3's compact renderings and a sort menu is
+// exactly where a long key reads worst.
+function columnLabel(path: string, column: string, s: Dict, ctx: ClassifyContext): string {
+  return describeField(childPath(childPath(path, "*"), column), s, ctx).shortLabel ?? column;
 }
 
 interface OrderSnapshot {

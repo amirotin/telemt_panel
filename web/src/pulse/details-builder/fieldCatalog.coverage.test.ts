@@ -8,8 +8,8 @@
 // 6–8 add their own fixture here as they migrate a domain, and the
 // Telemt-bump checklist points at this file.
 import { describe, expect, it } from "vitest";
-import { catalogCoverage } from "./fieldCatalog";
-import { dcs, minimalAll } from "./__fixtures__";
+import { catalogCoverage, TLS_FINGERPRINTS_ENDPOINT } from "./fieldCatalog";
+import { dcs, minimalAll, tlsFingerprints } from "./__fixtures__";
 
 describe("field catalog coverage: DC domain", () => {
   it("describes every leaf of the production DC payload", () => {
@@ -49,5 +49,27 @@ describe("field catalog coverage: DC domain", () => {
   it("still flags an undescribed field, so the harness itself cannot pass vacuously", () => {
     const report = catalogCoverage({ ...dcs, a_field_from_a_future_telemt: 1 });
     expect(report.undescribed).toEqual(["a_field_from_a_future_telemt"]);
+  });
+});
+
+// The TLS domain is seeded ENDPOINT-scoped (ruling R9): its record fields
+// are named `total`, `limit`, `capacity`, `scope` — words every other
+// Telemt payload also uses for something else, so a global entry would
+// describe an unrelated field as a TLS capture bound. Both halves of that
+// decision are asserted, so neither the coverage nor the scoping can drift
+// before Tasks 6-8 pick the domain up.
+describe("field catalog coverage: TLS domain (endpoint-scoped, ruling R9)", () => {
+  it("describes every leaf of the production TLS payload", () => {
+    const report = catalogCoverage(tlsFingerprints, { endpoint: TLS_FINGERPRINTS_ENDPOINT });
+    expect(report.total).toBe(1955);
+    expect(report.undescribed, `undescribed TLS paths:\n${report.undescribed.join("\n")}`).toEqual(
+      [],
+    );
+  });
+
+  it("describes NONE of them without the endpoint scope", () => {
+    const report = catalogCoverage(tlsFingerprints);
+    expect(report.total).toBe(1955);
+    expect(report.described).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import { act, StrictMode, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  dcs,
   events,
   initialization,
   initializationSkippedCount,
@@ -30,6 +31,7 @@ import { CustomSection } from "./CustomSection";
 import { RankingSection } from "./RankingSection";
 import { TimelineSection } from "./TimelineSection";
 import { QUALITY_CHART_RENDERER } from "./customRenderers";
+import { SCORE_SORT_KEY } from "./ranking.helpers";
 import type { DetailRenderContext } from "./context";
 
 // One fixed clock for every relative age below, so a timestamp assertion is
@@ -239,6 +241,31 @@ describe("BreakdownSection (spec §9.4)", () => {
     expect(el.querySelector("#error-codes-panel")!.textContent).toContain(
       "Нет элементов в текущем снимке",
     );
+  });
+
+  it("says the elements are not pairs, and hands them to the unknown tail", () => {
+    // A DC record carries nine fields and no counting key at all — the
+    // shape `readBreakdownPair` refuses rather than draw a column of NaNs.
+    const notPairs: BreakdownSectionDefinition<typeof dcs, unknown> = {
+      kind: "breakdown",
+      id: "not-pairs",
+      title: () => "dcs",
+      path: "dcs",
+      defaultExpanded: true,
+    };
+    const resolved = resolveSections({ definition: page(notPairs), context: dcs });
+    const instance = resolved.sections.find((s) => s.id === "not-pairs") as CollectionSectionInstance;
+    const el = render(
+      <Harness render={(ctx) => <BreakdownSection instance={instance} ctx={ctx} />} />,
+    );
+    expect(el.querySelector("#not-pairs-panel")!.textContent).toContain(
+      "не выглядят парами",
+    );
+    // The empty state's promise, kept by the resolver: nothing is consumed,
+    // so every leaf is still on the page in the unknown tail.
+    expect(resolved.consumedPaths.some((p) => p.startsWith("dcs"))).toBe(false);
+    expect(resolved.unknownPaths.some((p) => p.startsWith("dcs["))).toBe(true);
+    expect(resolved.lostPaths).toEqual([]);
   });
 
   it("reads a dynamic-map group as pairs, key → counter", () => {
@@ -522,6 +549,42 @@ describe("RankingSection (spec §9.6, §18)", () => {
     expect(identities(el)[0]).toBe(newest.ja4);
   });
 
+  it("labels a sort column with the catalog's short name where there is one", () => {
+    // Telemt's own key stays the wording and the fallback — the render says
+    // «По total» because no TLS field has a short label yet. Where the
+    // catalog HAS one, the control must prefer it: `dcs.*.rtt_ms` is "RTT".
+    const dcRanking: RankingSectionDefinition<typeof dcs, unknown> = {
+      kind: "ranking",
+      id: "dc-ranking",
+      title: () => "dcs",
+      path: "dcs",
+      defaultExpanded: true,
+      itemKey: (item) => String((item as { dc: number }).dc),
+      identity: (item) => String((item as { dc: number }).dc),
+      score: (item) => (item as { load: number }).load,
+    };
+    const instance = instanceOf(page(dcRanking), dcs, "dc-ranking");
+    const el = render(
+      <Harness
+        render={(ctx) => (
+          <RankingSection
+            instance={instance}
+            definition={dcRanking as RankingSectionDefinition<unknown, unknown>}
+            ctx={ctx}
+          />
+        )}
+      />,
+    );
+    const options = Array.from(el.querySelectorAll("option"));
+    expect(options.map((o) => o.textContent)).toContain("По RTT");
+    // Every column the catalog says nothing short about keeps Telemt's key
+    // verbatim, which is what the render shows for the TLS rankings today.
+    const shortened = ["rtt_ms", "load", "coverage_pct", "available_endpoints", SCORE_SORT_KEY];
+    const bare = options.filter((o) => !shortened.includes(o.value));
+    expect(bare.length).toBeGreaterThan(0);
+    for (const option of bare) expect(option.textContent).toBe(`По ${option.value}`);
+  });
+
   it("opens every remaining field of a record in the adaptive surface (§17)", () => {
     const el = render(rankingTree(tlsInstance(tlsFingerprints)));
     click(rankingRows(el)[0].querySelector("button")!);
@@ -621,6 +684,20 @@ describe("RankingSection frozen order (spec §19.2)", () => {
     const shown = Array.from(el.querySelectorAll<HTMLElement>("#by-fingerprint-panel li"));
     expect(shown.length).toBe(20);
     expect(identities(el)).not.toContain("ja4:new-arrival");
+  });
+
+  it("closes the surface when its record leaves the payload", () => {
+    const el = render(rankingTree(tlsInstance(tlsFingerprints)));
+    click(rankingRows(el)[0].querySelector("button")!);
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    const withoutFirst: typeof tlsFingerprints = {
+      ...tlsFingerprints,
+      by_fingerprint: tlsFingerprints.by_fingerprint.slice(1),
+    };
+    rerender(rankingTree(tlsInstance(withoutFirst)));
+    // Nothing to show, so nothing is shown — and the list is still there.
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(rankingRows(el)).toHaveLength(20);
   });
 
   it("does not freeze the order of a section the reader never touched", () => {

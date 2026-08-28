@@ -447,3 +447,48 @@ describe("breakdown over a dynamic map (spec §9.4, §11.2)", () => {
     expect(result.lostPaths).toEqual([]);
   });
 });
+
+describe("breakdown bound to elements that are NOT pairs (review L2)", () => {
+  // `dcs` records carry nine fields each — the shape `readBreakdownPair`
+  // deliberately refuses, so this section draws nothing at all.
+  const definition: DetailPageDefinition<typeof dcs, typeof dcs> = {
+    id: "test.not-pairs",
+    title: () => "not pairs",
+    sources: [],
+    sections: [{ kind: "breakdown", id: "dcs", title: () => "dcs", path: "dcs" }],
+    unknownFields: {},
+  };
+
+  it("does not swallow the subtree it cannot draw", () => {
+    const result = resolveSections({ definition, context: dcs });
+    const section = sectionById(result, "dcs") as CollectionSectionInstance;
+    // The collection is genuinely there — it is the PAIRS that are missing.
+    expect(section.presence).toBe("present");
+    expect(section.items).toHaveLength(dcs.dcs.length);
+    // …so the leaves stay unconsumed and reappear in the unknown tail,
+    // which is exactly what the section's empty state promises.
+    expect(result.consumedPaths.some((p) => p.startsWith("dcs"))).toBe(false);
+    expect(result.unknownPaths.some((p) => p.startsWith("dcs["))).toBe(true);
+    expect(result.lostPaths).toEqual([]);
+  });
+
+  it("still owns the subtree as soon as the definition names the pair", () => {
+    const named: DetailPageDefinition<typeof dcs, typeof dcs> = {
+      ...definition,
+      sections: [
+        {
+          kind: "breakdown",
+          id: "dcs",
+          title: () => "dcs",
+          path: "dcs",
+          label: (item) => String((item as { dc: number }).dc),
+          total: (item) => (item as { rtt_ms: number | null }).rtt_ms ?? 0,
+        },
+      ],
+    };
+    const result = resolveSections({ definition: named, context: dcs });
+    expect(result.consumedPaths.some((p) => p.startsWith("dcs["))).toBe(true);
+    expect(result.unknownPaths.some((p) => p.startsWith("dcs["))).toBe(false);
+    expect(result.lostPaths).toEqual([]);
+  });
+});

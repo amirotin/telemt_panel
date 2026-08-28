@@ -48,21 +48,29 @@ export function SectionList({
   deltas,
   customRenderers,
 }: SectionListProps) {
-  const visible = sections.filter((section) => showsAtMode(section.minMode, ctx.mode));
+  const visible = useMemo(
+    () => sections.filter((section) => showsAtMode(section.minMode, ctx.mode)),
+    [sections, ctx.mode],
+  );
 
   // Paths an EXPLICIT section already owns. A dynamic map is bound to a
   // whole subtree ("" for the counters page), so without this a breakdown
   // declared over `core.connections_bad_by_class` would render alongside the
   // very same array shown nested inside the map's `core` group. The explicit
   // section wins; the map hides what it gave away.
+  //
+  // Read from the VISIBLE sections, not from all of them: a section the
+  // current display mode does not reach draws nothing, so letting it claim a
+  // path would take that array off the screen twice over — once as itself
+  // and once inside the map.
   const claimedPaths = useMemo(
     () =>
       new Set(
-        sections
+        visible
           .filter((s) => s.kind !== "dynamicMap" && s.kind !== "unknownFields" && s.path !== "")
           .map((s) => s.path),
       ),
-    [sections],
+    [visible],
   );
 
   return (

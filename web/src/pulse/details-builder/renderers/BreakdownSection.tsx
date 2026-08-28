@@ -76,8 +76,10 @@ export function BreakdownSection({ instance, definition, ctx, deltas }: Breakdow
         <EmptyNote text={s.details.collection.emptyTitle} />
       ) : rows.length === 0 ? (
         // The section is bound to a real collection whose elements are not
-        // pairs. Saying so beats drawing a column of NaNs, and the leaves
-        // are still reachable through the unknown tail.
+        // pairs. Saying so beats drawing a column of NaNs — and because the
+        // resolver leaves such a subtree UNCONSUMED, the leaves really do
+        // reappear in the unknown tail (§27.4), the way an unregistered
+        // custom renderer falls back to the node tree.
         <EmptyNote text={s.details.breakdown.notPairs} />
       ) : (
         <div className="flex flex-col py-1">
