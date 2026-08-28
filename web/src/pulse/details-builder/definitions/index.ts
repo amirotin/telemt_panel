@@ -5,4 +5,5 @@
 // builder's barrel would make every renderer's import graph reach into
 // every domain.
 export * from "./dc";
+export * from "./me";
 export * from "./security";

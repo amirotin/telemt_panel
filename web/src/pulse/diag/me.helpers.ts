@@ -1,5 +1,3 @@
-import type { Dict } from "../../i18n";
-import { flattenToRows, type KVGroup } from "./rows";
 import type {
   MeWritersData,
   RuntimeGates,
@@ -9,71 +7,56 @@ import type {
   RuntimeMeSelftest,
   RuntimeMinimalMeRuntime,
 } from "../../realtime/topics";
+import type { MePagePayload } from "../details-builder/definitions/me";
 
-export interface MeGroupsInput {
-  pool?: RuntimeMePoolState;
-  quality?: RuntimeMeQuality;
-  selftest?: RuntimeMeSelftest;
-  meWriters?: MeWritersData;
-  gates?: RuntimeGates;
-  initialization?: RuntimeInitialization;
-  /** minimal.data.me_runtime (mini-task 2c) — undefined both when the "minimal" gate is off and when Telemt omits it (older builds predating this field). */
-  meRuntime?: RuntimeMinimalMeRuntime;
+export interface MeSourcesInput {
+  /** `upstreams` topic — me-writers, the only always-on half of the page. */
+  meWriters?: MeWritersData | null;
+  /** `runtime` topic — never gated. */
+  gates?: RuntimeGates | null;
+  initialization?: RuntimeInitialization | null;
+  /** `runtime` topic behind the runtime_edge gate; absent when it is off. */
+  pool?: RuntimeMePoolState | undefined;
+  quality?: RuntimeMeQuality | undefined;
+  selftest?: RuntimeMeSelftest | undefined;
+  /** minimal.data.me_runtime, behind the separate minimal_runtime_enabled gate. */
+  meRuntime?: RuntimeMinimalMeRuntime | undefined;
 }
 
-// meGroups is the ME domain's full-composition builder — combines four
-// independently-gated/sourced payloads (pool state, quality, self-test, all
-// from the "runtime" topic; writer status from the "upstreams" topic) plus
-// the always-on Gates/Initialization groups, since neither has a domain of
-// its own among the seven Диагностика pages and both describe ME/startup
-// state most directly (06-ui.md only names 7 domains — this is an editorial
-// choice documented in task-6-report.md). Each input is independently
-// optional: a gated-off or not-yet-loaded sub-payload simply contributes no
-// groups, it never blocks the others from rendering.
-export function meGroups(input: MeGroupsInput, s: Dict): KVGroup[] {
-  const groups: KVGroup[] = [];
-
-  if (input.pool) {
-    groups.push({ title: s.diag.groups.generations, rows: flattenToRows(input.pool.generations, s) });
-    groups.push({ title: s.diag.groups.hardswap, rows: flattenToRows(input.pool.hardswap, s) });
-    groups.push({ title: s.diag.groups.writers, rows: flattenToRows(input.pool.writers, s) });
-    groups.push({ title: s.diag.groups.refill, rows: flattenToRows(input.pool.refill, s) });
-  }
-  if (input.quality) {
-    groups.push({ title: s.diag.groups.qualityCounters, rows: flattenToRows(input.quality.counters, s) });
-    groups.push({ title: s.diag.groups.routeDrops, rows: flattenToRows(input.quality.route_drops, s) });
-    groups.push({ title: s.diag.groups.familyStates, rows: flattenToRows(input.quality.family_states, s) });
-    groups.push({ title: s.diag.groups.drainGate, rows: flattenToRows(input.quality.drain_gate, s) });
-    groups.push({ title: s.diag.groups.dcRtt, rows: flattenToRows(input.quality.dc_rtt, s) });
-  }
-  if (input.selftest) {
-    groups.push({ title: s.diag.groups.kdf, rows: flattenToRows(input.selftest.kdf, s) });
-    groups.push({ title: s.diag.groups.timeskew, rows: flattenToRows(input.selftest.timeskew, s) });
-    groups.push({ title: s.diag.groups.ip, rows: flattenToRows(input.selftest.ip, s) });
-    groups.push({ title: s.diag.groups.pid, rows: flattenToRows(input.selftest.pid, s) });
-    if (input.selftest.bnd) {
-      groups.push({ title: s.diag.groups.bnd, rows: flattenToRows(input.selftest.bnd, s) });
-    }
-    if (input.selftest.upstreams) {
-      groups.push({
-        title: s.diag.groups.selftestUpstreams,
-        rows: flattenToRows(input.selftest.upstreams, s),
-      });
-    }
-  }
-  if (input.meWriters) {
-    groups.push({ title: s.diag.groups.meWritersSummary, rows: flattenToRows(input.meWriters.summary, s) });
-    groups.push({ title: s.diag.groups.meWriters, rows: flattenToRows(input.meWriters.writers, s) });
-  }
-  if (input.gates) {
-    groups.push({ title: s.diag.groups.gates, rows: flattenToRows(input.gates, s) });
-  }
-  if (input.initialization) {
-    groups.push({ title: s.diag.groups.initialization, rows: flattenToRows(input.initialization, s) });
-  }
-  if (input.meRuntime) {
-    groups.push({ title: s.diag.groups.meRuntimeTuning, rows: flattenToRows(input.meRuntime, s) });
-  }
-
-  return groups;
+// mePagePayload joins the five independently gated sub-payloads the ME
+// domain is spread across into the ONE payload its definition reads
+// (details-builder/definitions/me.ts).
+//
+// This is all that is left of the old `meGroups`, which flattened the same
+// inputs into thirteen KV groups and ~1 091 rows: composition of the page is
+// now the definition's job, and this module only says WHERE the data comes
+// from. Every half is optional on its own — a gated-off sub-payload simply
+// contributes no fields, and the page reports it as a degraded source while
+// every other section keeps working (spec §14).
+//
+// The me-writers half is spread FLAT (`summary`, `writers`,
+// `middle_proxy_enabled`, …) because the field catalog keys those paths
+// exactly as the wire spells them; the runtime halves keep their own
+// prefixes, which is what stops `pool.writers` and `writers` from being the
+// same path.
+export function mePagePayload(input: MeSourcesInput): MePagePayload | null {
+  const writers = input.meWriters ?? null;
+  const payload: MePagePayload = {
+    ...(writers
+      ? {
+          middle_proxy_enabled: writers.middle_proxy_enabled,
+          ...(writers.reason !== undefined ? { reason: writers.reason } : {}),
+          generated_at_epoch_secs: writers.generated_at_epoch_secs,
+          summary: writers.summary,
+          writers: writers.writers,
+        }
+      : {}),
+    ...(input.gates ? { gates: input.gates } : {}),
+    ...(input.initialization ? { initialization: input.initialization } : {}),
+    ...(input.pool ? { pool: input.pool } : {}),
+    ...(input.quality ? { quality: input.quality } : {}),
+    ...(input.selftest ? { selftest: input.selftest } : {}),
+    ...(input.meRuntime ? { me_runtime: input.meRuntime } : {}),
+  };
+  return Object.keys(payload).length === 0 ? null : payload;
 }

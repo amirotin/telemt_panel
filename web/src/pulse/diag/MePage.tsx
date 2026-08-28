@@ -1,60 +1,77 @@
-import { useSnapshot, useRefreshTopic } from "../../realtime";
+import { useNavigate } from "@tanstack/react-router";
+import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
-import { useStrings } from "../../i18n";
-import { DiagShell } from "./DiagShell";
-import { DiagTopicState } from "./DiagTopicState";
-import { KVGroupList } from "./KVGroupList";
+import { DetailPage } from "../details-builder/DetailPage";
+import { mePageDefinition } from "../details-builder/definitions/me";
+import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
 import { resolveGated } from "../widgets/gated";
-import { meGroups } from "./me.helpers";
-import { GatedNote } from "../GatedNote";
+import { mePagePayload } from "./me.helpers";
 
+// MePage — /pulse/diag/me, spec §23.2. The thirteen KV groups the old page
+// flattened into ~1 091 rows are now five tabs built from
+// definitions/me.ts; this component owns only the two subscriptions and the
+// four source states.
+//
+// The three runtime_edge payloads (pool, quality, self-test) share ONE
+// source id because they share one gate: they fail together, and reporting
+// them as three degraded sources would say the same sentence three times in
+// the attention card.
 export function MePage() {
-  const s = useStrings();
-  const runtime = useSnapshot<RuntimeTopic>("runtime");
   const upstreams = useSnapshot<UpstreamsTopic>("upstreams");
-  const refreshTopic = useRefreshTopic();
+  const runtime = useSnapshot<RuntimeTopic>("runtime");
+  const navigate = useNavigate();
+
+  const meWriters = upstreams.data?.me_writers ?? null;
+  const pool = runtime.data ? resolveGated(runtime.data.me_pool_state) : null;
+  const quality = runtime.data ? resolveGated(runtime.data.me_quality) : null;
+  const selftest = runtime.data ? resolveGated(runtime.data.me_selftest) : null;
+  const minimal = runtime.data ? resolveGated(runtime.data.minimal) : null;
+
+  const payload = mePagePayload({
+    meWriters,
+    gates: runtime.data?.gates ?? null,
+    initialization: runtime.data?.initialization ?? null,
+    pool: pool?.status === "ok" ? pool.data : undefined,
+    quality: quality?.status === "ok" ? quality.data : undefined,
+    selftest: selftest?.status === "ok" ? selftest.data : undefined,
+    meRuntime: minimal?.status === "ok" ? minimal.data.me_runtime : undefined,
+  });
+
+  const inputs: Record<string, DetailSourceInput> = {
+    upstreams: {
+      kind: "topic",
+      snapshot: upstreams,
+      // middle_proxy_enabled is Telemt's own gate on the whole ME view: with
+      // it off there is no pool to describe, and the reason is the proxy's
+      // own word for why (spec §14, R5).
+      ...(meWriters
+        ? {
+            gated: {
+              enabled: meWriters.middle_proxy_enabled,
+              ...(meWriters.reason !== undefined ? { reason: meWriters.reason } : {}),
+              data: meWriters.writers,
+            },
+          }
+        : {}),
+      generatedAt: meWriters?.generated_at_epoch_secs ?? null,
+    },
+    runtime: { kind: "topic", snapshot: runtime },
+    runtime_edge: {
+      kind: "topic",
+      snapshot: runtime,
+      gated: runtime.data?.me_pool_state ?? null,
+    },
+    minimal: { kind: "topic", snapshot: runtime, gated: runtime.data?.minimal ?? null },
+  };
+  const sources = useDetailSources(mePageDefinition.sources, inputs);
 
   return (
-    <DiagShell title={s.diag.domains.me}>
-      <DiagTopicState
-        data={runtime.data}
-        error={runtime.error}
-        stale={runtime.stale}
-        onRetry={() => refreshTopic("runtime")}
-      >
-        {(data) => {
-          const pool = resolveGated(data.me_pool_state);
-          const quality = resolveGated(data.me_quality);
-          const selftest = resolveGated(data.me_selftest);
-          const minimal = resolveGated(data.minimal);
-          const allRuntimeEdgeGated =
-            pool.status === "gated" && quality.status === "gated" && selftest.status === "gated";
-
-          const groups = meGroups({
-            pool: pool.status === "ok" ? pool.data : undefined,
-            quality: quality.status === "ok" ? quality.data : undefined,
-            selftest: selftest.status === "ok" ? selftest.data : undefined,
-            meWriters: upstreams.data?.me_writers ?? undefined,
-            gates: data.gates ?? undefined,
-            initialization: data.initialization ?? undefined,
-            meRuntime: minimal.status === "ok" ? minimal.data.me_runtime : undefined,
-          }, s);
-
-          return (
-            <div className="flex flex-col gap-4">
-              {allRuntimeEdgeGated && <GatedNote reason={pool.reason} hint="runtime_edge" />}
-              <KVGroupList groups={groups} />
-              {/* minimal is gated separately (minimal_runtime_enabled), independent of
-                  runtime_edge above — its tuning-fields group simply doesn't appear in
-                  `groups` when off, so this note explains the specific gap rather than
-                  leaving it silently absent. */}
-              {minimal.status === "gated" && (
-                <GatedNote reason={minimal.reason} hint="minimal_runtime_enabled" />
-              )}
-            </div>
-          );
-        }}
-      </DiagTopicState>
-    </DiagShell>
+    <DetailPage
+      definition={mePageDefinition}
+      payload={payload}
+      sources={sources}
+      onBack={() => void navigate({ to: "/pulse" })}
+      disabledHints={{ runtime_edge: "runtime_edge", minimal: "minimal_runtime_enabled" }}
+    />
   );
 }
