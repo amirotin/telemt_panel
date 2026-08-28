@@ -6,12 +6,12 @@ import { StatCard } from "../../ui/StatCard";
 import { describeField } from "./fieldCatalog";
 import type { FieldLookupContext } from "./fieldCatalog";
 import { formatValue } from "./formatting";
-import type { SummaryMetricDefinition, SummaryShortcut } from "./model";
+import type { SummaryMetricDefinition, SummaryShortcut, SummaryTone } from "./model";
 import { showsAtMode } from "./renderers/context";
 import { fieldLabel } from "./renderers/unknownFields";
 import type { DisplayMode } from "../../display-mode";
 
-type MetricTone = NonNullable<SummaryMetricDefinition<unknown>["tone"]>;
+type MetricTone = SummaryTone;
 
 const TONE_CLASSES: Record<MetricTone, string> = {
   neutral: "",
@@ -95,7 +95,8 @@ export function SummaryGrid<T>({
           ...(metric.format !== undefined ? { formatter: metric.format } : {}),
           ...(metric.unit !== undefined ? { unit: metric.unit } : {}),
         });
-        const tone = metric.tone ?? "neutral";
+        const tone =
+          typeof metric.tone === "function" ? metric.tone(context) : (metric.tone ?? "neutral");
         const marker = TONE_MARKERS[tone];
         const card = (
           <StatCard

@@ -315,6 +315,14 @@ export function DetailPage<TPayload, TContext>({
             activeKey={selection.status === "gone" ? undefined : activeKey}
             onSelect={api.selectEntityKey}
             layout={layout}
+            {...(entities.attention
+              ? {
+                  attention: items.map((item) => {
+                    const mark = entities.attention?.(item) ?? null;
+                    return mark === null ? null : { tone: mark.tone, reason: mark.reason(s) };
+                  }),
+                }
+              : {})}
           />
         )}
 

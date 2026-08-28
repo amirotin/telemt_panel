@@ -615,7 +615,17 @@ describe("RankingSection (spec §9.6, §18)", () => {
     expect(options.map((o) => o.textContent)).toContain("По RTT");
     // Every column the catalog says nothing short about keeps Telemt's key
     // verbatim, which is what the render shows for the TLS rankings today.
-    const shortened = ["rtt_ms", "load", "coverage_pct", "available_endpoints", SCORE_SORT_KEY];
+    const shortened = [
+      "rtt_ms",
+      "load",
+      "coverage_pct",
+      // Task 6 added a short label for this one when the DC summary grew
+      // its «Свежее покрытие» tile — the catalog is what decides, and this
+      // list only mirrors it.
+      "fresh_coverage_pct",
+      "available_endpoints",
+      SCORE_SORT_KEY,
+    ];
     const bare = options.filter((o) => !shortened.includes(o.value));
     expect(bare.length).toBeGreaterThan(0);
     for (const option of bare) expect(option.textContent).toBe(`По ${option.value}`);

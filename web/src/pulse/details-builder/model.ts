@@ -367,6 +367,12 @@ export const DEFAULT_UNKNOWN_FIELDS_POLICY: Required<
 
 // --- summary / navigation / freshness -----------------------------------
 
+/**
+ * A tile's tone. `warn`/`bad` are also announced in words and marked with a
+ * glyph by SummaryGrid — §21 forbids encoding a status in colour alone.
+ */
+export type SummaryTone = "neutral" | "good" | "warn" | "bad";
+
 export interface SummaryMetricDefinition<T> {
   id: string;
   /**
@@ -385,7 +391,13 @@ export interface SummaryMetricDefinition<T> {
   value: (context: T) => number | string | null;
   format?: FormatterName;
   unit?: FieldUnit;
-  tone?: "neutral" | "good" | "warn" | "bad";
+  /**
+   * A fixed tone, or one derived from the context — the attention binding a
+   * domain page needs: DC's coverage tile is amber at 95 % and red at 0 %,
+   * which no constant can express. Evaluated during render, so a realtime
+   * frame re-tones the tile without touching any page state.
+   */
+  tone?: SummaryTone | ((context: T) => SummaryTone);
   /** §18.2: a metric MAY be a shortcut to an EXISTING control — see SummaryShortcut. */
   shortcut?: SummaryShortcut;
   minMode?: DisplayMode;
@@ -413,6 +425,14 @@ export interface EntitySelectorDefinition<TPayload> {
   /** Stable semantic key (§5.3) — survives reordering and realtime frames. */
   entityKey: (item: unknown, index: number) => string;
   label: (item: unknown) => string;
+  /**
+   * Marks an entity that needs attention in the selector itself — the amber
+   * dot the DC render puts on the two under-covered data centers, so a
+   * reader sees WHICH entity is unhealthy without opening all twelve.
+   * `null` is the healthy default; the reason is a localized word shown to
+   * a screen reader beside the dot (§21: never colour alone).
+   */
+  attention?: (item: unknown) => { tone: "warn" | "bad"; reason: Localized } | null;
 }
 
 export interface TabDefinition {

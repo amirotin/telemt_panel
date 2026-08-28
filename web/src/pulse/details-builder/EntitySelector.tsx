@@ -6,13 +6,26 @@ import { IconChevronLeft, IconChevronRight } from "../../ui/icons";
 import { useRovingFocus } from "./surfaces/rovingFocus";
 import { isSplitLayout, type LayoutMode } from "./surfaces/useLayoutMode";
 
+/** One entity's attention marker, already resolved into the reader's language. */
+export interface EntityAttention {
+  tone: "warn" | "bad";
+  reason: string;
+}
+
 export interface EntitySelectorProps {
   labels: readonly string[];
   keys: readonly string[];
   activeKey: string | undefined;
   onSelect: (key: string) => void;
   layout: LayoutMode;
+  /** Per-entity attention markers, aligned with `keys`; `null` where healthy. */
+  attention?: readonly (EntityAttention | null)[];
 }
+
+const ATTENTION_DOT: Record<EntityAttention["tone"], string> = {
+  warn: "bg-warn",
+  bad: "bg-error",
+};
 
 // EntitySelector is §6's entity navigation, in the two shapes §15 asks for:
 //
@@ -36,6 +49,7 @@ export function EntitySelector({
   activeKey,
   onSelect,
   layout,
+  attention,
 }: EntitySelectorProps) {
   const s = useStrings();
   const vertical = isSplitLayout(layout);
@@ -80,26 +94,48 @@ export function EntitySelector({
         layout === "wide" && "detail-master",
       )}
     >
-      {keys.map((key, i) => (
-        <button
-          key={key}
-          type="button"
-          data-entity-key={key}
-          aria-pressed={key === activeKey}
-          onClick={() => onSelect(key)}
-          {...roving.itemProps(i)}
-          className={cn(
-            "tap-target shrink-0 rounded-xl px-3 py-2 text-left font-mono text-[12.5px] font-semibold",
-            !vertical && "snap-start",
-            vertical && "w-full break-words",
-            key === activeKey
-              ? "bg-surface-2 text-text ring-1 ring-accent"
-              : "bg-surface text-text-muted hover:bg-surface-2",
-          )}
-        >
-          {labels[i]}
-        </button>
-      ))}
+      {keys.map((key, i) => {
+        // §21: the dot is the third cue. The word beside it is what a
+        // screen reader — and anyone who cannot separate amber from red —
+        // actually gets.
+        const mark = attention?.[i] ?? null;
+        return (
+          <button
+            key={key}
+            type="button"
+            data-entity-key={key}
+            data-attention={mark?.tone ?? undefined}
+            aria-pressed={key === activeKey}
+            onClick={() => onSelect(key)}
+            {...roving.itemProps(i)}
+            className={cn(
+              // `relative` is load-bearing, not decoration: the attention
+              // marker's sr-only text is `position: absolute`, and without
+              // a positioned ancestor INSIDE the horizontally scrolling
+              // strip it takes the page as its containing block, escapes
+              // the strip's overflow clip and widens the document — twelve
+              // live DCs made /pulse/diag/dc scroll sideways by 286 px.
+              "tap-target relative flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-left font-mono text-[12.5px] font-semibold",
+              !vertical && "snap-start",
+              vertical && "w-full break-words",
+              key === activeKey
+                ? "bg-surface-2 text-text ring-1 ring-accent"
+                : "bg-surface text-text-muted hover:bg-surface-2",
+            )}
+          >
+            <span className="min-w-0 flex-1 break-words">{labels[i]}</span>
+            {mark !== null && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className={cn("size-1.5 shrink-0 rounded-full", ATTENTION_DOT[mark.tone])}
+                />
+                <span className="sr-only">{mark.reason}</span>
+              </>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
