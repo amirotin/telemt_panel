@@ -117,6 +117,25 @@ export function gatedStatus(
   return "ready";
 }
 
+// isEmptyPayload — §14's `empty`: "запрос успешен, данных нет". A source that
+// answered honestly with `[]`, `{}` or an object whose every top-level value
+// is itself an empty container has DATA-less success, which is a different
+// thing from an error, from a disabled capability and from still loading.
+// A single scalar anywhere at the top level means the source said something.
+export function isEmptyPayload(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value !== "object") return false;
+  const values = Object.values(value as Record<string, unknown>).filter((v) => v !== undefined);
+  if (values.length === 0) return true;
+  return values.every(
+    (v) =>
+      v === null ||
+      (Array.isArray(v) && v.length === 0) ||
+      (typeof v === "object" && Object.keys(v as object).length === 0),
+  );
+}
+
 // --- SSE topic sources ---------------------------------------------------
 
 export interface TopicSourceInput {
@@ -170,6 +189,9 @@ export function resolveTopicSource(id: string, input: TopicSourceInput): SourceS
       ...(snapshot.error ? { code: snapshot.error } : {}),
       hasData: true,
     };
+  }
+  if (isEmptyPayload(input.gated ? input.gated.data : snapshot.data)) {
+    return { id, status: "empty", freshnessMs, hasData: false };
   }
   return { id, status: "ready", freshnessMs, hasData: true };
 }
@@ -230,6 +252,9 @@ export function resolveQuerySource(id: string, input: QuerySourceInput): SourceS
         hasData: false,
       };
     }
+  }
+  if (isEmptyPayload(input.gated ? input.gated.data : input.data)) {
+    return { id, status: "empty", freshnessMs, hasData: false };
   }
   return { id, status: "ready", freshnessMs, hasData: true };
 }

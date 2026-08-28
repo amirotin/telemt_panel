@@ -10,6 +10,7 @@ import {
   aggregateSources,
   gatedStatus,
   hintKeyFor,
+  isEmptyPayload,
   noticeVariantFor,
   normalizeFreshness,
   resolveQuerySource,
@@ -77,6 +78,44 @@ describe("SSE topic sources (spec §14)", () => {
     expect(state.status).toBe("disabled");
     expect(state.reason).toBe("feature_disabled");
     expect(state.hasData).toBe(false);
+  });
+
+  it("calls a successful but data-less answer `empty`, gate or no gate (§14)", () => {
+    // §14's `empty` is "запрос успешен, данных нет" — it is not a property
+    // of Gated<T>. A topic that honestly answered [] or {} says so.
+    expect(
+      resolveTopicSource("t", { kind: "topic", snapshot: snapshot({ data: [] }) }).status,
+    ).toBe("empty");
+    expect(
+      resolveTopicSource("t", { kind: "topic", snapshot: snapshot({ data: {} }) }).status,
+    ).toBe("empty");
+    // An object whose every top-level container is empty is empty too…
+    expect(
+      resolveTopicSource("t", {
+        kind: "topic",
+        snapshot: snapshot({ data: { writers: [], by_dc: {} } }),
+      }).status,
+    ).toBe("empty");
+    // …but one scalar anywhere means the source said something.
+    expect(
+      resolveTopicSource("t", {
+        kind: "topic",
+        snapshot: snapshot({ data: { writers: [], total: 0 } }),
+      }).status,
+    ).toBe("ready");
+    expect(
+      resolveQuerySource("q", { kind: "query", isPending: false, isError: false, data: [] }).status,
+    ).toBe("empty");
+  });
+
+  it("does not mistake a falsy scalar payload for no data", () => {
+    // `0` and `false` are real values everywhere else (§13.1); the source
+    // state must agree.
+    expect(isEmptyPayload({ a: 0 })).toBe(false);
+    expect(isEmptyPayload({ a: false })).toBe(false);
+    expect(isEmptyPayload({ a: null })).toBe(true);
+    expect(isEmptyPayload([])).toBe(true);
+    expect(isEmptyPayload({})).toBe(true);
   });
 
   it("calls an enabled-but-empty gate `empty`, not `error` and not `disabled`", () => {

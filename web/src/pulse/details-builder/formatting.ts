@@ -63,6 +63,15 @@ export interface FormattedValue {
   note?: string;
   /** Identifiers, addresses and fingerprints render in a monospace column. */
   monospace?: boolean;
+  /**
+   * Which formatter actually produced `text`. A renderer needs the identity,
+   * not just the string — §13's tabular-numerals rule is a property of the
+   * formatter, and re-deriving "was this a number?" from the output is how a
+   * localized thousands separator turns into a rendering bug.
+   */
+  formatter?: FormatterName;
+  /** True when `text` is a rendered number: apply tabular-nums (§13). */
+  numeric?: boolean;
 }
 
 export interface FormatContext {
@@ -78,8 +87,14 @@ export interface FormatContext {
   present?: boolean;
   /** Forced absence from the source state, overriding the value entirely. */
   absence?: Extract<AbsenceKind, "unsupported" | "unavailable">;
-  /** Injected for determinism — tests never read the clock. */
-  nowMs?: number;
+  /**
+   * Current time in epoch ms. REQUIRED, and deliberately not defaulted to
+   * `Date.now()`: a default would make every relative age silently
+   * non-deterministic and let a caller forget the clock without the types
+   * noticing. The hook layer supplies one clock for the whole page, so every
+   * age on screen is measured from the same instant.
+   */
+  nowMs: number;
 }
 
 const SECOND_MS = 1000;
@@ -203,7 +218,7 @@ export const FORMATTERS: Record<FormatterName, Formatter> = {
       : formatPrimitiveText(value, s),
   relativeAge: (value, s, ctx) =>
     typeof value === "number"
-      ? formatRelativeAge(epochToMs(value), s, ctx.nowMs ?? Date.now())
+      ? formatRelativeAge(epochToMs(value), s, ctx.nowMs)
       : formatPrimitiveText(value, s),
   // §13.1: `false` is a value. It renders through the same yes/no words the
   // diagnostics tables already use, and carries `falsy` rather than an
@@ -254,7 +269,7 @@ export function formatterForUnit(unit: FieldUnit): FormatterName {
 // Order matters and encodes §13.1 exactly: a forced source-level absence
 // beats everything; a missing key beats a null value; only then does the
 // registry see a real value. `false` and `0` never reach an absence branch.
-export function formatValue(value: unknown, s: Dict, ctx: FormatContext = {}): FormattedValue {
+export function formatValue(value: unknown, s: Dict, ctx: FormatContext): FormattedValue {
   if (ctx.absence) return absent(ctx.absence, s);
   if (value === undefined || ctx.present === false) return absent("missing", s);
   if (value === null) {
@@ -266,10 +281,31 @@ export function formatValue(value: unknown, s: Dict, ctx: FormatContext = {}): F
   if (Array.isArray(value) || (typeof value === "object" && value !== null)) {
     return { text: s.details.value.structured, absence: "empty" };
   }
-  const name = ctx.formatter ?? (ctx.unit ? formatterForUnit(ctx.unit) : undefined);
-  const formatted = name ? FORMATTERS[name](value, s, ctx) : formatPrimitiveText(value, s);
-  if (formatted.falsy && value === 0 && ctx.zeroMeaning) {
-    return { ...formatted, note: ctx.zeroMeaning };
+  const name = ctx.formatter ?? (ctx.unit ? formatterForUnit(ctx.unit) : "text");
+  const formatted = FORMATTERS[name](value, s, ctx);
+  const tagged: FormattedValue = {
+    ...formatted,
+    formatter: name,
+    numeric: NUMERIC_FORMATTERS.has(name) && typeof value === "number",
+  };
+  if (tagged.falsy && value === 0 && ctx.zeroMeaning) {
+    return { ...tagged, note: ctx.zeroMeaning };
   }
-  return formatted;
+  return tagged;
 }
+
+// The formatter families §13 renders as numbers, i.e. the ones whose output
+// gets tabular numerals. `text` is in the set because a bare number falls
+// through to it; `numeric` is still gated on the VALUE being a number, so a
+// string rendered by `text` is not tagged.
+const NUMERIC_FORMATTERS: ReadonlySet<FormatterName> = new Set<FormatterName>([
+  "text",
+  "integer",
+  "decimal",
+  "percent",
+  "milliseconds",
+  "seconds",
+  "duration",
+  "bytes",
+  "rate",
+]);
