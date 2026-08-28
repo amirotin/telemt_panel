@@ -21,6 +21,8 @@ import { startDevServer, stopDevServer } from "./devServer";
 const PAGE_CHIPS = {
   dc: "DC",
   tls: "Security / TLS",
+  me: "ME",
+  counters: "Counters",
 } as const;
 
 async function openHarness(page: Page, which: keyof typeof PAGE_CHIPS): Promise<void> {
@@ -281,12 +283,16 @@ test("with a surface open, a swipe pages nothing and a rotation keeps it", async
   await expect(selectedEntity(page)).toHaveText(chosen);
 });
 
-// Both harness pages, because they fail differently: `tls` is the wide-table
-// page, and `dc` is the one with the twelve-entity rail whose attention
-// markers widened the document by 286 px until their `sr-only` text was given
-// a positioned ancestor. The Go mock serves a single DC, so this fixture-backed
-// harness is the only stand that reproduces the twelve-chip rail at all.
-for (const domain of ["tls", "dc"] as const) {
+// All four harness pages, because they fail differently: `tls` is the
+// wide-table page; `dc` is the one with the twelve-entity rail whose
+// attention markers widened the document by 286 px until their `sr-only`
+// text was given a positioned ancestor; `me` is the first page with FIVE
+// section tabs, which the 360 px strip has to scroll inside itself rather
+// than push the document wider; and `counters` carries a 100 %-tall chart
+// column and seven full-width controls above the first row. The Go mock
+// serves a single DC and a single writer, so this fixture-backed harness is
+// the only stand that reproduces the twelve-chip rail at all.
+for (const domain of ["tls", "dc", "me", "counters"] as const) {
   test(`no page scrolls horizontally, in any of the four modes (${domain})`, async ({ page }) => {
     await openHarness(page, domain);
     for (const size of [
