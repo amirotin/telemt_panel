@@ -4,7 +4,7 @@ import { StatePill } from "../../ui/StatePill";
 import { GatedNote } from "../GatedNote";
 import type { DataSourceDefinition } from "./model";
 import type { PageSourcesState, SourceState } from "./sources";
-import { hintKeyFor, noticeVariantFor, sourceStatusLabel } from "./sources";
+import { hintKeyFor, noticeVariantFor, sourceStatusLabel, sourceStatusShortLabel } from "./sources";
 import type { GateHintKey } from "../../caps";
 
 export interface AttentionSummaryProps {
@@ -45,7 +45,7 @@ export function AttentionSummary({
     <Card className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <StatePill state={sources.status === "error" ? "error" : "warn"}>
-          {sourceStatusLabel(sources.status, s)}
+          {sourceStatusShortLabel(sources.status, s)}
         </StatePill>
         <span className="text-meta text-text-muted">
           {fill(s.details.attention.degradedTemplate, { count: degraded.length })}

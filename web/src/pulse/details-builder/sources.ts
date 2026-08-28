@@ -358,6 +358,15 @@ export function sourceStatusLabel(status: SourceStatus, s: Dict): string {
   return s.details.state[status];
 }
 
+// sourceStatusShortLabel is what a status PILL carries: the state named in
+// a word or two. The sentence that explains the state belongs to the
+// attention card, and saying it in both places put the same line twice on
+// the same screen — an `unsupported` page showed "Недоступно в этой версии
+// Telemt" as a pill and again as the card's headline.
+export function sourceStatusShortLabel(status: SourceStatus, s: Dict): string {
+  return s.details.stateShort[status];
+}
+
 // --- the hook ------------------------------------------------------------
 
 // useDetailSources resolves and aggregates a page's sources.

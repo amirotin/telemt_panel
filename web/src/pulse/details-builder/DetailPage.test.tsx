@@ -153,6 +153,27 @@ describe("DetailPage §14 states", () => {
     expect(el.textContent).not.toContain("Выключено");
   });
 
+  it("explains an unsupported source ONCE — the pills name the state in a word", async () => {
+    const { container: el } = await mount(
+      <DetailPage
+        definition={definition}
+        payload={null}
+        sources={sourcesFor({
+          kind: "query",
+          isPending: false,
+          isError: true,
+          error: { code: "capability_absent" },
+        })}
+        nowMs={NOW}
+      />,
+    );
+    const text = el.textContent ?? "";
+    // The header pill and the attention card's pill used to repeat the same
+    // sentence two centimetres apart; the sentence now belongs to the card.
+    expect(text.split("Недоступно в этой версии Telemt")).toHaveLength(2);
+    expect(text).toContain("Нет в этой версии");
+  });
+
   it("keeps the sections on screen when a source goes stale (§14)", async () => {
     const { container: el } = await mount(
       <DetailPage
@@ -169,7 +190,7 @@ describe("DetailPage §14 states", () => {
         nowMs={NOW}
       />,
     );
-    expect(el.textContent).toContain("Данные устарели");
+    expect(el.textContent).toContain("Устарело");
     // The working section is still there — a degraded source must not
     // replace it with a global error.
     expect(el.textContent).toContain("Routing");

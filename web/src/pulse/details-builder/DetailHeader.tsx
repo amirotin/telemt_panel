@@ -4,7 +4,7 @@ import { SectionLabel } from "../../ui/SectionLabel";
 import { StatePill, type State } from "../../ui/StatePill";
 import { formatRelativeAge } from "./formatting";
 import type { SourceStatus } from "./sources";
-import { sourceStatusLabel } from "./sources";
+import { sourceStatusLabel, sourceStatusShortLabel } from "./sources";
 
 // STATUS_TONE maps §14's eight page states onto the app's ONE status
 // vocabulary (ui/StatePill: ok/warn/error/muted — 06-ui.md deliberately
@@ -73,7 +73,9 @@ export function DetailHeader({
               {s.details.freshness.updated} {age.text}
             </span>
           )}
-          <StatePill state={STATUS_TONE[status]}>{sourceStatusLabel(status, s)}</StatePill>
+          <StatePill state={STATUS_TONE[status]} title={sourceStatusLabel(status, s)}>
+            {sourceStatusShortLabel(status, s)}
+          </StatePill>
         </div>
       </div>
       {description !== undefined && description !== "" && (

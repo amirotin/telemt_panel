@@ -20,6 +20,7 @@ import { sectionsForTab, withUnknownTail } from "./DetailPage.helpers";
 import { createRenderContext } from "./renderers/context";
 import { SectionList } from "./renderers/SectionList";
 import type { PageSourcesState } from "./sources";
+import { sourceStatusShortLabel } from "./sources";
 import { selectEntity, useDetailPageState } from "./state";
 
 // The header's age ticks faster than the rows do: "актуально 2 сек назад"
@@ -187,7 +188,7 @@ export function DetailPage<TPayload, TContext>({
           />
         ) : (
           <EmptyState
-            title={s.details.state[sources.status]}
+            title={sourceStatusShortLabel(sources.status, s)}
             description={s.details.page.noData}
           />
         )}

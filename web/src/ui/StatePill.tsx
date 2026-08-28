@@ -6,6 +6,8 @@ export type State = "ok" | "warn" | "error" | "muted";
 export interface StatePillProps {
   state: State;
   children: ReactNode;
+  /** Native tooltip — the long form of a state the pill names in one word. */
+  title?: string;
   className?: string;
 }
 
@@ -26,7 +28,7 @@ const dotClasses: Record<State, string> = {
 // StatePill is the ONE status-semantics component for the whole app —
 // ok/warn/error/muted, nothing else (06-ui.md: v1 had two parallel status
 // vocabularies, this is deliberately the single one).
-export function StatePill({ state, children, className }: StatePillProps) {
+export function StatePill({ state, children, title, className }: StatePillProps) {
   return (
     <span
       className={cn(
@@ -34,6 +36,7 @@ export function StatePill({ state, children, className }: StatePillProps) {
         stateClasses[state],
         className,
       )}
+      title={title}
     >
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClasses[state])} aria-hidden="true" />
       {children}

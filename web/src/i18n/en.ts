@@ -461,6 +461,16 @@ export const en: Dict = {
       error: "Source error",
       empty: "No data",
     },
+    stateShort: {
+      loading: "Loading",
+      ready: "Up to date",
+      stale: "Stale",
+      partial: "Partial",
+      disabled: "Turned off",
+      unsupported: "Not in this version",
+      error: "Error",
+      empty: "No data",
+    },
     entity: {
       goneTitle: "The selected item is gone from the snapshot",
       goneDescription: "It is missing from the latest update — the data below is out of date.",
