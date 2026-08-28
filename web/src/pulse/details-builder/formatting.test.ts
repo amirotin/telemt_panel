@@ -72,7 +72,16 @@ describe("formatter registry (spec §13)", () => {
     expect(value.text).toBe("3 ч. назад");
     expect(value.title).toBeTruthy();
     expect(formatRelativeAge(NOW - 5_000, ru, NOW).text).toBe("только что");
-    expect(formatRelativeAge(NOW + 60_000, ru, NOW).text).toBe("в будущем");
+    expect(formatRelativeAge(NOW + 120_000, ru, NOW).text).toBe("в будущем");
+  });
+
+  it("reads a sub-minute lead as clock skew, not as a future timestamp", () => {
+    // The page clock ticks coarsely and an SSE frame arrives whenever
+    // Telemt sends one, so a fresh snapshot is routinely stamped a moment
+    // after the last tick. Reporting that as «в будущем» told the reader
+    // their healthy page was broken (M4 task 6 screenshot checkpoint).
+    expect(formatRelativeAge(NOW + 800, ru, NOW).text).toBe("только что");
+    expect(formatRelativeAge(NOW + 59_000, ru, NOW).text).toBe("только что");
   });
 });
 

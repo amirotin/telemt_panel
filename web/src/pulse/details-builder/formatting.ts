@@ -154,10 +154,20 @@ export function formatAbsoluteTimestamp(epochMs: number, s: Dict): string {
 // A timestamp in the future (client clock behind the server's — the polling
 // fallback makes this real, see realtime/topicWindow.ts) says so instead of
 // rendering a negative age.
+//
+// …but only BEYOND a minute of skew. The page clock ticks coarsely
+// (DetailPage's PAGE_CLOCK_MS) while an SSE frame arrives whenever Telemt
+// sends one, so a fresh snapshot is routinely stamped a moment after the
+// last tick: without this tolerance a perfectly healthy Security page
+// greeted the reader with «актуально в будущем» (M4 task 6 screenshot
+// checkpoint). Under a minute the two readings are indistinguishable
+// anyway — that is exactly the `justNow` band below.
+const CLOCK_SKEW_TOLERANCE_MS = MINUTE_MS;
+
 export function formatRelativeAge(epochMs: number, s: Dict, nowMs: number): FormattedValue {
   const title = formatAbsoluteTimestamp(epochMs, s);
   const delta = nowMs - epochMs;
-  if (delta < 0) return { text: s.details.value.inFuture, title };
+  if (delta < -CLOCK_SKEW_TOLERANCE_MS) return { text: s.details.value.inFuture, title };
   if (delta < MINUTE_MS) return { text: s.details.value.justNow, title };
   return { text: fill(s.details.value.agoTemplate, { age: formatDurationApprox(delta, s) }), title };
 }
