@@ -44,23 +44,25 @@ export function SectionFrame({
   const panelId = `${id}-panel`;
   const header = (
     <div className="flex min-w-0 flex-1 flex-col items-start text-left">
-      {/* L9 (Task 4 review): on 360 px the badge used to sit in the middle
-          of a wrapped title and squeeze it into breaking mid-token —
-          `handshake_error_codes[]` came out as two ragged fragments.
-          Wrapping the row lets the title take the full width and drops the
-          badge onto the next line instead of stealing from it; `baseline`
-          keeps the two aligned while they share one. */}
-      <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span
-          className={cn(
-            "min-w-0 break-words font-semibold text-text",
-            nested ? "font-mono text-[12.5px]" : "text-[15px]",
-          )}
-        >
-          {title}
-        </span>
-        {count !== undefined && <CountBadge tone="muted">{count}</CountBadge>}
-      </div>
+      {/* L9 (Task 4/5 reviews): on 360 px the badge first squeezed a long
+          title into breaking mid-token, and then — once the row wrapped —
+          landed on a line of its own, reading as a stray digit between the
+          header and the rows. It is text, so it flows AS text: inside the
+          title's own inline box it follows the last fragment of the name
+          and can never be orphaned while that fragment has room beside it. */}
+      <span
+        className={cn(
+          "block min-w-0 max-w-full break-words font-semibold text-text",
+          nested ? "font-mono text-[12.5px]" : "text-[15px]",
+        )}
+      >
+        {title}
+        {count !== undefined && (
+          <CountBadge tone="muted" className="ml-2">
+            {count}
+          </CountBadge>
+        )}
+      </span>
       {description !== undefined && description !== "" && (
         <span className="mt-0.5 break-words text-meta text-text-muted">{description}</span>
       )}
