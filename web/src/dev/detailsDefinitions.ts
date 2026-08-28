@@ -121,6 +121,7 @@ export const devMeQualityPage: DetailPageDefinition<RuntimeMeQuality, RuntimeMeQ
       id: "counters",
       title: (s) => s.diag.domains.counters,
       path: "",
+      defaultExpanded: true,
       supportsDelta: true,
       groups: [
         { id: "counters", title: (s) => s.diag.groups.qualityCounters, path: "counters" },
@@ -169,6 +170,7 @@ export const devTlsPage: DetailPageDefinition<TlsFingerprints, TlsFingerprints> 
       id: "by_fingerprint",
       title: (s) => s.diag.groups.tlsByFingerprint,
       path: "by_fingerprint",
+      defaultExpanded: true,
       itemKey: (item, index) => `${tlsIdentity(item as TlsFingerprintRow)}#${index}`,
       identity: (item) => tlsIdentity(item as TlsFingerprintRow),
       status: (item) => `total ${(item as TlsFingerprintRow).total}`,
@@ -200,6 +202,7 @@ export const devCountersPage: DetailPageDefinition<ZeroAllData, ZeroAllData> = {
       id: "all",
       title: (s) => s.diag.domains.counters,
       path: "",
+      defaultExpanded: true,
       supportsDelta: true,
       groups: [
         { id: "core", title: (s) => s.diag.groups.core, path: "core" },

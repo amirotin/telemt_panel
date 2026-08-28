@@ -22,11 +22,13 @@
 
 import type {
   DetailPageDefinition,
+  FieldUnit,
   PagingPolicy,
   SectionDefinition,
   SectionKind,
   UnknownFieldsPolicy,
 } from "./model";
+import type { FormatterName } from "./formatting";
 import { DEFAULT_PAGING, DEFAULT_UNKNOWN_FIELDS_POLICY, pagingForSize } from "./model";
 import type { DisplayMode } from "../../display-mode/mode";
 import type { Localized } from "./model";
@@ -140,6 +142,15 @@ export interface ScalarRow {
   value: string | number | boolean | null | undefined;
   /** False when the key is absent from the payload — distinct from a null value (§13.1). */
   present: boolean;
+  /**
+   * Per-BINDING formatter/unit override (§13: "formatter выбирается по field
+   * catalog ИЛИ binding"). Carried on the row because the renderer never
+   * sees the definition — without it a definition could declare an override
+   * the row would silently drop, and an epoch field would render through the
+   * counters-family `_secs` rule as a duration.
+   */
+  format?: FormatterName;
+  unit?: FieldUnit;
 }
 
 export interface ScalarSectionInstance extends SectionInstanceCommon {
@@ -323,6 +334,8 @@ function resolveScalarSection<T>(
       path: field.path,
       value,
       present: field.select ? value !== undefined : hasPath(context, field.path),
+      ...(field.format !== undefined ? { format: field.format } : {}),
+      ...(field.unit !== undefined ? { unit: field.unit } : {}),
     });
     consumed.push(field.path);
   }

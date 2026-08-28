@@ -129,6 +129,37 @@ describe("ScalarSection (spec §8.1, §9.1)", () => {
     expect(text).toContain("100");
   });
 
+  it("honours a per-binding formatter override, not only the catalog (§13)", () => {
+    // `*_secs` reaches the counters-family "duration in seconds" rule; an
+    // epoch is not a duration, so the binding overrides it. Without the
+    // override reaching the row this renders as "20 324 дн.".
+    const payload = { updated_at_epoch_secs: 1_756_000_000 };
+    const withOverride: DetailPageDefinition<typeof payload, typeof payload> = {
+      id: "test.override",
+      title: () => "Override",
+      sources: [{ id: "s", required: true }],
+      sections: [
+        {
+          kind: "scalars",
+          id: "stamps",
+          title: () => "Stamps",
+          defaultExpanded: true,
+          fields: [{ path: "updated_at_epoch_secs", format: "relativeAge" }],
+        },
+      ],
+    };
+    const sections = resolve(withOverride, payload);
+    const el = render(
+      <Harness
+        render={(ctx) => (
+          <ScalarSection instance={byId(sections, "stamps") as ScalarSectionInstance} ctx={ctx} />
+        )}
+      />,
+    );
+    expect(el.textContent).toContain("назад");
+    expect(el.textContent).not.toContain("дн.");
+  });
+
   it("never puts an array in a scalar row — the resolver extracted it (§12.7)", () => {
     const sections = resolve(dcDefinition, dc);
     const scalars = byId(sections, "routing") as ScalarSectionInstance;

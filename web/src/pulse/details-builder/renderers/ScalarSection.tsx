@@ -47,6 +47,8 @@ export function ScalarSection({ instance, ctx }: ScalarSectionProps) {
             value={row.value}
             present={row.present}
             ctx={ctx}
+            {...(row.format !== undefined ? { format: row.format } : {})}
+            {...(row.unit !== undefined ? { unit: row.unit } : {})}
             {...(absence !== undefined ? { absence } : {})}
           />
         ))

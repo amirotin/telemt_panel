@@ -35,6 +35,18 @@ describe("withUnknownTail", () => {
   it("changes nothing when there is no tail", () => {
     expect(withUnknownTail([section("a")], null).map((s) => s.id)).toEqual(["a"]);
   });
+
+  it("does not render the tail twice when the resolver already appended it", () => {
+    // resolveSections returns the tail BOTH inside `sections` and as its own
+    // field; appending it blindly duplicated the section (and its React key).
+    const out = withUnknownTail([section("a"), tail], tail);
+    expect(out.map((s) => s.id)).toEqual(["a", "unknown-fields"]);
+  });
+
+  it("moves an out-of-order tail to the end", () => {
+    const out = withUnknownTail([tail, section("a")], tail);
+    expect(out.map((s) => s.id)).toEqual(["a", "unknown-fields"]);
+  });
 });
 
 describe("sectionsForTab", () => {

@@ -5,13 +5,21 @@
 import type { TabDefinition } from "./model";
 import type { SectionInstance } from "./resolveSections";
 
-// withUnknownTail appends the leftover tail as the last section, so the
-// §27.4 equation's third term is ON SCREEN and not merely computed.
+// withUnknownTail guarantees the leftover tail is the LAST section on
+// screen, so §27.4's third term is rendered and not merely computed.
+//
+// Idempotent on purpose: `resolveSections` already appends the tail to its
+// own `sections` list AND returns it separately, so appending it blindly
+// would render the same section twice (React duly reports the duplicate
+// key). Membership is checked by identity rather than by id, because the
+// two references are the same object by construction.
 export function withUnknownTail(
   sections: readonly SectionInstance[],
   tail: SectionInstance | null,
 ): SectionInstance[] {
-  return tail === null ? [...sections] : [...sections, tail];
+  if (tail === null) return [...sections];
+  const without = sections.filter((section) => section !== tail);
+  return [...without, tail];
 }
 
 // sectionsForTab implements TabDefinition's contract: a tab lists the

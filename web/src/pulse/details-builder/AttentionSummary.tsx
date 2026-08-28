@@ -28,9 +28,16 @@ export function AttentionSummary({
   disabledHints,
 }: AttentionSummaryProps) {
   const s = useStrings();
+  // `loading` counts as degraded for the page aggregate (nothing is on
+  // screen yet), but it is not something to draw attention TO: the skeleton
+  // already says the page is loading, and an amber "problems: 1" card over
+  // it would report a normal first render as a fault.
   const degraded = definitions
     .map((d) => sources.byId[d.id])
-    .filter((state): state is SourceState => state !== undefined && sources.degraded.includes(state.id));
+    .filter(
+      (state): state is SourceState =>
+        state !== undefined && state.status !== "loading" && sources.degraded.includes(state.id),
+    );
 
   if (degraded.length === 0) return null;
 
