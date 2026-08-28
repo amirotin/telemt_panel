@@ -20,7 +20,7 @@ const catalog: FieldCatalog = {
   },
 };
 
-describe("field catalog lookup order (spec §8.2)", () => {
+describe("field catalog lookup order (spec §8.2, amended by ruling R9)", () => {
   it("1. an exact path beats every wildcard", () => {
     const result = lookupField("writers[0].rtt_ema_ms", { catalog });
     expect(result.source).toBe("exact");
@@ -41,14 +41,22 @@ describe("field catalog lookup order (spec §8.2)", () => {
     );
   });
 
-  it("2. a global wildcard beats an endpoint-scoped one", () => {
-    // Spec's order is exact -> wildcard -> endpoint-specific, so an
-    // endpoint entry only fills a gap the global catalog leaves.
+  it("2. an endpoint-scoped rule beats a global wildcard (ruling R9)", () => {
+    // Most specific wins: a rule written FOR one endpoint outranks a
+    // catalog-wide pattern, which is the reverse of the spec's own §8.2
+    // ordering and the reason R9 was recorded.
     const result = lookupField("writers[7].rtt_ema_ms", {
       catalog,
       endpoint: "/api/telemt/zero",
     });
-    expect(result.source).toBe("wildcard");
+    expect(result.source).toBe("endpoint");
+    expect(result.entry?.descriptionKey).toBe("dc.load");
+    // …but an exact global entry still beats it: exact is step 1.
+    expect(lookupField("writers[0].rtt_ema_ms", { catalog, endpoint: "/api/telemt/zero" }).source).toBe(
+      "exact",
+    );
+    // …and with no endpoint in play the global wildcard answers as before.
+    expect(lookupField("writers[7].rtt_ema_ms", { catalog }).source).toBe("wildcard");
   });
 
   it("3. an endpoint-scoped entry fills a gap the global catalog leaves", () => {

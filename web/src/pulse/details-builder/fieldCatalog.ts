@@ -12,10 +12,14 @@
 // §8.2's resolution order, implemented literally:
 //
 //   1. exact normalized path            dcs[0].rtt_ms  -> "dc.rtt_ms"
-//   2. wildcard path                    dcs.*.rtt_ms
-//   3. endpoint-specific path           (entries scoped to a source id)
+//   2. endpoint-specific path           (entries scoped to a source id)
+//   3. wildcard path                    dcs.*.rtt_ms
 //   4. known counters family            *_total, *_bytes, *_pct, …
 //   5. neutral fallback text            "Параметр Telemt; описания пока нет"
+//
+// Steps 2 and 3 are swapped relative to the spec's own list, by controller
+// ruling R9: most specific wins, so a rule written for ONE endpoint beats a
+// catalog-wide wildcard rather than losing to it.
 //
 // Step 5 is a hard stop: the builder MUST NOT invent business meaning for a
 // field it has never seen (§8.2).
@@ -186,6 +190,23 @@ const ME_ENTRIES: FieldCatalogEntry[] = [
     descriptionKey: "me.writers.bound_clients",
     format: "integer",
   },
+  // dc_rtt is a typed record (RuntimeMeQualityDcRtt in realtime/topics.ts),
+  // not a counters map — and since classifyValue asks the catalog exactly
+  // that question (a described key means a stable record), these entries are
+  // what keeps ME Quality's per-DC rows out of the verbatim-key renderer.
+  { path: "dc_rtt.*.dc", descriptionKey: "dc.dc", format: "integer" },
+  { path: "dc_rtt.*.rtt_ema_ms", descriptionKey: "me.dc_rtt.rtt_ema_ms", unit: "milliseconds" },
+  {
+    path: "dc_rtt.*.alive_writers",
+    descriptionKey: "me.dc_rtt.alive_writers",
+    format: "integer",
+  },
+  {
+    path: "dc_rtt.*.required_writers",
+    descriptionKey: "me.dc_rtt.required_writers",
+    format: "integer",
+  },
+  { path: "dc_rtt.*.coverage_pct", descriptionKey: "me.dc_rtt.coverage_pct", unit: "percent" },
 ];
 
 export const DEFAULT_FIELD_CATALOG: FieldCatalog = {
@@ -285,18 +306,24 @@ function resolve(path: string, endpoint: string | undefined, c: CompiledCatalog)
   const exact = c.exact.get(path);
   if (exact) return { source: "exact", entry: exact };
 
-  // 2. wildcard path
-  for (const entry of c.wildcard) {
-    if (matchesPattern(path, entry.path)) return { source: "wildcard", entry };
-  }
-
-  // 3. endpoint-specific path
+  // 2. endpoint-specific path (ruling R9)
+  //
+  // The spec's §8.2 list reads exact -> wildcard -> endpoint-specific, which
+  // would let a broad global pattern such as `writers.*.rtt_ema_ms` outrank a
+  // rule written FOR one endpoint. R9 settles it the other way: most specific
+  // wins, so a rule scoped to a single endpoint beats a catalog-wide
+  // wildcard. Within the endpoint table, exact still beats wildcard.
   if (endpoint) {
     const ex = c.endpointExact.get(endpoint)?.get(path);
     if (ex) return { source: "endpoint", entry: ex };
     for (const entry of c.endpointWildcard.get(endpoint) ?? []) {
       if (matchesPattern(path, entry.path)) return { source: "endpoint", entry };
     }
+  }
+
+  // 3. wildcard path
+  for (const entry of c.wildcard) {
+    if (matchesPattern(path, entry.path)) return { source: "wildcard", entry };
   }
 
   // 4. known counters family
@@ -331,6 +358,8 @@ function description(result: FieldLookupResult, s: Dict): string {
 
 // describeField turns a path into the spec's §8 FieldDefinition with its
 // description already in the reader's language — the shape a renderer wants.
+// Resolution order is §8.2 as amended by R9: exact -> endpoint-specific ->
+// wildcard -> counters family -> neutral fallback.
 export function describeField(path: string, s: Dict, ctx: FieldLookupContext = {}): FieldDefinition {
   const result = lookupField(path, ctx);
   const entry = result.entry;
