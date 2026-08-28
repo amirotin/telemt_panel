@@ -178,6 +178,26 @@ describe("purity: the module never reads the clock", () => {
   });
 });
 
+describe("percent", () => {
+  it("uses the locale's own decimal separator, in both locales", () => {
+    // ME's Overview prints nine `*_pct` fields; a raw String() put «87.5 %»
+    // with a full stop next to «3 922 605,337» on the same Russian page.
+    expect(formatValue(87.5, ru, { formatter: "percent", nowMs: NOW }).text).toBe(
+      `87,5 ${ru.details.value.percentSuffix}`,
+    );
+    expect(formatValue(87.5, en, { formatter: "percent", nowMs: NOW }).text).toBe(
+      `87.5 ${en.details.value.percentSuffix}`,
+    );
+    // Still one fraction digit, and a whole number keeps no tail at all.
+    expect(formatValue(99.96, ru, { formatter: "percent", nowMs: NOW }).text).toBe(
+      `100 ${ru.details.value.percentSuffix}`,
+    );
+    expect(formatValue(100, ru, { formatter: "percent", nowMs: NOW }).text).toBe(
+      `100 ${ru.details.value.percentSuffix}`,
+    );
+  });
+});
+
 describe("formatter identity travels with the value (spec §13)", () => {
   it("reports which formatter produced the text", () => {
     expect(formatValue(5, ru, { formatter: "integer", nowMs: NOW }).formatter).toBe("integer");

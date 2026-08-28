@@ -123,11 +123,6 @@ export function absent(kind: AbsenceKind, s: Dict): FormattedValue {
   return { text: absenceText(kind, s), absence: kind };
 }
 
-function round(value: number, digits: number): string {
-  const factor = 10 ** digits;
-  return String(Math.round(value * factor) / factor);
-}
-
 // formatDecimal keeps at most two fraction digits and groups the integer
 // part per locale — the "decimal with tabular numerals" family of §13.
 function formatDecimal(n: number, s: Dict): string {
@@ -200,7 +195,13 @@ export const FORMATTERS: Record<FormatterName, Formatter> = {
       : formatPrimitiveText(value, s),
   percent: (value, s) =>
     typeof value === "number"
-      ? { text: `${round(value, 1)} ${s.details.value.percentSuffix}`, falsy: value === 0 }
+      ? {
+          // formatNumber, not String(): the raw stringification printed
+          // «87.5 %» with a full stop beside «3 922 605,337» and «+0,73/с»
+          // on the same ME tab — one page, two decimal separators.
+          text: `${formatNumber(s, Math.round(value * 10) / 10)} ${s.details.value.percentSuffix}`,
+          falsy: value === 0,
+        }
       : formatPrimitiveText(value, s),
   milliseconds: (value, s) =>
     typeof value === "number"
