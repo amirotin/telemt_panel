@@ -50,7 +50,7 @@ export function SectionTabs({ tabs, activeId, onSelect, panelId, label }: Sectio
     const right = left + tab.offsetWidth;
     if (left < list.scrollLeft) list.scrollLeft = left;
     else if (right > list.scrollLeft + list.clientWidth) list.scrollLeft = right - list.clientWidth;
-  }, [activeId, tabs]);
+  }, [activeId]);
 
   // Five tabs at 360 px leave «Инициа…» clipped by a glyph as the only sign
   // there is more to the right. A fade on the overflowing side says it
@@ -72,7 +72,7 @@ export function SectionTabs({ tabs, activeId, onSelect, panelId, label }: Sectio
       list.removeEventListener("scroll", measure);
       observer?.disconnect();
     };
-  }, [tabs]);
+  }, []);
 
   return (
     <div className="relative -mx-4">
