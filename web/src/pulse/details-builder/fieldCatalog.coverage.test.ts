@@ -9,7 +9,14 @@
 // Telemt-bump checklist points at this file.
 import { describe, expect, it } from "vitest";
 import { catalogCoverage, TLS_FINGERPRINTS_ENDPOINT } from "./fieldCatalog";
-import { dcs, minimalAll, tlsFingerprints } from "./__fixtures__";
+import {
+  dcs,
+  effectiveLimits,
+  minimalAll,
+  posture,
+  tlsFingerprints,
+  whitelist,
+} from "./__fixtures__";
 
 describe("field catalog coverage: DC domain", () => {
   it("describes every leaf of the production DC payload", () => {
@@ -71,5 +78,52 @@ describe("field catalog coverage: TLS domain (endpoint-scoped, ruling R9)", () =
     const report = catalogCoverage(tlsFingerprints);
     expect(report.total).toBe(1955);
     expect(report.described).toEqual([]);
+  });
+});
+
+// The Security domain (§12, §20) — posture, whitelist and effective limits,
+// as the `security` topic delivers them and as securityPageData spreads
+// them into the page context. Global entries rather than endpoint-scoped
+// ones: every path is already prefixed by its topic field.
+describe("field catalog coverage: Security domain", () => {
+  const context = { posture, whitelist, effective_limits: effectiveLimits };
+
+  it("describes every leaf of the production security payload", () => {
+    const report = catalogCoverage(context);
+    expect(report.total).toBe(53);
+    expect(
+      report.undescribed,
+      `undescribed security paths:\n${report.undescribed.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("never falls back to a counters-family guess or to the neutral text", () => {
+    const sources = new Set(catalogCoverage(context).rows.map((row) => row.source));
+    expect(sources.has("fallback")).toBe(false);
+    expect(sources.has("family")).toBe(false);
+  });
+
+  it("covers a middle_proxy knob a future Telemt adds, by wildcard", () => {
+    // EffectiveMiddleProxyLimits is `Record<string, unknown>`; one honest
+    // wildcard describes the block rather than 21 invented sentences (§8.2
+    // forbids inventing meaning for a field we have never seen).
+    const report = catalogCoverage({
+      effective_limits: {
+        ...effectiveLimits,
+        middle_proxy: { ...effectiveLimits.middle_proxy, a_knob_from_a_future_telemt: 1 },
+      },
+    });
+    expect(report.undescribed).toEqual([]);
+    const row = report.rows.find(
+      (r) => r.path === "effective_limits.middle_proxy.a_knob_from_a_future_telemt",
+    );
+    expect(row?.source).toBe("wildcard");
+  });
+
+  it("still flags a security field nobody described", () => {
+    const report = catalogCoverage({
+      posture: { ...posture, a_field_from_a_future_telemt: 1 },
+    });
+    expect(report.undescribed).toEqual(["posture.a_field_from_a_future_telemt"]);
   });
 });

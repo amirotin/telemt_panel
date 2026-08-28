@@ -586,6 +586,54 @@ export const ru = {
     attention: {
       degradedTemplate: "Источников с проблемами: {count}",
     },
+    // Заголовки доменных Details-страниц (задача 6: DC и Security/TLS).
+    // Имена самих полей Telemt — данные и печатаются как есть (§8.1/§11.2),
+    // поэтому заголовки блоков вроде «endpoints[]» остаются техническими, а
+    // переводится к ним пояснение.
+    pages: {
+      dc: {
+        title: "Дата-центры",
+        description:
+          "Выберите дата-центр — ниже показано только его состояние, а не все двенадцать сразу.",
+        routing: "Маршрутизация и ёмкость",
+        endpoints: "Адреса middle proxy, полученные от Telegram для этого дата-центра.",
+        endpointWriters: "Сколько живых писателей держит каждый адрес.",
+        metadata: "Метаданные ответа",
+        networkPath: "Сетевой путь",
+        attention: {
+          degraded: "покрытие неполное",
+          uncovered: "нет живых писателей",
+        },
+      },
+      security: {
+        title: "Безопасность / TLS",
+        description:
+          "Четыре независимых рейтинга вместо одной плоской простыни строк. На экране — первые 20 записей, остальные доступны через поиск и «Показать ещё».",
+        posture: "Посадка безопасности",
+        whitelist: "Белый список API",
+        whitelistEntries: "Записи белого списка",
+        limits: "Действующие лимиты",
+        limitsTimeouts: "Таймауты",
+        limitsUpstream: "Апстримы",
+        limitsMiddleProxy: "Middle proxy",
+        limitsUserIp: "Политика по IP пользователя",
+        limitsUserTcp: "Политика по TCP-сессиям пользователя",
+        capture: "Захват отпечатков",
+        ranking: "Записи рейтинга",
+        rankingDescription: "Нажатие на запись открывает все её поля.",
+        observed: "Наблюдений ClientHello",
+        badOrProbe: "Некорректные / сканы",
+        uniqueKeys: "Уникальных ключей",
+        whitelistSize: "Записей белого списка",
+        tabs: {
+          posture: "Посадка",
+          byFingerprint: "Отпечатки",
+          byIp: "IP",
+          byCidr: "Подсети",
+          byUser: "Пользователи",
+        },
+      },
+    },
     // Разбивка «имя → число» (§9.4): одна строка на пару, доля от суммы
     // рядом с числом.
     breakdown: {
@@ -655,6 +703,7 @@ export const ru = {
         "dc.coverage_pct": "Покрытие",
         "dc.rtt_ms": "RTT",
         "dc.available_endpoints": "Доступные точки",
+        "dc.fresh_coverage_pct": "Свежее покрытие",
       },
       descriptions: {
         "dc.middle_proxy_enabled": "Включён ли режим middle proxy у этого прокси.",
@@ -714,6 +763,46 @@ export const ru = {
         "tls.bad_or_probe": "Наблюдения, позднее признанные некорректными или сканированием.",
         "tls.first_seen_epoch_secs": "Когда этот отпечаток встретился впервые.",
         "tls.last_seen_epoch_secs": "Когда этот отпечаток встретился в последний раз.",
+        // Домен Security: посадка, белый список и действующие лимиты
+        // (TELEMT_LIVE_API_DATA §12, §20). Пути пространственно разделены
+        // префиксом топика, поэтому записи глобальные, а не эндпойнтные.
+        "security.posture.api_read_only": "Работает ли API прокси в режиме «только чтение».",
+        "security.posture.api_whitelist_enabled": "Включена ли фильтрация обращений к API по белому списку адресов.",
+        "security.posture.api_whitelist_entries": "Сколько адресов сейчас в белом списке API.",
+        "security.posture.api_auth_header_enabled": "Требует ли API заголовок авторизации.",
+        "security.posture.proxy_protocol_enabled": "Принимает ли прокси PROXY-protocol от вышестоящего балансировщика.",
+        "security.posture.log_level": "Текущий уровень журналирования прокси.",
+        "security.posture.telemetry_core_enabled": "Собирает ли прокси базовую телеметрию ядра.",
+        "security.posture.telemetry_user_enabled": "Собирает ли прокси телеметрию в разрезе пользователей.",
+        "security.posture.telemetry_me_level": "Насколько подробно собирается телеметрия middle proxy.",
+        "security.whitelist.generated_at_epoch_secs": "Когда прокси собрал этот снимок белого списка.",
+        "security.whitelist.enabled": "Включён ли белый список адресов для API.",
+        "security.whitelist.entries_total": "Сколько записей содержит белый список.",
+        "security.whitelist.entries": "Адреса и подсети, которым разрешено обращаться к API.",
+        "security.whitelist.entry": "Адрес или подсеть, которой разрешено обращаться к API.",
+        "security.limits.update_every_secs": "Как часто прокси пересчитывает действующие лимиты.",
+        "security.limits.me_reinit_every_secs": "Период плановой переинициализации пула middle proxy.",
+        "security.limits.me_pool_force_close_secs": "Через сколько прокси принудительно закрывает писателя из пула.",
+        "security.limits.timeouts.client_first_byte_idle_secs": "Сколько прокси ждёт первый байт от клиента.",
+        "security.limits.timeouts.client_handshake_secs": "Отведённое время на рукопожатие с клиентом.",
+        "security.limits.timeouts.tg_connect_secs": "Отведённое время на подключение к Telegram.",
+        "security.limits.timeouts.client_keepalive_secs": "Как долго держится простаивающее клиентское соединение.",
+        "security.limits.timeouts.client_ack_secs": "Сколько прокси ждёт подтверждения от клиента.",
+        "security.limits.timeouts.me_one_retry": "Сколько повторов допускается на одну операцию middle proxy.",
+        "security.limits.timeouts.me_one_timeout_ms": "Таймаут одной операции middle proxy.",
+        "security.limits.upstream.connect_retry_attempts": "Сколько раз прокси повторяет подключение к апстриму.",
+        "security.limits.upstream.connect_retry_backoff_ms": "Пауза между повторами подключения к апстриму.",
+        "security.limits.upstream.connect_budget_ms": "Общий бюджет времени на подключение через апстрим.",
+        "security.limits.upstream.unhealthy_fail_threshold": "После скольких неудач апстрим считается нездоровым.",
+        "security.limits.upstream.connect_failfast_hard_errors": "Прекращать ли повторы сразу при неустранимой ошибке подключения.",
+        // middle_proxy — forward-compatible набор внутренних ручек пула
+        // (типизирован как Record<string, unknown>): панель показывает их
+        // как есть и не придумывает бизнес-смысл незнакомому ключу (§8.2).
+        "security.limits.middle_proxy": "Внутренняя ручка адаптивной политики пула middle proxy; показана как есть.",
+        "security.limits.user_ip_policy.global_each": "Сколько IP-адресов допускается одному пользователю.",
+        "security.limits.user_ip_policy.mode": "Режим применения лимита по IP пользователя.",
+        "security.limits.user_ip_policy.window_secs": "Окно, в котором считаются IP-адреса пользователя.",
+        "security.limits.user_tcp_policy.global_each": "Сколько одновременных TCP-сессий допускается одному пользователю.",
       },
     },
   },

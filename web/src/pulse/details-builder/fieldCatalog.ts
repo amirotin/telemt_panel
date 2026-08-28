@@ -162,7 +162,7 @@ const DC_ENTRIES: FieldCatalogEntry[] = [
   ...dcField("alive_writers", { format: "integer", zeroMeaningKey: "dc.alive_writers" }),
   ...dcField("coverage_pct", { unit: "percent", shortLabelKey: "dc.coverage_pct" }),
   ...dcField("fresh_alive_writers", { format: "integer" }),
-  ...dcField("fresh_coverage_pct", { unit: "percent" }),
+  ...dcField("fresh_coverage_pct", { unit: "percent", shortLabelKey: "dc.fresh_coverage_pct" }),
   // rtt_ms is the §13.1 poster child: null means "never measured", which is
   // NOT the same as "no data" — the catalog says so instead of an em dash.
   ...dcField("rtt_ms", {
@@ -266,8 +266,126 @@ const TLS_ENTRIES: FieldCatalogEntry[] = [
   ...tlsRowField("last_seen_epoch_secs", { unit: "timestamp" }),
 ];
 
+// The Security domain (TELEMT_LIVE_API_DATA §12, §20) — posture, whitelist
+// and effective limits, as the `security` topic delivers them.
+//
+// Global rather than endpoint-scoped, unlike TLS: every path here is
+// already prefixed by the topic field it arrives under (`posture.`,
+// `whitelist.`, `effective_limits.`), so none of them can collide with a
+// bare `total`/`limit`/`scope` somewhere else the way the TLS record fields
+// would have.
+const SECURITY_POSTURE_ENTRIES: FieldCatalogEntry[] = [
+  { path: "posture.api_read_only", descriptionKey: "security.posture.api_read_only", format: "boolean" },
+  {
+    path: "posture.api_whitelist_enabled",
+    descriptionKey: "security.posture.api_whitelist_enabled",
+    format: "boolean",
+  },
+  {
+    path: "posture.api_whitelist_entries",
+    descriptionKey: "security.posture.api_whitelist_entries",
+    format: "integer",
+  },
+  {
+    path: "posture.api_auth_header_enabled",
+    descriptionKey: "security.posture.api_auth_header_enabled",
+    format: "boolean",
+  },
+  {
+    path: "posture.proxy_protocol_enabled",
+    descriptionKey: "security.posture.proxy_protocol_enabled",
+    format: "boolean",
+  },
+  { path: "posture.log_level", descriptionKey: "security.posture.log_level", format: "enum" },
+  {
+    path: "posture.telemetry_core_enabled",
+    descriptionKey: "security.posture.telemetry_core_enabled",
+    format: "boolean",
+  },
+  {
+    path: "posture.telemetry_user_enabled",
+    descriptionKey: "security.posture.telemetry_user_enabled",
+    format: "boolean",
+  },
+  {
+    path: "posture.telemetry_me_level",
+    descriptionKey: "security.posture.telemetry_me_level",
+    format: "enum",
+  },
+];
+
+const SECURITY_WHITELIST_ENTRIES: FieldCatalogEntry[] = [
+  // A generation MOMENT, not a duration — without the unit the counters
+  // family reads the `_secs` suffix as a span (Task 3 review carry-over).
+  {
+    path: "whitelist.generated_at_epoch_secs",
+    descriptionKey: "security.whitelist.generated_at_epoch_secs",
+    unit: "timestamp",
+  },
+  { path: "whitelist.enabled", descriptionKey: "security.whitelist.enabled", format: "boolean" },
+  {
+    path: "whitelist.entries_total",
+    descriptionKey: "security.whitelist.entries_total",
+    format: "integer",
+  },
+  { path: "whitelist.entries", descriptionKey: "security.whitelist.entries" },
+  // R6: an admin's own allow-list addresses are shown, not masked — the
+  // masking policy covers secrets, and this is the operator's own data.
+  {
+    path: "whitelist.entries.*",
+    descriptionKey: "security.whitelist.entry",
+    format: "address",
+  },
+];
+
+function limitField(path: string, extra: Omit<FieldCatalogEntry, "path" | "descriptionKey"> = {}) {
+  return {
+    path: `effective_limits.${path}`,
+    descriptionKey: `security.limits.${path}`,
+    ...extra,
+  };
+}
+
+const SECURITY_LIMITS_ENTRIES: FieldCatalogEntry[] = [
+  limitField("update_every_secs", { unit: "seconds" }),
+  limitField("me_reinit_every_secs", { unit: "seconds" }),
+  limitField("me_pool_force_close_secs", { unit: "seconds" }),
+  limitField("timeouts.client_first_byte_idle_secs", { unit: "seconds" }),
+  limitField("timeouts.client_handshake_secs", { unit: "seconds" }),
+  limitField("timeouts.tg_connect_secs", { unit: "seconds" }),
+  limitField("timeouts.client_keepalive_secs", { unit: "seconds" }),
+  limitField("timeouts.client_ack_secs", { unit: "seconds" }),
+  limitField("timeouts.me_one_retry", { format: "integer" }),
+  limitField("timeouts.me_one_timeout_ms", { unit: "milliseconds" }),
+  limitField("upstream.connect_retry_attempts", { format: "integer" }),
+  limitField("upstream.connect_retry_backoff_ms", { unit: "milliseconds" }),
+  limitField("upstream.connect_budget_ms", { unit: "milliseconds" }),
+  limitField("upstream.unhealthy_fail_threshold", { format: "integer" }),
+  limitField("upstream.connect_failfast_hard_errors", { format: "boolean" }),
+  // ONE honest wildcard for the whole middle_proxy block, on purpose.
+  // EffectiveMiddleProxyLimits is `Record<string, unknown>` — a
+  // forward-compatible dump of ~21 internal pool knobs whose individual
+  // semantics the panel does not know. §8.2 forbids inventing business
+  // meaning for a field we have never seen, so the entry says exactly what
+  // is true of every key in it rather than 21 guesses.
+  {
+    path: "effective_limits.middle_proxy.*",
+    descriptionKey: "security.limits.middle_proxy",
+  },
+  limitField("user_ip_policy.global_each", { format: "integer" }),
+  limitField("user_ip_policy.mode", { format: "enum" }),
+  limitField("user_ip_policy.window_secs", { unit: "seconds" }),
+  limitField("user_tcp_policy.global_each", { format: "integer" }),
+];
+
+const SECURITY_ENTRIES: FieldCatalogEntry[] = [
+  ...SECURITY_POSTURE_ENTRIES,
+  ...SECURITY_WHITELIST_ENTRIES,
+  ...SECURITY_LIMITS_ENTRIES,
+];
+
 export const DEFAULT_FIELD_CATALOG: FieldCatalog = {
-  entries: [...DC_ENTRIES, ...ME_ENTRIES],
+  entries: [...DC_ENTRIES, ...ME_ENTRIES, ...SECURITY_ENTRIES],
   byEndpoint: { [TLS_FINGERPRINTS_ENDPOINT]: TLS_ENTRIES },
 };
 

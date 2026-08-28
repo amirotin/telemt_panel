@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { DetailPageDefinition } from "./model";
 import { classifyValue, resolveSections } from "./resolveSections";
+import { TLS_FINGERPRINTS_ENDPOINT } from "./fieldCatalog";
 import type { CollectionSectionInstance, ScalarSectionInstance } from "./resolveSections";
 import {
   dcAllFalsy,
   dcEndpointVariants,
   dcs,
+  effectiveLimits,
   events,
   initialization,
   meQuality,
   meWriters,
   minimalAll,
+  posture,
   selftestAllNullable,
   summary,
   tlsFingerprints,
+  whitelist,
   writerAllNull,
   zeroAll,
 } from "./__fixtures__";
@@ -133,10 +137,68 @@ describe("classifyValue on the production fixtures (review M1)", () => {
     // The two maps a BreakdownSection may be bound to instead of an array:
     // verbatim keys with counters, i.e. exactly §9.4's label → total.
     ["meQuality.route_drops (breakdown over a map)", meQuality.route_drops, "route_drops", "dynamicMap"],
+    // --- Security domain, described by Task 6 -------------------------
+    //
+    // Task 2's review carry-over made this table load-bearing: a catalog
+    // entry is criterion (c) of the dynamic-map test, so describing a
+    // domain can FLIP a renderer. Every block the Security page binds is
+    // pinned here, including the three all-numeric ones that would read as
+    // verbatim-key counter maps without their descriptions.
+    ["posture (mixed leaves)", posture, "posture", "object"],
+    ["whitelist", whitelist, "whitelist", "object"],
+    ["whitelist.entries (addresses)", whitelist.entries, "whitelist.entries", "primitiveArray"],
+    ["effective_limits (nested groups only)", effectiveLimits, "effective_limits", "object"],
+    // All seven leaves numeric — a described record, not a counters map.
+    [
+      "effective_limits.timeouts (7 numbers, all described)",
+      effectiveLimits.timeouts,
+      "effective_limits.timeouts",
+      "object",
+    ],
+    [
+      "effective_limits.upstream",
+      effectiveLimits.upstream,
+      "effective_limits.upstream",
+      "object",
+    ],
+    [
+      "effective_limits.user_ip_policy",
+      effectiveLimits.user_ip_policy,
+      "effective_limits.user_ip_policy",
+      "object",
+    ],
+    // One key: never a map, whatever the catalog says (criterion a).
+    [
+      "effective_limits.user_tcp_policy (one key)",
+      effectiveLimits.user_tcp_policy,
+      "effective_limits.user_tcp_policy",
+      "object",
+    ],
+    // The forward-compatible knob dump: mixed types, and the page binds it
+    // to a DynamicMapSection explicitly rather than relying on this.
+    [
+      "effective_limits.middle_proxy (21 knobs, mixed types)",
+      effectiveLimits.middle_proxy,
+      "effective_limits.middle_proxy",
+      "object",
+    ],
   ];
 
   it.each(cases)("%s -> %s", (_name, value, path, expected) => {
     expect(classifyValue(value, { path })).toBe(expected);
+  });
+
+  // The TLS capture bounds are the R9 case in miniature: `limit`,
+  // `capacity`, `retention_secs`, `dropped_total`, `parse_error_total` are
+  // five numbers under one root, which is a counters map to anyone who
+  // cannot see the endpoint-scoped descriptions — and a stable record to
+  // the Security page, which passes the scope. Asserted in both directions
+  // because the page's ScalarSection depends on the second reading.
+  it("reads the TLS root as a record only under its endpoint scope (R9)", () => {
+    expect(classifyValue(tlsFingerprints, { path: "" })).toBe("dynamicMap");
+    expect(
+      classifyValue(tlsFingerprints, { path: "", endpoint: TLS_FINGERPRINTS_ENDPOINT }),
+    ).toBe("object");
   });
 
   it("gives a counters map its nested containers as their own blocks, not rows", () => {
