@@ -31,7 +31,7 @@ import type {
 import type { FormatterName } from "./formatting";
 import { DEFAULT_PAGING, DEFAULT_UNKNOWN_FIELDS_POLICY, pagingForSize } from "./model";
 import type { DisplayMode } from "../../display-mode/mode";
-import type { Localized } from "./model";
+import type { CustomRendererOptions, Localized } from "./model";
 import { childPath, indexPath, isUnderPath, readPath, hasPath, walkLeafPaths } from "./paths";
 import { lookupField } from "./fieldCatalog";
 import type { FieldCatalog, FieldLookupContext } from "./fieldCatalog";
@@ -210,6 +210,8 @@ export interface CustomSectionInstance extends SectionInstanceCommon {
   kind: "custom";
   renderer: string;
   value: unknown;
+  /** Renderer options carried through from the definition (§9.8). */
+  options?: CustomRendererOptions;
 }
 
 // UnknownNode is the recursive shape §11.3/§24.1 describes: objects stay
@@ -534,6 +536,7 @@ function resolveCustomSection<T>(
     path: section.consumes[0] ?? "",
     consumed,
     renderer: section.renderer,
+    ...(section.options ? { options: section.options } : {}),
     value: section.select ? section.select(context) : context,
   };
 }

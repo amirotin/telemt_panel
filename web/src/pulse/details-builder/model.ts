@@ -338,8 +338,25 @@ export interface DynamicMapSectionDefinition<T> extends SectionCommon<T> {
 // 9.8 CustomSection — only where the standard renderers cannot express the
 // semantics. Still bound by the shared loading/error/empty, responsive and
 // a11y contracts (§9.8).
+/**
+ * Options a definition hands to its registered renderer verbatim.
+ *
+ * Narrow on purpose. A renderer draws DATA (§9.8) and a chart cannot read
+ * the field catalog for a value it deliberately does not consume, so the
+ * two things it cannot derive — the unit word and what its leading count
+ * counts — are declared here instead of being guessed or left blank.
+ */
+export interface CustomRendererOptions {
+  /** Unit word printed after a value: «мс», «%». */
+  unit?: Localized;
+  /** Names the leading count; a bare «12» reads as a code, not a quantity. */
+  countLabel?: Localized;
+}
+
 export interface CustomSectionDefinition<T> extends SectionCommon<T> {
   kind: "custom";
+  /** Renderer options; see CustomRendererOptions. */
+  options?: CustomRendererOptions;
   /**
    * Renderer id resolved by the page's registry
    * (renderers/customRenderers.ts). An id nobody registered is NOT an

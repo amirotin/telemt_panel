@@ -14,10 +14,11 @@
 //     the generic node tree, so a page shipped before its chart still shows
 //     every field it consumes, and the completeness equation (§27.4) keeps
 //     holding;
-//   * the renderer is a plain function of `{ instance, ctx }`, so a test
-//     can call it with a resolved instance and no page around it.
+//   * the renderer is a plain function of `{ instance, ctx, options }`, so
+//     a test can call it with a resolved instance and no page around it.
 
 import type { ComponentType } from "react";
+import type { CustomRendererOptions } from "../model";
 import type { CustomSectionInstance } from "../resolveSections";
 import { QualityChart } from "./QualityChart";
 import type { DetailRenderContext } from "./context";
@@ -25,6 +26,13 @@ import type { DetailRenderContext } from "./context";
 export interface CustomSectionRendererProps {
   instance: CustomSectionInstance;
   ctx: DetailRenderContext;
+  /**
+   * What the renderer cannot derive from the data alone — the unit word and
+   * the name of its leading count. A chart that consumes nothing (so that
+   * the section below it can own the fields) has no catalog entry to read
+   * them from, and printing «87,84» with no unit is the result.
+   */
+  options?: CustomRendererOptions;
 }
 
 // A COMPONENT type, not a bare function: a renderer is rendered as JSX so

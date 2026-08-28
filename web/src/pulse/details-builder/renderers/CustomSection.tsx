@@ -45,7 +45,11 @@ export function CustomSection({ instance, ctx, renderers }: CustomSectionProps) 
           // up by id at render time, which is the whole point of a registry.
           // It is stable for the life of the section (the id comes from the
           // definition), so nothing here recreates a component per frame.
-          createElement(Renderer, { instance, ctx })}
+          createElement(Renderer, {
+            instance,
+            ctx,
+            ...(instance.options ? { options: instance.options } : {}),
+          })}
     </SectionFrame>
   );
 }

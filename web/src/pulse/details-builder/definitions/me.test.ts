@@ -203,6 +203,32 @@ describe("ME page definition (spec §23.2)", () => {
     // the §27.4 accounting while drawing only one of the five fields.
     expect(chart.consumes).toEqual([]);
     expect(chart.select?.(full)).toHaveLength(meQuality.dc_rtt.length);
+    // Consuming nothing also means no catalog entry to read a unit from,
+    // so the two things the chart cannot derive are declared instead.
+    expect(chart.options?.unit?.(ru)).toBe(ru.details.value.ms);
+    expect(chart.options?.countLabel?.(ru)).toBe("DC");
+  });
+
+  it("orders the RTT chart and the DC array production-first, like the chips", () => {
+    // Telemt sorts `dc_rtt` numerically ascending, so read as it arrives the
+    // chart opens on DC −203 — a test site — while the writer chips and the
+    // DC rail beside it open on DC 1. One screen, two orders.
+    const ascending = [...meQuality.dc_rtt].sort((a, b) => (a.dc ?? 0) - (b.dc ?? 0));
+    const context = mePagePayload({
+      meWriters,
+      quality: { ...meQuality, dc_rtt: ascending },
+    }) as MePagePayload;
+    const production = [1, 2, 3, 4, 5, 203, -1, -2, -3, -4, -5, -203];
+
+    const chart = mePageDefinition.sections.find((s) => s.id === "dc_rtt_chart");
+    if (chart?.kind !== "custom") throw new Error("dc_rtt_chart is not a custom section");
+    const labels = (chart.select?.(context) as { label: string }[]).map((p) => p.label);
+    expect(labels).toEqual(production.map((dc) => `DC ${dc}`));
+
+    const array = resolveFor(context).sections.find(
+      (s) => s.id === "dc_rtt",
+    ) as CollectionSectionInstance;
+    expect(array.items.map((item) => (item as { dc: number }).dc)).toEqual(production);
   });
 
   it("keeps every array in a block of its own, never in a scalar row", () => {

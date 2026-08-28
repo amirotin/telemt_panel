@@ -2,6 +2,7 @@ import { useStrings } from "../../../i18n";
 import { formatNumber } from "../../../i18n";
 import { cn } from "../../../lib/cn";
 import { Sparkline } from "../../../ui/Sparkline";
+import type { CustomRendererOptions } from "../model";
 import type { CustomSectionInstance } from "../resolveSections";
 import { medianOf, readQualitySeries } from "./qualityChart.helpers";
 import { EmptyNote } from "./NodeTree";
@@ -11,8 +12,8 @@ export interface QualityChartProps {
   instance: CustomSectionInstance;
   /** Part of the registry contract; this chart needs no clock of its own. */
   ctx?: DetailRenderContext;
-  /** Unit suffix printed after each value ("ms", "%"). Data, not a translation. */
-  unit?: string;
+  /** Unit word and count label, from the definition (§9.8). */
+  options?: CustomRendererOptions;
 }
 
 // QualityChart is the REFERENCE custom renderer (§9.8): the one domain
@@ -25,7 +26,7 @@ export interface QualityChartProps {
 // available to a screen reader and to anyone who needs the number rather
 // than the picture (§21). The Sparkline above them is the same series read
 // as a trend.
-export function QualityChart({ instance, unit }: QualityChartProps) {
+export function QualityChart({ instance, options }: QualityChartProps) {
   const s = useStrings();
   const points = readQualitySeries(instance.value);
 
@@ -36,15 +37,21 @@ export function QualityChart({ instance, unit }: QualityChartProps) {
   const values = points.map((p) => p.value);
   const max = Math.max(...values);
   const median = medianOf(points);
+  const unit = options?.unit?.(s);
   const suffix = unit === undefined ? "" : ` ${unit}`;
+  const countLabel = options?.countLabel?.(s);
 
   return (
     <div className="flex flex-col gap-3 py-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-meta text-text-muted">
-          {formatNumber(s, points.length)} · {s.details.chart.median}{" "}
+          {/* The count is named and the median carries the unit and the
+              bars' own precision: «12 DC · медиана 88 мс» rather than
+              «12 · медиана 87,84» beside columns reading 189. */}
+          {formatNumber(s, points.length)}
+          {countLabel === undefined ? "" : ` ${countLabel}`} · {s.details.chart.median}{" "}
           <span className="tabular-nums">
-            {median === null ? "—" : `${formatNumber(s, Math.round(median * 100) / 100)}${suffix}`}
+            {median === null ? "—" : `${formatNumber(s, roundForLabel(median))}${suffix}`}
           </span>
         </span>
         <Sparkline values={values} className="shrink-0" />

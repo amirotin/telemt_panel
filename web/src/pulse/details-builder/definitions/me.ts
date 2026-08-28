@@ -99,6 +99,19 @@ export function meDcGroupOrder(a: string, b: string): number {
   return na >= 0 ? -1 : 1;
 }
 
+// orderedDcRtt puts the RTT series in the SAME order as the writer chips
+// and the DC rail: production data centers first ascending, test sites
+// after. Telemt sends `dc_rtt` numerically ascending, so reading it as it
+// arrives opens the chart on DC −203 while the chips beside it open on
+// DC 1 — one screen, two orders of the same twelve data centers.
+export function orderedDcRtt(
+  rows: readonly RuntimeMeQualityDcRtt[] | undefined,
+): RuntimeMeQualityDcRtt[] {
+  return [...(rows ?? [])].sort((a, b) =>
+    meDcGroupOrder(meDcGroupKey(a.dc ?? null), meDcGroupKey(b.dc ?? null)),
+  );
+}
+
 /** The writer states Telemt documents; the filter offers exactly these. */
 export const ME_WRITER_STATES = ["warm", "active", "draining"] as const;
 
@@ -489,8 +502,12 @@ export const mePageDefinition: DetailPageDefinition<MePagePayload, MePagePayload
       renderer: QUALITY_CHART_RENDERER,
       consumes: [],
       defaultExpanded: true,
+      // The chart consumes nothing, so it has no catalog entry to read a
+      // unit from: without these two the header reads «12 · медиана 87,84»
+      // for a series of milliseconds.
+      options: { unit: (s) => s.details.value.ms, countLabel: () => "DC" },
       select: (p) =>
-        (p.quality?.dc_rtt ?? []).map((row: RuntimeMeQualityDcRtt) => ({
+        orderedDcRtt(p.quality?.dc_rtt).map((row) => ({
           label: meDcLabel(row.dc),
           value: row.rtt_ema_ms,
         })),
@@ -501,6 +518,10 @@ export const mePageDefinition: DetailPageDefinition<MePagePayload, MePagePayload
       title: (s) => s.details.pages.me.dcRtt,
       sourceId: "runtime_edge",
       path: "quality.dc_rtt",
+      // Ordered, not read as it arrives: `path` still owns the leaves, and
+      // the block underneath the chart lists the same data centers in the
+      // same order the chart and the writer chips use.
+      select: (p) => orderedDcRtt(p.quality?.dc_rtt),
       itemKey: (item, i) => `dc${(item as RuntimeMeQualityDcRtt).dc ?? i}`,
     },
     // Six named lifecycle counters with a real description each — a scalar
