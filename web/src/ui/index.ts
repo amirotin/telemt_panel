@@ -16,6 +16,7 @@ export * from "./Stepper";
 export * from "./Sheet";
 export * from "./Toast";
 export * from "./StatCard";
+export * from "./DescribedRow";
 export * from "./KVRow";
 export * from "./StatePill";
 export * from "./QuotaBar";

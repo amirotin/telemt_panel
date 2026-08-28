@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cn } from "../lib/cn";
+import { DescribedRow } from "./DescribedRow";
 
 export interface KVRowProps {
   label: string;
@@ -8,26 +8,25 @@ export interface KVRowProps {
   className?: string;
 }
 
-// KVRow — key/value row for diagnostics screens (Диагностика subpages,
-// config/security/host detail dumps): one layout for every "parameter —
-// value" pair in the app instead of ad hoc grids per screen.
+// KVRow — key/value row for the screens that label their own rows in
+// Russian (config quick settings, /server/security, /server/platform, the
+// Диагностика KVGroup dumps). It is now a thin wrapper over DescribedRow,
+// so there is ONE scalar-row layout in the app rather than two that drift:
+// the only difference is that a KVRow has a human label instead of a Telemt
+// field name (`nameStyle="label"`) and no description under it.
+//
+// The one visible change from the standalone version: a long value wraps
+// instead of being truncated with an ellipsis (spec §13.2 — a value must
+// stay fully readable and selectable, and never widen the viewport).
 export function KVRow({ label, value, monospace, className }: KVRowProps) {
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0",
-        className,
-      )}
-    >
-      <span className="shrink-0 text-meta text-text-muted">{label}</span>
-      <span
-        className={cn(
-          "truncate text-right text-row tabular-nums text-text",
-          monospace && "font-mono",
-        )}
-      >
-        {value}
-      </span>
-    </div>
+    <DescribedRow
+      nameStyle="label"
+      name={label}
+      value={value}
+      monospaceValue={monospace}
+      numeric
+      className={className}
+    />
   );
 }
