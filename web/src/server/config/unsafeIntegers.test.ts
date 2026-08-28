@@ -60,6 +60,16 @@ describe("findUnsafeIntegerLiterals", () => {
     expect(findUnsafeIntegerLiterals(text)).toEqual(["9007199254740993", "9007199254740994"]);
   });
 
+  it("scans a section the panel knows nothing about, not just the known ones", () => {
+    // The check is section-agnostic by construction (it reads raw text),
+    // and has to stay that way: `web` (Telemt 3.5.3+) and any future
+    // section reach the raw editor as passthrough JSON, so an unsafe
+    // literal typed there must block submit exactly like one in [general].
+    const text =
+      '{"general":{"log_level":"info"},"web":{"limits":{"max_body_bytes_global":9007199254740993}}}';
+    expect(findUnsafeIntegerLiterals(text)).toEqual(["9007199254740993"]);
+  });
+
   it("returns an empty array for invalid JSON text (not this helper's concern)", () => {
     expect(findUnsafeIntegerLiterals("not json at all")).toEqual([]);
   });

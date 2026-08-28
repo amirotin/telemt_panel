@@ -1,14 +1,25 @@
 import { useState } from "react";
-import type { TelemtConfig } from "../../lib/api/generated/types.gen";
+
+/**
+ * A revision plus the sections it describes — GET /api/telemt/config's
+ * payload, widened: `sections` here is a plain JSON object rather than the
+ * wire type's map-of-objects, because the raw editor hands back whatever
+ * the admin typed (a section can transiently be any JSON value) and the
+ * rebase merge produces the same open shape.
+ */
+export interface ConfigSnapshot {
+  revision: string;
+  sections: Record<string, unknown>;
+}
 
 export interface ConfigEditorState {
   /** The revision the working copy was built from — what If-Match sends. */
-  baseline: TelemtConfig | null;
+  baseline: ConfigSnapshot | null;
   /** The working copy the forms read/write. */
   edited: Record<string, unknown> | null;
   setEdited: (next: Record<string, unknown>) => void;
   /** Re-seeds both baseline and edited to a freshly fetched config, discarding any in-progress edit. */
-  seed: (fresh: TelemtConfig) => void;
+  seed: (fresh: ConfigSnapshot) => void;
 }
 
 // useConfigEditor owns the Конфигурация page's editing session: `baseline`
@@ -25,8 +36,8 @@ export interface ConfigEditorState {
 // from under the admin. `seed` is called only after a successful PATCH
 // (re-baselining to the new revision) or after the admin confirms
 // "перезагрузить и повторить" on a 409 revision-conflict banner.
-export function useConfigEditor(queryData: TelemtConfig | undefined): ConfigEditorState {
-  const [baseline, setBaseline] = useState<TelemtConfig | null>(null);
+export function useConfigEditor(queryData: ConfigSnapshot | undefined): ConfigEditorState {
+  const [baseline, setBaseline] = useState<ConfigSnapshot | null>(null);
   const [edited, setEditedState] = useState<Record<string, unknown> | null>(null);
 
   if (queryData && !baseline) {
@@ -34,7 +45,7 @@ export function useConfigEditor(queryData: TelemtConfig | undefined): ConfigEdit
     setEditedState(queryData.sections);
   }
 
-  function seed(fresh: TelemtConfig) {
+  function seed(fresh: ConfigSnapshot) {
     setBaseline(fresh);
     setEditedState(fresh.sections);
   }

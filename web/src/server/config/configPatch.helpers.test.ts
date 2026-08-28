@@ -57,6 +57,23 @@ describe("buildConfigPatch", () => {
     expect(buildConfigPatch(original, edited)).toEqual({});
   });
 
+  it("neither sends nor drops an untouched section the panel knows nothing about", () => {
+    // Editing `general` while `web` (Telemt 3.5.3+) sits untouched in the
+    // config: the patch must carry only `general` — sending `web` back
+    // would re-assert a section the admin never edited, and losing it from
+    // the working copy would silently strip it from the editor.
+    const web = { enabled: true, limits: { max_sessions_global: 128 } };
+    const original = { general: { ad_tag: "abc" }, web };
+    const edited = { general: { ad_tag: "def" }, web };
+    expect(buildConfigPatch(original, edited)).toEqual({ general: { ad_tag: "def" } });
+  });
+
+  it("patches only the changed leaf inside an unknown section", () => {
+    const original = { web: { enabled: true, limits: { max_sessions_global: 128 } } };
+    const edited = { web: { enabled: true, limits: { max_sessions_global: 256 } } };
+    expect(buildConfigPatch(original, edited)).toEqual({ web: { limits: { max_sessions_global: 256 } } });
+  });
+
   it("ignores a section present only in original (never diffed, never deleted)", () => {
     const original = { general: { ad_tag: "abc" }, timeouts: { client_handshake: 15 } };
     const edited = { general: { ad_tag: "abc" } };

@@ -19,7 +19,8 @@ import { ReloadPolicyPicker } from "./ReloadPolicyPicker";
 import { ReloadStepper } from "./ReloadStepper";
 import { PatchResultNotice } from "./PatchResultNotice";
 import { ConflictBanner } from "./ConflictBanner";
-import { useConfigEditor } from "./useConfigEditor";
+import { useConfigEditor, type ConfigSnapshot } from "./useConfigEditor";
+import { orderedSections } from "./orderSections.helpers";
 import { useReloadPolling } from "./useReloadPolling";
 import { buildConfigPatch } from "./configPatch.helpers";
 import { diffChangedSectionKeys } from "./configConflict.helpers";
@@ -221,7 +222,7 @@ export function ConfigPage() {
           overlapping={conflict.overlapping}
           pending={patchMutation.isPending}
           onReapply={() => {
-            const rebasedConfig: TelemtConfig = {
+            const rebasedConfig: ConfigSnapshot = {
               revision: conflict.fresh.revision,
               sections: conflict.rebased,
             };
@@ -302,7 +303,7 @@ export function ConfigPage() {
           <div className="flex flex-col gap-2">
             <SectionLabel>{s.server.config.rawEditorTitle}</SectionLabel>
             <RawConfigEditor
-              initialText={JSON.stringify(editor.edited, null, 2)}
+              initialText={JSON.stringify(orderedSections(editor.edited), null, 2)}
               onChange={(result) => {
                 if (result.status === "ok") {
                   setRawIssue(null);
@@ -330,7 +331,7 @@ export function ConfigPage() {
           </div>
         </Suspense>
       ) : (
-        <ReadOnlyJsonView sections={editor.edited} />
+        <ReadOnlyJsonView sections={orderedSections(editor.edited)} />
       )}
 
       <Card className="flex flex-wrap items-end justify-between gap-3">

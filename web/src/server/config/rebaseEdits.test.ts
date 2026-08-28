@@ -59,6 +59,35 @@ describe("rebaseEdits", () => {
     expect(overlapping).toEqual(["general.ad_tag", "timeouts.client_handshake"]);
   });
 
+  it("carries an untouched section the panel knows nothing about through the merge", () => {
+    // `web` (Telemt 3.5.3+) stands in for any section the panel only
+    // passes through: a rebase driven by an edit elsewhere must neither
+    // drop it nor rewrite it.
+    const web = { enabled: true, limits: { max_sessions_global: 128 } };
+    const freshBase = { general: { ad_tag: "server-changed" }, web, future_section: { n: 1 } };
+    const pendingPatch = { general: { ad_tag: "admin-changed" } };
+
+    const { edited } = rebaseEdits(freshBase, pendingPatch, []);
+
+    expect(edited).toEqual({
+      general: { ad_tag: "admin-changed" },
+      web,
+      future_section: { n: 1 },
+    });
+    expect(edited["web"]).toBe(web);
+  });
+
+  it("deep-merges into an unknown section without losing its sibling keys", () => {
+    const freshBase = { web: { enabled: true, carrier: "https-lanes", limits: { max_sessions_global: 128 } } };
+    const pendingPatch = { web: { limits: { max_sessions_global: 256 } } };
+
+    const { edited } = rebaseEdits(freshBase, pendingPatch, []);
+
+    expect(edited).toEqual({
+      web: { enabled: true, carrier: "https-lanes", limits: { max_sessions_global: 256 } },
+    });
+  });
+
   it("replaces an array wholesale in the merge, not element-wise", () => {
     const freshBase = { upstreams: { list: [1, 2, 3] } };
     const pendingPatch = { upstreams: { list: [4, 5] } };
