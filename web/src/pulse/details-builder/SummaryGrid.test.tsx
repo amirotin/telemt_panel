@@ -103,6 +103,47 @@ describe("SummaryGrid tile names (spec §6, §8)", () => {
   });
 });
 
+describe("SummaryGrid tone cues (spec §21)", () => {
+  const toned = (tone: SummaryMetricDefinition<Ctx>["tone"]) =>
+    render([{ id: "dropped", path: "dropped_total", value: (c) => c.dropped_total, tone }]);
+
+  const glyph = (el: HTMLElement): string =>
+    Array.from(el.querySelectorAll("svg path"))
+      .map((p) => p.getAttribute("d") ?? "")
+      .join("|");
+
+  function remount(): void {
+    act(() => mounted!.root.unmount());
+    mounted!.container.remove();
+    mounted = null;
+  }
+
+  it("gives warn and bad different glyphs, not just different colours", () => {
+    act(() => setLocalePreference("ru"));
+
+    const warn = toned("warn");
+    const warnGlyph = glyph(warn);
+    expect(warnGlyph).not.toBe("");
+    expect(warn.textContent).toContain("требует внимания");
+    remount();
+
+    const bad = toned("bad");
+    const badGlyph = glyph(bad);
+    expect(badGlyph).not.toBe("");
+    expect(bad.textContent).toContain("проблема");
+
+    // The whole point: a reader who cannot tell amber from red still has a
+    // second, non-colour difference between the two tones.
+    expect(badGlyph).not.toBe(warnGlyph);
+  });
+
+  it("marks a healthy tile with nothing at all", () => {
+    act(() => setLocalePreference("ru"));
+    const good = toned("good");
+    expect(glyph(good)).toBe("");
+  });
+});
+
 describe("SummaryGrid shortcuts (spec §18.2)", () => {
   it("stays a plain tile when the metric declares no shortcut", () => {
     act(() => setLocalePreference("ru"));

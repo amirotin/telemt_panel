@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
+import { IconClose, IconWarning } from "../../ui/icons";
 import { StatCard } from "../../ui/StatCard";
 import { describeField } from "./fieldCatalog";
 import type { FieldLookupContext } from "./fieldCatalog";
@@ -23,11 +25,15 @@ const TONE_CLASSES: Record<MetricTone, string> = {
 // reader; the colour is the third cue, not the only one. `good` gets no
 // marker on purpose — "nothing is wrong" is the default reading of a tile,
 // and a checkmark on every healthy number is noise.
-const TONE_MARKERS: Record<MetricTone, string> = {
-  neutral: "",
-  good: "",
-  warn: "!",
-  bad: "!",
+//
+// The two bad tones carry DIFFERENT glyphs (Task 5 review L3): a sighted
+// reader who cannot separate amber from red was previously left with the
+// colour as the only difference, because both drew the same "!".
+const TONE_MARKERS: Record<MetricTone, ReactNode> = {
+  neutral: null,
+  good: null,
+  warn: <IconWarning />,
+  bad: <IconClose />,
 };
 
 export interface SummaryGridProps<T> {
@@ -97,9 +103,9 @@ export function SummaryGrid<T>({
             className={cn(dense && "gap-0.5 p-2")}
             value={
               <span className={cn("inline-flex items-baseline gap-1", TONE_CLASSES[tone])}>
-                {marker !== "" && (
+                {marker !== null && (
                   <>
-                    <span aria-hidden="true" className="text-sm">
+                    <span aria-hidden="true" className="inline-flex self-center text-[13px]">
                       {marker}
                     </span>
                     <span className="sr-only">
