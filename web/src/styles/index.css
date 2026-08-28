@@ -96,6 +96,19 @@
   );
 }
 
+/* The Details layout model (spec §15) — the three lengths tokens.css
+   declares, as utilities, so a component never hard-codes a rail width the
+   token was supposed to own. */
+@utility detail-rail {
+  width: var(--layout-rail-width);
+}
+@utility detail-master {
+  width: var(--layout-master-width);
+}
+@utility detail-readable {
+  max-width: var(--layout-readable-max);
+}
+
 /* Horizontally scrollable strips (the People chip row on a phone) keep the
    scroll without the 6px bar cutting into a 34px chip. */
 @utility no-scrollbar {
@@ -145,6 +158,25 @@
 
   ::selection {
     background: rgb(var(--accent) / 0.35);
+  }
+
+  /* Spec §21: "reduced motion отключает необязательные animations". Every
+     animation in this UI is decorative — a hover transition, the sheet's
+     entrance, the scroll that brings the next entity into view — so the
+     honest implementation is one blanket rule at the base layer rather
+     than a prefers-reduced-motion check repeated per component. The
+     scripted half (element.scrollIntoView's `behavior`) reads the same
+     preference through lib/motion.ts, because a script-driven smooth
+     scroll ignores CSS. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   :focus-visible {

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Sheet } from "../../../ui/Sheet";
-import { placementFor, useLayoutModeStub } from "./useLayoutModeStub";
+import { placementFor, useLayoutMode } from "./useLayoutMode";
 
 export interface AdaptiveDetailSurfaceProps {
   open: boolean;
@@ -28,7 +28,7 @@ export function AdaptiveDetailSurface({
   subtitle,
   children,
 }: AdaptiveDetailSurfaceProps) {
-  const layout = useLayoutModeStub();
+  const layout = useLayoutMode();
   return (
     <Sheet
       open={open}
