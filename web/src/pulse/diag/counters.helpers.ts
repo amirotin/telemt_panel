@@ -1,5 +1,25 @@
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
+import { visibleFor, type DisplayMode } from "../../display-mode";
 import { COUNTER_GROUP_PATHS } from "../details-builder/definitions/counters";
+
+// countersRefetchMs: the poll that MAKES the deltas (ruling R4). The panel
+// has no counter-history endpoint, so "change per second" is the difference
+// between two consecutive answers — which means the interval is a product
+// decision, not a caching one. Ten seconds is short enough that a reader who
+// opens the page sees a rate within one breath, and long enough that a
+// 4 KB dump every ten seconds costs the proxy nothing.
+export const countersRefetchMs = 10_000;
+
+// countersRefetchInterval ties the poll to the section it exists for.
+//
+// The deltas live on the deep `zero/all` map, and 06-ui.md:27,49 puts that
+// map in extended mode. Polling in basic would buy a reader nothing they
+// can see and still cost a 4 KB dump every ten seconds — so basic fetches
+// the dump ONCE, for the tiles and the three breakdowns it does show, and
+// leaves it there.
+export function countersRefetchInterval(mode: DisplayMode): number | false {
+  return visibleFor("extended", mode) ? countersRefetchMs : false;
+}
 
 /** One counter reading, keyed by the normalized path the map renderer uses. */
 export type CounterSnapshot = Record<string, number>;

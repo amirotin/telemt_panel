@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useDisplayMode } from "../../display-mode";
 import { getTelemtZeroOptions } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
 import { DetailPage } from "../details-builder/DetailPage";
@@ -8,18 +9,11 @@ import { countersPageDefinition } from "../details-builder/definitions/counters"
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
 import {
   computeCounterDeltas,
+  countersRefetchInterval,
   countersRestarted,
   readCounterValues,
   type CounterSnapshot,
 } from "./counters.helpers";
-
-// countersRefetchMs: the poll that MAKES the deltas (ruling R4). The panel
-// has no counter-history endpoint, so "change per second" is the difference
-// between two consecutive answers — which means the interval is a product
-// decision, not a caching one. Ten seconds is short enough that a reader who
-// opens the page sees a rate within one breath, and long enough that a
-// 4 KB dump every ten seconds costs the proxy nothing.
-export const countersRefetchMs = 10_000;
 
 /** One reading, plus when it was taken. */
 interface Reading {
@@ -115,7 +109,11 @@ function useCounterDeltas(data: ZeroAllData | undefined, dataUpdatedAt: number) 
 // own instead of being nested rows.
 export function CountersPage() {
   const navigate = useNavigate();
-  const zero = useQuery({ ...getTelemtZeroOptions(), refetchInterval: countersRefetchMs });
+  const { mode } = useDisplayMode();
+  const zero = useQuery({
+    ...getTelemtZeroOptions(),
+    refetchInterval: countersRefetchInterval(mode),
+  });
   const { deltas, sinceOpen, restarted, reset } = useCounterDeltas(zero.data, zero.dataUpdatedAt);
 
   const inputs: Record<string, DetailSourceInput> = {

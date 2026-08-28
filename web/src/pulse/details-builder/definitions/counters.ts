@@ -185,6 +185,12 @@ export const countersPageDefinition: DetailPageDefinition<ZeroAllData, ZeroAllDa
       title: (s) => s.details.pages.counters.all,
       description: (s) => s.details.pages.counters.allDescription,
       sourceId: "zero",
+      // 06-ui.md:27,49 gates the DEEP DUMP, not the page: «extended — всё:
+      // … deep-счётчики (`zero/all`)». The tiles, the three breakdowns and
+      // the response stamp stay in basic — a reader who follows the Pulse
+      // card still gets an answer instead of a stub — and only the 110-row
+      // dump is extended. §23.4 says how to draw it; it never said to whom.
+      minMode: "extended",
       // Anchored on the whole response, but every group below is BOUND to
       // its own path, and a bound map claims only its groups. A section
       // `zero/all` grows later therefore falls through to R2's extended

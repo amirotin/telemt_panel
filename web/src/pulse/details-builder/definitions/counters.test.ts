@@ -8,6 +8,8 @@ import { describeField, lookupField } from "../fieldCatalog";
 import { zeroAll, zeroCoreScalarCount } from "../__fixtures__";
 import type { ZeroAllData } from "../../../lib/api/generated/types.gen";
 import { resolveSections } from "../resolveSections";
+import { showsAtMode } from "../renderers/context";
+import { countersRefetchInterval, countersRefetchMs } from "../../diag/counters.helpers";
 import type {
   CollectionSectionInstance,
   DynamicMapSectionInstance,
@@ -38,6 +40,26 @@ describe("Counters page definition (spec §23.4)", () => {
     expect(map.kind).toBe("dynamicMap");
     expect(map.groups.map((g) => g.id)).toEqual([...COUNTER_GROUP_PATHS]);
     expect(map.supportsDelta).toBe(true);
+  });
+
+  it("keeps the deep dump in extended mode and the rest of the page in basic", () => {
+    // 06-ui.md:27,49 — «deep-счётчики (`zero/all`)» are extended. §23.4
+    // composes the page; it does not decide who sees it, so the gate goes
+    // on the dump alone: the tiles and the three breakdowns still answer a
+    // basic-mode reader who followed the Pulse card.
+    const sections = resolveFor(zeroAll).sections;
+    const minModes = Object.fromEntries(sections.map((s) => [s.id, s.minMode]));
+    expect(minModes["all"]).toBe("extended");
+    expect(showsAtMode(minModes["all"], "basic")).toBe(false);
+    expect(showsAtMode(minModes["all"], "extended")).toBe(true);
+    for (const id of ["connections_bad_by_class", "handshake_error_codes", "metadata"]) {
+      expect(showsAtMode(minModes[id], "basic"), id).toBe(true);
+    }
+    // The poll exists to make the deltas on that dump, so it stops where
+    // the dump stops rather than costing a basic reader 4 KB every 10 s.
+    expect(countersRefetchInterval("basic")).toBe(false);
+    expect(countersRefetchInterval("critical")).toBe(false);
+    expect(countersRefetchInterval("extended")).toBe(countersRefetchMs);
   });
 
   it("keeps every counter key verbatim, however well the catalog describes it", () => {
@@ -83,9 +105,9 @@ describe("Counters page definition (spec §23.4)", () => {
   });
 
   it("renders the response stamp as a row rather than only consuming it", () => {
-    // The map is bound to the whole context, so without this section
-    // `generated_at_epoch_secs` would be counted as consumed and drawn by
-    // nobody — accounted for on paper and invisible on screen.
+    // The map claims only its five groups, so the one top-level scalar of
+    // the dump needs a section of its own or it would reach the extended
+    // tail as an unknown field rather than being read as what it is.
     const metadata = sectionById(zeroAll, "metadata") as ScalarSectionInstance;
     expect(metadata.rows.map((row) => row.path)).toEqual(["generated_at_epoch_secs"]);
     expect(describeField("generated_at_epoch_secs", ru).unit).toBe("timestamp");
