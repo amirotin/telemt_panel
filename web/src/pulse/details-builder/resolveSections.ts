@@ -31,6 +31,8 @@ import { DEFAULT_PAGING, DEFAULT_UNKNOWN_FIELDS_POLICY, pagingForSize } from "./
 import type { DisplayMode } from "../../display-mode/mode";
 import type { Localized } from "./model";
 import { childPath, indexPath, isUnderPath, readPath, hasPath, walkLeafPaths } from "./paths";
+import { lookupField } from "./fieldCatalog";
+import type { FieldCatalog, FieldLookupContext } from "./fieldCatalog";
 
 // --- value classification (§12.6, §11) ----------------------------------
 
@@ -43,12 +45,39 @@ export type ValueClass =
   | "null"
   | "absent";
 
+/** What classifyValue needs to tell a counters map from a typed record. */
+export interface ClassifyContext {
+  /** Normalized path of the value being classified; "" for the whole context. */
+  path?: string;
+  /** Source id for the catalog's endpoint-scoped rules (R9). */
+  endpoint?: string;
+  catalog?: FieldCatalog;
+}
+
 // classifyValue is step 6's dispatcher. The only judgement call is
-// dynamic-map-vs-object: an object whose values are ALL numbers is a
-// counters map (zero/all's sections are exactly that), and its keys are
-// data to be shown verbatim (§11.2) rather than fields to be described.
-// Everything else is a stable record whose leaves get described rows.
-export function classifyValue(value: unknown): ValueClass {
+// dynamic-map-vs-object, and it is made on three criteria, because a single
+// "are all the values numbers" test gets it wrong in BOTH directions on real
+// payloads (task-2 review, M1):
+//
+//   (a) at least two keys — a one-key object is not a map worth showing as
+//       verbatim keys;
+//   (b) once nested objects and arrays are set aside, at least two leaves
+//       remain and they are ALL numeric. Setting nesting aside is what makes
+//       `zero/all`'s `core` (21 counters plus two {class,total} arrays) and
+//       `middle_proxy` (54 counters plus an empty handshake_error_codes) come
+//       out as the counters maps they are; the nested containers are then
+//       resolved separately as their own blocks, never folded into a row;
+//   (c) NO key resolves in the field catalog by exact, endpoint-scoped or
+//       wildcard rule. This is the discriminator a value test cannot supply:
+//       `RuntimeMeQualityDcRtt` ({dc, rtt_ema_ms, alive_writers,
+//       required_writers, coverage_pct}) is all-numeric too, but it is a
+//       typed record with descriptions, and §11.2's verbatim-key rule exists
+//       for keys nobody has described — counter keys, which fall through to
+//       the counters-family rule at most.
+//
+// A page definition can always force either reading by declaring the section
+// explicitly; this is only what happens when nothing was declared.
+export function classifyValue(value: unknown, ctx: ClassifyContext = {}): ValueClass {
   if (value === undefined) return "absent";
   if (value === null) return "null";
   if (Array.isArray(value)) {
@@ -56,11 +85,30 @@ export function classifyValue(value: unknown): ValueClass {
     return value.some((v) => v !== null && typeof v === "object") ? "recordArray" : "primitiveArray";
   }
   if (typeof value === "object") {
-    const values = Object.values(value as Record<string, unknown>).filter((v) => v !== undefined);
-    if (values.length >= 2 && values.every((v) => typeof v === "number")) return "dynamicMap";
-    return "object";
+    return isDynamicMap(value as Record<string, unknown>, ctx) ? "dynamicMap" : "object";
   }
   return "scalar";
+}
+
+function isDynamicMap(record: Record<string, unknown>, ctx: ClassifyContext): boolean {
+  const entries = Object.entries(record).filter(([, v]) => v !== undefined);
+  // (a)
+  if (entries.length < 2) return false;
+  // (b)
+  const scalars = entries.filter(([, v]) => v === null || typeof v !== "object");
+  if (scalars.length < 2) return false;
+  if (!scalars.every(([, v]) => typeof v === "number")) return false;
+  // (c)
+  const base = ctx.path ?? "";
+  const lookupCtx: FieldLookupContext = {
+    ...(ctx.endpoint !== undefined ? { endpoint: ctx.endpoint } : {}),
+    ...(ctx.catalog !== undefined ? { catalog: ctx.catalog } : {}),
+  };
+  for (const [key] of scalars) {
+    const source = lookupField(childPath(base, key), lookupCtx).source;
+    if (source === "exact" || source === "endpoint" || source === "wildcard") return false;
+  }
+  return true;
 }
 
 // --- resolved instances --------------------------------------------------
@@ -116,10 +164,26 @@ export interface DynamicMapEntry {
   value: unknown;
 }
 
+/**
+ * A container found INSIDE a counters map (`core.connections_bad_by_class`).
+ * §11.2 shows map keys verbatim, but a nested array is still an array: it
+ * gets its own block rather than a row, which is criterion (b) of
+ * classifyValue made visible to the renderer.
+ */
+export interface DynamicMapNested {
+  path: string;
+  key: string;
+  value: unknown;
+  valueClass: ValueClass;
+}
+
 export interface DynamicMapGroupInstance {
   id: string;
   title?: Localized;
+  /** Scalar leaves only — the verbatim key/value rows. */
   entries: DynamicMapEntry[];
+  /** Objects and arrays nested in the map, resolved as their own blocks. */
+  nested: DynamicMapNested[];
 }
 
 export interface DynamicMapSectionInstance extends SectionInstanceCommon {
@@ -149,7 +213,13 @@ export type UnknownNode =
       presence: CollectionPresence;
       children: UnknownNode[];
     }
-  | { kind: "map"; path: string; key: string; entries: DynamicMapEntry[] }
+  | {
+      kind: "map";
+      path: string;
+      key: string;
+      entries: DynamicMapEntry[];
+      children: UnknownNode[];
+    }
   | { kind: "row"; path: string; key: string; value: string | number | boolean | null };
 
 export interface UnknownFieldsSectionInstance extends SectionInstanceCommon {
@@ -311,25 +381,50 @@ function resolveCollectionSection<T>(
   };
 }
 
-function mapEntries(value: unknown, path: string): DynamicMapEntry[] {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
-  return Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .map(([key, v]) => ({ path: childPath(path, key), key, value: v }));
+interface MapSplit {
+  entries: DynamicMapEntry[];
+  nested: DynamicMapNested[];
+}
+
+// splitMap separates a counters map's scalar leaves (verbatim key/value rows)
+// from the containers nested inside it. Keeping the two apart is what stops a
+// nested {class,total} array from being handed to a row renderer as a value.
+function splitMap(value: unknown, path: string, ctx: ClassifyContext): MapSplit {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return { entries: [], nested: [] };
+  }
+  const entries: DynamicMapEntry[] = [];
+  const nested: DynamicMapNested[] = [];
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === undefined) continue;
+    const childPathValue = childPath(path, key);
+    if (v !== null && typeof v === "object") {
+      nested.push({
+        path: childPathValue,
+        key,
+        value: v,
+        valueClass: classifyValue(v, { ...ctx, path: childPathValue }),
+      });
+      continue;
+    }
+    entries.push({ path: childPathValue, key, value: v });
+  }
+  return { entries, nested };
 }
 
 function resolveDynamicMapSection<T>(
   section: Extract<SectionDefinition<T>, { kind: "dynamicMap" }>,
   context: T,
+  ctx: ClassifyContext,
 ): DynamicMapSectionInstance {
   const raw = section.select ? section.select(context) : readPath(context, section.path);
   const groups: DynamicMapGroupInstance[] = section.groups
     ? section.groups.map((g) => ({
         id: g.id,
         title: g.title,
-        entries: mapEntries(readPath(context, g.path), g.path),
+        ...splitMap(readPath(context, g.path), g.path, ctx),
       }))
-    : [{ id: section.id, entries: mapEntries(raw, section.path) }];
+    : [{ id: section.id, ...splitMap(raw, section.path, ctx) }];
   return {
     kind: "dynamicMap",
     id: section.id,
@@ -376,8 +471,9 @@ function buildUnknownNodes(
   path: string,
   key: string,
   keep: (leafPath: string) => boolean,
+  ctx: ClassifyContext,
 ): UnknownNode[] {
-  const cls = classifyValue(value);
+  const cls = classifyValue(value, { ...ctx, path });
   if (cls === "absent") return [];
   if (cls === "scalar" || cls === "null") {
     // `cls` already excludes undefined here — an absent key never reaches
@@ -393,7 +489,7 @@ function buildUnknownNodes(
         : [];
     }
     const children = items.flatMap((item, i) =>
-      buildUnknownNodes(item, indexPath(path, i), String(i), keep),
+      buildUnknownNodes(item, indexPath(path, i), String(i), keep, ctx),
     );
     if (children.length === 0) return [];
     return [
@@ -409,9 +505,15 @@ function buildUnknownNodes(
     ];
   }
   if (cls === "dynamicMap") {
-    const entries = mapEntries(value, path).filter((e) => keep(e.path));
-    if (entries.length === 0) return [];
-    return [{ kind: "map", path, key, entries }];
+    const split = splitMap(value, path, ctx);
+    const entries = split.entries.filter((e) => keep(e.path));
+    // A container nested in a counters map keeps its own shape (§11.2 covers
+    // the KEYS, not the nesting) — it becomes a child block, never a row.
+    const children = split.nested.flatMap((n) =>
+      buildUnknownNodes(n.value, n.path, n.key, keep, ctx),
+    );
+    if (entries.length === 0 && children.length === 0) return [];
+    return [{ kind: "map", path, key, entries, children }];
   }
   // stable object
   const record = value as Record<string, unknown>;
@@ -419,7 +521,9 @@ function buildUnknownNodes(
   if (keys.length === 0) {
     return keep(path) ? [{ kind: "group", path, key, children: [] }] : [];
   }
-  const children = keys.flatMap((k) => buildUnknownNodes(record[k], childPath(path, k), k, keep));
+  const children = keys.flatMap((k) =>
+    buildUnknownNodes(record[k], childPath(path, k), k, keep, ctx),
+  );
   if (children.length === 0) return [];
   return [{ kind: "group", path, key, children }];
 }
@@ -433,6 +537,7 @@ function unknownLeaves(nodes: UnknownNode[]): string[] {
         return;
       case "map":
         for (const e of node.entries) out.push(e.path);
+        node.children.forEach(walk);
         return;
       case "array":
         if (node.presence === "empty") {
@@ -461,15 +566,45 @@ export interface ResolveOptions<TPayload, TContext> {
   context: TContext;
   /** Sections below this mode are still resolved; the renderer filters with visibleFor. */
   mode?: DisplayMode;
+  /** Overrides the default field catalog — classifyValue consults it (criterion c). */
+  catalog?: FieldCatalog;
+  /** Source id for the catalog's endpoint-scoped rules (R9). */
+  endpoint?: string;
+}
+
+// assertIgnoreRules rejects the one input that could quietly switch the R7
+// completeness checkpoint off: `{ path: "" }` is "under" every path, so a
+// single such rule would mark the WHOLE payload intentionally dropped and
+// leave `lostPaths` empty no matter what the resolver did. A reason string is
+// required for the same reason §24.2 requires one — a drop nobody can audit
+// is a silent drop with extra steps.
+function assertIgnoreRules(definition: { id: string }, rules: readonly IgnoredPath[]): void {
+  for (const rule of rules) {
+    if (rule.path.trim() === "") {
+      throw new Error(
+        `${definition.id}: unknownFields.ignore rule with an empty path would drop the entire payload`,
+      );
+    }
+    if (rule.reason.trim() === "") {
+      throw new Error(`${definition.id}: unknownFields.ignore rule "${rule.path}" has no reason`);
+    }
+  }
 }
 
 export function resolveSections<TPayload, TContext>({
   definition,
   context,
+  catalog,
+  endpoint,
 }: ResolveOptions<TPayload, TContext>): ResolveResult {
+  const classifyCtx: ClassifyContext = {
+    ...(catalog !== undefined ? { catalog } : {}),
+    ...(endpoint !== undefined ? { endpoint } : {}),
+  };
   const allPaths = walkLeafPaths(context).map((l) => l.path);
   const policy: UnknownFieldsPolicy = definition.unknownFields ?? {};
   const ignoreRules = policy.ignore ?? [];
+  assertIgnoreRules(definition, ignoreRules);
 
   const ignoredPaths: IgnoredPath[] = [];
   const ignoredSet = new Set<string>();
@@ -490,7 +625,7 @@ export function resolveSections<TPayload, TContext>({
       continue;
     }
     if (section.kind === "dynamicMap") {
-      sections.push(resolveDynamicMapSection(section, context));
+      sections.push(resolveDynamicMapSection(section, context, classifyCtx));
       continue;
     }
     if (section.kind === "custom") {
@@ -518,7 +653,7 @@ export function resolveSections<TPayload, TContext>({
   // The root of the context is not itself a field: unwrap it so the tail is
   // a list of the payload's own top-level groups/arrays/rows rather than one
   // nameless group wrapping everything.
-  const roots = buildUnknownNodes(context, "", "", keep);
+  const roots = buildUnknownNodes(context, "", "", keep, classifyCtx);
   const nodes =
     roots.length === 1 && roots[0].path === "" && roots[0].kind === "group"
       ? roots[0].children

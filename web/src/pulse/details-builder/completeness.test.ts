@@ -166,8 +166,17 @@ describe("checkpoint R1: no field is ever silently lost (spec §27.4)", () => {
     ).toBe(result.allPaths.length);
   });
 
-  it("every explicitly ignored path carries a reason (§24.2)", () => {
+  it("every explicitly ignored path carries a non-empty path and a reason (§24.2)", () => {
     for (const testCase of CASES) {
+      const rules = testCase.definition.unknownFields?.ignore ?? [];
+      for (const rule of rules) {
+        // An empty path is "under" every path, so ONE such rule would mark
+        // the whole payload intentionally dropped and leave this checkpoint
+        // passing on an empty remainder. resolveSections rejects it; this
+        // asserts no definition in the repo tries.
+        expect(rule.path.trim(), `${testCase.name}: ignore rule with an empty path`).not.toBe("");
+        expect(rule.reason.trim(), `${testCase.name}: ${rule.path}`).not.toBe("");
+      }
       const result = resolveSections({
         definition: testCase.definition,
         context: testCase.context,
@@ -175,7 +184,37 @@ describe("checkpoint R1: no field is ever silently lost (spec §27.4)", () => {
       for (const ignored of result.ignoredPaths) {
         expect(ignored.reason.trim(), `${testCase.name}: ${ignored.path}`).not.toBe("");
       }
+      // …and no definition may ignore its way out of the checkpoint: an
+      // ignore list that covers most of a payload is not a policy decision,
+      // it is the guarantee being switched off.
+      expect(result.ignoredPaths.length, testCase.name).toBeLessThan(
+        Math.max(1, result.allPaths.length * 0.1),
+      );
     }
+  });
+
+  it("refuses a definition that would ignore the entire payload", () => {
+    const swallowEverything = {
+      id: "dev.malicious",
+      title: () => "t",
+      sources: [],
+      sections: [],
+      unknownFields: { ignore: [{ path: "", reason: "looks legitimate" }] },
+    };
+    expect(() =>
+      resolveSections({ definition: swallowEverything, context: { a: 1, b: { c: 2 } } }),
+    ).toThrow(/empty path/);
+  });
+
+  it("refuses an ignore rule with no reason (§24.2)", () => {
+    const noReason = {
+      id: "dev.no-reason",
+      title: () => "t",
+      sources: [],
+      sections: [],
+      unknownFields: { ignore: [{ path: "a", reason: "  " }] },
+    };
+    expect(() => resolveSections({ definition: noReason, context: { a: 1 } })).toThrow(/no reason/);
   });
 
   it("no array ever reaches a scalar row, on any fixture (§12.7)", () => {

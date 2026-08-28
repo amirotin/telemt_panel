@@ -7,10 +7,13 @@ import {
   dcEndpointVariants,
   dcs,
   initialization,
+  meQuality,
   meWriters,
   minimalAll,
+  selftestAllNullable,
   summary,
   tlsFingerprints,
+  writerAllNull,
   zeroAll,
 } from "./__fixtures__";
 import {
@@ -39,11 +42,13 @@ describe("classifyValue (spec §12.6)", () => {
     expect(classifyValue([])).toBe("primitiveArray");
   });
 
-  it("recognises a counters map by its all-numeric values", () => {
+  it("recognises a counters map by its undescribed all-numeric keys", () => {
     expect(classifyValue({ a: 1, b: 2 })).toBe("dynamicMap");
     expect(classifyValue({ a: 1, b: "x" })).toBe("object");
     // One key is not a map worth showing as verbatim keys.
     expect(classifyValue({ a: 1 })).toBe("object");
+    // …and neither is one numeric leaf beside a nested container.
+    expect(classifyValue({ a: 1, b: { c: 2, d: 3 } })).toBe("object");
   });
 
   it("keeps null and absent apart", () => {
@@ -51,6 +56,96 @@ describe("classifyValue (spec §12.6)", () => {
     expect(classifyValue(undefined)).toBe("absent");
     expect(classifyValue(0)).toBe("scalar");
     expect(classifyValue(false)).toBe("scalar");
+  });
+});
+
+// The review's M1 table, as a test. The one-line "all values are numbers"
+// rule got three of these wrong; every row below is a real Task 1 fixture.
+describe("classifyValue on the production fixtures (review M1)", () => {
+  const cases: Array<[string, unknown, string, string]> = [
+    // All FIVE zero/all sections are counters maps — including the two the
+    // old predicate missed because of a nested array.
+    ["zeroAll.core (21 counters + 2 {class,total} arrays)", zeroAll.core, "core", "dynamicMap"],
+    ["zeroAll.upstream", zeroAll.upstream, "upstream", "dynamicMap"],
+    [
+      "zeroAll.middle_proxy (54 counters + empty handshake_error_codes)",
+      zeroAll.middle_proxy,
+      "middle_proxy",
+      "dynamicMap",
+    ],
+    ["zeroAll.pool", zeroAll.pool, "pool", "dynamicMap"],
+    ["zeroAll.desync", zeroAll.desync, "desync", "dynamicMap"],
+    // A typed record that happens to be all-numeric: the catalog describes
+    // its keys, so it is NOT a verbatim-key map.
+    ["meQuality.dc_rtt[0]", meQuality.dc_rtt[0], "dc_rtt[0]", "object"],
+    // Counter maps inside ME Quality, which nobody has described.
+    ["meQuality.counters", meQuality.counters, "counters", "dynamicMap"],
+    ["meQuality.route_drops", meQuality.route_drops, "route_drops", "dynamicMap"],
+    // {label,total} pairs stay arrays of records — BreakdownSection's input.
+    [
+      "summary.connections_bad_by_class",
+      summary.connections_bad_by_class,
+      "connections_bad_by_class",
+      "recordArray",
+    ],
+    [
+      "summary.handshake_failures_by_class",
+      summary.handshake_failures_by_class,
+      "handshake_failures_by_class",
+      "recordArray",
+    ],
+    [
+      "one {class,total}",
+      summary.connections_bad_by_class?.[0],
+      "connections_bad_by_class[0]",
+      "object",
+    ],
+    // Stable records with a described key or a non-numeric leaf.
+    ["dcs.dcs[0]", dcs.dcs[0], "dcs[0]", "object"],
+    ["minimalAll.network_path[0]", minimalAll.network_path?.[0], "network_path[0]", "object"],
+    ["zeroAll (root)", zeroAll, "", "object"],
+    // Edge fixtures.
+    ["dcAllFalsy", dcAllFalsy, "dcs[0]", "object"],
+    ["writerAllNull", writerAllNull, "writers[0]", "object"],
+    ["selftestAllNullable.ip (empty object)", selftestAllNullable.ip, "ip", "object"],
+    ["zeroAll.middle_proxy.handshake_error_codes", [], "handshake_error_codes", "primitiveArray"],
+  ];
+
+  it.each(cases)("%s -> %s", (_name, value, path, expected) => {
+    expect(classifyValue(value, { path })).toBe(expected);
+  });
+
+  it("gives a counters map its nested containers as their own blocks, not rows", () => {
+    const result = resolveSections({ definition: countersPageDefinition, context: zeroAll });
+    const counters = sectionById(result, "counters");
+    expect(counters.kind).toBe("dynamicMap");
+    if (counters.kind !== "dynamicMap") return;
+    const core = counters.groups.find((g) => g.id === "core");
+    // The two {class,total} arrays are NOT among the verbatim key/value rows…
+    expect(core?.entries.every((e) => typeof e.value === "number")).toBe(true);
+    // …they are nested blocks, classified as arrays of records.
+    expect(core?.nested.map((n) => n.key).sort()).toEqual([
+      "connections_bad_by_class",
+      "handshake_failures_by_class",
+    ]);
+    expect(core?.nested.every((n) => n.valueClass === "recordArray")).toBe(true);
+    // The empty array in middle_proxy is a nested block too, not a row.
+    const mp = counters.groups.find((g) => g.id === "middle_proxy");
+    expect(mp?.nested.map((n) => n.key)).toEqual(["handshake_error_codes"]);
+    expect(result.lostPaths).toEqual([]);
+  });
+
+  it("keeps a nested container in the unknown tail an array block, not a map row", () => {
+    const result = resolveSections({
+      definition: { id: "t", title: () => "t", sources: [], sections: [] },
+      context: { core: zeroAll.core },
+    });
+    const map = result.unknownFields?.nodes.find((n) => n.key === "core");
+    expect(map?.kind).toBe("map");
+    if (map?.kind !== "map") return;
+    expect(map.entries.every((e) => typeof e.value === "number")).toBe(true);
+    expect(map.children.map((c) => c.kind)).toEqual(["array", "array"]);
+    expect(result.lostPaths).toEqual([]);
   });
 });
 
