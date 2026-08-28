@@ -9,8 +9,12 @@ import {
   dcs,
   effectiveLimits,
   events,
+  gates,
   initialization,
+  mePoolState,
   meQuality,
+  meRuntime,
+  meSelftest,
   meWriters,
   minimalAll,
   posture,
@@ -180,6 +184,77 @@ describe("classifyValue on the production fixtures (review M1)", () => {
       "effective_limits.middle_proxy (21 knobs, mixed types)",
       effectiveLimits.middle_proxy,
       "effective_limits.middle_proxy",
+      "object",
+    ],
+    // --- ME domain, described by Task 7 -------------------------------
+    //
+    // Same carry-over as above, one domain larger: describing ~197 ME paths
+    // flips criterion (c) for every all-numeric block the ME page binds, so
+    // each of them is pinned here rather than assumed by its renderer.
+    ["summary (9 numbers, all described)", meWriters.summary, "summary", "object"],
+    ["writers[0] (16 mixed fields)", meWriters.writers[0], "writers[0]", "object"],
+    ["gates (booleans and words)", gates, "gates", "object"],
+    ["pool.writers (all-numeric, described)", mePoolState.writers, "pool.writers", "object"],
+    [
+      "pool.writers.contour (3 numbers, described)",
+      mePoolState.writers.contour,
+      "pool.writers.contour",
+      "object",
+    ],
+    [
+      "pool.generations (numbers + a null + an array)",
+      mePoolState.generations,
+      "pool.generations",
+      "object",
+    ],
+    [
+      "pool.generations.draining_generations (empty)",
+      mePoolState.generations.draining_generations,
+      "pool.generations.draining_generations",
+      "primitiveArray",
+    ],
+    // The two ME quality blocks that WOULD read as verbatim-key counter maps
+    // without their descriptions. Both are bound explicitly by the page — a
+    // scalar block and a breakdown — so the classification only decides what
+    // a future unbound sibling would look like.
+    [
+      "quality.counters (6 numbers, described)",
+      meQuality.counters,
+      "quality.counters",
+      "object",
+    ],
+    [
+      "quality.route_drops (5 numbers, described)",
+      meQuality.route_drops,
+      "quality.route_drops",
+      "object",
+    ],
+    ["quality.dc_rtt[0]", meQuality.dc_rtt[0], "quality.dc_rtt[0]", "object"],
+    [
+      "quality.family_states[0]",
+      meQuality.family_states[0],
+      "quality.family_states[0]",
+      "object",
+    ],
+    ["quality.drain_gate", meQuality.drain_gate, "quality.drain_gate", "object"],
+    ["selftest.kdf", meSelftest.kdf, "selftest.kdf", "object"],
+    ["selftest.pid (2 numbers-and-words)", meSelftest.pid, "selftest.pid", "object"],
+    ["selftest.ip (nested families)", meSelftest.ip, "selftest.ip", "object"],
+    ["me_runtime (55 knobs, all described)", meRuntime, "me_runtime", "object"],
+    ["initialization.components[0]", initialization.components[0], "initialization.components[0]", "object"],
+    // --- Counters domain, described by Task 7 -------------------------
+    //
+    // The counters keys are DATA (§11.2) and the page binds all five groups
+    // to a DynamicMapSection explicitly, so describing them cannot change
+    // what a reader sees. What the catalog DOES change is this classifier's
+    // answer for an unbound sibling, and both readings are pinned: the
+    // fixture's synthesized names resolve only by family (still a map), the
+    // live-shaped names resolve exactly (a described record).
+    ["zeroAll.pool (synthesized names)", zeroAll.pool, "pool", "dynamicMap"],
+    [
+      "pool with live-shaped names (described)",
+      { pool_swap_total: 4, refill_failed_total: 0 },
+      "pool",
       "object",
     ],
   ];

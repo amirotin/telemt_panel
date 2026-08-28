@@ -137,7 +137,10 @@ describe("describeField (spec §8)", () => {
   });
 
   it("hands a counters-family field its family sentence and formatting", () => {
-    const field = describeField("core.handshake_timeouts_total", ru);
+    // A counter nobody has described — which since Task 7 means one Telemt's
+    // own API reference does not document either, since every documented
+    // zero/all counter now has a hand-written sentence.
+    const field = describeField("core.a_future_handshake_timeouts_total", ru);
     expect(field.description).toBe(ru.details.fields.families.errorsTotal);
     expect(field.format).toBe("integer");
   });

@@ -24,10 +24,10 @@
 // Step 5 is a hard stop: the builder MUST NOT invent business meaning for a
 // field it has never seen (§8.2).
 //
-// Seeded here: the whole DC domain as the worked example (~30 entries) plus
-// the handful of ME writer fields the tests reference. Tasks 6–8 extend the
-// catalog domain by domain; `fieldCatalog.coverage.test.ts` is what tells
-// them which paths are still missing.
+// Seeded here: DC (Task 2), Security and TLS (Task 6), ME and Counters
+// (Task 7). Task 8 adds Upstreams, Connections, NAT and Events;
+// `fieldCatalog.coverage.test.ts` is what tells it which paths are still
+// missing.
 
 import type { Dict } from "../../i18n";
 import type { DisplayMode } from "../../display-mode/mode";
@@ -189,28 +189,825 @@ const DC_ENTRIES: FieldCatalogEntry[] = [
   },
 ];
 
-// A few ME writer fields — enough for the wildcard-priority tests to run
-// against the exact path spec §8.2 names as its example. The ME domain
-// proper lands in Task 7.
+// The ME domain (TELEMT_LIVE_API_DATA §8, §10, §13–16; Telemt's own
+// docs/Architecture/API/API.md for every sentence below). Every path is
+// prefixed by the block it arrives under on the ME page's context
+// (`summary.`, `writers.`, `gates.`, `initialization.`, `pool.`,
+// `quality.`, `selftest.`, `me_runtime.`), which is what keeps a bare
+// `total`, `state` or `degraded` from describing some other domain's field.
+//
+// The three response-level fields the me-writers payload shares with the DC
+// one (`middle_proxy_enabled`, `reason`, `generated_at_epoch_secs`) are
+// deliberately NOT repeated here: they are the same concepts and already
+// carry one sentence each in DC_ENTRIES (§8.3 — one sentence per concept).
 const ME_ENTRIES: FieldCatalogEntry[] = [
-  { path: "writers.*.rtt_ema_ms", descriptionKey: "me.writers.rtt_ema_ms", unit: "milliseconds" },
+  {
+    path: "summary.configured_dc_groups",
+    descriptionKey: "me.summary.configured_dc_groups",
+    format: "integer",
+  },
+  {
+    path: "summary.configured_endpoints",
+    descriptionKey: "me.summary.configured_endpoints",
+    format: "integer",
+  },
+  {
+    path: "summary.available_endpoints",
+    descriptionKey: "me.summary.available_endpoints",
+    format: "integer",
+  },
+  { path: "summary.available_pct", descriptionKey: "me.summary.available_pct", unit: "percent" },
+  {
+    path: "summary.required_writers",
+    descriptionKey: "me.summary.required_writers",
+    format: "integer",
+  },
+  { path: "summary.alive_writers", descriptionKey: "me.summary.alive_writers", format: "integer" },
+  { path: "summary.coverage_pct", descriptionKey: "me.summary.coverage_pct", unit: "percent" },
+  {
+    path: "summary.fresh_alive_writers",
+    descriptionKey: "me.summary.fresh_alive_writers",
+    format: "integer",
+  },
+  {
+    path: "summary.fresh_coverage_pct",
+    descriptionKey: "me.summary.fresh_coverage_pct",
+    unit: "percent",
+  },
+  { path: "writers", descriptionKey: "me.writers" },
+  { path: "writers.*.writer_id", descriptionKey: "me.writers.writer_id", format: "identifier" },
+  { path: "writers.*.dc", descriptionKey: "me.writers.dc", format: "integer" },
+  { path: "writers.*.endpoint", descriptionKey: "me.writers.endpoint", format: "address" },
+  { path: "writers.*.generation", descriptionKey: "me.writers.generation", format: "integer" },
+  { path: "writers.*.state", descriptionKey: "me.writers.state", format: "enum" },
+  { path: "writers.*.draining", descriptionKey: "me.writers.draining", format: "boolean" },
   { path: "writers.*.degraded", descriptionKey: "me.writers.degraded", format: "boolean" },
   {
     path: "writers.*.bound_clients",
     descriptionKey: "me.writers.bound_clients",
     format: "integer",
   },
-  // dc_rtt is a typed record (RuntimeMeQualityDcRtt in realtime/topics.ts),
-  // not a counters map — and since classifyValue asks the catalog exactly
-  // that question (a described key means a stable record), these entries are
-  // what keeps ME Quality's per-DC rows out of the verbatim-key renderer.
-  { path: "dc_rtt.*.dc", descriptionKey: "dc.dc", format: "integer" },
-  { path: "dc_rtt.*.rtt_ema_ms", descriptionKey: "me.dc_rtt.rtt_ema_ms", unit: "milliseconds" },
+  { path: "writers.*.idle_for_secs", descriptionKey: "me.writers.idle_for_secs", unit: "seconds" },
+  { path: "writers.*.rtt_ema_ms", descriptionKey: "me.writers.rtt_ema_ms", unit: "milliseconds" },
   {
-    path: "dc_rtt.*.alive_writers",
+    path: "writers.*.matches_active_generation",
+    descriptionKey: "me.writers.matches_active_generation",
+    format: "boolean",
+  },
+  {
+    path: "writers.*.in_desired_map",
+    descriptionKey: "me.writers.in_desired_map",
+    format: "boolean",
+  },
+  {
+    path: "writers.*.allow_drain_fallback",
+    descriptionKey: "me.writers.allow_drain_fallback",
+    format: "boolean",
+  },
+  {
+    path: "writers.*.drain_started_at_epoch_secs",
+    descriptionKey: "me.writers.drain_started_at_epoch_secs",
+    unit: "timestamp",
+  },
+  {
+    path: "writers.*.drain_deadline_epoch_secs",
+    descriptionKey: "me.writers.drain_deadline_epoch_secs",
+    unit: "timestamp",
+  },
+  {
+    path: "writers.*.drain_over_ttl",
+    descriptionKey: "me.writers.drain_over_ttl",
+    format: "boolean",
+  },
+  {
+    path: "gates.accepting_new_connections",
+    descriptionKey: "me.gates.accepting_new_connections",
+    format: "boolean",
+  },
+  {
+    path: "gates.conditional_cast_enabled",
+    descriptionKey: "me.gates.conditional_cast_enabled",
+    format: "boolean",
+  },
+  {
+    path: "gates.me_runtime_ready",
+    descriptionKey: "me.gates.me_runtime_ready",
+    format: "boolean",
+  },
+  {
+    path: "gates.me2dc_fallback_enabled",
+    descriptionKey: "me.gates.me2dc_fallback_enabled",
+    format: "boolean",
+  },
+  {
+    path: "gates.me2dc_fast_enabled",
+    descriptionKey: "me.gates.me2dc_fast_enabled",
+    format: "boolean",
+  },
+  {
+    path: "gates.use_middle_proxy",
+    descriptionKey: "me.gates.use_middle_proxy",
+    format: "boolean",
+  },
+  { path: "gates.route_mode", descriptionKey: "me.gates.route_mode", format: "enum" },
+  { path: "gates.reroute_active", descriptionKey: "me.gates.reroute_active", format: "boolean" },
+  {
+    path: "gates.reroute_to_direct_at_epoch_secs",
+    descriptionKey: "me.gates.reroute_to_direct_at_epoch_secs",
+    unit: "timestamp",
+  },
+  { path: "gates.reroute_reason", descriptionKey: "me.gates.reroute_reason", format: "enum" },
+  { path: "gates.startup_status", descriptionKey: "me.gates.startup_status", format: "enum" },
+  { path: "gates.startup_stage", descriptionKey: "me.gates.startup_stage", format: "enum" },
+  {
+    path: "gates.startup_progress_pct",
+    descriptionKey: "me.gates.startup_progress_pct",
+    unit: "percent",
+  },
+  { path: "initialization.status", descriptionKey: "me.init.status", format: "enum" },
+  { path: "initialization.degraded", descriptionKey: "me.init.degraded", format: "boolean" },
+  { path: "initialization.current_stage", descriptionKey: "me.init.current_stage", format: "enum" },
+  { path: "initialization.progress_pct", descriptionKey: "me.init.progress_pct", unit: "percent" },
+  {
+    path: "initialization.started_at_epoch_secs",
+    descriptionKey: "me.init.started_at_epoch_secs",
+    unit: "timestamp",
+  },
+  {
+    path: "initialization.ready_at_epoch_secs",
+    descriptionKey: "me.init.ready_at_epoch_secs",
+    unit: "timestamp",
+  },
+  {
+    path: "initialization.total_elapsed_ms",
+    descriptionKey: "me.init.total_elapsed_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "initialization.transport_mode",
+    descriptionKey: "me.init.transport_mode",
+    format: "enum",
+  },
+  { path: "initialization.components", descriptionKey: "me.init.components" },
+  { path: "initialization.me.status", descriptionKey: "me.init.me.status", format: "enum" },
+  {
+    path: "initialization.me.current_stage",
+    descriptionKey: "me.init.me.current_stage",
+    format: "enum",
+  },
+  {
+    path: "initialization.me.progress_pct",
+    descriptionKey: "me.init.me.progress_pct",
+    unit: "percent",
+  },
+  {
+    path: "initialization.me.init_attempt",
+    descriptionKey: "me.init.me.init_attempt",
+    format: "integer",
+  },
+  { path: "initialization.me.retry_limit", descriptionKey: "me.init.me.retry_limit" },
+  { path: "initialization.me.last_error", descriptionKey: "me.init.me.last_error" },
+  {
+    path: "initialization.components.*.id",
+    descriptionKey: "me.init.component.id",
+    format: "identifier",
+  },
+  { path: "initialization.components.*.title", descriptionKey: "me.init.component.title" },
+  {
+    path: "initialization.components.*.status",
+    descriptionKey: "me.init.component.status",
+    format: "enum",
+  },
+  {
+    path: "initialization.components.*.started_at_epoch_ms",
+    descriptionKey: "me.init.component.started_at_epoch_ms",
+    unit: "timestamp",
+  },
+  {
+    path: "initialization.components.*.finished_at_epoch_ms",
+    descriptionKey: "me.init.component.finished_at_epoch_ms",
+    unit: "timestamp",
+  },
+  {
+    path: "initialization.components.*.duration_ms",
+    descriptionKey: "me.init.component.duration_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "initialization.components.*.attempts",
+    descriptionKey: "me.init.component.attempts",
+    format: "integer",
+  },
+  { path: "initialization.components.*.details", descriptionKey: "me.init.component.details" },
+  {
+    path: "pool.generations.active_generation",
+    descriptionKey: "me.pool.generations.active_generation",
+    format: "integer",
+  },
+  {
+    path: "pool.generations.warm_generation",
+    descriptionKey: "me.pool.generations.warm_generation",
+    format: "integer",
+  },
+  {
+    path: "pool.generations.pending_hardswap_generation",
+    descriptionKey: "me.pool.generations.pending_hardswap_generation",
+    format: "integer",
+  },
+  {
+    path: "pool.generations.pending_hardswap_age_secs",
+    descriptionKey: "me.pool.generations.pending_hardswap_age_secs",
+    unit: "seconds",
+  },
+  {
+    path: "pool.generations.draining_generations",
+    descriptionKey: "me.pool.generations.draining_generations",
+  },
+  {
+    path: "pool.generations.draining_generations.*",
+    descriptionKey: "me.pool.generations.draining_generations.*",
+    format: "integer",
+  },
+  { path: "pool.hardswap.enabled", descriptionKey: "me.pool.hardswap.enabled", format: "boolean" },
+  { path: "pool.hardswap.pending", descriptionKey: "me.pool.hardswap.pending", format: "boolean" },
+  { path: "pool.writers.total", descriptionKey: "me.pool.writers.total", format: "integer" },
+  {
+    path: "pool.writers.alive_non_draining",
+    descriptionKey: "me.pool.writers.alive_non_draining",
+    format: "integer",
+  },
+  { path: "pool.writers.draining", descriptionKey: "me.pool.writers.draining", format: "integer" },
+  { path: "pool.writers.degraded", descriptionKey: "me.pool.writers.degraded", format: "integer" },
+  {
+    path: "pool.writers.contour.warm",
+    descriptionKey: "me.pool.writers.contour.warm",
+    format: "integer",
+  },
+  {
+    path: "pool.writers.contour.active",
+    descriptionKey: "me.pool.writers.contour.active",
+    format: "integer",
+  },
+  {
+    path: "pool.writers.contour.draining",
+    descriptionKey: "me.pool.writers.contour.draining",
+    format: "integer",
+  },
+  {
+    path: "pool.writers.health.healthy",
+    descriptionKey: "me.pool.writers.health.healthy",
+    format: "integer",
+  },
+  {
+    path: "pool.writers.health.degraded",
+    descriptionKey: "me.pool.writers.health.degraded",
+    format: "integer",
+  },
+  {
+    path: "pool.writers.health.draining",
+    descriptionKey: "me.pool.writers.health.draining",
+    format: "integer",
+  },
+  {
+    path: "pool.refill.inflight_endpoints_total",
+    descriptionKey: "me.pool.refill.inflight_endpoints_total",
+    format: "integer",
+  },
+  {
+    path: "pool.refill.inflight_dc_total",
+    descriptionKey: "me.pool.refill.inflight_dc_total",
+    format: "integer",
+  },
+  { path: "pool.refill.by_dc", descriptionKey: "me.pool.refill.by_dc" },
+  {
+    path: "pool.refill.by_dc.*.family",
+    descriptionKey: "me.pool.refill.by_dc.*.family",
+    format: "enum",
+  },
+  {
+    path: "pool.refill.by_dc.*.inflight",
+    descriptionKey: "me.pool.refill.by_dc.*.inflight",
+    format: "integer",
+  },
+  { path: "pool.refill.by_dc.*.dc", descriptionKey: "dc.dc", format: "integer" },
+  {
+    path: "quality.counters.idle_close_by_peer_total",
+    descriptionKey: "me.quality.counters.idle_close_by_peer_total",
+    format: "integer",
+  },
+  {
+    path: "quality.counters.reader_eof_total",
+    descriptionKey: "me.quality.counters.reader_eof_total",
+    format: "integer",
+  },
+  {
+    path: "quality.counters.kdf_drift_total",
+    descriptionKey: "me.quality.counters.kdf_drift_total",
+    format: "integer",
+  },
+  {
+    path: "quality.counters.kdf_port_only_drift_total",
+    descriptionKey: "me.quality.counters.kdf_port_only_drift_total",
+    format: "integer",
+  },
+  {
+    path: "quality.counters.reconnect_attempt_total",
+    descriptionKey: "me.quality.counters.reconnect_attempt_total",
+    format: "integer",
+  },
+  {
+    path: "quality.counters.reconnect_success_total",
+    descriptionKey: "me.quality.counters.reconnect_success_total",
+    format: "integer",
+  },
+  {
+    path: "quality.route_drops.no_conn_total",
+    descriptionKey: "me.quality.route_drops.no_conn_total",
+    format: "integer",
+  },
+  {
+    path: "quality.route_drops.channel_closed_total",
+    descriptionKey: "me.quality.route_drops.channel_closed_total",
+    format: "integer",
+  },
+  {
+    path: "quality.route_drops.queue_full_total",
+    descriptionKey: "me.quality.route_drops.queue_full_total",
+    format: "integer",
+  },
+  {
+    path: "quality.route_drops.queue_full_base_total",
+    descriptionKey: "me.quality.route_drops.queue_full_base_total",
+    format: "integer",
+  },
+  {
+    path: "quality.route_drops.queue_full_high_total",
+    descriptionKey: "me.quality.route_drops.queue_full_high_total",
+    format: "integer",
+  },
+  { path: "quality.family_states", descriptionKey: "me.quality.family_states" },
+  {
+    path: "quality.family_states.*.family",
+    descriptionKey: "me.quality.family_states.*.family",
+    format: "enum",
+  },
+  {
+    path: "quality.family_states.*.state",
+    descriptionKey: "me.quality.family_states.*.state",
+    format: "enum",
+  },
+  {
+    path: "quality.family_states.*.state_since_epoch_secs",
+    descriptionKey: "me.quality.family_states.*.state_since_epoch_secs",
+    unit: "timestamp",
+  },
+  {
+    path: "quality.family_states.*.suppressed_until_epoch_secs",
+    descriptionKey: "me.quality.family_states.*.suppressed_until_epoch_secs",
+    unit: "timestamp",
+  },
+  {
+    path: "quality.family_states.*.fail_streak",
+    descriptionKey: "me.quality.family_states.*.fail_streak",
+    format: "integer",
+  },
+  {
+    path: "quality.family_states.*.recover_success_streak",
+    descriptionKey: "me.quality.family_states.*.recover_success_streak",
+    format: "integer",
+  },
+  {
+    path: "quality.drain_gate.route_quorum_ok",
+    descriptionKey: "me.quality.drain_gate.route_quorum_ok",
+    format: "boolean",
+  },
+  {
+    path: "quality.drain_gate.redundancy_ok",
+    descriptionKey: "me.quality.drain_gate.redundancy_ok",
+    format: "boolean",
+  },
+  {
+    path: "quality.drain_gate.block_reason",
+    descriptionKey: "me.quality.drain_gate.block_reason",
+    format: "enum",
+  },
+  {
+    path: "quality.drain_gate.updated_at_epoch_secs",
+    descriptionKey: "me.quality.drain_gate.updated_at_epoch_secs",
+    unit: "timestamp",
+  },
+  { path: "quality.dc_rtt", descriptionKey: "me.quality.dc_rtt" },
+  { path: "quality.dc_rtt.*.dc", descriptionKey: "dc.dc", format: "integer" },
+  {
+    path: "quality.dc_rtt.*.rtt_ema_ms",
+    descriptionKey: "me.dc_rtt.rtt_ema_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "quality.dc_rtt.*.alive_writers",
     descriptionKey: "me.dc_rtt.alive_writers",
     format: "integer",
   },
+  {
+    path: "quality.dc_rtt.*.required_writers",
+    descriptionKey: "me.dc_rtt.required_writers",
+    format: "integer",
+  },
+  {
+    path: "quality.dc_rtt.*.coverage_pct",
+    descriptionKey: "me.dc_rtt.coverage_pct",
+    unit: "percent",
+  },
+  { path: "selftest.kdf.state", descriptionKey: "me.selftest.kdf.state", format: "enum" },
+  {
+    path: "selftest.kdf.ewma_errors_per_min",
+    descriptionKey: "me.selftest.kdf.ewma_errors_per_min",
+    format: "decimal",
+  },
+  {
+    path: "selftest.kdf.threshold_errors_per_min",
+    descriptionKey: "me.selftest.kdf.threshold_errors_per_min",
+    format: "decimal",
+  },
+  {
+    path: "selftest.kdf.errors_total",
+    descriptionKey: "me.selftest.kdf.errors_total",
+    format: "integer",
+  },
+  { path: "selftest.timeskew.state", descriptionKey: "me.selftest.timeskew.state", format: "enum" },
+  {
+    path: "selftest.timeskew.max_skew_secs_15m",
+    descriptionKey: "me.selftest.timeskew.max_skew_secs_15m",
+    unit: "seconds",
+  },
+  {
+    path: "selftest.timeskew.samples_15m",
+    descriptionKey: "me.selftest.timeskew.samples_15m",
+    format: "integer",
+  },
+  {
+    path: "selftest.timeskew.last_skew_secs",
+    descriptionKey: "me.selftest.timeskew.last_skew_secs",
+    unit: "seconds",
+  },
+  {
+    path: "selftest.timeskew.last_source",
+    descriptionKey: "me.selftest.timeskew.last_source",
+    format: "enum",
+  },
+  {
+    path: "selftest.timeskew.last_seen_age_secs",
+    descriptionKey: "me.selftest.timeskew.last_seen_age_secs",
+    unit: "seconds",
+  },
+  { path: "selftest.ip", descriptionKey: "me.selftest.ip" },
+  { path: "selftest.ip.v4.addr", descriptionKey: "me.selftest.ip.v4.addr", format: "address" },
+  { path: "selftest.ip.v4.state", descriptionKey: "me.selftest.ip.v4.state", format: "enum" },
+  { path: "selftest.ip.v6.addr", descriptionKey: "me.selftest.ip.v6.addr", format: "address" },
+  { path: "selftest.ip.v6.state", descriptionKey: "me.selftest.ip.v6.state", format: "enum" },
+  { path: "selftest.pid.pid", descriptionKey: "me.selftest.pid.pid", format: "integer" },
+  { path: "selftest.pid.state", descriptionKey: "me.selftest.pid.state", format: "enum" },
+  { path: "selftest.bnd", descriptionKey: "me.selftest.bnd" },
+  { path: "selftest.bnd.addr_state", descriptionKey: "me.selftest.bnd.addr_state", format: "enum" },
+  { path: "selftest.bnd.port_state", descriptionKey: "me.selftest.bnd.port_state", format: "enum" },
+  {
+    path: "selftest.bnd.last_addr",
+    descriptionKey: "me.selftest.bnd.last_addr",
+    format: "address",
+  },
+  {
+    path: "selftest.bnd.last_seen_age_secs",
+    descriptionKey: "me.selftest.bnd.last_seen_age_secs",
+    unit: "seconds",
+  },
+  { path: "selftest.upstreams", descriptionKey: "me.selftest.upstreams" },
+  {
+    path: "selftest.upstreams.*.upstream_id",
+    descriptionKey: "me.selftest.upstreams.*.upstream_id",
+    format: "integer",
+  },
+  {
+    path: "selftest.upstreams.*.route_kind",
+    descriptionKey: "me.selftest.upstreams.*.route_kind",
+    format: "enum",
+  },
+  {
+    path: "selftest.upstreams.*.address",
+    descriptionKey: "me.selftest.upstreams.*.address",
+    format: "address",
+  },
+  {
+    path: "selftest.upstreams.*.ip",
+    descriptionKey: "me.selftest.upstreams.*.ip",
+    format: "address",
+  },
+  {
+    path: "selftest.upstreams.*.bnd.addr_state",
+    descriptionKey: "me.selftest.bnd.addr_state",
+    format: "enum",
+  },
+  {
+    path: "selftest.upstreams.*.bnd.port_state",
+    descriptionKey: "me.selftest.bnd.port_state",
+    format: "enum",
+  },
+  {
+    path: "selftest.upstreams.*.bnd.last_addr",
+    descriptionKey: "me.selftest.bnd.last_addr",
+    format: "address",
+  },
+  {
+    path: "selftest.upstreams.*.bnd.last_seen_age_secs",
+    descriptionKey: "me.selftest.bnd.last_seen_age_secs",
+    unit: "seconds",
+  },
+  { path: "selftest.upstreams.*.bnd", descriptionKey: "me.selftest.bnd" },
+  {
+    path: "me_runtime.active_generation",
+    descriptionKey: "me.runtime.active_generation",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.warm_generation",
+    descriptionKey: "me.runtime.warm_generation",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.pending_hardswap_generation",
+    descriptionKey: "me.runtime.pending_hardswap_generation",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.pending_hardswap_age_secs",
+    descriptionKey: "me.runtime.pending_hardswap_age_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.hardswap_enabled",
+    descriptionKey: "me.runtime.hardswap_enabled",
+    format: "boolean",
+  },
+  { path: "me_runtime.floor_mode", descriptionKey: "me.runtime.floor_mode", format: "enum" },
+  {
+    path: "me_runtime.adaptive_floor_idle_secs",
+    descriptionKey: "me.runtime.adaptive_floor_idle_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.adaptive_floor_min_writers_single_endpoint",
+    descriptionKey: "me.runtime.adaptive_floor_min_writers_single_endpoint",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_min_writers_multi_endpoint",
+    descriptionKey: "me.runtime.adaptive_floor_min_writers_multi_endpoint",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_recover_grace_secs",
+    descriptionKey: "me.runtime.adaptive_floor_recover_grace_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.adaptive_floor_writers_per_core_total",
+    descriptionKey: "me.runtime.adaptive_floor_writers_per_core_total",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_cpu_cores_override",
+    descriptionKey: "me.runtime.adaptive_floor_cpu_cores_override",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_max_extra_writers_single_per_core",
+    descriptionKey: "me.runtime.adaptive_floor_max_extra_writers_single_per_core",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_max_extra_writers_multi_per_core",
+    descriptionKey: "me.runtime.adaptive_floor_max_extra_writers_multi_per_core",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_max_active_writers_per_core",
+    descriptionKey: "me.runtime.adaptive_floor_max_active_writers_per_core",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_max_warm_writers_per_core",
+    descriptionKey: "me.runtime.adaptive_floor_max_warm_writers_per_core",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_max_active_writers_global",
+    descriptionKey: "me.runtime.adaptive_floor_max_active_writers_global",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_max_warm_writers_global",
+    descriptionKey: "me.runtime.adaptive_floor_max_warm_writers_global",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_cpu_cores_detected",
+    descriptionKey: "me.runtime.adaptive_floor_cpu_cores_detected",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_cpu_cores_effective",
+    descriptionKey: "me.runtime.adaptive_floor_cpu_cores_effective",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_global_cap_raw",
+    descriptionKey: "me.runtime.adaptive_floor_global_cap_raw",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_global_cap_effective",
+    descriptionKey: "me.runtime.adaptive_floor_global_cap_effective",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_target_writers_total",
+    descriptionKey: "me.runtime.adaptive_floor_target_writers_total",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_active_cap_configured",
+    descriptionKey: "me.runtime.adaptive_floor_active_cap_configured",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_active_cap_effective",
+    descriptionKey: "me.runtime.adaptive_floor_active_cap_effective",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_warm_cap_configured",
+    descriptionKey: "me.runtime.adaptive_floor_warm_cap_configured",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_warm_cap_effective",
+    descriptionKey: "me.runtime.adaptive_floor_warm_cap_effective",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_active_writers_current",
+    descriptionKey: "me.runtime.adaptive_floor_active_writers_current",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.adaptive_floor_warm_writers_current",
+    descriptionKey: "me.runtime.adaptive_floor_warm_writers_current",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.me_keepalive_enabled",
+    descriptionKey: "me.runtime.me_keepalive_enabled",
+    format: "boolean",
+  },
+  {
+    path: "me_runtime.me_keepalive_interval_secs",
+    descriptionKey: "me.runtime.me_keepalive_interval_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.me_keepalive_jitter_secs",
+    descriptionKey: "me.runtime.me_keepalive_jitter_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.me_keepalive_payload_random",
+    descriptionKey: "me.runtime.me_keepalive_payload_random",
+    format: "boolean",
+  },
+  {
+    path: "me_runtime.rpc_proxy_req_every_secs",
+    descriptionKey: "me.runtime.rpc_proxy_req_every_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.me_reconnect_max_concurrent_per_dc",
+    descriptionKey: "me.runtime.me_reconnect_max_concurrent_per_dc",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.me_reconnect_backoff_base_ms",
+    descriptionKey: "me.runtime.me_reconnect_backoff_base_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "me_runtime.me_reconnect_backoff_cap_ms",
+    descriptionKey: "me.runtime.me_reconnect_backoff_cap_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "me_runtime.me_reconnect_fast_retry_count",
+    descriptionKey: "me.runtime.me_reconnect_fast_retry_count",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.me_pool_drain_ttl_secs",
+    descriptionKey: "me.runtime.me_pool_drain_ttl_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.me_pool_force_close_secs",
+    descriptionKey: "me.runtime.me_pool_force_close_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.me_pool_min_fresh_ratio",
+    descriptionKey: "me.runtime.me_pool_min_fresh_ratio",
+    format: "decimal",
+  },
+  {
+    path: "me_runtime.me_bind_stale_mode",
+    descriptionKey: "me.runtime.me_bind_stale_mode",
+    format: "enum",
+  },
+  {
+    path: "me_runtime.me_bind_stale_ttl_secs",
+    descriptionKey: "me.runtime.me_bind_stale_ttl_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.me_single_endpoint_shadow_writers",
+    descriptionKey: "me.runtime.me_single_endpoint_shadow_writers",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.me_single_endpoint_outage_mode_enabled",
+    descriptionKey: "me.runtime.me_single_endpoint_outage_mode_enabled",
+    format: "boolean",
+  },
+  {
+    path: "me_runtime.me_single_endpoint_outage_disable_quarantine",
+    descriptionKey: "me.runtime.me_single_endpoint_outage_disable_quarantine",
+    format: "boolean",
+  },
+  {
+    path: "me_runtime.me_single_endpoint_outage_backoff_min_ms",
+    descriptionKey: "me.runtime.me_single_endpoint_outage_backoff_min_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "me_runtime.me_single_endpoint_outage_backoff_max_ms",
+    descriptionKey: "me.runtime.me_single_endpoint_outage_backoff_max_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "me_runtime.me_single_endpoint_shadow_rotate_every_secs",
+    descriptionKey: "me.runtime.me_single_endpoint_shadow_rotate_every_secs",
+    unit: "seconds",
+  },
+  {
+    path: "me_runtime.me_deterministic_writer_sort",
+    descriptionKey: "me.runtime.me_deterministic_writer_sort",
+    format: "boolean",
+  },
+  {
+    path: "me_runtime.me_writer_pick_mode",
+    descriptionKey: "me.runtime.me_writer_pick_mode",
+    format: "enum",
+  },
+  {
+    path: "me_runtime.me_writer_pick_sample_size",
+    descriptionKey: "me.runtime.me_writer_pick_sample_size",
+    format: "integer",
+  },
+  {
+    path: "me_runtime.me_socks_kdf_policy",
+    descriptionKey: "me.runtime.me_socks_kdf_policy",
+    format: "enum",
+  },
+  {
+    path: "me_runtime.quarantined_endpoints_total",
+    descriptionKey: "me.runtime.quarantined_endpoints_total",
+    format: "integer",
+  },
+  { path: "me_runtime.quarantined_endpoints", descriptionKey: "me.runtime.quarantined_endpoints" },
+  {
+    path: "me_runtime.quarantined_endpoints.*.endpoint",
+    descriptionKey: "me.runtime.quarantined_endpoints.*.endpoint",
+    format: "address",
+  },
+  {
+    path: "me_runtime.quarantined_endpoints.*.remaining_ms",
+    descriptionKey: "me.runtime.quarantined_endpoints.*.remaining_ms",
+    unit: "milliseconds",
+  },
+  // The BARE `dc_rtt.*` spelling, kept alongside the page-rooted
+  // `quality.dc_rtt.*` above: §8.3 asks both spellings of a path to resolve
+  // to one sentence, and this is the one a context rooted at the ME quality
+  // payload itself uses. It is also criterion (c) of classifyValue — a
+  // described key makes these per-DC rows a typed record rather than a
+  // verbatim-key counters map.
+  { path: "dc_rtt.*.dc", descriptionKey: "dc.dc", format: "integer" },
+  { path: "dc_rtt.*.rtt_ema_ms", descriptionKey: "me.dc_rtt.rtt_ema_ms", unit: "milliseconds" },
+  { path: "dc_rtt.*.alive_writers", descriptionKey: "me.dc_rtt.alive_writers", format: "integer" },
   {
     path: "dc_rtt.*.required_writers",
     descriptionKey: "me.dc_rtt.required_writers",
@@ -384,8 +1181,617 @@ const SECURITY_ENTRIES: FieldCatalogEntry[] = [
   ...SECURITY_LIMITS_ENTRIES,
 ];
 
+// The Counters domain (`GET /v1/stats/zero/all`, TELEMT_LIVE_API_DATA §11).
+//
+// §8.2's fourth step — the counters FAMILY rule — stays the backstop for
+// this domain: a key a future Telemt adds is described by its suffix and
+// nothing else, which is what makes the page forward-compatible. The
+// entries below are the counters Telemt's own API reference documents
+// today, each sentence a translation of that reference rather than a guess
+// (§8.2 forbids inventing business meaning).
+//
+// Every path is prefixed by its zero/all section, so none of these can
+// describe a same-named field on another page: `pool.pool_swap_total` here
+// versus the ME page's `pool.generations.active_generation`, and
+// `upstream.connect_attempt_total` here versus the Upstreams page's
+// `zero.connect_attempt_total`.
+const COUNTERS_ENTRIES: FieldCatalogEntry[] = [
+  { path: "core.uptime_seconds", descriptionKey: "counters.core.uptime_seconds", unit: "seconds" },
+  {
+    path: "core.connections_total",
+    descriptionKey: "counters.core.connections_total",
+    format: "integer",
+  },
+  {
+    path: "core.connections_bad_total",
+    descriptionKey: "counters.core.connections_bad_total",
+    format: "integer",
+  },
+  {
+    path: "core.connections_bad_by_class",
+    descriptionKey: "counters.core.connections_bad_by_class",
+  },
+  {
+    path: "core.handshake_failures_by_class",
+    descriptionKey: "counters.core.handshake_failures_by_class",
+  },
+  {
+    path: "core.handshake_failures_by_stage",
+    descriptionKey: "counters.core.handshake_failures_by_stage",
+  },
+  {
+    path: "core.handshake_timeouts_total",
+    descriptionKey: "counters.core.handshake_timeouts_total",
+    format: "integer",
+  },
+  {
+    path: "core.accept_permit_timeout_total",
+    descriptionKey: "counters.core.accept_permit_timeout_total",
+    format: "integer",
+  },
+  {
+    path: "core.configured_users",
+    descriptionKey: "counters.core.configured_users",
+    format: "integer",
+  },
+  {
+    path: "core.telemetry_core_enabled",
+    descriptionKey: "counters.core.telemetry_core_enabled",
+    format: "boolean",
+  },
+  {
+    path: "core.telemetry_user_enabled",
+    descriptionKey: "counters.core.telemetry_user_enabled",
+    format: "boolean",
+  },
+  {
+    path: "core.telemetry_me_level",
+    descriptionKey: "counters.core.telemetry_me_level",
+    format: "enum",
+  },
+  {
+    path: "core.conntrack_control_enabled",
+    descriptionKey: "counters.core.conntrack_control_enabled",
+    format: "boolean",
+  },
+  {
+    path: "core.conntrack_control_available",
+    descriptionKey: "counters.core.conntrack_control_available",
+    format: "boolean",
+  },
+  {
+    path: "core.conntrack_pressure_active",
+    descriptionKey: "counters.core.conntrack_pressure_active",
+    format: "boolean",
+  },
+  {
+    path: "core.conntrack_event_queue_depth",
+    descriptionKey: "counters.core.conntrack_event_queue_depth",
+    format: "integer",
+  },
+  {
+    path: "core.conntrack_rule_apply_ok",
+    descriptionKey: "counters.core.conntrack_rule_apply_ok",
+    format: "boolean",
+  },
+  {
+    path: "core.conntrack_delete_attempt_total",
+    descriptionKey: "counters.core.conntrack_delete_attempt_total",
+    format: "integer",
+  },
+  {
+    path: "core.conntrack_delete_success_total",
+    descriptionKey: "counters.core.conntrack_delete_success_total",
+    format: "integer",
+  },
+  {
+    path: "core.conntrack_delete_not_found_total",
+    descriptionKey: "counters.core.conntrack_delete_not_found_total",
+    format: "integer",
+  },
+  {
+    path: "core.conntrack_delete_error_total",
+    descriptionKey: "counters.core.conntrack_delete_error_total",
+    format: "integer",
+  },
+  {
+    path: "core.conntrack_close_event_drop_total",
+    descriptionKey: "counters.core.conntrack_close_event_drop_total",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_attempt_total",
+    descriptionKey: "counters.upstream.connect_attempt_total",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_success_total",
+    descriptionKey: "counters.upstream.connect_success_total",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_fail_total",
+    descriptionKey: "counters.upstream.connect_fail_total",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_failfast_hard_error_total",
+    descriptionKey: "counters.upstream.connect_failfast_hard_error_total",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_attempts_bucket_1",
+    descriptionKey: "counters.upstream.connect_attempts_bucket_1",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_attempts_bucket_2",
+    descriptionKey: "counters.upstream.connect_attempts_bucket_2",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_attempts_bucket_3_4",
+    descriptionKey: "counters.upstream.connect_attempts_bucket_3_4",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_attempts_bucket_gt_4",
+    descriptionKey: "counters.upstream.connect_attempts_bucket_gt_4",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_success_bucket_le_100ms",
+    descriptionKey: "counters.upstream.connect_duration_success_bucket_le_100ms",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_success_bucket_101_500ms",
+    descriptionKey: "counters.upstream.connect_duration_success_bucket_101_500ms",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_success_bucket_501_1000ms",
+    descriptionKey: "counters.upstream.connect_duration_success_bucket_501_1000ms",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_success_bucket_gt_1000ms",
+    descriptionKey: "counters.upstream.connect_duration_success_bucket_gt_1000ms",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_fail_bucket_le_100ms",
+    descriptionKey: "counters.upstream.connect_duration_fail_bucket_le_100ms",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_fail_bucket_101_500ms",
+    descriptionKey: "counters.upstream.connect_duration_fail_bucket_101_500ms",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_fail_bucket_501_1000ms",
+    descriptionKey: "counters.upstream.connect_duration_fail_bucket_501_1000ms",
+    format: "integer",
+  },
+  {
+    path: "upstream.connect_duration_fail_bucket_gt_1000ms",
+    descriptionKey: "counters.upstream.connect_duration_fail_bucket_gt_1000ms",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.keepalive_sent_total",
+    descriptionKey: "counters.middle_proxy.keepalive_sent_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.keepalive_failed_total",
+    descriptionKey: "counters.middle_proxy.keepalive_failed_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.keepalive_pong_total",
+    descriptionKey: "counters.middle_proxy.keepalive_pong_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.keepalive_timeout_total",
+    descriptionKey: "counters.middle_proxy.keepalive_timeout_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.rpc_proxy_req_signal_sent_total",
+    descriptionKey: "counters.middle_proxy.rpc_proxy_req_signal_sent_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.rpc_proxy_req_signal_failed_total",
+    descriptionKey: "counters.middle_proxy.rpc_proxy_req_signal_failed_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.rpc_proxy_req_signal_skipped_no_meta_total",
+    descriptionKey: "counters.middle_proxy.rpc_proxy_req_signal_skipped_no_meta_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.rpc_proxy_req_signal_response_total",
+    descriptionKey: "counters.middle_proxy.rpc_proxy_req_signal_response_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.rpc_proxy_req_signal_close_sent_total",
+    descriptionKey: "counters.middle_proxy.rpc_proxy_req_signal_close_sent_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.reconnect_attempt_total",
+    descriptionKey: "counters.middle_proxy.reconnect_attempt_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.reconnect_success_total",
+    descriptionKey: "counters.middle_proxy.reconnect_success_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.handshake_reject_total",
+    descriptionKey: "counters.middle_proxy.handshake_reject_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.handshake_error_codes",
+    descriptionKey: "counters.middle_proxy.handshake_error_codes",
+  },
+  {
+    path: "middle_proxy.reader_eof_total",
+    descriptionKey: "counters.middle_proxy.reader_eof_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.idle_close_by_peer_total",
+    descriptionKey: "counters.middle_proxy.idle_close_by_peer_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.route_drop_no_conn_total",
+    descriptionKey: "counters.middle_proxy.route_drop_no_conn_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.route_drop_channel_closed_total",
+    descriptionKey: "counters.middle_proxy.route_drop_channel_closed_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.route_drop_queue_full_total",
+    descriptionKey: "counters.middle_proxy.route_drop_queue_full_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.route_drop_queue_full_base_total",
+    descriptionKey: "counters.middle_proxy.route_drop_queue_full_base_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.route_drop_queue_full_high_total",
+    descriptionKey: "counters.middle_proxy.route_drop_queue_full_high_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_batches_total",
+    descriptionKey: "counters.middle_proxy.d2c_batches_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_batch_frames_total",
+    descriptionKey: "counters.middle_proxy.d2c_batch_frames_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_batch_bytes_total",
+    descriptionKey: "counters.middle_proxy.d2c_batch_bytes_total",
+    unit: "bytes",
+  },
+  {
+    path: "middle_proxy.d2c_flush_reason_queue_drain_total",
+    descriptionKey: "counters.middle_proxy.d2c_flush_reason_queue_drain_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_flush_reason_batch_frames_total",
+    descriptionKey: "counters.middle_proxy.d2c_flush_reason_batch_frames_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_flush_reason_batch_bytes_total",
+    descriptionKey: "counters.middle_proxy.d2c_flush_reason_batch_bytes_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_flush_reason_max_delay_total",
+    descriptionKey: "counters.middle_proxy.d2c_flush_reason_max_delay_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_flush_reason_ack_immediate_total",
+    descriptionKey: "counters.middle_proxy.d2c_flush_reason_ack_immediate_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_flush_reason_close_total",
+    descriptionKey: "counters.middle_proxy.d2c_flush_reason_close_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_data_frames_total",
+    descriptionKey: "counters.middle_proxy.d2c_data_frames_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_ack_frames_total",
+    descriptionKey: "counters.middle_proxy.d2c_ack_frames_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_payload_bytes_total",
+    descriptionKey: "counters.middle_proxy.d2c_payload_bytes_total",
+    unit: "bytes",
+  },
+  {
+    path: "middle_proxy.d2c_write_mode_coalesced_total",
+    descriptionKey: "counters.middle_proxy.d2c_write_mode_coalesced_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_write_mode_split_total",
+    descriptionKey: "counters.middle_proxy.d2c_write_mode_split_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_quota_reject_pre_write_total",
+    descriptionKey: "counters.middle_proxy.d2c_quota_reject_pre_write_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_quota_reject_post_write_total",
+    descriptionKey: "counters.middle_proxy.d2c_quota_reject_post_write_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_frame_buf_shrink_total",
+    descriptionKey: "counters.middle_proxy.d2c_frame_buf_shrink_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.d2c_frame_buf_shrink_bytes_total",
+    descriptionKey: "counters.middle_proxy.d2c_frame_buf_shrink_bytes_total",
+    unit: "bytes",
+  },
+  {
+    path: "middle_proxy.socks_kdf_strict_reject_total",
+    descriptionKey: "counters.middle_proxy.socks_kdf_strict_reject_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.socks_kdf_compat_fallback_total",
+    descriptionKey: "counters.middle_proxy.socks_kdf_compat_fallback_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.endpoint_quarantine_total",
+    descriptionKey: "counters.middle_proxy.endpoint_quarantine_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.kdf_drift_total",
+    descriptionKey: "counters.middle_proxy.kdf_drift_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.kdf_port_only_drift_total",
+    descriptionKey: "counters.middle_proxy.kdf_port_only_drift_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.hardswap_pending_reuse_total",
+    descriptionKey: "counters.middle_proxy.hardswap_pending_reuse_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.hardswap_pending_ttl_expired_total",
+    descriptionKey: "counters.middle_proxy.hardswap_pending_ttl_expired_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.single_endpoint_outage_enter_total",
+    descriptionKey: "counters.middle_proxy.single_endpoint_outage_enter_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.single_endpoint_outage_exit_total",
+    descriptionKey: "counters.middle_proxy.single_endpoint_outage_exit_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.single_endpoint_outage_reconnect_attempt_total",
+    descriptionKey: "counters.middle_proxy.single_endpoint_outage_reconnect_attempt_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.single_endpoint_outage_reconnect_success_total",
+    descriptionKey: "counters.middle_proxy.single_endpoint_outage_reconnect_success_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.single_endpoint_quarantine_bypass_total",
+    descriptionKey: "counters.middle_proxy.single_endpoint_quarantine_bypass_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.single_endpoint_shadow_rotate_total",
+    descriptionKey: "counters.middle_proxy.single_endpoint_shadow_rotate_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.single_endpoint_shadow_rotate_skipped_quarantine_total",
+    descriptionKey: "counters.middle_proxy.single_endpoint_shadow_rotate_skipped_quarantine_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.floor_mode_switch_total",
+    descriptionKey: "counters.middle_proxy.floor_mode_switch_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.floor_mode_switch_static_to_adaptive_total",
+    descriptionKey: "counters.middle_proxy.floor_mode_switch_static_to_adaptive_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.floor_mode_switch_adaptive_to_static_total",
+    descriptionKey: "counters.middle_proxy.floor_mode_switch_adaptive_to_static_total",
+    format: "integer",
+  },
+  {
+    path: "pool.pool_swap_total",
+    descriptionKey: "counters.pool.pool_swap_total",
+    format: "integer",
+  },
+  {
+    path: "pool.pool_drain_active",
+    descriptionKey: "counters.pool.pool_drain_active",
+    format: "integer",
+  },
+  {
+    path: "pool.pool_force_close_total",
+    descriptionKey: "counters.pool.pool_force_close_total",
+    format: "integer",
+  },
+  {
+    path: "pool.pool_stale_pick_total",
+    descriptionKey: "counters.pool.pool_stale_pick_total",
+    format: "integer",
+  },
+  {
+    path: "pool.writer_removed_total",
+    descriptionKey: "counters.pool.writer_removed_total",
+    format: "integer",
+  },
+  {
+    path: "pool.writer_removed_unexpected_total",
+    descriptionKey: "counters.pool.writer_removed_unexpected_total",
+    format: "integer",
+  },
+  {
+    path: "pool.refill_triggered_total",
+    descriptionKey: "counters.pool.refill_triggered_total",
+    format: "integer",
+  },
+  {
+    path: "pool.refill_skipped_inflight_total",
+    descriptionKey: "counters.pool.refill_skipped_inflight_total",
+    format: "integer",
+  },
+  {
+    path: "pool.refill_failed_total",
+    descriptionKey: "counters.pool.refill_failed_total",
+    format: "integer",
+  },
+  {
+    path: "pool.writer_restored_same_endpoint_total",
+    descriptionKey: "counters.pool.writer_restored_same_endpoint_total",
+    format: "integer",
+  },
+  {
+    path: "pool.writer_restored_fallback_total",
+    descriptionKey: "counters.pool.writer_restored_fallback_total",
+    format: "integer",
+  },
+  {
+    path: "desync.secure_padding_invalid_total",
+    descriptionKey: "counters.desync.secure_padding_invalid_total",
+    format: "integer",
+  },
+  {
+    path: "desync.desync_total",
+    descriptionKey: "counters.desync.desync_total",
+    format: "integer",
+  },
+  {
+    path: "desync.desync_full_logged_total",
+    descriptionKey: "counters.desync.desync_full_logged_total",
+    format: "integer",
+  },
+  {
+    path: "desync.desync_suppressed_total",
+    descriptionKey: "counters.desync.desync_suppressed_total",
+    format: "integer",
+  },
+  {
+    path: "desync.desync_frames_bucket_0",
+    descriptionKey: "counters.desync.desync_frames_bucket_0",
+    format: "integer",
+  },
+  {
+    path: "desync.desync_frames_bucket_1_2",
+    descriptionKey: "counters.desync.desync_frames_bucket_1_2",
+    format: "integer",
+  },
+  {
+    path: "desync.desync_frames_bucket_3_10",
+    descriptionKey: "counters.desync.desync_frames_bucket_3_10",
+    format: "integer",
+  },
+  {
+    path: "desync.desync_frames_bucket_gt_10",
+    descriptionKey: "counters.desync.desync_frames_bucket_gt_10",
+    format: "integer",
+  },
+  {
+    path: "core.connections_bad_by_class.*.class",
+    descriptionKey: "counters.class",
+    format: "enum",
+  },
+  {
+    path: "core.handshake_failures_by_class.*.class",
+    descriptionKey: "counters.class",
+    format: "enum",
+  },
+  {
+    path: "core.connections_bad_by_class.*.total",
+    descriptionKey: "counters.class_total",
+    format: "integer",
+  },
+  {
+    path: "core.handshake_failures_by_class.*.total",
+    descriptionKey: "counters.class_total",
+    format: "integer",
+  },
+  {
+    path: "core.handshake_failures_by_stage.*.stage",
+    descriptionKey: "counters.stage",
+    format: "enum",
+  },
+  {
+    path: "core.handshake_failures_by_stage.*.total",
+    descriptionKey: "counters.stage_total",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.handshake_error_codes.*.code",
+    descriptionKey: "counters.error_code",
+    format: "integer",
+  },
+  {
+    path: "middle_proxy.handshake_error_codes.*.total",
+    descriptionKey: "counters.error_code_total",
+    format: "integer",
+  },
+];
+
 export const DEFAULT_FIELD_CATALOG: FieldCatalog = {
-  entries: [...DC_ENTRIES, ...ME_ENTRIES, ...SECURITY_ENTRIES],
+  entries: [...DC_ENTRIES, ...ME_ENTRIES, ...SECURITY_ENTRIES, ...COUNTERS_ENTRIES],
   byEndpoint: { [TLS_FINGERPRINTS_ENDPOINT]: TLS_ENTRIES },
 };
 
