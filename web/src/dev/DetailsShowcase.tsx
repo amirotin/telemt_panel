@@ -11,6 +11,7 @@ import {
   type SourceStatus,
 } from "../pulse/details-builder/sources";
 import {
+  devCatalog,
   devCountersPage,
   devDcPage,
   devMeQualityPage,
@@ -123,6 +124,7 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.dc : null}
             sources={sourcesFor(devDcPage.sources, status, devPayloads.dc)}
             breadcrumb="PULSE / DETAILS"
+            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
@@ -133,6 +135,7 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.meQuality : null}
             sources={sourcesFor(devMeQualityPage.sources, status, devPayloads.meQuality)}
             breadcrumb="PULSE / DETAILS"
+            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
@@ -143,6 +146,7 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.tls : null}
             sources={sourcesFor(devTlsPage.sources, status, devPayloads.tls)}
             breadcrumb="PULSE / DETAILS"
+            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
@@ -153,6 +157,7 @@ export function DetailsShowcase() {
             payload={withData ? devPayloads.counters : null}
             sources={sourcesFor(devCountersPage.sources, status, devPayloads.counters)}
             breadcrumb="PULSE / DETAILS"
+            catalog={devCatalog}
             nowMs={FIXED_NOW}
           />
         );
