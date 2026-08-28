@@ -302,7 +302,7 @@ export function counterFamilyFor(path: string): CounterFamily | null {
 export function lookupField(path: string, ctx: FieldLookupContext = {}): FieldLookupResult {
   const catalog = ctx.catalog ?? DEFAULT_FIELD_CATALOG;
   const c = compiled(catalog);
-  const cacheKey = `${ctx.endpoint ?? ""} ${path}`;
+  const cacheKey = `${ctx.endpoint ?? ""}\u0000${path}`;
   const hit = c.cache.get(cacheKey);
   if (hit) return hit;
 
