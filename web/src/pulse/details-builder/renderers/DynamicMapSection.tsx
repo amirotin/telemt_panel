@@ -19,11 +19,21 @@ export interface DynamicMapSectionProps {
   ctx: DetailRenderContext;
   /**
    * Per-second deltas by entry path, when the page can compute them
-   * (ruling R4: a client-side difference between consecutive polls). Task 7
-   * plumbs the data; without it the delta control still exists and says
-   * honestly that there is nothing to compare against yet.
+   * (ruling R4: a client-side difference between consecutive polls).
+   * Without it the delta control still exists and says honestly that there
+   * is nothing to compare against yet.
    */
   deltas?: Record<string, number>;
+  /**
+   * Absolute change since the reader opened the page (or since they last
+   * reset the baseline) — R4's second column. Kept apart from `deltas`
+   * rather than folded into one map because the two answer different
+   * questions and are printed differently: a RATE carries "/с", a total
+   * carries nothing.
+   */
+  deltaSinceOpen?: Record<string, number>;
+  /** Moves the since-open baseline to the current snapshot (R4). */
+  onResetDelta?: () => void;
   /**
    * Paths an explicitly declared section already renders. A map bound to a
    * whole subtree would otherwise show a nested array twice — once inside
@@ -74,12 +84,17 @@ export function DynamicMapSection({
   instance,
   ctx,
   deltas,
+  deltaSinceOpen,
+  onResetDelta,
   hiddenNestedPaths,
 }: DynamicMapSectionProps) {
   const s = useStrings();
   const [query, setQuery] = useState("");
   const [nonZeroOnly, setNonZeroOnly] = useState(false);
-  const [showDelta, setShowDelta] = useState(false);
+  // Three states rather than a boolean: R4 asks for the change since the
+  // last refresh AND the change since the page was opened, and a row can
+  // only carry one of them legibly.
+  const [deltaView, setDeltaView] = useState<DeltaView>("off");
 
   const q = query.trim().toLowerCase();
 
@@ -136,12 +151,28 @@ export function DynamicMapSection({
             {s.details.map.nonZeroOnly}
           </label>
           {instance.supportsDelta && (
-            <Chip active={showDelta} onClick={() => setShowDelta((v) => !v)}>
-              {s.details.map.deltaMode}
-            </Chip>
+            <>
+              <Chip
+                active={deltaView === "perSecond"}
+                onClick={() => setDeltaView(deltaView === "perSecond" ? "off" : "perSecond")}
+              >
+                {s.details.map.deltaMode}
+              </Chip>
+              <Chip
+                active={deltaView === "sinceOpen"}
+                onClick={() => setDeltaView(deltaView === "sinceOpen" ? "off" : "sinceOpen")}
+              >
+                {s.details.map.deltaSinceOpen}
+              </Chip>
+              {deltaView === "sinceOpen" && onResetDelta && (
+                <Button variant="secondary" size="sm" onClick={onResetDelta}>
+                  {s.details.map.deltaReset}
+                </Button>
+              )}
+            </>
           )}
         </div>
-        {showDelta && deltas === undefined && (
+        {deltaView !== "off" && activeDeltas(deltaView, deltas, deltaSinceOpen) === undefined && (
           <p className="text-micro text-text-faint">{s.details.map.deltaUnavailable}</p>
         )}
         <div className="flex flex-wrap gap-2">
@@ -189,9 +220,7 @@ export function DynamicMapSection({
                   present
                   ctx={ctx}
                   label={entry.key}
-                  {...(showDelta && deltas?.[entry.path] !== undefined
-                    ? { valueNote: `${formatDelta(deltas[entry.path] as number)}${s.details.value.perSecond}` }
-                    : {})}
+                  {...deltaNote(deltaView, deltas, deltaSinceOpen, entry.path, s)}
                 />
               ))}
               {group.nestedNodes.length > 0 && <NodeList nodes={group.nestedNodes} ctx={ctx} />}
@@ -203,8 +232,44 @@ export function DynamicMapSection({
   );
 }
 
-function formatDelta(value: number): string {
-  return value > 0 ? `+${value}` : String(value);
+/** Which of R4's two deltas a row is currently showing, if either. */
+type DeltaView = "off" | "perSecond" | "sinceOpen";
+
+// activeDeltas answers "is there anything to show in this mode yet". A map
+// the page cannot compute a delta for still OFFERS the control and then says
+// so — §13.1's rule that "no data" is a state worth naming, applied to a
+// column that only exists from the second response onwards.
+function activeDeltas(
+  view: DeltaView,
+  perSecond: Record<string, number> | undefined,
+  sinceOpen: Record<string, number> | undefined,
+): Record<string, number> | undefined {
+  const table = view === "sinceOpen" ? sinceOpen : perSecond;
+  if (table === undefined || Object.keys(table).length === 0) return undefined;
+  return table;
+}
+
+function deltaNote(
+  view: DeltaView,
+  perSecond: Record<string, number> | undefined,
+  sinceOpen: Record<string, number> | undefined,
+  path: string,
+  s: Dict,
+): { valueNote?: string } {
+  if (view === "off") return {};
+  const table = activeDeltas(view, perSecond, sinceOpen);
+  const value = table?.[path];
+  if (value === undefined) return {};
+  const suffix = view === "perSecond" ? s.details.value.perSecond : "";
+  return { valueNote: `${formatDelta(value, s)}${suffix}` };
+}
+
+// Grouped like every other number on the page: a since-open column runs to
+// six figures on a busy proxy, and "+4200" beside a value printed "4 200"
+// would read as a different unit rather than as the same one.
+function formatDelta(value: number, s: Dict): string {
+  const text = formatNumber(s, value);
+  return value > 0 ? `+${text}` : text;
 }
 
 // setGroupExpanded drives the same "differs from default" encoding

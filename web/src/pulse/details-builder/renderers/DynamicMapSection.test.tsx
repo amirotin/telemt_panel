@@ -88,9 +88,13 @@ let mounted: { container: HTMLElement; root: Root } | null = null;
 
 function Harness({
   deltas,
+  deltaSinceOpen,
+  onResetDelta,
   production,
 }: {
   deltas?: Record<string, number>;
+  deltaSinceOpen?: Record<string, number>;
+  onResetDelta?: () => void;
   production?: boolean;
 }) {
   const [sections, setSections] = useState<ReadonlySet<string>>(new Set());
@@ -118,6 +122,8 @@ function Harness({
       instance={production ? instance() : mixedInstance()}
       ctx={ctx}
       {...(deltas !== undefined ? { deltas } : {})}
+      {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+      {...(onResetDelta !== undefined ? { onResetDelta } : {})}
     />
   );
 }
@@ -229,5 +235,62 @@ describe("DynamicMapSection (spec §9.7, §11.2)", () => {
     click(deltaChip);
     expect(el.textContent).toContain("+13/с");
     expect(el.textContent).not.toContain("Изменение появится после второго ответа.");
+  });
+});
+
+// Ruling R4's second column: the change since the reader opened the page,
+// with a control that moves the baseline. The two views are exclusive —
+// a row can carry one number legibly, not two.
+describe("DynamicMapSection deltas (ruling R4)", () => {
+  const chip = (el: HTMLElement, text: string) =>
+    Array.from(el.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes(text),
+    ) as HTMLButtonElement;
+
+  it("offers both delta views and shows one at a time", () => {
+    const el = render(
+      <Harness
+        deltas={{ "core.connections_active_count": 13 }}
+        deltaSinceOpen={{ "core.connections_active_count": 420 }}
+      />,
+    );
+    click(chip(el, "Изменение за секунду"));
+    expect(el.textContent).toContain("+13/с");
+    expect(el.textContent).not.toContain("+420");
+
+    click(chip(el, "С момента открытия"));
+    // The since-open number is a TOTAL, so it carries no "/с" suffix.
+    expect(el.textContent).toContain("+420");
+    expect(el.textContent).not.toContain("+13/с");
+  });
+
+  it("turns a view off when its own chip is pressed again", () => {
+    const el = render(<Harness deltas={{ "core.connections_active_count": 13 }} />);
+    click(chip(el, "Изменение за секунду"));
+    expect(el.textContent).toContain("+13/с");
+    click(chip(el, "Изменение за секунду"));
+    expect(el.textContent).not.toContain("+13/с");
+  });
+
+  it("says honestly that the since-open column has nothing yet", () => {
+    const el = render(<Harness deltas={{ "core.connections_active_count": 13 }} />);
+    click(chip(el, "С момента открытия"));
+    expect(el.textContent).toContain("Изменение появится после второго ответа.");
+  });
+
+  it("offers the reset control only while the since-open view is on", () => {
+    let resets = 0;
+    const el = render(
+      <Harness
+        deltaSinceOpen={{ "core.connections_active_count": 420 }}
+        onResetDelta={() => {
+          resets += 1;
+        }}
+      />,
+    );
+    expect(chip(el, "Сбросить отсчёт")).toBeUndefined();
+    click(chip(el, "С момента открытия"));
+    click(chip(el, "Сбросить отсчёт"));
+    expect(resets).toBe(1);
   });
 });

@@ -49,6 +49,10 @@ export interface DetailPageProps<TPayload, TContext> {
   nowMs?: number;
   /** Per-second counter deltas, keyed by normalized path (ruling R4). */
   deltas?: Record<string, number>;
+  /** Absolute counter change since the page opened, by normalized path (R4). */
+  deltaSinceOpen?: Record<string, number>;
+  /** Moves the since-open delta baseline to the current snapshot (R4). */
+  onResetDelta?: () => void;
   /** Domain chart renderers for this page's CustomSections (§9.8). */
   customRenderers?: CustomSectionRegistry;
   disabledHints?: Record<string, GateHintKey>;
@@ -74,6 +78,8 @@ export function DetailPage<TPayload, TContext>({
   endpoint,
   nowMs,
   deltas,
+  deltaSinceOpen,
+  onResetDelta,
   customRenderers,
   disabledHints,
 }: DetailPageProps<TPayload, TContext>) {
@@ -389,6 +395,8 @@ export function DetailPage<TPayload, TContext>({
                 onSearchChange={api.setSearchQuery}
                 raw={context}
                 {...(deltas !== undefined ? { deltas } : {})}
+                {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+                {...(onResetDelta !== undefined ? { onResetDelta } : {})}
                 {...(customRenderers !== undefined ? { customRenderers } : {})}
               />
             )}

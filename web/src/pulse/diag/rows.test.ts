@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterGroups, flattenToRows, formatPrimitive, group, humanizeKey } from "./rows";
+import { flattenToRows, formatPrimitive, group, humanizeKey } from "./rows";
 import { ru as s } from "../../i18n";
 
 describe("formatPrimitive", () => {
@@ -128,33 +128,5 @@ describe("group", () => {
     expect(group("Writers", { total: 3 }, s)).toEqual([
       { title: "Writers", rows: [{ key: "total", label: "total", value: "3" }] },
     ]);
-  });
-});
-
-describe("filterGroups", () => {
-  const groups = [
-    { title: "Ядро", rows: [{ key: "connections_total", label: "connections total", value: "100" }] },
-    { title: "Апстримы", rows: [{ key: "connect_attempt_total", label: "connect attempt total", value: "50" }] },
-  ];
-
-  it("returns every group unchanged for an empty query", () => {
-    expect(filterGroups(groups, "")).toEqual(groups);
-    expect(filterGroups(groups, "   ")).toEqual(groups);
-  });
-
-  it("keeps a whole group when its title matches", () => {
-    expect(filterGroups(groups, "ядро")).toEqual([groups[0]]);
-  });
-
-  it("keeps only matching rows when the title doesn't match", () => {
-    expect(filterGroups(groups, "attempt")).toEqual([groups[1]]);
-  });
-
-  it("matches case-insensitively against key/label/value", () => {
-    expect(filterGroups(groups, "100")).toEqual([groups[0]]);
-  });
-
-  it("drops a group entirely when nothing in it matches", () => {
-    expect(filterGroups(groups, "nonexistent")).toEqual([]);
   });
 });

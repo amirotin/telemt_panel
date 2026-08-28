@@ -123,26 +123,3 @@ export function group(title: string, source: unknown, s: Dict): KVGroup[] {
   if (source === null || source === undefined) return [];
   return [{ title, rows: flattenToRows(source, s) }];
 }
-
-// filterGroups implements the Счётчики page's key-search filter (and is
-// reusable by any future domain page that wants one): a group survives if
-// its title matches, or at least one of its rows' key/label/value matches
-// the query (case-insensitive substring). Empty query returns every group
-// unchanged. Groups with all rows filtered out are dropped entirely, not
-// kept with zero rows.
-export function filterGroups(groups: KVGroup[], query: string): KVGroup[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return groups;
-  return groups
-    .map((g) => {
-      if (g.title.toLowerCase().includes(q)) return g;
-      const rows = g.rows.filter(
-        (r) =>
-          r.key.toLowerCase().includes(q) ||
-          r.label.toLowerCase().includes(q) ||
-          r.value.toLowerCase().includes(q),
-      );
-      return { title: g.title, rows };
-    })
-    .filter((g) => g.rows.length > 0);
-}

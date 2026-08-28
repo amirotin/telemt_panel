@@ -31,6 +31,10 @@ export interface SectionListProps {
   raw?: unknown;
   /** Per-second counter deltas by normalized path (ruling R4). */
   deltas?: Record<string, number>;
+  /** Absolute counter change since the page opened, by normalized path (R4). */
+  deltaSinceOpen?: Record<string, number>;
+  /** Moves the since-open delta baseline to the current snapshot (R4). */
+  onResetDelta?: () => void;
   /** Domain chart renderers for CustomSection (§9.8). */
   customRenderers?: CustomSectionRegistry;
 }
@@ -46,6 +50,8 @@ export function SectionList({
   onSearchChange,
   raw,
   deltas,
+  deltaSinceOpen,
+  onResetDelta,
   customRenderers,
 }: SectionListProps) {
   const visible = useMemo(
@@ -88,6 +94,8 @@ export function SectionList({
           {...(onSearchChange !== undefined ? { onSearchChange } : {})}
           {...(raw !== undefined ? { raw } : {})}
           {...(deltas !== undefined ? { deltas } : {})}
+          {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+          {...(onResetDelta !== undefined ? { onResetDelta } : {})}
           {...(customRenderers !== undefined ? { customRenderers } : {})}
         />
       ))}
@@ -104,6 +112,8 @@ function SectionView({
   onSearchChange,
   raw,
   deltas,
+  deltaSinceOpen,
+  onResetDelta,
   customRenderers,
 }: {
   section: SectionInstance;
@@ -114,6 +124,8 @@ function SectionView({
   onSearchChange?: (value: string) => void;
   raw?: unknown;
   deltas?: Record<string, number>;
+  deltaSinceOpen?: Record<string, number>;
+  onResetDelta?: () => void;
   customRenderers?: CustomSectionRegistry;
 }) {
   switch (section.kind) {
@@ -171,6 +183,8 @@ function SectionView({
           ctx={ctx}
           hiddenNestedPaths={claimedPaths}
           {...(deltas !== undefined ? { deltas } : {})}
+          {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
+          {...(onResetDelta !== undefined ? { onResetDelta } : {})}
         />
       );
     case "unknownFields":
