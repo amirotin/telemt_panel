@@ -151,11 +151,17 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
                   aria-label={s.details.ranking.sortLabel}
                   value={sortKey}
                   onChange={(e) => {
-                    ctx.setSort({
-                      key: e.target.value,
-                      direction: "desc",
-                      sectionId: instance.id,
-                    });
+                    // Picking the DEFAULT option releases the slot instead
+                    // of writing a sort equal to it. The slot has to be
+                    // releasable, not merely overwritable: an empty slot is
+                    // what stops the order from staying frozen for the rest
+                    // of the visit, and what leaves \u00a718.2's summary shortcut
+                    // free to fill it again.
+                    ctx.setSort(
+                      e.target.value === scoreKey
+                        ? undefined
+                        : { key: e.target.value, direction: "desc", sectionId: instance.id },
+                    );
                     resync();
                   }}
                 >

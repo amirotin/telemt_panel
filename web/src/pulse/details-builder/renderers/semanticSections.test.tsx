@@ -549,6 +549,42 @@ describe("RankingSection (spec §9.6, §18)", () => {
     expect(identities(el)[0]).toBe(newest.ja4);
   });
 
+  it("releases the sort slot when the DEFAULT column is picked back", () => {
+    const el = render(rankingTree(tlsInstance(tlsFingerprints)));
+    const select = el.querySelector<HTMLSelectElement>("select")!;
+    const choose = (value: string) =>
+      act(() => {
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    const byTotal = identities(el);
+
+    choose("last_seen_epoch_secs");
+    expect(identities(el)).not.toEqual(byTotal);
+    choose("total");
+    expect(identities(el)).toEqual(byTotal);
+
+    // The slot is EMPTY, not filled with a sort equal to the default: a
+    // filled slot counts as an interaction and would hold the order frozen
+    // over this frame, which promotes the last record to the top.
+    const promoted: typeof tlsFingerprints = {
+      ...tlsFingerprints,
+      by_fingerprint: tlsFingerprints.by_fingerprint.map((row, i) =>
+        i === tlsFingerprints.by_fingerprint.length - 1 ? { ...row, total: 999_999 } : row,
+      ),
+    };
+    rerender(rankingTree(tlsInstance(promoted)));
+    expect(identities(el)[0]).toBe(promoted.by_fingerprint[promoted.by_fingerprint.length - 1].ja4);
+
+    // …and the released slot takes a sort again, so a summary shortcut
+    // writing the same page state still lands after a reader cleared it.
+    choose("first_seen_epoch_secs");
+    const oldest = [...promoted.by_fingerprint].sort(
+      (a, b) => b.first_seen_epoch_secs - a.first_seen_epoch_secs,
+    )[0];
+    expect(identities(el)[0]).toBe(oldest.ja4);
+  });
+
   it("labels a sort column with the catalog's short name where there is one", () => {
     // Telemt's own key stays the wording and the fallback — the render says
     // «По total» because no TLS field has a short label yet. Where the
