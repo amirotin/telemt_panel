@@ -1,25 +1,19 @@
-import { flattenToRows, type KVGroup } from "./rows";
-import type { Dict } from "../../i18n";
-import type { DcStatus, RuntimeMinimalDcPath } from "../../realtime/topics";
+import type { DcStatusData, RuntimeMinimalDcPath } from "../../realtime/topics";
+import type { DcPagePayload } from "../details-builder/definitions/dc";
 
-// dcGroups gives every configured DC its own group (unlike the DC widget's
-// compact table) — full field composition per DC, including per-endpoint
-// writer counts, plus that DC's selected network path (minimal.data.
-// network_path, mini-task 2c — "minimal" runtime gated, extended mode only)
-// merged into the same group under a `network_path.*` prefix when a
-// matching entry exists, rather than as a separate top-level group per DC.
-export function dcGroups(
-  dcs: DcStatus[],
-  s: Dict,
+// dcPagePayload joins the two topics the DC Details page reads into the one
+// payload its definition expects (details-builder/definitions/dc.ts).
+//
+// This is all that is left of the old `dcGroups`: composition of the page is
+// now the definition's job, and this module only says WHERE the data comes
+// from. `network_path` (mini-task 2c) lives behind its own gate
+// (minimal_runtime_enabled) and simply does not arrive when that gate is
+// off — the page reports it as a degraded optional source and every other
+// section keeps working, rather than the whole page failing (spec §14).
+export function dcPagePayload(
+  dcs: DcStatusData | null | undefined,
   networkPaths: RuntimeMinimalDcPath[] = [],
-): KVGroup[] {
-  return dcs.map((dc) => {
-    const path = networkPaths.find((p) => p.dc === dc.dc);
-    return {
-      title: `DC ${dc.dc}`,
-      rows: path
-        ? [...flattenToRows(dc, s), ...flattenToRows(path, s, "network_path")]
-        : flattenToRows(dc, s),
-    };
-  });
+): DcPagePayload | null {
+  if (!dcs) return null;
+  return networkPaths.length === 0 ? dcs : { ...dcs, network_paths: networkPaths };
 }

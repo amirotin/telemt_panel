@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { dcGroups } from "./dc.helpers";
-import type { DcStatus } from "../../realtime/topics";
-import { ru as s } from "../../i18n";
+import { dcPagePayload } from "./dc.helpers";
+import type { DcStatus, DcStatusData } from "../../realtime/topics";
+import { selectDcContext } from "../details-builder/definitions/dc";
 
 function dc(overrides: Partial<DcStatus> = {}): DcStatus {
   return {
@@ -25,40 +25,61 @@ function dc(overrides: Partial<DcStatus> = {}): DcStatus {
   };
 }
 
-describe("dcGroups", () => {
-  it("returns one group per DC, titled 'DC <id>'", () => {
-    const groups = dcGroups([dc({ dc: 2 }), dc({ dc: 4 })], s);
-    expect(groups.map((g) => g.title)).toEqual(["DC 2", "DC 4"]);
+function payload(dcs: DcStatus[]): DcStatusData {
+  return { middle_proxy_enabled: true, generated_at_epoch_secs: 1756000000, dcs };
+}
+
+describe("dcPagePayload", () => {
+  it("returns null when the topic has no DC payload yet", () => {
+    expect(dcPagePayload(null)).toBeNull();
+    expect(dcPagePayload(undefined)).toBeNull();
   });
 
-  it("flattens every field of the DC, including nested endpoint_writers", () => {
-    const groups = dcGroups([dc()], s);
-    const keys = groups[0].rows.map((r) => r.key);
-    expect(keys).toContain("coverage_pct");
-    expect(keys).toContain("endpoint_writers[0].endpoint");
-    expect(keys).toContain("endpoint_writers[0].active_writers");
+  it("passes the snapshot through untouched when no network paths are gated in", () => {
+    const data = payload([dc()]);
+    // Identity, not just equality: the gated-off case must not allocate a
+    // new object on every realtime frame (§19.1's "не пересоздавать строки
+    // только из-за нового object reference").
+    expect(dcPagePayload(data)).toBe(data);
+    expect(dcPagePayload(data, [])).toBe(data);
   });
 
-  it("returns no groups for an empty list", () => {
-    expect(dcGroups([], s)).toEqual([]);
+  it("attaches the network paths without touching the DC list", () => {
+    const data = payload([dc({ dc: 2 })]);
+    const merged = dcPagePayload(data, [{ dc: 2, ip_preference: "prefer_v4" }]);
+    expect(merged?.network_paths).toEqual([{ dc: 2, ip_preference: "prefer_v4" }]);
+    expect(merged?.dcs).toBe(data.dcs);
+  });
+});
+
+describe("selectDcContext", () => {
+  it("folds the response metadata into the selected DC", () => {
+    const context = selectDcContext(payload([dc({ dc: 2 }), dc({ dc: 4 })]), "dc4");
+    expect(context?.dc).toBe(4);
+    expect(context?.middle_proxy_enabled).toBe(true);
+    expect(context?.generated_at_epoch_secs).toBe(1756000000);
   });
 
-  it("merges a matching network_path entry into that DC's own group", () => {
-    const groups = dcGroups(
-      [dc({ dc: 2 }), dc({ dc: 4 })],
-      s,
-      [{ dc: 2, ip_preference: "prefer_v4", selected_addr_v4: "1.2.3.4" }],
-    );
-    const dc2 = groups[0].rows.map((r) => r.key);
-    expect(dc2).toContain("network_path.ip_preference");
-    expect(dc2).toContain("network_path.selected_addr_v4");
-    const dc4 = groups[1].rows.map((r) => r.key);
-    expect(dc4.some((k) => k.startsWith("network_path."))).toBe(false);
+  it("falls back to the first DC for an unknown or missing key", () => {
+    const data = payload([dc({ dc: 2 }), dc({ dc: 4 })]);
+    expect(selectDcContext(data, undefined)?.dc).toBe(2);
+    expect(selectDcContext(data, "dc999")?.dc).toBe(2);
   });
 
-  it("leaves every DC's rows untouched when no network paths are given", () => {
-    const withDefault = dcGroups([dc({ dc: 2 })], s);
-    const withEmpty = dcGroups([dc({ dc: 2 })], s, []);
-    expect(withDefault).toEqual(withEmpty);
+  it("returns null when there is no DC at all", () => {
+    expect(selectDcContext(payload([]), undefined)).toBeNull();
+  });
+
+  it("merges only the matching DC's network path", () => {
+    const data = { ...payload([dc({ dc: 2 }), dc({ dc: 4 })]), network_paths: [{ dc: 2 }] };
+    expect(selectDcContext(data, "dc2")?.network_path).toEqual({ dc: 2 });
+    expect(selectDcContext(data, "dc4")?.network_path).toBeUndefined();
+  });
+
+  it("omits `reason` entirely when the proxy did not send one", () => {
+    const context = selectDcContext(payload([dc()]), "dc2");
+    // Absent, not null: §13.1 keeps "did not arrive" apart from "arrived
+    // empty", and a null here would print the wrong one of the two.
+    expect(context !== null && "reason" in context).toBe(false);
   });
 });
