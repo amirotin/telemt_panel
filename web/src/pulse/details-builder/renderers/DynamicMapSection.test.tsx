@@ -47,6 +47,33 @@ const mixedDefinition: DetailPageDefinition<typeof mixed, typeof mixed> = {
   ],
 };
 
+// A group whose members do not all end in `.0`: `core.uptime_seconds` is a
+// float, and the group header summed it into «Σ 3 922 605,337» — a
+// measurement, where the header is an order-of-magnitude marker.
+const floats = {
+  core: { uptime_seconds: 3_922_605.337, connections_total: 12 },
+  pool: { pool_alive_count: 3 },
+};
+
+const floatsDefinition: DetailPageDefinition<typeof floats, typeof floats> = {
+  id: "test.floats",
+  title: () => "All counters",
+  sources: [{ id: "stats", required: true }],
+  sections: [
+    {
+      kind: "dynamicMap",
+      id: "all",
+      title: () => "All counters",
+      path: "",
+      defaultExpanded: true,
+      groups: [
+        { id: "core", title: () => "Core", path: "core" },
+        { id: "pool", title: () => "Pool", path: "pool" },
+      ],
+    },
+  ],
+};
+
 const definition: DetailPageDefinition<typeof zeroAll, typeof zeroAll> = {
   id: "test.counters",
   title: () => "Counters",
@@ -77,6 +104,11 @@ function mixedInstance(): DynamicMapSectionInstance {
   return resolved.sections.find((s) => s.id === "all") as DynamicMapSectionInstance;
 }
 
+function floatsInstance(): DynamicMapSectionInstance {
+  const resolved = resolveSections({ definition: floatsDefinition, context: floats });
+  return resolved.sections.find((s) => s.id === "all") as DynamicMapSectionInstance;
+}
+
 function toggled(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
   const next = new Set(set);
   if (next.has(id)) next.delete(id);
@@ -92,12 +124,14 @@ function Harness({
   deltaRestarted,
   onResetDelta,
   production,
+  floats: withFloats,
 }: {
   deltas?: Record<string, number>;
   deltaSinceOpen?: Record<string, number>;
   deltaRestarted?: boolean;
   onResetDelta?: () => void;
   production?: boolean;
+  floats?: boolean;
 }) {
   const [sections, setSections] = useState<ReadonlySet<string>>(new Set());
   const [records, setRecords] = useState<ReadonlySet<string>>(new Set());
@@ -121,7 +155,7 @@ function Harness({
   };
   return (
     <DynamicMapSection
-      instance={production ? instance() : mixedInstance()}
+      instance={withFloats ? floatsInstance() : production ? instance() : mixedInstance()}
       ctx={ctx}
       {...(deltas !== undefined ? { deltas } : {})}
       {...(deltaSinceOpen !== undefined ? { deltaSinceOpen } : {})}
@@ -228,6 +262,17 @@ describe("DynamicMapSection (spec §9.7, §11.2)", () => {
     )!;
     click(deltaChip);
     expect(el.textContent).toContain("Изменение появится после второго ответа.");
+  });
+
+  it("rounds a group's Σ — it is an order of magnitude, not a measurement", () => {
+    // `core.uptime_seconds` is a float, so the header read
+    // «Σ 3 922 605,337» over a column of integers.
+    const el = render(<Harness floats />);
+    const totals = Array.from(el.querySelectorAll("span"))
+      .map((n) => n.textContent ?? "")
+      .filter((text) => text.startsWith("Σ"));
+    expect(totals.length).toBeGreaterThan(0);
+    for (const text of totals) expect(text, text).not.toMatch(/[.,]\d/);
   });
 
   it("blames a restart rather than the second response when the source restarted", () => {
