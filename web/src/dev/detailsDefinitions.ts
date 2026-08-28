@@ -1,11 +1,11 @@
 // Page definitions for the DEV-only /dev/details route.
 //
-// These are NOT the production definitions — those land with the domain
-// migrations (Tasks 6–8) under details-builder/definitions/. These exist so
-// the renderers can be exercised, screenshotted and reviewed against
-// production-sized fixtures before any real page is migrated, including the
-// REST source states (`unsupported`, `stale`, …) that no live stand
-// reproduces on demand.
+// DC and Security/TLS are the PRODUCTION definitions
+// (details-builder/definitions/), rendered here over the Task 1 fixtures so
+// the renderers can be exercised and screenshotted against
+// production-sized payloads — including the REST source states
+// (`unsupported`, `stale`, …) that no live stand reproduces on demand. The
+// remaining pages are still drafts for the domains Tasks 7–8 own.
 //
 // This module is only ever reached through routes/dev/details.tsx's
 // `import.meta.env.DEV` guard, which is what makes importing the test
@@ -14,8 +14,6 @@
 
 import type {
   DcEndpointWriters,
-  DcStatus,
-  DcStatusData,
   RuntimeEdgeEventRecord,
   RuntimeEdgeEvents,
   RuntimeInitialization,
@@ -24,11 +22,22 @@ import type {
 } from "../realtime/topics";
 import type {
   TlsFingerprintRow,
-  TlsFingerprints,
   ZeroAllData,
 } from "../lib/api/generated/types.gen";
-import type { DetailPageDefinition, FieldCatalog } from "../pulse/details-builder";
+import type {
+  DetailPageDefinition,
+  FieldCatalog,
+  RankingSectionDefinition,
+  SectionDefinition,
+} from "../pulse/details-builder";
 import { DEFAULT_FIELD_CATALOG, QUALITY_CHART_RENDERER } from "../pulse/details-builder";
+import {
+  dcPageDefinition,
+  securityPageDefinition,
+  type DcPageContext,
+  type DcPagePayload,
+  type SecurityPageData,
+} from "../pulse/details-builder/definitions";
 import {
   dcs,
   events,
@@ -38,7 +47,9 @@ import {
   zeroAll,
 } from "../pulse/details-builder/__fixtures__";
 
-export const dcKey = (dc: DcStatus): string => `dc${dc.dc}`;
+// Re-exported so the harness and the production page cannot key entities
+// two different ways.
+export { dcEntityKey as dcKey } from "../pulse/details-builder/definitions";
 
 // devCatalog — the seeded catalog plus the timestamps these fixtures carry.
 //
@@ -58,82 +69,35 @@ export const devCatalog: FieldCatalog = {
   ],
 };
 
-// --- DC: entity selector + summary + scalars + two arrays (§23.1) --------
+// --- DC: the PRODUCTION definition, with one harness-only override ------
 
-export const devDcPage: DetailPageDefinition<DcStatusData, DcStatus> = {
+// Since M4 task 6 the DC page is real (pulse/diag/DcPage.tsx renders
+// definitions/dc.ts), so the harness renders the same definition rather
+// than a parallel copy that could drift away from it.
+//
+// The single override is `endpoint_writers`: §23.1 makes it an ArraySection
+// and production follows the spec, but it is also the ONLY DC array whose
+// rows are records — and therefore the only way to put a §17 detail surface
+// on a page that ALSO carries an entity selector, which is what
+// "a swipe does nothing while a surface is open" and "a rotation keeps the
+// open surface" need in order to be driven end to end
+// (e2e/details.spec.ts). The harness swaps that one section to §9.3.
+const endpointWritersAsEntityList: SectionDefinition<DcPageContext> = {
+  kind: "entityList",
+  id: "endpoint_writers",
+  title: () => "endpoint_writers[]",
+  path: "endpoint_writers",
+  itemKey: (item, i) => `ew-${(item as DcEndpointWriters).endpoint}-${i}`,
+  identity: (item) => (item as DcEndpointWriters).endpoint,
+  highlights: ["active_writers"],
+};
+
+export const devDcPage: DetailPageDefinition<DcPagePayload, DcPageContext> = {
+  ...dcPageDefinition,
   id: "dev.dc",
-  title: (s) => s.diag.domains.dc,
-  sources: [{ id: "upstreams", topic: "upstreams", required: true }],
-  freshness: { atEpochMs: (p) => p.generated_at_epoch_secs * 1000 },
-  navigation: {
-    entities: {
-      path: "dcs",
-      entityKey: (item) => dcKey(item as DcStatus),
-      label: (item) => `DC ${(item as DcStatus).dc}`,
-    },
-    selectEntity: (payload, key) =>
-      payload.dcs.find((dc) => dcKey(dc) === key) ?? payload.dcs[0] ?? null,
-  },
-  // No `label` anywhere: the tiles take their name from the field catalog,
-  // which is what a real definition (Tasks 6-8) should do too.
-  summary: [
-    { id: "load", value: (dc) => dc.load, format: "decimal" },
-    {
-      id: "coverage",
-      path: "coverage_pct",
-      value: (dc) => dc.coverage_pct,
-      unit: "percent",
-      tone: "good",
-    },
-    { id: "rtt", path: "rtt_ms", value: (dc) => dc.rtt_ms, unit: "milliseconds" },
-    {
-      id: "endpoints",
-      path: "available_endpoints",
-      value: (dc) => dc.available_endpoints,
-      format: "integer",
-    },
-  ],
-  sections: [
-    {
-      kind: "scalars",
-      id: "routing",
-      title: () => "Routing & capacity",
-      defaultExpanded: true,
-      fields: [
-        { path: "dc" },
-        { path: "available_endpoints" },
-        { path: "available_pct" },
-        { path: "required_writers" },
-        { path: "floor_min" },
-        { path: "floor_target" },
-        { path: "floor_max" },
-        { path: "floor_capped" },
-        { path: "alive_writers" },
-        { path: "coverage_pct" },
-        { path: "fresh_alive_writers" },
-        { path: "fresh_coverage_pct" },
-        { path: "rtt_ms" },
-        { path: "load" },
-      ],
-    },
-    { kind: "array", id: "endpoints", title: () => "endpoints[]", path: "endpoints" },
-    // §9.3 rather than §9.2, and deliberately: this is the only DC array
-    // whose rows are records, and it is the only way the harness can put a
-    // §17 surface on a page that ALSO carries an entity selector — which is
-    // what "a swipe does nothing while a surface is open" and "a rotation
-    // keeps the open surface" need in order to be driven end to end
-    // (e2e/details.spec.ts).
-    {
-      kind: "entityList",
-      id: "endpoint_writers",
-      title: () => "endpoint_writers[]",
-      path: "endpoint_writers",
-      itemKey: (item, i) => `ew-${(item as DcEndpointWriters).endpoint}-${i}`,
-      identity: (item) => (item as DcEndpointWriters).endpoint,
-      highlights: ["active_writers"],
-    },
-  ],
-  unknownFields: { minMode: "extended", rawJson: true },
+  sections: dcPageDefinition.sections.map((section) =>
+    section.id === "endpoint_writers" ? endpointWritersAsEntityList : section,
+  ),
 };
 
 // --- ME quality: the reference CUSTOM chart + two counters maps (§23.2) --
@@ -274,67 +238,38 @@ export const RECENT_FILTER_KEY = "tls.recent";
 
 const isRecent = (item: unknown) => rowOf(item).last_seen_epoch_secs >= RECENT_SINCE_EPOCH_SECS;
 
-function tlsRanking(
-  id: string,
-  path: "by_fingerprint" | "by_ip" | "by_cidr" | "by_user",
-  title: string,
-  identity: (row: TlsFingerprintRow) => string,
-) {
+// Since M4 task 6 the four rankings are the production ones
+// (definitions/security.ts). The harness keeps two things the real page
+// deliberately does NOT have:
+//
+//   * §18.2's interactive summary shortcut, and the domain-relevant filter
+//     it aims at. Live Telemt reports `bad_or_probe: 0` everywhere and a
+//     fixed dev clock is the only way to make "recently seen" split a list,
+//     so the demonstration lives here rather than on a page where the
+//     control would never have anything to do;
+//   * a four-tab navigation without the posture tab, because the harness
+//     feeds this definition a bare TLS payload with no `security` topic
+//     behind it.
+const RANKING_IDS = ["by_fingerprint", "by_ip", "by_cidr", "by_user"] as const;
+
+function withRecentFilter(section: SectionDefinition<SecurityPageData>) {
+  if (section.kind !== "ranking") return section;
+  const ranking = section as RankingSectionDefinition<SecurityPageData, unknown>;
   return {
-    kind: "ranking" as const,
-    id,
-    title: () => title,
-    path,
-    defaultExpanded: true,
-    // The honest semantic key, duplicates and all: `by_user` and `by_cidr`
-    // really do name several records with one scope, and RankingSection
-    // disambiguates them from the record itself. An index here would change
-    // every key a Telemt re-sort moved and turn the frozen order into an
-    // append-everything.
-    itemKey: (item: unknown) => identity(rowOf(item)),
-    identity: (item: unknown) => identity(rowOf(item)),
-    score: (item: unknown) => rowOf(item).total,
-    scoreKey: "total",
+    ...ranking,
     scoreLabel: () => "observed",
-    meta: (item: unknown) => `bad/probe ${rowOf(item).bad_or_probe}`,
-    search: { terms: (item: unknown) => [rowOf(item).ja3, rowOf(item).ja4, rowOf(item).scope ?? ""] },
-    filters: [
-      { key: RECENT_FILTER_KEY, label: () => "Recently seen", predicate: isRecent },
-    ],
+    filters: [{ key: RECENT_FILTER_KEY, label: () => "Recently seen", predicate: isRecent }],
   };
 }
 
 const totalOf = (rows: TlsFingerprintRow[] | undefined, pick: (r: TlsFingerprintRow) => number) =>
   (rows ?? []).reduce((sum, row) => sum + pick(row), 0);
 
-export const devTlsPage: DetailPageDefinition<TlsFingerprints, TlsFingerprints> = {
+export const devTlsPage: DetailPageDefinition<SecurityPageData, SecurityPageData> = {
+  ...securityPageDefinition,
   id: "dev.tls",
-  title: (s) => s.diag.domains.security,
-  sources: [{ id: "tls", endpoint: "/api/telemt/tls-fingerprints", required: true }],
   summary: [
-    {
-      id: "observed",
-      label: () => "ClientHello observed",
-      value: (p) => totalOf(p.by_fingerprint, (r) => r.total),
-      format: "integer",
-    },
-    {
-      id: "bad",
-      label: () => "Bad / probe",
-      value: (p) => totalOf(p.by_fingerprint, (r) => r.bad_or_probe),
-      format: "integer",
-      tone: "warn",
-    },
-    {
-      id: "keys",
-      label: () => "Unique keys",
-      value: (p) =>
-        (p.by_fingerprint?.length ?? 0) +
-        (p.by_ip?.length ?? 0) +
-        (p.by_cidr?.length ?? 0) +
-        (p.by_user?.length ?? 0),
-      format: "integer",
-    },
+    ...(securityPageDefinition.summary ?? []).filter((m) => m.id !== "whitelist_size"),
     // §18.2: the tile applies the same filter the chip under each ranking
     // toggles, and sorts the fingerprint ranking by recency.
     {
@@ -361,27 +296,12 @@ export const devTlsPage: DetailPageDefinition<TlsFingerprints, TlsFingerprints> 
       { id: "users", label: () => "Users", sections: ["by_user"] },
     ],
   },
-  sections: [
-    {
-      kind: "scalars",
-      id: "capture",
-      title: (s) => s.diag.groups.telemetry,
-      defaultExpanded: true,
-      fields: [
-        { path: "limit" },
-        { path: "retention_secs" },
-        { path: "capacity" },
-        { path: "dropped_total" },
-        { path: "parse_error_total" },
-      ],
-    },
-    tlsRanking("by_fingerprint", "by_fingerprint", "Ranked records · ja4", (r) => r.ja4),
-    tlsRanking("by_ip", "by_ip", "Ranked records · ip", (r) => r.scope ?? r.ja4),
-    tlsRanking("by_cidr", "by_cidr", "Ranked records · cidr", (r) => r.scope ?? r.ja4),
-    tlsRanking("by_user", "by_user", "Ranked records · user", (r) => r.scope ?? r.ja4),
-  ],
-  unknownFields: { minMode: "extended", rawJson: true },
+  sections: securityPageDefinition.sections
+    .filter((section) => section.id === "capture" || RANKING_IDS.includes(section.id as never))
+    .map(withRecentFilter),
 };
+
+export { totalOf as devTlsTotalOf };
 
 // --- Counters: the five zero/all groups + three breakdowns (§23.4) -------
 
