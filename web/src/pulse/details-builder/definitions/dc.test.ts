@@ -16,6 +16,7 @@ import {
   dcAttentionTone,
   dcEntityKey,
   dcPageDefinition,
+  orderDcs,
   selectDcContext,
   type DcPagePayload,
 } from "./dc";
@@ -40,6 +41,40 @@ describe("DC page definition (spec §23.1)", () => {
     // Negative ids are real (§9: "DC IDs включают как положительные, так и
     // отрицательные"), so the key must not be parsed as a number anywhere.
     expect(keys).toContain("dc-1");
+  });
+
+  // The fixture is hand-ordered production-first, so it cannot catch a
+  // definition that simply trusts the payload. These two cases feed the
+  // orders the fixture hides: the ascending one Telemt actually sends, and
+  // a shuffle that matches nothing.
+  const ORDERED_IDS = [1, 2, 3, 4, 5, 203, -1, -2, -3, -4, -5, -203];
+
+  function reorderedPayload(order: (a: number, b: number) => number): DcPagePayload {
+    return { ...payload, dcs: [...payload.dcs].sort((a, b) => order(a.dc, b.dc)) };
+  }
+
+  it("puts production data centers before the test sites, whatever order Telemt sends", () => {
+    // Live Telemt sorts numerically ascending: -203 … 203.
+    const live = reorderedPayload((a, b) => a - b);
+    expect(live.dcs.map((dc) => dc.dc)[0]).toBe(-203);
+
+    const rail = dcPageDefinition.navigation?.entities?.select?.(live) ?? [];
+    expect(rail.map((item) => (item as { dc: number }).dc)).toEqual(ORDERED_IDS);
+  });
+
+  it("orders a shuffled payload the same way", () => {
+    const shuffled = reorderedPayload((a, b) => ((a * 7919) % 13) - ((b * 7919) % 13));
+    const rail = dcPageDefinition.navigation?.entities?.select?.(shuffled) ?? [];
+    expect(rail.map((item) => (item as { dc: number }).dc)).toEqual(ORDERED_IDS);
+    // The order is a pure function of the ids, not of the input order.
+    expect(orderDcs(shuffled.dcs).map((dc) => dc.dc)).toEqual(ORDERED_IDS);
+  });
+
+  it("defaults the selection to the first production DC, not to the payload head", () => {
+    const live = reorderedPayload((a, b) => a - b);
+    expect(selectDcContext(live, undefined)?.dc).toBe(1);
+    // An explicit key still wins over the ordering.
+    expect(selectDcContext(live, "dc-203")?.dc).toBe(-203);
   });
 
   it("renders §23.1's fourteen routing fields, in the spec's order", () => {
