@@ -808,6 +808,26 @@ describe("RankingSection with duplicate identities (spec §5.3)", () => {
     expect(dialog.textContent).not.toContain(tlsFingerprints.by_user[0].ja4);
   });
 
+  it("keeps the open surface when a NAMESAKE leaves the payload", () => {
+    // Rows 0, 1 and 14 of the fixture: two `user_01` around one `user_02`.
+    const [first, other, second] = [
+      tlsFingerprints.by_user[0],
+      tlsFingerprints.by_user[1],
+      tlsFingerprints.by_user[14],
+    ];
+    expect(second.scope).toBe(first.scope);
+    const el = render(scopeTree(byUser, { ...tlsFingerprints, by_user: [first, other, second] }));
+    click(rows(el, "by-user")[2].querySelector("button")!);
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain(second.ja4);
+    // The namesake leaves. A key that named the frame's COMPOSITION would
+    // rename the survivor here, applyFrozenOrder would read the rename as a
+    // departure, and the surface would close under the reader's hands.
+    rerender(scopeTree(byUser, { ...tlsFingerprints, by_user: [other, second] }));
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain(second.ja4);
+  });
+
   it("holds the frozen order over a re-sorted payload, and re-syncs on blur", () => {
     const el = render(scopeTree(byUser, tlsFingerprints));
     const before = shownScores(el, "by-user");

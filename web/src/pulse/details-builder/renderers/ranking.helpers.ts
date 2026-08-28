@@ -69,22 +69,19 @@ function identifyingText(value: unknown, path: string, out: string[]): void {
 // end — an order worse than no freeze at all. The disambiguator here is
 // read from the record itself instead, so a moved row keeps its key.
 //
-// Only a repeated key is decorated; a key that names one record stays
-// exactly as the definition spelled it.
+// EVERY key carries the digest, not only one that repeats in this frame.
+// Decorating just the duplicates would make the key a function of the
+// frame's COMPOSITION rather than of the record: a row would be re-keyed
+// the moment a namesake arrived or left, `applyFrozenOrder` would read the
+// rename as a departure and append the survivor to the end, and a detail
+// surface open on it would close under the reader's hands — the very
+// failure the index-bearing key was rejected for. The price is a longer
+// key in a React warning, which is the price already paid for duplicates.
 export function uniqueEntryKeys(
   itemKeys: readonly string[],
   items: readonly unknown[],
 ): string[] {
-  const repeated = new Set<string>();
-  const seen = new Set<string>();
-  for (const key of itemKeys) {
-    if (seen.has(key)) repeated.add(key);
-    else seen.add(key);
-  }
-  if (repeated.size === 0) return [...itemKeys];
-
   const candidates = itemKeys.map((key, i) => {
-    if (!repeated.has(key)) return key;
     const text: string[] = [];
     identifyingText(items[i], "", text);
     return `${key}${KEY_SEPARATOR}${digest(text.join("\u0000"))}`;

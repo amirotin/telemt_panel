@@ -166,10 +166,14 @@ describe("uniqueEntryKeys (spec §5.3, §19.2 — the reconciliation key)", () =
   const byCidr = tlsFingerprints.by_cidr;
   const scopeOf = (row: { scope?: string }) => row.scope ?? "";
 
-  it("leaves a key that names ONE record exactly as the definition spelled it", () => {
+  it("names a record by the definition's key AND by the record itself", () => {
     const rows = tlsFingerprints.by_fingerprint;
     const keys = rows.map((row) => row.ja4);
-    expect(uniqueEntryKeys(keys, rows)).toEqual(keys);
+    const unique = uniqueEntryKeys(keys, rows);
+    // The digest is unconditional, so even a key that already names one
+    // record carries it — but the identity stays legible at the front.
+    expect(new Set(unique).size).toBe(rows.length);
+    unique.forEach((key, i) => expect(key.startsWith(`${keys[i]}\u00b7`)).toBe(true));
   });
 
   it("makes the keys of the by_user ranking unique without touching the index", () => {
@@ -209,6 +213,23 @@ describe("uniqueEntryKeys (spec §5.3, §19.2 — the reconciliation key)", () =
     expect(keys[0]).toMatch(/^user_01·[0-9a-z]+$/);
     expect(keys[1]).toBe(`${keys[0]}·2`);
     expect(keys[2]).toBe(`${keys[0]}·3`);
+  });
+
+  it("keeps a record's key when a namesake LEAVES or ARRIVES (\u00a719.2)", () => {
+    // Rows 0, 14 and 28 of the fixture are all `user_01`.
+    const [first, other, second, third] = [byUser[0], byUser[1], byUser[14], byUser[28]];
+    expect(scopeOf(second)).toBe(scopeOf(first));
+    expect(scopeOf(third)).toBe(scopeOf(first));
+    const trio = [first, other, second];
+    const withTwin = uniqueEntryKeys(trio.map(scopeOf), trio);
+    // The namesake leaves: the survivor becomes the only `user_01` in the
+    // frame, and must NOT be renamed for it — a rename reads to
+    // applyFrozenOrder as a departure and closes an open surface.
+    const pair = [other, second];
+    expect(uniqueEntryKeys(pair.map(scopeOf), pair)).toEqual([withTwin[1], withTwin[2]]);
+    // …and one more namesake arriving does not rename anybody either.
+    const quartet = [first, other, second, third];
+    expect(uniqueEntryKeys(quartet.map(scopeOf), quartet).slice(0, 3)).toEqual(withTwin);
   });
 
   it("keeps a record distinguishable by a string field apart from its namesake", () => {
