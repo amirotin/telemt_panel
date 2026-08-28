@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { en } from "../../i18n/en";
 import { ru } from "../../i18n/ru";
 import type { FieldCatalog } from "./fieldCatalog";
-import { counterFamilyFor, describeField, lookupField } from "./fieldCatalog";
+import {
+  counterFamilyFor,
+  describeField,
+  lookupField,
+  TLS_FINGERPRINTS_ENDPOINT,
+} from "./fieldCatalog";
 
 // A tiny catalog whose entries collide on purpose at every one of §8.2's
 // five steps, so the priority is asserted rather than assumed.
@@ -135,5 +140,40 @@ describe("describeField (spec §8)", () => {
     const field = describeField("core.handshake_timeouts_total", ru);
     expect(field.description).toBe(ru.details.fields.families.errorsTotal);
     expect(field.format).toBe("integer");
+  });
+});
+
+// The TLS domain is the first ENDPOINT-SCOPED one (R9): its record fields
+// are called `total`, `limit`, `capacity` and `scope`, words other Telemt
+// payloads use for other things. Scoping keeps one page's meaning off
+// another page's rows — and is the mechanism the Ranking surface reads
+// through.
+describe("field catalog: TLS is endpoint-scoped (R9)", () => {
+  const tls = { endpoint: TLS_FINGERPRINTS_ENDPOINT };
+
+  it("describes a ranking record's fields under its endpoint", () => {
+    expect(lookupField("by_fingerprint[0].ja4", tls).source).toBe("endpoint");
+    expect(describeField("by_fingerprint[0].ja4", ru, tls).description).toBe(
+      ru.details.fields.descriptions["tls.ja4"],
+    );
+    // All four groups share the one sentence.
+    for (const scope of ["by_fingerprint", "by_ip", "by_cidr", "by_user"]) {
+      expect(describeField(`${scope}[3].total`, ru, tls).description).toBe(
+        ru.details.fields.descriptions["tls.total"],
+      );
+    }
+  });
+
+  it("reads a last-seen stamp as a MOMENT, not as a duration in seconds", () => {
+    const field = describeField("by_fingerprint[0].last_seen_epoch_secs", ru, tls);
+    expect(field.unit).toBe("timestamp");
+    expect(field.description).not.toBe(ru.details.fields.families.seconds);
+  });
+
+  it("says nothing about `total` or `limit` on a page that is not the TLS one", () => {
+    // Without the endpoint scope the same generic key falls through to the
+    // counters family or the neutral fallback — which is the whole point.
+    expect(lookupField("by_fingerprint[0].ja4").source).toBe("fallback");
+    expect(lookupField("limit").source).toBe("fallback");
   });
 });

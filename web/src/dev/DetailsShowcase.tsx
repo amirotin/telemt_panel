@@ -14,6 +14,8 @@ import {
   devCatalog,
   devCountersPage,
   devDcPage,
+  devEventsPage,
+  devInitPage,
   devMeQualityPage,
   devPayloads,
   devTlsPage,
@@ -26,11 +28,13 @@ import {
 const FIXED_NOW = 1_756_000_000_000 + 125_000;
 const FRESH_AT = 1_756_000_000_000;
 
-type PageId = "dc" | "me" | "tls" | "counters";
+type PageId = "dc" | "me" | "init" | "events" | "tls" | "counters";
 
 const PAGES: { id: PageId; label: string }[] = [
   { id: "dc", label: "DC" },
   { id: "me", label: "ME quality" },
+  { id: "init", label: "ME init" },
+  { id: "events", label: "Events" },
   { id: "tls", label: "Security / TLS" },
   { id: "counters", label: "Counters" },
 ];
@@ -139,6 +143,28 @@ export function DetailsShowcase() {
             nowMs={FIXED_NOW}
           />
         );
+      case "init":
+        return (
+          <DetailPage
+            definition={devInitPage}
+            payload={withData ? devPayloads.initialization : null}
+            sources={sourcesFor(devInitPage.sources, status, devPayloads.initialization)}
+            breadcrumb="PULSE / DETAILS"
+            catalog={devCatalog}
+            nowMs={FIXED_NOW}
+          />
+        );
+      case "events":
+        return (
+          <DetailPage
+            definition={devEventsPage}
+            payload={withData ? devPayloads.events : null}
+            sources={sourcesFor(devEventsPage.sources, status, devPayloads.events)}
+            breadcrumb="PULSE / DETAILS"
+            catalog={devCatalog}
+            nowMs={FIXED_NOW}
+          />
+        );
       case "tls":
         return (
           <DetailPage
@@ -147,6 +173,9 @@ export function DetailsShowcase() {
             sources={sourcesFor(devTlsPage.sources, status, devPayloads.tls)}
             breadcrumb="PULSE / DETAILS"
             catalog={devCatalog}
+            // R9: the TLS descriptions are endpoint-scoped, because `total`
+            // and `limit` mean something else on every other page.
+            endpoint="/api/telemt/tls-fingerprints"
             nowMs={FIXED_NOW}
           />
         );

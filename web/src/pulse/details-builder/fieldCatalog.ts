@@ -219,9 +219,56 @@ const ME_ENTRIES: FieldCatalogEntry[] = [
   { path: "dc_rtt.*.coverage_pct", descriptionKey: "me.dc_rtt.coverage_pct", unit: "percent" },
 ];
 
+/** The REST endpoint the TLS-fingerprint rankings read (Task 1). */
+export const TLS_FINGERPRINTS_ENDPOINT = "/api/telemt/tls-fingerprints";
+
+// The TLS domain is ENDPOINT-SCOPED, not global, and deliberately so: its
+// record fields are named `total`, `limit`, `capacity`, `scope` — words
+// every other Telemt payload also uses for something else. A global entry
+// for `limit` would describe some future page's unrelated limit as a TLS
+// capture bound. R9's endpoint scope exists for exactly this, and the
+// ranking rows below are the first consumer of it.
+//
+// The four groups carry the same record, so one description serves all
+// four spellings (§8.3: both spellings of a path resolve to one sentence).
+const TLS_SCOPES = ["by_fingerprint", "by_ip", "by_cidr", "by_user"] as const;
+
+function tlsRowField(
+  field: string,
+  extra: Omit<FieldCatalogEntry, "path" | "descriptionKey"> = {},
+): FieldCatalogEntry[] {
+  const key = `tls.${field}`;
+  return TLS_SCOPES.map((scope) => ({
+    path: `${scope}.*.${field}`,
+    descriptionKey: key,
+    ...extra,
+  }));
+}
+
+const TLS_ENTRIES: FieldCatalogEntry[] = [
+  { path: "limit", descriptionKey: "tls.limit", format: "integer" },
+  { path: "retention_secs", descriptionKey: "tls.retention_secs", unit: "seconds" },
+  { path: "capacity", descriptionKey: "tls.capacity", format: "integer" },
+  { path: "dropped_total", descriptionKey: "tls.dropped_total", format: "integer" },
+  { path: "parse_error_total", descriptionKey: "tls.parse_error_total", format: "integer" },
+  ...TLS_SCOPES.map((scope) => ({ path: scope, descriptionKey: `tls.${scope}` })),
+  ...tlsRowField("scope", { format: "identifier" }),
+  ...tlsRowField("ja3", { format: "identifier" }),
+  ...tlsRowField("ja3_raw", { format: "identifier" }),
+  ...tlsRowField("ja4", { format: "identifier" }),
+  ...tlsRowField("ja4_raw", { format: "identifier" }),
+  ...tlsRowField("total", { format: "integer" }),
+  ...tlsRowField("auth_success", { format: "integer" }),
+  ...tlsRowField("bad_or_probe", { format: "integer" }),
+  // An epoch MOMENT, not a duration: without the unit the counters family
+  // reads the `_secs` suffix as a span and prints "20 322 дн."
+  ...tlsRowField("first_seen_epoch_secs", { unit: "timestamp" }),
+  ...tlsRowField("last_seen_epoch_secs", { unit: "timestamp" }),
+];
+
 export const DEFAULT_FIELD_CATALOG: FieldCatalog = {
   entries: [...DC_ENTRIES, ...ME_ENTRIES],
-  byEndpoint: {},
+  byEndpoint: { [TLS_FINGERPRINTS_ENDPOINT]: TLS_ENTRIES },
 };
 
 // --- lookup --------------------------------------------------------------
