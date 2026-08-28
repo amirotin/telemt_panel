@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
+import { startDevServer, stopDevServer } from "./devServer";
 
 // e2e/details.spec.ts — spec §27.3's interaction matrix against the real
 // Details builder on /dev/details:
@@ -63,15 +64,35 @@ function selectedEntity(page: Page) {
   return page.getByTestId("entity-selector").locator('[aria-pressed="true"]');
 }
 
+// The vite dev server this project needs, started for THIS spec only —
+// the other two projects drive the built binary and must not wait for it
+// (see e2e/devServer.ts).
+test.beforeAll(async () => {
+  test.setTimeout(150_000);
+  await startDevServer();
+});
+
+test.afterAll(async () => {
+  await stopDevServer();
+});
+
 // Nothing on this page should ever log to the console; a scenario that
-// produces one is a failure even if its assertions pass.
+// produces one is a failure even if its assertions pass. Collected rather
+// than thrown from the listener: an exception raised inside an event
+// handler surfaces as an unhandled error with no attribution to the step
+// that caused it.
+const consoleErrors: string[] = [];
+
 test.beforeEach(({ page }) => {
+  consoleErrors.length = 0;
   page.on("console", (msg) => {
-    if (msg.type() === "error") throw new Error(`console error: ${msg.text()}`);
+    if (msg.type() === "error") consoleErrors.push(`console error: ${msg.text()}`);
   });
-  page.on("pageerror", (err) => {
-    throw new Error(`page error: ${err.message}`);
-  });
+  page.on("pageerror", (err) => consoleErrors.push(`page error: ${err.message}`));
+});
+
+test.afterEach(() => {
+  expect(consoleErrors).toEqual([]);
 });
 
 test("tapping an entity row opens the detail surface, and closing returns focus", async ({

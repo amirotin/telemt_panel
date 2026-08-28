@@ -204,6 +204,15 @@ sequential flow through login → create a user → share/sub-page → Пуль�
 dashboard + layout editor → Журнал → Сервер) and `desktop` (1280×800 smoke —
 sidebar, the Raw config editor/CodeMirror actually mounting at `lg:`).
 
+A third project, `details`, is the one exception: it drives the Details
+builder's `/dev/details` harness, which lives behind `import.meta.env.DEV`
+and is dropped from the bundle the binary embeds, so it runs against a vite
+dev server on its own port. That server is started and stopped by
+`e2e/details.spec.ts` itself (`e2e/devServer.ts`), not by the config's
+`webServer` — which is config-level and would make `mobile` and `desktop`
+wait for a server they never use. A vite already listening on the port is
+reused and left running.
+
 ```bash
 npx playwright install chromium   # once per machine
 make build                        # from the repo root (src/) — the panel binary e2e runs against
