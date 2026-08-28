@@ -281,18 +281,25 @@ test("with a surface open, a swipe pages nothing and a rotation keeps it", async
   await expect(selectedEntity(page)).toHaveText(chosen);
 });
 
-test("no page scrolls horizontally, in any of the four modes", async ({ page }) => {
-  await openHarness(page, "tls");
-  for (const size of [
-    { width: 360, height: 640 },
-    { width: 844, height: 390 },
-    { width: 768, height: 1024 },
-    { width: 1280, height: 900 },
-  ]) {
-    await page.setViewportSize(size);
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    );
-    expect(overflow, `${size.width}×${size.height}`).toBeLessThanOrEqual(0);
-  }
-});
+// Both harness pages, because they fail differently: `tls` is the wide-table
+// page, and `dc` is the one with the twelve-entity rail whose attention
+// markers widened the document by 286 px until their `sr-only` text was given
+// a positioned ancestor. The Go mock serves a single DC, so this fixture-backed
+// harness is the only stand that reproduces the twelve-chip rail at all.
+for (const domain of ["tls", "dc"] as const) {
+  test(`no page scrolls horizontally, in any of the four modes (${domain})`, async ({ page }) => {
+    await openHarness(page, domain);
+    for (const size of [
+      { width: 360, height: 640 },
+      { width: 844, height: 390 },
+      { width: 768, height: 1024 },
+      { width: 1280, height: 900 },
+    ]) {
+      await page.setViewportSize(size);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow, `${domain} ${size.width}×${size.height}`).toBeLessThanOrEqual(0);
+    }
+  });
+}

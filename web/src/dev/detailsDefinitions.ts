@@ -14,6 +14,7 @@
 
 import type {
   DcEndpointWriters,
+  DcStatusData,
   RuntimeEdgeEventRecord,
   RuntimeEdgeEvents,
   RuntimeInitialization,
@@ -355,8 +356,25 @@ export const devCountersPage: DetailPageDefinition<ZeroAllData, ZeroAllData> = {
   unknownFields: { minMode: "extended", rawJson: true },
 };
 
+// dcsWithAttention degrades the LAST data center of the rail on purpose.
+//
+// The shared fixture is uniformly healthy, so nothing in it raises an
+// attention marker — and the marker on the RIGHTMOST chip is exactly the
+// shape that broke /pulse/diag/dc against live data: its `sr-only` reason
+// is `position: absolute`, so without a positioned ancestor it is laid out
+// at the chip's static position, escapes the strip's overflow clip and
+// widens the document (286 px on the live twelve). The Go mock serves a
+// single DC, so this harness is the only stand where the horizontal
+// overflow e2e guard can reproduce the failure at all.
+const dcsWithAttention: DcStatusData = {
+  ...dcs,
+  dcs: dcs.dcs.map((dc, i) =>
+    i === dcs.dcs.length - 1 ? { ...dc, coverage_pct: 62, fresh_coverage_pct: 41 } : dc,
+  ),
+};
+
 export const devPayloads = {
-  dc: dcs,
+  dc: dcsWithAttention,
   meQuality,
   initialization,
   events,
@@ -395,8 +413,8 @@ export function pushRevision(revision: number): DevPayloads {
   const bump = revision * 7;
   return {
     dc: {
-      ...dcs,
-      dcs: dcs.dcs.map((dc) => ({ ...dc, load: dc.load + bump, rtt_ms: dc.rtt_ms })),
+      ...dcsWithAttention,
+      dcs: dcsWithAttention.dcs.map((dc) => ({ ...dc, load: dc.load + bump, rtt_ms: dc.rtt_ms })),
     },
     meQuality,
     initialization,
