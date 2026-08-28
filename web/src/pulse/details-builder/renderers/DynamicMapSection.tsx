@@ -204,7 +204,12 @@ export function DynamicMapSection({
               id={`${instance.id}.${group.id}`}
               title={group.title}
               count={group.matched}
-              trailing={<span className="tabular-nums">Σ {formatNumber(s, group.total)}</span>}
+              // Rounded: `core` carries `uptime_seconds` as a float, and a
+              // group sum printed as "3 922 605,337" reads as a measurement
+              // rather than as the order-of-magnitude marker it is.
+              trailing={
+                <span className="tabular-nums">Σ {formatNumber(s, Math.round(group.total))}</span>
+              }
               expanded={isSectionExpanded(
                 `${instance.id}.${group.id}`,
                 true,

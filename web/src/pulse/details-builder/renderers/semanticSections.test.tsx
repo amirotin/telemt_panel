@@ -953,6 +953,38 @@ describe("CustomSection and the renderer registry (spec §9.8)", () => {
     expect(Number(floor![1])).toBeGreaterThanOrEqual(40);
   });
 
+  it("keeps the tallest bar inside its own band, not over its labels", () => {
+    // Found by the M4 task 7 live screenshot: the bar height is a PERCENTAGE,
+    // and with the value caption and the DC label as siblings of the bar a
+    // 100 % bar grew over both of them. The bar now lives in a band of its
+    // own, so the two captions keep their rows whatever the data does.
+    const instance = customInstance(qualityChartSection);
+    const el = render(<Harness render={(ctx) => <CustomSection instance={instance} ctx={ctx} />} />);
+    const column = el.querySelector('[role="listitem"]')!;
+    const band = column.querySelector('[style*="height"]')!.parentElement!;
+    expect(band.className).toContain("flex-1");
+    expect(band.className).toContain("min-h-0");
+    expect(band.parentElement).toBe(column);
+  });
+
+  it("rounds a float RTT down to a readable caption, keeping the exact value in the title", () => {
+    const instance = customInstance({
+      ...qualityChartSection,
+      select: () => [
+        { label: "DC 1", value: 186.913 },
+        { label: "DC 2", value: 0.125 },
+      ],
+    });
+    const el = render(<Harness render={(ctx) => <CustomSection instance={instance} ctx={ctx} />} />);
+    const columns = Array.from(el.querySelectorAll('[role="listitem"]'));
+    expect(columns[0].textContent).toContain("187");
+    expect(columns[0].textContent).not.toContain("186,913");
+    expect(columns[0].getAttribute("title")).toContain("186,913");
+    // Under ten, two decimals survive — rounding a 0.125 ms figure to 0 would
+    // draw a bar for a number the caption says is nothing.
+    expect(columns[1].textContent).toContain("0,13");
+  });
+
   it("falls back to readable rows when nobody registered the id", () => {
     const instance = customInstance({ ...qualityChartSection, renderer: "not-shipped-yet" });
     const el = render(<Harness render={(ctx) => <CustomSection instance={instance} ctx={ctx} />} />);

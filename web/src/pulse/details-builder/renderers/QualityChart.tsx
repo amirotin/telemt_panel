@@ -52,23 +52,28 @@ export function QualityChart({ instance, unit }: QualityChartProps) {
 
       {/* A fixed 96px row height keeps every bar comparable; the bars scroll
           horizontally inside their own container rather than widening the
-          page, which is the no-horizontal-overflow rule applied to a chart. */}
-      <div className="-mx-1 flex h-24 items-end gap-1 overflow-x-auto px-1" role="list">
+          page, which is the no-horizontal-overflow rule applied to a chart.
+          The bar's percentage is of the MIDDLE band only — its own flex row —
+          so a bar at 100 % stops where the band stops instead of growing over
+          the value above it and the label below it. */}
+      <div className="-mx-1 flex h-24 items-stretch gap-1 overflow-x-auto px-1" role="list">
         {points.map((point, i) => (
           <div
             key={`${point.label}#${i}`}
             role="listitem"
-            className="flex h-full min-w-[40px] flex-1 flex-col justify-end"
+            className="flex h-full min-w-[40px] flex-1 flex-col"
             title={`${point.label}: ${formatNumber(s, point.value)}${suffix}`}
           >
             <span className="mb-1 text-center text-micro tabular-nums text-text-faint">
-              {formatNumber(s, point.value)}
+              {formatNumber(s, roundForLabel(point.value))}
             </span>
-            <span
-              className={cn("w-full rounded-t bg-accent")}
-              style={{ height: `${max > 0 ? Math.max(2, (point.value / max) * 100) : 2}%` }}
-              aria-hidden="true"
-            />
+            <span className="flex min-h-0 flex-1 items-end">
+              <span
+                className={cn("w-full rounded-t bg-accent")}
+                style={{ height: `${max > 0 ? Math.max(2, (point.value / max) * 100) : 2}%` }}
+                aria-hidden="true"
+              />
+            </span>
             <span className="mt-1 truncate text-center text-micro text-text-muted">
               {point.label}
             </span>
@@ -77,4 +82,13 @@ export function QualityChart({ instance, unit }: QualityChartProps) {
       </div>
     </div>
   );
+}
+
+// roundForLabel keeps a bar's caption readable at 40 px wide. Telemt reports
+// an RTT EMA as a float — 186.913 ms — and three decimals of a millisecond
+// are noise on a bar chart, while the exact value stays one hover away in
+// the element's `title`.
+function roundForLabel(value: number): number {
+  if (Number.isInteger(value)) return value;
+  return Math.abs(value) >= 10 ? Math.round(value) : Math.round(value * 100) / 100;
 }

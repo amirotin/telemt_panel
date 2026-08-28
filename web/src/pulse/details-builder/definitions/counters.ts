@@ -133,9 +133,11 @@ export const countersPageDefinition: DetailPageDefinition<ZeroAllData, ZeroAllDa
   ],
 
   sections: [
-    // Declared BEFORE the map: an explicitly configured section owns its
-    // path, and SectionList then stops DynamicMapSection from showing the
-    // same array nested inside its group.
+    // First on the page, because "why did connections fail" is the question
+    // a reader opens this page with — the 110 raw counters below are the
+    // answer to the next one. Each is an explicitly configured section, so
+    // SectionList stops the map from ALSO showing it nested inside `core`
+    // (the claim is by section, not by declaration order).
     {
       kind: "breakdown",
       id: "connections_bad_by_class",
