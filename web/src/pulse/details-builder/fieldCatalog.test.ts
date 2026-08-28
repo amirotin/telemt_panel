@@ -1,0 +1,131 @@
+import { describe, expect, it } from "vitest";
+import { en } from "../../i18n/en";
+import { ru } from "../../i18n/ru";
+import type { FieldCatalog } from "./fieldCatalog";
+import { counterFamilyFor, describeField, lookupField } from "./fieldCatalog";
+
+// A tiny catalog whose entries collide on purpose at every one of §8.2's
+// five steps, so the priority is asserted rather than assumed.
+const catalog: FieldCatalog = {
+  entries: [
+    { path: "writers.*.rtt_ema_ms", descriptionKey: "me.writers.rtt_ema_ms" },
+    { path: "writers[0].rtt_ema_ms", descriptionKey: "dc.rtt_ms" },
+    { path: "*.rtt_ema_ms", descriptionKey: "dc.load" },
+  ],
+  byEndpoint: {
+    "/api/telemt/zero": [
+      { path: "writers.*.rtt_ema_ms", descriptionKey: "dc.load" },
+      { path: "core.custom_signal", descriptionKey: "dc.load" },
+    ],
+  },
+};
+
+describe("field catalog lookup order (spec §8.2)", () => {
+  it("1. an exact path beats every wildcard", () => {
+    const result = lookupField("writers[0].rtt_ema_ms", { catalog });
+    expect(result.source).toBe("exact");
+    expect(result.entry?.descriptionKey).toBe("dc.rtt_ms");
+  });
+
+  it("2. a wildcard matches where no exact entry exists", () => {
+    const result = lookupField("writers[7].rtt_ema_ms", { catalog });
+    expect(result.source).toBe("wildcard");
+    expect(result.entry?.descriptionKey).toBe("me.writers.rtt_ema_ms");
+  });
+
+  it("2. the more literal wildcard wins over the more wildcarded one", () => {
+    // Both `writers.*.rtt_ema_ms` and `*.rtt_ema_ms` match — insertion
+    // order must not decide which sentence a reader sees.
+    expect(lookupField("writers[3].rtt_ema_ms", { catalog }).entry?.path).toBe(
+      "writers.*.rtt_ema_ms",
+    );
+  });
+
+  it("2. a global wildcard beats an endpoint-scoped one", () => {
+    // Spec's order is exact -> wildcard -> endpoint-specific, so an
+    // endpoint entry only fills a gap the global catalog leaves.
+    const result = lookupField("writers[7].rtt_ema_ms", {
+      catalog,
+      endpoint: "/api/telemt/zero",
+    });
+    expect(result.source).toBe("wildcard");
+  });
+
+  it("3. an endpoint-scoped entry fills a gap the global catalog leaves", () => {
+    const result = lookupField("core.custom_signal", { catalog, endpoint: "/api/telemt/zero" });
+    expect(result.source).toBe("endpoint");
+    expect(lookupField("core.custom_signal", { catalog }).source).toBe("fallback");
+  });
+
+  it("4. a known counters family answers before the neutral fallback", () => {
+    const result = lookupField("core.handshake_timeouts_total", { catalog });
+    expect(result.source).toBe("family");
+    expect(result.family).toBe("errorsTotal");
+  });
+
+  it("4. a more specific family wins: errors_total is not merely a total", () => {
+    expect(counterFamilyFor("upstream.connect_errors_total")?.id).toBe("errorsTotal");
+    expect(counterFamilyFor("upstream.connect_total")?.id).toBe("total");
+    expect(counterFamilyFor("pool.wait_ms")?.id).toBe("milliseconds");
+    expect(counterFamilyFor("pool.sent_octets")?.id).toBe("bytes");
+    expect(counterFamilyFor("dcs[0].coverage_pct")?.id).toBe("percent");
+  });
+
+  it("5. an unknown field gets the neutral text and no invented meaning", () => {
+    const result = lookupField("something.nobody.has.seen", { catalog });
+    expect(result.source).toBe("fallback");
+    expect(result.entry).toBeNull();
+    expect(describeField("something.nobody.has.seen", ru, { catalog }).description).toBe(
+      ru.details.fields.fallback,
+    );
+  });
+
+  it("memoizes per catalog and per endpoint", () => {
+    const first = lookupField("writers[9].rtt_ema_ms", { catalog });
+    const second = lookupField("writers[9].rtt_ema_ms", { catalog });
+    expect(second).toBe(first);
+    // A different endpoint is a different cache key, not a stale hit.
+    expect(lookupField("core.custom_signal", { catalog, endpoint: "/api/telemt/zero" }).source).toBe(
+      "endpoint",
+    );
+  });
+});
+
+describe("describeField (spec §8)", () => {
+  it("resolves the description in the reader's language", () => {
+    const rus = describeField("dcs[0].rtt_ms", ru).description;
+    const eng = describeField("dcs[0].rtt_ms", en).description;
+    expect(rus).toBe(ru.details.fields.descriptions["dc.rtt_ms"]);
+    expect(eng).toBe(en.details.fields.descriptions["dc.rtt_ms"]);
+    expect(rus).not.toBe(eng);
+  });
+
+  it("gives the payload-rooted and entity-rooted spellings one sentence", () => {
+    expect(describeField("dcs[0].coverage_pct", ru).description).toBe(
+      describeField("coverage_pct", ru).description,
+    );
+  });
+
+  it("carries the unit and formatter the catalog pins to a field", () => {
+    expect(describeField("dcs[0].coverage_pct", ru).unit).toBe("percent");
+    expect(describeField("dcs[0].floor_capped", ru).format).toBe("boolean");
+    expect(describeField("dcs[0].endpoints[0]", ru).format).toBe("address");
+  });
+
+  it("carries nullMeaning and zeroMeaning where §13.1 needs them", () => {
+    expect(describeField("dcs[0].rtt_ms", ru).nullMeaning).toBe(
+      ru.details.fields.nullMeanings["dc.rtt_ms"],
+    );
+    expect(describeField("dcs[0].alive_writers", ru).zeroMeaning).toBe(
+      ru.details.fields.zeroMeanings["dc.alive_writers"],
+    );
+    // A field with no known null meaning must NOT borrow another's.
+    expect(describeField("dcs[0].load", ru).nullMeaning).toBeUndefined();
+  });
+
+  it("hands a counters-family field its family sentence and formatting", () => {
+    const field = describeField("core.handshake_timeouts_total", ru);
+    expect(field.description).toBe(ru.details.fields.families.errorsTotal);
+    expect(field.format).toBe("integer");
+  });
+});
