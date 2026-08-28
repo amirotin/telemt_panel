@@ -1,6 +1,6 @@
-import { act, useState, type ReactNode } from "react";
+import { act, StrictMode, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   events,
   initialization,
@@ -399,10 +399,14 @@ function rankingRows(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>("#by-fingerprint-panel li"));
 }
 
-function identities(container: HTMLElement): string[] {
-  return rankingRows(container).map(
+function identitiesIn(container: HTMLElement, id: string): string[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(`#${id}-panel li`)).map(
     (row) => row.querySelector(".font-mono.font-semibold")?.textContent ?? "",
   );
+}
+
+function identities(container: HTMLElement): string[] {
+  return identitiesIn(container, "by-fingerprint");
 }
 
 function rankingTree(instance: CollectionSectionInstance): ReactNode {
@@ -585,6 +589,130 @@ describe("RankingSection frozen order (spec §19.2)", () => {
         render={(ctx) => <RankingSection instance={instance} definition={other as RankingSectionDefinition<unknown, unknown>} ctx={ctx} />} />,
     );
     expect(el.querySelectorAll("#by-ip-panel li")).toHaveLength(20);
+  });
+});
+
+// --- RankingSection over a REPEATING semantic key (§5.3, §19.2) ----------
+//
+// Telemt's `by_user` and `by_cidr` rankings group fifty ClientHello records
+// under fourteen users and eight subnets, so `scope` — the honest identity
+// of a row — names several rows at once. Everything below fails on a
+// renderer that assumes the definition's key is unique, and none of it may
+// be repaired by putting the array index into the key.
+describe("RankingSection with duplicate identities (spec §5.3)", () => {
+  const scopeRanking = (id: string, path: "by_user" | "by_cidr") =>
+    ({
+      ...tlsRanking,
+      id,
+      path,
+      itemKey: (item: unknown) => String((item as { scope: string }).scope),
+      identity: (item: unknown) => String((item as { scope: string }).scope),
+    }) as RankingSectionDefinition<typeof tlsFingerprints, unknown>;
+
+  const byUser = scopeRanking("by-user", "by_user");
+  const byCidr = scopeRanking("by-cidr", "by_cidr");
+
+  function scopeTree(
+    definition: RankingSectionDefinition<typeof tlsFingerprints, unknown>,
+    payload: typeof tlsFingerprints,
+    strict = false,
+  ): ReactNode {
+    const instance = instanceOf(page(definition), payload, definition.id);
+    const tree = (
+      <Harness
+        render={(ctx) => (
+          <RankingSection
+            instance={instance}
+            definition={definition as RankingSectionDefinition<unknown, unknown>}
+            ctx={ctx}
+          />
+        )}
+      />
+    );
+    return strict ? <StrictMode>{tree}</StrictMode> : tree;
+  }
+
+  function rows(el: HTMLElement, id: string): HTMLElement[] {
+    return Array.from(el.querySelectorAll<HTMLElement>(`#${id}-panel li`));
+  }
+
+  // The identity column cannot tell two namesakes apart — the score can,
+  // and it is what a wrongly reconciled row gets WRONG: a Map keyed by a
+  // repeating key answers with one record for all of its namesakes. The
+  // digits alone, because the formatter groups thousands.
+  function shownScores(el: HTMLElement, id: string): string[] {
+    return rows(el, id).map((row) =>
+      (row.querySelector(".text-row.font-semibold")?.textContent ?? "").replace(/\D/g, ""),
+    );
+  }
+
+  function digits(value: number): string {
+    return String(value);
+  }
+
+  it("draws every record once, no matter how often the identity repeats", () => {
+    const el = render(scopeTree(byUser, tlsFingerprints));
+    const names = identitiesIn(el, "by-user");
+    // The fixture really does repeat: 20 rows, 14 distinct users.
+    expect(names).toHaveLength(20);
+    expect(new Set(names).size).toBe(14);
+    // …and each row carries its OWN record's score, in payload order.
+    expect(shownScores(el, "by-user")).toEqual(
+      tlsFingerprints.by_user.slice(0, 20).map((row) => digits(row.total)),
+    );
+  });
+
+  it("keys the rows without a React duplicate-key warning", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(scopeTree(byCidr, tlsFingerprints));
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("opens the record that was CLICKED, not its first namesake", () => {
+    const el = render(scopeTree(byUser, tlsFingerprints));
+    // Row 15 is the second `user_01` — the same identity as row 1.
+    const twin = tlsFingerprints.by_user[14];
+    expect(twin.scope).toBe(tlsFingerprints.by_user[0].scope);
+    click(rows(el, "by-user")[14].querySelector("button")!);
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.textContent).toContain(twin.ja4);
+    expect(dialog.textContent).not.toContain(tlsFingerprints.by_user[0].ja4);
+  });
+
+  it("holds the frozen order over a re-sorted payload, and re-syncs on blur", () => {
+    const el = render(scopeTree(byUser, tlsFingerprints));
+    const before = shownScores(el, "by-user");
+    const search = el.querySelector<HTMLInputElement>('input[type="search"]')!;
+    act(() => search.focus());
+    // A live frame that promotes the LAST record to the top — the reorder
+    // §19.2 forbids while the reader is working.
+    const promoted: typeof tlsFingerprints = {
+      ...tlsFingerprints,
+      by_user: tlsFingerprints.by_user.map((row, i) =>
+        i === tlsFingerprints.by_user.length - 1 ? { ...row, total: 999_999 } : row,
+      ),
+    };
+    rerender(scopeTree(byUser, promoted));
+    expect(identitiesIn(el, "by-user")).toHaveLength(20);
+    expect(shownScores(el, "by-user")).toEqual(before);
+    act(() => search.blur());
+    expect(shownScores(el, "by-user")[0]).toBe("999999");
+  });
+
+  it("renders the same list under StrictMode's double pass", () => {
+    const plain = render(scopeTree(byUser, tlsFingerprints));
+    const expected = shownScores(plain, "by-user");
+    act(() => mounted!.root.unmount());
+    mounted!.container.remove();
+    mounted = null;
+
+    const strict = render(scopeTree(byUser, tlsFingerprints, true));
+    expect(shownScores(strict, "by-user")).toEqual(expected);
+    expect(identitiesIn(strict, "by-user")).toHaveLength(20);
   });
 });
 

@@ -20,6 +20,7 @@ import {
   matchesRankingSearch,
   numericColumns,
   sortRanked,
+  uniqueEntryKeys,
   SCORE_SORT_KEY,
   type RankedEntry,
 } from "./ranking.helpers";
@@ -59,18 +60,24 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
   const [query, setQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
 
-  const entries = useMemo<RankedEntry[]>(
-    () =>
-      instance.items.map((item, index) => ({
-        item,
-        index,
-        key: instance.itemKeys[index] ?? String(index),
-        identity: definition?.identity?.(item) ?? instance.itemKeys[index] ?? String(index),
-        meta: definition?.meta?.(item) ?? null,
-        score: definition?.score?.(item) ?? 0,
-      })),
-    [instance.items, instance.itemKeys, definition],
-  );
+  const entries = useMemo<RankedEntry[]>(() => {
+    // A ranking's semantic key repeats by nature — `by_user` groups fifty
+    // records under fourteen users — so the reconciliation key is
+    // uniquified from the RECORD, never from its position. React keys, the
+    // frozen order and the surface all read this one key.
+    const keys = uniqueEntryKeys(
+      instance.items.map((_item, index) => instance.itemKeys[index] ?? String(index)),
+      instance.items,
+    );
+    return instance.items.map((item, index) => ({
+      item,
+      index,
+      key: keys[index] ?? String(index),
+      identity: definition?.identity?.(item) ?? instance.itemKeys[index] ?? String(index),
+      meta: definition?.meta?.(item) ?? null,
+      score: definition?.score?.(item) ?? 0,
+    }));
+  }, [instance.items, instance.itemKeys, definition]);
 
   const columns = useMemo(() => numericColumns(instance.items), [instance.items]);
   const scoreKey =

@@ -276,7 +276,12 @@ function tlsRanking(
     title: () => title,
     path,
     defaultExpanded: true,
-    itemKey: (item: unknown, index: number) => `${identity(rowOf(item))}#${index}`,
+    // The honest semantic key, duplicates and all: `by_user` and `by_cidr`
+    // really do name several records with one scope, and RankingSection
+    // disambiguates them from the record itself. An index here would change
+    // every key a Telemt re-sort moved and turn the frozen order into an
+    // append-everything.
+    itemKey: (item: unknown) => identity(rowOf(item)),
     identity: (item: unknown) => identity(rowOf(item)),
     score: (item: unknown) => rowOf(item).total,
     scoreKey: "total",

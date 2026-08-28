@@ -7,6 +7,7 @@ import {
   matchesRankingSearch,
   numericColumns,
   sortRanked,
+  uniqueEntryKeys,
   SCORE_SORT_KEY,
   type RankedEntry,
 } from "./ranking.helpers";
@@ -155,5 +156,70 @@ describe("applyRankingFilters (spec §18.2)", () => {
       "a",
       "b",
     ]);
+  });
+});
+
+describe("uniqueEntryKeys (spec §5.3, §19.2 — the reconciliation key)", () => {
+  // The two production rankings whose semantic key genuinely repeats:
+  // fifty ClientHello records under fourteen users and eight subnets.
+  const byUser = tlsFingerprints.by_user;
+  const byCidr = tlsFingerprints.by_cidr;
+  const scopeOf = (row: { scope?: string }) => row.scope ?? "";
+
+  it("leaves a key that names ONE record exactly as the definition spelled it", () => {
+    const rows = tlsFingerprints.by_fingerprint;
+    const keys = rows.map((row) => row.ja4);
+    expect(uniqueEntryKeys(keys, rows)).toEqual(keys);
+  });
+
+  it("makes the keys of the by_user ranking unique without touching the index", () => {
+    const keys = uniqueEntryKeys(byUser.map(scopeOf), byUser);
+    expect(new Set(byUser.map(scopeOf)).size).toBe(14);
+    expect(keys).toHaveLength(byUser.length);
+    expect(new Set(keys).size).toBe(byUser.length);
+    // Every key still CARRIES its identity, so a duplicate is recognizable
+    // rather than replaced by a synthetic id.
+    keys.forEach((key, i) => expect(key.startsWith(scopeOf(byUser[i]))).toBe(true));
+    expect(keys.some((key) => /#\d+$/.test(key))).toBe(false);
+  });
+
+  it("makes the keys of the by_cidr ranking unique too", () => {
+    const keys = uniqueEntryKeys(byCidr.map(scopeOf), byCidr);
+    expect(new Set(byCidr.map(scopeOf)).size).toBe(8);
+    expect(new Set(keys).size).toBe(byCidr.length);
+  });
+
+  it("gives a MOVED record the same key it had before the re-sort", () => {
+    const before = uniqueEntryKeys(byUser.map(scopeOf), byUser);
+    const order = byUser.map((_row, i) => i).reverse();
+    const resorted = order.map((i) => byUser[i]);
+    const after = uniqueEntryKeys(resorted.map(scopeOf), resorted);
+    order.forEach((source, target) => expect(after[target]).toBe(before[source]));
+  });
+
+  it("survives a counter changing on every record, which a live frame does", () => {
+    const before = uniqueEntryKeys(byUser.map(scopeOf), byUser);
+    const ticked = byUser.map((row) => ({ ...row, total: row.total + 7 }));
+    expect(uniqueEntryKeys(ticked.map(scopeOf), ticked)).toEqual(before);
+  });
+
+  it("falls back to an occurrence ordinal for records that are truly identical", () => {
+    const row = { scope: "user_01", ja4: "t13d", total: 1 };
+    const keys = uniqueEntryKeys(["user_01", "user_01", "user_01"], [row, { ...row }, { ...row }]);
+    expect(keys[0]).toMatch(/^user_01·[0-9a-z]+$/);
+    expect(keys[1]).toBe(`${keys[0]}·2`);
+    expect(keys[2]).toBe(`${keys[0]}·3`);
+  });
+
+  it("keeps a record distinguishable by a string field apart from its namesake", () => {
+    const keys = uniqueEntryKeys(
+      ["user_01", "user_01"],
+      [
+        { scope: "user_01", ja4: "aaa", total: 9 },
+        { scope: "user_01", ja4: "bbb", total: 9 },
+      ],
+    );
+    expect(new Set(keys).size).toBe(2);
+    expect(keys.every((key) => !key.endsWith("·2"))).toBe(true);
   });
 });
