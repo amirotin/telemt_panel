@@ -292,7 +292,7 @@ export interface RankingSectionDefinition<T, TItem = unknown> extends SectionCom
   /** What the score counts, printed under the number ("observed"). */
   scoreLabel?: Localized;
   /** Secondary line under the identity: "seen 2 мин. назад · bad/probe 0". */
-  meta?: (item: TItem) => string | null;
+  meta?: (item: TItem, s: Dict) => string | null;
   paging?: Partial<PagingPolicy>;
   search?: SearchDefinition<TItem>;
   sort?: SortDefinition<TItem>[];

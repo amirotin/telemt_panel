@@ -21,7 +21,12 @@ import {
 describe("field catalog coverage: DC domain", () => {
   it("describes every leaf of the production DC payload", () => {
     const report = catalogCoverage(dcs);
-    expect(report.total).toBeGreaterThan(200);
+    // Pinned exactly, the way the TLS and Security domains are: a bound
+    // ("> 200") cannot tell a Telemt release that ADDED fields apart from
+    // one that dropped them, and a reported figure nobody can reproduce is
+    // worse than no figure. Twelve DCs x 16 fields plus their endpoint and
+    // writer arrays and the four response-level fields.
+    expect(report.total).toBe(284);
     // The message names the offenders, so a failure is actionable without
     // re-running anything locally.
     expect(report.undescribed, `undescribed DC paths:\n${report.undescribed.join("\n")}`).toEqual(

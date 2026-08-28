@@ -3,6 +3,7 @@
 // posture, whitelist, 40 effective-limit leaves), plus the §23.3 shape.
 
 import { describe, expect, it } from "vitest";
+import { en, ru } from "../../../i18n";
 import { effectiveLimits, posture, tlsFingerprints, whitelist } from "../__fixtures__";
 import { securityPageData } from "../../diag/security.helpers";
 import { TLS_FINGERPRINTS_ENDPOINT } from "../fieldCatalog";
@@ -67,6 +68,15 @@ describe("Security page definition (spec §23.3)", () => {
     const claimed = tabs.flatMap((tab) => tab.sections ?? []);
     expect(new Set(claimed).size).toBe(claimed.length);
     expect(new Set(claimed)).toEqual(new Set(securityPageDefinition.sections.map((s) => s.id)));
+  });
+
+  it("labels a record's meta line from the dictionaries, in both languages", () => {
+    const ranking = securityPageDefinition.sections.find((section) => section.id === "by_fingerprint");
+    const meta = ranking !== undefined && ranking.kind === "ranking" ? ranking.meta : undefined;
+    if (meta === undefined) throw new Error("by_fingerprint has no meta");
+    const row = tlsFingerprints.by_fingerprint[0];
+    expect(meta(row, ru)).toBe(`Некорректные / сканы: ${row.bad_or_probe}`);
+    expect(meta(row, en)).toBe(`Bad / probe: ${row.bad_or_probe}`);
   });
 
   it("sorts by total by default and offers bad_or_probe, as §23.3 asks", () => {

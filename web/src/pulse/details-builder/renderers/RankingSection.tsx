@@ -76,10 +76,10 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
       index,
       key: keys[index] ?? String(index),
       identity: definition?.identity?.(item) ?? instance.itemKeys[index] ?? String(index),
-      meta: definition?.meta?.(item) ?? null,
+      meta: definition?.meta?.(item, s) ?? null,
       score: definition?.score?.(item) ?? 0,
     }));
-  }, [instance.items, instance.itemKeys, definition]);
+  }, [instance.items, instance.itemKeys, definition, s]);
 
   const columns = useMemo(() => numericColumns(instance.items), [instance.items]);
   const scoreKey =

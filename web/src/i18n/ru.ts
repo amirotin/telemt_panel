@@ -621,6 +621,7 @@ export const ru = {
         capture: "Захват отпечатков",
         ranking: "Записи рейтинга",
         rankingDescription: "Нажатие на запись открывает все её поля.",
+        rankingMeta: "Некорректные / сканы: {count}",
         observed: "Наблюдений ClientHello",
         badOrProbe: "Некорректные / сканы",
         uniqueKeys: "Уникальных ключей",

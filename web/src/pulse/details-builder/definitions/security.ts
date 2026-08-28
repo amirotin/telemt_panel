@@ -19,6 +19,7 @@
 // it under a `tls.` prefix would orphan every one of those descriptions for
 // the sake of a tidier type.
 
+import { fill } from "../../../i18n";
 import type {
   EffectiveLimits,
   SecurityPosture,
@@ -71,7 +72,11 @@ function tlsRanking(
     identity: (item) => identity(rowOf(item)),
     score: (item) => rowOf(item).total,
     scoreKey: "total",
-    meta: (item) => `bad/probe ${rowOf(item).bad_or_probe}`,
+    // The COUNT is Telemt's, the word in front of it is ours — so it comes
+    // from the dictionaries like every other sentence on the page, not from
+    // a template literal here (§11.2 makes the KEY verbatim, not the label).
+    meta: (item, s) =>
+      fill(s.details.pages.security.rankingMeta, { count: rowOf(item).bad_or_probe }),
     search: {
       terms: (item) => {
         const row = rowOf(item);

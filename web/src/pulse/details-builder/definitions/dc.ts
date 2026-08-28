@@ -87,7 +87,9 @@ function freshCoverageTone(dc: DcPageContext): SummaryTone {
 export const DC_PAGE_ID = "pulse.dc";
 
 // dcPageDefinition — §23.1 literally: entity selector over the twelve DCs,
-// five summary metrics, one scalar section of the fourteen routing fields,
+// four summary metrics — §23.1's fifth item, `status`, is carried by the
+// header StatePill, as in `up-dc-mobile.png` — one scalar section of the
+// fourteen routing fields,
 // the two arrays as their OWN blocks (never a `N items` row, §10), the
 // response metadata, and the extended-mode network path.
 export const dcPageDefinition: DetailPageDefinition<DcPagePayload, DcPageContext> = {

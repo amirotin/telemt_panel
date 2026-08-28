@@ -547,6 +547,7 @@ export const en: Dict = {
         capture: "Fingerprint capture",
         ranking: "Ranked records",
         rankingDescription: "Tapping a record opens all of its fields.",
+        rankingMeta: "Bad / probe: {count}",
         observed: "ClientHello observed",
         badOrProbe: "Bad / probe",
         uniqueKeys: "Unique keys",
