@@ -12,6 +12,17 @@ export const MOCK_PORT = 48190;
 export const BASE_URL = `http://127.0.0.1:${PANEL_PORT}`;
 export const MOCK_URL = `http://127.0.0.1:${MOCK_PORT}`;
 
+// The vite DEV server, for the `details` project only. /dev/details lives
+// behind `import.meta.env.DEV`, so Rollup drops it from the production
+// bundle the panel binary embeds — the builder's own harness is
+// unreachable through the built binary BY DESIGN (that is what keeps the
+// fixtures out of the shipped product), and the only honest way to drive
+// it end to end is the dev server. Everything the harness renders is a
+// fixture, so this project needs no backend at all; playwright.config.ts
+// starts vite as its `webServer`.
+export const DEV_PORT = 48181;
+export const DEV_URL = `http://127.0.0.1:${DEV_PORT}`;
+
 export const ADMIN_USERNAME = "e2e-admin";
 export const ADMIN_PASSWORD = "e2e-test-password-2026";
 

@@ -3,6 +3,7 @@ import { Chip } from "../ui";
 import { SectionLabel } from "../ui/SectionLabel";
 import { DisplayModeSwitch } from "../display-mode";
 import { DetailPage } from "../pulse/details-builder/DetailPage";
+import { useLayoutMode } from "../pulse/details-builder/surfaces/useLayoutMode";
 import type { DataSourceDefinition } from "../pulse/details-builder/model";
 import {
   aggregateSources,
@@ -17,8 +18,8 @@ import {
   devEventsPage,
   devInitPage,
   devMeQualityPage,
-  devPayloads,
   devTlsPage,
+  pushRevision,
 } from "./detailsDefinitions";
 
 // A FIXED clock. Every relative age on this page is measured from it, so a
@@ -116,6 +117,15 @@ function sourcesFor(
 export function DetailsShowcase() {
   const [page, setPage] = useState<PageId>("dc");
   const [status, setStatus] = useState<SourceStatus>("ready");
+  // A realtime frame, on demand: the fixtures never move on their own, so
+  // §19.1's "an update changes the DATA and nothing else" has nothing to
+  // demonstrate against without this button.
+  const [revision, setRevision] = useState(0);
+  const devPayloads = pushRevision(revision);
+  // The harness chrome collapses where there is no room for it: on a
+  // 390 px-tall phone in landscape it would otherwise take half the
+  // viewport away from the page it exists to show.
+  const compactChrome = useLayoutMode() === "compact-landscape";
 
   const withData = status === "ready" || status === "stale";
 
@@ -194,8 +204,17 @@ export function DetailsShowcase() {
   })();
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-      <div className="flex flex-col gap-2" data-testid="dev-details-switcher">
+    // max-w-6xl rather than 4xl: the wide layout is a master/detail split
+    // (§15.4), and a 896 px container would never give it room to be one.
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4">
+      <details
+        className="flex flex-col gap-2"
+        data-testid="dev-details-switcher"
+        open={!compactChrome}
+      >
+        <summary className="tap-target cursor-pointer list-item text-meta text-text-muted">
+          harness
+        </summary>
         <SectionLabel>page</SectionLabel>
         <div className="flex flex-wrap gap-2">
           {PAGES.map((p) => (
@@ -214,7 +233,14 @@ export function DetailsShowcase() {
         </div>
         <SectionLabel>display mode</SectionLabel>
         <DisplayModeSwitch />
-      </div>
+        <SectionLabel>realtime</SectionLabel>
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip onClick={() => setRevision((n) => n + 1)} data-testid="dev-details-push">
+            push frame
+          </Chip>
+          <span className="text-meta text-text-muted">revision {revision}</span>
+        </div>
+      </details>
       {body}
     </div>
   );

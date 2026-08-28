@@ -433,3 +433,53 @@ export const devPayloads = {
   tls: tlsFingerprints,
   counters: zeroAll,
 };
+
+export type DevPayloads = typeof devPayloads;
+
+// pushRevision is the DEV route's stand-in for a realtime frame.
+//
+// The §19.1 invariants ("an update MUST NOT close an accordion, reset a
+// search, close a surface, scroll to the top…") are the ones a fixture
+// page cannot demonstrate on its own: the fixtures never change. This
+// produces the Nth version of every payload — new object identities, moved
+// numbers, and for the TLS ranking a record that overtakes the leader, so
+// a frame that WOULD reshuffle the list under the reader's finger actually
+// exists to be tested against.
+//
+// Deterministic in `revision`: the same press always produces the same
+// numbers, which is what lets a screenshot or an e2e assertion name them.
+function bumpNumbers(
+  group: Record<string, unknown>,
+  bump: number,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(group).map(([key, value]) => [
+      key,
+      typeof value === "number" ? value + bump : value,
+    ]),
+  );
+}
+
+export function pushRevision(revision: number): DevPayloads {
+  if (revision === 0) return devPayloads;
+  const bump = revision * 7;
+  return {
+    dc: {
+      ...dcs,
+      dcs: dcs.dcs.map((dc) => ({ ...dc, load: dc.load + bump, rtt_ms: dc.rtt_ms })),
+    },
+    meQuality,
+    initialization,
+    events,
+    tls: {
+      ...tlsFingerprints,
+      by_fingerprint: tlsFingerprints.by_fingerprint.map((row, i) => ({
+        ...row,
+        // The LAST record overtakes every other one: the most disruptive
+        // reorder a ranking can receive.
+        total: i === tlsFingerprints.by_fingerprint.length - 1 ? 10_000 + bump : row.total,
+      })),
+    },
+    counters: { ...zeroAll, core: bumpNumbers(zeroAll.core, bump) },
+  };
+}
