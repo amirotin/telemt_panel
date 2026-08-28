@@ -58,7 +58,7 @@ export function QualityChart({ instance, unit }: QualityChartProps) {
           <div
             key={`${point.label}#${i}`}
             role="listitem"
-            className="flex h-full min-w-[18px] flex-1 flex-col justify-end"
+            className="flex h-full min-w-[40px] flex-1 flex-col justify-end"
             title={`${point.label}: ${formatNumber(s, point.value)}${suffix}`}
           >
             <span className="mb-1 text-center text-micro tabular-nums text-text-faint">

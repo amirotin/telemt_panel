@@ -18,6 +18,7 @@ export interface TimelineSectionProps {
 
 const TONE_DOT: Record<TimelineTone, string> = {
   ok: "text-ok",
+  neutral: "text-text-muted",
   muted: "text-text-faint",
   warn: "text-warn",
   error: "text-error",
@@ -57,7 +58,16 @@ export function TimelineSection({ instance, definition, ctx }: TimelineSectionPr
     [instance.items, instance.itemKeys, definition],
   );
 
+  // The status tally reads as a section NOTE under the title, the way the
+  // render draws "14 ready · 2 skipped": as header trailing it would sit in
+  // a shrink-0 column and squeeze the title to one letter per line on a
+  // 360 px screen, since the tally is data and can name three event types.
   const summary = countStatuses(steps.map((step) => step.status));
+  const note = summary.map((entry) => `${entry.count} ${entry.status}`).join(" · ");
+  const description = [instance.description?.(s), note === "" ? undefined : note]
+    .filter((part): part is string => part !== undefined && part !== "")
+    .join(" · ");
+
   const limit = ctx.visibleLimit(instance.id, instance.paging.initial);
   const shown = steps.slice(0, limit);
 
@@ -65,17 +75,8 @@ export function TimelineSection({ instance, definition, ctx }: TimelineSectionPr
     <SectionFrame
       id={instance.id}
       title={instance.title(s)}
-      description={instance.description?.(s)}
+      {...(description === "" ? {} : { description })}
       {...(instance.presence === "absent" ? {} : { count: steps.length })}
-      {...(summary.length > 0
-        ? {
-            trailing: (
-              <span className="tabular-nums">
-                {summary.map((entry) => `${entry.count} ${entry.status}`).join(" · ")}
-              </span>
-            ),
-          }
-        : {})}
       expanded={expanded}
       onToggle={() => ctx.toggleSection(instance.id)}
     >
@@ -108,14 +109,18 @@ export function TimelineSection({ instance, definition, ctx }: TimelineSectionPr
                       {step.details}
                     </span>
                   )}
-                  {/* The status word itself is data: shown verbatim so a
-                      state the panel has never seen is still legible. */}
-                  <span className="sr-only">{step.status}</span>
+                  {/* The status word is data (§11.2). It is printed in the
+                      right column whenever it carries information the
+                      marker does not — an untimed step, or any state that
+                      is not plain "ok" — and stays available to a screen
+                      reader in the one case where it is not drawn. */}
+                  {!showsStatus(step) && <span className="sr-only">{step.status}</span>}
                 </span>
                 <StepTime
                   durationMs={step.durationMs}
                   atEpochMs={step.atEpochMs}
                   status={step.status}
+                  showStatus={showsStatus(step)}
                   tone={step.tone}
                   ctx={ctx}
                 />
@@ -140,20 +145,29 @@ export function TimelineSection({ instance, definition, ctx }: TimelineSectionPr
   );
 }
 
+// showsStatus decides whether the status WORD is drawn beside the step. A
+// timed step that simply succeeded says everything with its duration and
+// its marker; an untimed one (an event) and anything that is not plain "ok"
+// (skipped, failed, retrying) does not.
+function showsStatus(step: { durationMs: number | null; tone: TimelineTone }): boolean {
+  return step.durationMs === null || step.tone !== "ok";
+}
+
 // StepTime is the right-hand column: the duration when the step took time,
-// the moment when it only happened. A step with neither — a skipped
-// component — says its status word there instead of showing a bare dash,
-// which is the render's "skipped" column.
+// the moment when it only happened, and the status word where it adds
+// something — the render's "skipped" column.
 function StepTime({
   durationMs,
   atEpochMs,
   status,
+  showStatus,
   tone,
   ctx,
 }: {
   durationMs: number | null;
   atEpochMs: number | null;
   status: string;
+  showStatus: boolean;
   tone: TimelineTone;
   ctx: DetailRenderContext;
 }) {
@@ -165,14 +179,8 @@ function StepTime({
   const moment =
     atEpochMs === null ? null : formatValue(atEpochMs, s, { nowMs: ctx.nowMs, unit: "timestamp" });
 
-  if (duration === null && moment === null) {
-    return (
-      <span className={cn("shrink-0 font-mono text-micro", TONE_DOT[tone])}>{status}</span>
-    );
-  }
-
   return (
-    <span className="shrink-0 text-right">
+    <span className="max-w-[42%] shrink-0 break-words text-right">
       {duration !== null && (
         <span className="block font-mono text-micro tabular-nums text-text-muted">
           {duration.text}
@@ -184,6 +192,11 @@ function StepTime({
           title={moment.title}
         >
           {moment.text}
+        </span>
+      )}
+      {showStatus && (
+        <span className={cn("block break-words font-mono text-micro", TONE_DOT[tone])}>
+          {status}
         </span>
       )}
     </span>

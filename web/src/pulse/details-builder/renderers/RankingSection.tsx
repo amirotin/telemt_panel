@@ -186,23 +186,19 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-micro tabular-nums text-text-faint">
-                {fill(s.details.collection.shownTemplate, {
-                  shown: String(shown.length),
-                  total: String(ordered.length),
-                })}
-              </span>
-              {drifted && (
-                // The explicit user action that re-syncs a frozen order.
-                // Without it a reader who leaves the search box focused
-                // would never see the new ranking; with it, the choice is
-                // theirs and never the payload's.
+            {drifted && (
+              // The explicit user action that re-syncs a frozen order.
+              // Without it a reader who leaves the search box focused would
+              // never see the new ranking; with it, the choice is theirs and
+              // never the payload's. The visible count lives at the bottom
+              // of the list, next to «Показать ещё», as in every other
+              // collection renderer.
+              <div className="flex justify-end">
                 <Button variant="secondary" size="sm" onClick={resync}>
                   {s.details.ranking.refreshOrder}
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {ordered.length === 0 ? (

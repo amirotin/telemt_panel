@@ -14,9 +14,11 @@ describe("toneForStatus (spec §9.5)", () => {
     expect(toneForStatus("me.writer.failed")).toBe("error");
   });
 
-  it("gives an unknown status a neutral tone instead of hiding the step", () => {
-    expect(toneForStatus("something_new_in_3_6")).toBe("warn");
-    expect(markerForTone("warn")).not.toBe("");
+  it("gives an unknown status a NEUTRAL tone — never a warning it did not earn", () => {
+    expect(toneForStatus("something_new_in_3_6")).toBe("neutral");
+    // `admission.state` is what a healthy proxy emits all day long.
+    expect(toneForStatus("admission.state")).toBe("neutral");
+    expect(markerForTone("neutral")).not.toBe("");
   });
 
   it("is case- and whitespace-insensitive, because the word is data", () => {

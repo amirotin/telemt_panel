@@ -8,7 +8,7 @@
 // renders as a neutral step instead of disappearing.
 
 /** Visual tone of a step's marker, mapped from the status word. */
-export type TimelineTone = "ok" | "muted" | "warn" | "error";
+export type TimelineTone = "ok" | "neutral" | "muted" | "warn" | "error";
 
 const OK_STATUSES = new Set([
   "ready",
@@ -52,7 +52,10 @@ export function toneForStatus(status: string): TimelineTone {
     if (ERROR_STATUSES.has(candidate)) return "error";
     if (WARN_STATUSES.has(candidate)) return "warn";
   }
-  return "warn";
+  // A word nobody has classified is NEUTRAL, never a warning: `admission.state`
+  // is what a healthy proxy emits fifty times an hour, and painting it amber
+  // would report normal operation as a fault.
+  return "neutral";
 }
 
 /** The glyph in the step's dot. Text, not an icon font — it is decorative. */
@@ -60,12 +63,14 @@ export function markerForTone(tone: TimelineTone): string {
   switch (tone) {
     case "ok":
       return "✓";
+    case "neutral":
+      return "•";
     case "muted":
       return "–";
     case "error":
       return "!";
     case "warn":
-      return "•";
+      return "!";
   }
 }
 
