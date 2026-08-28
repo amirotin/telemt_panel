@@ -228,11 +228,29 @@ export interface ArraySectionDefinition<T, TItem = unknown> extends SectionCommo
   sort?: SortDefinition<TItem>[];
 }
 
+/**
+ * §23.2's "grouping по DC/status" on an entity list: the rows stay ONE
+ * collection — one search, one paging window, one tab stop — and the group
+ * only decides where a heading is drawn and which chip narrows the list.
+ * Anything stronger (a group that owns its own paging) would break §19.2's
+ * promise that a realtime frame cannot move a row out from under a reader.
+ */
+export interface EntityGroupDefinition<TItem> {
+  /** Stable group id for one item; items sharing an id share a block. */
+  key: (item: TItem) => string;
+  /** Chip and heading text; defaults to the id itself. */
+  label?: (key: string, s: Dict) => string;
+  /** Orders the groups; without it they keep first-seen order. */
+  compare?: (a: string, b: string) => number;
+}
+
 // 9.3 EntityListSection — writers, upstreams: one compact row opens the
 // detail surface, which carries every remaining field.
 export interface EntityListSectionDefinition<T, TItem = unknown> extends SectionCommon<T> {
   kind: "entityList";
   path: string;
+  /** Group headings and chips over the same single collection (§23.2). */
+  groupBy?: EntityGroupDefinition<TItem>;
   /** Stable semantic key — the reconciliation identity of §19.2, never the array index. */
   itemKey: (item: TItem, index: number) => string;
   identity: (item: TItem) => string;

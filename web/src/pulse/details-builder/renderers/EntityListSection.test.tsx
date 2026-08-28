@@ -206,3 +206,130 @@ describe("EntityListSection (spec §9.3, §17)", () => {
     expect(rows[0].textContent).toContain("writer #1001");
   });
 });
+
+// §23.2's grouping and filtering, driven through the real controls: the ME
+// page's forty-six writers are one collection with a chip row over it, and
+// nothing about that may split them into separate paging windows.
+const groupedSection: EntityListSectionDefinition<unknown, Writer> = {
+  ...writerSection,
+  groupBy: {
+    key: (item) => `dc${item.dc}`,
+    label: (id) => `DC ${id.slice(2)}`,
+    compare: (a, b) => Number(a.slice(2)) - Number(b.slice(2)),
+  },
+  filters: [
+    {
+      key: "state",
+      label: () => "Состояние",
+      options: [{ value: "active", label: () => "active" }],
+      predicate: (item, value) => (item as Writer).state === value,
+    },
+    {
+      key: "degraded",
+      label: () => "Деградировавшие",
+      predicate: (item) => (item as Writer).writer_id % 2 === 0,
+    },
+  ],
+};
+
+function GroupedHarness() {
+  const instance = useMemo(() => instanceFor(meWriters), []);
+  const [filters, setFilters] = useState<Record<string, string | boolean | string[]>>({});
+  const [query, setQuery] = useState("");
+  const ctx: DetailRenderContext = {
+    nowMs: NOW,
+    mode: "extended",
+    lookup: {},
+    expandedSections: new Set(),
+    toggleSection: () => {},
+    expandedRecords: new Set(),
+    toggleRecord: () => {},
+    visibleLimit: () => 200,
+    revealMore: () => {},
+    filters,
+    setFilter: (key, value) =>
+      setFilters((prev) => {
+        const next = { ...prev };
+        if (value === undefined) delete next[key];
+        else next[key] = value;
+        return next;
+      }),
+    sort: undefined,
+    setSort: () => {},
+    openSurfaceKey: undefined,
+    openSurface: () => {},
+    closeSurface: () => {},
+  };
+  return (
+    <EntityListSection
+      instance={instance}
+      definition={groupedSection as EntityListSectionDefinition<unknown, unknown>}
+      ctx={ctx}
+      searchQuery={query}
+      onSearchChange={setQuery}
+    />
+  );
+}
+
+function chipNamed(container: HTMLElement, text: string): HTMLButtonElement {
+  const chip = Array.from(container.querySelectorAll("button")).find((b) =>
+    (b.textContent ?? "").startsWith(text),
+  );
+  if (!chip) throw new Error(`no chip ${text}`);
+  return chip as HTMLButtonElement;
+}
+
+describe("EntityListSection grouping and filters (spec §23.2, §18.2)", () => {
+  it("draws one chip per group plus an «all» chip, each with its count", () => {
+    const el = render(<GroupedHarness />);
+    const group = el.querySelector('[role="group"]')!;
+    const chips = Array.from(group.querySelectorAll("button")).map((b) => b.textContent);
+    // Twelve data centers plus «Все», and the counts add up to the whole.
+    expect(chips).toHaveLength(13);
+    expect(chips[0]).toBe(`Все · ${meWriters.writers.length}`);
+    // Ascending numeric, as this harness's comparator asks for — the real
+    // page orders production DCs first, which is its own test.
+    expect(chips[1]).toBe("DC -203 · 3");
+  });
+
+  it("draws a heading wherever the group changes, without splitting the list", () => {
+    const el = render(<GroupedHarness />);
+    const headings = Array.from(el.querySelectorAll("p.font-mono")).map((p) => p.textContent);
+    expect(headings).toHaveLength(12);
+    expect(headings[0]).toBe("DC -203");
+    // Still ONE collection: every writer is rendered, in group order.
+    expect(entityRows(el)).toHaveLength(meWriters.writers.length);
+  });
+
+  it("narrows the list to one group when its chip is pressed, and back again", () => {
+    const el = render(<GroupedHarness />);
+    click(chipNamed(el, "DC 1 ·"));
+    expect(entityRows(el)).toHaveLength(4);
+    // A grouped-to-one list needs no headings — every row is in that group.
+    expect(el.querySelectorAll("p.font-mono")).toHaveLength(0);
+    click(chipNamed(el, "DC 1 ·"));
+    expect(entityRows(el)).toHaveLength(meWriters.writers.length);
+  });
+
+  it("applies a chip filter through page state, so a §18.2 tile can set the same one", () => {
+    const el = render(<GroupedHarness />);
+    click(chipNamed(el, "Деградировавшие"));
+    const shown = entityRows(el);
+    expect(shown).toHaveLength(meWriters.writers.filter((w) => w.writer_id % 2 === 0).length);
+    expect(chipNamed(el, "Деградировавшие").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("offers a select for a filter that declares options, defaulting to «any»", () => {
+    const el = render(<GroupedHarness />);
+    const select = el.querySelector("select")!;
+    expect(select.value).toBe("");
+    expect(select.options[0].textContent).toBe("Состояние: Любое");
+    act(() => {
+      select.value = "active";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    // Every writer in the fixture is `active`, so the filter keeps them all
+    // — what is being asserted is that the control writes page state at all.
+    expect(entityRows(el)).toHaveLength(meWriters.writers.length);
+  });
+});

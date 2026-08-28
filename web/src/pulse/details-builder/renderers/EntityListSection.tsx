@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { fill, useStrings } from "../../../i18n";
 import { cn } from "../../../lib/cn";
+import { Chip } from "../../../ui/Chip";
 import { Input } from "../../../ui/Input";
+import { Select } from "../../../ui/Select";
 import { IconChevronRight } from "../../../ui/icons";
 import { describeField } from "../fieldCatalog";
 import { formatValue } from "../formatting";
@@ -13,6 +15,13 @@ import { useRovingFocus, type RovingItemProps } from "../surfaces/rovingFocus";
 import { SectionFrame } from "./SectionFrame";
 import { EmptyNote, NodeList, RevealMore } from "./NodeTree";
 import { buildRecordNodes } from "./unknownFields";
+import {
+  applyEntityFilters,
+  groupsOf,
+  matchesEntitySearch,
+  orderByGroup,
+  type EntityEntry,
+} from "./entityList.helpers";
 import { isSectionExpanded, type DetailRenderContext } from "./context";
 
 export interface EntityListSectionProps {
@@ -33,6 +42,11 @@ export interface EntityListSectionProps {
 // definition's stable SEMANTIC key — §5.3/§19.2's reconciliation identity,
 // never the array index — so a realtime frame that reorders the collection
 // does not move the open surface onto a different entity.
+//
+// §23.2 adds grouping and filtering on top of that, for the forty-six ME
+// writers: a chip row narrows the list to one data center, the declared
+// filters narrow it by state, and the rows stay ONE collection underneath —
+// one search, one paging window, one tab stop.
 export function EntityListSection({
   instance,
   definition,
@@ -47,7 +61,13 @@ export function EntityListSection({
     ...(ctx.lookup.endpoint !== undefined ? { endpoint: ctx.lookup.endpoint } : {}),
   };
 
-  const entries = useMemo(
+  // The selected group is view state of THIS section, like the ranking's own
+  // search box: it survives a realtime frame and a rotation (nothing here is
+  // remounted) and is deliberately not in the URL — R3 puts only the entity
+  // and the tab there.
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+
+  const entries = useMemo<EntityEntry[]>(
     () =>
       instance.items.map((item, i) => ({
         item,
@@ -59,15 +79,19 @@ export function EntityListSection({
     [instance.items, instance.itemKeys, definition],
   );
 
-  const query = (searchQuery ?? "").trim().toLowerCase();
-  const filtered =
-    query === ""
-      ? entries
-      : entries.filter(
-          (e) =>
-            e.identity.toLowerCase().includes(query) ||
-            (e.status ?? "").toLowerCase().includes(query),
-        );
+  const group = definition?.groupBy;
+  const groups = useMemo(() => groupsOf(entries, group, s), [entries, group, s]);
+
+  const query = (searchQuery ?? "").trim();
+  const filtered = useMemo(() => {
+    const byFilter = applyEntityFilters(entries, definition?.filters, ctx.filters);
+    const byQuery = byFilter.filter((entry) => matchesEntitySearch(entry, query));
+    const byGroup =
+      activeGroup === null || !group
+        ? byQuery
+        : byQuery.filter((entry) => group.key(entry.item) === activeGroup);
+    return orderByGroup(byGroup, group, groups);
+  }, [entries, definition, ctx.filters, query, activeGroup, group, groups]);
 
   const limit = ctx.visibleLimit(instance.id, instance.paging.initial);
   const shown = filtered.slice(0, limit);
@@ -77,6 +101,9 @@ export function EntityListSection({
   // forty-seven writers must not be forty-seven stops between the search
   // box and the rest of the page.
   const roving = useRovingFocus({ count: shown.length, orientation: "vertical" });
+
+  const chipFilters = (definition?.filters ?? []).filter((f) => f.options === undefined);
+  const selectFilters = (definition?.filters ?? []).filter((f) => f.options !== undefined);
 
   return (
     <SectionFrame
@@ -93,39 +120,111 @@ export function EntityListSection({
         <EmptyNote text={s.details.collection.emptyTitle} />
       ) : (
         <>
-          {instance.searchRequired && onSearchChange && (
-            <div className="py-2">
-              <Input
-                type="search"
-                value={searchQuery ?? ""}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder={s.details.entity.searchPlaceholder}
-                aria-label={s.details.entity.searchPlaceholder}
-              />
+          {groups.length > 1 && (
+            <div
+              className="flex flex-wrap gap-2 py-2"
+              role="group"
+              aria-label={s.details.entity.groupLabel}
+            >
+              <Chip active={activeGroup === null} onClick={() => setActiveGroup(null)}>
+                {`${s.details.entity.groupAll} · ${entries.length}`}
+              </Chip>
+              {groups.map((g) => (
+                <Chip
+                  key={g.id}
+                  active={activeGroup === g.id}
+                  onClick={() => setActiveGroup(activeGroup === g.id ? null : g.id)}
+                >
+                  {`${g.label} · ${g.count}`}
+                </Chip>
+              ))}
             </div>
           )}
+
+          {(instance.searchRequired || selectFilters.length > 0) && (
+            <div className="flex flex-col gap-2 py-2 sm:flex-row">
+              {instance.searchRequired && onSearchChange && (
+                <Input
+                  type="search"
+                  className="sm:flex-1"
+                  value={searchQuery ?? ""}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  placeholder={s.details.entity.searchPlaceholder}
+                  aria-label={s.details.entity.searchPlaceholder}
+                />
+              )}
+              {selectFilters.map((filter) => (
+                <Select
+                  key={filter.key}
+                  className="sm:w-52"
+                  aria-label={filter.label(s)}
+                  value={String(ctx.filters[filter.key] ?? "")}
+                  onChange={(e) =>
+                    ctx.setFilter(filter.key, e.target.value === "" ? undefined : e.target.value)
+                  }
+                >
+                  <option value="">{`${filter.label(s)}: ${s.details.entity.filterAny}`}</option>
+                  {(filter.options ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label(s)}
+                    </option>
+                  ))}
+                </Select>
+              ))}
+            </div>
+          )}
+
+          {chipFilters.length > 0 && (
+            // §18.2: the ordinary control stays beside the summary shortcut.
+            // Both write the same page-state key, so a tile press lights this
+            // chip up and pressing the chip clears it.
+            <div className="flex flex-wrap gap-2 pb-2">
+              {chipFilters.map((filter) => {
+                const active =
+                  Object.hasOwn(ctx.filters, filter.key) && ctx.filters[filter.key] !== false;
+                return (
+                  <Chip
+                    key={filter.key}
+                    active={active}
+                    onClick={() => ctx.setFilter(filter.key, active ? undefined : true)}
+                  >
+                    {filter.label(s)}
+                  </Chip>
+                );
+              })}
+            </div>
+          )}
+
           {filtered.length === 0 ? (
             <EmptyNote text={s.details.entity.noMatches} />
           ) : (
             <div onKeyDown={roving.onKeyDown}>
               {shown.map((entry, i) => (
-              <EntityRow
-                key={entry.key}
-                rowProps={roving.itemProps(i)}
-                identity={entry.identity}
-                status={entry.status}
-                highlights={(definition?.highlights ?? []).map((path) => {
-                  const value = readPath(entry.item, path);
-                  const field = describeField(childPath(instance.path, path), s, ctx.lookup);
-                  return formatValue(value, s, {
-                    nowMs: ctx.nowMs,
-                    ...(field.format !== undefined ? { formatter: field.format } : {}),
-                    ...(field.unit !== undefined ? { unit: field.unit } : {}),
-                  }).text;
-                })}
-                onOpen={() => ctx.openSurface(entry.key)}
-                openLabel={s.details.entity.openDetails}
-              />
+                <EntityBlock
+                  key={entry.key}
+                  heading={
+                    group !== undefined && activeGroup === null && isGroupHead(shown, i, group)
+                      ? (groups.find((g) => g.id === group.key(entry.item))?.label ?? null)
+                      : null
+                  }
+                >
+                  <EntityRow
+                    rowProps={roving.itemProps(i)}
+                    identity={entry.identity}
+                    status={entry.status}
+                    highlights={(definition?.highlights ?? []).map((path) => {
+                      const value = readPath(entry.item, path);
+                      const field = describeField(childPath(instance.path, path), s, ctx.lookup);
+                      return formatValue(value, s, {
+                        nowMs: ctx.nowMs,
+                        ...(field.format !== undefined ? { formatter: field.format } : {}),
+                        ...(field.unit !== undefined ? { unit: field.unit } : {}),
+                      }).text;
+                    })}
+                    onOpen={() => ctx.openSurface(entry.key)}
+                    openLabel={s.details.entity.openDetails}
+                  />
+                </EntityBlock>
               ))}
             </div>
           )}
@@ -162,6 +261,38 @@ export function EntityListSection({
         )}
       </AdaptiveDetailSurface>
     </SectionFrame>
+  );
+}
+
+// isGroupHead marks the row that starts a new group in the already-ordered
+// list. Reading it off the RENDERED slice (rather than off the group table)
+// is what keeps the headings correct when the paging window cuts a group in
+// half: the next reveal simply continues without repeating the heading.
+function isGroupHead(
+  shown: readonly EntityEntry[],
+  index: number,
+  group: { key: (item: unknown) => string },
+): boolean {
+  if (index === 0) return true;
+  const previous = shown[index - 1];
+  return previous === undefined || group.key(previous.item) !== group.key(shown[index].item);
+}
+
+function EntityBlock({
+  heading,
+  children,
+}: {
+  heading: string | null;
+  children: React.ReactNode;
+}) {
+  if (heading === null) return <>{children}</>;
+  return (
+    <>
+      <p className="pt-3 pb-1 font-mono text-micro font-semibold uppercase text-text-faint">
+        {heading}
+      </p>
+      {children}
+    </>
   );
 }
 
