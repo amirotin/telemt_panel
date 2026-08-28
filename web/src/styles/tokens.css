@@ -102,7 +102,7 @@
  * mode itself is decided in TypeScript (a media query cannot express
  * "compact by height OR by width, but wide only when BOTH pass"), so
  * surfaces/layoutTokens.ts mirrors the numbers and
- * surfaces/layoutTokens.test.ts parses THIS file and fails if the two ever
+ * surfaces/useLayoutMode.test.ts parses THIS file and fails if the two ever
  * drift. The lengths below are consumed straight from CSS by the
  * `detail-rail` / `detail-master` / `detail-readable` utilities in
  * index.css.

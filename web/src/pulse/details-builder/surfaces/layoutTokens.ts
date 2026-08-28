@@ -7,7 +7,7 @@
 // BOTH dimensions pass"), and `getComputedStyle` at hook time would be
 // neither SSR-safe nor free.
 //
-// layoutTokens.test.ts parses tokens.css and fails if a number here and a
+// useLayoutMode.test.ts parses tokens.css and fails if a number here and a
 // number there ever disagree, so "one source" is enforced rather than
 // promised.
 
