@@ -91,33 +91,78 @@ export function lastHistoryValue(series: HistorySeries | undefined): number | nu
   return points[points.length - 1].v;
 }
 
-// refusalsLifetimeTotal mirrors internal/hub/refusals.go's refusalsTotal
-// against the same summary the hub reads: bad connections plus failed
-// handshakes, with handshake_timeouts_total used ONLY when the by-class
-// breakdown is absent (on a current build a timeout is one of its classes,
-// so adding both would double-count it). This is Telemt's own lifetime
-// figure — the history series is a panel-lifetime accumulator and cannot
-// answer "how many in total".
-export function refusalsLifetimeTotal(stats: StatsSnapshot | null): number | null {
-  const summary = stats?.summary;
-  if (!summary) return null;
-  const byClass = summary.handshake_failures_by_class;
-  if (!byClass || byClass.length === 0) {
-    return summary.connections_bad_total + summary.handshake_timeouts_total;
-  }
-  return byClass.reduce((sum, c) => sum + c.total, summary.connections_bad_total);
+export interface ConnectionQuality {
+  /** Share of connection attempts that succeeded, 0-100. null when nothing tried in the window. */
+  percent: number | null;
+  /** Refusals inside the window — the caption, and what «Проблемы» explains the cause of. */
+  refusals: number;
+  /** Percentage points the quality moved across the window (newer half minus older half). Negative is a decline. */
+  changePoints: number | null;
 }
 
-// refusalsRising answers the Отказы tile's tone question: are refusals
-// still coming in, or is the window's count the tail of something that has
-// already stopped? The newer half of the window growing at least as fast as
-// the older half is "still happening" — a tile that turns warn for a burst
-// that ended ten minutes ago is a tile the operator learns to ignore.
-export function refusalsRising(series: HistorySeries | undefined): boolean {
-  const points = series?.points;
-  if (!points || points.length < 3) return false;
-  const mid = Math.floor(points.length / 2);
-  const older = points[mid].v - points[0].v;
-  const newer = points[points.length - 1].v - points[mid].v;
-  return newer > 0 && newer >= older;
+// connectionQuality answers the fourth tile's question — "do connections
+// establish normally?" — from the two monotonic series the hub records
+// (internal/hub/counters.go): refusals over attempts across the window
+// /api/history returned. Both are counted by the same accumulator, so a
+// Telemt restart moves them together and the ratio stays honest.
+//
+// `changePoints` compares the window's newer half against its older half.
+// The store's RAM ring only ever holds ~15 minutes (ruling R3), so there is
+// no PREVIOUS window to compare against; the two halves of this one are the
+// only "is it getting worse" signal the data can actually support.
+export function connectionQuality(
+  attempts: HistorySeries | undefined,
+  refusals: HistorySeries | undefined,
+): ConnectionQuality {
+  const attemptPoints = attempts?.points ?? [];
+  const refusalPoints = refusals?.points ?? [];
+  const windowRefusals = historyWindowDelta(refusals) ?? 0;
+  const windowAttempts = historyWindowDelta(attempts);
+  if (windowAttempts === null || windowAttempts <= 0) {
+    return { percent: null, refusals: windowRefusals, changePoints: null };
+  }
+
+  const percent = 100 - (windowRefusals / windowAttempts) * 100;
+
+  // Both halves need their own attempts to divide by; a half with none is
+  // not a 0 % half, it is a half with no answer.
+  const n = Math.min(attemptPoints.length, refusalPoints.length);
+  if (n < 4) return { percent, refusals: windowRefusals, changePoints: null };
+  const mid = Math.floor(n / 2);
+  const half = (from: number, to: number): number | null => {
+    const a = attemptPoints[to].v - attemptPoints[from].v;
+    if (a <= 0) return null;
+    const r = refusalPoints[to].v - refusalPoints[from].v;
+    return 100 - (r / a) * 100;
+  };
+  const older = half(0, mid);
+  const newer = half(mid, n - 1);
+  return {
+    percent,
+    refusals: windowRefusals,
+    changePoints: older === null || newer === null ? null : newer - older,
+  };
+}
+
+// qualitySparklineValues plots the quality curve the tile paints behind its
+// number: one point per step, each the share of that step's attempts that
+// were not refused. Steps with no attempts carry the previous value forward
+// rather than reading as 0 % — an idle five seconds is not an outage.
+export function qualitySparklineValues(
+  attempts: HistorySeries | undefined,
+  refusals: HistorySeries | undefined,
+): number[] {
+  const a = attempts?.points ?? [];
+  const r = refusals?.points ?? [];
+  const n = Math.min(a.length, r.length);
+  if (n < 2) return [];
+  const out: number[] = [];
+  let last = 100;
+  for (let i = 1; i < n; i++) {
+    const da = a[i].v - a[i - 1].v;
+    const dr = r[i].v - r[i - 1].v;
+    if (da > 0 && dr >= 0) last = 100 - (dr / da) * 100;
+    out.push(last);
+  }
+  return out;
 }

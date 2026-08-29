@@ -5,8 +5,8 @@ import {
   historyWindowDelta,
   lastHistoryValue,
   peakHistoryValue,
-  refusalsLifetimeTotal,
-  refusalsRising,
+  connectionQuality,
+  qualitySparklineValues,
   sparklineValues,
 } from "./statRow.helpers";
 import type { StatsSnapshot } from "../../realtime/topics";
@@ -161,55 +161,75 @@ describe("lastHistoryValue", () => {
   });
 });
 
-describe("refusalsLifetimeTotal", () => {
-  function summary(overrides: Partial<NonNullable<StatsSnapshot["summary"]>> = {}) {
-    return {
-      uptime_seconds: 1,
-      connections_total: 100,
-      connections_bad_total: 10,
-      handshake_timeouts_total: 7,
-      configured_users: 1,
-      ...overrides,
-    };
+describe("connectionQuality", () => {
+  function series(metric: string, values: number[]): HistorySeries {
+    return { metric, range: "15m", points: values.map((v, i) => ({ ts: i, v })) };
   }
 
-  // Mirrors internal/hub/refusals.go: the timeout counter is one of the
-  // breakdown's classes, so adding both would count it twice.
-  it("sums bad connections and the by-class failures without double-counting timeouts", () => {
-    const total = refusalsLifetimeTotal(
-      stats({
-        summary: summary({
-          handshake_failures_by_class: [
-            { class: "timeout", total: 7 },
-            { class: "unexpected_eof", total: 3 },
-          ],
-        }),
-      }),
+  it("is the share of the window's attempts that were not refused", () => {
+    const q = connectionQuality(
+      series("attempts", [0, 250, 500, 750, 1000]),
+      series("refusals", [0, 2, 4, 6, 10]),
     );
-    expect(total).toBe(20);
+    expect(q.percent).toBe(99);
+    expect(q.refusals).toBe(10);
   });
 
-  it("falls back to handshake_timeouts_total without a breakdown", () => {
-    expect(refusalsLifetimeTotal(stats({ summary: summary() }))).toBe(17);
+  // No attempts is not 0 % quality — it is no answer.
+  it("has no percentage when nothing was attempted in the window", () => {
+    const q = connectionQuality(series("attempts", [7, 7, 7]), series("refusals", [0, 0, 0]));
+    expect(q.percent).toBeNull();
   });
 
-  it("is null before the summary has arrived", () => {
-    expect(refusalsLifetimeTotal(stats())).toBeNull();
+  // The RAM ring holds one 15-minute window, so "getting worse" can only be
+  // measured inside it: the newer half against the older half.
+  it("reports the decline across the window in percentage points", () => {
+    const q = connectionQuality(
+      series("attempts", [0, 100, 200, 300, 400]),
+      series("refusals", [0, 0, 0, 10, 20]),
+    );
+    expect(q.changePoints).toBeLessThan(0);
+    expect(Math.round(q.changePoints!)).toBe(-10);
+  });
+
+  it("has no change for a series too short to halve", () => {
+    const q = connectionQuality(series("attempts", [0, 100]), series("refusals", [0, 1]));
+    expect(q.percent).toBe(99);
+    expect(q.changePoints).toBeNull();
+  });
+
+  it("is empty rather than throwing before either series has arrived", () => {
+    expect(connectionQuality(undefined, undefined)).toEqual({
+      percent: null,
+      refusals: 0,
+      changePoints: null,
+    });
   });
 });
 
-describe("refusalsRising", () => {
-  it("is true while refusals keep arriving", () => {
-    expect(refusalsRising(refusalSeries([0, 1, 2, 5, 9]))).toBe(true);
+describe("qualitySparklineValues", () => {
+  function series(metric: string, values: number[]): HistorySeries {
+    return { metric, range: "15m", points: values.map((v, i) => ({ ts: i, v })) };
+  }
+
+  it("plots one point per step", () => {
+    const values = qualitySparklineValues(
+      series("attempts", [0, 100, 200]),
+      series("refusals", [0, 1, 5]),
+    );
+    expect(values).toEqual([99, 96]);
   });
 
-  // A burst that has already stopped is history, not an alarm.
-  it("is false once the counter has gone flat", () => {
-    expect(refusalsRising(refusalSeries([0, 8, 20, 20, 20]))).toBe(false);
+  // An idle five seconds is not an outage: the previous value carries.
+  it("carries the last value through a step with no attempts", () => {
+    const values = qualitySparklineValues(
+      series("attempts", [0, 100, 100]),
+      series("refusals", [0, 2, 2]),
+    );
+    expect(values).toEqual([98, 98]);
   });
 
-  it("is false for a series too short to have two halves", () => {
-    expect(refusalsRising(refusalSeries([0, 4]))).toBe(false);
-    expect(refusalsRising(undefined)).toBe(false);
+  it("is empty for a series with no steps", () => {
+    expect(qualitySparklineValues(undefined, undefined)).toEqual([]);
   });
 });

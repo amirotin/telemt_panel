@@ -38,15 +38,15 @@ func TestRefusalsTotalFallsBackToTimeoutsWithoutBreakdown(t *testing.T) {
 // The first sample is a baseline: a proxy up for weeks arrives with
 // millions of lifetime refusals, none of which happened in the window the
 // dashboard is about to render.
-func TestRefusalsAccumulatorFirstSampleIsBaseline(t *testing.T) {
-	var a refusalsAccumulator
+func TestCounterAccumulatorFirstSampleIsBaseline(t *testing.T) {
+	var a counterAccumulator
 	if got := a.observe(1_000_000, 3600); got != 0 {
 		t.Errorf("first observe = %d, want 0", got)
 	}
 }
 
-func TestRefusalsAccumulatorAccumulatesDeltas(t *testing.T) {
-	var a refusalsAccumulator
+func TestCounterAccumulatorAccumulatesDeltas(t *testing.T) {
+	var a counterAccumulator
 	a.observe(100, 10)
 	if got := a.observe(105, 15); got != 5 {
 		t.Errorf("after +5 = %d, want 5", got)
@@ -62,8 +62,8 @@ func TestRefusalsAccumulatorAccumulatesDeltas(t *testing.T) {
 // A Telemt restart zeroes the counters and the uptime. Read raw, that is a
 // large negative delta; the accumulator must instead fold the post-restart
 // value in whole and never go backwards.
-func TestRefusalsAccumulatorSurvivesRestart(t *testing.T) {
-	var a refusalsAccumulator
+func TestCounterAccumulatorSurvivesRestart(t *testing.T) {
+	var a counterAccumulator
 	a.observe(100, 3600)
 	a.observe(140, 3660) // total 40
 	got := a.observe(3, 5)
@@ -78,8 +78,8 @@ func TestRefusalsAccumulatorSurvivesRestart(t *testing.T) {
 // A counter that fell without the uptime falling is the same event seen
 // through a coarser clock (or a stats reset) — treated as a reset, never as
 // a negative delta.
-func TestRefusalsAccumulatorTreatsCounterRegressionAsReset(t *testing.T) {
-	var a refusalsAccumulator
+func TestCounterAccumulatorTreatsCounterRegressionAsReset(t *testing.T) {
+	var a counterAccumulator
 	a.observe(100, 3600)
 	a.observe(140, 3660)
 	if got := a.observe(2, 3720); got != 42 {
@@ -88,8 +88,8 @@ func TestRefusalsAccumulatorTreatsCounterRegressionAsReset(t *testing.T) {
 }
 
 // The ring is the window: store.Memory keeps a bounded number of points per
-// metric, so a long-lived panel's "refusals" series is the newest slice of
-// it and MetricRange's fromTS trims it further. Both together are what
+// metric, so a long-lived panel's series is the newest slice of it and
+// MetricRange's fromTS trims it further. Both together are what
 // makes GET /api/history?metric=refusals&range=15m a 15-minute question.
 func TestRefusalsSeriesIsBoundedByTheRingAndTheWindow(t *testing.T) {
 	st, err := store.NewMemory("")
@@ -100,7 +100,7 @@ func TestRefusalsSeriesIsBoundedByTheRingAndTheWindow(t *testing.T) {
 
 	// 400 ticks, one per simulated second, more than the ring holds.
 	const ticks = 400
-	var a refusalsAccumulator
+	var a counterAccumulator
 	for i := 0; i < ticks; i++ {
 		total := a.observe(uint64(i), float64(i))
 		if err := st.RecordMetric(metricRefusals, store.MetricPoint{TS: int64(i), Value: float64(total)}); err != nil {
@@ -130,5 +130,29 @@ func TestRefusalsSeriesIsBoundedByTheRingAndTheWindow(t *testing.T) {
 	delta := windowed[len(windowed)-1].Value - windowed[0].Value
 	if delta != 59 {
 		t.Errorf("window delta = %v, want 59", delta)
+	}
+}
+
+// Сводка's «Качество подключений» divides one window delta by the other, so
+// the pair has to survive a restart TOGETHER: if attempts folded the
+// post-restart value in whole and refusals did not, quality would read as a
+// cliff that never happened.
+func TestCounterAccumulatorPairStaysConsistentAcrossRestart(t *testing.T) {
+	var attempts, refusals counterAccumulator
+	attempts.observe(10_000, 3600)
+	refusals.observe(100, 3600)
+	attempts.observe(11_000, 3660)
+	refusals.observe(110, 3660)
+
+	// Telemt restarts; both counters start from zero again.
+	gotAttempts := attempts.observe(500, 30)
+	gotRefusals := refusals.observe(5, 30)
+	if gotAttempts != 1_500 || gotRefusals != 15 {
+		t.Fatalf("after restart = %d attempts / %d refusals, want 1500 / 15", gotAttempts, gotRefusals)
+	}
+	// 15 refusals out of 1500 attempts = 99% quality, not a negative figure.
+	quality := 100 - float64(gotRefusals)/float64(gotAttempts)*100
+	if quality != 99 {
+		t.Errorf("quality = %v, want 99", quality)
 	}
 }

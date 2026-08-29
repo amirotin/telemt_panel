@@ -710,7 +710,7 @@ paths:
         nothing recorded yet (or a `range` longer than what's retained) is 200 with
         however many points actually exist, even zero.
       parameters:
-        - { name: metric, in: query, required: true, schema: { type: string, enum: [connections, traffic, health, active_users, refusals] } }
+        - { name: metric, in: query, required: true, schema: { type: string, enum: [connections, traffic, health, active_users, refusals, attempts] } }
         - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 1h, 24h, 7d] } }
       responses:
         "200": { description: Series (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }

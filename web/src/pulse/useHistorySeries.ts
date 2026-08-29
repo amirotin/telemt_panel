@@ -6,6 +6,7 @@ export type HistoryMetric =
   | "active_users"
   | "traffic"
   | "refusals"
+  | "attempts"
   | "health";
 
 // useHistorySeries wraps GET /api/history for the stat-row widget's

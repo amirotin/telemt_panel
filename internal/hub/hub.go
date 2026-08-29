@@ -71,10 +71,13 @@ const (
 	metricConnections = "connections"
 	metricActiveUsers = "active_users"
 	metricTraffic     = "traffic"
-	// metricRefusals is the monotonic refusals counter refusals.go builds
-	// out of the summary's cumulative failure counters — a series whose
-	// window delta is the number of clients turned away in that window.
+	// metricRefusals and metricAttempts are the monotonic pair counters.go
+	// builds out of the summary's cumulative counters: how many clients
+	// were turned away in a window, and how many tried. Сводка's «Качество
+	// подключений» is one divided by the other, so they must be counted the
+	// same way — hence one accumulator type and one recording site.
 	metricRefusals = "refusals"
+	metricAttempts = "attempts"
 )
 
 // Config configures the hub's poll intervals and lifecycle timings. Zero
@@ -220,10 +223,11 @@ type Hub struct {
 	seq         uint64
 	ring        []Event
 
-	// refusals holds the running total behind the "refusals" history
-	// series across polls (refusals.go) — its own lock, since
+	// refusals/attempts hold the running totals behind those two history
+	// series across polls (counters.go) — their own locks, since
 	// recordStatsHistory runs outside h.mu.
-	refusals refusalsAccumulator
+	refusals counterAccumulator
+	attempts counterAccumulator
 
 	// historyRecordedHook, if set, runs synchronously in pollWithContext
 	// immediately after every recordStatsHistory call (whether or not that
@@ -702,10 +706,11 @@ func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 //     coarser StatsSummary proxies (ConnectionsTotal is a cumulative
 //     counter, not concurrent; ConfiguredUsers is not "active" — both are
 //     the closest fields StatsSummary actually exposes without runtime_edge).
-//   - refusals: the monotonic running total refusalsAccumulator folds out
-//     of StatsSummary's cumulative failure counters (refusals.go) — skipped
-//     entirely when the summary sub-call failed this tick, since the
-//     accumulator must not mistake a missing sample for a counter reset.
+//   - refusals/attempts: the monotonic running totals counterAccumulator
+//     folds out of StatsSummary's cumulative failure and connection counters
+//     (counters.go) — skipped entirely when the summary sub-call failed this
+//     tick, since the accumulator must not mistake a missing sample for a
+//     counter reset.
 //   - traffic: StatsSummary/ConnectionsSummary expose no byte-traffic
 //     aggregate at all, so this sums TotalOctets across the "users" topic's
 //     latest cached snapshot (already polled independently) — skipped
@@ -732,8 +737,9 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 	}
 
 	if snap.Summary != nil {
-		total := h.refusals.observe(refusalsTotal(snap.Summary), snap.Summary.UptimeSeconds)
-		h.recordMetric(metricRefusals, ts, float64(total))
+		uptime := snap.Summary.UptimeSeconds
+		h.recordMetric(metricRefusals, ts, float64(h.refusals.observe(refusalsTotal(snap.Summary), uptime)))
+		h.recordMetric(metricAttempts, ts, float64(h.attempts.observe(snap.Summary.ConnectionsTotal, uptime)))
 	}
 
 	if traffic, ok := h.usersTrafficTotal(); ok {

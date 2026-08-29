@@ -458,7 +458,7 @@ func TestHistoryRecording(t *testing.T) {
 		awaitRecordedTick(t)
 	}
 
-	for _, metric := range []string{metricConnections, metricActiveUsers, metricRefusals} {
+	for _, metric := range []string{metricConnections, metricActiveUsers, metricRefusals, metricAttempts} {
 		points, err := st.MetricRange(metric, 0)
 		if err != nil {
 			t.Fatalf("MetricRange(%s): %v", metric, err)

@@ -387,7 +387,10 @@ export const ru = {
       activeUsers: "Активные пользователи",
       activeUsersApprox: "Активные пользователи (оценка)",
       traffic: "Трафик (15 мин)",
-      refusals: "Отказы (15 мин)",
+      // KPI 4 (concept §5): «нормально ли устанавливаются соединения».
+      quality: "Качество подключений",
+      refusalsInWindow: ["{n} отказ за 15 мин", "{n} отказа за 15 мин", "{n} отказов за 15 мин"],
+      noRefusals: "без отказов за 15 мин",
       peak15m: "пик за 15 мин",
       // The lifetime figure under a window metric: the tile shows what
       // happened in fifteen minutes, the caption what it adds up to.

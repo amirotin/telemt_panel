@@ -29,10 +29,12 @@ func refusalsTotal(s *telemt.SummaryData) uint64 {
 	return total
 }
 
-// refusalsAccumulator turns those cumulative counters into the monotonic
-// series the history ring stores as "refusals", so that the dashboard's
-// «Отказы (15 мин)» tile can read it the same way it reads traffic:
-// newest − oldest over the window.
+// counterAccumulator turns one of Telemt's cumulative counters into the
+// monotonic series the history ring stores, so that a dashboard tile can
+// read it the same way it reads traffic: newest − oldest over the window.
+// Two series use it — "refusals" and "attempts" — and Сводка's «Качество
+// подключений» divides one window delta by the other, which only works if
+// both are counted the same way.
 //
 // Two things it has to survive, neither of which a raw counter does:
 //
@@ -48,7 +50,7 @@ func refusalsTotal(s *telemt.SummaryData) uint64 {
 //     first sample is a BASELINE contributing nothing: its millions of
 //     lifetime refusals did not happen in the last fifteen minutes, and
 //     recording them would make the first window read as a catastrophe.
-type refusalsAccumulator struct {
+type counterAccumulator struct {
 	mu         sync.Mutex
 	seen       bool
 	prevRaw    uint64
@@ -58,7 +60,7 @@ type refusalsAccumulator struct {
 
 // observe folds one stats sample into the running total and returns the
 // new total — the value recorded as this tick's history point.
-func (a *refusalsAccumulator) observe(raw uint64, uptimeSeconds float64) uint64 {
+func (a *counterAccumulator) observe(raw uint64, uptimeSeconds float64) uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	switch {

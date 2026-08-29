@@ -11,7 +11,7 @@ import {
   IconTraffic,
   type IconProps,
 } from "../../ui/icons";
-import { fill, useStrings } from "../../i18n";
+import { fill, formatNumber, pluralTemplate, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import { WidgetFrame } from "../WidgetFrame";
@@ -19,12 +19,12 @@ import { useHistorySeries } from "../useHistorySeries";
 import type { DiagDomain } from "../types";
 import {
   computeStatRowValues,
+  connectionQuality,
   deltaSparklineValues,
   historyWindowDelta,
   lastHistoryValue,
   peakHistoryValue,
-  refusalsLifetimeTotal,
-  refusalsRising,
+  qualitySparklineValues,
   sparklineValues,
 } from "./statRow.helpers";
 
@@ -42,6 +42,15 @@ interface Metric {
   series: number[];
   /** The Пульс page this metric's full story lives on. */
   domain: DiagDomain;
+}
+
+/** Below this share of successful connections the quality tile turns warn. */
+const QUALITY_WARN_PCT = 98;
+/** …and so does a decline of more than this many points across the window. */
+const QUALITY_DROP_POINTS = -1;
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
 }
 
 const TONE_TEXT: Record<SparklineTone, string> = {
@@ -62,6 +71,10 @@ const TONE_PLATE: Record<SparklineTone, string> = {
   muted: "bg-surface-2",
 };
 
+// Fades the background chart out toward the left, where the value and the
+// caption are written.
+const CHART_FADE = "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.45) 34%, #000 66%)";
+
 // Tile — the desktop presentation (M5 S1): the chart is not a thumbnail
 // beside the number, it IS the tile's background, filled at the alpha
 // styles/contrast.test.ts holds it to so the label, the 30px value and the
@@ -74,12 +87,24 @@ function Tile({ metric }: { metric: Metric }) {
       to="/pulse/diag/$domain"
       params={{ domain: metric.domain }}
       className={cn(
-        "relative hidden min-h-[124px] min-w-0 flex-col overflow-hidden rounded-xl border border-border",
+        "relative hidden min-h-[104px] min-w-0 flex-col overflow-hidden rounded-xl border border-border",
         "bg-surface p-3.5 transition-colors hover:border-border-strong lg:col-span-3 lg:flex",
       )}
     >
       {metric.series.length >= 2 && (
-        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%]">
+        // The chart is faded out under the text: the number and the caption
+        // sit at the left, so the mask keeps the curve to the right half
+        // where nothing is written over it. The tile still clears AA at the
+        // fill's FULL strength (styles/contrast.test.ts) — this only makes a
+        // legible tile more legible.
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[64%]"
+          style={{
+            maskImage: CHART_FADE,
+            WebkitMaskImage: CHART_FADE,
+          }}
+        >
           <Sparkline values={metric.series} tone={metric.tone} area decorative />
         </span>
       )}
@@ -145,8 +170,10 @@ function MetricRow({ metric }: { metric: Metric }) {
   );
 }
 
-// StatRow — «Показатели»: connections · active users · traffic · refusals,
-// each with its own /api/history series (06-ui.md's default second widget).
+// StatRow — «Показатели»: connections · active users · traffic · connection
+// quality, each with its own /api/history series (06-ui.md's default second
+// widget; the fourth KPI per the dashboard concept §5 — «нормально ли
+// устанавливаются соединения», with «Проблемы» below explaining why not).
 //
 // The two window metrics are labelled "(15 мин)" and show exactly that: the
 // recorded traffic series is a cumulative lifetime total summed across users
@@ -157,8 +184,8 @@ function MetricRow({ metric }: { metric: Metric }) {
 // минут" bug used to live.
 //
 // The uptime metric is gone: the status banner carries it now, beside the
-// version and the last config reload, and a dashboard does not need the same
-// figure twice.
+// version and the route mode, and a dashboard does not need the same figure
+// twice.
 export function StatRow({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
@@ -166,6 +193,7 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
   const usersHistory = useHistorySeries("active_users");
   const trafficHistory = useHistorySeries("traffic");
   const refusalsHistory = useHistorySeries("refusals");
+  const attemptsHistory = useHistorySeries("attempts");
 
   if (!stats.data) {
     return (
@@ -177,9 +205,8 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
 
   const values = computeStatRowValues(stats.data);
   const traffic = historyWindowDelta(trafficHistory.data);
-  const refusals = historyWindowDelta(refusalsHistory.data);
   const trafficTotal = lastHistoryValue(trafficHistory.data);
-  const refusalsTotal = refusalsLifetimeTotal(stats.data);
+  const quality = connectionQuality(attemptsHistory.data, refusalsHistory.data);
   // Peak is only meaningful for the two instantaneous gauges: on a
   // cumulative counter the maximum is just its last point.
   const peakCaption = (peak: number | null) =>
@@ -219,15 +246,24 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
       domain: "connections",
     },
     {
-      key: "refusals",
+      key: "quality",
       Icon: IconShieldAlert,
-      // Warn only while it is still happening: a window that counted a
-      // burst which has since stopped is history, not an alarm.
-      tone: refusals !== null && refusals > 0 && refusalsRising(refusalsHistory.data) ? "warn" : "ok",
-      label: s.pulse.stat.refusals,
-      value: refusals ?? "—",
-      caption: totalCaption(refusalsTotal === null ? null : String(refusalsTotal)),
-      series: deltaSparklineValues(refusalsHistory.data),
+      // Warn when connections are failing at a rate worth looking at, or
+      // when the rate is getting worse inside the window — not for a burst
+      // that has already stopped, which the reader would learn to ignore.
+      tone:
+        quality.percent !== null &&
+        (quality.percent < QUALITY_WARN_PCT ||
+          (quality.changePoints !== null && quality.changePoints < QUALITY_DROP_POINTS))
+          ? "warn"
+          : "ok",
+      label: s.pulse.stat.quality,
+      value: quality.percent === null ? "—" : `${formatNumber(s, round1(quality.percent))} %`,
+      caption:
+        quality.refusals > 0
+          ? pluralTemplate(s, quality.refusals, s.pulse.stat.refusalsInWindow)
+          : s.pulse.stat.noRefusals,
+      series: qualitySparklineValues(attemptsHistory.data, refusalsHistory.data),
       domain: "counters",
     },
   ];
