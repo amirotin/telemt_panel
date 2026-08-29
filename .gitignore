@@ -11,6 +11,10 @@ web/.openapi-filtered.yaml
 web/playwright-report/
 web/test-results/
 web/blob-report/
+# The §27.1 screenshot matrix (npm run screenshots). Deliberately NOT a
+# committed baseline — see web/e2e/screenshots.ts for why the CI guard is
+# the overflow sweep and the DOM assertions instead.
+web/screenshots-out/
 
 # Built SPA embedded by internal/webui (vite.config.ts outDir) — everything
 # except the placeholder that lets `go build ./...` succeed before the
