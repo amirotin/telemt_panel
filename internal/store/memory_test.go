@@ -333,7 +333,7 @@ func TestRingTruncation(t *testing.T) {
 
 	t.Run("metrics", func(t *testing.T) {
 		m := newMemory(t)
-		total := metricCap + 10
+		total := MetricCap + 10
 		for i := 0; i < total; i++ {
 			if err := m.RecordMetric("rx_bytes", MetricPoint{TS: int64(i), Value: float64(i)}); err != nil {
 				t.Fatalf("RecordMetric(%d): %v", i, err)
@@ -343,15 +343,26 @@ func TestRingTruncation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MetricRange: %v", err)
 		}
-		if len(got) != metricCap {
-			t.Fatalf("len(MetricRange) = %d, want %d", len(got), metricCap)
+		if len(got) != MetricCap {
+			t.Fatalf("len(MetricRange) = %d, want %d", len(got), MetricCap)
 		}
-		// Oldest first: index 0 is the oldest survivor (i = total-metricCap).
-		if got[0].TS != int64(total-metricCap) {
-			t.Fatalf("oldest surviving point TS = %d, want %d", got[0].TS, total-metricCap)
+		// Oldest first: index 0 is the oldest survivor (i = total-MetricCap).
+		if got[0].TS != int64(total-MetricCap) {
+			t.Fatalf("oldest surviving point TS = %d, want %d", got[0].TS, total-MetricCap)
 		}
 		if got[len(got)-1].TS != int64(total-1) {
 			t.Fatalf("newest point TS = %d, want %d", got[len(got)-1].TS, total-1)
+		}
+	})
+
+	// The cap is a POINT count, but what the dashboard depends on is the
+	// TIME it buys: two consecutive 15-minute windows at the hub's default
+	// 5s "stats" poll. Lowering MetricCap below that silently turns Сводка's
+	// "−0,3 % за 15 мин" caption back into "no previous window".
+	t.Run("metric cap spans two fifteen-minute windows", func(t *testing.T) {
+		const defaultStatsPoll = 5 * time.Second
+		if span := time.Duration(MetricCap) * defaultStatsPoll; span < 30*time.Minute {
+			t.Fatalf("MetricCap = %d points = %s at a %s poll, want at least 30m", MetricCap, span, defaultStatsPoll)
 		}
 	})
 }

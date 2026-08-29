@@ -331,6 +331,8 @@ export const en: Dict = {
       quality: "Connection quality",
       refusalsInWindow: ["{n} refusal in 15 min", "{n} refusals in 15 min", "{n} refusals in 15 min"],
       noRefusals: "no refusals in 15 min",
+      qualityChange: "{value} % in 15 min",
+      qualityUnchanged: "unchanged in 15 min",
       peak15m: "15-min peak",
       totalAllTime: "total — {value}",
       uptime: "Uptime",

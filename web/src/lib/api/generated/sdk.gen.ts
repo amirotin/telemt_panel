@@ -485,7 +485,7 @@ export const getSnapshot = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Metric history from the store's in-memory RAM ring (ruling R3: memory-profile store keeps ~15 minutes of raw points per metric, recorded by the hub after each "stats" topic poll). Never errors on empty/partial history — a metric with nothing recorded yet (or a `range` longer than what's retained) is 200 with however many points actually exist, even zero.
+ * Metric history from the store's in-memory RAM ring (memory-profile store keeps `retention_secs` of raw points per metric — 30 minutes at the hub's default "stats" poll interval — recorded after each poll). Never errors on empty/partial history — a metric with nothing recorded yet (or a `range` longer than what's retained) is 200 with however many points actually exist, even zero.
  *
  */
 export const getHistory = <ThrowOnError extends boolean = false>(options: Options<GetHistoryData, ThrowOnError>): RequestResult<GetHistoryResponses, GetHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetHistoryResponses, GetHistoryErrors, ThrowOnError>({

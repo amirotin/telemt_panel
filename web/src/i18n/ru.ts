@@ -391,6 +391,11 @@ export const ru = {
       quality: "Качество подключений",
       refusalsInWindow: ["{n} отказ за 15 мин", "{n} отказа за 15 мин", "{n} отказов за 15 мин"],
       noRefusals: "без отказов за 15 мин",
+      // Как изменилось качество: эти 15 минут против предыдущих 15
+      // (кольцо истории держит 30 — internal/store MetricCap). {value}
+      // уже со знаком.
+      qualityChange: "{value} % за 15 мин",
+      qualityUnchanged: "без изменений за 15 мин",
       peak15m: "пик за 15 мин",
       // The lifetime figure under a window metric: the tile shows what
       // happened in fifteen minutes, the caption what it adds up to.

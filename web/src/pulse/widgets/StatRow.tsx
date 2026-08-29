@@ -11,7 +11,7 @@ import {
   IconTraffic,
   type IconProps,
 } from "../../ui/icons";
-import { fill, formatNumber, pluralTemplate, useStrings } from "../../i18n";
+import { fill, formatNumber, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import { WidgetFrame } from "../WidgetFrame";
@@ -24,8 +24,11 @@ import {
   historyWindowDelta,
   lastHistoryValue,
   peakHistoryValue,
+  qualityCaption,
   qualitySparklineValues,
+  round1,
   sparklineValues,
+  windowSeries,
 } from "./statRow.helpers";
 
 // One metric, described once and rendered twice: as a desktop tile and as a
@@ -48,10 +51,6 @@ interface Metric {
 const QUALITY_WARN_PCT = 98;
 /** …and so does a decline of more than this many points across the window. */
 const QUALITY_DROP_POINTS = -1;
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
-}
 
 const TONE_TEXT: Record<SparklineTone, string> = {
   accent: "text-accent",
@@ -204,8 +203,15 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
   }
 
   const values = computeStatRowValues(stats.data);
-  const traffic = historyWindowDelta(trafficHistory.data);
-  const trafficTotal = lastHistoryValue(trafficHistory.data);
+  // /api/history now returns thirty minutes (useHistorySeries) so the
+  // quality tile can compare two windows. Everything shown is still the last
+  // fifteen, so every other reading is taken from the cut series — the
+  // fetch got wider, the captions did not.
+  const connectionsWindow = windowSeries(connectionsHistory.data);
+  const usersWindow = windowSeries(usersHistory.data);
+  const trafficWindow = windowSeries(trafficHistory.data);
+  const traffic = historyWindowDelta(trafficWindow);
+  const trafficTotal = lastHistoryValue(trafficWindow);
   const quality = connectionQuality(attemptsHistory.data, refusalsHistory.data);
   // Peak is only meaningful for the two instantaneous gauges: on a
   // cumulative counter the maximum is just its last point.
@@ -221,8 +227,8 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
       tone: "accent",
       label: values.connectionsApprox ? s.pulse.stat.connectionsApprox : s.pulse.stat.connections,
       value: values.connections ?? "—",
-      caption: peakCaption(peakHistoryValue(connectionsHistory.data)),
-      series: sparklineValues(connectionsHistory.data),
+      caption: peakCaption(peakHistoryValue(connectionsWindow)),
+      series: sparklineValues(connectionsWindow),
       domain: "connections",
     },
     {
@@ -231,8 +237,8 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
       tone: "ok",
       label: values.activeUsersApprox ? s.pulse.stat.activeUsersApprox : s.pulse.stat.activeUsers,
       value: values.activeUsers ?? "—",
-      caption: peakCaption(peakHistoryValue(usersHistory.data)),
-      series: sparklineValues(usersHistory.data),
+      caption: peakCaption(peakHistoryValue(usersWindow)),
+      series: sparklineValues(usersWindow),
       domain: "connections",
     },
     {
@@ -242,7 +248,7 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
       label: s.pulse.stat.traffic,
       value: traffic !== null ? formatBytes(traffic, s) : "—",
       caption: totalCaption(trafficTotal === null ? null : formatBytes(trafficTotal, s)),
-      series: deltaSparklineValues(trafficHistory.data),
+      series: deltaSparklineValues(trafficWindow),
       domain: "connections",
     },
     {
@@ -259,11 +265,12 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
           : "ok",
       label: s.pulse.stat.quality,
       value: quality.percent === null ? "—" : `${formatNumber(s, round1(quality.percent))} %`,
-      caption:
-        quality.refusals > 0
-          ? pluralTemplate(s, quality.refusals, s.pulse.stat.refusalsInWindow)
-          : s.pulse.stat.noRefusals,
-      series: qualitySparklineValues(attemptsHistory.data, refusalsHistory.data),
+      // The concept's own preferred caption (§5): how the figure MOVED,
+      // this window against the previous one. Until a previous window exists
+      // — the first quarter-hour after a panel start — it falls back to
+      // naming the refusals rather than claiming a comparison it cannot make.
+      caption: qualityCaption(quality, s),
+      series: qualitySparklineValues(windowSeries(attemptsHistory.data), windowSeries(refusalsHistory.data)),
       domain: "counters",
     },
   ];

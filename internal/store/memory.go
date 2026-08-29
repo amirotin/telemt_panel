@@ -14,13 +14,23 @@ import (
 const (
 	auditCap   = 500
 	journalCap = 100
-	// metricCap bounds each named metric series (RecordMetric/MetricRange).
-	// Ruling R3 (v2/specs/02-hub-sse.md, M3 task-2): the memory-store
-	// profile keeps 15 minutes of raw history per metric; at the hub's
-	// default 5s "stats" poll interval (internal/hub, recordStatsHistory)
-	// that's 15*60/5 = 180 points.
-	metricCap = 180
 )
+
+// MetricCap bounds each named metric series (RecordMetric/MetricRange).
+//
+// At the hub's default 5s "stats" poll interval (internal/hub,
+// recordStatsHistory) 360 points are 30 minutes of raw history. Thirty, not
+// the original fifteen of ruling R3 (v2/specs/02-hub-sse.md, M3 task-2),
+// because Сводка's KPI captions compare the last 15 minutes against the 15
+// before them ("−0,3 % за 15 мин") — with a 15-minute ring there is no
+// previous window to compare against, only two halves of the current one.
+//
+// The cost stays trivial and, more importantly, stays BOUNDED: a MetricPoint
+// is two 8-byte words, the hub records six series (connections, active_users,
+// traffic, refusals, attempts, and whatever a later milestone adds), so the
+// whole history is 6*360*16 B ≈ 35 KB of steady-state memory regardless of
+// uptime. Doubling the cap doubled ~17 KB.
+const MetricCap = 360
 
 // touchMirrorDebounce caps how often a TouchSession-triggered mirror write
 // happens: at most once per this interval, however many touches land in
@@ -323,8 +333,8 @@ func (m *Memory) RecordMetric(name string, p MetricPoint) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	points := append(m.metrics[name], p)
-	if len(points) > metricCap {
-		points = points[len(points)-metricCap:]
+	if len(points) > MetricCap {
+		points = points[len(points)-MetricCap:]
 	}
 	m.metrics[name] = points
 	return nil

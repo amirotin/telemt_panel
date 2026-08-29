@@ -113,7 +113,8 @@ describe("connectionsLabel", () => {
 
 describe("trafficLabel", () => {
   function series(points: Array<{ ts: number; v: number }>): HistorySeries {
-    return { metric: "traffic", range: "15m", points };
+    return { metric: "traffic", range: "15m",
+    retention_secs: 1800, points };
   }
 
   it("falls back to н/д before any history has loaded", () => {

@@ -467,6 +467,11 @@ export type AuditEntry = {
 export type HistorySeries = {
     metric: string;
     range: string;
+    /**
+     * How far back the ring can reach at all, regardless of `range` — the client uses it to tell "the window is empty" from "the window is older than the server keeps". 0 means unknown.
+     *
+     */
+    retention_secs: number;
     points: Array<{
         /**
          * epoch seconds
@@ -1669,7 +1674,7 @@ export type GetHistoryData = {
     path?: never;
     query: {
         metric: 'connections' | 'traffic' | 'health' | 'active_users' | 'refusals' | 'attempts';
-        range: '15m' | '1h' | '24h' | '7d';
+        range: '15m' | '30m' | '1h' | '24h' | '7d';
     };
     url: '/api/history';
 };

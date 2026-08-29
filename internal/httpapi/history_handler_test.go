@@ -152,3 +152,76 @@ func TestHandleGetHistory_RequiresSession(t *testing.T) {
 		t.Fatalf("status = %d, want 401", w.Code)
 	}
 }
+
+// TestHandleGetHistory_AcceptsThirtyMinuteRange covers the range Сводка's
+// KPI captions actually ask for: fifteen minutes to show plus the fifteen
+// before them to compare against.
+func TestHandleGetHistory_AcceptsThirtyMinuteRange(t *testing.T) {
+	srv := newTestServer(t)
+	now := time.Now().Unix()
+	// Older than 15 minutes, younger than 30 — only the wider range reaches it.
+	if err := srv.st.RecordMetric("attempts", store.MetricPoint{TS: now - 20*60, Value: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.st.RecordMetric("attempts", store.MetricPoint{TS: now, Value: 160}); err != nil {
+		t.Fatal(err)
+	}
+
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+
+	for _, tc := range []struct {
+		rangeParam string
+		wantPoints int
+	}{
+		{"15m", 1},
+		{"30m", 2},
+	} {
+		r := httptest.NewRequest("GET", "/api/history?metric=attempts&range="+tc.rangeParam, nil)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("range=%s: status = %d, want 200: %s", tc.rangeParam, w.Code, w.Body)
+		}
+		var got historySeriesView
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatalf("range=%s: decode: %v", tc.rangeParam, err)
+		}
+		if got.Range != tc.rangeParam {
+			t.Errorf("range echoed as %q, want %q", got.Range, tc.rangeParam)
+		}
+		if len(got.Points) != tc.wantPoints {
+			t.Errorf("range=%s: points = %d, want %d", tc.rangeParam, len(got.Points), tc.wantPoints)
+		}
+	}
+}
+
+// TestHandleGetHistory_ReportsRetention covers the meta the browser needs to
+// tell "this window is empty" from "this window is older than the ring": the
+// ring's own reach, store.MetricCap points at the hub's poll interval.
+func TestHandleGetHistory_ReportsRetention(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+
+	r := httptest.NewRequest("GET", "/api/history?metric=connections&range=30m", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	var got historySeriesView
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	want := int64(srv.hub.HistoryRetention() / time.Second)
+	if got.RetentionSecs != want {
+		t.Errorf("retention_secs = %d, want %d", got.RetentionSecs, want)
+	}
+	// The whole point of the widening: two 15-minute windows fit.
+	if got.RetentionSecs < 2*15*60 {
+		t.Errorf("retention_secs = %d, want at least two 15-minute windows", got.RetentionSecs)
+	}
+}

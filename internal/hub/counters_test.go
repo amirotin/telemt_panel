@@ -2,6 +2,7 @@ package hub
 
 import (
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
@@ -154,5 +155,36 @@ func TestCounterAccumulatorPairStaysConsistentAcrossRestart(t *testing.T) {
 	quality := 100 - float64(gotRefusals)/float64(gotAttempts)*100
 	if quality != 99 {
 		t.Errorf("quality = %v, want 99", quality)
+	}
+}
+
+// HistoryRetention is what GET /api/history publishes as `retention_secs`,
+// and what tells the browser its "предыдущие 15 минут" exist at all. It is
+// the ring's point cap times the poll that fills it — a shorter poll (or a
+// smaller cap) shortens the reach, and both halves have to be in the answer.
+func TestHistoryRetentionSpansTwoWindows(t *testing.T) {
+	st, err := store.NewMemory("")
+	if err != nil {
+		t.Fatalf("store.NewMemory: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	h := New(Config{}, telemt.New("http://127.0.0.1:1", ""), st)
+	t.Cleanup(h.Close)
+
+	want := time.Duration(store.MetricCap) * defaultStatsInterval
+	if got := h.HistoryRetention(); got != want {
+		t.Fatalf("HistoryRetention() = %s, want %s", got, want)
+	}
+	if h.HistoryRetention() < 30*time.Minute {
+		t.Errorf("HistoryRetention() = %s, want at least two 15-minute windows", h.HistoryRetention())
+	}
+
+	// A hub configured with a faster poll reaches back less far, and says so
+	// rather than reporting the default.
+	fast := New(Config{StatsInterval: time.Second}, telemt.New("http://127.0.0.1:1", ""), st)
+	t.Cleanup(fast.Close)
+	if got := fast.HistoryRetention(); got != time.Duration(store.MetricCap)*time.Second {
+		t.Errorf("fast hub HistoryRetention() = %s, want %s", got, time.Duration(store.MetricCap)*time.Second)
 	}
 }

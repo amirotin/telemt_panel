@@ -3,7 +3,7 @@ import type { State } from "../ui/StatePill";
 import type { StatsSnapshot } from "../realtime/topics";
 import type { HistorySeries } from "../lib/api/generated/types.gen";
 import { formatBytes } from "../lib/format";
-import { historyWindowDelta } from "../pulse/widgets/statRow.helpers";
+import { historyWindowDelta, windowSeries } from "../pulse/widgets/statRow.helpers";
 
 // Pure helpers factored out of StatusStrip.tsx per the project's
 // colocated-helpers-with-tests convention (06-ui.md / web/README.md).
@@ -47,6 +47,8 @@ export function connectionsLabel(data: StatsSnapshot | null, s: Dict): string {
 // cumulative value is NOT an acceptable stand-in, it is the 256-GB figure
 // this card used to show for "15 минут".
 export function trafficLabel(series: HistorySeries | undefined, s: Dict): string {
-  const traffic = historyWindowDelta(series);
+  // useHistorySeries fetches thirty minutes; this readout says fifteen,
+  // so it cuts the window itself rather than measuring whatever arrived.
+  const traffic = historyWindowDelta(windowSeries(series));
   return traffic === null ? s.shell.trafficUnavailable : formatBytes(traffic, s);
 }

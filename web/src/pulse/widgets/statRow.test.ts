@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { ru } from "../../i18n";
 import {
   computeStatRowValues,
   deltaSparklineValues,
   historyWindowDelta,
   lastHistoryValue,
   peakHistoryValue,
+  previousWindowSeries,
+  qualityCaption,
   connectionQuality,
+  windowSeries,
   qualitySparklineValues,
   sparklineValues,
 } from "./statRow.helpers";
@@ -66,7 +70,8 @@ describe("computeStatRowValues", () => {
 });
 
 describe("sparklineValues", () => {
-  const series: HistorySeries = { metric: "connections", range: "15m", points: [{ ts: 1, v: 1 }, { ts: 2, v: 5 }] };
+  const series: HistorySeries = { metric: "connections", range: "15m",
+    retention_secs: 1800, points: [{ ts: 1, v: 1 }, { ts: 2, v: 5 }] };
 
   it("extracts the raw value series", () => {
     expect(sparklineValues(series)).toEqual([1, 5]);
@@ -81,6 +86,7 @@ describe("historyWindowDelta", () => {
   const traffic = (values: number[]): HistorySeries => ({
     metric: "traffic",
     range: "15m",
+    retention_secs: 1800,
     points: values.map((v, i) => ({ ts: i + 1, v })),
   });
 
@@ -109,6 +115,7 @@ describe("deltaSparklineValues", () => {
   const traffic = (values: number[]): HistorySeries => ({
     metric: "traffic",
     range: "15m",
+    retention_secs: 1800,
     points: values.map((v, i) => ({ ts: i + 1, v })),
   });
 
@@ -131,6 +138,7 @@ describe("peakHistoryValue", () => {
   const withPoints = (points: HistorySeries["points"]): HistorySeries => ({
     metric: "connections",
     range: "15m",
+    retention_secs: 1800,
     points,
   });
 
@@ -147,7 +155,8 @@ describe("peakHistoryValue", () => {
 });
 
 function refusalSeries(values: number[]): HistorySeries {
-  return { metric: "refusals", range: "15m", points: values.map((v, i) => ({ ts: i, v })) };
+  return { metric: "refusals", range: "15m",
+    retention_secs: 1800, points: values.map((v, i) => ({ ts: i, v })) };
 }
 
 describe("lastHistoryValue", () => {
@@ -162,8 +171,26 @@ describe("lastHistoryValue", () => {
 });
 
 describe("connectionQuality", () => {
+  // Points every 5s, the hub's own poll cadence, ending at ts 0 — so index
+  // -1 is five seconds ago and the 15-minute seam falls 180 points back.
+  // Timestamps matter now: the tile reads the LAST fifteen minutes and
+  // compares them against the fifteen before, out of one 30-minute fetch.
+  const STEP = 5;
   function series(metric: string, values: number[]): HistorySeries {
-    return { metric, range: "15m", points: values.map((v, i) => ({ ts: i, v })) };
+    const last = values.length - 1;
+    return {
+      metric,
+      range: "30m",
+      retention_secs: 1800,
+      points: values.map((v, i) => ({ ts: (i - last) * STEP, v })),
+    };
+  }
+  /** A 30-minute fetch: `count` points ending now, at STEP seconds apart. */
+  function ramp(metric: string, count: number, at: (i: number) => number): HistorySeries {
+    return series(
+      metric,
+      Array.from({ length: count }, (_, i) => at(i)),
+    );
   }
 
   it("is the share of the window's attempts that were not refused", () => {
@@ -181,20 +208,48 @@ describe("connectionQuality", () => {
     expect(q.percent).toBeNull();
   });
 
-  // The RAM ring holds one 15-minute window, so "getting worse" can only be
-  // measured inside it: the newer half against the older half.
-  it("reports the decline across the window in percentage points", () => {
-    const q = connectionQuality(
-      series("attempts", [0, 100, 200, 300, 400]),
-      series("refusals", [0, 0, 0, 10, 20]),
-    );
-    expect(q.changePoints).toBeLessThan(0);
-    expect(Math.round(q.changePoints!)).toBe(-10);
+  // The whole point of the 30-minute ring (store.MetricCap): the caption
+  // «−0,3 % за 15 мин» is this window against the previous one, not two
+  // halves of the same one.
+  it("compares the window against the previous window, in percentage points", () => {
+    // 360 points = 30 minutes. 100 attempts per step throughout; the older
+    // half refuses 1 per step (99 %), the newer half refuses 5 (95 %).
+    const attempts = ramp("attempts", 361, (i) => i * 100);
+    const refusals = ramp("refusals", 361, (i) => (i <= 180 ? i : 180 + (i - 180) * 5));
+    const q = connectionQuality(attempts, refusals);
+    expect(Math.round(q.percent!)).toBe(95);
+    expect(Math.round(q.changePoints!)).toBe(-4);
   });
 
-  it("has no change for a series too short to halve", () => {
+  it("reports an improvement as a positive change", () => {
+    const attempts = ramp("attempts", 361, (i) => i * 100);
+    const refusals = ramp("refusals", 361, (i) => (i <= 180 ? i * 5 : 900 + (i - 180)));
+    const q = connectionQuality(attempts, refusals);
+    expect(Math.round(q.changePoints!)).toBe(4);
+  });
+
+  // The first quarter-hour after a panel start: the ring simply does not
+  // reach back far enough, and the tile must not invent a comparison.
+  it("has no change while only one window has been recorded", () => {
+    const attempts = ramp("attempts", 120, (i) => i * 100);
+    const refusals = ramp("refusals", 120, (i) => i);
+    const q = connectionQuality(attempts, refusals);
+    expect(q.percent).toBe(99);
+    expect(q.changePoints).toBeNull();
+  });
+
+  it("has no change for a series too short to compare", () => {
     const q = connectionQuality(series("attempts", [0, 100]), series("refusals", [0, 1]));
     expect(q.percent).toBe(99);
+    expect(q.changePoints).toBeNull();
+  });
+
+  // A previous window with no attempts in it is not a 0 % window.
+  it("has no change when the previous window attempted nothing", () => {
+    const attempts = ramp("attempts", 361, (i) => (i <= 180 ? 0 : (i - 180) * 100));
+    const refusals = ramp("refusals", 361, (i) => (i <= 180 ? 0 : i - 180));
+    const q = connectionQuality(attempts, refusals);
+    expect(q.percent).not.toBeNull();
     expect(q.changePoints).toBeNull();
   });
 
@@ -207,9 +262,46 @@ describe("connectionQuality", () => {
   });
 });
 
+describe("windowSeries / previousWindowSeries", () => {
+  const STEP = 5;
+  function series(count: number): HistorySeries {
+    const last = count - 1;
+    return {
+      metric: "attempts",
+      range: "30m",
+      retention_secs: 1800,
+      points: Array.from({ length: count }, (_, i) => ({ ts: (i - last) * STEP, v: i })),
+    };
+  }
+
+  it("keeps only the last fifteen minutes", () => {
+    // 361 points at 5s = 30 minutes; the last 15 are 181 points, seam included.
+    expect(windowSeries(series(361))!.points.length).toBe(181);
+  });
+
+  it("hands the previous fifteen minutes back as their own series", () => {
+    const prior = previousWindowSeries(series(361))!;
+    expect(prior.points.length).toBe(181);
+    // The seam reading belongs to both slices: the previous window's close
+    // is the current window's open, and a cumulative delta needs both ends.
+    expect(prior.points[prior.points.length - 1].ts).toBe(windowSeries(series(361))!.points[0].ts);
+  });
+
+  it("has no previous window while the ring holds one", () => {
+    expect(previousWindowSeries(series(60))).toBeUndefined();
+    expect(previousWindowSeries(undefined)).toBeUndefined();
+  });
+
+  it("passes an empty or absent series through untouched", () => {
+    expect(windowSeries(undefined)).toBeUndefined();
+    const empty = { metric: "attempts", range: "30m", retention_secs: 1800, points: [] };
+    expect(windowSeries(empty)).toBe(empty);
+  });
+});
+
 describe("qualitySparklineValues", () => {
   function series(metric: string, values: number[]): HistorySeries {
-    return { metric, range: "15m", points: values.map((v, i) => ({ ts: i, v })) };
+    return { metric, range: "30m", retention_secs: 1800, points: values.map((v, i) => ({ ts: i, v })) };
   }
 
   it("plots one point per step", () => {
@@ -231,5 +323,37 @@ describe("qualitySparklineValues", () => {
 
   it("is empty for a series with no steps", () => {
     expect(qualitySparklineValues(undefined, undefined)).toEqual([]);
+  });
+});
+
+describe("qualityCaption", () => {
+  it("names the movement against the previous window, with a real minus sign", () => {
+    const caption = qualityCaption({ percent: 99.4, refusals: 11, changePoints: -0.3 }, ru);
+    expect(caption).toBe("\u22120,3 % за 15 мин");
+    expect(caption).not.toContain("-");
+  });
+
+  it("signs an improvement", () => {
+    expect(qualityCaption({ percent: 99.9, refusals: 1, changePoints: 0.4 }, ru)).toBe(
+      "+0,4 % за 15 мин",
+    );
+  });
+
+  // "−0,0 %" would read as a decline that did not happen.
+  it("says «без изменений» for a movement that rounds to zero", () => {
+    expect(qualityCaption({ percent: 100, refusals: 0, changePoints: -0.02 }, ru)).toBe(
+      "без изменений за 15 мин",
+    );
+  });
+
+  // The first quarter-hour after a panel start: no previous window exists,
+  // so the tile names this window's refusals instead of inventing a change.
+  it("falls back to the refusal count while there is no previous window", () => {
+    expect(qualityCaption({ percent: 99, refusals: 11, changePoints: null }, ru)).toBe(
+      "11 отказов за 15 мин",
+    );
+    expect(qualityCaption({ percent: 100, refusals: 0, changePoints: null }, ru)).toBe(
+      "без отказов за 15 мин",
+    );
   });
 });

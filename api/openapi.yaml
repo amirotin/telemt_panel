@@ -704,14 +704,14 @@ paths:
       tags: [realtime]
       operationId: getHistory
       description: >
-        Metric history from the store's in-memory RAM ring (ruling R3: memory-profile
-        store keeps ~15 minutes of raw points per metric, recorded by the hub after each
-        "stats" topic poll). Never errors on empty/partial history — a metric with
-        nothing recorded yet (or a `range` longer than what's retained) is 200 with
-        however many points actually exist, even zero.
+        Metric history from the store's in-memory RAM ring (memory-profile store keeps
+        `retention_secs` of raw points per metric — 30 minutes at the hub's default
+        "stats" poll interval — recorded after each poll). Never errors on
+        empty/partial history — a metric with nothing recorded yet (or a `range` longer
+        than what's retained) is 200 with however many points actually exist, even zero.
       parameters:
         - { name: metric, in: query, required: true, schema: { type: string, enum: [connections, traffic, health, active_users, refusals, attempts] } }
-        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 1h, 24h, 7d] } }
+        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d] } }
       responses:
         "200": { description: Series (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -1409,10 +1409,17 @@ components:
 
     HistorySeries:
       type: object
-      required: [metric, range, points]
+      required: [metric, range, retention_secs, points]
       properties:
         metric: { type: string }
         range: { type: string }
+        retention_secs:
+          type: integer
+          format: int64
+          description: >
+            How far back the ring can reach at all, regardless of `range` — the client
+            uses it to tell "the window is empty" from "the window is older than the
+            server keeps". 0 means unknown.
         points:
           type: array
           items:

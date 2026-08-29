@@ -775,6 +775,16 @@ func (h *Hub) recordMetric(name string, ts int64, value float64) {
 	}
 }
 
+// HistoryRetention returns how far back the metric ring can actually reach:
+// store.MetricCap points recorded one per "stats" poll. GET /api/history
+// publishes it so the browser knows, without guessing from the timestamps it
+// happens to get back, whether two consecutive windows fit in the ring —
+// which is exactly what Сводка's "−0,3 % за 15 мин" caption needs before it
+// can claim a comparison.
+func (h *Hub) HistoryRetention() time.Duration {
+	return time.Duration(store.MetricCap) * h.cfg.StatsInterval
+}
+
 // HeartbeatInterval returns the configured SSE heartbeat period.
 func (h *Hub) HeartbeatInterval() time.Duration {
 	return h.cfg.Heartbeat

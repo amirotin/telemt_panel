@@ -9,13 +9,15 @@ import (
 )
 
 // historyRanges maps openapi GetHistory's `range` enum to a lookback
-// window. The store's RAM ring only ever holds ~15 minutes of raw points
-// (ruling R3 — see store/memory.go's metricCap and hub.go's
-// recordStatsHistory), so a longer range simply returns whatever shorter
+// window. The store's RAM ring holds store.MetricCap points — 30 minutes at
+// the hub's default poll interval (see store/memory.go and hub.go's
+// recordStatsHistory) — so a longer range simply returns whatever shorter
 // history is actually retained rather than erroring: GET /api/history never
-// fails on an empty or partial result, per the task brief.
+// fails on an empty or partial result, per the task brief. The response's
+// `retention_secs` says which of the two happened.
 var historyRanges = map[string]time.Duration{
 	"15m": 15 * time.Minute,
+	"30m": 30 * time.Minute,
 	"1h":  time.Hour,
 	"24h": 24 * time.Hour,
 	"7d":  7 * 24 * time.Hour,
@@ -44,9 +46,14 @@ type historyPointView struct {
 
 // historySeriesView mirrors api/openapi.yaml HistorySeries.
 type historySeriesView struct {
-	Metric string             `json:"metric"`
-	Range  string             `json:"range"`
-	Points []historyPointView `json:"points"`
+	Metric string `json:"metric"`
+	Range  string `json:"range"`
+	// RetentionSecs is how far back the ring can reach at all, whatever
+	// `range` asked for — the meta a client needs to decide whether the
+	// window it wants to compare against exists. 0 when the hub is absent
+	// (unit tests build a Server without one), which reads as "unknown".
+	RetentionSecs int64              `json:"retention_secs"`
+	Points        []historyPointView `json:"points"`
 }
 
 // handleGetHistory implements GET /api/history?metric=&range=: a read of
@@ -73,10 +80,16 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var retentionSecs int64
+	if s.hub != nil {
+		retentionSecs = int64(s.hub.HistoryRetention() / time.Second)
+	}
+
 	writeJSON(w, http.StatusOK, historySeriesView{
-		Metric: metric,
-		Range:  rangeParam,
-		Points: toHistoryPoints(points),
+		Metric:        metric,
+		Range:         rangeParam,
+		RetentionSecs: retentionSecs,
+		Points:        toHistoryPoints(points),
 	})
 }
 
