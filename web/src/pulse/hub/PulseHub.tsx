@@ -144,9 +144,14 @@ function HubCardView({ card }: { card: HubCard }) {
       {/* The pill shares the metrics row rather than the title row: at 360px
           a long state name («Нет в этой версии») next to the title left
           nothing for the title itself. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      {/* Metrics are separated by SPACE, not by a glyph: the inter-metric
+          gap (gap-x-4) is wider than the label/value gap inside one metric
+          (gap-1), which is what tells the eye where a pair ends. A textual
+          «·» did the same job only while the row fit on one line — on wrap
+          it dangled at the end of a line with nothing after it. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
         <StatePill state={card.pill}>{card.pillLabel}</StatePill>
-        {card.metrics.map((metric, index) => (
+        {card.metrics.map((metric) => (
           <span key={metric.id} className="flex items-baseline gap-1 text-micro">
             <span className="text-text-faint">{metric.label}</span>
             <span
@@ -166,15 +171,6 @@ function HubCardView({ card }: { card: HubCard }) {
               )}
               {metric.text}
             </span>
-            {/* Two label/value pairs running together read as one phrase, so
-                a dot separates them — TRAILING, inside the metric it follows,
-                so a wrapped second line starts with a label and never with a
-                stray separator. */}
-            {index < card.metrics.length - 1 && (
-              <span aria-hidden="true" className="text-text-faint">
-                ·
-              </span>
-            )}
           </span>
         ))}
       </div>
