@@ -102,10 +102,11 @@ func TestRuntimeTopicComposite(t *testing.T) {
 }
 
 // TestRuntimeTopicMinimalRuntimeOff covers the minimal_runtime_enabled
-// gate's effect on the two mini-task-2c fields: Minimal reports a closed
-// Gated wrapper (data omitted) and UpstreamQuality reports enabled:false,
-// matching MePoolState/MeQuality/NatStun/MeSelfTest's own existing
-// MinimalRuntimeOff behavior — none of this turns into a source_error.
+// gate's effect on the "runtime" topic: Minimal reports a closed Gated
+// wrapper (data omitted) and none of this turns into a source_error.
+// UpstreamQuality and the ME payloads stay OPEN — the flag gates the four
+// /v1/stats/* routes and nothing in /v1/runtime/*, whose builders take no
+// ApiConfig at all (telemt 3.5.5 src/api/runtime_min.rs).
 func TestRuntimeTopicMinimalRuntimeOff(t *testing.T) {
 	_, h := newTelemttestHub(t, telemttest.Scenario{MinimalRuntimeOff: true}, nil)
 	data := subscribeAndAwait(t, h, "runtime")
@@ -117,8 +118,30 @@ func TestRuntimeTopicMinimalRuntimeOff(t *testing.T) {
 	if snap.Minimal == nil || snap.Minimal.Enabled || snap.Minimal.Data != nil {
 		t.Errorf("runtime snapshot minimal = %+v, want a closed gate (enabled false, data nil)", snap.Minimal)
 	}
-	if snap.UpstreamQuality == nil || snap.UpstreamQuality.Enabled {
-		t.Errorf("runtime snapshot upstream_quality = %+v, want enabled false", snap.UpstreamQuality)
+	if snap.UpstreamQuality == nil || !snap.UpstreamQuality.Enabled {
+		t.Errorf("runtime snapshot upstream_quality = %+v, want enabled true", snap.UpstreamQuality)
+	}
+	if snap.NatStun == nil || !snap.NatStun.Enabled {
+		t.Errorf("runtime snapshot nat_stun = %+v, want enabled true", snap.NatStun)
+	}
+}
+
+// TestRuntimeTopicMePoolDown covers the gate that DOES close the
+// /v1/runtime/* ME payloads — the pool being absent — and the reason token
+// it uses, which is what the panel maps to a different hint than the flag.
+func TestRuntimeTopicMePoolDown(t *testing.T) {
+	_, h := newTelemttestHub(t, telemttest.Scenario{RuntimeEdge: true, MePoolDown: true}, nil)
+	data := subscribeAndAwait(t, h, "runtime")
+
+	var snap runtimeSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("decode runtime snapshot: %v (data=%s)", err, data)
+	}
+	if snap.NatStun == nil || snap.NatStun.Enabled || snap.NatStun.Reason != "source_unavailable" {
+		t.Errorf("runtime snapshot nat_stun = %+v, want closed with source_unavailable", snap.NatStun)
+	}
+	if snap.MePoolState == nil || snap.MePoolState.Enabled {
+		t.Errorf("runtime snapshot me_pool_state = %+v, want a closed gate", snap.MePoolState)
 	}
 }
 
@@ -545,18 +568,19 @@ func TestRuntimeTopicVolatileTimestampAloneDoesNotBroadcast(t *testing.T) {
 	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000})
 	assertNoBroadcast(t, ch, 10*topicsPollInterval)
 
-	// A real change (MinimalRuntimeOff closes MePoolState/MeQuality/
-	// NatStun/MeSelfTest's gates, dropping their Data) eventually produces
-	// an event reflecting the fully-settled new state. Not RuntimeEdge
-	// here: the SDK's Capabilities probe is cached for minutes
-	// (capabilities.go), so flipping the fake's scenario wouldn't be
-	// reflected in fetchRuntime's cached caps.RuntimeEdge check within
-	// this test's lifetime — MinimalRuntimeOff changes the payload
-	// directly, with no capability-cache layer between. recvEventUntil
+	// A real change (MePoolDown closes MePoolState/MeQuality/NatStun/
+	// MeSelfTest's gates, dropping their Data) eventually produces an event
+	// reflecting the fully-settled new state. Not RuntimeEdge here: the
+	// SDK's Capabilities probe is cached for minutes (capabilities.go), so
+	// flipping the fake's scenario wouldn't be reflected in fetchRuntime's
+	// cached caps.RuntimeEdge check within this test's lifetime —
+	// MePoolDown changes the payload directly, with no capability-cache
+	// layer between. Not MinimalRuntimeOff either: that flag gates the
+	// /v1/stats/* routes, which this topic does not carry. recvEventUntil
 	// (not a plain recvEvent) because fetchRuntime's six sequential
 	// sub-calls mean the very next broadcast can be a torn intermediate
 	// composite straddling old and new state, not yet fully settled.
-	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000, MinimalRuntimeOff: true})
+	fake.SetScenario(telemttest.Scenario{GeneratedAtEpochSecs: 2000, MePoolDown: true})
 	second := recvEventUntil(t, ch, 2*time.Second, func(ev Event) bool {
 		var snap runtimeSnapshot
 		if err := json.Unmarshal(ev.Data, &snap); err != nil {

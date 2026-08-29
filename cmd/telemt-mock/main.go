@@ -50,12 +50,27 @@ var scenarios = map[string]telemttest.Scenario{
 	// reason}` wrapper instead of a missing key. runtime_edge is on (so
 	// Соединения/События/TLS have real data and the capability probe
 	// passes), while minimal_runtime_enabled is off, which is how Telemt
-	// gates me_pool_state, me_quality, nat_stun, me_selftest and the
-	// `minimal` payload — all of them fetched unconditionally and all of
-	// them arriving as a present-but-disabled wrapper. Пульс's NAT/ME cards
-	// and their Details pages take the wrapper branch here and the missing-
-	// key branch under `edge-off`; both must land on the same GatedNote.
+	// gates the four /v1/stats/* routes: upstreams, minimal/all, me-writers
+	// and dcs. They are fetched unconditionally and arrive as a
+	// present-but-disabled wrapper with reason `feature_disabled`, so ДЦ/ME
+	// take the wrapper branch here and the missing-key branch under
+	// `edge-off`; both must land on the same GatedNote.
+	//
+	// NAT/STUN and the rest of /v1/runtime/* stay LIVE here: no config flag
+	// gates them (src/api/runtime_min.rs takes no ApiConfig) — see
+	// `me-pool-down` for the scenario that actually closes them.
 	"edge-gated": {RuntimeEdge: true, MinimalRuntimeOff: true},
+	// me-pool-down: `use_middle_proxy = false`, or a pool that has not
+	// finished initializing. Everything backed by the ME pool closes with
+	// reason `source_unavailable` — nat_stun, me_pool_state, me_quality,
+	// me_selftest and the `minimal` payload's nested me_writers/dcs — while
+	// runtime_edge stays on. This is the ONLY scenario that gates NAT/STUN,
+	// and the one that must NOT produce a "flip a config flag" hint.
+	"me-pool-down": {RuntimeEdge: true, MePoolDown: true},
+	// upstream-source-down: the upstream manager's snapshot try_read lost
+	// the race, so /v1/stats/upstreams and /v1/runtime/upstream-quality
+	// report `source_unavailable` with policy and counters still filled.
+	"upstream-source-down": {RuntimeEdge: true, UpstreamSourceDown: true},
 	// read-only: every mutation 403s with read_only, matching Telemt's
 	// read_only config gate.
 	"read-only": {ReadOnly: true},
@@ -63,12 +78,12 @@ var scenarios = map[string]telemttest.Scenario{
 
 func main() {
 	listen := flag.String("listen", ":9091", "address to listen on")
-	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|read-only")
+	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only")
 	flag.Parse()
 
 	scenario, ok := scenarios[*scenarioName]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|read-only)\n", *scenarioName)
+		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only)\n", *scenarioName)
 		os.Exit(1)
 	}
 

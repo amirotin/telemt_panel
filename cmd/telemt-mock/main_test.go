@@ -12,7 +12,10 @@ import (
 // TestScenariosCoverTheDocumentedFlagValues locks the -scenario flag's
 // usage string to the actual map keys, so the two can't drift apart.
 func TestScenariosCoverTheDocumentedFlagValues(t *testing.T) {
-	want := []string{"full", "old-build", "edge-off", "edge-gated", "read-only"}
+	want := []string{
+		"full", "old-build", "edge-off", "edge-gated",
+		"me-pool-down", "upstream-source-down", "read-only",
+	}
 	if len(scenarios) != len(want) {
 		t.Fatalf("scenarios has %d entries, want %d: %v", len(scenarios), len(want), scenarios)
 	}
@@ -120,11 +123,58 @@ func TestScenarioEdgeGated(t *testing.T) {
 	if !gate.Data.Enabled {
 		t.Error("edge-gated: connections/summary enabled = false, want true (the capability probe must pass)")
 	}
+	// minimal_runtime_enabled gates the /v1/stats/* routes and nothing else:
+	// the wrapper branch this scenario exists to produce lives there.
+	get("/v1/stats/minimal/all")
+	if gate.Data.Enabled || gate.Data.Reason != "feature_disabled" {
+		t.Errorf("edge-gated: /v1/stats/minimal/all = %+v, want a disabled wrapper with feature_disabled", gate.Data)
+	}
+	// ...while /v1/runtime/* stays open: no ApiConfig reaches its builders
+	// (telemt 3.5.5 src/api/runtime_min.rs), so no flag can close it.
 	for _, path := range []string{"/v1/runtime/nat-stun", "/v1/runtime/me-pool-state"} {
 		get(path)
-		if gate.Data.Enabled || gate.Data.Reason == "" {
-			t.Errorf("edge-gated: %s = %+v, want an explicit disabled wrapper with a reason", path, gate.Data)
+		if !gate.Data.Enabled {
+			t.Errorf("edge-gated: %s = %+v, want open — minimal_runtime_enabled does not gate it", path, gate.Data)
 		}
+	}
+}
+
+// TestScenarioMePoolDown covers the scenario that DOES close the ME-pool
+// payloads, and with the other reason token: `source_unavailable`, which the
+// panel must not answer with a config-flag hint.
+func TestScenarioMePoolDown(t *testing.T) {
+	fake := telemttest.New(scenarios["me-pool-down"])
+	defer fake.Close()
+
+	var gate struct {
+		Data struct {
+			Enabled bool   `json:"enabled"`
+			Reason  string `json:"reason"`
+		} `json:"data"`
+	}
+	get := func(path string) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		fake.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		gate.Data.Enabled, gate.Data.Reason = false, ""
+		if err := json.Unmarshal(w.Body.Bytes(), &gate); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+	}
+
+	for _, path := range []string{
+		"/v1/runtime/nat-stun", "/v1/runtime/me-pool-state",
+		"/v1/runtime/me-quality", "/v1/runtime/me-selftest",
+	} {
+		get(path)
+		if gate.Data.Enabled || gate.Data.Reason != "source_unavailable" {
+			t.Errorf("me-pool-down: %s = %+v, want closed with source_unavailable", path, gate.Data)
+		}
+	}
+
+	get("/v1/runtime/connections/summary")
+	if !gate.Data.Enabled {
+		t.Error("me-pool-down: connections/summary enabled = false, want true (runtime_edge is unaffected)")
 	}
 }
 

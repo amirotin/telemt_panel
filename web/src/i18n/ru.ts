@@ -1447,6 +1447,10 @@ export const ru = {
         "Живые логи недоступны на этой платформе — используйте разовый показ последних строк.",
       minimal_runtime_enabled:
         "Включите minimal_runtime_enabled = true в конфиге Telemt и перезапустите прокси.",
+      me_pool_unavailable:
+        "Пул middle proxy не запущен: включите use_middle_proxy = true в конфиге Telemt и дождитесь инициализации пула.",
+      source_temporarily_unavailable:
+        "Источник данных занят — переключать нечего, панель покажет значения при следующем обновлении.",
     },
   },
   server: {

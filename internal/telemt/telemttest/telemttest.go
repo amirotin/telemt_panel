@@ -34,7 +34,26 @@ type Scenario struct {
 	// MinimalRuntimeOff simulates `minimal_runtime_enabled = false`. Telemt
 	// defaults this true (the gate ON), so the Scenario zero value also
 	// matches a stock config; set true to simulate the gate being disabled.
+	//
+	// It gates the FOUR /v1/stats/* routes it gates in Telemt — upstreams,
+	// minimal/all, me-writers, dcs (src/api/runtime_stats.rs) — and nothing
+	// else. The /v1/runtime/* group (nat-stun, me-pool-state, me-quality,
+	// me-selftest, upstream-quality) is registered unconditionally and its
+	// builders take no ApiConfig at all, so no config flag can close it:
+	// see MePoolDown and UpstreamSourceDown for what actually does.
 	MinimalRuntimeOff bool
+	// MePoolDown simulates the ME pool not running — `use_middle_proxy =
+	// false`, or the pool still initializing — which is the ONLY thing that
+	// closes nat-stun, me-pool-state, me-quality and me-selftest, and is the
+	// `source_unavailable` half of the /v1/stats/* minimal routes. Distinct
+	// from MinimalRuntimeOff on purpose: the two produce different reason
+	// tokens and therefore different "как включить" advice in the panel.
+	MePoolDown bool
+	// UpstreamSourceDown simulates upstream_manager.try_api_snapshot()
+	// losing its try_read: /v1/stats/upstreams and
+	// /v1/runtime/upstream-quality report `source_unavailable` with their
+	// policy/counters still filled. A momentary source state, not a switch.
+	UpstreamSourceDown bool
 	// BodyLimitBytes overrides the request body limit used for PATCH
 	// /v1/config (default 64KiB, Telemt's own default —
 	// config/defaults.rs::default_api_request_body_limit_bytes). Tests set

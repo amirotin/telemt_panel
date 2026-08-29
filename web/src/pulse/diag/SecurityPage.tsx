@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { SecurityTopic } from "../../realtime/topics";
+import { RUNTIME_EDGE_HINTS } from "../../caps";
 import { DetailPage } from "../details-builder/DetailPage";
 import { securityPageDefinition } from "../details-builder/definitions/security";
 import { TLS_FINGERPRINTS_ENDPOINT } from "../details-builder/fieldCatalog";
@@ -46,7 +47,7 @@ export function SecurityPage() {
       endpoint={TLS_FINGERPRINTS_ENDPOINT}
       onBack={() => void navigate({ to: "/pulse" })}
       onRetry={() => tls.refetch()}
-      disabledHints={{ tls: "runtime_edge" }}
+      disabledHints={{ tls: RUNTIME_EDGE_HINTS }}
     />
   );
 }

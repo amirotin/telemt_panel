@@ -22,7 +22,15 @@
 // cards must not pull — the card previews the always-on posture half of the
 // `security` topic and leaves the aggregates to the page.
 
-import type { GateHintKey } from "../../caps/gateHints";
+import {
+  ME_POOL_RUNTIME_HINTS,
+  MINIMAL_STATS_HINTS,
+  resolveGateHint,
+  RUNTIME_EDGE_HINTS,
+  UPSTREAM_STATS_HINTS,
+  type GateHintKey,
+  type GateHintSpec,
+} from "../../caps/gateHints";
 import type { Dict } from "../../i18n";
 import type {
   DcStatus,
@@ -181,8 +189,11 @@ const SECURITY_HUB_METRICS: SummaryMetricDefinition<SecurityPageData>[] = [
 
 interface HubDomainSpec {
   domain: DiagDomain;
-  /** "как включить" follow-up for a `disabled` source (R5 picks it for `unsupported`). */
-  disabledHint?: GateHintKey;
+  /**
+   * "как включить" follow-up for a `disabled` source (R5 picks it for
+   * `unsupported`). Resolved per (endpoint, reason) — see caps/gateHints.ts.
+   */
+  disabledHint?: GateHintSpec;
   source: (i: HubInputs) => DetailSourceInput;
   /** Resolved only when the source actually has data — see buildHubCards. */
   metrics: (i: HubInputs, s: Dict) => HubCardMetric[];
@@ -230,6 +241,9 @@ function metricsOf<T>(
 export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   {
     domain: "dc",
+    // /v1/stats/dcs: the flag really gates it, but the ME pool being down
+    // closes it too — and only one of the two is a setting to flip.
+    disabledHint: MINIMAL_STATS_HINTS,
     source: ({ upstreams }) => {
       const dcs = upstreams.data?.dcs ?? null;
       return {
@@ -252,6 +266,8 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "me",
+    // /v1/stats/me-writers — same pair of causes as the DC card.
+    disabledHint: MINIMAL_STATS_HINTS,
     source: ({ upstreams }) => {
       const writers = upstreams.data?.me_writers ?? null;
       return {
@@ -301,7 +317,7 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "connections",
-    disabledHint: "runtime_edge",
+    disabledHint: RUNTIME_EDGE_HINTS,
     source: ({ stats }) => ({
       kind: "topic",
       snapshot: stats,
@@ -324,6 +340,10 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "upstreams",
+    // /v1/stats/upstreams — gated by minimal_runtime_enabled, but its
+    // `source_unavailable` is a lost `try_read` on the upstream manager,
+    // not a switch.
+    disabledHint: UPSTREAM_STATS_HINTS,
     source: ({ upstreams }) => {
       const data = upstreams.data?.upstreams ?? null;
       return {
@@ -352,12 +372,14 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "nat",
-    // NOT runtime_edge: `/v1/runtime/nat-stun` is in the always-registered
-    // runtime group (07-telemt-sdk.md §57) and its gate closes with
-    // `source_unavailable` when the minimal runtime has not started — the
-    // same gate DcPage and MePage already name. The old hint sent an
-    // operator to flip a setting that has nothing to do with this payload.
-    disabledHint: "minimal_runtime_enabled",
+    // NO config flag gates this card. `/v1/runtime/nat-stun` is registered
+    // and dispatched unconditionally (07-telemt-sdk.md §57) and
+    // runtime_min.rs::build_runtime_nat_stun_data takes no ApiConfig at all:
+    // its one closed path is `shared.me_pool` being None, reported as
+    // `source_unavailable`. Naming either runtime_edge or
+    // minimal_runtime_enabled here sends an operator to a setting that
+    // cannot change this payload.
+    disabledHint: ME_POOL_RUNTIME_HINTS,
     source: ({ runtime }) => ({
       kind: "topic",
       snapshot: runtime,
@@ -376,7 +398,7 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "events",
-    disabledHint: "runtime_edge",
+    disabledHint: RUNTIME_EDGE_HINTS,
     source: ({ runtime }) => ({
       kind: "topic",
       snapshot: runtime,
@@ -398,6 +420,14 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
 // buildHubCards resolves every card in one pass. A gated or erroring source
 // contributes NO metrics — the card shows the Gated hint or the state pill
 // instead, never a row of dashes pretending to be a reading.
+function gateHintOf(
+  spec: HubDomainSpec,
+  reason: string | undefined,
+): { hint?: GateHintKey } {
+  const hint = resolveGateHint(spec.disabledHint, reason);
+  return hint !== undefined ? { hint } : {};
+}
+
 export function buildHubCards(inputs: HubInputs, s: Dict): HubCard[] {
   return HUB_DOMAINS.map((spec) => {
     const state = resolveSource(spec.domain, spec.source(inputs));
@@ -410,9 +440,7 @@ export function buildHubCards(inputs: HubInputs, s: Dict): HubCard[] {
             // follow-up — never a setting the operator's binary lacks.
             ...(state.status === "unsupported"
               ? { hint: "telemt_outdated" as GateHintKey }
-              : spec.disabledHint !== undefined
-                ? { hint: spec.disabledHint }
-                : {}),
+              : gateHintOf(spec, state.reason)),
           }
         : null;
 

@@ -15,10 +15,12 @@
 //
 // FOUR sources, deliberately independent (§14): me-writers rides the
 // always-on `upstreams` topic, gates/initialization the always-on half of
-// `runtime`, pool/quality/self-test the runtime_edge-gated half, and the
-// ~55 tuning knobs the separately gated `minimal` payload. Any of the last
-// three going away degrades the page to `partial` and leaves every other tab
-// working — a switched-off gate must never blank the writers list.
+// `runtime`, pool/quality/self-test the ME-pool-backed half of `runtime`
+// (no config flag gates those routes — they close only when the pool is
+// down), and the ~55 tuning knobs the `minimal` payload, which
+// `minimal_runtime_enabled` really does gate. Any of the last three going
+// away degrades the page to `partial` and leaves every other tab working —
+// a closed gate must never blank the writers list.
 
 import type {
   MeWriterStatus,

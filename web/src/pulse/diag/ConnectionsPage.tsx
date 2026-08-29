@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { StatsSnapshot, UsersTopic } from "../../realtime/topics";
+import { RUNTIME_EDGE_HINTS } from "../../caps";
 import { DetailPage } from "../details-builder/DetailPage";
 import { connectionsPageDefinition } from "../details-builder/definitions/connections";
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
@@ -45,7 +46,7 @@ export function ConnectionsPage() {
       payload={payload}
       sources={sources}
       onBack={() => void navigate({ to: "/pulse" })}
-      disabledHints={{ connections: "runtime_edge" }}
+      disabledHints={{ connections: RUNTIME_EDGE_HINTS }}
     />
   );
 }

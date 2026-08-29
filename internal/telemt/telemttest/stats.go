@@ -44,6 +44,15 @@ func (s *Server) handleUpstreams(w http.ResponseWriter) {
 		writeOK(w, http.StatusOK, data, s.revision())
 		return
 	}
+	// The flag is on but the upstream manager's try_read lost: Telemt keeps
+	// `enabled` true and reports the missing snapshot as a source state
+	// (runtime_stats.rs::build_upstreams_data) — nothing to switch on.
+	if s.scenario.UpstreamSourceDown {
+		data.Enabled = true
+		data.Reason = "source_unavailable"
+		writeOK(w, http.StatusOK, data, s.revision())
+		return
+	}
 	data.Enabled = true
 	latency := 12.5
 	summary := telemt.UpstreamSummaryData{ConfiguredTotal: 1, HealthyTotal: 1, DirectTotal: 1}
@@ -73,6 +82,10 @@ func (s *Server) handleMeWriters(w http.ResponseWriter) {
 		writeOK(w, http.StatusOK, s.disabledMeWriters("feature_disabled"), s.revision())
 		return
 	}
+	if s.scenario.MePoolDown {
+		writeOK(w, http.StatusOK, s.disabledMeWriters("source_unavailable"), s.revision())
+		return
+	}
 	writeOK(w, http.StatusOK, s.enabledMeWriters(), s.revision())
 }
 
@@ -92,6 +105,10 @@ func (s *Server) handleDCs(w http.ResponseWriter) {
 		writeOK(w, http.StatusOK, s.disabledDCs("feature_disabled"), s.revision())
 		return
 	}
+	if s.scenario.MePoolDown {
+		writeOK(w, http.StatusOK, s.disabledDCs("source_unavailable"), s.revision())
+		return
+	}
 	writeOK(w, http.StatusOK, s.enabledDCs(), s.revision())
 }
 
@@ -99,6 +116,19 @@ func (s *Server) handleMinimalAll(w http.ResponseWriter) {
 	if s.scenario.MinimalRuntimeOff {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.MinimalAllPayload]{
 			Enabled: false, Reason: "feature_disabled", GeneratedAtEpochSecs: s.generatedAt(),
+		}, s.revision())
+		return
+	}
+	// The flag is on but the ME pool is gone: Telemt still answers
+	// `enabled: true` and pushes the source state down into the nested
+	// payloads (runtime_stats.rs::build_minimal_all_data).
+	if s.scenario.MePoolDown {
+		writeOK(w, http.StatusOK, telemt.Gated[telemt.MinimalAllPayload]{
+			Enabled: true, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
+			Data: &telemt.MinimalAllPayload{
+				MeWriters: s.disabledMeWriters("source_unavailable"),
+				DCs:       s.disabledDCs("source_unavailable"),
+			},
 		}, s.revision())
 		return
 	}

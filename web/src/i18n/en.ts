@@ -1327,6 +1327,10 @@ export const en: Dict = {
       log_stream: "Live logs aren't available on this platform — use the one-shot tail instead.",
       minimal_runtime_enabled:
         "Set minimal_runtime_enabled = true in the Telemt config and restart the proxy.",
+      me_pool_unavailable:
+        "The middle-proxy pool is not running: set use_middle_proxy = true in the Telemt config and wait for the pool to initialize.",
+      source_temporarily_unavailable:
+        "The data source is busy — there is nothing to switch on, the panel will show the values on the next refresh.",
     },
   },
   server: {

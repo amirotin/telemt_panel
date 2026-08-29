@@ -5,13 +5,13 @@ import { GatedNote } from "../GatedNote";
 import type { DataSourceDefinition } from "./model";
 import type { PageSourcesState, SourceState } from "./sources";
 import { hintKeyFor, noticeVariantFor, sourceStatusLabel, sourceStatusShortLabel } from "./sources";
-import type { GateHintKey } from "../../caps";
+import type { GateHintSpec } from "../../caps";
 
 export interface AttentionSummaryProps {
   sources: PageSourcesState;
   definitions: readonly DataSourceDefinition[];
   /** Per-source "как включить" hint for a capability that is merely switched off. */
-  disabledHints?: Record<string, GateHintKey>;
+  disabledHints?: Record<string, GateHintSpec>;
 }
 
 // AttentionSummary is §6's attention node and §14's partial-response rule

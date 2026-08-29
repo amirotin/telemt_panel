@@ -160,12 +160,149 @@ func TestMinimalRuntimeOffScenario(t *testing.T) {
 		t.Errorf("minimal all = %+v, want closed gate", minimal)
 	}
 
+	// The /v1/runtime/* group is registered unconditionally and its builders
+	// take no ApiConfig (telemt 3.5.5 src/api/runtime_min.rs), so
+	// minimal_runtime_enabled cannot close any of it. A mock that closed
+	// nat-stun here is what taught the panel to print an inert config flag
+	// as NAT/STUN's "как включить" hint.
+	nat, err := c.NatStun(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nat.Enabled || nat.Data == nil {
+		t.Errorf("nat stun = %+v, want open with data: no flag gates /v1/runtime/nat-stun", nat)
+	}
+
 	pool, err := c.MePoolState(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pool.Enabled || pool.Data != nil {
-		t.Errorf("me pool state = %+v, want closed gate", pool)
+	if !pool.Enabled || pool.Data == nil {
+		t.Errorf("me pool state = %+v, want open with data", pool)
+	}
+
+	selftest, err := c.MeSelfTest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !selftest.Enabled || selftest.Data == nil {
+		t.Errorf("me selftest = %+v, want open with data", selftest)
+	}
+
+	quality, err := c.UpstreamQuality(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !quality.Enabled {
+		t.Errorf("upstream quality = %+v, want open: no flag gates it either", quality)
+	}
+}
+
+// TestMePoolDownScenario pins the OTHER gate: the ME pool being absent is
+// what really closes the /v1/runtime/* ME payloads, and it says so with
+// `source_unavailable` rather than `feature_disabled` — the two tokens are
+// what the panel maps to two different "как включить" hints.
+func TestMePoolDownScenario(t *testing.T) {
+	_, c := newTestServer(t, Scenario{RuntimeEdge: true, MePoolDown: true})
+	ctx := context.Background()
+
+	nat, err := c.NatStun(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nat.Enabled || nat.Data != nil || nat.Reason != "source_unavailable" {
+		t.Errorf("nat stun = %+v, want closed with source_unavailable", nat)
+	}
+
+	pool, err := c.MePoolState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pool.Enabled || pool.Reason != "source_unavailable" {
+		t.Errorf("me pool state = %+v, want closed with source_unavailable", pool)
+	}
+
+	quality, err := c.MeQuality(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quality.Enabled || quality.Reason != "source_unavailable" {
+		t.Errorf("me quality = %+v, want closed with source_unavailable", quality)
+	}
+
+	selftest, err := c.MeSelfTest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selftest.Enabled || selftest.Reason != "source_unavailable" {
+		t.Errorf("me selftest = %+v, want closed with source_unavailable", selftest)
+	}
+
+	// The /v1/stats/* minimal routes stay `enabled` at the wrapper level and
+	// push the source state into their own reason — Telemt's own shape in
+	// runtime_stats.rs::build_minimal_all_data.
+	dcs, err := c.DCs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dcs.MiddleProxyEnabled || dcs.Reason != "source_unavailable" {
+		t.Errorf("dcs = %+v, want closed with source_unavailable", dcs)
+	}
+
+	writers, err := c.MeWriters(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if writers.MiddleProxyEnabled || writers.Reason != "source_unavailable" {
+		t.Errorf("me writers = %+v, want closed with source_unavailable", writers)
+	}
+
+	minimal, err := c.MinimalAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !minimal.Enabled || minimal.Reason != "source_unavailable" || minimal.Data == nil {
+		t.Fatalf("minimal all = %+v, want enabled with source_unavailable and nested payload", minimal)
+	}
+	if minimal.Data.DCs.Reason != "source_unavailable" {
+		t.Errorf("minimal all dcs = %+v, want the source state pushed down", minimal.Data.DCs)
+	}
+
+	// runtime_edge is untouched by the ME pool.
+	conns, err := c.ConnectionsSummary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !conns.Enabled || conns.Data == nil {
+		t.Errorf("connections summary = %+v, want open: the ME pool does not gate runtime_edge", conns)
+	}
+}
+
+// TestUpstreamSourceDownScenario pins the third cause: a lost `try_read` on
+// the upstream manager. /v1/stats/upstreams keeps `enabled` true and only
+// changes its reason, and /v1/runtime/upstream-quality — which no flag gates
+// — closes with the same token.
+func TestUpstreamSourceDownScenario(t *testing.T) {
+	_, c := newTestServer(t, Scenario{RuntimeEdge: true, UpstreamSourceDown: true})
+	ctx := context.Background()
+
+	upstreams, err := c.Upstreams(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !upstreams.Enabled || upstreams.Reason != "source_unavailable" || upstreams.Summary != nil {
+		t.Errorf("upstreams = %+v, want enabled with source_unavailable and no summary", upstreams)
+	}
+
+	quality, err := c.UpstreamQuality(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quality.Enabled || quality.Reason != "source_unavailable" {
+		t.Errorf("upstream quality = %+v, want closed with source_unavailable", quality)
+	}
+	if quality.Policy.ConnectRetryAttempts == 0 {
+		t.Errorf("upstream quality policy = %+v, want it filled even on a closed gate", quality.Policy)
 	}
 }
 

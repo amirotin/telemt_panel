@@ -36,7 +36,7 @@ func (s *Server) handleEffectiveLimits(w http.ResponseWriter) {
 }
 
 func (s *Server) handleMePoolState(w http.ResponseWriter) {
-	if s.scenario.MinimalRuntimeOff {
+	if s.scenario.MePoolDown {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMePoolStatePayload]{
 			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
@@ -54,7 +54,7 @@ func (s *Server) handleMePoolState(w http.ResponseWriter) {
 }
 
 func (s *Server) handleMeQuality(w http.ResponseWriter) {
-	if s.scenario.MinimalRuntimeOff {
+	if s.scenario.MePoolDown {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMeQualityPayload]{
 			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
@@ -75,9 +75,12 @@ func (s *Server) handleUpstreamQuality(w http.ResponseWriter) {
 		Policy:               telemt.RuntimeUpstreamQualityPolicyData{ConnectRetryAttempts: 3, ConnectBudgetMs: 5000},
 		Counters:             telemt.RuntimeUpstreamQualityCountersData{ConnectAttemptTotal: 50, ConnectSuccessTotal: 48},
 	}
-	if s.scenario.MinimalRuntimeOff {
+	// /v1/runtime/upstream-quality reads no ApiConfig: runtime_min.rs closes
+	// it only when upstream_manager.try_api_snapshot() loses its try_read,
+	// and keeps `policy`/`counters` filled even then.
+	if s.scenario.UpstreamSourceDown {
 		data.Enabled = false
-		data.Reason = "feature_disabled"
+		data.Reason = "source_unavailable"
 		writeOK(w, http.StatusOK, data, s.revision())
 		return
 	}
@@ -88,7 +91,11 @@ func (s *Server) handleUpstreamQuality(w http.ResponseWriter) {
 }
 
 func (s *Server) handleNatStun(w http.ResponseWriter) {
-	if s.scenario.MinimalRuntimeOff {
+	// NOT MinimalRuntimeOff: /v1/runtime/nat-stun is registered and
+	// dispatched unconditionally and build_runtime_nat_stun_data takes no
+	// ApiConfig at all (telemt 3.5.5 src/api/runtime_min.rs). Its one closed
+	// path is `shared.me_pool` being None.
+	if s.scenario.MePoolDown {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeNatStunPayload]{
 			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())
@@ -107,7 +114,7 @@ func (s *Server) handleNatStun(w http.ResponseWriter) {
 }
 
 func (s *Server) handleMeSelftest(w http.ResponseWriter) {
-	if s.scenario.MinimalRuntimeOff {
+	if s.scenario.MePoolDown {
 		writeOK(w, http.StatusOK, telemt.Gated[telemt.RuntimeMeSelftestPayload]{
 			Enabled: false, Reason: "source_unavailable", GeneratedAtEpochSecs: s.generatedAt(),
 		}, s.revision())

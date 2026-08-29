@@ -8,7 +8,7 @@ import { ErrorState } from "../../ui/ErrorState";
 import { Skeleton } from "../../ui/Skeleton";
 import { useDisplayMode } from "../../display-mode";
 import { useNow } from "../../people/useNow";
-import type { GateHintKey } from "../../caps";
+import type { GateHintSpec } from "../../caps";
 import { AttentionSummary } from "./AttentionSummary";
 import { DetailHeader } from "./DetailHeader";
 import { EntityPager, EntitySelector } from "./EntitySelector";
@@ -57,7 +57,7 @@ export interface DetailPageProps<TPayload, TContext> {
   onResetDelta?: () => void;
   /** Domain chart renderers for this page's CustomSections (§9.8). */
   customRenderers?: CustomSectionRegistry;
-  disabledHints?: Record<string, GateHintKey>;
+  disabledHints?: Record<string, GateHintSpec>;
 }
 
 // DetailPage assembles §6's tree from a declarative definition: header,

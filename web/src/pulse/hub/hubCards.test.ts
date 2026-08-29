@@ -151,27 +151,28 @@ describe("DC fleet aggregates", () => {
 describe("gated and unsupported sources (ruling R5)", () => {
   const off: RuntimeTopic = {
     ...runtimeSnapshot,
-    nat_stun: gatedOff(),
+    nat_stun: gatedOff("source_unavailable"),
     recent_events: gatedOff(),
   };
 
   it("shows the disabled hint instead of a row of dashes", () => {
     const cards = buildHubCards(inputs({ runtime: topic<RuntimeTopic>(off) }), ru);
-    // Each card names ITS OWN gate: events rides runtime_edge, nat_stun is in
-    // the always-registered runtime group whose gate is the minimal runtime
-    // (07-telemt-sdk.md §57) — one hint for both would send an operator to
-    // the wrong setting half the time.
-    const hints = { nat: "minimal_runtime_enabled", events: "runtime_edge" } as const;
+    // Each card names ITS OWN gate, resolved from (endpoint, reason): events
+    // rides runtime_edge and says so on `feature_disabled`; nat_stun is in
+    // the always-registered runtime group (07-telemt-sdk.md §57) that NO flag
+    // gates, so its only closed path is `source_unavailable` — the ME pool.
+    // One hint for both would send an operator to the wrong setting half the
+    // time, and naming a flag on NAT/STUN sends them to an inert one.
+    const expected = {
+      nat: { reason: "source_unavailable", hint: "me_pool_unavailable" },
+      events: { reason: "feature_disabled", hint: "runtime_edge" },
+    } as const;
     for (const domain of ["nat", "events"] as const) {
       const card = cards.find((c) => c.domain === domain)!;
       expect(card.status).toBe("disabled");
       expect(card.pill).toBe("muted");
       expect(card.metrics).toEqual([]);
-      expect(card.gate).toEqual({
-        variant: "disabled",
-        reason: "feature_disabled",
-        hint: hints[domain],
-      });
+      expect(card.gate).toEqual({ variant: "disabled", ...expected[domain] });
     }
   });
 
@@ -222,7 +223,7 @@ describe("gated and unsupported sources (ruling R5)", () => {
       ru,
     );
     const hints = {
-      nat: "minimal_runtime_enabled",
+      nat: "me_pool_unavailable",
       events: "runtime_edge",
       connections: "runtime_edge",
     } as const;
@@ -243,16 +244,41 @@ describe("gated and unsupported sources (ruling R5)", () => {
       inputs({
         upstreams: topic<UpstreamsTopic>({
           ...upstreamsSnapshot,
-          dcs: { ...dcs, middle_proxy_enabled: false, reason: "middle_proxy_off" },
-          me_writers: { ...meWriters, middle_proxy_enabled: false, reason: "middle_proxy_off" },
+          dcs: { ...dcs, middle_proxy_enabled: false, reason: "feature_disabled" },
+          me_writers: { ...meWriters, middle_proxy_enabled: false, reason: "source_unavailable" },
         }),
       }),
       ru,
     );
+    // Both cards read the same pair of /v1/stats/* routes, so the reason —
+    // not the card — decides the follow-up: the flag when Telemt says
+    // `feature_disabled`, the ME pool when it says `source_unavailable`.
+    const expected = {
+      dc: { reason: "feature_disabled", hint: "minimal_runtime_enabled" },
+      me: { reason: "source_unavailable", hint: "me_pool_unavailable" },
+    } as const;
     for (const domain of ["dc", "me"] as const) {
       const card = cards.find((c) => c.domain === domain)!;
       expect(card.status).toBe("disabled");
-      expect(card.gate).toEqual({ variant: "disabled", reason: "middle_proxy_off" });
+      expect(card.gate).toEqual({ variant: "disabled", ...expected[domain] });
+    }
+  });
+
+  it("keeps NAT/STUN off every config flag whatever reason arrives", () => {
+    // The regression this pins: /v1/runtime/nat-stun is dispatched
+    // unconditionally and build_runtime_nat_stun_data takes no ApiConfig, so
+    // no reason on that route may ever produce a "flip this setting" hint.
+    const flagHints = ["runtime_edge", "minimal_runtime_enabled"];
+    for (const reason of ["source_unavailable", "feature_disabled", "whatever"]) {
+      const cards = buildHubCards(
+        inputs({
+          runtime: topic<RuntimeTopic>({ ...runtimeSnapshot, nat_stun: gatedOff(reason) }),
+        }),
+        ru,
+      );
+      const card = cards.find((c) => c.domain === "nat")!;
+      expect(card.gate?.hint, reason).toBe("me_pool_unavailable");
+      expect(flagHints, reason).not.toContain(card.gate?.hint);
     }
   });
 });

@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
+import { UPSTREAM_QUALITY_HINTS, UPSTREAM_STATS_HINTS } from "../../caps";
 import { DetailPage } from "../details-builder/DetailPage";
 import { upstreamsPageDefinition } from "../details-builder/definitions/upstreams";
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
@@ -41,9 +42,11 @@ export function UpstreamsPage() {
       generatedAt: stats?.generated_at_epoch_secs ?? null,
     },
     // upstream_quality is a bespoke flat shape rather than Gated<T>
-    // (realtime/topics.ts), so the wrapper is built here: `enabled` is the
-    // same minimal_runtime_enabled gate, and `policy` is what the source
-    // actually feeds.
+    // (realtime/topics.ts), so the wrapper is built here. NO config flag
+    // gates /v1/runtime/upstream-quality: runtime_min.rs closes it only when
+    // `upstream_manager.try_api_snapshot()` loses its `try_read` race, so
+    // `enabled` is a momentary source state and `policy` (which Telemt still
+    // fills in that branch) is what the source actually feeds.
     quality: {
       kind: "topic",
       snapshot: runtime,
@@ -67,7 +70,7 @@ export function UpstreamsPage() {
       payload={payload}
       sources={sources}
       onBack={() => void navigate({ to: "/pulse" })}
-      disabledHints={{ quality: "minimal_runtime_enabled" }}
+      disabledHints={{ upstreams: UPSTREAM_STATS_HINTS, quality: UPSTREAM_QUALITY_HINTS }}
     />
   );
 }

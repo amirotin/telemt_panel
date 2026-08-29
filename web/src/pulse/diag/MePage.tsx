@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
+import { ME_POOL_RUNTIME_HINTS, MINIMAL_STATS_HINTS } from "../../caps";
 import { DetailPage } from "../details-builder/DetailPage";
 import { mePageDefinition } from "../details-builder/definitions/me";
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
@@ -71,7 +72,13 @@ export function MePage() {
       payload={payload}
       sources={sources}
       onBack={() => void navigate({ to: "/pulse" })}
-      disabledHints={{ runtime_edge: "runtime_edge", minimal: "minimal_runtime_enabled" }}
+      // `runtime_edge` is this page's SOURCE id, not its gate: the payload
+      // behind it is /v1/runtime/me-pool-state, which no flag gates.
+      disabledHints={{
+        upstreams: MINIMAL_STATS_HINTS,
+        runtime_edge: ME_POOL_RUNTIME_HINTS,
+        minimal: MINIMAL_STATS_HINTS,
+      }}
     />
   );
 }

@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
+import { MINIMAL_STATS_HINTS } from "../../caps";
 import { DetailPage } from "../details-builder/DetailPage";
 import { dcPageDefinition } from "../details-builder/definitions/dc";
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
@@ -55,7 +56,7 @@ export function DcPage() {
       payload={payload}
       sources={sources}
       onBack={() => void navigate({ to: "/pulse" })}
-      disabledHints={{ runtime: "minimal_runtime_enabled" }}
+      disabledHints={{ upstreams: MINIMAL_STATS_HINTS, runtime: MINIMAL_STATS_HINTS }}
     />
   );
 }

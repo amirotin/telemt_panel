@@ -26,7 +26,7 @@
 // than `error`, and a payload that arrived empty is `empty`, not `error`.
 
 import { useMemo } from "react";
-import type { GateHintKey } from "../../caps/gateHints";
+import { resolveGateHint, type GateHintKey, type GateHintSpec } from "../../caps/gateHints";
 import type { Dict } from "../../i18n";
 import type { TopicSnapshot } from "../../realtime/types";
 import type { DataSourceDefinition } from "./model";
@@ -399,12 +399,15 @@ export function noticeVariantFor(state: SourceState): "disabled" | "unsupported"
 // hintKeyFor picks the "как включить" follow-up. An unsupported source is
 // always `telemt_outdated` — the string Task 1 added for exactly this — so
 // the panel never tells an operator to flip a setting their binary lacks.
+// A merely `disabled` source resolves its hint from the (endpoint, reason)
+// pair: the endpoint half is the caller's spec, the reason half is Telemt's
+// own token on the wire (caps/gateHints.ts::resolveGateHint).
 export function hintKeyFor(
   state: SourceState,
-  disabledHint?: GateHintKey,
+  disabledHint?: GateHintSpec,
 ): GateHintKey | undefined {
   if (state.status === "unsupported") return "telemt_outdated";
-  if (state.status === "disabled") return disabledHint;
+  if (state.status === "disabled") return resolveGateHint(disabledHint, state.reason);
   return undefined;
 }
 

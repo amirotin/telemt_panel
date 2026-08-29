@@ -4,6 +4,7 @@ import type { RuntimeTopic } from "../../realtime/topics";
 import { DetailPage } from "../details-builder/DetailPage";
 import { natPageDefinition } from "../details-builder/definitions/nat";
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
+import { ME_POOL_RUNTIME_HINTS } from "../../caps";
 import { resolveGated } from "../widgets/gated";
 
 // NatPage — /pulse/diag/nat, spec §23.5. The three flattened KV groups the
@@ -31,9 +32,9 @@ export function NatPage() {
       payload={payload}
       sources={sources}
       onBack={() => void navigate({ to: "/pulse" })}
-      // The minimal runtime group's gate, not runtime_edge — see the `nat`
-      // entry in hub/hubCards.ts.
-      disabledHints={{ nat: "minimal_runtime_enabled" }}
+      // No config flag gates /v1/runtime/nat-stun at all — it closes only
+      // when the ME pool is down. See the `nat` entry in hub/hubCards.ts.
+      disabledHints={{ nat: ME_POOL_RUNTIME_HINTS }}
     />
   );
 }

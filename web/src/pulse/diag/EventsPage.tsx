@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
+import { RUNTIME_EDGE_HINTS } from "../../caps";
 import { DetailPage } from "../details-builder/DetailPage";
 import { eventsPageDefinition } from "../details-builder/definitions/events";
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
@@ -31,7 +32,7 @@ export function EventsPage() {
       payload={payload}
       sources={sources}
       onBack={() => void navigate({ to: "/pulse" })}
-      disabledHints={{ events: "runtime_edge" }}
+      disabledHints={{ events: RUNTIME_EDGE_HINTS }}
     />
   );
 }
