@@ -168,7 +168,6 @@ describe("computeProblems", () => {
       "stale_runtime",
       "handshake_timeout",
       "connections_bad_total",
-      "handshake_timeouts_total",
       "connections_bad_rate_limited",
       "cap_runtime_edge",
     ]);
@@ -507,5 +506,37 @@ describe("problemDomain — every row that has a cause is a way into Пульс"
     expect(problemDomain("not_ready")).toBeUndefined();
     expect(problemDomain("read_only")).toBeUndefined();
     expect(problemDomain("cap_quota")).toBeUndefined();
+  });
+});
+
+describe("handshake timeouts are counted once, not twice", () => {
+  // On a current Telemt a timed-out handshake IS one of the classes inside
+  // handshake_failures_by_class, and handshake_timeouts_total repeats it.
+  it("keeps only the class row when the breakdown is present", () => {
+    const { current, baseline } = withSummary(
+      {
+        handshake_timeouts_total: 3_888,
+        handshake_failures_by_class: [{ class: "timeout", total: 3_888 }],
+      },
+      {
+        handshake_timeouts_total: 3_886,
+        handshake_failures_by_class: [{ class: "timeout", total: 3_886 }],
+      },
+    );
+    expect(computeProblems(current, [], [], null, s, baseline).map((i) => i.key)).toEqual([
+      "handshake_timeout",
+    ]);
+  });
+
+  // …and on a build old enough to send no breakdown, the scalar is the only
+  // thing that knows, so it is still reported.
+  it("falls back to the scalar when there is no breakdown at all", () => {
+    const { current, baseline } = withSummary(
+      { handshake_timeouts_total: 3_888 },
+      { handshake_timeouts_total: 3_886 },
+    );
+    expect(computeProblems(current, [], [], null, s, baseline).map((i) => i.key)).toEqual([
+      "handshake_timeouts_total",
+    ]);
   });
 });

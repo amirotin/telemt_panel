@@ -188,14 +188,22 @@ export function computeProblems(
     );
     if (badTotal) items.push(badTotal);
 
-    const timeouts = rateItem(
-      "handshake_timeouts_total",
-      s.pulse.problems.handshakeTimeouts,
-      counterDelta(base.handshake_timeouts_total, summary.handshake_timeouts_total),
-      summary.handshake_timeouts_total,
-      s,
-    );
-    if (timeouts) items.push(timeouts);
+    // handshake_timeouts_total is reported ONLY as the fallback for a Telemt
+    // build old enough not to send handshake_failures_by_class: on a current
+    // build a timed-out handshake is one of the classes inside that
+    // breakdown, so both rules firing put the same growth on the card twice,
+    // under two names. Same rule internal/hub/counters.go's refusalsTotal
+    // applies to the refusals series, for the same reason.
+    if (failures.length === 0) {
+      const timeouts = rateItem(
+        "handshake_timeouts_total",
+        s.pulse.problems.handshakeTimeouts,
+        counterDelta(base.handshake_timeouts_total, summary.handshake_timeouts_total),
+        summary.handshake_timeouts_total,
+        s,
+      );
+      if (timeouts) items.push(timeouts);
+    }
 
     const badByClass = [...(summary.connections_bad_by_class ?? [])].sort(
       (a, b) => b.total - a.total,
