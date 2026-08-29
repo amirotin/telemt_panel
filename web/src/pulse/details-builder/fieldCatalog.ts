@@ -2136,10 +2136,34 @@ const NAT_ENTRIES: FieldCatalogEntry[] = [
     zeroMeaningKey: "nat.servers.live_total",
   },
   { path: "reflection", descriptionKey: "nat.reflection" },
-  { path: "reflection.v4.addr", descriptionKey: "nat.reflection.v4.addr", format: "address" },
-  { path: "reflection.v4.age_secs", descriptionKey: "nat.reflection.age_secs", unit: "seconds" },
-  { path: "reflection.v6.addr", descriptionKey: "nat.reflection.v6.addr", format: "address" },
-  { path: "reflection.v6.age_secs", descriptionKey: "nat.reflection.age_secs", unit: "seconds" },
+  // The four reflection rows are `addr` and `age_secs` TWICE, one pair per
+  // address family, and a row names its field by the last path segment —
+  // which would print the same two words four times. The label override
+  // carries the family, still spelled the way Telemt nests it (§8.1).
+  {
+    path: "reflection.v4.addr",
+    descriptionKey: "nat.reflection.v4.addr",
+    label: "v4.addr",
+    format: "address",
+  },
+  {
+    path: "reflection.v4.age_secs",
+    descriptionKey: "nat.reflection.age_secs",
+    label: "v4.age_secs",
+    unit: "seconds",
+  },
+  {
+    path: "reflection.v6.addr",
+    descriptionKey: "nat.reflection.v6.addr",
+    label: "v6.addr",
+    format: "address",
+  },
+  {
+    path: "reflection.v6.age_secs",
+    descriptionKey: "nat.reflection.age_secs",
+    label: "v6.age_secs",
+    unit: "seconds",
+  },
 ];
 
 // The Events domain (`GET /v1/runtime/events/recent`,

@@ -61,6 +61,14 @@ describe("NAT/STUN page definition (spec §23.5)", () => {
       "reflection.v6.age_secs",
     ]);
     expect(withBoth.rows.every((r) => r.present)).toBe(true);
+    // …and each row NAMES its address family: four rows called `addr`,
+    // `age_secs`, `addr`, `age_secs` would leave the reader to guess.
+    expect(withBoth.rows.map((r) => describeField(r.path, ru).label)).toEqual([
+      "v4.addr",
+      "v4.age_secs",
+      "v6.addr",
+      "v6.age_secs",
+    ]);
 
     // With no reflection at all the four rows are STILL drawn — each one
     // absent, which the renderer prints as «не пришло в ответе» rather than
