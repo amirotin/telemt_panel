@@ -25,9 +25,9 @@
 // field it has never seen (§8.2).
 //
 // Seeded here: DC (Task 2), Security and TLS (Task 6), ME and Counters
-// (Task 7). Task 8 adds Upstreams, Connections, NAT and Events;
-// `fieldCatalog.coverage.test.ts` is what tells it which paths are still
-// missing.
+// (Task 7), Upstreams, Connections, NAT and Events (Task 8) — every
+// domain the panel draws. `fieldCatalog.coverage.test.ts` is what tells
+// the next Telemt bump which paths went missing.
 
 import type { Dict } from "../../i18n";
 import type { DisplayMode } from "../../display-mode/mode";
@@ -1790,8 +1790,402 @@ const COUNTERS_ENTRIES: FieldCatalogEntry[] = [
   },
 ];
 
+// The Upstreams domain (`GET /v1/stats/upstreams` +
+// `GET /v1/runtime/upstream-quality`, TELEMT_LIVE_API_DATA §7).
+//
+// The two response envelopes are keyed `stats.*` and `upstream_quality.*`
+// rather than bare, because §8.2's exact step is GLOBAL and the bare
+// `reason` / `generated_at_epoch_secs` already belong to the DC domain,
+// where they say something else entirely. definitions/upstreams.ts nests
+// the page context to match.
+//
+// Two entries are ALIASES for a second spelling of the same field:
+// EntityListSection resolves a `highlights` path against
+// `<collection>.<field>` (never `<collection>.*.<field>`), so the row's two
+// headline numbers would otherwise be described by the counters-family
+// guess instead of by their own sentence. Same device the DC domain uses
+// for its entity-rooted paths.
+/** The sixteen `zero` connect counters of `GET /v1/stats/upstreams` (§7). */
+const ZERO_FIELDS = [
+  "connect_attempt_total",
+  "connect_success_total",
+  "connect_fail_total",
+  "connect_failfast_hard_error_total",
+  "connect_attempts_bucket_1",
+  "connect_attempts_bucket_2",
+  "connect_attempts_bucket_3_4",
+  "connect_attempts_bucket_gt_4",
+  "connect_duration_success_bucket_le_100ms",
+  "connect_duration_success_bucket_101_500ms",
+  "connect_duration_success_bucket_501_1000ms",
+  "connect_duration_success_bucket_gt_1000ms",
+  "connect_duration_fail_bucket_le_100ms",
+  "connect_duration_fail_bucket_101_500ms",
+  "connect_duration_fail_bucket_501_1000ms",
+  "connect_duration_fail_bucket_gt_1000ms",
+] as const;
+
+function upstreamRow(field: string, extra: Omit<FieldCatalogEntry, "path" | "descriptionKey"> = {}) {
+  return { path: `upstreams.*.${field}`, descriptionKey: `upstreams.row.${field}`, ...extra };
+}
+
+const UPSTREAMS_ENTRIES: FieldCatalogEntry[] = [
+  { path: "upstreams", descriptionKey: "upstreams.upstreams" },
+  upstreamRow("upstream_id", { format: "identifier" }),
+  upstreamRow("route_kind", { format: "enum" }),
+  upstreamRow("address", { format: "address" }),
+  upstreamRow("weight", { format: "integer" }),
+  upstreamRow("scopes", { format: "enum" }),
+  upstreamRow("healthy", { format: "boolean" }),
+  upstreamRow("fails", { format: "integer" }),
+  upstreamRow("last_check_age_secs", { unit: "seconds" }),
+  upstreamRow("effective_latency_ms", {
+    unit: "milliseconds",
+    nullMeaningKey: "upstreams.row.effective_latency_ms",
+  }),
+  upstreamRow("dc"),
+  // Aliases for the compact row's two highlights (see the note above).
+  {
+    path: "upstreams.effective_latency_ms",
+    descriptionKey: "upstreams.row.effective_latency_ms",
+    unit: "milliseconds",
+    shortLabelKey: "upstreams.effective_latency_ms",
+  },
+  {
+    path: "upstreams.fails",
+    descriptionKey: "upstreams.row.fails",
+    format: "integer",
+    shortLabelKey: "upstreams.fails",
+  },
+  {
+    path: "upstreams.*.dc.*.dc",
+    descriptionKey: "upstreams.dc.dc",
+    format: "integer",
+  },
+  {
+    path: "upstreams.*.dc.*.latency_ema_ms",
+    descriptionKey: "upstreams.dc.latency_ema_ms",
+    unit: "milliseconds",
+    nullMeaningKey: "upstreams.dc.latency_ema_ms",
+  },
+  {
+    path: "upstreams.*.dc.*.ip_preference",
+    descriptionKey: "upstreams.dc.ip_preference",
+    format: "enum",
+  },
+  {
+    path: "summary.configured_total",
+    descriptionKey: "upstreams.summary.configured_total",
+    format: "integer",
+    shortLabelKey: "upstreams.summary.configured_total",
+  },
+  {
+    path: "summary.healthy_total",
+    descriptionKey: "upstreams.summary.healthy_total",
+    format: "integer",
+    shortLabelKey: "upstreams.summary.healthy_total",
+  },
+  {
+    path: "summary.unhealthy_total",
+    descriptionKey: "upstreams.summary.unhealthy_total",
+    format: "integer",
+  },
+  {
+    path: "summary.direct_total",
+    descriptionKey: "upstreams.summary.direct_total",
+    format: "integer",
+  },
+  {
+    path: "summary.socks4_total",
+    descriptionKey: "upstreams.summary.socks4_total",
+    format: "integer",
+  },
+  {
+    path: "summary.socks5_total",
+    descriptionKey: "upstreams.summary.socks5_total",
+    format: "integer",
+  },
+  {
+    path: "summary.shadowsocks_total",
+    descriptionKey: "upstreams.summary.shadowsocks_total",
+    format: "integer",
+  },
+  ...ZERO_FIELDS.map((field) => ({
+    path: `zero.${field}`,
+    descriptionKey: `upstreams.zero.${field}`,
+    format: "integer" as const,
+  })),
+  {
+    path: "upstream_quality.policy.connect_retry_attempts",
+    descriptionKey: "upstreams.policy.connect_retry_attempts",
+    format: "integer",
+  },
+  {
+    path: "upstream_quality.policy.connect_retry_backoff_ms",
+    descriptionKey: "upstreams.policy.connect_retry_backoff_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "upstream_quality.policy.connect_budget_ms",
+    descriptionKey: "upstreams.policy.connect_budget_ms",
+    unit: "milliseconds",
+  },
+  {
+    path: "upstream_quality.policy.unhealthy_fail_threshold",
+    descriptionKey: "upstreams.policy.unhealthy_fail_threshold",
+    format: "integer",
+  },
+  {
+    path: "upstream_quality.policy.connect_failfast_hard_errors",
+    descriptionKey: "upstreams.policy.connect_failfast_hard_errors",
+    format: "boolean",
+  },
+  { path: "stats.enabled", descriptionKey: "upstreams.stats.enabled", format: "boolean" },
+  { path: "stats.reason", descriptionKey: "upstreams.stats.reason", format: "enum" },
+  {
+    path: "stats.generated_at_epoch_secs",
+    descriptionKey: "upstreams.stats.generated_at_epoch_secs",
+    unit: "timestamp",
+  },
+  {
+    path: "upstream_quality.enabled",
+    descriptionKey: "upstreams.quality.enabled",
+    format: "boolean",
+  },
+  { path: "upstream_quality.reason", descriptionKey: "upstreams.quality.reason", format: "enum" },
+  {
+    path: "upstream_quality.generated_at_epoch_secs",
+    descriptionKey: "upstreams.quality.generated_at_epoch_secs",
+    unit: "timestamp",
+  },
+];
+
+// The Connections domain (`GET /v1/stats/summary` +
+// `GET /v1/runtime/connections/summary`, TELEMT_LIVE_API_DATA §6, §17).
+function topRow(
+  scope: "by_connections" | "by_throughput",
+  field: string,
+  extra: Omit<FieldCatalogEntry, "path">,
+): FieldCatalogEntry {
+  return { path: `top.${scope}.*.${field}`, ...extra };
+}
+
+const CONNECTIONS_ENTRIES: FieldCatalogEntry[] = [
+  {
+    path: "summary.uptime_seconds",
+    descriptionKey: "connections.summary.uptime_seconds",
+    unit: "seconds",
+  },
+  {
+    path: "summary.connections_total",
+    descriptionKey: "connections.summary.connections_total",
+    format: "integer",
+    shortLabelKey: "connections.summary.connections_total",
+  },
+  {
+    path: "summary.connections_bad_total",
+    descriptionKey: "connections.summary.connections_bad_total",
+    format: "integer",
+    shortLabelKey: "connections.summary.connections_bad_total",
+  },
+  {
+    path: "summary.handshake_timeouts_total",
+    descriptionKey: "connections.summary.handshake_timeouts_total",
+    format: "integer",
+  },
+  {
+    path: "summary.configured_users",
+    descriptionKey: "connections.summary.configured_users",
+    format: "integer",
+  },
+  {
+    path: "summary.connections_bad_by_class",
+    descriptionKey: "connections.summary.connections_bad_by_class",
+  },
+  {
+    path: "summary.connections_bad_by_class.*.class",
+    descriptionKey: "connections.class",
+    format: "enum",
+  },
+  {
+    path: "summary.connections_bad_by_class.*.total",
+    descriptionKey: "connections.class_total",
+    format: "integer",
+  },
+  {
+    path: "summary.handshake_failures_by_class",
+    descriptionKey: "connections.summary.handshake_failures_by_class",
+  },
+  {
+    path: "summary.handshake_failures_by_class.*.class",
+    descriptionKey: "connections.class",
+    format: "enum",
+  },
+  {
+    path: "summary.handshake_failures_by_class.*.total",
+    descriptionKey: "connections.class_total",
+    format: "integer",
+  },
+  {
+    path: "users_traffic_total",
+    descriptionKey: "connections.users_traffic_total",
+    unit: "bytes",
+  },
+  { path: "cache.ttl_ms", descriptionKey: "connections.cache.ttl_ms", unit: "milliseconds" },
+  {
+    path: "cache.served_from_cache",
+    descriptionKey: "connections.cache.served_from_cache",
+    format: "boolean",
+  },
+  {
+    path: "cache.stale_cache_used",
+    descriptionKey: "connections.cache.stale_cache_used",
+    format: "boolean",
+  },
+  {
+    path: "totals.current_connections",
+    descriptionKey: "connections.totals.current_connections",
+    format: "integer",
+    shortLabelKey: "connections.totals.current_connections",
+  },
+  {
+    path: "totals.current_connections_me",
+    descriptionKey: "connections.totals.current_connections_me",
+    format: "integer",
+  },
+  {
+    path: "totals.current_connections_direct",
+    descriptionKey: "connections.totals.current_connections_direct",
+    format: "integer",
+  },
+  {
+    path: "totals.active_users",
+    descriptionKey: "connections.totals.active_users",
+    format: "integer",
+    shortLabelKey: "connections.totals.active_users",
+  },
+  { path: "top.limit", descriptionKey: "connections.top.limit", format: "integer" },
+  { path: "top.by_connections", descriptionKey: "connections.top.by_connections" },
+  { path: "top.by_throughput", descriptionKey: "connections.top.by_throughput" },
+  topRow("by_connections", "username", { descriptionKey: "connections.top.username", format: "identifier" }),
+  topRow("by_connections", "current_connections", {
+    descriptionKey: "connections.top.current_connections",
+    format: "integer",
+    shortLabelKey: "connections.top.current_connections",
+  }),
+  topRow("by_connections", "total_octets", {
+    descriptionKey: "connections.top.total_octets",
+    unit: "bytes",
+    shortLabelKey: "connections.top.total_octets",
+  }),
+  topRow("by_throughput", "username", { descriptionKey: "connections.top.username", format: "identifier" }),
+  topRow("by_throughput", "current_connections", {
+    descriptionKey: "connections.top.current_connections",
+    format: "integer",
+    shortLabelKey: "connections.top.current_connections",
+  }),
+  topRow("by_throughput", "total_octets", {
+    descriptionKey: "connections.top.total_octets",
+    unit: "bytes",
+    shortLabelKey: "connections.top.total_octets",
+  }),
+  {
+    path: "telemetry.user_enabled",
+    descriptionKey: "connections.telemetry.user_enabled",
+    format: "boolean",
+  },
+  {
+    path: "telemetry.throughput_is_cumulative",
+    descriptionKey: "connections.telemetry.throughput_is_cumulative",
+    format: "boolean",
+  },
+];
+
+// The NAT/STUN domain (`GET /v1/runtime/nat-stun`, TELEMT_LIVE_API_DATA §15).
+const NAT_ENTRIES: FieldCatalogEntry[] = [
+  {
+    path: "flags.nat_probe_enabled",
+    descriptionKey: "nat.flags.nat_probe_enabled",
+    format: "boolean",
+  },
+  {
+    path: "flags.nat_probe_disabled_runtime",
+    descriptionKey: "nat.flags.nat_probe_disabled_runtime",
+    format: "boolean",
+  },
+  {
+    path: "flags.nat_probe_attempts",
+    descriptionKey: "nat.flags.nat_probe_attempts",
+    format: "integer",
+    shortLabelKey: "nat.flags.nat_probe_attempts",
+  },
+  {
+    path: "stun_backoff_remaining_ms",
+    descriptionKey: "nat.stun_backoff_remaining_ms",
+    unit: "milliseconds",
+  },
+  { path: "servers.configured", descriptionKey: "nat.servers.configured" },
+  { path: "servers.configured.*", descriptionKey: "nat.servers.server", format: "address" },
+  { path: "servers.live", descriptionKey: "nat.servers.live" },
+  { path: "servers.live.*", descriptionKey: "nat.servers.server", format: "address" },
+  {
+    path: "servers.live_total",
+    descriptionKey: "nat.servers.live_total",
+    format: "integer",
+    shortLabelKey: "nat.servers.live_total",
+    zeroMeaningKey: "nat.servers.live_total",
+  },
+  { path: "reflection", descriptionKey: "nat.reflection" },
+  { path: "reflection.v4.addr", descriptionKey: "nat.reflection.v4.addr", format: "address" },
+  { path: "reflection.v4.age_secs", descriptionKey: "nat.reflection.age_secs", unit: "seconds" },
+  { path: "reflection.v6.addr", descriptionKey: "nat.reflection.v6.addr", format: "address" },
+  { path: "reflection.v6.age_secs", descriptionKey: "nat.reflection.age_secs", unit: "seconds" },
+];
+
+// The Events domain (`GET /v1/runtime/events/recent`,
+// TELEMT_LIVE_API_DATA §18). `events.ts_epoch_secs` is the highlight alias
+// described in the Upstreams note above: without it the compact row would
+// print an epoch as «1 755 996 000 с» through the seconds family.
+//
+// The ring buffer's two numbers are keyed `buffer.*`, and the adapter nests
+// them to match. On the wire they are the bare `capacity` and
+// `dropped_total`, which the TLS domain ALSO uses for something else — and
+// a global exact entry would describe a TLS capture bound as an event
+// buffer whenever the endpoint scope is missing (ruling R9 settles the
+// scoped read; this keeps the unscoped one honest too).
+const EVENTS_ENTRIES: FieldCatalogEntry[] = [
+  {
+    path: "buffer.capacity",
+    descriptionKey: "events.capacity",
+    format: "integer",
+    shortLabelKey: "events.capacity",
+  },
+  {
+    path: "buffer.dropped_total",
+    descriptionKey: "events.dropped_total",
+    format: "integer",
+    shortLabelKey: "events.dropped_total",
+    zeroMeaningKey: "events.dropped_total",
+  },
+  { path: "events", descriptionKey: "events.events" },
+  { path: "events.*.seq", descriptionKey: "events.seq", format: "identifier" },
+  { path: "events.*.ts_epoch_secs", descriptionKey: "events.ts_epoch_secs", unit: "timestamp" },
+  { path: "events.*.event_type", descriptionKey: "events.event_type", format: "enum" },
+  { path: "events.*.context", descriptionKey: "events.context" },
+  { path: "events.ts_epoch_secs", descriptionKey: "events.ts_epoch_secs", unit: "timestamp" },
+];
+
 export const DEFAULT_FIELD_CATALOG: FieldCatalog = {
-  entries: [...DC_ENTRIES, ...ME_ENTRIES, ...SECURITY_ENTRIES, ...COUNTERS_ENTRIES],
+  entries: [
+    ...DC_ENTRIES,
+    ...ME_ENTRIES,
+    ...SECURITY_ENTRIES,
+    ...COUNTERS_ENTRIES,
+    ...UPSTREAMS_ENTRIES,
+    ...CONNECTIONS_ENTRIES,
+    ...NAT_ENTRIES,
+    ...EVENTS_ENTRIES,
+  ],
   byEndpoint: { [TLS_FINGERPRINTS_ENDPOINT]: TLS_ENTRIES },
 };
 
