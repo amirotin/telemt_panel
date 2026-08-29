@@ -23,7 +23,12 @@ import {
   orderByGroup,
   type EntityEntry,
 } from "./entityList.helpers";
-import { isSectionExpanded, type DetailRenderContext } from "./context";
+import {
+  isSectionExpanded,
+  type DetailRenderContext,
+  type SectionAction,
+  type SectionActionScope,
+} from "./context";
 
 export interface EntityListSectionProps {
   instance: CollectionSectionInstance;
@@ -93,6 +98,20 @@ export function EntityListSection({
         : byQuery.filter((entry) => group.key(entry.item) === activeGroup);
     return orderByGroup(byGroup, group, groups);
   }, [entries, definition, ctx.filters, query, activeGroup, group, groups]);
+
+  // What an action is allowed to claim it acts on. `narrowed` is the whole
+  // point: the search box and the group chips are CLIENT-side narrowings
+  // that no server-side filter selector can express, so a page handed the
+  // filters alone would act on a superset of what is on screen.
+  const actionScope = useMemo<SectionActionScope>(
+    () => ({
+      filters: ctx.filters,
+      visibleKeys: filtered.map((entry) => entry.key),
+      loadedCount: entries.length,
+      narrowed: query !== "" || activeGroup !== null,
+    }),
+    [ctx.filters, filtered, entries.length, query, activeGroup],
+  );
 
   const limit = ctx.visibleLimit(instance.id, instance.paging.initial);
   const shown = filtered.slice(0, limit);
@@ -221,17 +240,8 @@ export function EntityListSection({
             </div>
           )}
 
-          {extras?.action !== undefined && (
-            <div className="flex justify-end py-2">
-              <Button
-                variant={extras.action.danger ? "danger" : "secondary"}
-                size="sm"
-                disabled={extras.action.disabled ?? false}
-                onClick={() => extras.action?.onSelect(ctx.filters)}
-              >
-                {extras.action.label}
-              </Button>
-            </div>
+          {extras?.actions !== undefined && extras.actions.length > 0 && (
+            <SectionActions actions={extras.actions} scope={actionScope} />
           )}
 
           {filtered.length === 0 ? (
@@ -323,7 +333,6 @@ export function EntityListSection({
               <div className="flex justify-end pt-3">
                 <Button
                   variant={extras.entityAction.danger ? "danger" : "secondary"}
-                  size="sm"
                   disabled={extras.entityAction.disabled ?? false}
                   onClick={() => extras.entityAction?.onSelect(open.key)}
                 >
@@ -335,6 +344,54 @@ export function EntityListSection({
         )}
       </AdaptiveDetailSurface>
     </SectionFrame>
+  );
+}
+
+// SectionActions renders the head-of-body controls and the sentence that
+// explains a disabled one.
+//
+// The `maxVisible` refusal lives HERE rather than in the page because the
+// page cannot know the visible set until this component has computed it —
+// and a control that silently widened its own request when the list got too
+// long would be exactly the bug this scope contract exists to prevent.
+function SectionActions({
+  actions,
+  scope,
+}: {
+  actions: readonly SectionAction[];
+  scope: SectionActionScope;
+}) {
+  const resolved = actions.map((action) => {
+    const overflowing =
+      action.maxVisible !== undefined && scope.narrowed && scope.visibleKeys.length > action.maxVisible;
+    const note = overflowing
+      ? (action.tooManyNote?.(scope.visibleKeys.length, action.maxVisible ?? 0) ?? action.note)
+      : (action.disabled ?? false)
+        ? action.note
+        : undefined;
+    return { action, disabled: (action.disabled ?? false) || overflowing, note };
+  });
+  const notes = resolved.map((entry) => entry.note).filter((note): note is string => !!note);
+  return (
+    <div className="flex flex-col items-end gap-1 py-2">
+      <div className="flex flex-wrap justify-end gap-2">
+        {resolved.map(({ action, disabled }) => (
+          <Button
+            key={action.label}
+            variant={action.danger ? "danger" : "secondary"}
+            disabled={disabled}
+            onClick={() => action.onSelect(scope)}
+          >
+            {action.label}
+          </Button>
+        ))}
+      </div>
+      {notes.map((note) => (
+        <p key={note} className="text-right text-micro text-text-muted">
+          {note}
+        </p>
+      ))}
+    </div>
   );
 }
 

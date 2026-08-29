@@ -27,8 +27,10 @@ import type { SectionExtras } from "../details-builder/renderers/context";
 import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
 import { resolveGated } from "../widgets/gated";
 import {
+  WEB_CLOSE_MAX_REFS,
   WEB_PLANES,
   isWebPlaneBusy,
+  webCloseIntent,
   webCloseSelector,
   webFilterSummary,
   webPagePayload,
@@ -163,6 +165,15 @@ export function WebPage() {
 
   const filterSummary = intent?.kind === "filter" ? webFilterSummary(intent.filters, s) : null;
   const canClose = runtimeInstance !== null;
+  // `all` is the one selector Telemt refuses on a healthy runtime: it is
+  // gated on issuance being off, which is a deliberate, ordered sequence
+  // (web.enabled = false → issuance_enabled goes false → close all), not
+  // something a button press can arrange. So the control is offered, and
+  // disabled with that sequence spelled out, rather than hidden or —
+  // as before — reached accidentally by pressing «Закрыть по фильтру»
+  // with no filter set.
+  const issuanceEnabled = payload?.runtime?.manager?.issuance_enabled === true;
+  const closePending = !canClose || closeMutation.isPending;
 
   const sectionExtras: Record<string, SectionExtras> = {
     [WEB_SECTION_SESSIONS]: {
@@ -172,16 +183,39 @@ export function WebPage() {
         onLoad: () => void sessions.fetchNextPage(),
         label: s.details.pages.web.loadMore,
       },
-      action: {
-        label: s.details.pages.web.closeByFilter,
-        danger: true,
-        disabled: !canClose || closeMutation.isPending,
-        onSelect: (filters) => setIntent({ kind: "filter", filters }),
-      },
+      actions: [
+        {
+          label: s.details.pages.web.closeByFilter,
+          danger: true,
+          disabled: closePending,
+          ...(canClose ? {} : { note: s.details.pages.web.closeUnavailable }),
+          maxVisible: WEB_CLOSE_MAX_REFS,
+          tooManyNote: (count, max) =>
+            fill(s.details.pages.web.closeTooManyTemplate, {
+              count: String(count),
+              max: String(max),
+            }),
+          onSelect: (scope) => {
+            const next = webCloseIntent(scope);
+            if (next !== null) setIntent(next);
+          },
+        },
+        {
+          label: s.details.pages.web.closeAll,
+          danger: true,
+          disabled: closePending || issuanceEnabled,
+          ...(canClose
+            ? issuanceEnabled
+              ? { note: s.details.pages.web.closeAllBlocked }
+              : {}
+            : { note: s.details.pages.web.closeUnavailable }),
+          onSelect: () => setIntent({ kind: "all" }),
+        },
+      ],
       entityAction: {
         label: s.details.pages.web.closeSession,
         danger: true,
-        disabled: !canClose || closeMutation.isPending,
+        disabled: closePending,
         onSelect: (ref) => setIntent({ kind: "session", ref }),
       },
     },
@@ -191,6 +225,39 @@ export function WebPage() {
       sectionExtras[WEB_PLANE_SECTIONS[plane]] = { badge: s.details.pages.web.planeBusy };
     }
   }
+
+  // The confirmation names the SELECTOR KIND and the exact number of
+  // sessions it carries — «эти 2» is a different promise from «все, что
+  // подойдут под фильтр», and the operator has to be able to tell which one
+  // they are about to send.
+  const web = s.details.pages.web;
+  const confirmTitle =
+    intent?.kind === "session"
+      ? web.confirmSessionTitle
+      : intent?.kind === "refs"
+        ? web.confirmRefsTitle
+        : intent?.kind === "all"
+          ? web.confirmAllTitle
+          : web.confirmFilterTitle;
+  const confirmLabel =
+    intent?.kind === "session"
+      ? web.closeSession
+      : intent?.kind === "all"
+        ? web.closeAll
+        : web.closeByFilter;
+  const confirmDescription =
+    intent === null
+      ? ""
+      : intent.kind === "session"
+        ? web.confirmSession
+        : intent.kind === "refs"
+          ? fill(web.confirmRefsTemplate, { count: String(intent.refs.length) })
+          : intent.kind === "all"
+            ? web.confirmAll
+            : fill(web.confirmFilterTemplate, {
+                filter: filterSummary ?? "",
+                count: String(intent.visible),
+              });
 
   return (
     <>
@@ -208,26 +275,12 @@ export function WebPage() {
       <Sheet
         open={intent !== null}
         onClose={() => setIntent(null)}
-        title={
-          intent?.kind === "session"
-            ? s.details.pages.web.confirmSessionTitle
-            : s.details.pages.web.confirmFilterTitle
-        }
+        title={confirmTitle}
         {...(intent?.kind === "session" ? { subtitle: intent.ref } : {})}
       >
         <ConfirmView
-          description={
-            intent?.kind === "session"
-              ? s.details.pages.web.confirmSession
-              : filterSummary === null
-                ? s.details.pages.web.confirmFilterAll
-                : fill(s.details.pages.web.confirmFilterTemplate, { filter: filterSummary })
-          }
-          confirmLabel={
-            intent?.kind === "session"
-              ? s.details.pages.web.closeSession
-              : s.details.pages.web.closeByFilter
-          }
+          description={confirmDescription}
+          confirmLabel={confirmLabel}
           danger
           pending={closeMutation.isPending}
           onCancel={() => setIntent(null)}

@@ -18,9 +18,12 @@ import {
   webStatusRunning,
 } from "../__fixtures__";
 import {
+  WEB_CLOSE_MAX_REFS,
   WEB_PLANES,
   isWebPlaneBusy,
+  webCloseIntent,
   webCloseSelector,
+  webFilterSelector,
   webFilterSummary,
   webPagePayload,
   webRuntimeInstance,
@@ -249,20 +252,79 @@ describe("the close action", () => {
     expect(
       webCloseSelector({
         kind: "filter",
+        visible: 3,
         filters: { [WEB_FILTER_CARRIER]: "websocket", [WEB_FILTER_USER]: "web-user" },
       }),
     ).toEqual({ kind: "filter", carrier: "websocket", user: "web-user" });
   });
 
-  it("asks for `all` when no filter is set, rather than a selector Telemt rejects", () => {
-    // An empty filter selector is a 400 on Telemt's side. `all` is the
-    // honest request — and Telemt refuses it while issuance is enabled,
-    // which tells the operator to switch WEB off first instead of handing
-    // them a silent no-op.
-    expect(webCloseSelector({ kind: "filter", filters: {} })).toEqual({ kind: "all" });
+  it("has no filter selector to build when nothing is chosen", () => {
+    // An empty filter selector is a 400 on Telemt's side, and it would mean
+    // "every session" if it weren't — so "no filter" is not a filter, and
+    // webCloseIntent must not reach for the `filter` kind at all.
+    expect(webFilterSelector({})).toBeNull();
     // A filter set to the "any" sentinel is the same thing as no filter.
-    expect(webCloseSelector({ kind: "filter", filters: { [WEB_FILTER_STATE]: "" } })).toEqual({
-      kind: "all",
+    expect(webFilterSelector({ [WEB_FILTER_STATE]: "" })).toBeNull();
+    expect(webFilterSelector({ [WEB_FILTER_STATE]: "healthy" })).toEqual({
+      kind: "filter",
+      state: "healthy",
+    });
+  });
+
+  // H1: the visible set is `filters ∧ search ∧ group`, and only the first
+  // third of that is a server-side selector. Every path below is about the
+  // ONE invariant — the request must never reach further than the rows the
+  // operator can see.
+  describe("the selector kind never widens past the visible rows", () => {
+    it("sends the FILTER only when the visible set is exactly that filter", () => {
+      const intent = webCloseIntent({
+        filters: { [WEB_FILTER_CARRIER]: "websocket" },
+        visibleKeys: ["ws1.aa.01", "ws1.aa.02"],
+        narrowed: false,
+      });
+      expect(intent).toEqual({
+        kind: "filter",
+        filters: { [WEB_FILTER_CARRIER]: "websocket" },
+        visible: 2,
+      });
+      expect(webCloseSelector(intent!)).toEqual({ kind: "filter", carrier: "websocket" });
+    });
+
+    it("sends REFS when a search narrows the list below its filter", () => {
+      // The pre-fix bug: this used to send {kind:"filter",carrier:"websocket"}
+      // and close every websocket session of every user.
+      const intent = webCloseIntent({
+        filters: { [WEB_FILTER_CARRIER]: "websocket" },
+        visibleKeys: ["ws1.aa.02"],
+        narrowed: true,
+      });
+      expect(intent).toEqual({ kind: "refs", refs: ["ws1.aa.02"] });
+      expect(webCloseSelector(intent!)).toEqual({ kind: "refs", session_refs: ["ws1.aa.02"] });
+    });
+
+    it("sends REFS — never `all` — when no filter is set at all", () => {
+      const intent = webCloseIntent({
+        filters: {},
+        visibleKeys: ["ws1.aa.01", "ws1.aa.02"],
+        narrowed: false,
+      });
+      expect(intent).toEqual({ kind: "refs", refs: ["ws1.aa.01", "ws1.aa.02"] });
+    });
+
+    it("refuses a narrowed set larger than Telemt's 200-reference bound", () => {
+      const many = Array.from({ length: WEB_CLOSE_MAX_REFS + 1 }, (_, i) => `ws1.aa.${i}`);
+      expect(webCloseIntent({ filters: {}, visibleKeys: many, narrowed: true })).toBeNull();
+      expect(
+        webCloseIntent({ filters: {}, visibleKeys: many.slice(0, WEB_CLOSE_MAX_REFS), narrowed: true }),
+      ).not.toBeNull();
+    });
+
+    it("has nothing to offer for an empty list", () => {
+      expect(webCloseIntent({ filters: {}, visibleKeys: [], narrowed: true })).toBeNull();
+    });
+
+    it("keeps `all` reachable only through its own explicit intent", () => {
+      expect(webCloseSelector({ kind: "all" })).toEqual({ kind: "all" });
     });
   });
 

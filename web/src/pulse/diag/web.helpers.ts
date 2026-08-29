@@ -194,28 +194,82 @@ export function webRuntimeInstance(payload: WebPagePayload | null): string | nul
   return payload?.runtime?.runtime_instance ?? null;
 }
 
+/**
+ * The largest key list a close request may carry — Telemt's own bound on
+ * `session_refs` (api/web_runtime/request.rs: 1..200).
+ */
+export const WEB_CLOSE_MAX_REFS = 200;
+
 /** Which confirmation step is open, if any. */
 export type CloseIntent =
-  { kind: "session"; ref: string } | { kind: "filter"; filters: Record<string, FilterValue> };
+  | { kind: "session"; ref: string }
+  // `visible` is how many loaded rows the filter matches right now — the
+  // confirmation states it, because the proxy's own match may be wider.
+  | { kind: "filter"; filters: Record<string, FilterValue>; visible: number }
+  | { kind: "refs"; refs: string[] }
+  | { kind: "all" };
 
-/** The close selector for one intent, in Telemt's own vocabulary. */
-export function webCloseSelector(intent: CloseIntent): WebCloseSelector {
-  if (intent.kind === "session") {
-    return { kind: "refs", session_refs: [intent.ref] };
-  }
-  const carrier = intent.filters[WEB_FILTER_CARRIER];
-  const state = intent.filters[WEB_FILTER_STATE];
-  const user = intent.filters[WEB_FILTER_USER];
+/**
+ * The filter selector the declared filters express, or `null` when none is
+ * set. Separate from webCloseSelector because the CALLER has to know whether
+ * a filter selector exists at all before it can decide that the filter and
+ * the visible set are the same thing.
+ */
+export function webFilterSelector(filters: Record<string, FilterValue>): WebCloseSelector | null {
+  const carrier = filters[WEB_FILTER_CARRIER];
+  const state = filters[WEB_FILTER_STATE];
+  const user = filters[WEB_FILTER_USER];
   const selector: WebCloseSelector = { kind: "filter" };
   if (typeof carrier === "string" && carrier !== "") selector.carrier = carrier as never;
   if (typeof state === "string" && state !== "") selector.state = state;
   if (typeof user === "string" && user !== "") selector.user = user;
-  // A filter selector with nothing set is rejected by Telemt (and would mean
-  // "every session" if it weren't). With no filter chosen the honest request
-  // is the `all` selector, which Telemt refuses while issuance is enabled —
-  // the operator is told to switch WEB off first rather than being handed a
-  // silent no-op.
-  return Object.keys(selector).length === 1 ? { kind: "all" } : selector;
+  // Telemt rejects a filter selector with nothing set, and it would mean
+  // "every session" if it didn't — so "no filter" is not a filter.
+  return Object.keys(selector).length === 1 ? null : selector;
+}
+
+/**
+ * webCloseIntent picks the selector KIND for the section's «Закрыть по
+ * фильтру» control, from what the section can honestly say about the rows on
+ * screen.
+ *
+ * The rule, and the reason this is not just `{kind:"filter"}`: the proxy can
+ * only match on the declared filters, but the operator is looking at
+ * `filters ∧ search ∧ group`. Whenever those two differ — a search term, a
+ * group chip, or no filter at all — the only request that closes exactly
+ * what is on screen is the explicit key list. `filter` is used only when the
+ * visible set IS the filter, where letting the proxy match is strictly
+ * better: it also catches the rows the cursor has not reached yet.
+ *
+ * `null` means there is nothing to act on.
+ */
+export function webCloseIntent(scope: {
+  filters: Record<string, FilterValue>;
+  visibleKeys: string[];
+  narrowed: boolean;
+}): CloseIntent | null {
+  if (!scope.narrowed && webFilterSelector(scope.filters) !== null) {
+    return { kind: "filter", filters: scope.filters, visible: scope.visibleKeys.length };
+  }
+  if (scope.visibleKeys.length === 0) return null;
+  if (scope.visibleKeys.length > WEB_CLOSE_MAX_REFS) return null;
+  return { kind: "refs", refs: [...scope.visibleKeys] };
+}
+
+/** The close selector for one intent, in Telemt's own vocabulary. */
+export function webCloseSelector(intent: CloseIntent): WebCloseSelector {
+  switch (intent.kind) {
+    case "session":
+      return { kind: "refs", session_refs: [intent.ref] };
+    case "refs":
+      return { kind: "refs", session_refs: intent.refs };
+    case "all":
+      return { kind: "all" };
+    case "filter":
+      // webCloseIntent never builds this branch without a selector, and the
+      // session-surface action never reaches it at all.
+      return webFilterSelector(intent.filters) ?? { kind: "all" };
+  }
 }
 
 /** The human summary of the filter a close-by-filter would apply. */

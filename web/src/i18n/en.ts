@@ -742,14 +742,23 @@ export const en: Dict = {
         loadMore: "Load more",
         closeSession: "Close session",
         closeByFilter: "Close by filter",
+        closeAll: "Close all",
+        closeAllBlocked:
+          "While WEB session issuance is on, the proxy itself refuses \"close all\". The order is: set [web] enabled = false in the config, wait for issuance_enabled = false under \"Session manager\", then come back here.",
+        closeTooManyTemplate:
+          "The list holds {count} rows — one request closes at most {max}. Narrow the search or the filter.",
         confirmSessionTitle: "Close session",
         confirmSession:
           "The session is closed immediately and the client has to reconnect. Any streams open inside it are cut.",
+        confirmRefsTitle: "Close the selected sessions",
+        confirmRefsTemplate:
+          "Exactly the {count} sessions now in the list will be closed: the request carries their references, so nothing beyond what you can see is touched. Those clients have to reconnect.",
         confirmFilterTitle: "Close by filter",
-        confirmFilterAll:
-          "EVERY live WEB session will be closed: no filter is selected. Those clients have to reconnect.",
         confirmFilterTemplate:
-          "Every live WEB session matching the filter ({filter}) will be closed. The proxy does the matching, so sessions that are not in the loaded list can be caught too.",
+          "Every live WEB session matching the filter ({filter}) will be closed; {count} of the loaded rows match. The proxy does the matching, so sessions that are not in the loaded list can be caught too.",
+        confirmAllTitle: "Close every session",
+        confirmAll:
+          "EVERY live WEB session on the proxy will be closed, including the ones not loaded into this list. Those clients have to reconnect.",
         closeStarted: "Close started",
         closeDoneTemplate: "Sessions closed: {count}",
         closeConflictTemplate: "Could not close: {count}",

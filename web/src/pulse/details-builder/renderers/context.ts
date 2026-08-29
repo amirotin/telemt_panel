@@ -30,7 +30,7 @@ export type ForcedAbsence = Extract<AbsenceKind, "unsupported" | "unavailable">;
  *     reveals rows already in memory (§10.5); a cursor-paged collection
  *     needs a second request once every loaded row is on screen, and only
  *     the page component can make it.
- *   * `action`/`entityAction` — a bounded mutation offered beside the data
+ *   * `actions`/`entityAction` — a bounded mutation offered beside the data
  *     it acts on (WEB's «Закрыть по фильтру» and «Закрыть сессию»). The
  *     confirmation step and the request belong to the page; the section
  *     only owns WHERE the control sits.
@@ -47,18 +47,8 @@ export interface SectionExtras {
     onLoad: () => void;
     label: string;
   };
-  /**
-   * Action at the head of the section body. It receives the filters the
-   * reader currently has applied, so an action whose scope IS the filter
-   * («Закрыть по фильтру») acts on exactly what the list is showing rather
-   * than on a second, invisible set of criteria.
-   */
-  action?: {
-    label: string;
-    onSelect: (filters: Record<string, FilterValue>) => void;
-    danger?: boolean;
-    disabled?: boolean;
-  };
+  /** Actions at the head of the section body, in the order given. */
+  actions?: readonly SectionAction[];
   /** Action at the foot of an open entity surface; receives the entity key. */
   entityAction?: {
     label: string;
@@ -66,6 +56,54 @@ export interface SectionExtras {
     danger?: boolean;
     disabled?: boolean;
   };
+}
+
+/**
+ * What the section can honestly say about the rows an action would act on.
+ *
+ * The visible set is `filters ∧ search ∧ group`, and only the first third of
+ * that is expressible as a server-side selector. Handing the page the
+ * filters ALONE — which is what this contract used to do — let a page build
+ * a request that closed a SUPERSET of what the reader was looking at: type
+ * `alice` in the search box, pick one carrier, press the button, and every
+ * session on that carrier goes, not the two on screen.
+ *
+ * So the section reports both halves: the declared filters, and the keys of
+ * the rows that actually survived all three narrowings. `narrowed` is the
+ * one bit a page needs to choose between them — when it is true the filters
+ * do NOT describe the visible set and a key list is the only honest request.
+ */
+export interface SectionActionScope {
+  /** The declared filters the reader currently has applied. */
+  filters: Record<string, FilterValue>;
+  /**
+   * Stable keys (§5.3's semantic identity) of every row the section is
+   * showing — the whole filtered set, not just the current paging window,
+   * since «Показать ещё» reveals rows already in memory.
+   */
+  visibleKeys: string[];
+  /** How many rows the section holds before any narrowing. */
+  loadedCount: number;
+  /** True when the search box or a group chip narrows beyond `filters`. */
+  narrowed: boolean;
+}
+
+/** One control at the head of a section body. */
+export interface SectionAction {
+  label: string;
+  onSelect: (scope: SectionActionScope) => void;
+  danger?: boolean;
+  disabled?: boolean;
+  /** Sentence shown under the controls — why this one cannot be pressed. */
+  note?: string;
+  /**
+   * Upper bound on `visibleKeys` for a NARROWED selection, i.e. the largest
+   * key list the page's request can carry. Over it the control is disabled
+   * and `tooManyNote` explains why, rather than the page silently widening
+   * the request back to the filter it cannot express.
+   */
+  maxVisible?: number;
+  tooManyNote?: (count: number, max: number) => string;
 }
 
 export interface DetailRenderContext {

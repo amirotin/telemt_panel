@@ -5,7 +5,7 @@ import { meWriters } from "../__fixtures__";
 import type { DetailPageDefinition, EntityListSectionDefinition } from "../model";
 import { resolveSections, type CollectionSectionInstance } from "../resolveSections";
 import { EntityListSection } from "./EntityListSection";
-import type { DetailRenderContext } from "./context";
+import type { DetailRenderContext, SectionActionScope, SectionExtras } from "./context";
 
 const NOW = 1_756_000_125_000;
 
@@ -51,6 +51,8 @@ let mounted: { container: HTMLElement; root: Root } | null = null;
 // The surface key the harness last opened. Written from the ctx callbacks
 // (never during render, which react-hooks/globals rightly forbids).
 const opened: { key: string | undefined } = { key: undefined };
+// The scope the last pressed head-of-body action received (see H1 below).
+const seen: { scope: SectionActionScope | null } = { scope: null };
 
 function Harness({ payload, search }: { payload: typeof meWriters; search?: string }) {
   const instance = useMemo(() => instanceFor(payload), [payload]);
@@ -114,6 +116,7 @@ afterEach(() => {
     mounted = null;
   }
   opened.key = undefined;
+  seen.scope = null;
 });
 
 function click(el: Element): void {
@@ -345,5 +348,151 @@ describe("EntityListSection grouping and filters (spec §23.2, §18.2)", () => {
     // Every writer in the fixture is `active`, so the filter keeps them all
     // — what is being asserted is that the control writes page state at all.
     expect(entityRows(el)).toHaveLength(meWriters.writers.length);
+  });
+});
+
+// The action scope (H1). A destructive control at the head of the list may
+// never claim more rows than the list is showing, so what the section hands
+// the page has to describe `filters ∧ search ∧ group`, not the filters alone.
+function ActionHarness({ maxVisible }: { maxVisible?: number }) {
+  const instance = useMemo(() => instanceFor(meWriters), []);
+  const [filters, setFilters] = useState<Record<string, string | boolean | string[]>>({});
+  const [query, setQuery] = useState("");
+  const expandedSections = useMemo(
+    () => (instance.defaultExpanded ? new Set<string>() : new Set([instance.id])),
+    [instance],
+  );
+  const extras: SectionExtras = {
+    actions: [
+      {
+        label: "Закрыть по фильтру",
+        danger: true,
+        ...(maxVisible !== undefined ? { maxVisible } : {}),
+        tooManyNote: (count, max) => `слишком много: ${count} > ${max}`,
+        onSelect: (scope) => {
+          seen.scope = scope;
+        },
+      },
+      {
+        label: "Закрыть все",
+        danger: true,
+        disabled: true,
+        note: "сначала выключите выдачу",
+        onSelect: () => {},
+      },
+    ],
+  };
+  const ctx: DetailRenderContext = {
+    nowMs: NOW,
+    mode: "extended",
+    lookup: {},
+    expandedSections,
+    toggleSection: () => {},
+    expandedRecords: new Set(),
+    toggleRecord: () => {},
+    visibleLimit: () => 200,
+    revealMore: () => {},
+    filters,
+    setFilter: (key, value) =>
+      setFilters((prev) => {
+        const next = { ...prev };
+        if (value === undefined) delete next[key];
+        else next[key] = value;
+        return next;
+      }),
+    sort: undefined,
+    setSort: () => {},
+    openSurfaceKey: undefined,
+    openSurface: () => {},
+    closeSurface: () => {},
+    extrasFor: () => extras,
+  };
+  return (
+    <EntityListSection
+      instance={instance}
+      definition={groupedSection as EntityListSectionDefinition<unknown, unknown>}
+      ctx={ctx}
+      searchQuery={query}
+      onSearchChange={setQuery}
+    />
+  );
+}
+
+// React tracks an input's last rendered value on the DOM node itself, so a
+// plain `el.value = …` looks like "no change" to onChange. Writing through
+// the prototype setter is what makes the synthetic event fire.
+function typeSearch(container: HTMLElement, value: string): void {
+  const input = container.querySelector<HTMLInputElement>('input[type="search"]')!;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  act(() => {
+    setter.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+function buttonNamed(container: HTMLElement, text: string): HTMLButtonElement {
+  const found = Array.from(container.querySelectorAll("button")).find(
+    (b) => (b.textContent ?? "").trim() === text,
+  );
+  if (!found) throw new Error(`no button ${text}`);
+  return found as HTMLButtonElement;
+}
+
+describe("EntityListSection action scope", () => {
+  it("reports the whole visible set, not just the declared filters", () => {
+    const el = render(<ActionHarness />);
+    click(buttonNamed(el, "Закрыть по фильтру"));
+    expect(seen.scope!.filters).toEqual({});
+    expect(seen.scope!.narrowed).toBe(false);
+    expect(seen.scope!.loadedCount).toBe(meWriters.writers.length);
+    expect(seen.scope!.visibleKeys).toHaveLength(meWriters.writers.length);
+  });
+
+  it("marks the scope NARROWED once a search hides rows the filters keep", () => {
+    const el = render(<ActionHarness />);
+    typeSearch(el, "writer #1001");
+    click(buttonNamed(el, "Закрыть по фильтру"));
+    expect(seen.scope!.narrowed).toBe(true);
+    expect(seen.scope!.visibleKeys).toEqual(["writer:1001"]);
+    // The filters are still reported — they just no longer DESCRIBE the set.
+    expect(seen.scope!.filters).toEqual({});
+  });
+
+  it("marks the scope NARROWED once a group chip hides rows the filters keep", () => {
+    const el = render(<ActionHarness />);
+    click(chipNamed(el, "DC 1 ·"));
+    click(buttonNamed(el, "Закрыть по фильтру"));
+    expect(seen.scope!.narrowed).toBe(true);
+    expect(seen.scope!.visibleKeys).toHaveLength(4);
+  });
+
+  it("keeps the scope UN-narrowed when only a declared filter is applied", () => {
+    const el = render(<ActionHarness />);
+    click(chipNamed(el, "Деградировавшие"));
+    click(buttonNamed(el, "Закрыть по фильтру"));
+    expect(seen.scope!.narrowed).toBe(false);
+    expect(seen.scope!.filters).toEqual({ degraded: true });
+    expect(seen.scope!.visibleKeys).toHaveLength(
+      meWriters.writers.filter((w) => w.writer_id % 2 === 0).length,
+    );
+  });
+
+  it("disables a narrowed action over maxVisible and says why", () => {
+    const el = render(<ActionHarness maxVisible={2} />);
+    // Un-narrowed, the bound does not apply: the page can still express the
+    // set as a filter the server matches itself.
+    expect(buttonNamed(el, "Закрыть по фильтру").disabled).toBe(false);
+    click(chipNamed(el, "DC 1 ·"));
+    const button = buttonNamed(el, "Закрыть по фильтру");
+    expect(button.disabled).toBe(true);
+    expect(el.textContent).toContain("слишком много: 4 > 2");
+    click(button);
+    expect(seen.scope).toBeNull();
+  });
+
+  it("shows a disabled action's own note", () => {
+    const el = render(<ActionHarness />);
+    expect(buttonNamed(el, "Закрыть все").disabled).toBe(true);
+    expect(el.textContent).toContain("сначала выключите выдачу");
   });
 });
