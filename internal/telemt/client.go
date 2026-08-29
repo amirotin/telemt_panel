@@ -100,18 +100,29 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (json.
 // quoted-string form but accepts a bare value too (config_store.rs
 // parse_if_match), so the raw revision string is sent as-is.
 func (c *Client) callRevision(ctx context.Context, method, path string, body any, revision string) (json.RawMessage, string, error) {
+	data, _, respRevision, err := c.callStatus(ctx, method, path, body, revision)
+	return data, respRevision, err
+}
+
+// callStatus is callRevision plus the HTTP status of a SUCCESSFUL response.
+// Only one endpoint needs it: Telemt answers GET /v1/runtime/web/sessions/{ref}
+// for a retained tombstone with HTTP 410 carrying an ordinary {ok:true,data}
+// envelope (web_runtime.rs's GoneSessionData), so "this session is gone" is
+// indistinguishable from "here is the session" by payload alone — the status
+// is the only discriminator (see WebSession).
+func (c *Client) callStatus(ctx context.Context, method, path string, body any, revision string) (json.RawMessage, int, string, error) {
 	var reqBody io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
 		if err != nil {
-			return nil, "", fmt.Errorf("telemt: marshal request: %w", err)
+			return nil, 0, "", fmt.Errorf("telemt: marshal request: %w", err)
 		}
 		reqBody = bytes.NewReader(buf)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
 	if err != nil {
-		return nil, "", err
+		return nil, 0, "", err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -125,13 +136,13 @@ func (c *Client) callRevision(ctx context.Context, method, path string, body any
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, "", fmt.Errorf("telemt: %w", err)
+		return nil, 0, "", fmt.Errorf("telemt: %w", err)
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return nil, "", fmt.Errorf("telemt: read response: %w", err)
+		return nil, 0, "", fmt.Errorf("telemt: read response: %w", err)
 	}
 
 	var env envelope
@@ -143,15 +154,15 @@ func (c *Client) callRevision(ctx context.Context, method, path string, body any
 	// HealthReadyData's own fields, not an HTTP-level failure (verified
 	// against mod.rs's /v1/health/ready handler, 3.5.2 sources).
 	case jsonErr == nil && env.OK:
-		return env.Data, env.Revision, nil
+		return env.Data, resp.StatusCode, env.Revision, nil
 	case jsonErr == nil && env.Error != nil:
-		return nil, "", &APIError{Status: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID}
+		return nil, resp.StatusCode, "", &APIError{Status: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID}
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
-		return nil, "", &APIError{Status: resp.StatusCode, Code: "http_error", Message: http.StatusText(resp.StatusCode)}
+		return nil, resp.StatusCode, "", &APIError{Status: resp.StatusCode, Code: "http_error", Message: http.StatusText(resp.StatusCode)}
 	default:
 		// Legacy builds return some payloads flat, without the envelope
 		// (2xx, valid or invalid JSON for the envelope shape either way).
-		return raw, "", nil
+		return raw, resp.StatusCode, "", nil
 	}
 }
 
