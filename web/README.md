@@ -152,6 +152,18 @@ injection, and cache-header design.
 
 ## Screen → data → topic/endpoint map
 
+Navigation is five sections (`06-ui.md` §Информационная архитектура), one
+list in `src/shell/nav.ts` rendered twice by `Shell.tsx` — as the bottom tab
+bar below `lg:`, as the sidebar above it:
+
+**Сводка** (`/overview`) · **Люди** (`/people`, the landing section) ·
+**Пульс** (`/pulse`) · **Журнал** (`/journal`) · **Сервер** (`/server`).
+
+Сводка is the configurable widget dashboard (registry + per-device layout +
+display-mode switch); Пульс is the diagnostics hub whose eight cards each
+open a Details page. Through M3 both lived at `/pulse`; that URL still
+resolves, now to the hub.
+
 Every route, what it renders from, and where that data comes from — the SSE
 topics from `02-hub-sse.md` (pushed continuously while the page has a live
 subscriber; `useSnapshot<T>("topic")`/`useTopic("topic")`,
@@ -164,11 +176,12 @@ from scratch.
 |---|---|---|
 | `/login` | — | `POST /api/auth/login`, `GET /api/auth/me` (guard) |
 | `/people`, `/people/$username` | `users` (list, quota, per-user live metrics) | `GET /api/telemt/info` (caps), `POST /api/users`, `PATCH/DELETE /api/users/{username}`, `POST .../reset-quota`, `PUT .../enabled`, `POST .../rotate-secret`, `GET/POST /api/users/{username}/sublink` |
-| `/pulse` (widget dashboard) | `stats` (HealthHero, StatRow, ActiveSessions, Problems), `runtime` (MePool, NatStun, Selftest, RecentEvents, Problems, Upstreams), `upstreams` (DC, Upstreams widgets), `security` (SecurityPosture, TlsFingerprints widgets, Problems) | `GET /api/history?metric=&range=` (sparklines) |
-| `/pulse/diag/connections` | `stats` | — |
+| `/overview` («Сводка» — widget dashboard, layout editor, «Скрытые блоки») | `stats` (HealthHero, StatRow, ActiveSessions, Problems), `runtime` (MePool, NatStun, Selftest, RecentEvents, Problems, Upstreams), `upstreams` (DC, Upstreams widgets), `security` (SecurityPosture, TlsFingerprints widgets, Problems), `users` (OnlineNow) | `GET /api/history?metric=&range=` (sparklines), `GET /api/telemt/tls-fingerprints` (TLS widget) |
+| `/pulse` («Пульс» — diagnostics hub, eight preview cards) | `stats`, `runtime`, `upstreams`, `security`, `users` — the same sources the eight Details pages read, previewed through their own summary tiles (`src/pulse/hub/hubCards.ts`) | `GET /api/telemt/zero` (Счётчики card; same query key as the Details page, so opening it costs no second request) |
+| `/pulse/diag/connections` | `stats`, `users` (lifetime traffic total) | — |
 | `/pulse/diag/dc`, `/pulse/diag/upstreams` | `upstreams`, `runtime` | — |
-| `/pulse/diag/me`, `/pulse/diag/nat` | `runtime` (+ `upstreams` for ME) | — |
-| `/pulse/diag/security` | `security` | — |
+| `/pulse/diag/me`, `/pulse/diag/nat`, `/pulse/diag/events` | `runtime` (+ `upstreams` for ME) | — |
+| `/pulse/diag/security` | `security` | `GET /api/telemt/tls-fingerprints` (fetched on visit — ~120 KB, left the `security` topic in M4 task 1) |
 | `/pulse/diag/counters` (extended-mode "Счётчики") | — | `GET /api/telemt/zero` (fetched on visit, not a topic — `zero`/`all` are display-only leaf maps, 07-telemt-sdk.md) |
 | `/journal` (Логи tab) | — | `GET /api/host` (picks live/tail/gated rung), SSE `GET /api/events/logs?service=` (own `EventSource`, not the topic multiplexer — `src/journal/logStream.ts`), fallback `GET /api/logs/tail?service=&lines=` |
 | `/journal` (События tab) | — | `GET /api/audit?limit=&before=` (paginated) |
@@ -200,9 +213,11 @@ Notes:
 `web/e2e/` (chromium only, plan Ruling R4) runs against the **real built
 panel binary** + `cmd/telemt-mock` — never the vite dev server, never a
 mocked `fetch`. Two projects: `mobile` (360×640 — the primary target, one
-sequential flow through login → create a user → share/sub-page → Пульс
-dashboard + layout editor → Журнал → Сервер) and `desktop` (1280×800 smoke —
-sidebar, the Raw config editor/CodeMirror actually mounting at `lg:`).
+sequential flow through login → create a user → share/sub-page → Сводка
+dashboard + layout editor → Пульс hub → a Details page and back → Журнал →
+Сервер) and `desktop` (1280×800 smoke — the five-section sidebar, the
+Сводка/Пульс split, the Raw config editor/CodeMirror actually mounting at
+`lg:`).
 
 A third project, `details`, is the one exception: it drives the Details
 builder's `/dev/details` harness, which lives behind `import.meta.env.DEV`

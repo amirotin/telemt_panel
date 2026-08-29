@@ -10,7 +10,7 @@ import { SEEDED_USER } from "./env";
 // `test.step()`s rather than several independent tests: "the Journal shows
 // the user-creation event" only makes sense after "create a user" already
 // ran in this same run.
-test("login → people → create user → share → sub-page → pulse → journal → server", async ({
+test("login → people → create user → share → sub-page → overview → pulse → journal → server", async ({
   page,
   context,
   login,
@@ -68,9 +68,13 @@ test("login → people → create user → share → sub-page → pulse → jour
     await expect(page.getByRole("dialog")).toBeHidden();
   });
 
-  await test.step("Пульс renders HealthHero + default widgets, and the layout editor persists across reload", async () => {
-    await page.getByRole("link", { name: "Пульс" }).click();
+  await test.step("Сводка renders HealthHero + default widgets, and the layout editor persists across reload", async () => {
+    await page.getByRole("link", { name: "Сводка" }).click();
+    await expect(page.getByRole("heading", { name: "Сводка", level: 1 })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Статус", level: 3 })).toBeVisible();
+    // «Онлайн сейчас» ships in the default layout (M4 task 9): the seeded
+    // user list is what it counts against.
+    await expect(page.getByRole("heading", { name: "Онлайн сейчас", level: 3 })).toBeVisible();
     const statRow = page.getByRole("heading", { name: "Показатели", level: 3 });
     await expect(statRow).toBeVisible();
 
@@ -80,9 +84,39 @@ test("login → people → create user → share → sub-page → pulse → jour
     await page.getByRole("button", { name: "Готово" }).click();
     await expect(statRow).not.toBeVisible();
 
+    // A hidden widget lands in «Скрытые блоки» with a one-tap way back —
+    // the prototype's footer list, not a trip through «Настроить».
+    await expect(page.getByRole("heading", { name: "Скрытые блоки", level: 2 })).toBeVisible();
+
     await page.reload();
     await expect(page.getByRole("heading", { name: "Статус", level: 3 })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Показатели", level: 3 })).not.toBeVisible();
+  });
+
+  await test.step("Пульс is the diagnostics hub: card → Details → back", async () => {
+    await page.getByRole("link", { name: "Пульс" }).click();
+    await expect(page.getByRole("heading", { name: "Пульс", level: 1 })).toBeVisible();
+
+    // All eight domains of 06-ui.md, each its own card.
+    for (const domain of [
+      "dc",
+      "me",
+      "security",
+      "counters",
+      "connections",
+      "upstreams",
+      "nat",
+      "events",
+    ]) {
+      await expect(page.getByTestId(`hub-card-${domain}`)).toBeVisible();
+    }
+
+    await page.getByTestId("hub-card-dc").click();
+    await expect(page).toHaveURL(/\/pulse\/diag\/dc$/);
+    await expect(page.getByRole("heading", { name: "Дата-центры", level: 1 })).toBeVisible();
+
+    await page.getByRole("button", { name: "Назад" }).click();
+    await expect(page.getByRole("heading", { name: "Пульс", level: 1 })).toBeVisible();
   });
 
   await test.step("Журнал → События shows the user-creation entry", async () => {
