@@ -176,7 +176,7 @@ export const selftestAllNullable: RuntimeMeSelftest = {
   bnd: null,
 };
 
-/** NAT/STUN with nothing live and no reflection at all (the dhost case). */
+/** NAT/STUN with nothing live and no reflection at all (the node-c case). */
 export const natStunNoReflection: RuntimeNatStun = natStunLive0;
 
 // --- very long identifiers ---------------------------------------------

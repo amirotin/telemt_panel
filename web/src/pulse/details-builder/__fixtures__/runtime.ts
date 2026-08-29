@@ -196,11 +196,11 @@ function makeNatStun(liveCount: number): RuntimeNatStun {
   };
 }
 
-/** hvds: 13 configured, 10 live. */
+/** node-a: 13 configured, 10 live. */
 export const natStunLive10 = makeNatStun(10);
-/** 1cent: 13 configured, 7 live. */
+/** node-b: 13 configured, 7 live. */
 export const natStunLive7 = makeNatStun(7);
-/** dhost: 13 configured, none live — reflection has neither v4 nor v6. */
+/** node-c: 13 configured, none live — reflection has neither v4 nor v6. */
 export const natStunLive0 = makeNatStun(0);
 
 // connectionsSummary — two top-10 rankings over the same users (§17):

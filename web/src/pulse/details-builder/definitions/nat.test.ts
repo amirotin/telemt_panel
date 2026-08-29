@@ -120,9 +120,9 @@ describe("NAT/STUN page definition (spec §23.5)", () => {
 
 describe("checkpoint R5-NAT: completeness (§27.4, ruling R7)", () => {
   it.each([
-    ["13 configured, 10 live (hvds)", natStunLive10, 31],
-    ["13 configured, 7 live (1cent)", natStunLive7, 28],
-    ["13 configured, none live (dhost)", natStunLive0, 20],
+    ["13 configured, 10 live (node-a)", natStunLive10, 31],
+    ["13 configured, 7 live (node-b)", natStunLive7, 28],
+    ["13 configured, none live (node-c)", natStunLive0, 20],
   ] as const)("accounts for every leaf: %s", (_name, context, total) => {
     const result = resolveFor(context as RuntimeNatStun);
     expect(result.allPaths.length).toBe(total);
