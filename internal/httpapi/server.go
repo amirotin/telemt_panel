@@ -244,6 +244,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/telemt/restart", protect(s.handleTelemtRestart))
 	mux.Handle("GET /api/telemt/zero", protect(s.handleGetTelemtZero))
 	mux.Handle("GET /api/telemt/tls-fingerprints", protect(s.handleGetTelemtTLSFingerprints))
+	mux.Handle("GET /api/telemt/web/sessions", protect(s.handleGetTelemtWebSessions))
+	mux.Handle("GET /api/telemt/web/sessions/{ref}", protect(s.handleGetTelemtWebSession))
+	mux.Handle("POST /api/telemt/web/sessions/close", protect(s.handlePostTelemtWebSessionsClose))
+	mux.Handle("GET /api/telemt/web/operations/{id}", protect(s.handleGetTelemtWebOperation))
 
 	mux.Handle("GET /api/host", protect(s.handleHost))
 	mux.Handle("GET /api/logs/tail", protect(s.handleLogsTail))

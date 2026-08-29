@@ -26,7 +26,8 @@ import (
 // source, degraded privileges, no on-disk state mirror — and asserts every
 // surface degrades cleanly instead of panicking or hanging, including the
 // hub-backed surfaces (GET /api/telemt/zero, GET /api/snapshot, GET
-// /api/events — the SSE endpoint) added by later M3 tasks.
+// /api/events — the SSE endpoint) added by later M3 tasks and the
+// fetch-on-visit passthroughs added by M4 (TLS fingerprints, WEB runtime).
 //
 // This test must stay green forever; do not delete or weaken it without an
 // explicit owner ruling superseding the invariant it encodes.
@@ -226,6 +227,45 @@ func TestAPIOnlyDegradation(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("GET /api/telemt/tls-fingerprints?limit=9999 = %d, want 400: %s", w.Code, w.Body)
+	}
+
+	// The WEB runtime passthroughs (M4 task 8b): the SAME rule again. An
+	// unreachable Telemt is 502 telemt_unreachable on every one of them —
+	// never 503 capability_unavailable (which the UI renders as "WEB is
+	// switched off, here is how to turn it on") and never 501
+	// capability_absent ("update Telemt"). Both of those would send an
+	// operator to fix a config while the proxy is simply down.
+	for _, path := range []string{
+		"/api/telemt/web/sessions",
+		"/api/telemt/web/sessions/ws1.0123456789abcdef0123456789abcdef.0000000000000001",
+		"/api/telemt/web/operations/wo1.0123456789abcdef0123456789abcdef.0000000000000001",
+	} {
+		r = httptest.NewRequest("GET", path, nil)
+		r.AddCookie(cookie)
+		w = httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusBadGateway {
+			t.Fatalf("GET %s = %d, want 502: %s", path, w.Code, w.Body)
+		}
+		var webErr struct{ Code string }
+		if err := json.Unmarshal(w.Body.Bytes(), &webErr); err != nil {
+			t.Fatalf("decode %s error: %v", path, err)
+		}
+		if webErr.Code != "telemt_unreachable" {
+			t.Errorf("%s error code = %q, want telemt_unreachable", path, webErr.Code)
+		}
+	}
+
+	// A query field off the WEB whitelist is rejected by the panel itself,
+	// before Telemt is contacted — so it stays a 400 even with Telemt down.
+	for _, query := range []string{"?bogus=1", "?limit=201"} {
+		r = httptest.NewRequest("GET", "/api/telemt/web/sessions"+query, nil)
+		r.AddCookie(cookie)
+		w = httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("GET /api/telemt/web/sessions%s = %d, want 400: %s", query, w.Code, w.Body)
+		}
 	}
 
 	// GET /api/snapshot?topics=stats: nothing has ever fetched successfully

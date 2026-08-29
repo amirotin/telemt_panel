@@ -502,6 +502,97 @@ paths:
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
         "503": { description: capability_unavailable — runtime_edge_enabled is off, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/telemt/web/sessions:
+    get:
+      tags: [telemt]
+      operationId: getTelemtWebSessions
+      description: >
+        Passthrough of Telemt's GET /v1/runtime/web/sessions (Telemt >= 3.5.3): the live
+        WEB sessions, filtered and cursor-paged. Fetch-on-visit, not part of the `web` SSE
+        topic — the topic carries only the status snapshot. The query parameters below are
+        the EXACT whitelist Telemt accepts; any other or repeated name is 400 bad_request.
+        A WEB runtime that is not running answers 503 capability_unavailable (a gate the UI
+        renders, not an error); a build predating the routes answers 501 capability_absent.
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200 } }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: session_ref, in: query, required: false, schema: { type: string } }
+        - { name: ip, in: query, required: false, schema: { type: string } }
+        - { name: host, in: query, required: false, schema: { type: string } }
+        - { name: user, in: query, required: false, schema: { type: string } }
+        - { name: user_agent_id, in: query, required: false, schema: { type: string } }
+        - { name: key_id, in: query, required: false, schema: { type: string } }
+        - { name: carrier, in: query, required: false, schema: { type: string, enum: [https, https-lanes, websocket, websocket-lanes] } }
+        - { name: state, in: query, required: false, schema: { type: string, enum: [provisional, replacing, committed, superseded, healthy, closing, closed] } }
+      responses:
+        "200": { description: One page of live WEB sessions, content: { application/json: { schema: { $ref: "#/components/schemas/WebSessionPage" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/telemt/web/sessions/{ref}:
+    get:
+      tags: [telemt]
+      operationId: getTelemtWebSession
+      description: >
+        Passthrough of Telemt's GET /v1/runtime/web/sessions/{session_ref}. Both outcomes
+        are 200: `row` for a live session, `closed` for a retained tombstone (Telemt answers
+        that with HTTP 410 wrapping an ordinary success envelope, which is a result, not a
+        failure). A ref with neither answers 404 web_session_not_found.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string }, description: "Canonical ws1.<instance>.<id> reference" }
+      responses:
+        "200": { description: The live row or the closed-session tombstone, content: { application/json: { schema: { $ref: "#/components/schemas/WebSessionLookup" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: web_session_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable, or web_snapshot_busy when an exact lookup lost a lock race, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/telemt/web/sessions/close:
+    post:
+      tags: [telemt]
+      operationId: closeTelemtWebSessions
+      description: >
+        Passthrough of Telemt's POST /v1/runtime/web/sessions/close — the panel's ONE WEB
+        mutation. Asynchronous: the 202 carries an `operation_id` to poll through
+        /api/telemt/web/operations/{id}. `runtime_instance` is the process fence and comes
+        from the `web` topic's status snapshot; a Telemt that has restarted since answers
+        409 web_runtime_mismatch. The `all` selector additionally requires WEB issuance to
+        be off (409 web_issuance_enabled). Recorded in the audit journal as
+        `web.sessions.close`. Telemt's debug/clear and carrier-learning/reset mutations are
+        deliberately NOT exposed by the panel.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/WebCloseRequest" } } }
+      responses:
+        "202": { description: Close operation accepted, content: { application/json: { schema: { $ref: "#/components/schemas/WebControlOperationStatus" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { description: read_only — the Telemt API runs in read-only mode, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: web_runtime_mismatch, web_issuance_enabled or web_operation_in_progress, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/telemt/web/operations/{id}:
+    get:
+      tags: [telemt]
+      operationId: getTelemtWebOperation
+      description: >
+        Passthrough of Telemt's GET /v1/runtime/web/operations/{operation_id}: the status of
+        one close operation. Telemt retains the last 32; an older id answers 404
+        web_operation_not_found.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: "Canonical wo1.<instance>.<sequence> id" }
+      responses:
+        "200": { description: Operation status, content: { application/json: { schema: { $ref: "#/components/schemas/WebControlOperationStatus" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: web_operation_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   # ───────────────────────── host ─────────────────────────
   /api/host:
     get:
@@ -993,6 +1084,126 @@ components:
         reason: { type: string }
         generated_at_epoch_secs: { type: integer }
         data: { $ref: "#/components/schemas/TlsFingerprints" }
+
+    WebSessionRow:
+      type: object
+      description: >
+        One live WEB session. `session_ref` plus the optional user-agent pair sit at the
+        same level as the 23 WebSessionStatus fields — Telemt flattens the status struct
+        into the row (`#[serde(flatten)]`, src/web/session/status.rs).
+      required: [session_ref, trace_session_id, client_ip, host, user, key_id, carrier, attempt, client_class, automatic, state, streams, tasks, lanes, lane_open_waits, websocket_lane_reservations, websocket_active, pending_bytes, pending_items, control_bytes, control_items, age_ms, idle_ms]
+      properties:
+        session_ref: { type: string }
+        user_agent: { type: string }
+        user_agent_id: { type: string }
+        trace_session_id: { type: integer }
+        client_ip: { type: string }
+        host: { type: string }
+        user: { type: string }
+        key_id: { type: string }
+        carrier: { type: string, enum: [https, https-lanes, websocket, websocket-lanes] }
+        attempt: { type: integer }
+        client_class: { type: string }
+        automatic: { type: boolean }
+        state: { type: string }
+        streams: { type: integer }
+        tasks: { type: integer }
+        lanes: { type: integer }
+        lane_open_waits: { type: integer }
+        websocket_lane_reservations: { type: integer }
+        websocket_active: { type: boolean }
+        pending_bytes: { type: integer }
+        pending_items: { type: integer }
+        control_bytes: { type: integer }
+        control_items: { type: integer }
+        age_ms: { type: integer }
+        idle_ms: { type: integer }
+        negotiation_remaining_ms: { type: integer }
+
+    WebSessionPage:
+      type: object
+      description: >
+        One page of the ordered scan. There is no total: the scan is bounded (Telemt caps it
+        at 1000 candidates, reporting `scan_truncated`) and paging is by opaque cursor.
+        `partial` is `["manager"]` when the manager lock was contended — an empty page that
+        means "busy", not "no sessions".
+      required: [sessions, next_cursor, scanned, scan_truncated, partial_sessions, partial]
+      properties:
+        sessions: { type: array, items: { $ref: "#/components/schemas/WebSessionRow" } }
+        next_cursor: { type: string, nullable: true }
+        scanned: { type: integer }
+        scan_truncated: { type: boolean }
+        partial_sessions: { type: integer }
+        partial: { type: array, items: { type: string } }
+
+    WebSessionClosed:
+      type: object
+      description: The retained tombstone of a session that has already closed.
+      required: [session_ref, state, attempt]
+      properties:
+        session_ref: { type: string }
+        state: { type: string }
+        attempt: { type: integer }
+
+    WebSessionLookup:
+      type: object
+      description: >
+        Exactly one of the two is present: `row` for a live session, `closed` for a
+        tombstone.
+      properties:
+        row: { $ref: "#/components/schemas/WebSessionRow" }
+        closed: { $ref: "#/components/schemas/WebSessionClosed" }
+
+    WebCloseSelector:
+      type: object
+      description: >
+        Internally tagged by `kind`. `refs` carries 1..200 canonical refs; `filter` needs at
+        least one of the filter fields; `all` is the whole registry and is refused while WEB
+        issuance is still enabled.
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [refs, filter, all] }
+        session_refs: { type: array, items: { type: string } }
+        session_ref: { type: string }
+        ip: { type: string }
+        host: { type: string }
+        user: { type: string }
+        user_agent_id: { type: string }
+        key_id: { type: string }
+        carrier: { type: string, enum: [https, https-lanes, websocket, websocket-lanes] }
+        state: { type: string }
+
+    WebCloseRequest:
+      type: object
+      required: [runtime_instance, selector]
+      properties:
+        runtime_instance:
+          type: string
+          description: >
+            The process fence, read from the `web` topic's status snapshot. A Telemt that
+            has restarted since answers 409 web_runtime_mismatch instead of closing whatever
+            now holds those ids.
+        selector: { $ref: "#/components/schemas/WebCloseSelector" }
+
+    WebControlOperationStatus:
+      type: object
+      description: >
+        The 202 body of a close and the 200 body of its poll — the same shape. `requested`
+        is the explicit ref count for a `refs` selector and 0 for `filter`/`all`, which have
+        no up-front size.
+      required: [operation_id, state, high_water_session_ref, requested, scanned, matched, close_signalled, conflicted, created_epoch_millis, updated_epoch_millis]
+      properties:
+        operation_id: { type: string }
+        state: { type: string, enum: [queued, running, completed, cancelled, failed] }
+        high_water_session_ref: { type: string, nullable: true }
+        requested: { type: integer }
+        scanned: { type: integer }
+        matched: { type: integer }
+        close_signalled: { type: integer }
+        conflicted: { type: integer }
+        created_epoch_millis: { type: integer, format: int64 }
+        updated_epoch_millis: { type: integer, format: int64 }
+        failure: { type: string }
 
     TelemtConfig:
       type: object

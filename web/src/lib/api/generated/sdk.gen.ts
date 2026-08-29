@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, ListSessionsData, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses } from './types.gen';
+import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CloseTelemtWebSessionsData, CloseTelemtWebSessionsErrors, CloseTelemtWebSessionsResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtWebOperationData, GetTelemtWebOperationErrors, GetTelemtWebOperationResponses, GetTelemtWebSessionData, GetTelemtWebSessionErrors, GetTelemtWebSessionResponses, GetTelemtWebSessionsData, GetTelemtWebSessionsErrors, GetTelemtWebSessionsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, ListSessionsData, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -321,6 +321,66 @@ export const getTelemtTlsFingerprints = <ThrowOnError extends boolean = false>(o
     ...options
 });
 
+/**
+ * Passthrough of Telemt's GET /v1/runtime/web/sessions (Telemt >= 3.5.3): the live WEB sessions, filtered and cursor-paged. Fetch-on-visit, not part of the `web` SSE topic — the topic carries only the status snapshot. The query parameters below are the EXACT whitelist Telemt accepts; any other or repeated name is 400 bad_request. A WEB runtime that is not running answers 503 capability_unavailable (a gate the UI renders, not an error); a build predating the routes answers 501 capability_absent.
+ *
+ */
+export const getTelemtWebSessions = <ThrowOnError extends boolean = false>(options?: Options<GetTelemtWebSessionsData, ThrowOnError>): RequestResult<GetTelemtWebSessionsResponses, GetTelemtWebSessionsErrors, ThrowOnError> => (options?.client ?? client).get<GetTelemtWebSessionsResponses, GetTelemtWebSessionsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/web/sessions',
+    ...options
+});
+
+/**
+ * Passthrough of Telemt's GET /v1/runtime/web/sessions/{session_ref}. Both outcomes are 200: `row` for a live session, `closed` for a retained tombstone (Telemt answers that with HTTP 410 wrapping an ordinary success envelope, which is a result, not a failure). A ref with neither answers 404 web_session_not_found.
+ *
+ */
+export const getTelemtWebSession = <ThrowOnError extends boolean = false>(options: Options<GetTelemtWebSessionData, ThrowOnError>): RequestResult<GetTelemtWebSessionResponses, GetTelemtWebSessionErrors, ThrowOnError> => (options.client ?? client).get<GetTelemtWebSessionResponses, GetTelemtWebSessionErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/web/sessions/{ref}',
+    ...options
+});
+
+/**
+ * Passthrough of Telemt's POST /v1/runtime/web/sessions/close — the panel's ONE WEB mutation. Asynchronous: the 202 carries an `operation_id` to poll through /api/telemt/web/operations/{id}. `runtime_instance` is the process fence and comes from the `web` topic's status snapshot; a Telemt that has restarted since answers 409 web_runtime_mismatch. The `all` selector additionally requires WEB issuance to be off (409 web_issuance_enabled). Recorded in the audit journal as `web.sessions.close`. Telemt's debug/clear and carrier-learning/reset mutations are deliberately NOT exposed by the panel.
+ *
+ */
+export const closeTelemtWebSessions = <ThrowOnError extends boolean = false>(options: Options<CloseTelemtWebSessionsData, ThrowOnError>): RequestResult<CloseTelemtWebSessionsResponses, CloseTelemtWebSessionsErrors, ThrowOnError> => (options.client ?? client).post<CloseTelemtWebSessionsResponses, CloseTelemtWebSessionsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/web/sessions/close',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Passthrough of Telemt's GET /v1/runtime/web/operations/{operation_id}: the status of one close operation. Telemt retains the last 32; an older id answers 404 web_operation_not_found.
+ *
+ */
+export const getTelemtWebOperation = <ThrowOnError extends boolean = false>(options: Options<GetTelemtWebOperationData, ThrowOnError>): RequestResult<GetTelemtWebOperationResponses, GetTelemtWebOperationErrors, ThrowOnError> => (options.client ?? client).get<GetTelemtWebOperationResponses, GetTelemtWebOperationErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/web/operations/{id}',
+    ...options
+});
+
 export const getHost = <ThrowOnError extends boolean = false>(options?: Options<GetHostData, ThrowOnError>): RequestResult<GetHostResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHostResponses, unknown, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -383,7 +443,7 @@ export const putAutoUpdate = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
- * SSE stream. Events: one per subscribed topic (users|stats|runtime|upstreams|security|update) carrying full topic snapshots, plus `event: heartbeat` (data `{}`, every ~25s of quiet) and source_error. Supports Last-Event-ID. Protocol: 02-hub-sse.md.
+ * SSE stream. Events: one per subscribed topic (users|stats|runtime|upstreams|security|web|update) carrying full topic snapshots, plus `event: heartbeat` (data `{}`, every ~25s of quiet) and source_error. Supports Last-Event-ID. Protocol: 02-hub-sse.md.
  *
  */
 export const streamEvents = <ThrowOnError extends boolean = false>(options: Options<StreamEventsData, ThrowOnError, StreamEventsResponse>): Promise<ServerSentEventsResult<StreamEventsResponses>> => (options.client ?? client).sse.get<StreamEventsResponses, StreamEventsErrors, ThrowOnError>({

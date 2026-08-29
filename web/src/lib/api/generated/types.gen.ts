@@ -182,6 +182,114 @@ export type GatedTlsFingerprints = {
 };
 
 /**
+ * One live WEB session. `session_ref` plus the optional user-agent pair sit at the same level as the 23 WebSessionStatus fields — Telemt flattens the status struct into the row (`#[serde(flatten)]`, src/web/session/status.rs).
+ *
+ */
+export type WebSessionRow = {
+    session_ref: string;
+    user_agent?: string;
+    user_agent_id?: string;
+    trace_session_id: number;
+    client_ip: string;
+    host: string;
+    user: string;
+    key_id: string;
+    carrier: 'https' | 'https-lanes' | 'websocket' | 'websocket-lanes';
+    attempt: number;
+    client_class: string;
+    automatic: boolean;
+    state: string;
+    streams: number;
+    tasks: number;
+    lanes: number;
+    lane_open_waits: number;
+    websocket_lane_reservations: number;
+    websocket_active: boolean;
+    pending_bytes: number;
+    pending_items: number;
+    control_bytes: number;
+    control_items: number;
+    age_ms: number;
+    idle_ms: number;
+    negotiation_remaining_ms?: number;
+};
+
+/**
+ * One page of the ordered scan. There is no total: the scan is bounded (Telemt caps it at 1000 candidates, reporting `scan_truncated`) and paging is by opaque cursor. `partial` is `["manager"]` when the manager lock was contended — an empty page that means "busy", not "no sessions".
+ *
+ */
+export type WebSessionPage = {
+    sessions: Array<WebSessionRow>;
+    next_cursor: string;
+    scanned: number;
+    scan_truncated: boolean;
+    partial_sessions: number;
+    partial: Array<string>;
+};
+
+/**
+ * The retained tombstone of a session that has already closed.
+ */
+export type WebSessionClosed = {
+    session_ref: string;
+    state: string;
+    attempt: number;
+};
+
+/**
+ * Exactly one of the two is present: `row` for a live session, `closed` for a tombstone.
+ *
+ */
+export type WebSessionLookup = {
+    row?: WebSessionRow;
+    closed?: WebSessionClosed;
+};
+
+/**
+ * Internally tagged by `kind`. `refs` carries 1..200 canonical refs; `filter` needs at least one of the filter fields; `all` is the whole registry and is refused while WEB issuance is still enabled.
+ *
+ */
+export type WebCloseSelector = {
+    kind: 'refs' | 'filter' | 'all';
+    session_refs?: Array<string>;
+    session_ref?: string;
+    ip?: string;
+    host?: string;
+    user?: string;
+    user_agent_id?: string;
+    key_id?: string;
+    carrier?: 'https' | 'https-lanes' | 'websocket' | 'websocket-lanes';
+    state?: string;
+};
+
+export type WebCloseRequest = {
+    /**
+     * The process fence, read from the `web` topic's status snapshot. A Telemt that has restarted since answers 409 web_runtime_mismatch instead of closing whatever now holds those ids.
+     *
+     */
+    runtime_instance: string;
+    selector: WebCloseSelector;
+};
+
+/**
+ * The 202 body of a close and the 200 body of its poll — the same shape. `requested` is the explicit ref count for a `refs` selector and 0 for `filter`/`all`, which have no up-front size.
+ *
+ */
+export type WebControlOperationStatus = {
+    operation_id: string;
+    state: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed';
+    high_water_session_ref: string;
+    requested: number;
+    scanned: number;
+    matched: number;
+    close_signalled: number;
+    conflicted: number;
+    created_epoch_millis: number;
+    updated_epoch_millis: number;
+    failure?: string;
+};
+
+/**
  * api mode only in this release (file mode / telemt.config_edit_mode=file is not implemented yet — see GET /api/telemt/config's description).
  *
  */
@@ -1161,6 +1269,191 @@ export type GetTelemtTlsFingerprintsResponses = {
 };
 
 export type GetTelemtTlsFingerprintsResponse = GetTelemtTlsFingerprintsResponses[keyof GetTelemtTlsFingerprintsResponses];
+
+export type GetTelemtWebSessionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        limit?: number;
+        cursor?: string;
+        session_ref?: string;
+        ip?: string;
+        host?: string;
+        user?: string;
+        user_agent_id?: string;
+        key_id?: string;
+        carrier?: 'https' | 'https-lanes' | 'websocket' | 'websocket-lanes';
+        state?: 'provisional' | 'replacing' | 'committed' | 'superseded' | 'healthy' | 'closing' | 'closed';
+    };
+    url: '/api/telemt/web/sessions';
+};
+
+export type GetTelemtWebSessionsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * capability_absent — this Telemt build predates the WEB runtime routes
+     */
+    501: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable — the WEB runtime is not running
+     */
+    503: Error;
+};
+
+export type GetTelemtWebSessionsError = GetTelemtWebSessionsErrors[keyof GetTelemtWebSessionsErrors];
+
+export type GetTelemtWebSessionsResponses = {
+    /**
+     * One page of live WEB sessions
+     */
+    200: WebSessionPage;
+};
+
+export type GetTelemtWebSessionsResponse = GetTelemtWebSessionsResponses[keyof GetTelemtWebSessionsResponses];
+
+export type GetTelemtWebSessionData = {
+    body?: never;
+    path: {
+        /**
+         * Canonical ws1.<instance>.<id> reference
+         */
+        ref: string;
+    };
+    query?: never;
+    url: '/api/telemt/web/sessions/{ref}';
+};
+
+export type GetTelemtWebSessionErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * web_session_not_found
+     */
+    404: Error;
+    /**
+     * capability_absent — this Telemt build predates the WEB runtime routes
+     */
+    501: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable
+     */
+    503: Error;
+};
+
+export type GetTelemtWebSessionError = GetTelemtWebSessionErrors[keyof GetTelemtWebSessionErrors];
+
+export type GetTelemtWebSessionResponses = {
+    /**
+     * The live row or the closed-session tombstone
+     */
+    200: WebSessionLookup;
+};
+
+export type GetTelemtWebSessionResponse = GetTelemtWebSessionResponses[keyof GetTelemtWebSessionResponses];
+
+export type CloseTelemtWebSessionsData = {
+    body: WebCloseRequest;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/web/sessions/close';
+};
+
+export type CloseTelemtWebSessionsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * read_only — the Telemt API runs in read-only mode
+     */
+    403: Error;
+    /**
+     * web_runtime_mismatch
+     */
+    409: Error;
+    /**
+     * capability_absent — this Telemt build predates the WEB runtime routes
+     */
+    501: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable — the WEB runtime is not running
+     */
+    503: Error;
+};
+
+export type CloseTelemtWebSessionsError = CloseTelemtWebSessionsErrors[keyof CloseTelemtWebSessionsErrors];
+
+export type CloseTelemtWebSessionsResponses = {
+    /**
+     * Close operation accepted
+     */
+    202: WebControlOperationStatus;
+};
+
+export type CloseTelemtWebSessionsResponse = CloseTelemtWebSessionsResponses[keyof CloseTelemtWebSessionsResponses];
+
+export type GetTelemtWebOperationData = {
+    body?: never;
+    path: {
+        /**
+         * Canonical wo1.<instance>.<sequence> id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/telemt/web/operations/{id}';
+};
+
+export type GetTelemtWebOperationErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * web_operation_not_found
+     */
+    404: Error;
+    /**
+     * capability_absent — this Telemt build predates the WEB runtime routes
+     */
+    501: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable — the WEB runtime is not running
+     */
+    503: Error;
+};
+
+export type GetTelemtWebOperationError = GetTelemtWebOperationErrors[keyof GetTelemtWebOperationErrors];
+
+export type GetTelemtWebOperationResponses = {
+    /**
+     * Operation status
+     */
+    200: WebControlOperationStatus;
+};
+
+export type GetTelemtWebOperationResponse = GetTelemtWebOperationResponses[keyof GetTelemtWebOperationResponses];
 
 export type GetHostData = {
     body?: never;

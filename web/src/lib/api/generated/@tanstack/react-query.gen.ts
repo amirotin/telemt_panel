@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtZero, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchUser, putAutoUpdate, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchUserData, PatchUserError, PatchUserResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
+import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchUser, putAutoUpdate, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchUserData, PatchUserError, PatchUserResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
 
 export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
     const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
@@ -429,6 +429,141 @@ export const getTelemtTlsFingerprintsOptions = (options?: Options<GetTelemtTlsFi
     queryKey: getTelemtTlsFingerprintsQueryKey(options)
 });
 
+export const getTelemtWebSessionsQueryKey = (options?: Options<GetTelemtWebSessionsData>) => createQueryKey('getTelemtWebSessions', options);
+
+/**
+ * Passthrough of Telemt's GET /v1/runtime/web/sessions (Telemt >= 3.5.3): the live WEB sessions, filtered and cursor-paged. Fetch-on-visit, not part of the `web` SSE topic — the topic carries only the status snapshot. The query parameters below are the EXACT whitelist Telemt accepts; any other or repeated name is 400 bad_request. A WEB runtime that is not running answers 503 capability_unavailable (a gate the UI renders, not an error); a build predating the routes answers 501 capability_absent.
+ *
+ */
+export const getTelemtWebSessionsOptions = (options?: Options<GetTelemtWebSessionsData>) => queryOptions<GetTelemtWebSessionsResponse, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, ReturnType<typeof getTelemtWebSessionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtWebSessions({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtWebSessionsQueryKey(options)
+});
+
+const createInfiniteParams = <K extends Pick<QueryKey<Options>[0], 'body' | 'headers' | 'path' | 'query'>>(queryKey: QueryKey<Options>, page: K) => {
+    const params = { ...queryKey[0] };
+    if (page.body) {
+        params.body = {
+            ...queryKey[0].body as any,
+            ...page.body as any
+        };
+    }
+    if (page.headers) {
+        params.headers = {
+            ...queryKey[0].headers,
+            ...page.headers
+        };
+    }
+    if (page.path) {
+        params.path = {
+            ...queryKey[0].path as any,
+            ...page.path as any
+        };
+    }
+    if (page.query) {
+        params.query = {
+            ...queryKey[0].query as any,
+            ...page.query as any
+        };
+    }
+    return params as unknown as typeof page;
+};
+
+export const getTelemtWebSessionsInfiniteQueryKey = (options?: Options<GetTelemtWebSessionsData>): QueryKey<Options<GetTelemtWebSessionsData>> => createQueryKey('getTelemtWebSessions', options, true);
+
+/**
+ * Passthrough of Telemt's GET /v1/runtime/web/sessions (Telemt >= 3.5.3): the live WEB sessions, filtered and cursor-paged. Fetch-on-visit, not part of the `web` SSE topic — the topic carries only the status snapshot. The query parameters below are the EXACT whitelist Telemt accepts; any other or repeated name is 400 bad_request. A WEB runtime that is not running answers 503 capability_unavailable (a gate the UI renders, not an error); a build predating the routes answers 501 capability_absent.
+ *
+ */
+export const getTelemtWebSessionsInfiniteOptions = (options?: Options<GetTelemtWebSessionsData>) => {
+    const opts = infiniteQueryOptions<GetTelemtWebSessionsResponse, GetTelemtWebSessionsError, InfiniteData<GetTelemtWebSessionsResponse>, QueryKey<Options<GetTelemtWebSessionsData>>, string | Pick<QueryKey<Options<GetTelemtWebSessionsData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
+    // @ts-ignore
+    {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+            // @ts-ignore
+            const page: Pick<QueryKey<Options<GetTelemtWebSessionsData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
+                query: {
+                    cursor: pageParam
+                }
+            };
+            const params = createInfiniteParams(queryKey, page);
+            const { data } = await getTelemtWebSessions({
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true
+            });
+            return data;
+        },
+        queryKey: getTelemtWebSessionsInfiniteQueryKey(options)
+    });
+    return opts as Omit<typeof opts, 'initialData'>;
+};
+
+export const getTelemtWebSessionQueryKey = (options: Options<GetTelemtWebSessionData>) => createQueryKey('getTelemtWebSession', options);
+
+/**
+ * Passthrough of Telemt's GET /v1/runtime/web/sessions/{session_ref}. Both outcomes are 200: `row` for a live session, `closed` for a retained tombstone (Telemt answers that with HTTP 410 wrapping an ordinary success envelope, which is a result, not a failure). A ref with neither answers 404 web_session_not_found.
+ *
+ */
+export const getTelemtWebSessionOptions = (options: Options<GetTelemtWebSessionData>) => queryOptions<GetTelemtWebSessionResponse, GetTelemtWebSessionError, GetTelemtWebSessionResponse, ReturnType<typeof getTelemtWebSessionQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtWebSession({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtWebSessionQueryKey(options)
+});
+
+/**
+ * Passthrough of Telemt's POST /v1/runtime/web/sessions/close — the panel's ONE WEB mutation. Asynchronous: the 202 carries an `operation_id` to poll through /api/telemt/web/operations/{id}. `runtime_instance` is the process fence and comes from the `web` topic's status snapshot; a Telemt that has restarted since answers 409 web_runtime_mismatch. The `all` selector additionally requires WEB issuance to be off (409 web_issuance_enabled). Recorded in the audit journal as `web.sessions.close`. Telemt's debug/clear and carrier-learning/reset mutations are deliberately NOT exposed by the panel.
+ *
+ */
+export const closeTelemtWebSessionsMutation = (options?: Partial<Options<CloseTelemtWebSessionsData>>): UseMutationOptions<CloseTelemtWebSessionsResponse, CloseTelemtWebSessionsError, Options<CloseTelemtWebSessionsData>> => {
+    const mutationOptions: UseMutationOptions<CloseTelemtWebSessionsResponse, CloseTelemtWebSessionsError, Options<CloseTelemtWebSessionsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await closeTelemtWebSessions({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getTelemtWebOperationQueryKey = (options: Options<GetTelemtWebOperationData>) => createQueryKey('getTelemtWebOperation', options);
+
+/**
+ * Passthrough of Telemt's GET /v1/runtime/web/operations/{operation_id}: the status of one close operation. Telemt retains the last 32; an older id answers 404 web_operation_not_found.
+ *
+ */
+export const getTelemtWebOperationOptions = (options: Options<GetTelemtWebOperationData>) => queryOptions<GetTelemtWebOperationResponse, GetTelemtWebOperationError, GetTelemtWebOperationResponse, ReturnType<typeof getTelemtWebOperationQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtWebOperation({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtWebOperationQueryKey(options)
+});
+
 export const getHostQueryKey = (options?: Options<GetHostData>) => createQueryKey('getHost', options);
 
 export const getHostOptions = (options?: Options<GetHostData>) => queryOptions<GetHostResponse, DefaultError, GetHostResponse, ReturnType<typeof getHostQueryKey>>({
@@ -594,35 +729,6 @@ export const getAuditOptions = (options?: Options<GetAuditData>) => queryOptions
     },
     queryKey: getAuditQueryKey(options)
 });
-
-const createInfiniteParams = <K extends Pick<QueryKey<Options>[0], 'body' | 'headers' | 'path' | 'query'>>(queryKey: QueryKey<Options>, page: K) => {
-    const params = { ...queryKey[0] };
-    if (page.body) {
-        params.body = {
-            ...queryKey[0].body as any,
-            ...page.body as any
-        };
-    }
-    if (page.headers) {
-        params.headers = {
-            ...queryKey[0].headers,
-            ...page.headers
-        };
-    }
-    if (page.path) {
-        params.path = {
-            ...queryKey[0].path as any,
-            ...page.path as any
-        };
-    }
-    if (page.query) {
-        params.query = {
-            ...queryKey[0].query as any,
-            ...page.query as any
-        };
-    }
-    return params as unknown as typeof page;
-};
 
 export const getAuditInfiniteQueryKey = (options?: Options<GetAuditData>): QueryKey<Options<GetAuditData>> => createQueryKey('getAudit', options, true);
 
