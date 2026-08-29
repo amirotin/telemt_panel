@@ -141,6 +141,29 @@ describe("DC fleet aggregates", () => {
     expect(dcFleetCoverage([])).toBeNull();
   });
 
+  it("caps an over-provisioned fleet at 100 %, as Telemt caps each DC", () => {
+    // The live shape that produced «Покрытие 102,3 %» on Пульс: 44 alive
+    // against 43 required, because required_writers is a floor. Telemt's own
+    // per-DC coverage_pct clamps (pool_status.rs::ratio_pct), so an
+    // unclamped aggregate also made the hub disagree with the DC Details
+    // tiles it summarizes.
+    const over = [
+      { ...fleet[0]!, required_writers: 40, alive_writers: 41 },
+      { ...fleet[0]!, required_writers: 3, alive_writers: 3 },
+    ];
+    expect(over.reduce((n, dc) => n + dc.alive_writers, 0)).toBe(44);
+    expect(over.reduce((n, dc) => n + dc.required_writers, 0)).toBe(43);
+    expect(dcFleetCoverage(over)).toBe(100);
+  });
+
+  it("still weighs a shortfall by required writers rather than clamping it away", () => {
+    const short = [
+      { ...fleet[0]!, required_writers: 40, alive_writers: 10 },
+      { ...fleet[0]!, required_writers: 2, alive_writers: 2 },
+    ];
+    expect(dcFleetCoverage(short)).toBeCloseTo((12 / 42) * 100, 6);
+  });
+
   it("reports the slowest data center, ignoring the ones that never answered", () => {
     const known = fleet.map((dc) => dc.rtt_ms).filter((v): v is number => v !== null);
     expect(dcWorstRtt(fleet)).toBe(Math.max(...known));

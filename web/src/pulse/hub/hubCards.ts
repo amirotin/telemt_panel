@@ -125,12 +125,20 @@ const PILL_STATE: Record<SourceStatus, State> = {
  * Fleet-wide coverage: alive writers over required writers across every data
  * center, NOT the mean of the per-DC percentages — a DC that needs 40
  * writers and a test site that needs 2 must not weigh the same.
+ *
+ * Clamped at 100 because `required_writers` is a FLOOR (`floor_target`), so
+ * an over-provisioned pool routinely runs more writers than it needs and the
+ * raw ratio exceeds 1. Telemt clamps every per-DC `coverage_pct` the same way
+ * (transport/middle_proxy/pool_status.rs::ratio_pct, with its own
+ * `ratio_pct_is_capped_at_100` test); recomputing the aggregate here escaped
+ * that clamp and put «Покрытие 102,3 %» on the hub beside DC Details tiles
+ * that all read 100 %.
  */
 export function dcFleetCoverage(dcs: readonly DcStatus[]): number | null {
   const required = dcs.reduce((sum, dc) => sum + dc.required_writers, 0);
   if (required <= 0) return null;
   const alive = dcs.reduce((sum, dc) => sum + dc.alive_writers, 0);
-  return (alive / required) * 100;
+  return Math.min(100, (alive / required) * 100);
 }
 
 /** The slowest data center's RTT — the number that decides how the fleet feels. */
