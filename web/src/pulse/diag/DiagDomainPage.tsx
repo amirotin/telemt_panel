@@ -3,6 +3,7 @@ import { useStrings } from "../../i18n";
 import type { DiagDomain } from "../types";
 import { ConnectionsPage } from "./ConnectionsPage";
 import { DcPage } from "./DcPage";
+import { EventsPage } from "./EventsPage";
 import { UpstreamsPage } from "./UpstreamsPage";
 import { MePage } from "./MePage";
 import { NatPage } from "./NatPage";
@@ -17,6 +18,7 @@ const PAGES: Record<DiagDomain, () => React.ReactElement> = {
   nat: NatPage,
   security: SecurityPage,
   counters: CountersPage,
+  events: EventsPage,
 };
 
 function isDiagDomain(v: string): v is DiagDomain {

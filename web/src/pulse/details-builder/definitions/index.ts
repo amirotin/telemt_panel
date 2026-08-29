@@ -4,7 +4,11 @@
 // and a page definition is not part of its API — importing one from the
 // builder's barrel would make every renderer's import graph reach into
 // every domain.
+export * from "./connections";
 export * from "./counters";
 export * from "./dc";
+export * from "./events";
 export * from "./me";
+export * from "./nat";
 export * from "./security";
+export * from "./upstreams";

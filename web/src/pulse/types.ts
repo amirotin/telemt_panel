@@ -6,10 +6,20 @@
 // time either way, but keeping the value-importing edges one-directional
 // avoids the question entirely).
 
-// DiagDomain enumerates the seven Диагностика drill-down pages
+// DiagDomain enumerates the eight Диагностика drill-down pages
 // (06-ui.md §Пульс: "Соединения · DC · Upstreams · ME · NAT/STUN · Security
-// · Счётчики") — a widget's optional diagDomain links to one of these.
-export type DiagDomain = "connections" | "dc" | "upstreams" | "me" | "nat" | "security" | "counters";
+// · Счётчики", plus События — M4 task 8's own page, which the plan's Пульс
+// hub lists alongside the other seven) — a widget's optional diagDomain
+// links to one of these.
+export type DiagDomain =
+  | "connections"
+  | "dc"
+  | "upstreams"
+  | "me"
+  | "nat"
+  | "security"
+  | "counters"
+  | "events";
 
 // WidgetId enumerates the dashboard's widget catalog (06-ui.md's widget
 // list) — the layout store persists an ordered array of these.

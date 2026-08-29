@@ -140,6 +140,9 @@ export const WIDGETS: WidgetDef[] = [
     minMode: "extended",
     formFactor: "card",
     hideable: true,
+    // M4 task 8 gave the domain a page: the card shows the last few lines,
+    // «Диагностика →» opens all fifty with a filter (spec §23.5).
+    diagDomain: "events",
     render: RecentEventsWidget,
   },
   {
