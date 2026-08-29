@@ -121,7 +121,12 @@ export async function startStack(): Promise<Stack> {
     "utf8",
   );
 
-  const mock = spawn(mockBinary, ["-listen", `:${MOCK_PORT}`, "-scenario", "full"], {
+  // The suite itself always wants `full` — a degraded backend would make
+  // every assertion about content ambiguous. The env override exists for the
+  // screenshot matrix, which is exactly where the degraded builds have to be
+  // looked at (`SCENARIO=edge-off npm run screenshots`).
+  const scenario = process.env["SCENARIO"] ?? "full";
+  const mock = spawn(mockBinary, ["-listen", `:${MOCK_PORT}`, "-scenario", scenario], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const panel = spawn(PANEL_BINARY, ["--config", configPath], {

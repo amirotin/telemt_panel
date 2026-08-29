@@ -157,6 +157,11 @@ describe("gated and unsupported sources (ruling R5)", () => {
 
   it("shows the disabled hint instead of a row of dashes", () => {
     const cards = buildHubCards(inputs({ runtime: topic<RuntimeTopic>(off) }), ru);
+    // Each card names ITS OWN gate: events rides runtime_edge, nat_stun is in
+    // the always-registered runtime group whose gate is the minimal runtime
+    // (07-telemt-sdk.md §57) — one hint for both would send an operator to
+    // the wrong setting half the time.
+    const hints = { nat: "minimal_runtime_enabled", events: "runtime_edge" } as const;
     for (const domain of ["nat", "events"] as const) {
       const card = cards.find((c) => c.domain === domain)!;
       expect(card.status).toBe("disabled");
@@ -165,7 +170,7 @@ describe("gated and unsupported sources (ruling R5)", () => {
       expect(card.gate).toEqual({
         variant: "disabled",
         reason: "feature_disabled",
-        hint: "runtime_edge",
+        hint: hints[domain],
       });
     }
   });
@@ -216,13 +221,18 @@ describe("gated and unsupported sources (ruling R5)", () => {
       }),
       ru,
     );
+    const hints = {
+      nat: "minimal_runtime_enabled",
+      events: "runtime_edge",
+      connections: "runtime_edge",
+    } as const;
     for (const domain of ["nat", "events", "connections"] as const) {
       const card = cards.find((c) => c.domain === domain)!;
       expect(card.status, domain).toBe("disabled");
       expect(card.pill, domain).toBe("muted");
       expect(card.metrics, domain).toEqual([]);
       // No wire reason to quote — GatedNote's localized default carries it.
-      expect(card.gate, domain).toEqual({ variant: "disabled", hint: "runtime_edge" });
+      expect(card.gate, domain).toEqual({ variant: "disabled", hint: hints[domain] });
     }
   });
 

@@ -53,6 +53,7 @@ const SCREENS = [
 
 const OUT_DIR = path.resolve(process.env["SCREENSHOT_DIR"] ?? "screenshots-out");
 
+
 test.describe("§27.1 screenshot matrix", () => {
   for (const viewport of VIEWPORTS) {
     test(`${viewport.name}`, async ({ page, login }) => {
@@ -69,10 +70,29 @@ test.describe("§27.1 screenshot matrix", () => {
         // and not of its skeleton.
         await expect(page.locator("main")).toBeVisible();
         await page.waitForLoadState("networkidle").catch(() => {});
-        await page.screenshot({
-          path: path.join(dir, `${screen.name}.png`),
-          fullPage: true,
+        // TWO shots per screen. The app scrolls an INNER container, not the
+        // document, so `fullPage` gives back exactly the viewport — useful,
+        // because that frame is what a reader actually sees and where a
+        // clipped header or a squeezed tab strip shows up. The whole page is
+        // the `main` element's own box, which a locator screenshot captures
+        // past the fold.
+        // TWO viewport shots, top and bottom. `fullPage` is not an option
+        // here: the scroller is the `main` element, not the document
+        // (Shell.tsx), so a full-page shot returns the viewport anyway — and
+        // faking it by unclamping heights would change the very layout mode
+        // (compact landscape is a HEIGHT decision) the matrix exists to
+        // check. Scrolling the real container keeps the mode honest and
+        // still shows what is past the fold.
+        await page.screenshot({ path: path.join(dir, `${screen.name}.png`) });
+        const scrolled = await page.evaluate(() => {
+          const el = document.querySelector("main");
+          if (!el || el.scrollHeight - el.clientHeight < 8) return false;
+          el.scrollTop = el.scrollHeight;
+          return true;
         });
+        if (scrolled) {
+          await page.screenshot({ path: path.join(dir, `${screen.name}-bottom.png`) });
+        }
       }
     });
   }

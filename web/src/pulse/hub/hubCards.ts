@@ -352,7 +352,12 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "nat",
-    disabledHint: "runtime_edge",
+    // NOT runtime_edge: `/v1/runtime/nat-stun` is in the always-registered
+    // runtime group (07-telemt-sdk.md §57) and its gate closes with
+    // `source_unavailable` when the minimal runtime has not started — the
+    // same gate DcPage and MePage already name. The old hint sent an
+    // operator to flip a setting that has nothing to do with this payload.
+    disabledHint: "minimal_runtime_enabled",
     source: ({ runtime }) => ({
       kind: "topic",
       snapshot: runtime,

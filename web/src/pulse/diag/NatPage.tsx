@@ -31,7 +31,9 @@ export function NatPage() {
       payload={payload}
       sources={sources}
       onBack={() => void navigate({ to: "/pulse" })}
-      disabledHints={{ nat: "runtime_edge" }}
+      // The minimal runtime group's gate, not runtime_edge — see the `nat`
+      // entry in hub/hubCards.ts.
+      disabledHints={{ nat: "minimal_runtime_enabled" }}
     />
   );
 }
