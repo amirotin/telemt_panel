@@ -4,11 +4,12 @@ import { useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 import { CardList } from "../ui/Card";
 import { IconButton } from "../ui/IconButton";
-import { IconArrowDown, IconArrowUp, IconSettings } from "../ui/icons";
+import { IconArrowDown, IconArrowUp } from "../ui/icons";
 import { EmptyState } from "../ui/EmptyState";
 import { Sheet } from "../ui/Sheet";
 import { ConfirmView } from "../ui/ConfirmView";
-import { DisplayModeSwitch, useDisplayMode, type DisplayMode } from "../display-mode";
+import { useDisplayMode, type DisplayMode } from "../display-mode";
+import { ViewMenu } from "./ViewMenu";
 import { getWidgetDef, type WidgetSize } from "../pulse/widgets/registry";
 import { editorRows, hiddenWidgetIds, visibleWidgetIds, type EditorRow } from "../pulse/layout";
 import { usePulseLayout } from "../pulse/usePulseLayout";
@@ -59,23 +60,21 @@ export function OverviewPage() {
 
   return (
     <div className={cn("flex flex-col gap-4", CONTENT_MAX)}>
-      <div className="flex flex-col gap-3">
+      {/* Title and «Вид» share one line at every width (concept §16):
+          the row wraps on a narrow phone rather than truncating either. */}
+      <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-title font-extrabold tracking-tight text-text">{s.overview.title}</h1>
-        {/* Three density chips plus «Настроить» do not fit 360px on one
-            line, so the row wraps on a phone and only pushes the button to
-            the far right once there is room for it. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <DisplayModeSwitch />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setConfiguring((v) => !v)}
-            className="ml-auto"
-          >
-            {!configuring && <IconSettings className="h-4 w-4" />}
-            {configuring ? s.pulse.done : s.pulse.configure}
+        {configuring ? (
+          <Button variant="ghost" size="sm" onClick={() => setConfiguring(false)} className="ml-auto">
+            {s.pulse.done}
           </Button>
-        </div>
+        ) : (
+          <ViewMenu
+            className="ml-auto"
+            onConfigure={() => setConfiguring(true)}
+            onReset={() => setConfirmingReset(true)}
+          />
+        )}
       </div>
 
       {configuring ? (

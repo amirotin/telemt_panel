@@ -29,9 +29,16 @@ export const ru = {
   },
   displayMode: {
     label: "Детализация",
+    // `critical` stays in the model (widgets declare it as a minMode) but is
+    // no longer offered as a choice — criticality is a state of the service,
+    // not a viewing preference (concept §16).
     critical: "Критично",
-    basic: "Базово",
-    extended: "Расширенно",
+    basic: "Стандартный",
+    extended: "Расширенный",
+    hint: {
+      basic: "Ключевые показатели и проблемы.",
+      extended: "Все блоки, включая диагностические.",
+    },
   },
   // Language picker in Настройки панели (06-ui.md §Дизайн-система). Both
   // language names stay in their own language — that is how a person who
@@ -294,6 +301,9 @@ export const ru = {
     allPeople: "Все люди",
     hiddenTitle: "Скрытые блоки",
     showWidget: "Показать",
+    // The «Вид» dropdown at the right of the title (concept §16).
+    viewLabel: "Вид: {mode}",
+    configureBlocks: "Настроить сводку…",
     // The status banner's own strings (owner decision 2026-08-30): the
     // facts at its right edge and the update chip beside them.
     status: {

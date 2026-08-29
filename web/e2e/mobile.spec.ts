@@ -80,7 +80,9 @@ test("login → people → create user → share → sub-page → overview → p
     const statRow = page.getByRole("heading", { name: "Показатели", level: 2 });
     await expect(statRow).toBeVisible();
 
-    await page.getByRole("button", { name: "Настроить" }).click();
+    // The layout editor now lives behind the «Вид» dropdown (concept §16).
+    await page.getByRole("button", { name: /^Вид:/ }).click();
+    await page.getByRole("button", { name: "Настроить сводку…" }).click();
     const statRowRow = page.getByRole("listitem").filter({ hasText: "Показатели" });
     await statRowRow.getByRole("checkbox").uncheck();
     await page.getByRole("button", { name: "Готово" }).click();

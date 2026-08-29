@@ -14,6 +14,7 @@ export * from "./Input";
 export * from "./Select";
 export * from "./Stepper";
 export * from "./Sheet";
+export * from "./Popover";
 export * from "./Toast";
 export * from "./StatCard";
 export * from "./DescribedRow";

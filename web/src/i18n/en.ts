@@ -25,8 +25,12 @@ export const en: Dict = {
   displayMode: {
     label: "Detail",
     critical: "Critical",
-    basic: "Basic",
+    basic: "Standard",
     extended: "Extended",
+    hint: {
+      basic: "Key figures and problems.",
+      extended: "Every block, diagnostics included.",
+    },
   },
   language: {
     label: "Language",
@@ -249,6 +253,8 @@ export const en: Dict = {
     allPeople: "All people",
     hiddenTitle: "Hidden blocks",
     showWidget: "Show",
+    viewLabel: "View: {mode}",
+    configureBlocks: "Customize overview…",
     status: {
       versionLabel: "Telemt version",
       configReloadLabel: "Config reload",

@@ -20,8 +20,11 @@ export function DisplayModeSwitch({ className }: { className?: string }) {
 
   // See ThemeToggle: the labels come from the active dictionary, so this
   // cannot be a module constant.
+  // Two options, not three: «Критично» is gone from the UI (concept §16 —
+  // criticality is a state of the service, not a viewing preference). The
+  // mode itself survives in the model, and a device still holding it reads
+  // as Стандартный here until the reader picks something.
   const options: Array<{ value: DisplayMode; label: string }> = [
-    { value: "critical", label: s.displayMode.critical },
     { value: "basic", label: s.displayMode.basic },
     { value: "extended", label: s.displayMode.extended },
   ];
@@ -36,9 +39,9 @@ export function DisplayModeSwitch({ className }: { className?: string }) {
         <Chip
           key={opt.value}
           role="radio"
-          aria-checked={mode === opt.value}
+          aria-checked={mode === opt.value || (opt.value === "basic" && mode === "critical")}
           aria-pressed={undefined}
-          active={mode === opt.value}
+          active={mode === opt.value || (opt.value === "basic" && mode === "critical")}
           onClick={() => setMode(opt.value)}
         >
           {opt.label}
