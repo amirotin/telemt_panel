@@ -232,7 +232,9 @@ export function WebPage() {
       ? web.closeSession
       : intent?.kind === "all"
         ? web.closeAll
-        : web.closeByFilter;
+        : intent?.kind === "refs"
+          ? web.closeSelected
+          : web.closeByFilter;
   const confirmDescription =
     intent === null
       ? ""

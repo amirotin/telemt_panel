@@ -743,6 +743,7 @@ export const en: Dict = {
         closeSession: "Close session",
         closeByFilter: "Close by filter",
         closeAll: "Close all",
+        closeSelected: "Close selected",
         closeAllBlocked:
           "While WEB session issuance is on, the proxy itself refuses \"close all\". The order is: set [web] enabled = false in the config, wait for issuance_enabled = false under \"Session manager\", then come back here.",
         closeTooManyTemplate:

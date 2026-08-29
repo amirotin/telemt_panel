@@ -820,6 +820,7 @@ export const ru = {
         closeSession: "Закрыть сессию",
         closeByFilter: "Закрыть по фильтру",
         closeAll: "Закрыть все",
+        closeSelected: "Закрыть выбранные",
         closeAllBlocked:
           "Пока выдача WEB-сессий включена, «закрыть все» запрещено самим прокси. Порядок такой: в конфиге [web] enabled = false, дождитесь issuance_enabled = false в разделе «Менеджер сессий», затем возвращайтесь сюда.",
         closeTooManyTemplate:
