@@ -127,16 +127,18 @@
     border-color: rgb(var(--border));
   }
 
-  /* index.html pins [data-theme] for dark (the default) and light; only an
-     explicit «Системная» choice leaves the attribute off, so a bare html
-     element is exactly the "follow the OS" case. */
+  /* index.html pins [data-theme] for dark (the default), light, mocha and
+     parchment; only an explicit «Системная» choice leaves the attribute
+     off, so a bare html element is exactly the "follow the OS" case. */
   html {
     color-scheme: light dark;
   }
-  [data-theme="dark"] {
+  [data-theme="dark"],
+  [data-theme="mocha"] {
     color-scheme: dark;
   }
-  [data-theme="light"] {
+  [data-theme="light"],
+  [data-theme="parchment"] {
     color-scheme: light;
   }
 

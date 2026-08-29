@@ -4,7 +4,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // contrast.test.ts — the palette's WCAG audit, run over the TOKENS rather
-// than over a rendered tree.
+// than over a rendered tree. It is the gate for ALL FOUR themes — Тёмная,
+// Светлая, «Мокко» and «Пергамент» — plus the prefers-color-scheme mirror
+// of Светлая; the two warm palettes were tuned against it, not eyeballed.
 //
 // The reason it parses tokens.css instead of walking the DOM: a probe that
 // asks the browser for an element's `background-color` walks UP the tree
@@ -60,7 +62,8 @@ function parsePalette(text: string): Palette {
   return out;
 }
 
-// The three palette blocks tokens.css defines, sliced by the landmarks its
+// The five palette blocks tokens.css defines (four themes plus the
+// prefers-color-scheme mirror of «Светлая»), sliced by the landmarks its
 // own comments provide. Failing loudly here beats silently auditing {}.
 function sliceBlock(startMarker: string, endMarker: string): string {
   const start = TOKENS.indexOf(startMarker);
@@ -73,11 +76,15 @@ function sliceBlock(startMarker: string, endMarker: string): string {
 
 const dark = parsePalette(sliceBlock(":root {", "\n * Layout model"));
 const light = parsePalette(sliceBlock('[data-theme="light"] {', "/* Only reached"));
-const systemLight = parsePalette(sliceBlock(':root:not([data-theme="dark"])', "\n}\n"));
+const systemLight = parsePalette(sliceBlock(":root:not([data-theme])", "\n}\n"));
+const mocha = parsePalette(sliceBlock('[data-theme="mocha"] {', "\n}\n"));
+const parchment = parsePalette(sliceBlock('[data-theme="parchment"] {', "\n}\n"));
 
 const THEMES: readonly (readonly [string, Palette])[] = [
   ["dark", dark],
   ["light", light],
+  ["mocha", mocha],
+  ["parchment", parchment],
 ];
 
 const SURFACES = ["bg", "surface", "surface-2"] as const;
@@ -130,14 +137,31 @@ function token(p: Palette, name: string): Rgb {
   return v;
 }
 
-describe("tokens.css parses into three complete palettes", () => {
-  it("finds every token this audit needs in both themes", () => {
+describe("tokens.css parses into four complete palettes", () => {
+  it("finds every token this audit needs in every theme", () => {
     for (const [name, p] of THEMES) {
       expect(Object.keys(p).length, name).toBeGreaterThan(20);
       for (const key of [...SURFACES, ...TONES, ...NEUTRAL_TEXT]) {
         expect(p[key], `${name} --${key}`).toBeDefined();
       }
     }
+  });
+
+  // The mirror: a theme that defines only SOME of the roles inherits the
+  // rest from :root, which is the dark palette — so «Пергамент» missing one
+  // token would paint a single slate-blue element into a cream page, and
+  // nothing else would notice. Every theme block must therefore carry
+  // exactly the same token NAMES as the dark default; the values are what
+  // differ. (parsePalette only sees RGB triplets, so the font stacks and
+  // the theme-independent layout lengths never enter this comparison.)
+  const expected = Object.keys(dark).sort();
+
+  it.each([
+    ["light", light],
+    ["mocha", mocha],
+    ["parchment", parchment],
+  ] as const)("gives %s a value for every token the dark default defines", (_name, p) => {
+    expect(Object.keys(p).sort()).toEqual(expected);
   });
 
   // tokens.css's own comment promises the prefers-color-scheme block is

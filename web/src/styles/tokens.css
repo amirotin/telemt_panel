@@ -2,10 +2,13 @@
  * Design tokens — RGB triplets (not hex), so a token can also be consumed
  * raw (`rgb(var(--avatar-1-from))` in a gradient) alongside the Tailwind
  * utilities index.css's @theme block builds from them. Dark is the product default (06-ui.md);
- * :root carries the dark palette directly, [data-theme="light"] overrides
- * it, and the prefers-color-scheme block below only ever applies when the
- * user explicitly picked «Системная» (index.html's boot script pins
- * data-theme="dark" for every other case — see src/lib/theme.ts).
+ * :root carries the dark palette directly, and [data-theme="light"],
+ * [data-theme="mocha"] («Мокко») and [data-theme="parchment"] («Пергамент»)
+ * each override every token it defines — four complete palettes, no
+ * per-component overrides anywhere. The prefers-color-scheme block below
+ * only ever applies when the user explicitly picked «Системная»
+ * (index.html's boot script pins a data-theme for every other case — see
+ * src/lib/theme.ts).
  *
  * Palette source: v2/design/"Telemt Panel Прототип.dc.html" — the approved
  * prototype's own :root/[data-theme="light"] variables, re-expressed as
@@ -232,12 +235,16 @@
 }
 
 /* Only reached when the user explicitly chose «Системная»: index.html's
-   boot script writes data-theme="dark" for the default and for an explicit
-   dark choice, and data-theme="light" for an explicit light one, so a bare
-   :root here means "system" (theme.ts's applyTheme removes the attribute).
-   Kept in sync field-for-field with [data-theme="light"] above. */
+   boot script writes a data-theme for every other case (dark for the
+   default, and the stored name for light/mocha/parchment), so a :root with
+   NO data-theme attribute at all means "system" — theme.ts's applyTheme
+   removes the attribute for exactly that choice. The guard has to be
+   :not([data-theme]) and not :not([data-theme="dark"]): the latter also
+   matches the warm themes, and being both later in the file and one
+   specificity step higher it would repaint Мокко as the light palette on a
+   light OS. Kept in sync field-for-field with [data-theme="light"] above. */
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root:not([data-theme]) {
     --bg: 243 245 248;
     --surface-sunken: 233 237 242;
     --surface: 255 255 255;
@@ -295,4 +302,173 @@
     --bar-fill-warn: 138 92 10;
     --bar-fill-full: 181 58 46;
   }
+}
+
+/* «Мокко» — the warm DARK theme (06-ui.md «Дизайн-система»; owner's pick C
+   from v2/design/themes/, 2026-08-30). Same roles, same semantics, warm
+   base: a coffee-brown ground instead of the default's blue-grey slate,
+   and an amber accent instead of the blue one.
+
+   Two deliberate departures from v2/design/themes/variant-c.css:
+
+     * the accent FILL is the amber itself with a near-black label
+       (--accent-text), not the brown --accent-strong the variant carried.
+       White on amber is 2.1:1, so keeping white would have forced the FAB
+       and every primary button to a muddy brown — the amber is the theme's
+       signature and it belongs on the button, not only in text.
+     * --error is one step lighter and one step further off warn's hue
+       (#ed97a0 → #ee9ea9): at the /15 tint StatePill paints it on it was
+       4.29:1 over --surface-2, under AA. warn and error stay close by
+       nature here (both are pastel warm), which is why every place that
+       distinguishes them also carries a glyph (SummaryGrid's ! vs ×) and a
+       word, never colour alone (§21).
+
+   The avatar ramp and the brand tile are warm here, which is what the
+   --brand-from / --brand-to / --avatar-text split in :root exists for. */
+[data-theme="mocha"] {
+  --bg: 33 30 26; /* #211e1a */
+  --surface-sunken: 26 24 21; /* #1a1815 */
+  --surface: 42 38 34; /* #2a2622 */
+  --surface-2: 50 46 39; /* #322e27 */
+  --surface-3: 60 54 46; /* #3c362e */
+
+  --border: 51 46 39; /* #332e27 */
+  --border-strong: 70 63 54; /* #463f36 */
+
+  --text: 238 231 221; /* #eee7dd */
+  --text-muted: 170 152 128; /* #aa9880 */
+  --text-faint: 164 149 129; /* #a49581 — 4.62:1 on --surface-2 */
+
+  --accent: 230 161 23; /* #e6a117 */
+  --accent-strong: 214 148 15; /* #d6940f — the fill, one step down so hover:bg-accent still lifts */
+  --accent-hover: 235 174 53; /* #ebae35 */
+  --accent-text: 33 30 26; /* #211e1a on the amber fill: 6.9:1 */
+
+  --ok: 116 193 78; /* #74c14e */
+  --warn: 242 153 101; /* #f29965 */
+  --error: 238 158 169; /* #ee9ea9 */
+  --error-strong: 171 43 56; /* #ab2b38 — a deep red fill, so its label stays light */
+  --error-text: 255 251 245; /* #fffbf5 — 6.6:1 on --error-strong */
+  --muted: 183 174 163; /* #b7aea3 */
+
+  --focus-ring: 230 161 23;
+
+  /* Warm dim: black over a coffee ground greys it; the scrim is the
+     theme's own darkest brown instead. */
+  --scrim: 20 16 11; /* #14100b */
+  --control-knob: 255 251 245;
+
+  --brand-from: 156 105 39; /* #9c6927 → #e6a117, the amber the accent uses */
+  --brand-to: 230 161 23;
+  --brand-text: 33 30 26;
+
+  /* Six warm hues (amber, olive, rust, coffee, plum, patina) instead of
+     the default's blue/green/violet/teal/amber/rose — a blue initial in a
+     list of brown ones is the one thing that gave the warm themes away. */
+  --avatar-1-from: 138 90 18; /* amber   #8a5a12 → #c98a2a */
+  --avatar-1-to: 201 138 42;
+  --avatar-2-from: 79 95 34; /* olive   #4f5f22 → #85994a */
+  --avatar-2-to: 133 153 74;
+  --avatar-3-from: 140 60 34; /* rust    #8c3c22 → #c26a42 */
+  --avatar-3-to: 194 106 66;
+  --avatar-4-from: 92 68 51; /* coffee  #5c4433 → #93705a */
+  --avatar-4-to: 147 112 90;
+  --avatar-5-from: 107 53 80; /* plum    #6b3550 → #a45f83 */
+  --avatar-5-to: 164 95 131;
+  --avatar-6-from: 53 86 78; /* patina  #35564e → #5c8a7e */
+  --avatar-6-to: 92 138 126;
+  --avatar-text: 255 251 245;
+  --avatar-idle-bg: 50 46 39;
+  --avatar-idle-text: 170 152 128;
+  --avatar-alert-bg: 93 67 67; /* #5d4343 */
+  --avatar-alert-text: 238 158 169;
+
+  --bar-track: 60 54 46;
+  --bar-fill: 214 148 15;
+  --bar-fill-warn: 242 153 101;
+  --bar-fill-full: 171 43 56;
+}
+
+/* «Пергамент» — the warm LIGHT theme (owner's pick A). A cream sepia
+   reading mode: paper-coloured surfaces, ink-brown text.
+
+   Its accent is the one value NOT taken from v2/design/themes/variant-a.css:
+   the variant kept the default's cold blue, which on a cream page reads as
+   a foreign element pasted onto the paper. The replacement is the
+   amber-ochre the brief asks for, and deliberately not a terracotta — on a
+   sepia ground a red-brown accent is indistinguishable from --error at a
+   glance, which would make every primary button look like a destructive
+   one.
+
+   How dark it has to be is not a taste decision: --accent is a TEXT weight
+   that must clear AA on its own 15 % tint over --surface-2 (contrast.test.ts),
+   and on this ground that caps it around #634c0f. Anything brighter reads
+   as amber and measures 4.4:1. --warn moves 5° toward orange (#754b0c →
+   #7c4407) for the same reason the two never sit on top of each other:
+   with the accent now living in the ochre band, the old warn was the same
+   colour as a link.
+
+   Hues, so the three warm roles stay separable: accent 44° (gold-bronze),
+   warn 31° (burnt amber), error 9° (rust). */
+[data-theme="parchment"] {
+  --bg: 243 234 217; /* #f3ead9 */
+  --surface-sunken: 231 219 194; /* #e7dbc2 */
+  --surface: 251 246 234; /* #fbf6ea */
+  --surface-2: 235 223 199; /* #ebdfc7 */
+  --surface-3: 224 210 180; /* #e0d2b4 */
+
+  --border: 221 206 176; /* #ddceb0 */
+  --border-strong: 198 180 141; /* #c6b48d */
+
+  --text: 65 53 37; /* #413525 */
+  --text-muted: 108 94 78; /* #6c5e4e */
+  --text-faint: 108 96 83; /* #6c6053 — 4.63:1 on --surface-2 */
+
+  --accent: 99 76 15; /* #634c0f */
+  --accent-strong: 115 88 15; /* #73580f — the fill, 5.0:1 under its label */
+  --accent-hover: 82 63 12; /* #523f0c */
+  --accent-text: 255 251 244;
+
+  --ok: 41 96 39; /* #296027 */
+  --warn: 124 68 7; /* #7c4407 */
+  --error: 146 53 39; /* #923527 */
+  --error-strong: 171 60 43; /* #ab3c2b */
+  --error-text: 255 251 244;
+  --muted: 92 83 72; /* #5c5348 */
+
+  --focus-ring: 115 88 15;
+
+  /* A sepia dim rather than black: over cream, black/60 reads as a hole
+     punched in the paper. */
+  --scrim: 61 47 30; /* #3d2f1e */
+  --control-knob: 255 251 244;
+
+  --brand-from: 111 74 18; /* #6f4a12 → #a4762a */
+  --brand-to: 164 118 42;
+  --brand-text: 255 251 244;
+
+  /* The same six warm hues as Мокко, darkened so the initial stays legible
+     the way [data-theme="light"] darkens its own ramp. */
+  --avatar-1-from: 122 78 16; /* amber   #7a4e10 → #b07a26 */
+  --avatar-1-to: 176 122 38;
+  --avatar-2-from: 69 87 30; /* olive   #45571e → #6f8a3c */
+  --avatar-2-to: 111 138 60;
+  --avatar-3-from: 125 53 32; /* rust    #7d3520 → #b25f38 */
+  --avatar-3-to: 178 95 56;
+  --avatar-4-from: 81 59 44; /* coffee  #513b2c → #806048 */
+  --avatar-4-to: 128 96 72;
+  --avatar-5-from: 95 47 72; /* plum    #5f2f48 → #94526f */
+  --avatar-5-to: 148 82 111;
+  --avatar-6-from: 46 78 72; /* patina  #2e4e48 → #4c7a70 */
+  --avatar-6-to: 76 122 112;
+  --avatar-text: 255 251 244;
+  --avatar-idle-bg: 235 223 199;
+  --avatar-idle-text: 108 94 78;
+  --avatar-alert-bg: 232 211 199; /* #e8d3c7 */
+  --avatar-alert-text: 146 53 39;
+
+  --bar-track: 224 210 180;
+  --bar-fill: 115 88 15;
+  --bar-fill-warn: 124 68 7;
+  --bar-fill-full: 171 60 43;
 }
