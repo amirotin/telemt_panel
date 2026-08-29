@@ -14,6 +14,12 @@
 //   make build                       # from src/, once — e2e runs the real binary
 //   cd web && npm run screenshots     # writes ./screenshots-out (gitignored)
 //   SCREENSHOT_DIR=/somewhere npm run screenshots
+//   THEME=mocha npm run screenshots   # any name from src/lib/theme.ts's THEMES
+//
+// THEME seeds the per-device preference the switcher writes, before any
+// document script runs, so index.html's boot script picks it up on the very
+// first paint — the same path a returning user takes. Without it the run
+// shows the product default (dark).
 //
 // It is NOT part of `npm run e2e`: the project only exists when
 // SCREENSHOTS=1 is set (playwright.config.ts), so a normal run never pays
@@ -54,12 +60,27 @@ const SCREENS = [
 
 const OUT_DIR = path.resolve(process.env["SCREENSHOT_DIR"] ?? "screenshots-out");
 
+// The key lib/theme.ts persists the per-device choice under.
+export const THEME_STORAGE_KEY = "telemt-panel:theme";
+const THEME = process.env["THEME"];
 
 test.describe("§27.1 screenshot matrix", () => {
   for (const viewport of VIEWPORTS) {
     test(`${viewport.name}`, async ({ page, login }) => {
       test.setTimeout(120_000);
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      if (THEME) {
+        await page.addInitScript(
+          ([key, value]) => {
+            try {
+              localStorage.setItem(key, value);
+            } catch {
+              // Storage disabled — the shot will just show the default.
+            }
+          },
+          [THEME_STORAGE_KEY, THEME] as const,
+        );
+      }
       await login();
       const dir = path.join(OUT_DIR, viewport.name);
       await mkdir(dir, { recursive: true });
