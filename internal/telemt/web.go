@@ -24,7 +24,9 @@ const (
 // IS the whitelist — httpapi's passthrough validates against the same list.
 //
 // SessionRef is a point lookup and is mutually exclusive with Cursor and
-// Limit; the caller is responsible for not combining them (Telemt 400s).
+// Limit — Telemt rewrites it into `cursor = id-1, limit = 1` and 400s the
+// combination. httpapi's parseWebSessionsQuery rejects it before the request
+// is built, and telemttest reproduces the rewrite, so the two agree.
 type WebSessionsQuery struct {
 	Limit       int
 	Cursor      string

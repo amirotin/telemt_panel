@@ -42,17 +42,33 @@ var webSessionQueryFields = map[string]struct{}{
 // and builds the SDK query. Duplicates are rejected the way Telemt rejects
 // them: a repeated filter has no defined meaning, and picking one silently
 // would show a page that does not match the URL that produced it.
+//
+// An EMPTY value is rejected for the same reason, and it is not a
+// hypothetical: every one of the ten names 400s on an empty value in Telemt
+// 3.5.5 (verified live), while WebSessionsQuery.encode() drops empty values
+// by design — so `?host=` would have travelled as no query at all and
+// answered 200 with an unfiltered page, i.e. a filter the operator set and
+// the panel silently ignored.
 func parseWebSessionsQuery(r *http.Request) (telemt.WebSessionsQuery, error) {
 	var out telemt.WebSessionsQuery
-	for name, values := range r.URL.Query() {
+	query := r.URL.Query()
+	for name, values := range query {
 		if _, ok := webSessionQueryFields[name]; !ok {
 			return out, fmt.Errorf("unknown query field %q", name)
 		}
 		if len(values) > 1 {
 			return out, fmt.Errorf("query field %q must not repeat", name)
 		}
+		if values[0] == "" {
+			return out, fmt.Errorf("query field %q must not be empty", name)
+		}
 	}
-	query := r.URL.Query()
+	// session_ref is a POINT lookup: Telemt rewrites it into cursor = id-1,
+	// limit = 1 and 400s the combination rather than letting a caller
+	// believe the paging window applied (api/web_runtime/request.rs).
+	if query.Has("session_ref") && (query.Has("cursor") || query.Has("limit")) {
+		return out, fmt.Errorf("session_ref must not be combined with cursor or limit")
+	}
 	if raw := query.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil || limit < 1 || limit > telemt.WebSessionsMaxLimit {

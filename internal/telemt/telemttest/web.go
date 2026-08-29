@@ -232,6 +232,19 @@ func (s *Server) handleWebSessions(w http.ResponseWriter, rawQuery string) {
 			writeErr(w, http.StatusBadRequest, "bad_request", name+" must not repeat")
 			return
 		}
+		// Every one of the ten names validates its value for non-empty
+		// content in the real route, so an empty one is a 400 there and
+		// must be a 400 here — otherwise the panel's own rejection would
+		// have nothing to be checked against.
+		if vals[0] == "" {
+			writeErr(w, http.StatusBadRequest, "bad_request", name+" must not be empty")
+			return
+		}
+	}
+	if values.Has("session_ref") && (values.Has("cursor") || values.Has("limit")) {
+		writeErr(w, http.StatusBadRequest, "bad_request",
+			"session_ref must not be combined with cursor or limit")
+		return
 	}
 
 	limit := telemt.WebSessionsDefaultLimit
@@ -251,6 +264,20 @@ func (s *Server) handleWebSessions(w http.ResponseWriter, rawQuery string) {
 			return
 		}
 		after = id
+	}
+	// A session_ref is not an equality filter in Telemt: it is rewritten
+	// into a one-row window opened just below the id it names, which is
+	// what makes `scanned`/`next_cursor` come back the way they do. A fake
+	// that matched it as a plain filter would report a different scan than
+	// the real route for the same request.
+	if ref := values.Get("session_ref"); ref != "" {
+		id, ok := webRefID(ref)
+		if !ok {
+			writeErr(w, http.StatusBadRequest, "bad_request", "Invalid WEB session reference")
+			return
+		}
+		after = id - 1
+		limit = 1
 	}
 
 	page := telemt.WebSessionPage{Sessions: []telemt.WebSessionRow{}, Partial: []string{}}

@@ -101,7 +101,24 @@ func TestWebSessionsEnforcesTheQueryWhitelist(t *testing.T) {
 		t.Fatalf("a whitelisted filter was rejected: %v", err)
 	}
 
-	for _, query := range []string{"bogus=1", "user=a&user=b", "limit=0", "limit=201"} {
+	queries := []string{"bogus=1", "user=a&user=b", "limit=0", "limit=201"}
+	// Telemt 3.5.5 400s an empty value on every one of the ten names
+	// (validate_filter_strings, parse_session_ref, parse_carrier,
+	// parse_canonical_ip, "".parse::<usize>() — all verified live), so the
+	// fake must too, or the panel's own empty-value rejection would have
+	// nothing to be measured against.
+	for _, name := range []string{
+		"limit", "cursor", "session_ref", "ip", "host",
+		"user", "user_agent_id", "key_id", "carrier", "state",
+	} {
+		queries = append(queries, name+"=")
+	}
+	ref := webSessionRef(3)
+	queries = append(queries,
+		"session_ref="+ref+"&limit=5",
+		"session_ref="+ref+"&cursor="+webSessionRef(1),
+	)
+	for _, query := range queries {
 		resp, err := http.Get(fake.URL + "/v1/runtime/web/sessions?" + query)
 		if err != nil {
 			t.Fatalf("GET ?%s: %v", query, err)
@@ -110,6 +127,30 @@ func TestWebSessionsEnforcesTheQueryWhitelist(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("GET ?%s = %d, want 400", query, resp.StatusCode)
 		}
+	}
+}
+
+// session_ref is a POINT lookup, not an equality filter: Telemt rewrites it
+// into `cursor = id-1, limit = 1`, which is what makes `scanned` come back
+// as 1 rather than as the whole prefix of the registry. A fake that matched
+// it as a plain filter would let a page look right against the mock and
+// report a different scan against a real proxy.
+func TestWebSessionsPointLookupMatchesTelemtsRewrite(t *testing.T) {
+	c := newWebClient(t, Scenario{})
+	ref := webSessionRef(7)
+
+	page, err := c.WebSessions(context.Background(), telemt.WebSessionsQuery{SessionRef: ref})
+	if err != nil {
+		t.Fatalf("WebSessions: %v", err)
+	}
+	if len(page.Sessions) != 1 || page.Sessions[0].SessionRef != ref {
+		t.Fatalf("point lookup returned %d rows (%v); want exactly %s", len(page.Sessions), page.Sessions, ref)
+	}
+	if page.Scanned != 1 {
+		t.Errorf("scanned = %d, want 1: the window opens just below the id", page.Scanned)
+	}
+	if page.NextCursor == nil || *page.NextCursor != ref {
+		t.Errorf("next_cursor = %v, want %s: the one-row page filled up", page.NextCursor, ref)
 	}
 }
 

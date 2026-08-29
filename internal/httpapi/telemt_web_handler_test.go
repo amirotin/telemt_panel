@@ -51,6 +51,24 @@ func TestHandleGetTelemtWebSessions_RejectsAnythingOffTheWhitelist(t *testing.T)
 		"?limit=201",
 		"?limit=abc",
 		"?LIMIT=5",
+		// An EMPTY value is a 400 on Telemt 3.5.5 for every one of the ten
+		// names (verified against the running binary). Dropping it silently
+		// — which WebSessionsQuery.encode() would do — turns a filter the
+		// operator set into a full unfiltered page answered with 200.
+		"?host=",
+		"?limit=",
+		"?cursor=",
+		"?state=",
+		"?ip=",
+		"?user=",
+		"?key_id=",
+		"?carrier=",
+		"?user_agent_id=",
+		"?session_ref=",
+		// session_ref is a point lookup Telemt rewrites into a one-row
+		// window, so it cannot carry a paging window of its own.
+		"?session_ref=ws1.0123456789abcdef0123456789abcdef.0000000000000001&limit=5",
+		"?session_ref=ws1.0123456789abcdef0123456789abcdef.0000000000000001&cursor=ws1.0123456789abcdef0123456789abcdef.0000000000000002",
 	} {
 		w := doRequest(t, srv, cookie, "GET", "/api/telemt/web/sessions"+query, nil, nil)
 		if w.Code != http.StatusBadRequest {

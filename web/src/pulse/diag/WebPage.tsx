@@ -79,7 +79,12 @@ export function WebPage() {
   const sessions = useInfiniteQuery({
     ...getTelemtWebSessionsInfiniteOptions({ query: { limit: SESSIONS_PAGE_SIZE } }),
     enabled: available,
-    initialPageParam: "",
+    // `{}` and not `""`: the generated queryFn turns a STRING page param
+    // into `query.cursor`, so an empty first page param would put `?cursor=`
+    // on the wire — which Telemt 3.5.5 answers with 400, an empty value
+    // being a malformed reference rather than "no cursor". An object page
+    // param merges nothing, which is exactly what the first page wants.
+    initialPageParam: {},
     getNextPageParam: (lastPage: WebSessionPage) => lastPage.next_cursor ?? undefined,
   });
 
