@@ -60,34 +60,30 @@ const TONE_TEXT: Record<SparklineTone, string> = {
   muted: "text-text-muted",
 };
 
-// Written out rather than interpolated: Tailwind scans source text for
-// class names, so `bg-${tone}/12` would compile to nothing at all.
-const TONE_PLATE: Record<SparklineTone, string> = {
-  accent: "bg-accent/12",
-  ok: "bg-ok/12",
-  warn: "bg-warn/12",
-  error: "bg-error/12",
-  muted: "bg-surface-2",
-};
-
 // Fades the background chart out toward the left, where the value and the
 // caption are written.
 const CHART_FADE = "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.45) 34%, #000 66%)";
 
-// Tile — the desktop presentation (M5 S1): the chart is not a thumbnail
-// beside the number, it IS the tile's background, filled at the alpha
-// styles/contrast.test.ts holds it to so the label, the 30px value and the
-// caption all stay AA over it. The whole tile is the link to the domain's
-// Пульс page.
-function Tile({ metric }: { metric: Metric }) {
+// Tile — the presentation both viewports share (M5 S1 on the desktop grid,
+// S2 on the phone's 2×2 per concept §21): the chart is not a thumbnail beside
+// the number, it IS the tile's background, filled at the alpha
+// styles/contrast.test.ts holds it to so the label, the value and the caption
+// all stay AA over it. The whole tile is the link to the domain's Пульс page.
+//
+// `compact` is the same tile at phone scale — smaller padding and a 22px
+// value instead of 30 — NOT a second design. The desktop copy is `hidden`
+// below `lg:` and the phone copy above it, so exactly one of the two is ever
+// in the layout.
+function Tile({ metric, compact }: { metric: Metric; compact?: boolean }) {
   const { Icon } = metric;
   return (
     <Link
       to="/pulse/diag/$domain"
       params={{ domain: metric.domain }}
       className={cn(
-        "relative hidden min-h-[104px] min-w-0 flex-col overflow-hidden rounded-xl border border-border",
-        "bg-surface p-3.5 transition-colors hover:border-border-strong lg:col-span-3 lg:flex",
+        "relative min-w-0 flex-col overflow-hidden rounded-xl border border-border",
+        "bg-surface transition-colors hover:border-border-strong",
+        compact ? "flex min-h-[86px] p-2.5 lg:hidden" : "hidden min-h-[104px] p-3.5 lg:col-span-3 lg:flex",
       )}
     >
       {metric.series.length >= 2 && (
@@ -107,65 +103,46 @@ function Tile({ metric }: { metric: Metric }) {
           <Sparkline values={metric.series} tone={metric.tone} area decorative />
         </span>
       )}
-      <span className="relative flex items-center gap-1.5">
-        <Icon className={cn("h-3.5 w-3.5 shrink-0", TONE_TEXT[metric.tone])} />
-        <span className="truncate text-micro font-semibold uppercase tracking-[0.06em] text-text-muted">
+      <span className={cn("relative flex gap-1.5", compact ? "items-start" : "items-center")}>
+        <Icon
+          className={cn("h-3.5 w-3.5 shrink-0", compact && "mt-[2px]", TONE_TEXT[metric.tone])}
+        />
+        {/* Two 144px-wide tiles cannot hold «АКТИВНЫЕ ПОЛЬЗОВАТЕЛИ» on one
+            line, and a KPI whose label reads «АКТИВНЫЕ …» is a KPI you have
+            to guess at. The phone tile wraps to two lines and reserves both,
+            so all four tiles' numbers still sit on one baseline. */}
+        <span
+          className={cn(
+            // min-w-0 is what lets the label WRAP inside the tile instead of
+            // pushing past its edge: a flex item will not shrink below its
+            // content width without it, and `overflow-hidden` would then cut
+            // the word off rather than break it.
+            "min-w-0 flex-1 font-semibold uppercase text-text-muted",
+            // 10.5px and no letter-spacing on the phone: «АКТИВНЫЕ
+            // ПОЛЬЗОВАТЕЛИ» needs 108px of the 102 a 144px tile leaves beside
+            // the icon, and a KPI labelled «АКТИВНЫЕ ПОЛЬЗОВАТЕЛ…» is a KPI
+            // you have to guess at. break-words is the net for any label
+            // longer still.
+            compact
+              ? "line-clamp-2 min-h-[26px] break-words text-[10.5px] leading-[1.25]"
+              : "truncate text-micro tracking-[0.06em]",
+          )}
+        >
           {metric.label}
         </span>
       </span>
-      <span className="relative mt-auto block pt-3 font-mono text-[30px] font-bold leading-none tabular-nums text-text">
+      <span
+        className={cn(
+          "relative mt-auto block font-mono font-bold leading-none tabular-nums text-text",
+          compact ? "pt-2 text-[22px]" : "pt-3 text-[30px]",
+        )}
+      >
         {metric.value}
       </span>
       <span className="relative mt-1.5 block h-[15px] truncate text-micro text-text-muted">
         {metric.caption}
       </span>
     </Link>
-  );
-}
-
-// MetricRow — the phone presentation, unchanged from M3: a round tinted
-// plate, then a column whose own hairline (not the list's) separates it from
-// the next row, so the rule starts after the icon exactly as in the design.
-function MetricRow({ metric }: { metric: Metric }) {
-  const { Icon } = metric;
-  const hasSpark = metric.series.length >= 2;
-  return (
-    <div className="flex items-center gap-3">
-      <span
-        aria-hidden="true"
-        className={cn(
-          "inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full text-[17px]",
-          TONE_PLATE[metric.tone],
-          TONE_TEXT[metric.tone],
-        )}
-      >
-        <Icon />
-      </span>
-      <div className="min-w-0 flex-1 border-b border-border pb-2.5 pt-2 last:border-b-0">
-        <div className="flex items-baseline gap-3">
-          <span className="min-w-0 truncate text-row font-semibold text-text">{metric.label}</span>
-          <span className="ml-auto shrink-0 font-mono text-sm font-bold tabular-nums text-text">
-            {metric.value}
-          </span>
-        </div>
-        {(metric.caption || hasSpark) && (
-          <div className="mt-1 flex items-center gap-2.5">
-            <span className="min-w-0 flex-1 truncate text-micro text-text-muted">
-              {metric.caption}
-            </span>
-            {hasSpark && (
-              <Sparkline
-                values={metric.series}
-                tone={metric.tone}
-                width={76}
-                height={16}
-                className="shrink-0"
-              />
-            )}
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -277,14 +254,16 @@ export function StatRow({ onHide }: { onHide?: () => void }) {
 
   return (
     <>
-      {/* The phone keeps the titled card with four rows; the desktop tiles
-          are this widget's own grid cells (registry size: "tiles"), which
-          is why they are siblings of the card and not nested in it. */}
+      {/* The phone keeps the titled card — it is where «Показатели» can
+          still be hidden with one tap — but holds a 2×2 of the same tiles
+          (concept §21) instead of four full-width rows. The desktop tiles
+          are this widget's own grid cells (registry size: "tiles"), which is
+          why they are siblings of the card and not nested in it. */}
       <div className="lg:hidden">
         <WidgetFrame title={s.pulse.widgets.stat_row} onHide={onHide} stale={stats.stale}>
-          <div className="flex flex-col">
+          <div className="grid grid-cols-2 gap-2.5">
             {metrics.map((m) => (
-              <MetricRow key={m.key} metric={m} />
+              <Tile key={m.key} metric={m} compact />
             ))}
           </div>
         </WidgetFrame>
