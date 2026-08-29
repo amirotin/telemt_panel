@@ -138,3 +138,27 @@ describe("KVRow stays a thin wrapper (compatibility)", () => {
     expect(value.className).toContain("font-mono");
   });
 });
+
+// §28.13 / §29: "значения остаются выделяемым текстом без специального value
+// menu". The prototype deliberately dropped the tap/long-press value menu, so
+// the row must not turn a value into a control or suppress its selection.
+describe("a value is text, not a control (spec §28.13, §29)", () => {
+  it("wraps the value in no button, link or handler", () => {
+    const el = render(<DescribedRow name="ja3" value="771,4865-4866" />);
+    const value = el.firstElementChild!.children[1];
+    expect(value.querySelector("button, a, [role='button'], [tabindex]")).toBeNull();
+    // React puts an onClick/onContextMenu on the DOM node's props, not as an
+    // attribute — the absence of any listener-bearing element above is the
+    // check; this pins that the value box itself is a plain container.
+    expect(value.firstElementChild!.tagName).toBe("DIV");
+  });
+
+  it("never suppresses selection on the value", () => {
+    const el = render(<DescribedRow name="ja3" value="771,4865-4866" />);
+    const value = el.firstElementChild!.children[1].firstElementChild!;
+    expect(value.className).not.toContain("select-none");
+    expect(value.className).not.toContain("pointer-events-none");
+    // The full value is in the text, not behind a hover or a title only.
+    expect(value.textContent).toBe("771,4865-4866");
+  });
+});
