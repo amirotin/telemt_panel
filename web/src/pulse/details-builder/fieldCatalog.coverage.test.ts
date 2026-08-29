@@ -4,10 +4,11 @@
 //
 // This is the test that turns "a new Telemt release added a field" into a
 // red CI run instead of an undescribed row nobody notices. Asserted on all
-// nine migrated domains: DC (Task 2), TLS and Security (Task 6), ME and
-// Counters (Task 7), Upstreams, Connections, NAT and Events (Task 8) — the
-// Telemt-bump checklist points at this file.
+// ten migrated domains: DC (Task 2), TLS and Security (Task 6), ME and
+// Counters (Task 7), Upstreams, Connections, NAT and Events (Task 8), WEB
+// (Task 8b) — the Telemt-bump checklist points at this file.
 import { describe, expect, it } from "vitest";
+import { en, ru } from "../../i18n";
 import {
   DEFAULT_FIELD_CATALOG,
   catalogCoverage,
@@ -391,6 +392,47 @@ describe("field catalog coverage: Events domain", () => {
 // precisely that a collision would pass every other test in this file:
 // both sides stay described, `report.undescribed` stays empty, and one
 // domain simply starts explaining the other's number.
+// The harness's own blind spot, found by the WEB domain (M4 task 8b): a
+// catalog entry whose descriptionKey has no STRING behind it still counts as
+// "described" — `catalogCoverage` reads the lookup step, not the dictionary —
+// and renders as the neutral "no description yet" text. Six WEB plane
+// entries shipped that way for exactly as long as it took to notice on
+// screen. This closes it for every domain at once.
+describe("field catalog: every description key has text in both languages", () => {
+  const keys = new Set<string>();
+  for (const entry of [
+    ...DEFAULT_FIELD_CATALOG.entries,
+    ...Object.values(DEFAULT_FIELD_CATALOG.byEndpoint).flat(),
+  ]) {
+    keys.add(entry.descriptionKey ?? entry.path);
+  }
+
+  it.each([
+    ["ru", ru],
+    ["en", en],
+  ])("%s", (_lang, dict) => {
+    const table = dict.details.fields.descriptions as unknown as Record<string, string>;
+    const missing = [...keys].filter((key) => (table[key] ?? "") === "");
+    expect(missing, `catalog keys with no text:\n${missing.join("\n")}`).toEqual([]);
+  });
+
+  it("and every shortLabelKey does too", () => {
+    const shortKeys = new Set<string>();
+    for (const entry of [
+      ...DEFAULT_FIELD_CATALOG.entries,
+      ...Object.values(DEFAULT_FIELD_CATALOG.byEndpoint).flat(),
+    ]) {
+      if (entry.shortLabelKey) shortKeys.add(entry.shortLabelKey);
+    }
+    expect(shortKeys.size).toBeGreaterThan(20);
+    for (const dict of [ru, en]) {
+      const table = dict.details.fields.shortLabels as unknown as Record<string, string>;
+      const missing = [...shortKeys].filter((key) => (table[key] ?? "") === "");
+      expect(missing).toEqual([]);
+    }
+  });
+});
+
 describe("field catalog: the shared global prefixes", () => {
   it("never lets two entries claim one path with different sentences", () => {
     const byPath = new Map<string, Set<string>>();
