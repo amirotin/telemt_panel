@@ -8,6 +8,7 @@ import { ScalarSection } from "./ScalarSection";
 import { ArraySection } from "./ArraySection";
 import { UnknownFieldsSection } from "./UnknownFieldsSection";
 import { SectionList } from "./SectionList";
+import { SectionFrame } from "./SectionFrame";
 import type { DetailRenderContext } from "./context";
 
 // Fixed clock: nothing here renders a relative age, but FormatContext
@@ -453,5 +454,32 @@ describe("SectionList applies the ONE display-mode predicate", () => {
     expect(basic.querySelector("#all-panel")!.textContent).toContain(
       "connections_bad_by_class[]",
     );
+  });
+});
+
+// A section title is usually a Telemt field name too, and at 360 px a long
+// one broke mid-token: `connections_bad_by_clas` over `s[]` on the live
+// Counters page.
+describe("a long section title breaks where a reader expects (§13.2)", () => {
+  it("offers a break opportunity at every separator of a snake_case title", () => {
+    const el = render(
+      <SectionFrame id="s" title="connections_bad_by_class[]" expanded onToggle={() => {}}>
+        <div />
+      </SectionFrame>,
+    );
+    const heading = el.querySelector("button span")!;
+    expect(heading.querySelectorAll("wbr").length).toBeGreaterThan(2);
+    // The `<wbr>`s contribute nothing to the text, so the name is still
+    // verbatim for a copy or a search.
+    expect(heading.textContent).toBe("connections_bad_by_class[]");
+  });
+
+  it("leaves a human title alone", () => {
+    const el = render(
+      <SectionFrame id="s" title="Маршрутизация и ёмкость" expanded onToggle={() => {}}>
+        <div />
+      </SectionFrame>,
+    );
+    expect(el.querySelectorAll("wbr").length).toBe(0);
   });
 });

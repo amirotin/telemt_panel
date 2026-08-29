@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { cn } from "../../../lib/cn";
+import { fieldNameSegments } from "../../../ui/fieldNameWrap";
 import { CountBadge } from "../../../ui/Chip";
 import { IconChevronDown, IconChevronUp } from "../../../ui/icons";
 
@@ -28,6 +29,17 @@ export interface SectionFrameProps {
 // collapsed. `aria-expanded` + `aria-controls` on a real <button> is the
 // whole keyboard/screen-reader contract (§21); the header is a 44px tap
 // target (§16.4).
+function withNameBreaks(text: string): ReactNode {
+  const segments = fieldNameSegments(text);
+  if (segments.length === 1) return text;
+  return segments.map((segment, i) => (
+    <Fragment key={i}>
+      {i > 0 && <wbr />}
+      {segment}
+    </Fragment>
+  ));
+}
+
 export function SectionFrame({
   id,
   title,
@@ -71,7 +83,10 @@ export function SectionFrame({
           nested ? "font-mono text-[12.5px]" : "text-[15px]",
         )}
       >
-        {title}
+        {/* A section title is usually a Telemt field name too
+            (`connections_bad_by_class[]`), and one unbreakable token breaks
+            mid-word at 360 px — same `<wbr>` treatment as a row's name. */}
+        {typeof title === "string" ? withNameBreaks(title) : title}
         {count !== undefined && (
           <CountBadge tone="muted" className="ml-2">
             {count}
