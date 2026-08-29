@@ -7,7 +7,14 @@ import { findUnsafeIntegerLiterals } from "./unsafeIntegers";
 // tokenTheme paints CodeMirror's own chrome from the design tokens instead
 // of its stock light palette (which rendered a white slab in the middle of
 // a dark page). Every value is a `rgb(var(--token))`, so the editor follows
-// [data-theme] with no second theme object and no re-mount on theme change.
+// [data-theme] with no second theme object and no re-mount on theme change
+// — that is what makes it correct in all four themes (Тёмная, Светлая,
+// «Мокко», «Пергамент») without a per-theme mapping. The rules below cover
+// every surface CM6's base theme splits into `&light`/`&dark` variants —
+// gutters, active line, cursor, selection — so `EditorView.theme`'s `dark`
+// flag, which is a static boolean and could not follow the switcher
+// anyway, has nothing left to decide; the extensions in use here (line
+// numbers + JSON) render no panels, tooltips or search matches.
 // No syntax highlighting: that needs @codemirror/language, which is only a
 // transitive dependency here and web/README.md's dependency rule keeps the
 // direct list to the three approved @codemirror packages.

@@ -18,6 +18,8 @@ export const en: Dict = {
     dark: "Dark",
     light: "Light",
     system: "System",
+    mocha: "Mocha",
+    parchment: "Parchment",
     toggle: "Theme",
   },
   displayMode: {
