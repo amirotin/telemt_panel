@@ -9,13 +9,14 @@ import {
   getTelemtWebSessionsInfiniteQueryKey,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { WebSessionPage } from "../../lib/api/generated/types.gen";
-import { isTerminalWebOperationState, useTelemtOperation } from "../../lib/useTelemtOperation";
+import { useTelemtOperation } from "../../lib/useTelemtOperation";
 import type { WebTopic } from "../../realtime/topics";
 import { useSnapshot } from "../../realtime";
 import { ConfirmView } from "../../ui/ConfirmView";
 import { Sheet } from "../../ui/Sheet";
 import { pushToast } from "../../ui/Toast";
 import { apiErrorMessage } from "../../people/apiError";
+import { useWebCloseReport } from "./useWebCloseReport";
 import { DetailPage } from "../details-builder/DetailPage";
 import {
   WEB_ENDPOINT,
@@ -111,40 +112,22 @@ export function WebPage() {
   const [operationId, setOperationId] = useState<string | null>(null);
   const operation = useTelemtOperation(operationId);
 
-  // The terminal report, once — and then the poll stops itself.
-  const operationState = operation.data?.state;
-  const [reportedFor, setReportedFor] = useState<string | null>(null);
-  if (
-    operation.data !== undefined &&
-    operationState !== undefined &&
-    isTerminalWebOperationState(operationState) &&
-    reportedFor !== operation.data.operation_id
-  ) {
-    setReportedFor(operation.data.operation_id);
-    if (operationState === "completed") {
-      pushToast(
-        fill(s.details.pages.web.closeDoneTemplate, {
-          count: String(operation.data.close_signalled),
-        }),
-        "ok",
-      );
-      if (operation.data.conflicted > 0) {
-        pushToast(
-          fill(s.details.pages.web.closeConflictTemplate, {
-            count: String(operation.data.conflicted),
-          }),
-          "default",
-        );
-      }
-    } else {
-      pushToast(s.details.pages.web.closeFailed, "error");
-    }
-    // The registry moved: drop the accumulated pages and start the scan
-    // again rather than leaving closed rows on screen.
-    void queryClient.invalidateQueries({
-      queryKey: getTelemtWebSessionsInfiniteQueryKey({ query: { limit: SESSIONS_PAGE_SIZE } }),
-    });
-  }
+  // The terminal report and the failure report, both in effects and both
+  // once per operation — see useWebCloseReport for why they are not in the
+  // render phase any more.
+  useWebCloseReport({
+    operationId,
+    data: operation.data,
+    error: operation.error,
+    onSettled: () => setOperationId(null),
+    onRegistryMoved: () => {
+      // The registry moved: drop the accumulated pages and start the scan
+      // again rather than leaving closed rows on screen.
+      void queryClient.invalidateQueries({
+        queryKey: getTelemtWebSessionsInfiniteQueryKey({ query: { limit: SESSIONS_PAGE_SIZE } }),
+      });
+    },
+  });
 
   const closeMutation = useMutation({
     ...closeTelemtWebSessionsMutation(),
