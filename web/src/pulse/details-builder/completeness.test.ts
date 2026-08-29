@@ -26,7 +26,9 @@ import {
   eventsPageDefinition,
   natPageDefinition,
   upstreamsPageDefinition,
+  webPageDefinition,
 } from "./definitions";
+import { webPagePayload } from "../diag/web.helpers";
 import { connectionsPagePayload } from "../diag/connections.helpers";
 import { eventsPagePayload } from "../diag/events.helpers";
 import { upstreamsPagePayload } from "../diag/upstreams.helpers";
@@ -67,6 +69,11 @@ import {
   whitelist,
   writerAllNull,
   zeroAll,
+  webSessionsAll,
+  webSessionsManagerBusy,
+  webStatusNoListener,
+  webStatusPartialPlanes,
+  webStatusRunning,
 } from "./__fixtures__";
 
 interface Case {
@@ -143,6 +150,28 @@ const CASES: Case[] = [
     upstreamsPagePayload(upstreams, upstreamQuality),
   ),
 
+  // --- Task 8b's WEB domain, on the RECORDED 3.5.5 status ---------------
+  defined(
+    "web: running + sessions (defined)",
+    webPageDefinition,
+    webPagePayload(webStatusRunning, [webSessionsAll]),
+  ),
+  defined(
+    "web: no listener (defined)",
+    webPageDefinition,
+    webPagePayload(webStatusNoListener, null),
+  ),
+  defined(
+    "web: contended planes (defined)",
+    webPageDefinition,
+    webPagePayload(webStatusPartialPlanes, null),
+  ),
+  defined(
+    "web: manager lock busy (defined)",
+    webPageDefinition,
+    webPagePayload(webStatusRunning, [webSessionsManagerBusy]),
+  ),
+
   // --- composed topic snapshots (what a page actually receives) -------
   plain("topic: stats", statsSnapshot),
   plain("topic: runtime", runtimeSnapshot),
@@ -174,6 +203,10 @@ const PRODUCTION_CASES = new Set([
   "connections (defined)",
   "events (defined)",
   "upstreams (defined)",
+  "web: running + sessions (defined)",
+  "web: no listener (defined)",
+  "web: contended planes (defined)",
+  "web: manager lock busy (defined)",
 ]);
 
 describe("checkpoint R1: no field is ever silently lost (spec §27.4)", () => {

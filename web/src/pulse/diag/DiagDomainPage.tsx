@@ -8,6 +8,7 @@ import { UpstreamsPage } from "./UpstreamsPage";
 import { MePage } from "./MePage";
 import { NatPage } from "./NatPage";
 import { SecurityPage } from "./SecurityPage";
+import { WebPage } from "./WebPage";
 import { CountersPage } from "./CountersPage";
 
 const PAGES: Record<DiagDomain, () => React.ReactElement> = {
@@ -19,6 +20,7 @@ const PAGES: Record<DiagDomain, () => React.ReactElement> = {
   security: SecurityPage,
   counters: CountersPage,
   events: EventsPage,
+  web: WebPage,
 };
 
 function isDiagDomain(v: string): v is DiagDomain {

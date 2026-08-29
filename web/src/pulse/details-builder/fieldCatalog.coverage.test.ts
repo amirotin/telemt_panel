@@ -13,7 +13,9 @@ import {
   catalogCoverage,
   lookupField,
   TLS_FINGERPRINTS_ENDPOINT,
+  WEB_ENDPOINT,
 } from "./fieldCatalog";
+import { webPagePayload } from "../diag/web.helpers";
 import { connectionsPagePayload } from "../diag/connections.helpers";
 import { eventsPagePayload } from "../diag/events.helpers";
 import { mePagePayload } from "../diag/me.helpers";
@@ -40,6 +42,8 @@ import {
   tlsFingerprints,
   whitelist,
   zeroAll,
+  webSessionsAll,
+  webStatusRunning,
 } from "./__fixtures__";
 
 describe("field catalog coverage: DC domain", () => {
@@ -417,5 +421,82 @@ describe("field catalog: the shared global prefixes", () => {
     expect(seen.size).toBeGreaterThan(20);
     const duplicated = [...seen].filter(([, n]) => n > 1).map(([path]) => path);
     expect(duplicated, `duplicated summary.* paths:\n${duplicated.join("\n")}`).toEqual([]);
+  });
+});
+
+// The WEB domain (M4 task 8b), ENDPOINT-scoped for the same reason the TLS
+// one is (R9): `manager`, `budget`, `streams`, `limits`, `permits`, `state`,
+// `attempt`, `host`, `user` and `reason` all mean something else somewhere
+// else in Telemt's API.
+describe("field catalog coverage: WEB domain (endpoint-scoped, ruling R9)", () => {
+  const context = webPagePayload(webStatusRunning, [webSessionsAll])!;
+
+  it("describes every leaf of the recorded status plus a full session page", () => {
+    const report = catalogCoverage(context, { endpoint: WEB_ENDPOINT });
+    // Pinned exactly, like DC and TLS: a bound cannot tell a Telemt release
+    // that ADDED fields apart from one that dropped them. 46 [web.limits]
+    // keys + 8 permits x 5 + 10 capture-policy keys + the six planes' own
+    // fields + 24 session rows + the envelope, totals and scan fields.
+    expect(report.total).toBe(750);
+    expect(report.undescribed, `undescribed WEB paths:\n${report.undescribed.join("\n")}`).toEqual(
+      [],
+    );
+  });
+
+  it("describes NONE of them through a WEB entry without the endpoint scope", () => {
+    // The proof that the scoping is real: unscoped, `runtime.manager.sessions`
+    // and friends must not resolve to a WEB sentence.
+    for (const path of [
+      "runtime.manager.sessions",
+      "runtime.limits.max_sessions_global",
+      "sessions.rows[0].carrier",
+      "lifecycle",
+    ]) {
+      expect(lookupField(path).entry?.descriptionKey ?? "", path).not.toMatch(/^web\./);
+      expect(
+        lookupField(path, { endpoint: WEB_ENDPOINT }).entry?.descriptionKey,
+        path,
+      ).toMatch(/^web\./);
+    }
+  });
+
+  it("never falls back to a counters-family guess or to the neutral text", () => {
+    const sources = new Set(
+      catalogCoverage(context, { endpoint: WEB_ENDPOINT }).rows.map((row) => row.source),
+    );
+    expect(sources.has("fallback")).toBe(false);
+    expect(sources.has("family")).toBe(false);
+  });
+
+  it("keeps a busy-plane payload described too", () => {
+    // A contended plane arrives as null. The path disappears from the walk,
+    // so this proves nothing NEW appears — the shape must not grow leaves
+    // the catalog has never seen.
+    const busy = webPagePayload(
+      { ...webStatusRunning, runtime: { ...webStatusRunning.runtime!, manager: null, partial: ["manager"] } },
+      null,
+    )!;
+    expect(catalogCoverage(busy, { endpoint: WEB_ENDPOINT }).undescribed).toEqual([]);
+  });
+
+  it("describes the highlight spelling as well as the indexed one (§8.3)", () => {
+    // EntityListSection looks a highlight up as `sessions.rows.<field>`
+    // (no index) while the surface uses `sessions.rows[0].<field>`. Both
+    // must land on the same sentence, or a row's headline value would be
+    // described as an unknown parameter.
+    for (const field of ["streams", "age_ms"]) {
+      const bare = lookupField(`sessions.rows.${field}`, { endpoint: WEB_ENDPOINT });
+      const indexed = lookupField(`sessions.rows[0].${field}`, { endpoint: WEB_ENDPOINT });
+      expect(bare.entry?.descriptionKey, field).toBe(indexed.entry?.descriptionKey);
+      expect(bare.entry?.descriptionKey, field).toBe(`web.session.${field}`);
+    }
+  });
+
+  it("still flags a WEB field nobody described", () => {
+    const report = catalogCoverage(
+      { runtime: { manager: { a_field_from_a_future_telemt: 1 } } },
+      { endpoint: WEB_ENDPOINT },
+    );
+    expect(report.undescribed).toEqual(["runtime.manager.a_field_from_a_future_telemt"]);
   });
 });

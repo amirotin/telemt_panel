@@ -6,7 +6,7 @@
 // time either way, but keeping the value-importing edges one-directional
 // avoids the question entirely).
 
-// DiagDomain enumerates the eight Диагностика drill-down pages
+// DiagDomain enumerates the nine Диагностика drill-down pages
 // (06-ui.md §Пульс: "Соединения · DC · Upstreams · ME · NAT/STUN · Security
 // · Счётчики", plus События — M4 task 8's own page, which the plan's Пульс
 // hub lists alongside the other seven) — a widget's optional diagDomain
@@ -19,7 +19,11 @@ export type DiagDomain =
   | "nat"
   | "security"
   | "counters"
-  | "events";
+  | "events"
+  // web — Telemt >= 3.5.3's WEB proxy mode (M4 task 8b). The ninth card on
+  // the hub; on an older build it reads as `unsupported`, not as a gate the
+  // operator can flip.
+  | "web";
 
 // WidgetId enumerates the dashboard's widget catalog (06-ui.md's widget
 // list) — the layout store persists an ordered array of these.

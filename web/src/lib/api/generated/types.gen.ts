@@ -220,7 +220,7 @@ export type WebSessionRow = {
  */
 export type WebSessionPage = {
     sessions: Array<WebSessionRow>;
-    next_cursor: string;
+    next_cursor: string | null;
     scanned: number;
     scan_truncated: boolean;
     partial_sessions: number;
@@ -278,7 +278,7 @@ export type WebCloseRequest = {
 export type WebControlOperationStatus = {
     operation_id: string;
     state: 'queued' | 'running' | 'completed' | 'cancelled' | 'failed';
-    high_water_session_ref: string;
+    high_water_session_ref: string | null;
     requested: number;
     scanned: number;
     matched: number;

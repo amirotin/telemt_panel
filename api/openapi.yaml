@@ -1130,7 +1130,7 @@ components:
       required: [sessions, next_cursor, scanned, scan_truncated, partial_sessions, partial]
       properties:
         sessions: { type: array, items: { $ref: "#/components/schemas/WebSessionRow" } }
-        next_cursor: { type: string, nullable: true }
+        next_cursor: { type: [string, "null"] }
         scanned: { type: integer }
         scan_truncated: { type: boolean }
         partial_sessions: { type: integer }
@@ -1195,7 +1195,7 @@ components:
       properties:
         operation_id: { type: string }
         state: { type: string, enum: [queued, running, completed, cancelled, failed] }
-        high_water_session_ref: { type: string, nullable: true }
+        high_water_session_ref: { type: [string, "null"] }
         requested: { type: integer }
         scanned: { type: integer }
         matched: { type: integer }

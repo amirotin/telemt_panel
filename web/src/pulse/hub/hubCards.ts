@@ -1,4 +1,4 @@
-// The Пульс hub's eight preview cards, as data (06-ui.md §Информационная
+// The Пульс hub's nine preview cards, as data (06-ui.md §Информационная
 // архитектура: "Пульс — хаб диагностики: карточки-превью ... каждая ведёт на
 // Details-страницу").
 //
@@ -28,6 +28,7 @@ import {
   resolveGateHint,
   RUNTIME_EDGE_HINTS,
   UPSTREAM_STATS_HINTS,
+  WEB_RUNTIME_HINTS,
   type GateHintKey,
   type GateHintSpec,
 } from "../../caps/gateHints";
@@ -39,6 +40,7 @@ import type {
   StatsSnapshot,
   UpstreamsTopic,
   UsersTopic,
+  WebTopic,
 } from "../../realtime/topics";
 import type { TopicSnapshot } from "../../realtime/types";
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
@@ -48,12 +50,14 @@ import { eventsPagePayload } from "../diag/events.helpers";
 import { mePagePayload } from "../diag/me.helpers";
 import { securityPageData } from "../diag/security.helpers";
 import { upstreamsPagePayload } from "../diag/upstreams.helpers";
+import { webPagePayload } from "../diag/web.helpers";
 import { connectionsPageDefinition } from "../details-builder/definitions/connections";
 import { countersPageDefinition } from "../details-builder/definitions/counters";
 import { eventsPageDefinition } from "../details-builder/definitions/events";
 import { mePageDefinition } from "../details-builder/definitions/me";
 import { natPageDefinition } from "../details-builder/definitions/nat";
 import { upstreamsPageDefinition } from "../details-builder/definitions/upstreams";
+import { WEB_ENDPOINT, webPageDefinition } from "../details-builder/definitions/web";
 import type { SecurityPageData } from "../details-builder/definitions/security";
 import type { DetailPageDefinition, SummaryMetricDefinition, SummaryTone } from "../details-builder/model";
 import {
@@ -100,6 +104,7 @@ export interface HubInputs {
   upstreams: TopicSnapshot<UpstreamsTopic>;
   security: TopicSnapshot<SecurityTopic>;
   users: TopicSnapshot<UsersTopic>;
+  web: TopicSnapshot<WebTopic>;
   /** `GET /api/telemt/zero`, the Счётчики card's only source. */
   counters: QuerySourceInput;
   nowMs: number;
@@ -243,8 +248,11 @@ function metricsOf<T>(
   return metrics.map((metric) => resolveSummaryMetric(metric, context, s, { nowMs }));
 }
 
-// HUB_DOMAINS is the hub's single ordered list — the eight cards of
-// 06-ui.md, in the order the prototype's Пульс reads them. The gates and
+// HUB_DOMAINS is the hub's single ordered list — the nine cards of
+// 06-ui.md plus WEB (M4 task 8b), in the order the prototype's Пульс reads
+// them; WEB goes last because it is the domain most installations do not
+// run at all, and a card that reads «включите [web]» on most servers has no
+// business sitting above the ones that always have data. The gates and
 // payload adapters are the diag pages' own, imported rather than restated.
 export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   {
@@ -420,6 +428,33 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
         eventsPagePayload(events?.status === "ok" ? events.data : null),
         s,
         nowMs,
+      );
+    },
+  },
+  {
+    domain: "web",
+    // No config FLAG gates /v1/runtime/web/*: the routes are registered
+    // unconditionally on 3.5.3+ and close only because the WEB runtime is
+    // not running. On an older build the hub's own R5 rule takes over and
+    // offers "update Telemt" instead.
+    disabledHint: WEB_RUNTIME_HINTS,
+    source: ({ web }) => ({
+      kind: "topic",
+      snapshot: web,
+      gated: web.data?.status ?? null,
+    }),
+    metrics: ({ web, nowMs }, s) => {
+      const status = web.data ? resolveGated(web.data.status) : null;
+      return fromTiles(
+        webPageDefinition,
+        ["lifecycle", "sessions", "streams"],
+        // The card previews the STATUS half only: the sessions are a
+        // fetch-on-visit request the page owns, and a hub of nine cards
+        // must not pull a page of session rows to show three numbers.
+        webPagePayload(status?.status === "ok" ? status.data : null, null),
+        s,
+        nowMs,
+        WEB_ENDPOINT,
       );
     },
   },

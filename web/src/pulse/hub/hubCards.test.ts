@@ -7,6 +7,7 @@ import type {
   StatsSnapshot,
   UpstreamsTopic,
   UsersTopic,
+  WebTopic,
 } from "../../realtime/topics";
 import {
   dcIds,
@@ -22,6 +23,9 @@ import {
   edgeOffRuntimeSnapshot,
   oldBuildRuntimeSnapshot,
   oldBuildStatsSnapshot,
+  webTopicRunning,
+  webTopicDisabled,
+  webTopicUnsupported,
 } from "../details-builder/__fixtures__";
 import type { QuerySourceInput } from "../details-builder/sources";
 import {
@@ -59,6 +63,7 @@ function inputs(over: Partial<HubInputs> = {}): HubInputs {
     upstreams: topic<UpstreamsTopic>(upstreamsSnapshot),
     security: topic<SecurityTopic>(securitySnapshot),
     users: topic<UsersTopic>(users),
+    web: topic<WebTopic>(webTopicRunning),
     counters: counters(),
     nowMs: NOW,
     ...over,
@@ -74,9 +79,10 @@ const DOMAIN_ORDER = [
   "upstreams",
   "nat",
   "events",
+  "web",
 ] as const;
 
-describe("the eight hub cards", () => {
+describe("the nine hub cards", () => {
   it("covers every diagnostics domain exactly once, in the IA's order", () => {
     expect(HUB_DOMAINS.map((d) => d.domain)).toEqual([...DOMAIN_ORDER]);
     expect(buildHubCards(inputs(), ru).map((c) => c.domain)).toEqual([...DOMAIN_ORDER]);
@@ -315,6 +321,7 @@ describe("before anything has arrived", () => {
         upstreams: topic<UpstreamsTopic>(null),
         security: topic<SecurityTopic>(null),
         users: topic<UsersTopic>(null),
+        web: topic<WebTopic>(null),
         counters: counters({ isPending: true, data: undefined, dataUpdatedAt: 0 }),
       }),
       ru,
@@ -407,5 +414,57 @@ describe("cross-version: the hub on three different builds", () => {
       expect(card.status, domain).toBe("ready");
       expect(card.metrics.length, domain).toBeGreaterThan(0);
     }
+  });
+});
+
+// The WEB card (M4 task 8b) is the ninth, and the only one whose gate has
+// three distinguishable causes on the wire.
+describe("the WEB card", () => {
+  function webCard(web: TopicSnapshot<WebTopic>) {
+    return buildHubCards(inputs({ web }), ru).find((c) => c.domain === "web")!;
+  }
+
+  it("previews the runtime's own three figures when WEB is running", () => {
+    const card = webCard(topic<WebTopic>(webTopicRunning));
+    expect(card.status).toBe("ready");
+    expect(card.gate).toBeNull();
+    expect(card.metrics.map((m) => m.id)).toEqual(["lifecycle", "sessions", "streams"]);
+    expect(card.metrics[0]?.text).toBe("running");
+    // The lifecycle tile is toned, and «running» is the good tone — the
+    // pill and the tile must not disagree about the same fact.
+    expect(card.metrics[0]?.tone).toBe("good");
+  });
+
+  it("reads a WEB runtime that is off as DISABLED, with the [web] hint", () => {
+    const card = webCard(topic<WebTopic>(webTopicDisabled));
+    expect(card.status).toBe("disabled");
+    expect(card.gate).toEqual({
+      variant: "disabled",
+      reason: "no_web_listener",
+      hint: "web_enabled",
+    });
+    // A gated card shows no figures at all — never a row of dashes
+    // pretending to be a reading.
+    expect(card.metrics).toEqual([]);
+  });
+
+  it("reads a build with no WEB routes as UNSUPPORTED, with the update hint (R5)", () => {
+    const card = webCard(topic<WebTopic>(webTopicUnsupported));
+    expect(card.status).toBe("unsupported");
+    expect(card.gate?.variant).toBe("unsupported");
+    // R5: never a setting the operator's binary does not have.
+    expect(card.gate?.hint).toBe("telemt_outdated");
+  });
+
+  it("uses the WEB catalog scope for its tile names, not a global entry", () => {
+    // `manager.sessions` and `streams.live` are words other domains use
+    // too; the card must read them through the endpoint-scoped catalog or
+    // it would label them from somebody else's entry (R9).
+    const card = webCard(topic<WebTopic>(webTopicRunning));
+    expect(card.metrics.map((m) => m.label)).toEqual([
+      ru.details.fields.shortLabels["web.lifecycle"],
+      ru.details.fields.shortLabels["web.manager.sessions"],
+      ru.details.fields.shortLabels["web.streams.live"],
+    ]);
   });
 });

@@ -1,5 +1,5 @@
 // TopicName mirrors internal/hub's topic set (02-hub-sse.md).
-export type TopicName = "users" | "stats" | "runtime" | "upstreams" | "security" | "update";
+export type TopicName = "users" | "stats" | "runtime" | "upstreams" | "security" | "web" | "update";
 
 // TopicSnapshot is what useSnapshot(topic) hands back. `data` is the last
 // good payload — it is NEVER cleared just because the topic went stale

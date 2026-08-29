@@ -15,6 +15,59 @@ import type { DetailPageStateApi } from "../state";
 /** Absence a SOURCE state forces onto every row it feeds (R5, §13.1). */
 export type ForcedAbsence = Extract<AbsenceKind, "unsupported" | "unavailable">;
 
+/**
+ * SectionExtras is the page's live, section-scoped extension of a section a
+ * DEFINITION cannot express, because all three parts need something a static
+ * module does not have: a callback, or a value read off the payload.
+ *
+ * It exists for the WEB domain (M4 task 8b) and is deliberately generic:
+ *
+ *   * `badge` — a word beside the section title, derived from the payload.
+ *     WEB's six status planes arrive as `null` when their try_lock was
+ *     contended, with their names in `partial[]`; the rows must then say
+ *     "busy", not "absent".
+ *   * `continuation` — SERVER-side paging. The builder's own «Показать ещё»
+ *     reveals rows already in memory (§10.5); a cursor-paged collection
+ *     needs a second request once every loaded row is on screen, and only
+ *     the page component can make it.
+ *   * `action`/`entityAction` — a bounded mutation offered beside the data
+ *     it acts on (WEB's «Закрыть по фильтру» and «Закрыть сессию»). The
+ *     confirmation step and the request belong to the page; the section
+ *     only owns WHERE the control sits.
+ *
+ * Anything a definition CAN express stays in the definition.
+ */
+export interface SectionExtras {
+  /** Short word shown beside the section title. */
+  badge?: string;
+  /** Server-side continuation, offered once every loaded row is on screen. */
+  continuation?: {
+    hasMore: boolean;
+    pending: boolean;
+    onLoad: () => void;
+    label: string;
+  };
+  /**
+   * Action at the head of the section body. It receives the filters the
+   * reader currently has applied, so an action whose scope IS the filter
+   * («Закрыть по фильтру») acts on exactly what the list is showing rather
+   * than on a second, invisible set of criteria.
+   */
+  action?: {
+    label: string;
+    onSelect: (filters: Record<string, FilterValue>) => void;
+    danger?: boolean;
+    disabled?: boolean;
+  };
+  /** Action at the foot of an open entity surface; receives the entity key. */
+  entityAction?: {
+    label: string;
+    onSelect: (key: string) => void;
+    danger?: boolean;
+    disabled?: boolean;
+  };
+}
+
 export interface DetailRenderContext {
   /** One clock for the whole page, so every age on screen is measured from the same instant. */
   nowMs: number;
@@ -49,6 +102,8 @@ export interface DetailRenderContext {
 
   /** What a section's source state forces onto its rows, if anything. */
   absenceFor?: (sourceId: string | undefined) => ForcedAbsence | undefined;
+  /** Live, section-scoped extensions supplied by the page — see SectionExtras. */
+  extrasFor?: (sectionId: string) => SectionExtras | undefined;
 }
 
 // showsAtMode is THE display-mode filter for the whole builder — sections,
@@ -81,6 +136,7 @@ export interface RenderContextOptions {
   mode: DisplayMode;
   lookup?: FieldLookupContext;
   absenceFor?: (sourceId: string | undefined) => ForcedAbsence | undefined;
+  sectionExtras?: Record<string, SectionExtras>;
 }
 
 // createRenderContext adapts the page's state API to the renderer contract.
@@ -106,5 +162,8 @@ export function createRenderContext(
     openSurface: api.openSurface,
     closeSurface: api.closeSurface,
     ...(options.absenceFor ? { absenceFor: options.absenceFor } : {}),
+    ...(options.sectionExtras
+      ? { extrasFor: (sectionId: string) => options.sectionExtras?.[sectionId] }
+      : {}),
   };
 }

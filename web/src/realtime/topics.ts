@@ -700,3 +700,153 @@ export interface UpdateTopicEvent {
   detail?: string;
 }
 
+
+// --- "web" topic (hub.go's webSnapshot, M4 task 8b) ---------------------
+//
+// Telemt's own GET /v1/runtime/web/status is NOT gated — it answers 200 even
+// with WEB off and reports the closure in `available`/`reason`. The hub wraps
+// it in Gated[T] anyway so the browser keeps ONE way to render a closed
+// source; `enabled` mirrors `available`, `reason` is Telemt's own token, and
+// `data` is kept even behind a closed gate because lifecycle/listeners are
+// what explain WHY it is closed.
+
+/** One semaphore's occupancy in the runtime's `permits` table. */
+export interface WebPermitStatus {
+  used: number;
+  available: number;
+  capacity: number;
+  closed: boolean;
+}
+
+/**
+ * The permits table as it arrives: a Rust tuple array, i.e. pairs of
+ * [name, status] — not a map. `webPagePayload` (diag/web.helpers.ts) is
+ * where it becomes an object keyed by permit name, so the field catalog can
+ * describe `permits.http_connections.used` rather than `permits[0][1].used`.
+ */
+export type WebPermitEntry = [string, WebPermitStatus];
+
+/** The session/bootstrap registry plane. */
+export interface WebManagerStatus {
+  issuance_enabled: boolean;
+  issuance_generation: number;
+  shutdown: boolean;
+  bootstraps: number;
+  sessions: number;
+  closed_tokens: number;
+  closed_sessions: number;
+  client_ips: number;
+  profiles: number;
+}
+
+export interface WebStreamStatus {
+  live: number;
+  profiles: number;
+  closed: boolean;
+}
+
+export interface WebBudgetStatus {
+  queue_bytes: number;
+  queue_items: number;
+  control_bytes: number;
+  control_items: number;
+  websocket_bytes: number;
+  high_water_bytes: number;
+  owners: number;
+  closed: boolean;
+}
+
+export interface WebSocketsStatus {
+  entries: number;
+  claims: number;
+  evictions_in_flight: number;
+  closed: boolean;
+}
+
+export interface WebLearningStatus {
+  enabled: boolean;
+  aggressiveness: string;
+  epoch: number | null;
+  entries: number;
+  capacity: number;
+  lifetime_secs: number;
+  age_ms: number;
+}
+
+/**
+ * The request-capture policy block. Typed loosely for the same reason
+ * RuntimeMinimalMeRuntime is: it is a Telemt config table the panel neither
+ * edits nor interprets, and a future key must survive to the unknown tail
+ * rather than be dropped by a fixed interface.
+ */
+export type WebDebugPolicy = Record<string, unknown>;
+
+export interface WebDebugStatus {
+  policy: WebDebugPolicy;
+  policy_generation: number;
+  epoch: number;
+  records: number;
+  records_capacity: number;
+  used_bytes: number;
+  bytes_capacity: number;
+  contention_drops: number;
+  evictions: number;
+  byte_truncations: number;
+  earliest_seq: number | null;
+  latest_seq: number | null;
+}
+
+/** The 47 process-deferred WEB limits, as a map for the same reason. */
+export type WebLimits = Record<string, unknown>;
+
+/**
+ * The live process state. Every plane is nullable-but-always-present: `null`
+ * means its try_lock was contended for THIS poll (and the plane's name is in
+ * `partial`), which is a different thing from the plane being absent.
+ */
+export interface WebRuntimeStatus {
+  runtime_instance: string;
+  generation_id: number;
+  limits: WebLimits;
+  manager: WebManagerStatus | null;
+  streams: WebStreamStatus | null;
+  budget: WebBudgetStatus | null;
+  websockets: WebSocketsStatus | null;
+  learning: WebLearningStatus | null;
+  debug: WebDebugStatus | null;
+  permits: WebPermitEntry[];
+  auxiliary_tasks: number;
+  session_incarnations_created: number;
+  session_incarnations_closed: number;
+  streams_opened: number;
+  streams_rejected: number;
+  bytes_up: number;
+  bytes_down: number;
+  limit_hits: number;
+  partial: string[];
+}
+
+export type WebLifecycle =
+  | "starting"
+  | "no_web_listener"
+  | "running"
+  | "draining"
+  | "drained"
+  | "deadline_exceeded";
+
+export interface WebStatus {
+  lifecycle: WebLifecycle | string;
+  lifecycle_epoch: number;
+  lifecycle_age_ms: number;
+  available: boolean;
+  /** Omitted while available; `runtime_released` is a reason, not a lifecycle. */
+  reason?: string;
+  listeners: string[];
+  effective_config_enabled: boolean;
+  runtime?: WebRuntimeStatus | null;
+}
+
+/** WebTopic mirrors hub.go's webSnapshot. */
+export interface WebTopic {
+  status: Gated<WebStatus> | null;
+}

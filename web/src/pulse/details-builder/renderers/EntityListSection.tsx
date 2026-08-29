@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { fill, useStrings } from "../../../i18n";
 import { cn } from "../../../lib/cn";
+import { Button } from "../../../ui/Button";
 import { Chip } from "../../../ui/Chip";
 import { Input } from "../../../ui/Input";
 import { Select } from "../../../ui/Select";
@@ -102,8 +103,29 @@ export function EntityListSection({
   // box and the rest of the page.
   const roving = useRovingFocus({ count: shown.length, orientation: "vertical" });
 
-  const chipFilters = (definition?.filters ?? []).filter((f) => f.options === undefined);
-  const selectFilters = (definition?.filters ?? []).filter((f) => f.options !== undefined);
+  // A filter renders as a SELECT when it has a value set — declared, or
+  // derived from the rows on screen — and as a chip when it is a plain
+  // on/off predicate.
+  const items = useMemo(() => entries.map((entry) => entry.item), [entries]);
+  const chipFilters = (definition?.filters ?? []).filter(
+    (f) => f.options === undefined && f.optionsFrom === undefined,
+  );
+  const selectFilters = (definition?.filters ?? [])
+    .map((filter) => ({
+      filter,
+      options: filter.options ?? filter.optionsFrom?.(items) ?? [],
+    }))
+    .filter((entry) => entry.options.length > 0);
+
+  // Page-supplied extensions (§SectionExtras): a bounded mutation offered
+  // beside the rows it acts on, and SERVER-side paging for a cursor-paged
+  // collection. `continuation` is offered only once every loaded row is on
+  // screen, so the local reveal and the next request are never two buttons
+  // competing for the same tap.
+  const extras = ctx.extrasFor?.(instance.id);
+  const continuation = extras?.continuation;
+  const showContinuation =
+    continuation !== undefined && continuation.hasMore && shown.length >= filtered.length;
 
   return (
     <SectionFrame
@@ -153,7 +175,7 @@ export function EntityListSection({
                   aria-label={s.details.entity.searchPlaceholder}
                 />
               )}
-              {selectFilters.map((filter) => (
+              {selectFilters.map(({ filter, options }) => (
                 <Select
                   key={filter.key}
                   className="sm:w-52"
@@ -168,7 +190,7 @@ export function EntityListSection({
                       option, so «admission» alone stopped saying what it
                       was filtering the moment a reader picked it. */}
                   <option value="">{`${filter.label(s)}: ${s.details.entity.filterAny}`}</option>
-                  {(filter.options ?? []).map((option) => (
+                  {options.map((option) => (
                     <option key={option.value} value={option.value}>
                       {`${filter.label(s)}: ${option.label(s)}`}
                     </option>
@@ -196,6 +218,19 @@ export function EntityListSection({
                   </Chip>
                 );
               })}
+            </div>
+          )}
+
+          {extras?.action !== undefined && (
+            <div className="flex justify-end py-2">
+              <Button
+                variant={extras.action.danger ? "danger" : "secondary"}
+                size="sm"
+                disabled={extras.action.disabled ?? false}
+                onClick={() => extras.action?.onSelect(ctx.filters)}
+              >
+                {extras.action.label}
+              </Button>
             </div>
           )}
 
@@ -244,6 +279,24 @@ export function EntityListSection({
               total: String(filtered.length),
             })}
           />
+          {showContinuation && (
+            <div className="flex items-center justify-between gap-3 py-2">
+              <span className="text-micro tabular-nums text-text-faint">
+                {fill(s.details.collection.shownTemplate, {
+                  shown: String(shown.length),
+                  total: `${filtered.length}+`,
+                })}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={continuation.pending}
+                onClick={continuation.onLoad}
+              >
+                {continuation.label}
+              </Button>
+            </div>
+          )}
         </>
       )}
 
@@ -254,14 +307,31 @@ export function EntityListSection({
         {...(open?.status ? { subtitle: open.status } : {})}
       >
         {open !== undefined && (
-          <NodeList
-            nodes={buildRecordNodes(
-              open.item,
-              indexPath(instance.path, open.index),
-              classifyCtx,
+          <>
+            <NodeList
+              nodes={buildRecordNodes(
+                open.item,
+                indexPath(instance.path, open.index),
+                classifyCtx,
+              )}
+              ctx={ctx}
+            />
+            {extras?.entityAction !== undefined && (
+              // The action sits at the FOOT of the surface, under the data
+              // it acts on: a destructive control at the top would be the
+              // first thing a thumb reaches on a phone.
+              <div className="flex justify-end pt-3">
+                <Button
+                  variant={extras.entityAction.danger ? "danger" : "secondary"}
+                  size="sm"
+                  disabled={extras.entityAction.disabled ?? false}
+                  onClick={() => extras.entityAction?.onSelect(open.key)}
+                >
+                  {extras.entityAction.label}
+                </Button>
+              </div>
             )}
-            ctx={ctx}
-          />
+          </>
         )}
       </AdaptiveDetailSurface>
     </SectionFrame>

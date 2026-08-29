@@ -1,4 +1,5 @@
 import { useStrings } from "../../../i18n";
+import { CountBadge } from "../../../ui/Chip";
 import { describeField } from "../fieldCatalog";
 import type { ScalarSectionInstance } from "../resolveSections";
 import { FieldRow } from "./FieldRow";
@@ -27,6 +28,10 @@ export function ScalarSection({ instance, ctx }: ScalarSectionProps) {
     showsAtMode(describeField(row.path, s, ctx.lookup).minMode, ctx.mode),
   );
   const expanded = isSectionExpanded(instance.id, instance.defaultExpanded, ctx.expandedSections);
+  // A page-supplied word beside the title — WEB's "plane busy" (§SectionExtras).
+  // It sits in `trailing`, NOT in place of the rows: a busy plane still
+  // shows its fields as absent, which is the honest reading.
+  const badge = ctx.extrasFor?.(instance.id)?.badge;
 
   return (
     <SectionFrame
@@ -34,6 +39,7 @@ export function ScalarSection({ instance, ctx }: ScalarSectionProps) {
       title={instance.title(s)}
       description={instance.description?.(s)}
       count={rows.length}
+      {...(badge !== undefined ? { trailing: <CountBadge tone="warn">{badge}</CountBadge> } : {})}
       expanded={expanded}
       onToggle={() => ctx.toggleSection(instance.id)}
     >

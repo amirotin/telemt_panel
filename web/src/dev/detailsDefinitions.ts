@@ -24,6 +24,7 @@ import { connectionsPagePayload } from "../pulse/diag/connections.helpers";
 import { eventsPagePayload } from "../pulse/diag/events.helpers";
 import { mePagePayload } from "../pulse/diag/me.helpers";
 import { upstreamsPagePayload } from "../pulse/diag/upstreams.helpers";
+import { webPagePayload, type WebPagePayload } from "../pulse/diag/web.helpers";
 import {
   connectionsPageDefinition,
   countersPageDefinition,
@@ -33,6 +34,7 @@ import {
   natPageDefinition,
   securityPageDefinition,
   upstreamsPageDefinition,
+  webPageDefinition,
   type ConnectionsPagePayload,
   type DcPageContext,
   type DcPagePayload,
@@ -57,6 +59,8 @@ import {
   tlsFingerprints,
   upstreamQuality,
   upstreams,
+  webSessionsAll,
+  webStatusRunning,
   zeroAll,
 } from "../pulse/details-builder/__fixtures__";
 
@@ -159,6 +163,19 @@ export const devConnectionsPage: DetailPageDefinition<
 export const devNatPage: DetailPageDefinition<RuntimeNatStun, RuntimeNatStun> = {
   ...natPageDefinition,
   id: "dev.nat",
+};
+
+// --- WEB: the recorded 3.5.5 status plus a full session page ------------
+//
+// The harness is the only stand that shows this domain at its real size:
+// the Go mock serves the same 24 sessions, but the 46 [web.limits] keys,
+// the eight permits and the ten capture-policy keys come from a recording
+// (see __fixtures__/web.ts) rather than from a hand-written mock.
+export const devWebPayload = webPagePayload(webStatusRunning, [webSessionsAll]) as WebPagePayload;
+
+export const devWebPage: DetailPageDefinition<WebPagePayload, WebPagePayload> = {
+  ...webPageDefinition,
+  id: "dev.web",
 };
 
 // --- Security / TLS: four RANKINGS over 4×50 records (§23.3) -------------
@@ -277,6 +294,7 @@ export const devPayloads = {
   nat: natStunLive10,
   tls: tlsFingerprints,
   counters: zeroAll,
+  web: devWebPayload,
 };
 
 export type DevPayloads = typeof devPayloads;
@@ -328,5 +346,12 @@ export function pushRevision(revision: number): DevPayloads {
       })),
     },
     counters: { ...zeroAll, core: bumpNumbers(zeroAll.core, bump) },
+    web: {
+      ...devWebPayload,
+      runtime: {
+        ...devWebPayload.runtime!,
+        bytes_down: devWebPayload.runtime!.bytes_down + bump,
+      },
+    },
   };
 }

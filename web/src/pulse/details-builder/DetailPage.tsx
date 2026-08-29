@@ -19,7 +19,7 @@ import type { DetailPageDefinition, SectionDefinition, SummaryShortcut } from ".
 import { readPath } from "./paths";
 import { resolveSections } from "./resolveSections";
 import { sectionsForTab, tabElementId, withUnknownTail } from "./DetailPage.helpers";
-import { createRenderContext } from "./renderers/context";
+import { createRenderContext, type SectionExtras } from "./renderers/context";
 import type { CustomSectionRegistry } from "./renderers/customRenderers";
 import { SectionList } from "./renderers/SectionList";
 import type { PageSourcesState } from "./sources";
@@ -58,6 +58,12 @@ export interface DetailPageProps<TPayload, TContext> {
   /** Domain chart renderers for this page's CustomSections (§9.8). */
   customRenderers?: CustomSectionRegistry;
   disabledHints?: Record<string, GateHintSpec>;
+  /**
+   * Live, section-scoped extensions the DEFINITION cannot express: a badge
+   * read off the payload, server-side paging, a bounded mutation offered
+   * beside the rows it acts on. Keyed by section id — see SectionExtras.
+   */
+  sectionExtras?: Record<string, SectionExtras>;
 }
 
 // DetailPage assembles §6's tree from a declarative definition: header,
@@ -85,6 +91,7 @@ export function DetailPage<TPayload, TContext>({
   onResetDelta,
   customRenderers,
   disabledHints,
+  sectionExtras,
 }: DetailPageProps<TPayload, TContext>) {
   const s = useStrings();
   const { mode } = useDisplayMode();
@@ -195,6 +202,7 @@ export function DetailPage<TPayload, TContext>({
       if (state.status === "error" || state.status === "disabled") return "unavailable";
       return undefined;
     },
+    ...(sectionExtras !== undefined ? { sectionExtras } : {}),
   });
 
   // §18.2: a summary tile writes the SAME state slots the section's own

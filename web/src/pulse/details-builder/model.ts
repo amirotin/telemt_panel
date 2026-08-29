@@ -159,12 +159,26 @@ export interface SortDefinition<TItem> {
   compare: (a: TItem, b: TItem) => number;
 }
 
+export interface FilterOption {
+  value: string;
+  label: Localized;
+}
+
 export interface FilterDefinition<TItem> {
   key: string;
   label: Localized;
   /** Only domain-relevant states get a control (§18.2): degraded, active, non-zero… */
   predicate: (item: TItem, value: FilterValue) => boolean;
-  options?: Array<{ value: string; label: Localized }>;
+  options?: FilterOption[];
+  /**
+   * Options derived from the rows on screen, for a value set only the DATA
+   * knows. A definition is static (§7), so a filter over an open vocabulary
+   * — the usernames that currently hold a WEB session — cannot list its
+   * options ahead of time, and listing the closed vocabulary instead (every
+   * configured user) would offer a select full of options that match
+   * nothing. Ignored when `options` is given.
+   */
+  optionsFrom?: (items: readonly TItem[]) => FilterOption[];
 }
 
 // --- sections (spec §9) -------------------------------------------------

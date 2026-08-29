@@ -20,6 +20,7 @@ import {
   devNatPage,
   devTlsPage,
   devUpstreamsPage,
+  devWebPage,
   pushRevision,
 } from "./detailsDefinitions";
 
@@ -38,7 +39,8 @@ type PageId =
   | "counters"
   | "upstreams"
   | "connections"
-  | "nat";
+  | "nat"
+  | "web";
 
 const PAGES: { id: PageId; label: string }[] = [
   { id: "dc", label: "DC" },
@@ -49,6 +51,7 @@ const PAGES: { id: PageId; label: string }[] = [
   { id: "events", label: "Events" },
   { id: "tls", label: "Security / TLS" },
   { id: "counters", label: "Counters" },
+  { id: "web", label: "WEB" },
 ];
 
 // Every §14 state, each produced by the REAL state machine
@@ -190,6 +193,20 @@ export function DetailsShowcase() {
             sources={sourcesFor(devConnectionsPage.sources, status, devPayloads.connections)}
             breadcrumb="PULSE / DETAILS"
             nowMs={FIXED_NOW}
+          />
+        );
+      case "web":
+        return (
+          <DetailPage
+            definition={devWebPage}
+            payload={withData ? devPayloads.web : null}
+            sources={sourcesFor(devWebPage.sources, status, devPayloads.web)}
+            breadcrumb="PULSE / DETAILS"
+            nowMs={FIXED_NOW}
+            // R9: the WEB descriptions are endpoint-scoped, because
+            // `manager`, `limits`, `state` and `user` all mean something
+            // else elsewhere in Telemt's API.
+            endpoint="/api/telemt/web"
           />
         );
       case "nat":

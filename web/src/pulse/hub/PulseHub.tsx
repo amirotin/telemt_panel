@@ -12,12 +12,14 @@ import type {
   StatsSnapshot,
   UpstreamsTopic,
   UsersTopic,
+  WebTopic,
 } from "../../realtime/topics";
 import { StatePill } from "../../ui/StatePill";
 import {
   IconActivity,
   IconChevronRight,
   IconClock,
+  IconDesktop,
   IconDevice,
   IconGlobe,
   IconLink,
@@ -41,6 +43,9 @@ const DOMAIN_ICONS: Record<DiagDomain, ComponentType<IconProps>> = {
   upstreams: IconTraffic,
   nat: IconDevice,
   events: IconClock,
+  // A browser window, not a second globe: ДЦ already owns IconGlobe, and
+  // WEB mode is precisely the carrier that looks like ordinary web traffic.
+  web: IconDesktop,
 };
 
 const TONE_CLASSES: Record<SummaryTone, string> = {
@@ -51,7 +56,7 @@ const TONE_CLASSES: Record<SummaryTone, string> = {
 };
 
 // PulseHub is /pulse — the diagnostics hub (06-ui.md §Информационная
-// архитектура). Eight preview cards, each two or three numbers and a state
+// архитектура). Nine preview cards, each two or three numbers and a state
 // pill, each one tap from its Details page. The configurable widget
 // dashboard that used to live at this URL is now /overview («Сводка»), and
 // the display-mode switch went with it: the hub's eight domains are fixed.
@@ -66,6 +71,7 @@ export function PulseHub() {
   const upstreams = useSnapshot<UpstreamsTopic>("upstreams");
   const security = useSnapshot<SecurityTopic>("security");
   const users = useSnapshot<UsersTopic>("users");
+  const web = useSnapshot<WebTopic>("web");
   // The same query key CountersPage uses, so opening the Счётчики card
   // costs no second request. No refetchInterval here: the hub is a glance,
   // and the page itself owns the polling that R4's deltas need.
@@ -82,6 +88,7 @@ export function PulseHub() {
       upstreams,
       security,
       users,
+      web,
       counters: {
         kind: "query",
         isPending: zero.isPending,

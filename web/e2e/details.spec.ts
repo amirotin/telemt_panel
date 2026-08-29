@@ -27,6 +27,7 @@ const PAGE_CHIPS = {
   connections: "Connections",
   nat: "NAT / STUN",
   events: "Events",
+  web: "WEB",
 } as const;
 
 async function openHarness(page: Page, which: keyof typeof PAGE_CHIPS): Promise<void> {
@@ -297,7 +298,10 @@ test("with a surface open, a swipe pages nothing and a rotation keeps it", async
 // four more shapes: `upstreams` nests a five-row array INSIDE a detail
 // surface, `connections` prints eleven-digit octet counts in a ranking's
 // shrink-0 score column, `nat` lists thirteen host:port strings, and
-// `events` puts a free-form context line on every one of fifty rows. The Go
+// `events` puts a free-form context line on every one of fifty rows. Task 8b
+// adds `web`: two tabs over a recorded 3.5.5 status — 46 [web.limits] keys
+// in a dynamic map, an eight-row permits table, and 24 session rows whose
+// identity is a 72-character opaque reference in the detail surface. The Go
 // mock serves a single DC and a single writer, so this fixture-backed
 // harness is the only stand that reproduces those volumes at all.
 for (const domain of [
@@ -309,6 +313,7 @@ for (const domain of [
   "connections",
   "nat",
   "events",
+  "web",
 ] as const) {
   test(`no page scrolls horizontally, in any of the four modes (${domain})`, async ({ page }) => {
     await openHarness(page, domain);

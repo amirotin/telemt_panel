@@ -31,7 +31,12 @@ export type GateHintKey =
   // on a momentary snapshot/cache miss (an upstream `try_read` that lost the
   // race, a runtime-edge cache refill in flight): nothing to switch on, the
   // next poll answers.
-  | "source_temporarily_unavailable";
+  | "source_temporarily_unavailable"
+  // web_enabled is the WEB group's own switch: `[web] enabled = true` plus a
+  // `transport = "web"` listener. Not a runtime_edge/minimal_runtime flag —
+  // /v1/runtime/web/* is registered unconditionally and closes only because
+  // the runtime itself is not running (Telemt 3.5.5 src/api/web_runtime.rs).
+  | "web_enabled";
 
 export function gateHint(s: Dict, key: GateHintKey): string {
   return s.gated.hints[key];
@@ -85,6 +90,7 @@ export function resolveGateHint(
 // | /v1/stats/upstreams                         | minimal_runtime_...   | upstream try_read  |
 // | /v1/runtime/{nat-stun,me-pool-*,me-selftest}| (never gated)         | ME pool is None    |
 // | /v1/runtime/upstream-quality                | (never gated)         | upstream try_read  |
+// | /v1/runtime/web/*                           | (never gated)         | WEB runtime is off |
 
 /** `/v1/runtime/connections/*`, `/events/recent`, `/tls/fingerprints` — runtime_edge.rs. */
 export const RUNTIME_EDGE_HINTS: GateHintByReason = {
@@ -111,6 +117,20 @@ export const UPSTREAM_STATS_HINTS: GateHintByReason = {
 export const ME_POOL_RUNTIME_HINTS: GateHintByReason = {
   source_unavailable: "me_pool_unavailable",
   fallback: "me_pool_unavailable",
+};
+
+/**
+ * `/v1/runtime/web/*` — registered unconditionally on Telemt >= 3.5.3. No
+ * config FLAG gates the routes; they close because the WEB runtime is not
+ * running, which Telemt reports through the status payload's own lifecycle
+ * token (`no_web_listener`, `starting`, `drained`, `deadline_exceeded`,
+ * `runtime_released`) rather than through the `feature_disabled` /
+ * `source_unavailable` pair the other groups use. Every one of those tokens
+ * points an operator at the same place — the `[web]` section and its
+ * listener — so the fallback answers them all.
+ */
+export const WEB_RUNTIME_HINTS: GateHintByReason = {
+  fallback: "web_enabled",
 };
 
 /** `/v1/runtime/upstream-quality` — always registered, closes only on a lost `try_read`. */

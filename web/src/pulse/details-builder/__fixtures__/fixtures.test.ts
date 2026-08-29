@@ -56,6 +56,12 @@ import {
   zeroMiddleProxyCount,
   zeroPoolCount,
   zeroUpstreamCount,
+  webSessionRows,
+  webSessionsFirstPage,
+  webSessionsSecondPage,
+  webStatusNoListener,
+  webStatusPartialPlanes,
+  webStatusRunning,
 } from ".";
 
 // countRenderedRows mirrors what the current generic flatten does to a
@@ -358,5 +364,68 @@ describe("fixture inventory: composition and determinism", () => {
     expect(tlsFingerprints.by_fingerprint[0].ja3).toBe("531be4edbdf1f875c7e02fb660ccad74");
     expect(connectionsSummary.top.by_connections[0].total_octets).toBe(19350129967);
     expect(zeroAll.core['core_0_total']).toBe(356972);
+  });
+});
+
+// The WEB fixtures (M4 task 8b). Their PROVENANCE is what matters here: the
+// status blocks are recorded off a real Telemt 3.5.5, the session rows are
+// synthetic (no client could reach the recording stand). See web.ts.
+describe("WEB runtime", () => {
+  it("carries the recorded status verbatim: 46 limits, 8 permits, 10 policy keys", () => {
+    const runtime = webStatusRunning.runtime!;
+    expect(Object.keys(runtime.limits)).toHaveLength(46);
+    expect(runtime.permits).toHaveLength(8);
+    expect(runtime.permits.map(([name]) => name)).toEqual([
+      "http_connections",
+      "http_handlers",
+      "lane_polls",
+      "lane_aux_polls",
+      "body_readers",
+      "body_bytes",
+      "stream_handshakes",
+      "websocket_connections",
+    ]);
+    expect(Object.keys(runtime.debug!.policy)).toHaveLength(10);
+    // A healthy poll contends nothing: every plane present, partial empty.
+    expect(runtime.partial).toEqual([]);
+    for (const plane of [runtime.manager, runtime.streams, runtime.budget, runtime.websockets, runtime.learning, runtime.debug]) {
+      expect(plane).not.toBeNull();
+    }
+  });
+
+  it("records the closed runtime as a 200, not an error", () => {
+    // The status route never fails: WEB being off is reported in the
+    // payload's own fields, which is what the panel's gate reads.
+    expect(webStatusNoListener.available).toBe(false);
+    expect(webStatusNoListener.reason).toBe("no_web_listener");
+    expect(webStatusNoListener.runtime).toBeUndefined();
+    expect(webStatusNoListener.listeners).toEqual([]);
+  });
+
+  it("names four contended planes and nulls exactly those", () => {
+    const runtime = webStatusPartialPlanes.runtime!;
+    expect(runtime.partial).toEqual(["manager", "budget", "learning", "debug"]);
+    expect(runtime.manager).toBeNull();
+    expect(runtime.streams).not.toBeNull();
+  });
+
+  it("has 24 synthetic sessions across four carriers, four states and two users", () => {
+    expect(webSessionRows).toHaveLength(24);
+    expect(new Set(webSessionRows.map((r) => r.session_ref)).size).toBe(24);
+    expect(new Set(webSessionRows.map((r) => r.carrier)).size).toBe(4);
+    expect(new Set(webSessionRows.map((r) => r.state)).size).toBe(4);
+    expect(new Set(webSessionRows.map((r) => r.user)).size).toBe(2);
+    // The two optional halves really are optional in the fixture, so a
+    // renderer that assumes them present fails here first.
+    expect(webSessionRows.some((r) => r.user_agent === undefined)).toBe(true);
+    expect(webSessionRows.some((r) => r.negotiation_remaining_ms === undefined)).toBe(true);
+    expect(webSessionRows.some((r) => r.negotiation_remaining_ms !== undefined)).toBe(true);
+  });
+
+  it("splits into a 20-row first page with a cursor and a 4-row tail without one", () => {
+    expect(webSessionsFirstPage.sessions).toHaveLength(20);
+    expect(webSessionsFirstPage.next_cursor).not.toBeNull();
+    expect(webSessionsSecondPage.sessions).toHaveLength(4);
+    expect(webSessionsSecondPage.next_cursor).toBeNull();
   });
 });

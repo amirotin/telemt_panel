@@ -97,7 +97,8 @@ test("login → people → create user → share → sub-page → overview → p
     await page.getByRole("link", { name: "Пульс" }).click();
     await expect(page.getByRole("heading", { name: "Пульс", level: 1 })).toBeVisible();
 
-    // All eight domains of 06-ui.md, each its own card.
+    // All nine domains, each its own card — the eight of 06-ui.md plus
+    // WEB (M4 task 8b).
     for (const domain of [
       "dc",
       "me",
@@ -107,6 +108,7 @@ test("login → people → create user → share → sub-page → overview → p
       "upstreams",
       "nat",
       "events",
+      "web",
     ]) {
       await expect(page.getByTestId(`hub-card-${domain}`)).toBeVisible();
     }
@@ -116,6 +118,53 @@ test("login → people → create user → share → sub-page → overview → p
     await expect(page.getByRole("heading", { name: "Дата-центры", level: 1 })).toBeVisible();
 
     await page.getByRole("button", { name: "Назад" }).click();
+    await expect(page.getByRole("heading", { name: "Пульс", level: 1 })).toBeVisible();
+  });
+
+  await test.step("WEB Details: overview, sessions, a session surface and the close confirmation", async () => {
+    await page.getByTestId("hub-card-web").click();
+    await expect(page).toHaveURL(/\/pulse\/diag\/web$/);
+    await expect(page.getByRole("heading", { name: "WEB", level: 1 })).toBeVisible();
+
+    // The Overview reads the `web` topic: the runtime is running on the
+    // mock, so the lifecycle tile says so rather than showing a gate.
+    await expect(page.getByText("running").first()).toBeVisible();
+
+    // The Sessions tab is a SECOND request (fetch-on-visit, cursor-paged).
+    await page.getByRole("tab", { name: "Сессии" }).click();
+    const firstRow = page.getByRole("button", { name: /^Открыть подробности/ }).first();
+    await expect(firstRow).toBeVisible();
+
+    // «Загрузить ещё» is a real request: the mock seeds 24 sessions and the
+    // page asks for 20, so the cursor continuation has work to do.
+    const loadMore = page.getByRole("button", { name: "Загрузить ещё" });
+    await expect(loadMore).toBeVisible();
+    await loadMore.click();
+    await expect(loadMore).toBeHidden();
+
+    // A row opens the surface, which carries every remaining field —
+    // including the opaque reference the close action addresses.
+    await firstRow.click();
+    const surface = page.getByRole("dialog");
+    await expect(surface).toBeVisible();
+    await expect(surface.getByText("session_ref")).toBeVisible();
+
+    // The close action is behind the same confirmation step every other
+    // irreversible action in the panel goes through.
+    await surface.getByRole("button", { name: "Закрыть сессию" }).click();
+    await expect(page.getByText(/Сессия будет закрыта немедленно/)).toBeVisible();
+    // Cancelling leaves the registry alone — this flow asserts the
+    // confirmation exists, not that a mock session dies.
+    await page.getByRole("button", { name: "Отмена" }).click();
+    await expect(page.getByText(/Сессия будет закрыта немедленно/)).toBeHidden();
+
+    // §15: nothing on this page may widen the document.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    await page.getByRole("link", { name: "Пульс" }).click();
     await expect(page.getByRole("heading", { name: "Пульс", level: 1 })).toBeVisible();
   });
 

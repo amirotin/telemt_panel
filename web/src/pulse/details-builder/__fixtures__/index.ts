@@ -25,3 +25,4 @@ export * from "./runtime";
 export * from "./security";
 export * from "./topics";
 export * from "./edges";
+export * from "./web";

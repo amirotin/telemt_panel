@@ -7,6 +7,7 @@ import { SectionLabel } from "../../ui/SectionLabel";
 import {
   CONFIG_FIELDS,
   QUICK_SETTINGS_SECTIONS,
+  isQuickSettingsSectionShown,
   unknownKeysInSection,
   type ConfigFieldDef,
 } from "./configFields";
@@ -24,8 +25,8 @@ export interface QuickSettingsFormProps {
   onChange: (next: Record<string, unknown>) => void;
 }
 
-// QuickSettingsForm renders the three editable sections the task brief
-// scopes this form to (general/timeouts/censorship): known fields as
+// QuickSettingsForm renders the editable sections this form scopes itself to
+// (general/timeouts/censorship, plus `web` when Telemt sends it): known fields as
 // proper typed inputs (configFields.ts's catalog), everything else in
 // those sections read-only as a KVRow — "completeness" (06-ui.md), nothing
 // in these sections is ever silently hidden even though the form only
@@ -42,8 +43,16 @@ export function QuickSettingsForm({
   const s = useStrings();
   return (
     <div className="flex flex-col gap-2.5">
-      {QUICK_SETTINGS_SECTIONS.map((section) => {
+      {QUICK_SETTINGS_SECTIONS.filter((section) =>
+        isQuickSettingsSectionShown(section, sections),
+      ).map((section) => {
         const fields = CONFIG_FIELDS.filter((f) => f.section === section);
+        // Some sections carry a consequence a field label cannot say — WEB's
+        // switch does not close the sessions that are already running.
+        const note =
+          s.server.config.sectionNotes[
+            section as keyof typeof s.server.config.sectionNotes
+          ];
         const unknownKeys = unknownKeysInSection(section, sections[section]);
         return (
           <section
@@ -53,6 +62,9 @@ export function QuickSettingsForm({
             <CardTitle className="pb-1">
               {s.server.config.sections[section]}
             </CardTitle>
+            {note !== undefined && (
+              <p className="pb-2 text-meta text-text-muted">{note}</p>
+            )}
             {fields.map((field) => (
               <FieldInput
                 key={field.key}
