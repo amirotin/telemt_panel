@@ -1,4 +1,10 @@
-// Generic KVRow-group building blocks for the Диагностика drill-down pages
+// Generic KVRow-group building blocks. Since the M4 details-builder wave the
+// Диагностика pages are declarative DetailPages and no longer flatten
+// anything; the remaining consumer is securityGroups (security.helpers.ts),
+// which feeds /server/security's KVGroupList. Retained, not dead.
+//
+// Historical rationale for the flattening approach, which still applies to
+// that one screen:
 // (06-ui.md: "подстраницы вмещают полный состав данных каталога — KVRow-
 // группы"). Telemt's runtime/upstreams/security payloads run 10-50+ fields
 // deep across nested structs and arrays (see realtime/topics.ts); hand

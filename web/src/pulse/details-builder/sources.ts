@@ -184,10 +184,10 @@ function absentGateState(
   };
 }
 
-// resolveTopicSource extends pulse/diag/DiagTopicState.helpers.ts's
-// three-branch decision to the full §14 set. The extra branches are exactly
-// the ones the diagnostics pages did not have to make: gated capabilities,
-// "answered but empty", and a normalized age.
+// resolveTopicSource extends the three-branch decision the pre-builder
+// diagnostics pages made (loading / error / data) to the full §14 set. The
+// extra branches are exactly the ones those pages did not have to make:
+// gated capabilities, "answered but empty", and a normalized age.
 export function resolveTopicSource(id: string, input: TopicSourceInput): SourceState {
   const { snapshot } = input;
   const freshnessMs = normalizeFreshness(input.generatedAt ?? snapshot.ts);
@@ -217,8 +217,8 @@ export function resolveTopicSource(id: string, input: TopicSourceInput): SourceS
   }
 
   if (!topicArrived) {
-    // Same branch order as decideDiagTopicState: an error with nothing to
-    // show is an error; no error and nothing yet is still loading.
+    // An error with nothing to show is an error; no error and nothing yet
+    // is still loading.
     return snapshot.error
       ? { id, status: "error", freshnessMs, code: snapshot.error, hasData: false }
       : { id, status: "loading", freshnessMs, hasData: false };

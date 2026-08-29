@@ -5,10 +5,17 @@ import { EmptyState } from "../../ui/EmptyState";
 import { useStrings } from "../../i18n";
 import type { KVGroup } from "./rows";
 
-// KVGroupList renders every Диагностика page's actual content — one card
-// per group under the prototype's uppercase section caption, KVRow per leaf
-// (06-ui.md: "полный состав данных каталога — KVRow-группы"). The one
-// shared renderer every domain page's helpers.ts feeds groups into.
+// KVGroupList renders a list of KVGroups — one card per group under the
+// prototype's uppercase section caption, KVRow per leaf.
+//
+// It used to be every Диагностика page's body. Since the M4 details-builder
+// wave those pages are declarative DetailPages built from DescribedRow
+// lists, and this component's ONLY remaining consumer is
+// server/security/SecurityPage — the read-only /server/security screen,
+// which is not a Details page and was deliberately left alone: migrating a
+// screen this wave never touched onto the builder is a redesign, not a
+// cleanup. Kept here rather than moved because securityGroups (its input)
+// lives in security.helpers.ts, which the Details Security page also uses.
 export function KVGroupList({ groups }: { groups: KVGroup[] }) {
   const s = useStrings();
   if (groups.length === 0) {
