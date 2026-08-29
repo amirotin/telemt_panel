@@ -280,6 +280,27 @@ export function IconShield(props: IconProps) {
   );
 }
 
+// IconShieldAlert — the shield with an exclamation: refused/rejected
+// traffic, as opposed to IconShield's plain "security posture" glyph.
+export function IconShieldAlert(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3 5 6v5.5c0 4.3 3 8.1 7 9.5 4-1.4 7-5.2 7-9.5V6z" />
+      <path d="M12 8.5v3.8M12 15.6h.01" />
+    </Icon>
+  );
+}
+
+// IconTag — a version/build label (the Сводка banner's «версия Telemt»).
+export function IconTag(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 11.6V4.5a1 1 0 0 1 1-1h7.1a1 1 0 0 1 .7.3l8 8a1 1 0 0 1 0 1.4l-7.1 7.1a1 1 0 0 1-1.4 0l-8-8a1 1 0 0 1-.3-.7z" />
+      <path d="M7.6 7.6h.01" />
+    </Icon>
+  );
+}
+
 export function IconPlatform(props: IconProps) {
   return (
     <Icon {...props}>
