@@ -116,18 +116,9 @@ export const connectionsPageDefinition: DetailPageDefinition<
   ],
 
   summary: [
-    {
-      id: "current_connections",
-      path: "totals.current_connections",
-      value: (p) => p.totals?.current_connections ?? null,
-      format: "integer",
-    },
-    {
-      id: "active_users",
-      path: "totals.active_users",
-      value: (p) => p.totals?.active_users ?? null,
-      format: "integer",
-    },
+  // R10's reasoning, applied to the tiles as well as to the sections: the
+  // two always-on numbers lead, because with the runtime_edge gate off the
+  // gated pair below them reads «—» and a page must not open on two blanks.
     {
       id: "connections_total",
       path: "summary.connections_total",
@@ -140,6 +131,18 @@ export const connectionsPageDefinition: DetailPageDefinition<
       value: (p) => p.summary?.connections_bad_total ?? null,
       format: "integer",
       tone: badTone,
+    },
+    {
+      id: "current_connections",
+      path: "totals.current_connections",
+      value: (p) => p.totals?.current_connections ?? null,
+      format: "integer",
+    },
+    {
+      id: "active_users",
+      path: "totals.active_users",
+      value: (p) => p.totals?.active_users ?? null,
+      format: "integer",
     },
   ],
 

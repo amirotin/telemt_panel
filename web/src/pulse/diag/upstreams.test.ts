@@ -43,6 +43,25 @@ describe("mergeUpstreams (TELEMT_LIVE_API_DATA §7)", () => {
     expect(merged.map((u) => u.upstream_id)).toEqual([0, 7]);
   });
 
+  it("keys on upstream_id, not on position", () => {
+    // The two endpoints have no reason to agree on order, and a fold that
+    // zipped the arrays would silently graft one route's quality onto
+    // another's stats. Same ids, reversed on the quality side:
+    const merged = mergeUpstreams(
+      [upstream({ upstream_id: 0, fails: 1 }), upstream({ upstream_id: 7, fails: 2 })],
+      [
+        upstream({ upstream_id: 7, address: "socks5://b:1080" }),
+        upstream({ upstream_id: 0, address: "socks5://a:1080" }),
+      ],
+    );
+    // Stats' order is the page's order, and each row kept its own partner.
+    expect(merged.map((u) => u.upstream_id)).toEqual([0, 7]);
+    expect(merged.map((u) => u.fails)).toEqual([1, 2]);
+    // `address` is non-null on both sides, so stats wins — and the id that
+    // matched is the one whose value survives.
+    expect(merged.map((u) => u.address)).toEqual(["direct", "direct"]);
+  });
+
   it("works with either half missing", () => {
     expect(mergeUpstreams(undefined, [upstream()])).toHaveLength(1);
     expect(mergeUpstreams([upstream()], undefined)).toHaveLength(1);

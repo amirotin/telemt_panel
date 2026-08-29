@@ -688,7 +688,7 @@ export const en: Dict = {
       events: {
         title: "Events",
         description:
-          "The proxy's last fifty events, newest first. Almost all of them are admission state changes, which makes the family filter matter more here than the feed itself.",
+          "The proxy's most recent events, newest first. Almost all of them are admission state changes, which makes the family filter matter more here than the feed itself.",
         eventsDescription: "A row opens the sequence number and the exact timestamp.",
         buffer: "Event buffer",
         bufferDescription: "How many events the proxy keeps and how many it has already dropped.",
@@ -836,7 +836,7 @@ export const en: Dict = {
         "connections.cache.served_from_cache": "Whether the report came from the cache rather than being rebuilt.",
         "connections.cache.stale_cache_used": "Whether a stale cache had to be served because rebuilding failed.",
         "connections.totals.current_connections": "How many client connections are open right now.",
-        "connections.totals.current_connections_me": "How many of them go through the middle proxy.",
+        "connections.totals.current_connections_me": "How many current connections go through the middle proxy.",
         "connections.totals.current_connections_direct": "How many of them go directly to Telegram.",
         "connections.totals.active_users": "How many users currently hold at least one connection.",
         "connections.top.limit": "How many records the proxy puts in each ranking.",

@@ -762,7 +762,7 @@ export const ru = {
       events: {
         title: "События",
         description:
-          "Последние пятьдесят событий прокси, новые сверху. Почти все они — смена состояния приёма подключений, поэтому фильтр по семейству события здесь важнее, чем сама лента.",
+          "Последние события прокси, новые сверху. Почти все они — смена состояния приёма подключений, поэтому фильтр по семейству события здесь важнее, чем сама лента.",
         eventsDescription: "Строка открывает номер в последовательности и точное время.",
         buffer: "Буфер событий",
         bufferDescription: "Сколько событий прокси хранит и сколько успел потерять.",
@@ -927,7 +927,7 @@ export const ru = {
         "connections.cache.served_from_cache": "Отдан ли отчёт из кэша, а не собран заново.",
         "connections.cache.stale_cache_used": "Пришлось ли отдать устаревший кэш, потому что пересобрать не удалось.",
         "connections.totals.current_connections": "Сколько клиентских соединений открыто прямо сейчас.",
-        "connections.totals.current_connections_me": "Сколько из них идут через middle proxy.",
+        "connections.totals.current_connections_me": "Сколько текущих соединений идут через middle proxy.",
         "connections.totals.current_connections_direct": "Сколько из них идут напрямую к Telegram.",
         "connections.totals.active_users": "Сколько пользователей сейчас держат хотя бы одно соединение.",
         "connections.top.limit": "Сколько записей прокси кладёт в каждый рейтинг.",

@@ -380,3 +380,42 @@ describe("field catalog coverage: Events domain", () => {
     expect(report.undescribed).toEqual(["events[0].a_field_from_a_future_telemt"]);
   });
 });
+
+// L1 (task-8 review): the catalog's exact step is ONE global namespace
+// (§8.2), and `summary.` is a bare prefix owned by three domains at once —
+// ME, Upstreams and Connections. Nothing collides today, and the danger is
+// precisely that a collision would pass every other test in this file:
+// both sides stay described, `report.undescribed` stays empty, and one
+// domain simply starts explaining the other's number.
+describe("field catalog: the shared global prefixes", () => {
+  it("never lets two entries claim one path with different sentences", () => {
+    const byPath = new Map<string, Set<string>>();
+    for (const entry of DEFAULT_FIELD_CATALOG.entries) {
+      const keys = byPath.get(entry.path) ?? new Set<string>();
+      keys.add(entry.descriptionKey ?? entry.path);
+      byPath.set(entry.path, keys);
+    }
+    const collisions = [...byPath]
+      .filter(([, keys]) => keys.size > 1)
+      .map(([path, keys]) => `${path} -> ${[...keys].join(" | ")}`);
+    expect(
+      collisions,
+      `two domains describe one path differently:\n${collisions.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("keeps `summary.*` unambiguous across the three domains that share it", () => {
+    // Named on its own because the compiled catalog resolves an exact path
+    // with a Map: a second `summary.x` would not error, it would WIN, and
+    // the loser's page would carry a sentence about somebody else's field.
+    const seen = new Map<string, number>();
+    for (const entry of DEFAULT_FIELD_CATALOG.entries) {
+      if (!entry.path.startsWith("summary.")) continue;
+      seen.set(entry.path, (seen.get(entry.path) ?? 0) + 1);
+    }
+    // The prefix is real — this is not a test that passes on an empty set.
+    expect(seen.size).toBeGreaterThan(20);
+    const duplicated = [...seen].filter(([, n]) => n > 1).map(([path]) => path);
+    expect(duplicated, `duplicated summary.* paths:\n${duplicated.join("\n")}`).toEqual([]);
+  });
+});

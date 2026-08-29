@@ -47,6 +47,11 @@ export function eventKey(event: Pick<RuntimeEdgeEventRecord, "seq">): string {
   return `e${event.seq}`;
 }
 
+export const EVENT_FAMILY_OTHER = "other";
+
+/** Families observed on the three live VPS (TELEMT_LIVE_API_DATA §18). */
+export const EVENT_FAMILIES = ["admission", "config", "api"] as const;
+
 /**
  * The family an event type belongs to — the part before the first dot.
  *
@@ -54,7 +59,7 @@ export function eventKey(event: Pick<RuntimeEdgeEventRecord, "seq">): string {
  * purpose. A page definition is static, so its filter options cannot be
  * derived from the payload (spec §7's model), and the whole types are
  * unbounded: `api.user.create.ok` is one of a family that grows with every
- * API verb Telemt adds. The four families below are the ones the live
+ * API verb Telemt adds. The families named above are the ones the live
  * snapshot carried, and anything else falls into `other` rather than
  * becoming unreachable — which is what keeps the control honest on a Telemt
  * newer than this catalog.
@@ -63,11 +68,6 @@ export function eventFamily(eventType: string): string {
   const head = eventType.split(".")[0] ?? "";
   return EVENT_FAMILIES.includes(head as never) ? head : EVENT_FAMILY_OTHER;
 }
-
-export const EVENT_FAMILY_OTHER = "other";
-
-/** Families observed on the three live VPS (TELEMT_LIVE_API_DATA §18). */
-export const EVENT_FAMILIES = ["admission", "config", "api"] as const;
 
 export const EVENTS_FILTER_FAMILY = "events.family";
 
