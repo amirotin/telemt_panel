@@ -75,6 +75,14 @@ function click(el: Element): void {
   });
 }
 
+// openIfCollapsed opens a section whose panel is closed. SectionFrame mounts
+// nothing while a section has never been opened (spec §20), so a test that
+// reads panel content has to put the reader where the content is.
+function openIfCollapsed(container: HTMLElement): void {
+  const button = container.querySelector("button[aria-expanded]");
+  if (button?.getAttribute("aria-expanded") === "false") click(button);
+}
+
 const dc = dcs.dcs[0];
 
 function resolve<T>(definition: DetailPageDefinition<T, T>, context: T): SectionInstance[] {
@@ -254,6 +262,7 @@ describe("ArraySection (spec §10)", () => {
         render={(ctx) => <ArraySection instance={byId(emptySections, "endpoints") as never} ctx={ctx} />}
       />,
     );
+    openIfCollapsed(el);
     expect(el.textContent).toContain("Нет элементов в текущем снимке");
 
     act(() => mounted!.root.unmount());
@@ -266,6 +275,7 @@ describe("ArraySection (spec §10)", () => {
         render={(ctx) => <ArraySection instance={byId(absentSections, "endpoints") as never} ctx={ctx} />}
       />,
     );
+    openIfCollapsed(el2);
     expect(el2.textContent).toContain("Поле не пришло в этом ответе");
     expect(el2.textContent).not.toContain("Нет элементов в текущем снимке");
   });

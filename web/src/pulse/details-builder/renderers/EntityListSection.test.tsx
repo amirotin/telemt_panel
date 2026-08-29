@@ -54,7 +54,12 @@ const opened: { key: string | undefined } = { key: undefined };
 
 function Harness({ payload, search }: { payload: typeof meWriters; search?: string }) {
   const instance = useMemo(() => instanceFor(payload), [payload]);
-  const [sections, setSections] = useState<ReadonlySet<string>>(new Set());
+  // SectionFrame mounts a collapsed section's rows nowhere (spec §20), so a
+  // renderer test that reads rows starts with the section OPEN — the state
+  // a reader is in when the rows matter to them.
+  const [sections, setSections] = useState<ReadonlySet<string>>(() =>
+    instanceFor(payload).defaultExpanded ? new Set<string>() : new Set(["writers"]),
+  );
   const [records, setRecords] = useState<ReadonlySet<string>>(new Set());
   const [surface, setSurface] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState(search ?? "");
@@ -236,11 +241,17 @@ function GroupedHarness() {
   const instance = useMemo(() => instanceFor(meWriters), []);
   const [filters, setFilters] = useState<Record<string, string | boolean | string[]>>({});
   const [query, setQuery] = useState("");
+  // Open, for the same reason as Harness above: chips and headings live in
+  // the section panel, which a collapsed section does not mount (§20).
+  const expandedSections = useMemo(
+    () => (instance.defaultExpanded ? new Set<string>() : new Set([instance.id])),
+    [instance],
+  );
   const ctx: DetailRenderContext = {
     nowMs: NOW,
     mode: "extended",
     lookup: {},
-    expandedSections: new Set(),
+    expandedSections,
     toggleSection: () => {},
     expandedRecords: new Set(),
     toggleRecord: () => {},

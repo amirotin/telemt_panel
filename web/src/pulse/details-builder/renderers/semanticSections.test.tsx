@@ -988,6 +988,11 @@ describe("CustomSection and the renderer registry (spec §9.8)", () => {
   it("falls back to readable rows when nobody registered the id", () => {
     const instance = customInstance({ ...qualityChartSection, renderer: "not-shipped-yet" });
     const el = render(<Harness render={(ctx) => <CustomSection instance={instance} ctx={ctx} />} />);
+    // The fallback is an ArraySection with its own frame, and twelve entries
+    // put it over the §10.5 threshold, so it opens closed — and a closed
+    // section mounts nothing (§20).
+    const inner = el.querySelector("#quality-chart-panel button[aria-expanded]")!;
+    if (inner.getAttribute("aria-expanded") === "false") click(inner);
     // The section still consumes `dc_rtt` for the completeness equation, so
     // its fields MUST stay on screen.
     expect(el.querySelector("#quality-chart-panel")!.textContent).toContain("DC 1");

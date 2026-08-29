@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { cn } from "../../../lib/cn";
 import { CountBadge } from "../../../ui/Chip";
 import { IconChevronDown, IconChevronUp } from "../../../ui/icons";
@@ -42,6 +42,21 @@ export function SectionFrame({
   className,
 }: SectionFrameProps) {
   const panelId = `${id}-panel`;
+
+  // Spec §20: a closed large section must not create DOM. `hidden` alone
+  // mounted every row of a collapsed 50-record ranking and all 1955 leaves
+  // of the TLS unknown tail, on every page open, for nobody to read.
+  //
+  // A LATCH, not a plain `expanded &&`: once a section has been opened its
+  // subtree stays mounted, so collapsing and re-opening keeps whatever local
+  // state the rows hold (a «Показать ещё» limit, an open detail surface) and
+  // costs no second mount. Adjusted during render rather than in an effect,
+  // React's own pattern for state derived from props: an effect would commit
+  // one empty frame first, which is a visible flash on open.
+  const [opened, setOpened] = useState(expanded);
+  if (expanded && !opened) setOpened(true);
+  const mounted = expanded || opened;
+
   const header = (
     <div className="flex min-w-0 flex-1 flex-col items-start text-left">
       {/* L9 (Task 4/5 reviews): on 360 px the badge first squeezed a long
@@ -99,8 +114,10 @@ export function SectionFrame({
           )}
         </div>
       )}
+      {/* The wrapper itself is always in the document: `aria-controls` on the
+          header must resolve to a real element even before the first open. */}
       <div id={panelId} hidden={!expanded} className="px-4 pb-1">
-        {children}
+        {mounted ? children : null}
       </div>
     </section>
   );
