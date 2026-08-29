@@ -294,13 +294,9 @@ export function isTlsProbeClass(cls: string): boolean {
 // install, and sending the reader to an arbitrary page would be a guess.
 export function problemDomain(key: string): DiagDomain | undefined {
   if (key === "tls_probe_anomaly") return "security";
-  if (
-    key.startsWith("handshake_") ||
-    key.startsWith("connections_bad") ||
-    key === "handshake_timeouts_total"
-  ) {
-    return "counters";
-  }
+  // Covers handshake_<class>, handshake_timeouts_total,
+  // connections_bad_total and connections_bad_<class>.
+  if (key.startsWith("handshake_") || key.startsWith("connections_bad")) return "counters";
   if (key === "me_direct_fallback" || key.startsWith("me_coverage_low")) return "dc";
   if (key === "me_split_traffic") return "me";
   if (key.startsWith("stale_")) return STALE_TOPIC_DOMAIN[key.slice("stale_".length)];

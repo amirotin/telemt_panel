@@ -107,22 +107,17 @@ function Tile({ metric, compact }: { metric: Metric; compact?: boolean }) {
         <Icon
           className={cn("h-3.5 w-3.5 shrink-0", compact && "mt-[2px]", TONE_TEXT[metric.tone])}
         />
-        {/* Two 144px-wide tiles cannot hold «АКТИВНЫЕ ПОЛЬЗОВАТЕЛИ» on one
-            line, and a KPI whose label reads «АКТИВНЫЕ …» is a KPI you have
-            to guess at. The phone tile wraps to two lines and reserves both,
-            so all four tiles' numbers still sit on one baseline. */}
+        {/* «АКТИВНЫЕ ПОЛЬЗОВАТЕЛИ» wants 108px of the 102 a 144px phone tile
+            leaves beside the icon, and a KPI labelled «АКТИВНЫЕ ПОЛЬЗОВАТЕЛ…»
+            is a KPI you have to guess at. So the phone label drops to 10.5px
+            without letter-spacing and wraps into two RESERVED lines, keeping
+            all four numbers on one baseline; break-words is the net for any
+            label longer still. min-w-0 is what lets it wrap at all — a flex
+            item never shrinks below its content width without it, and
+            `overflow-hidden` would cut the word instead of breaking it. */}
         <span
           className={cn(
-            // min-w-0 is what lets the label WRAP inside the tile instead of
-            // pushing past its edge: a flex item will not shrink below its
-            // content width without it, and `overflow-hidden` would then cut
-            // the word off rather than break it.
             "min-w-0 flex-1 font-semibold uppercase text-text-muted",
-            // 10.5px and no letter-spacing on the phone: «АКТИВНЫЕ
-            // ПОЛЬЗОВАТЕЛИ» needs 108px of the 102 a 144px tile leaves beside
-            // the icon, and a KPI labelled «АКТИВНЫЕ ПОЛЬЗОВАТЕЛ…» is a KPI
-            // you have to guess at. break-words is the net for any label
-            // longer still.
             compact
               ? "line-clamp-2 min-h-[26px] break-words text-[10.5px] leading-[1.25]"
               : "truncate text-micro tracking-[0.06em]",
