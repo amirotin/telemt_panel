@@ -67,7 +67,9 @@ export const WIDGETS: WidgetDef[] = [
     id: "stat_row",
     topics: ["stats"],
     minMode: "basic",
-    size: "full",
+    // "tiles": four three-column cells of its own on the desktop grid, one
+    // titled card with four rows on a phone (StatRow.tsx).
+    size: "tiles",
     hideable: true,
     render: StatRow,
   },

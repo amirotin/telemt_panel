@@ -1,7 +1,5 @@
-import { formatDurationApprox } from "../../people/expiry";
 import type { StatsSnapshot } from "../../realtime/topics";
 import type { HistorySeries } from "../../lib/api/generated/types.gen";
-import type { Dict } from "../../i18n";
 
 export interface StatRowValues {
   connections: number | null;
@@ -9,7 +7,6 @@ export interface StatRowValues {
   connectionsApprox: boolean;
   activeUsers: number | null;
   activeUsersApprox: boolean;
-  uptimeLabel: string;
 }
 
 // computeStatRowValues picks the best connections/active-users figures
@@ -17,17 +14,15 @@ export interface StatRowValues {
 // always-on summary's coarser proxies — same rule StatusStrip.helpers.ts's
 // connectionsLabel uses, kept independent here since this widget also needs
 // the active-users figure and the approx flag that StatusStrip doesn't).
-export function computeStatRowValues(stats: StatsSnapshot | null, s: Dict): StatRowValues {
+export function computeStatRowValues(stats: StatsSnapshot | null): StatRowValues {
   const live = stats?.connections_summary?.enabled ? stats.connections_summary.data?.totals : undefined;
   const connections = live ? live.current_connections : (stats?.summary?.connections_total ?? null);
   const activeUsers = live ? live.active_users : (stats?.summary?.configured_users ?? null);
-  const uptimeSeconds = stats?.uptime_seconds ?? stats?.summary?.uptime_seconds ?? null;
   return {
     connections,
     connectionsApprox: !live,
     activeUsers,
     activeUsersApprox: !live,
-    uptimeLabel: uptimeSeconds === null ? "—" : formatDurationApprox(uptimeSeconds * 1000, s),
   };
 }
 
@@ -84,4 +79,45 @@ export function peakHistoryValue(series: HistorySeries | undefined): number | nu
   const points = series?.points;
   if (!points || points.length === 0) return null;
   return points.reduce((max, p) => (p.v > max ? p.v : max), points[0].v);
+}
+
+// lastHistoryValue — the newest point of a series, i.e. the lifetime figure
+// a cumulative counter has reached. The traffic tile's caption pairs the
+// window delta it displays with this, so the number the operator knows from
+// the Соединения page is never more than a glance away.
+export function lastHistoryValue(series: HistorySeries | undefined): number | null {
+  const points = series?.points;
+  if (!points || points.length === 0) return null;
+  return points[points.length - 1].v;
+}
+
+// refusalsLifetimeTotal mirrors internal/hub/refusals.go's refusalsTotal
+// against the same summary the hub reads: bad connections plus failed
+// handshakes, with handshake_timeouts_total used ONLY when the by-class
+// breakdown is absent (on a current build a timeout is one of its classes,
+// so adding both would double-count it). This is Telemt's own lifetime
+// figure — the history series is a panel-lifetime accumulator and cannot
+// answer "how many in total".
+export function refusalsLifetimeTotal(stats: StatsSnapshot | null): number | null {
+  const summary = stats?.summary;
+  if (!summary) return null;
+  const byClass = summary.handshake_failures_by_class;
+  if (!byClass || byClass.length === 0) {
+    return summary.connections_bad_total + summary.handshake_timeouts_total;
+  }
+  return byClass.reduce((sum, c) => sum + c.total, summary.connections_bad_total);
+}
+
+// refusalsRising answers the Отказы tile's tone question: are refusals
+// still coming in, or is the window's count the tail of something that has
+// already stopped? The newer half of the window growing at least as fast as
+// the older half is "still happening" — a tile that turns warn for a burst
+// that ended ten minutes ago is a tile the operator learns to ignore.
+export function refusalsRising(series: HistorySeries | undefined): boolean {
+  const points = series?.points;
+  if (!points || points.length < 3) return false;
+  const mid = Math.floor(points.length / 2);
+  const older = points[mid].v - points[0].v;
+  const newer = points[points.length - 1].v - points[mid].v;
+  return newer > 0 && newer >= older;
 }

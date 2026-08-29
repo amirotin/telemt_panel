@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { SPARKLINE_AREA_ALPHA } from "../ui/Sparkline";
 
 // contrast.test.ts — the palette's WCAG audit, run over the TOKENS rather
 // than over a rendered tree. It is the gate for ALL FOUR themes — Тёмная,
@@ -332,6 +333,25 @@ describe.each(THEMES)("transient hover/active tints clear 3:1 (%s)", (name, p) =
         expect(ratio, `${name}: ${tone}@${alpha} over --${surface}`).toBeGreaterThanOrEqual(
           NON_TEXT,
         );
+      });
+    }
+  }
+});
+
+// Сводка's Показатели tiles paint their sparkline as the tile's own
+// background (`Sparkline area`), with the label, the 30px value and the
+// caption on top of it. The worst pixel is the whole fill: it is a flat
+// `tone@SPARKLINE_AREA_ALPHA` over the card's `--surface`, so the darkest
+// (dark themes) / lightest (light themes) area pixel is exactly what this
+// composites. The alpha is imported rather than repeated — raising it in
+// Sparkline.tsx fails here instead of quietly dimming the caption.
+describe.each(THEMES)("Показатели tiles keep their text over the area chart (%s)", (name, p) => {
+  for (const tone of TONES) {
+    for (const role of ["text", "text-muted"] as const) {
+      const label = `text-${role} over ${tone}@${SPARKLINE_AREA_ALPHA} over --surface`;
+      it(`${label} clears AA`, () => {
+        const behind = composite(token(p, tone), SPARKLINE_AREA_ALPHA, token(p, "surface"));
+        expect(contrast(token(p, role), behind), `${name}: ${label}`).toBeGreaterThanOrEqual(AA);
       });
     }
   }

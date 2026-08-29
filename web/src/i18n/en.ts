@@ -318,7 +318,9 @@ export const en: Dict = {
       activeUsers: "Active users",
       activeUsersApprox: "Active users (approx.)",
       traffic: "Traffic (15 min)",
+      refusals: "Refusals (15 min)",
       peak15m: "15-min peak",
+      totalAllTime: "total — {value}",
       uptime: "Uptime",
     },
     problems: {

@@ -368,7 +368,11 @@ export const ru = {
       activeUsers: "Активные пользователи",
       activeUsersApprox: "Активные пользователи (оценка)",
       traffic: "Трафик (15 мин)",
+      refusals: "Отказы (15 мин)",
       peak15m: "пик за 15 мин",
+      // The lifetime figure under a window metric: the tile shows what
+      // happened in fifteen minutes, the caption what it adds up to.
+      totalAllTime: "всего — {value}",
       uptime: "Аптайм",
     },
     problems: {
