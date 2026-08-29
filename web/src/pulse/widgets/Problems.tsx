@@ -89,9 +89,12 @@ export function Problems({ onHide }: { onHide?: () => void }) {
     // can — ONE row, no title over it and no tinted box around it. A large
     // green panel announcing good news is the loudest thing on a healthy
     // dashboard, which is exactly backwards.
+    //
+    // py-1 around a 46px row is a 56px card (border-box) — the smallest the
+    // hide button's own 44px touch target allows.
     return (
-      <section className="rounded-xl border border-border bg-surface px-3.5 py-3">
-        <div className="flex min-h-[32px] items-center gap-2.5">
+      <section className="rounded-xl border border-border bg-surface px-3.5 py-1">
+        <div className="flex min-h-[46px] items-center gap-2.5">
           {/* The heading stays in the accessibility tree even though the
               healthy card shows no title: it is what names this section in a
               screen reader's outline, and what the hide button refers to. */}

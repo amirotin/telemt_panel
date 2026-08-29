@@ -403,8 +403,8 @@ export const ru = {
       uptime: "Аптайм",
     },
     problems: {
-      none: "Всё в порядке",
-      noneDescription: "Проблем не обнаружено.",
+      // Компактное состояние карточки (концепция §6/§17) — одна строка.
+      none: "Проблем не обнаружено",
       handshakeFailures: "Ошибки хендшейка",
       staleTopic: "Устарели данные:",
       notReady: "Telemt не готов",

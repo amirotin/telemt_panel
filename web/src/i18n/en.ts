@@ -336,8 +336,7 @@ export const en: Dict = {
       uptime: "Uptime",
     },
     problems: {
-      none: "All good",
-      noneDescription: "No issues found.",
+      none: "No problems detected",
       handshakeFailures: "Handshake failures",
       staleTopic: "Stale data:",
       notReady: "Telemt is not ready",
