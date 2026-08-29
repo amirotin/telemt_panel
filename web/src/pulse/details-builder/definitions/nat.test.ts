@@ -159,4 +159,33 @@ describe("checkpoint R5-NAT: completeness (§27.4, ruling R7)", () => {
     expect(result.unknownPaths).toEqual(["a_block_from_a_future_telemt.some_total"]);
     expect(result.consumedPaths).not.toContain("a_block_from_a_future_telemt.some_total");
   });
+
+  it("hands a field nested under the claimed `reflection` to the tail too", () => {
+    // The probe above adds a TOP-LEVEL block, which no section is anchored
+    // on — the weakest question one can ask. This is the one that matters:
+    // `alsoConsumes: ["reflection"]` exists for the `{}` case, and a
+    // POPULATED `reflection` must not be swallowed with it. A third address
+    // family, or a new key inside an existing one, has to reach R2's tail.
+    const future = {
+      ...natStunLive10,
+      reflection: {
+        v4: { ...natStunLive10.reflection.v4, future_source: "stun7.example.com" },
+        v6: natStunLive10.reflection.v6,
+        v6_local: { addr: "2001:db8::9", age_secs: 3 },
+      },
+    } as unknown as RuntimeNatStun;
+    const result = resolveFor(future);
+    expect(result.lostPaths).toEqual([]);
+    expect(result.unknownPaths).toEqual([
+      "reflection.v4.future_source",
+      "reflection.v6_local.addr",
+      "reflection.v6_local.age_secs",
+    ]);
+    for (const path of result.unknownPaths) {
+      expect(result.consumedPaths, path).not.toContain(path);
+    }
+    // …and the four declared rows keep their claim, so nothing is drawn twice.
+    expect(result.consumedPaths).toContain("reflection.v4.addr");
+    expect(result.consumedPaths).toContain("reflection.v6.age_secs");
+  });
 });

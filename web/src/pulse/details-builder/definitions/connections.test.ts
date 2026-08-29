@@ -132,6 +132,35 @@ describe("checkpoint R5-Connections: completeness (§27.4, ruling R7)", () => {
     expect(result.consumedPaths).not.toContain("a_block_from_a_future_telemt.some_total");
   });
 
+  it("hands a field nested inside a bound record to the tail too", () => {
+    // A top-level block is the weakest probe available. A key added INSIDE
+    // `cache`, which a scalars section already reads field by field, is
+    // where a field disappears if a section may claim a partial subtree.
+    const future = {
+      ...full,
+      cache: { ...full.cache, future: { detail: 3 } },
+    } as unknown as ConnectionsPagePayload;
+    const result = resolveFor(future);
+    expect(result.lostPaths).toEqual([]);
+    expect(result.unknownPaths).toEqual(["cache.future.detail"]);
+    expect(result.consumedPaths).not.toContain("cache.future.detail");
+  });
+
+  it("draws a future field on a ranked row rather than tailing it", () => {
+    // The counterpart: a ranking renders every key of its rows through
+    // `buildRecordNodes`, so owning `top.by_connections` is honest.
+    const richer = {
+      ...full,
+      top: {
+        ...full.top!,
+        by_connections: [{ ...full.top!.by_connections[0], future_field: 7 }],
+      },
+    } as unknown as ConnectionsPagePayload;
+    const result = resolveFor(richer);
+    expect(result.unknownPaths).toEqual([]);
+    expect(result.consumedPaths).toContain("top.by_connections[0].future_field");
+  });
+
   it("stays complete with the runtime_edge half switched off", () => {
     const result = resolveFor(
       connectionsPagePayload(summary, null, null) as ConnectionsPagePayload,

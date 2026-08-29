@@ -144,6 +144,36 @@ describe("checkpoint R5-Upstreams: completeness (§27.4, ruling R7)", () => {
     expect(result.consumedPaths).not.toContain("a_block_from_a_future_telemt.some_total");
   });
 
+  it("hands a field nested inside a bound record to the tail too", () => {
+    // A top-level block is the weakest probe available. A key added INSIDE
+    // a record a scalars section already reads is where a field disappears
+    // if a section is allowed to claim a subtree it only partly renders.
+    const future = {
+      ...full,
+      upstream_quality: {
+        ...full.upstream_quality,
+        policy: { ...full.upstream_quality?.policy, future_knob_ms: 250 },
+      },
+    } as unknown as UpstreamsPagePayload;
+    const result = resolveFor(future);
+    expect(result.lostPaths).toEqual([]);
+    expect(result.unknownPaths).toEqual(["upstream_quality.policy.future_knob_ms"]);
+    expect(result.consumedPaths).not.toContain("upstream_quality.policy.future_knob_ms");
+  });
+
+  it("draws a future field on an upstream itself rather than tailing it", () => {
+    // The counterpart of the two probes above: the entity list renders
+    // EVERY key of an item through `buildRecordNodes`, so owning the
+    // subtree is honest here — the field is on screen, not in the tail.
+    const richer = {
+      ...full,
+      upstreams: [{ ...full.upstreams![0], future_field: 7 }],
+    } as unknown as UpstreamsPagePayload;
+    const result = resolveFor(richer);
+    expect(result.unknownPaths).toEqual([]);
+    expect(result.consumedPaths).toContain("upstreams[0].future_field");
+  });
+
   it("stays complete with only one of the two endpoints answering", () => {
     for (const context of [
       upstreamsPagePayload(upstreams, null) as UpstreamsPagePayload,

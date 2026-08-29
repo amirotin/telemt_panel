@@ -148,6 +148,33 @@ describe("checkpoint R5-Events: completeness (§27.4, ruling R7)", () => {
     expect(result.consumedPaths).not.toContain("a_block_from_a_future_telemt.some_total");
   });
 
+  it("hands a field nested inside the ring buffer to the tail too", () => {
+    // A top-level block is the weakest probe available. A key added INSIDE
+    // `buffer`, which a scalars section already reads field by field, is
+    // where a field disappears if a section may claim a partial subtree.
+    const future = {
+      ...full,
+      buffer: { ...full.buffer, future: { detail: 1 } },
+    } as unknown as EventsPagePayload;
+    const result = resolveFor(future);
+    expect(result.lostPaths).toEqual([]);
+    expect(result.unknownPaths).toEqual(["buffer.future.detail"]);
+    expect(result.consumedPaths).not.toContain("buffer.future.detail");
+  });
+
+  it("draws a nested future field on an event record rather than tailing it", () => {
+    // The counterpart: the entity list renders every key of a record
+    // through `buildRecordNodes`, nested objects included, so owning the
+    // `events` subtree keeps the field on screen instead of in the tail.
+    const richer = {
+      ...full,
+      events: [{ ...full.events![0], future: { detail: "why" } }],
+    } as unknown as EventsPagePayload;
+    const result = resolveFor(richer);
+    expect(result.unknownPaths).toEqual([]);
+    expect(result.consumedPaths).toContain("events[0].future.detail");
+  });
+
   it("stays complete on an empty buffer", () => {
     const empty = eventsPagePayload({ capacity: 200, dropped_total: 0, events: [] }) as EventsPagePayload;
     const result = resolveFor(empty);

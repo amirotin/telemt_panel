@@ -725,14 +725,19 @@ export function resolveSections<TPayload, TContext>({
   }
 
   // Step 5 — mark consumed paths. `alsoConsumes` lets a section claim a
-  // sibling it folded into its own rows without owning the subtree.
+  // sibling leaf it folded into its own rows — a scalar, a null, an empty
+  // object or an empty array. It never claims a subtree: if the path turns
+  // out to be populated, its leaves fall through to normal resolution and
+  // reach the R2 tail unless another section renders them, so a field a
+  // future Telemt adds under it surfaces instead of disappearing.
   const consumedSet = new Set<string>();
   for (const instance of sections) {
     for (const p of instance.consumed) consumedSet.add(p);
   }
   for (const section of definition.sections) {
     for (const extra of section.alsoConsumes ?? []) {
-      for (const p of leafPathsUnder(context, extra)) consumedSet.add(p);
+      const leaves = leafPathsUnder(context, extra);
+      if (leaves.length === 1 && leaves[0] === extra) consumedSet.add(extra);
     }
   }
 

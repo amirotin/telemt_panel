@@ -192,7 +192,9 @@ interface SectionCommon<T> {
    * Extra normalized paths this section renders beyond its own `path`.
    * Consumed-path tracking (§12.5) reads this, so a section that folds a
    * sibling field into its rows does not leave that field in the unknown
-   * tail.
+   * tail. Each path is claimed only while it is itself a leaf (a scalar,
+   * a null, an empty object or an empty array); a populated container is
+   * left to normal resolution rather than swallowed whole.
    */
   alsoConsumes?: string[];
   /** Escape hatch used by definitions that build rows from a computed context. */
