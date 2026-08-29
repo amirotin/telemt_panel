@@ -46,9 +46,11 @@ function HeroShell({ children }: { children: React.ReactNode }) {
       {/* The caption keeps the widget's registry title on screen (the layout
           editor and the shell both name this block «Статус»); the prototype
           hero carries no title of its own. */}
-      <h3 className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint">
+      {/* h2 like every other widget caption (WidgetFrame): the hero sits at
+          the same level of Сводка even though it does not use that frame. */}
+      <h2 className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint">
         {s.pulse.widgets.health_hero}
-      </h3>
+      </h2>
       {children}
     </section>
   );

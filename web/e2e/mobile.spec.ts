@@ -71,11 +71,11 @@ test("login → people → create user → share → sub-page → overview → p
   await test.step("Сводка renders HealthHero + default widgets, and the layout editor persists across reload", async () => {
     await page.getByRole("link", { name: "Сводка" }).click();
     await expect(page.getByRole("heading", { name: "Сводка", level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Статус", level: 3 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Статус", level: 2 })).toBeVisible();
     // «Онлайн сейчас» ships in the default layout (M4 task 9): the seeded
     // user list is what it counts against.
-    await expect(page.getByRole("heading", { name: "Онлайн сейчас", level: 3 })).toBeVisible();
-    const statRow = page.getByRole("heading", { name: "Показатели", level: 3 });
+    await expect(page.getByRole("heading", { name: "Онлайн сейчас", level: 2 })).toBeVisible();
+    const statRow = page.getByRole("heading", { name: "Показатели", level: 2 });
     await expect(statRow).toBeVisible();
 
     await page.getByRole("button", { name: "Настроить" }).click();
@@ -89,8 +89,8 @@ test("login → people → create user → share → sub-page → overview → p
     await expect(page.getByRole("heading", { name: "Скрытые блоки", level: 2 })).toBeVisible();
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Статус", level: 3 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Показатели", level: 3 })).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: "Статус", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Показатели", level: 2 })).not.toBeVisible();
   });
 
   await test.step("Пульс is the diagnostics hub: card → Details → back", async () => {
