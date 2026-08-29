@@ -39,20 +39,33 @@
   --text-faint: 128 144 160; /* #8090a0 */
 
   /* Accent: `--accent` paints text, icons, bars and borders; solid button
-     fills use `--accent-strong` so white label text clears AA (white on
-     #4a9bdd is only 3.0:1). `--accent-soft` is the active-nav / soft-chip
-     wash the prototype writes inline as rgba(74,155,221,.14). */
-  --accent: 74 155 221; /* #4a9bdd */
+     fills use `--accent-strong` so white label text clears AA (white on the
+     text-weight accent is under 3:1 either way). `--accent-soft` is the
+     active-nav / soft-chip wash the prototype writes inline as
+     rgba(74,155,221,.14).
+
+     Lightened from the prototype's #4a9bdd, which was 4.16:1 as text on its
+     own 15 % tint over --surface-2 — under AA. styles/contrast.test.ts
+     composites that tint instead of reading the surface underneath it. */
+  --accent: 94 166 225; /* #5ea6e1 */
   --accent-strong: 43 113 174; /* #2b71ae — white on it: 5.2:1 */
   --accent-hover: 106 183 238; /* #6ab7ee */
   --accent-text: 255 255 255;
 
-  /* The one status set (06-ui.md): ok | warn | error | muted. */
+  /* The one status set (06-ui.md): ok | warn | error | muted.
+
+     A StatePill paints these as `bg-<tone>/15 text-<tone>`: the text sits on
+     a 15 % wash OF ITSELF, not on the surface, and error/muted/accent fell
+     to 3.8-4.2:1 there. They are lightened until the COMPOSITED pair clears
+     AA (styles/contrast.test.ts); ok and warn were already clear and are
+     untouched. */
   --ok: 94 201 126; /* #5ec97e */
   --warn: 224 166 63; /* #e0a63f */
-  --error: 224 101 90; /* #e0655a */
-  --error-strong: 217 86 74; /* #d9564a — the prototype's solid "STOP" red */
-  --muted: 128 144 160; /* #8090a0 — kept in step with --text-faint */
+  --error: 230 131 122; /* #e6837a (proto #e0655a = 3.83:1 on its own tint) */
+  /* The prototype's solid "STOP" red, darkened from #d9564a: CountBadge
+     paints white on it and 3.90:1 was under AA for a 10.5px label. */
+  --error-strong: 197 78 67; /* #c54e43 — white on it: 4.62:1 */
+  --muted: 148 162 175; /* #94a2af — the tinted twin of --text-faint */
 
   --focus-ring: 74 155 221;
 
@@ -138,18 +151,22 @@
   --text-muted: 84 97 111; /* #54616f — 5.8:1 on --bg (proto #5c6d7e = 4.9) */
   --text-faint: 93 104 115; /* #5d6873 — 4.78:1 on --surface-2, 5.69:1 on --surface */
 
-  /* Prototype light accent #2f7cc0 is 4.0:1 as text on --bg; darkened to
-     clear AA both as text and as a white-on-fill button. */
-  --accent: 30 108 176; /* #1e6cb0 — 5.0:1 text, 5.5:1 with white on it */
-  --accent-strong: 30 108 176;
+  /* Prototype light accent #2f7cc0 is 4.0:1 as text on --bg. `--accent` is
+     the TEXT weight, darkened far enough to clear AA on its own 15 % tint
+     too; `--accent-strong` stays the button fill that white sits on. */
+  --accent: 26 93 152; /* #1a5d98 */
+  --accent-strong: 30 108 176; /* white on it: 5.5:1 */
   --accent-hover: 21 87 150; /* #155796 */
   --accent-text: 255 255 255;
 
-  --ok: 23 122 69; /* #177a45 (proto #2c9457 = 3.5:1) */
-  --warn: 138 92 10; /* #8a5c0a (proto #ab7412 = 3.7:1) */
-  --error: 181 58 46; /* #b53a2e (proto #c74d40 = 4.2:1) */
+  /* One step darker than the AA-on-surface values: as StatePill tints
+     (`bg-<tone>/15`) those sat at 3.7-4.0:1 on --surface-2. */
+  --ok: 20 104 59; /* #14683b (was #177a45 = 3.73:1 on its own tint) */
+  --warn: 124 82 9; /* #7c5209 (was #8a5c0a = 4.01:1) */
+  --error: 161 52 41; /* #a13429 (was #b53a2e = 3.95:1) */
+  /* A solid fill under white text, not a text colour — 5.82:1, left alone. */
   --error-strong: 181 58 46;
-  --muted: 93 104 115;
+  --muted: 83 92 102; /* #535c66 — the tinted twin of --text-faint */
 
   --focus-ring: 30 108 176;
 
@@ -197,16 +214,16 @@
     --text-muted: 84 97 111;
     --text-faint: 93 104 115;
 
-    --accent: 30 108 176;
+    --accent: 26 93 152;
     --accent-strong: 30 108 176;
     --accent-hover: 21 87 150;
     --accent-text: 255 255 255;
 
-    --ok: 23 122 69;
-    --warn: 138 92 10;
-    --error: 181 58 46;
+    --ok: 20 104 59;
+    --warn: 124 82 9;
+    --error: 161 52 41;
     --error-strong: 181 58 46;
-    --muted: 93 104 115;
+    --muted: 83 92 102;
 
     --focus-ring: 30 108 176;
 
