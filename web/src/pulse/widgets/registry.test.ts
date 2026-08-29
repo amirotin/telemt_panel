@@ -45,10 +45,10 @@ describe("WIDGETS registry invariants", () => {
     expect(withoutTopics).toEqual(["tls_fingerprints"]);
   });
 
-  it("declares a valid formFactor for every widget", () => {
-    const valid = new Set(["stat", "card", "wide", "table"]);
+  it("declares a valid grid size for every widget", () => {
+    const valid = new Set(["third", "half", "twoThirds", "full", "tiles"]);
     for (const w of WIDGETS) {
-      expect(valid.has(w.formFactor)).toBe(true);
+      expect(valid.has(w.size)).toBe(true);
     }
   });
 

@@ -9,17 +9,30 @@ import { EmptyState } from "../ui/EmptyState";
 import { Sheet } from "../ui/Sheet";
 import { ConfirmView } from "../ui/ConfirmView";
 import { DisplayModeSwitch, useDisplayMode, type DisplayMode } from "../display-mode";
-import { getWidgetDef, type FormFactor } from "../pulse/widgets/registry";
+import { getWidgetDef, type WidgetSize } from "../pulse/widgets/registry";
 import { editorRows, hiddenWidgetIds, visibleWidgetIds, type EditorRow } from "../pulse/layout";
 import { usePulseLayout } from "../pulse/usePulseLayout";
 import type { WidgetId } from "../pulse/types";
 
-const SPAN_CLASSES: Record<FormFactor, string> = {
-  stat: "",
-  card: "",
-  wide: "lg:col-span-3",
-  table: "lg:col-span-3",
+// Сводка's desktop grid is twelve columns with a 20px gutter (`lg:gap-5`),
+// and each widget's registry `size` is the only thing that picks its span.
+// Below `lg:` the grid is a single column and none of these classes apply —
+// the phone layout is byte-for-byte what it was.
+const SPAN_CLASSES: Record<WidgetSize, string> = {
+  third: "lg:col-span-4",
+  half: "lg:col-span-6",
+  twoThirds: "lg:col-span-8",
+  full: "lg:col-span-12",
+  // A "tiles" widget emits its own cells; the page never wraps it.
+  tiles: "",
 };
+
+// Сводка is a dashboard, not a reading surface, so it is not held to
+// `--layout-readable-max` (06-ui.md: "приборная доска — нет") — but a
+// twelve-column grid stretched across 2560px turns every tile into a
+// letterbox. 1440px is the widest the grid still reads as a grid; beyond
+// it the margins grow instead of the cells.
+const CONTENT_MAX = "mx-auto w-full lg:max-w-[1440px]";
 
 // OverviewPage is /overview — «Сводка», the configurable widget dashboard:
 // the user's layout, filtered by display mode, rendered through the widget
@@ -45,7 +58,7 @@ export function OverviewPage() {
   const visibleIds = visibleWidgetIds(layout, mode);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", CONTENT_MAX)}>
       <div className="flex flex-col gap-3">
         <h1 className="text-title font-extrabold tracking-tight text-text">{s.overview.title}</h1>
         {/* Three density chips plus «Настроить» do not fit 360px on one
@@ -77,14 +90,18 @@ export function OverviewPage() {
       ) : visibleIds.length === 0 ? (
         <EmptyState title={s.pulse.emptyLayoutTitle} description={s.pulse.emptyLayoutDescription} />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-5">
           {visibleIds.map((id) => {
             const def = getWidgetDef(id);
             if (!def) return null;
             const Widget = def.render;
+            const onHide = def.hideable ? () => hide(id) : undefined;
+            // A "tiles" widget IS its own set of grid cells — wrapping it
+            // would nest a second grid inside a single column.
+            if (def.size === "tiles") return <Widget key={id} onHide={onHide} />;
             return (
-              <div key={id} className={cn(SPAN_CLASSES[def.formFactor])}>
-                <Widget onHide={def.hideable ? () => hide(id) : undefined} />
+              <div key={id} className={cn("min-w-0", SPAN_CLASSES[def.size])}>
+                <Widget onHide={onHide} />
               </div>
             );
           })}

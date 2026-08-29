@@ -16,7 +16,16 @@ import { RecentEventsWidget } from "./RecentEventsWidget";
 import { SecurityPostureWidget } from "./SecurityPostureWidget";
 import { TlsFingerprintsWidget } from "./TlsFingerprintsWidget";
 
-export type FormFactor = "stat" | "card" | "wide" | "table";
+// WidgetSize is the widget's span in Сводка's desktop grid (12 columns
+// from `lg:`, one column below it). A widget declares the shape it wants
+// and the page turns that into a span class — no widget writes a
+// `col-span-*` of its own, and the layout editor's order/hide semantics
+// never look at this field.
+//
+// "tiles" is the one shape that is not a single cell: such a widget renders
+// its OWN grid cells as siblings of the other widgets (Показатели's four
+// three-column tiles), so the page must not wrap it in a column div.
+export type WidgetSize = "third" | "half" | "twoThirds" | "full" | "tiles";
 
 export interface WidgetDef {
   /** Also the dictionary key its title comes from — `s.pulse.widgets[id]`. */
@@ -27,7 +36,8 @@ export interface WidgetDef {
    */
   topics?: TopicName[];
   minMode: DisplayMode;
-  formFactor: FormFactor;
+  /** Span on Сводка's 12-column desktop grid; ignored below `lg:`, where every widget is one full-width column. */
+  size: WidgetSize;
   /** false only for health_hero — every other widget can be hidden from the layout editor. */
   hideable: boolean;
   /** Links the widget's "Диагностика →" action to a drill-down page, when one exists. */
@@ -49,7 +59,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "health_hero",
     topics: ["stats"],
     minMode: "critical",
-    formFactor: "wide",
+    size: "full",
     hideable: false,
     render: HealthHero,
   },
@@ -57,7 +67,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "stat_row",
     topics: ["stats"],
     minMode: "basic",
-    formFactor: "wide",
+    size: "full",
     hideable: true,
     render: StatRow,
   },
@@ -65,7 +75,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "problems",
     topics: ["stats", "runtime", "upstreams", "security"],
     minMode: "critical",
-    formFactor: "card",
+    size: "third",
     hideable: true,
     render: Problems,
   },
@@ -76,7 +86,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "online_now",
     topics: ["users"],
     minMode: "basic",
-    formFactor: "card",
+    size: "half",
     hideable: true,
     render: OnlineNow,
   },
@@ -84,7 +94,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "active_sessions",
     topics: ["stats"],
     minMode: "basic",
-    formFactor: "card",
+    size: "third",
     hideable: true,
     diagDomain: "connections",
     render: ActiveSessions,
@@ -93,7 +103,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "dc",
     topics: ["upstreams"],
     minMode: "basic",
-    formFactor: "table",
+    size: "half",
     hideable: true,
     diagDomain: "dc",
     render: DcWidget,
@@ -105,7 +115,7 @@ export const WIDGETS: WidgetDef[] = [
     // not this widget's primary one.
     topics: ["upstreams", "runtime"],
     minMode: "basic",
-    formFactor: "table",
+    size: "half",
     hideable: true,
     diagDomain: "upstreams",
     render: UpstreamsWidget,
@@ -114,7 +124,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "security_posture",
     topics: ["security"],
     minMode: "basic",
-    formFactor: "card",
+    size: "third",
     hideable: true,
     diagDomain: "security",
     render: SecurityPostureWidget,
@@ -123,7 +133,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "me_pool",
     topics: ["runtime"],
     minMode: "extended",
-    formFactor: "card",
+    size: "third",
     hideable: true,
     diagDomain: "me",
     render: MePoolWidget,
@@ -132,7 +142,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "nat_stun",
     topics: ["runtime"],
     minMode: "extended",
-    formFactor: "card",
+    size: "third",
     hideable: true,
     diagDomain: "nat",
     render: NatStunWidget,
@@ -141,7 +151,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "selftest",
     topics: ["runtime"],
     minMode: "extended",
-    formFactor: "card",
+    size: "third",
     hideable: true,
     diagDomain: "me",
     render: SelftestWidget,
@@ -150,7 +160,7 @@ export const WIDGETS: WidgetDef[] = [
     id: "recent_events",
     topics: ["runtime"],
     minMode: "extended",
-    formFactor: "card",
+    size: "half",
     hideable: true,
     // M4 task 8 gave the domain a page: the card shows the last few lines,
     // «Диагностика →» opens all fifty with a filter (spec §23.5).
@@ -162,7 +172,7 @@ export const WIDGETS: WidgetDef[] = [
     // GET /api/telemt/tls-fingerprints itself (useTlsFingerprints).
     id: "tls_fingerprints",
     minMode: "extended",
-    formFactor: "table",
+    size: "half",
     hideable: true,
     diagDomain: "security",
     render: TlsFingerprintsWidget,
