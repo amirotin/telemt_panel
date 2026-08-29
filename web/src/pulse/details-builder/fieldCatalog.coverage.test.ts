@@ -3,10 +3,10 @@
 // Telemt").
 //
 // This is the test that turns "a new Telemt release added a field" into a
-// red CI run instead of an undescribed row nobody notices. Asserted on the
-// five migrated domains: DC (Task 2), TLS and Security (Task 6), ME and
-// Counters (Task 7). Task 8 adds its own fixtures as it migrates the rest,
-// and the Telemt-bump checklist points at this file.
+// red CI run instead of an undescribed row nobody notices. Asserted on all
+// nine migrated domains: DC (Task 2), TLS and Security (Task 6), ME and
+// Counters (Task 7), Upstreams, Connections, NAT and Events (Task 8) — the
+// Telemt-bump checklist points at this file.
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FIELD_CATALOG,
@@ -14,10 +14,15 @@ import {
   lookupField,
   TLS_FINGERPRINTS_ENDPOINT,
 } from "./fieldCatalog";
+import { connectionsPagePayload } from "../diag/connections.helpers";
+import { eventsPagePayload } from "../diag/events.helpers";
 import { mePagePayload } from "../diag/me.helpers";
+import { upstreamsPagePayload } from "../diag/upstreams.helpers";
 import {
+  connectionsSummary,
   dcs,
   effectiveLimits,
+  events,
   gates,
   initialization,
   mePoolState,
@@ -26,7 +31,12 @@ import {
   meSelftest,
   meWriters,
   minimalAll,
+  natStunLive0,
+  natStunLive10,
   posture,
+  summary,
+  upstreamQuality,
+  upstreams,
   tlsFingerprints,
   whitelist,
   zeroAll,
@@ -237,5 +247,136 @@ describe("field catalog coverage: Counters domain", () => {
     expect(lookupField("middle_proxy.reconnect_attempt_total").entry?.descriptionKey).toBe(
       "counters.middle_proxy.reconnect_attempt_total",
     );
+  });
+});
+
+// The Upstreams domain (§7). Both response envelopes are keyed by their own
+// prefix, so neither borrows the DC domain's `reason`/`generated_at_epoch_secs`
+// — that separation is asserted here rather than left to a code comment.
+describe("field catalog coverage: Upstreams domain", () => {
+  const context = upstreamsPagePayload(upstreams, upstreamQuality);
+
+  it("describes every leaf of the production upstream payload", () => {
+    const report = catalogCoverage(context);
+    // One upstream x (9 fields + 5 nested DC rows x 3) + 7 route totals +
+    // 16 zero counters + 5 policy knobs + 2 x 3 envelope fields.
+    expect(report.total).toBe(56);
+    expect(
+      report.undescribed,
+      `undescribed upstream paths:\n${report.undescribed.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("never falls back to a counters-family guess or to the neutral text", () => {
+    const sources = new Set(catalogCoverage(context).rows.map((row) => row.source));
+    expect(sources.has("fallback")).toBe(false);
+    expect(sources.has("family")).toBe(false);
+  });
+
+  it("keeps the two response envelopes apart from the DC domain's own", () => {
+    expect(lookupField("stats.generated_at_epoch_secs").entry?.descriptionKey).toBe(
+      "upstreams.stats.generated_at_epoch_secs",
+    );
+    expect(lookupField("upstream_quality.reason").entry?.descriptionKey).toBe(
+      "upstreams.quality.reason",
+    );
+    // …and the bare spellings still belong to DC, untouched.
+    expect(lookupField("reason").entry?.descriptionKey).toBe("dc.reason");
+  });
+
+  it("still flags an upstream field nobody described", () => {
+    const report = catalogCoverage({
+      upstreams: [{ a_field_from_a_future_telemt: 1 }],
+    });
+    expect(report.undescribed).toEqual(["upstreams[0].a_field_from_a_future_telemt"]);
+  });
+});
+
+// The Connections domain (§6, §17).
+describe("field catalog coverage: Connections domain", () => {
+  const context = connectionsPagePayload(summary, connectionsSummary, 987_654_321);
+
+  it("describes every leaf of the production connections payload", () => {
+    const report = catalogCoverage(context);
+    // 5 summary scalars + 2 x 3 class pairs + the traffic total + 4 totals +
+    // 3 cache + 2 telemetry + top.limit + 2 x 10 x 3 ranking fields.
+    expect(report.total).toBe(88);
+    expect(
+      report.undescribed,
+      `undescribed connection paths:\n${report.undescribed.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("never falls back to a counters-family guess or to the neutral text", () => {
+    const sources = new Set(catalogCoverage(context).rows.map((row) => row.source));
+    expect(sources.has("fallback")).toBe(false);
+    expect(sources.has("family")).toBe(false);
+  });
+
+  it("describes the same ranking column under both criteria", () => {
+    // `by_connections` and `by_throughput` rank the SAME record shape; a
+    // sentence written once for the column would be lost under the other
+    // scope, so both spellings resolve exactly.
+    for (const scope of ["by_connections", "by_throughput"]) {
+      expect(lookupField(`top.${scope}[0].total_octets`).entry?.descriptionKey).toBe(
+        "connections.top.total_octets",
+      );
+    }
+  });
+
+  it("still flags a connections field nobody described", () => {
+    const report = catalogCoverage({ totals: { a_field_from_a_future_telemt: 1 } });
+    expect(report.undescribed).toEqual(["totals.a_field_from_a_future_telemt"]);
+  });
+});
+
+// The NAT/STUN domain (§15). Two fixtures, because the leaf schema really
+// does differ between two healthy proxies.
+describe("field catalog coverage: NAT/STUN domain", () => {
+  it.each([
+    ["13 configured, 10 live", natStunLive10, 31],
+    ["13 configured, none live", natStunLive0, 20],
+  ] as const)("describes every leaf: %s", (_name, context, total) => {
+    const report = catalogCoverage(context);
+    expect(report.total).toBe(total);
+    expect(report.undescribed, `undescribed NAT paths:\n${report.undescribed.join("\n")}`).toEqual(
+      [],
+    );
+    const sources = new Set(report.rows.map((row) => row.source));
+    expect(sources.has("fallback")).toBe(false);
+    expect(sources.has("family")).toBe(false);
+  });
+
+  it("still flags a NAT field nobody described", () => {
+    const report = catalogCoverage({ flags: { a_field_from_a_future_telemt: 1 } });
+    expect(report.undescribed).toEqual(["flags.a_field_from_a_future_telemt"]);
+  });
+});
+
+// The Events domain (§18).
+describe("field catalog coverage: Events domain", () => {
+  it("describes every leaf of the fifty-record payload", () => {
+    const report = catalogCoverage(eventsPagePayload(events));
+    // 50 records x 4 fields + capacity + dropped_total.
+    expect(report.total).toBe(202);
+    expect(report.undescribed, `undescribed event paths:\n${report.undescribed.join("\n")}`).toEqual(
+      [],
+    );
+    const sources = new Set(report.rows.map((row) => row.source));
+    expect(sources.has("fallback")).toBe(false);
+    expect(sources.has("family")).toBe(false);
+  });
+
+  it("keeps the timestamp a timestamp under both spellings", () => {
+    // The alias exists for EntityListSection's highlight lookup; without it
+    // the `_secs` family would call an epoch a duration.
+    for (const path of ["events.ts_epoch_secs", "events[0].ts_epoch_secs"]) {
+      expect(lookupField(path).entry?.unit, path).toBe("timestamp");
+    }
+  });
+
+  it("still flags an event field nobody described", () => {
+    const report = catalogCoverage({ events: [{ a_field_from_a_future_telemt: 1 }] });
+    expect(report.undescribed).toEqual(["events[0].a_field_from_a_future_telemt"]);
   });
 });

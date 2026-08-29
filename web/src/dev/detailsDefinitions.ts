@@ -1,41 +1,48 @@
 // Page definitions for the DEV-only /dev/details route.
 //
-// DC and Security/TLS are the PRODUCTION definitions
-// (details-builder/definitions/), rendered here over the Task 1 fixtures so
-// the renderers can be exercised and screenshotted against
-// production-sized payloads — including the REST source states
-// (`unsupported`, `stale`, …) that no live stand reproduces on demand. The
-// remaining pages are still drafts for the domains Tasks 7–8 own.
+// Every page here is the PRODUCTION definition
+// (details-builder/definitions/), rendered over the Task 1 fixtures so the
+// renderers can be exercised and screenshotted against production-sized
+// payloads — including the REST source states (`unsupported`, `stale`, …)
+// that no live stand reproduces on demand, and the volumes the Go mock
+// cannot serve (twelve DCs, 4x50 TLS records, fifty events, thirteen STUN
+// servers).
 //
 // This module is only ever reached through routes/dev/details.tsx's
 // `import.meta.env.DEV` guard, which is what makes importing the test
 // fixtures here legitimate: Vite replaces the constant with `false` in a
 // production build and Rollup drops the whole graph.
 
-import type {
-  DcEndpointWriters,
-  DcStatusData,
-  RuntimeEdgeEventRecord,
-  RuntimeEdgeEvents,
-} from "../realtime/topics";
+import type { DcEndpointWriters, DcStatusData, RuntimeNatStun } from "../realtime/topics";
 import type { TlsFingerprintRow, ZeroAllData } from "../lib/api/generated/types.gen";
 import type {
   DetailPageDefinition,
   RankingSectionDefinition,
   SectionDefinition,
 } from "../pulse/details-builder";
+import { connectionsPagePayload } from "../pulse/diag/connections.helpers";
+import { eventsPagePayload } from "../pulse/diag/events.helpers";
 import { mePagePayload } from "../pulse/diag/me.helpers";
+import { upstreamsPagePayload } from "../pulse/diag/upstreams.helpers";
 import {
+  connectionsPageDefinition,
   countersPageDefinition,
   dcPageDefinition,
+  eventsPageDefinition,
   mePageDefinition,
+  natPageDefinition,
   securityPageDefinition,
+  upstreamsPageDefinition,
+  type ConnectionsPagePayload,
   type DcPageContext,
   type DcPagePayload,
+  type EventsPagePayload,
   type MePagePayload,
   type SecurityPageData,
+  type UpstreamsPagePayload,
 } from "../pulse/details-builder/definitions";
 import {
+  connectionsSummary,
   dcs,
   events,
   gates,
@@ -45,7 +52,11 @@ import {
   meRuntime,
   meSelftest,
   meWriters,
+  natStunLive10,
+  summary,
   tlsFingerprints,
+  upstreamQuality,
+  upstreams,
   zeroAll,
 } from "../pulse/details-builder/__fixtures__";
 
@@ -106,29 +117,48 @@ export const devMePage: DetailPageDefinition<MePagePayload, MePagePayload> = {
   id: "dev.me",
 };
 
-// --- Events: the timeline kind over 50 sequenced records (§23.6) ---------
+// --- Events / Upstreams / Connections / NAT: the PRODUCTION definitions --
+//
+// Real since M4 task 8. The harness renders each over the Task 1 fixtures,
+// which is the only stand that carries the volumes TELEMT_LIVE_API_DATA
+// recorded: fifty events across three types, thirteen configured STUN
+// servers with ten live, and two top-10 rankings over fourteen users. The
+// Go mock serves one of each.
 
-const eventOf = (item: unknown) => item as RuntimeEdgeEventRecord;
+export const devEventsPayload = eventsPagePayload(events) as EventsPagePayload;
 
-export const devEventsPage: DetailPageDefinition<RuntimeEdgeEvents, RuntimeEdgeEvents> = {
+export const devEventsPage: DetailPageDefinition<EventsPagePayload, EventsPagePayload> = {
+  ...eventsPageDefinition,
   id: "dev.events",
-  title: () => "Events",
-  sources: [{ id: "runtime", topic: "runtime", required: true }],
-  sections: [
-    {
-      kind: "timeline",
-      id: "events",
-      title: () => "events[]",
-      path: "events",
-      defaultExpanded: true,
-      itemKey: (item) => String(eventOf(item).seq),
-      status: (item) => eventOf(item).event_type,
-      step: (item) => eventOf(item).context ?? "",
-      details: (item) => `seq ${eventOf(item).seq}`,
-      atEpochMs: (item) => eventOf(item).ts_epoch_secs * 1000,
-    },
-  ],
-  unknownFields: { minMode: "extended", rawJson: true },
+};
+
+export const devUpstreamsPayload = upstreamsPagePayload(
+  upstreams,
+  upstreamQuality,
+) as UpstreamsPagePayload;
+
+export const devUpstreamsPage: DetailPageDefinition<UpstreamsPagePayload, UpstreamsPagePayload> = {
+  ...upstreamsPageDefinition,
+  id: "dev.upstreams",
+};
+
+export const devConnectionsPayload = connectionsPagePayload(
+  summary,
+  connectionsSummary,
+  4_912_003_774,
+) as ConnectionsPagePayload;
+
+export const devConnectionsPage: DetailPageDefinition<
+  ConnectionsPagePayload,
+  ConnectionsPagePayload
+> = {
+  ...connectionsPageDefinition,
+  id: "dev.connections",
+};
+
+export const devNatPage: DetailPageDefinition<RuntimeNatStun, RuntimeNatStun> = {
+  ...natPageDefinition,
+  id: "dev.nat",
 };
 
 // --- Security / TLS: four RANKINGS over 4×50 records (§23.3) -------------
@@ -241,7 +271,10 @@ const dcsWithAttention: DcStatusData = {
 export const devPayloads = {
   dc: dcsWithAttention,
   me: devMePayload,
-  events,
+  events: devEventsPayload,
+  upstreams: devUpstreamsPayload,
+  connections: devConnectionsPayload,
+  nat: natStunLive10,
   tls: tlsFingerprints,
   counters: zeroAll,
 };
@@ -281,7 +314,10 @@ export function pushRevision(revision: number): DevPayloads {
       dcs: dcsWithAttention.dcs.map((dc) => ({ ...dc, load: dc.load + bump, rtt_ms: dc.rtt_ms })),
     },
     me: devMePayload,
-    events,
+    events: devEventsPayload,
+    upstreams: devUpstreamsPayload,
+    connections: devConnectionsPayload,
+    nat: natStunLive10,
     tls: {
       ...tlsFingerprints,
       by_fingerprint: tlsFingerprints.by_fingerprint.map((row, i) => ({

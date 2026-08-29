@@ -17,10 +17,15 @@ import {
   meSelftest,
   meWriters,
   minimalAll,
+  natStunLive0,
+  natStunLive10,
   posture,
   selftestAllNullable,
   summary,
   tlsFingerprints,
+  upstreamQuality,
+  upstreams,
+  connectionsSummary,
   whitelist,
   writerAllNull,
   zeroAll,
@@ -34,6 +39,15 @@ import {
   summaryPageDefinition,
   tlsPageDefinition,
 } from "./__fixtures__/definitions";
+import { connectionsPagePayload } from "../diag/connections.helpers";
+import { eventsPagePayload } from "../diag/events.helpers";
+import { upstreamsPagePayload } from "../diag/upstreams.helpers";
+
+// The three Task 8 page contexts, built by their own adapters — the shapes
+// the classifier actually sees on those pages, not the raw wire objects.
+const upstreamsFull = upstreamsPagePayload(upstreams, upstreamQuality)!;
+const connectionsFull = connectionsPagePayload(summary, connectionsSummary, 1)!;
+const eventsFull = eventsPagePayload(events)!;
 
 function sectionById(
   result: ReturnType<typeof resolveSections>,
@@ -257,6 +271,52 @@ describe("classifyValue on the production fixtures (review M1)", () => {
       "pool",
       "object",
     ],
+    // --- Upstreams / Connections / NAT / Events, described by Task 8 ---
+    //
+    // Same carry-over once more: every all-numeric block these four pages
+    // BIND is pinned here, because describing it is what stops the
+    // classifier from reading it as a verbatim-key counters map — and a map
+    // renderer would drop the field names the pages depend on.
+    ["upstreams[0] (9 mixed fields + nested dc[])", upstreamsFull.upstreams?.[0], "upstreams[0]", "object"],
+    [
+      "upstreams[0].dc[0] (a number, a nullable number and a word)",
+      upstreamsFull.upstreams?.[0]?.dc?.[0],
+      "upstreams[0].dc[0]",
+      "object",
+    ],
+    ["upstreams[0].dc (five records)", upstreamsFull.upstreams?.[0]?.dc, "upstreams[0].dc", "recordArray"],
+    ["summary (7 route totals, all described)", upstreamsFull.summary, "summary", "object"],
+    ["zero (16 connect counters, all described)", upstreamsFull.zero, "zero", "object"],
+    [
+      "upstream_quality.policy (4 numbers and a flag)",
+      upstreamsFull.upstream_quality?.policy,
+      "upstream_quality.policy",
+      "object",
+    ],
+    ["stats (the response envelope)", upstreamsFull.stats, "stats", "object"],
+    ["totals (4 numbers, all described)", connectionsFull.totals, "totals", "object"],
+    ["cache (a number and two flags)", connectionsFull.cache, "cache", "object"],
+    ["telemetry (two flags)", connectionsFull.telemetry, "telemetry", "object"],
+    ["top (a limit and two arrays)", connectionsFull.top, "top", "object"],
+    [
+      "top.by_connections (10 records)",
+      connectionsFull.top?.by_connections,
+      "top.by_connections",
+      "recordArray",
+    ],
+    [
+      "top.by_connections[0] (a name and two numbers)",
+      connectionsFull.top?.by_connections?.[0],
+      "top.by_connections[0]",
+      "object",
+    ],
+    ["flags (two booleans and a count)", natStunLive10.flags, "flags", "object"],
+    ["servers (two arrays and a count)", natStunLive10.servers, "servers", "object"],
+    ["servers.configured (13 addresses)", natStunLive10.servers.configured, "servers.configured", "primitiveArray"],
+    ["servers.live (none answered)", natStunLive0.servers.live, "servers.live", "primitiveArray"],
+    ["reflection.v4 (an address and an age)", natStunLive10.reflection.v4, "reflection.v4", "object"],
+    ["reflection (neither family answered)", natStunLive0.reflection, "reflection", "object"],
+    ["buffer (2 numbers, both described)", eventsFull.buffer, "buffer", "object"],
   ];
 
   it.each(cases)("%s -> %s", (_name, value, path, expected) => {

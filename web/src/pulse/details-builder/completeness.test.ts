@@ -12,15 +12,24 @@
 // of §24.2's three outcomes; a fourth — silently — is what this test makes
 // impossible, before a single renderer exists to look at.
 //
-// The unknown tail is ALLOWED to be non-empty at this stage: most domains
-// have no definition yet, so their whole payload lands in the tail. The
-// counts are reported per fixture below (and in task-2-report.md) so Tasks
-// 6–8 can watch them fall as each domain gets a real definition.
+// The unknown tail is ALLOWED to be non-empty for a fixture with no page
+// definition — a raw topic snapshot, an edge shape nobody renders whole.
+// Every fixture that HAS one drives it to zero, which since Task 8 is every
+// production domain; the counts are reported per fixture below.
 
 import { describe, expect, it } from "vitest";
 import { resolveSections } from "./resolveSections";
 import { emptyDefinition, richContexts, richDefinitions } from "./__fixtures__/definitions";
 import type { AnyDefinition } from "./__fixtures__/definitions";
+import {
+  connectionsPageDefinition,
+  eventsPageDefinition,
+  natPageDefinition,
+  upstreamsPageDefinition,
+} from "./definitions";
+import { connectionsPagePayload } from "../diag/connections.helpers";
+import { eventsPagePayload } from "../diag/events.helpers";
+import { upstreamsPagePayload } from "../diag/upstreams.helpers";
 import {
   connectionsSummary,
   dcAllFalsy,
@@ -70,6 +79,10 @@ function plain(name: string, context: unknown): Case {
   return { name, definition: emptyDefinition(name), context };
 }
 
+function defined(name: string, definition: unknown, context: unknown): Case {
+  return { name, definition: definition as AnyDefinition, context };
+}
+
 // Every fixture Task 1 exports, each with a definition. The seven with a
 // real definition exercise the consumed side of the equation; the rest
 // exercise the tail.
@@ -102,20 +115,33 @@ const CASES: Case[] = [
   plain("me-pool-state", mePoolState),
   plain("me-quality", meQuality),
   plain("me-selftest", meSelftest),
-  plain("nat-stun-live-10", natStunLive10),
-  plain("nat-stun-live-7", natStunLive7),
-  plain("nat-stun-live-0", natStunLive0),
-  plain("connections-summary", connectionsSummary),
-  plain("events", events),
   plain("summary", summary),
-  plain("upstreams", upstreams),
-  plain("upstream-quality", upstreamQuality),
   plain("zero-all", zeroAll),
   plain("minimal-all", minimalAll),
   plain("posture", posture),
   plain("whitelist", whitelist),
   plain("effective-limits", effectiveLimits),
   plain("tls-fingerprints", tlsFingerprints),
+
+  // --- Task 8's four domains, with their production definitions -------
+  //
+  // Attached here as well as in their own definition tests, so the ONE
+  // place that runs the §27.4 equation over every fixture in the repo sees
+  // the same zero tail the domain tests assert.
+  defined("nat-stun-live-10 (defined)", natPageDefinition, natStunLive10),
+  defined("nat-stun-live-7 (defined)", natPageDefinition, natStunLive7),
+  defined("nat-stun-live-0 (defined)", natPageDefinition, natStunLive0),
+  defined(
+    "connections (defined)",
+    connectionsPageDefinition,
+    connectionsPagePayload(summary, connectionsSummary, 123_456),
+  ),
+  defined("events (defined)", eventsPageDefinition, eventsPagePayload(events)),
+  defined(
+    "upstreams (defined)",
+    upstreamsPageDefinition,
+    upstreamsPagePayload(upstreams, upstreamQuality),
+  ),
 
   // --- composed topic snapshots (what a page actually receives) -------
   plain("topic: stats", statsSnapshot),
@@ -139,6 +165,16 @@ const CASES: Case[] = [
     plain(`stun live: ${variant}`, stunLiveVariants[variant]),
   ]),
 ];
+
+/** The cases carrying a real page definition from `./definitions`. */
+const PRODUCTION_CASES = new Set([
+  "nat-stun-live-10 (defined)",
+  "nat-stun-live-7 (defined)",
+  "nat-stun-live-0 (defined)",
+  "connections (defined)",
+  "events (defined)",
+  "upstreams (defined)",
+]);
 
 describe("checkpoint R1: no field is ever silently lost (spec §27.4)", () => {
   it.each(CASES.map((c) => [c.name, c] as const))("%s", (_name, testCase) => {
@@ -253,7 +289,14 @@ describe("checkpoint R1: no field is ever silently lost (spec §27.4)", () => {
     // Every fixture accounted for, and at least the seven defined ones
     // actually consume something.
     expect(report.length).toBe(CASES.length);
-    expect(report.filter((r) => r.consumed > 0).length).toBeGreaterThanOrEqual(7);
+    expect(report.filter((r) => r.consumed > 0).length).toBeGreaterThanOrEqual(13);
+    // Every case built from a PRODUCTION definition leaves nothing in the
+    // tail — the promise Task 8 was measured against. (The older
+    // "(defined)" cases are Task 2's test-only drafts, which deliberately
+    // exercise a NON-empty tail.)
+    for (const row of report.filter((r) => PRODUCTION_CASES.has(r.fixture))) {
+      expect(row.unknown, row.fixture).toBe(0);
+    }
     for (const row of report) {
       expect(row.all).toBe(row.consumed + row.ignored + row.unknown);
     }

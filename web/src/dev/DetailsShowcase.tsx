@@ -12,11 +12,14 @@ import {
   type SourceStatus,
 } from "../pulse/details-builder/sources";
 import {
+  devConnectionsPage,
   devCountersPage,
   devDcPage,
   devEventsPage,
   devMePage,
+  devNatPage,
   devTlsPage,
+  devUpstreamsPage,
   pushRevision,
 } from "./detailsDefinitions";
 
@@ -27,11 +30,22 @@ import {
 const FIXED_NOW = 1_756_000_000_000 + 125_000;
 const FRESH_AT = 1_756_000_000_000;
 
-type PageId = "dc" | "me" | "events" | "tls" | "counters";
+type PageId =
+  | "dc"
+  | "me"
+  | "events"
+  | "tls"
+  | "counters"
+  | "upstreams"
+  | "connections"
+  | "nat";
 
 const PAGES: { id: PageId; label: string }[] = [
   { id: "dc", label: "DC" },
   { id: "me", label: "ME" },
+  { id: "upstreams", label: "Upstreams" },
+  { id: "connections", label: "Connections" },
+  { id: "nat", label: "NAT / STUN" },
   { id: "events", label: "Events" },
   { id: "tls", label: "Security / TLS" },
   { id: "counters", label: "Counters" },
@@ -154,6 +168,36 @@ export function DetailsShowcase() {
             definition={devEventsPage}
             payload={withData ? devPayloads.events : null}
             sources={sourcesFor(devEventsPage.sources, status, devPayloads.events)}
+            breadcrumb="PULSE / DETAILS"
+            nowMs={FIXED_NOW}
+          />
+        );
+      case "upstreams":
+        return (
+          <DetailPage
+            definition={devUpstreamsPage}
+            payload={withData ? devPayloads.upstreams : null}
+            sources={sourcesFor(devUpstreamsPage.sources, status, devPayloads.upstreams)}
+            breadcrumb="PULSE / DETAILS"
+            nowMs={FIXED_NOW}
+          />
+        );
+      case "connections":
+        return (
+          <DetailPage
+            definition={devConnectionsPage}
+            payload={withData ? devPayloads.connections : null}
+            sources={sourcesFor(devConnectionsPage.sources, status, devPayloads.connections)}
+            breadcrumb="PULSE / DETAILS"
+            nowMs={FIXED_NOW}
+          />
+        );
+      case "nat":
+        return (
+          <DetailPage
+            definition={devNatPage}
+            payload={withData ? devPayloads.nat : null}
+            sources={sourcesFor(devNatPage.sources, status, devPayloads.nat)}
             breadcrumb="PULSE / DETAILS"
             nowMs={FIXED_NOW}
           />

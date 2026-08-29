@@ -23,6 +23,10 @@ const PAGE_CHIPS = {
   tls: "Security / TLS",
   me: "ME",
   counters: "Counters",
+  upstreams: "Upstreams",
+  connections: "Connections",
+  nat: "NAT / STUN",
+  events: "Events",
 } as const;
 
 async function openHarness(page: Page, which: keyof typeof PAGE_CHIPS): Promise<void> {
@@ -283,16 +287,29 @@ test("with a surface open, a swipe pages nothing and a rotation keeps it", async
   await expect(selectedEntity(page)).toHaveText(chosen);
 });
 
-// All four harness pages, because they fail differently: `tls` is the
+// Every harness page, because they fail differently: `tls` is the
 // wide-table page; `dc` is the one with the twelve-entity rail whose
 // attention markers widened the document by 286 px until their `sr-only`
 // text was given a positioned ancestor; `me` is the first page with FIVE
 // section tabs, which the 360 px strip has to scroll inside itself rather
-// than push the document wider; and `counters` carries a 100 %-tall chart
-// column and seven full-width controls above the first row. The Go mock
-// serves a single DC and a single writer, so this fixture-backed harness is
-// the only stand that reproduces the twelve-chip rail at all.
-for (const domain of ["tls", "dc", "me", "counters"] as const) {
+// than push the document wider; `counters` carries a 100 %-tall chart
+// column and seven full-width controls above the first row. Task 8 adds
+// four more shapes: `upstreams` nests a five-row array INSIDE a detail
+// surface, `connections` prints eleven-digit octet counts in a ranking's
+// shrink-0 score column, `nat` lists thirteen host:port strings, and
+// `events` puts a free-form context line on every one of fifty rows. The Go
+// mock serves a single DC and a single writer, so this fixture-backed
+// harness is the only stand that reproduces those volumes at all.
+for (const domain of [
+  "tls",
+  "dc",
+  "me",
+  "counters",
+  "upstreams",
+  "connections",
+  "nat",
+  "events",
+] as const) {
   test(`no page scrolls horizontally, in any of the four modes (${domain})`, async ({ page }) => {
     await openHarness(page, domain);
     for (const size of [
