@@ -123,6 +123,14 @@ func webRuntimeUnavailable(w http.ResponseWriter) {
 		"WEB runtime is unavailable: no_web_listener")
 }
 
+// webSnapshotBusy is the 503 an EXACT lookup answers when its lock was
+// contended — Scenario.WebBusy. Unlike webRuntimeUnavailable this is a
+// momentary state of a RUNNING runtime, and the panel must keep it distinct.
+func webSnapshotBusy(w http.ResponseWriter) {
+	writeErr(w, http.StatusServiceUnavailable, telemt.CodeWebSnapshotBusy,
+		"WEB session snapshot is busy")
+}
+
 // handleWebStatus serves GET /v1/runtime/web/status. It never fails: a
 // closed WEB runtime is reported in the payload's own fields, which is
 // exactly what the real route does.
@@ -148,6 +156,19 @@ func (s *Server) handleWebStatus(w http.ResponseWriter) {
 		live++
 	}
 
+	// A contended manager lock: the plane arrives as an explicit null with
+	// its name in partial[], which is the pair the page reads.
+	manager := &telemt.WebManagerStatus{
+		IssuanceEnabled: true, IssuanceGeneration: 1,
+		Bootstraps: 2, Sessions: live, ClosedTokens: closed,
+		ClosedSessions: closed, ClientIPs: live, Profiles: 1,
+	}
+	partial := []string{}
+	if s.scenario.WebBusy {
+		manager = nil
+		partial = []string{"manager"}
+	}
+
 	learningEpoch := uint64(1)
 	writeOK(w, http.StatusOK, telemt.WebStatusData{
 		Lifecycle:              telemt.WebLifecycleRunning,
@@ -160,12 +181,8 @@ func (s *Server) handleWebStatus(w http.ResponseWriter) {
 			RuntimeInstance: webRuntimeInstance,
 			GenerationID:    1,
 			Limits:          json.RawMessage(webLimitsJSON),
-			Manager: &telemt.WebManagerStatus{
-				IssuanceEnabled: true, IssuanceGeneration: 1,
-				Bootstraps: 2, Sessions: live, ClosedTokens: closed,
-				ClosedSessions: closed, ClientIPs: live, Profiles: 1,
-			},
-			Streams: &telemt.WebStreamStatus{Live: live * 2, Profiles: 1},
+			Manager:         manager,
+			Streams:         &telemt.WebStreamStatus{Live: live * 2, Profiles: 1},
 			Budget: &telemt.WebBudgetStatus{
 				QueueBytes: 1 << 20, QueueItems: 42, ControlBytes: 4096, ControlItems: 7,
 				WebsocketBytes: 1 << 18, HighWaterBytes: 3 << 20, Owners: live,
@@ -197,7 +214,7 @@ func (s *Server) handleWebStatus(w http.ResponseWriter) {
 			BytesUp:                    12_345_678,
 			BytesDown:                  98_765_432,
 			LimitHits:                  3,
-			Partial:                    []string{},
+			Partial:                    partial,
 		},
 	}, s.revision())
 }
@@ -281,6 +298,13 @@ func (s *Server) handleWebSessions(w http.ResponseWriter, rawQuery string) {
 	}
 
 	page := telemt.WebSessionPage{Sessions: []telemt.WebSessionRow{}, Partial: []string{}}
+	if s.scenario.WebBusy {
+		// 200 with no rows and the plane named: the registry scan lost its
+		// try_lock. An empty page here means "busy", not "no sessions".
+		page.Partial = []string{"manager"}
+		writeOK(w, http.StatusOK, page, s.revision())
+		return
+	}
 	rows := s.webSessionsSorted()
 	for _, row := range rows {
 		if row.TraceSessionID <= after {
@@ -347,6 +371,10 @@ func (s *Server) handleWebSession(w http.ResponseWriter, ref string) {
 		webRuntimeUnavailable(w)
 		return
 	}
+	if s.scenario.WebBusy {
+		webSnapshotBusy(w)
+		return
+	}
 	id, ok := webRefID(ref)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "bad_request", "Invalid WEB session reference")
@@ -388,6 +416,13 @@ func (s *Server) handleWebSessionsClose(w http.ResponseWriter, r *http.Request, 
 	}
 	if s.scenario.WebOff {
 		webRuntimeUnavailable(w)
+		return
+	}
+	if s.scenario.WebBusy {
+		// One control operation at a time: a second close while the first
+		// is still running is refused, not queued.
+		writeErr(w, http.StatusConflict, telemt.CodeWebOperationInProgress,
+			"A WEB control operation is already running")
 		return
 	}
 

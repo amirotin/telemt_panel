@@ -9,6 +9,7 @@ import {
   UPSTREAM_QUALITY_HINTS,
   UPSTREAM_STATS_HINTS,
   type GateHintByReason,
+  WEB_RUNTIME_HINTS,
   type GateHintKey,
 } from "./gateHints";
 
@@ -141,5 +142,37 @@ describe.each(LOCALES)("gate hint text (%s)", (locale, dict) => {
     ];
     const texts = keys.map((k) => gateHint(dict, k));
     expect(new Set(texts).size, locale).toBe(keys.length);
+  });
+});
+
+// The WEB group's reasons are lifecycle-derived, not the
+// feature_disabled/source_unavailable pair, and they do NOT all mean the
+// same thing: `starting` and `runtime_released` describe a runtime that IS
+// enabled and is moving, where "set [web] enabled = true and restart the
+// proxy" is wrong advice and, mid-drain, destructive.
+describe("the WEB runtime's reason split", () => {
+  const WAIT = ["starting", "runtime_released"] as const;
+  const SWITCH_ON = ["no_web_listener", "drained", "deadline_exceeded", undefined] as const;
+
+  it("sends a transitional runtime to the wait hint", () => {
+    for (const reason of WAIT) {
+      expect(resolveGateHint(WEB_RUNTIME_HINTS, reason), reason).toBe("web_runtime_transitional");
+    }
+  });
+
+  it("keeps the switch-it-on hint for a runtime that really is off", () => {
+    for (const reason of SWITCH_ON) {
+      expect(resolveGateHint(WEB_RUNTIME_HINTS, reason), String(reason)).toBe("web_enabled");
+    }
+    // A token this build has not heard of falls back the same way.
+    expect(resolveGateHint(WEB_RUNTIME_HINTS, "some_future_token")).toBe("web_enabled");
+  });
+
+  it.each(LOCALES)("%s never tells a moving runtime to restart the proxy", (locale, dict) => {
+    const wait = gateHint(dict, "web_runtime_transitional");
+    expect(wait.length, locale).toBeGreaterThan(0);
+    expect(wait, locale).not.toContain("enabled = true");
+    // …and the two WEB hints are genuinely different sentences.
+    expect(wait, locale).not.toBe(gateHint(dict, "web_enabled"));
   });
 });

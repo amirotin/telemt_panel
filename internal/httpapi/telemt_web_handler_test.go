@@ -280,8 +280,54 @@ func TestWebDebugAndLearningMutationsAreNotExposed(t *testing.T) {
 		"/api/telemt/web/carrier-learning/reset",
 	} {
 		w := doRequest(t, srv, cookie, "POST", path, nil, []byte(`{}`))
-		if w.Code == http.StatusOK || w.Code == http.StatusAccepted {
-			t.Errorf("POST %s = %d — this route must not exist on the panel", path, w.Code)
+		// Exactly 404, not merely "not a success": a blanket
+		// /api/telemt/web/ proxy would forward these to a fake that has no
+		// such route, get its 404 back, and pass a laxer assertion.
+		if w.Code != http.StatusNotFound {
+			t.Errorf("POST %s = %d, want 404 — this route must not exist on the panel", path, w.Code)
 		}
+	}
+}
+
+// Lock contention keeps its OWN vocabulary. web_snapshot_busy must not
+// collapse into capability_unavailable the way web_runtime_unavailable does
+// (that one is a closed capability with a gate; this one is a momentary
+// state of a running runtime that the next poll answers), and a second
+// concurrent close must arrive as 409 web_operation_in_progress. Both arms
+// existed in writeWebTelemtError with nothing producing them.
+func TestWebBusyKeepsItsOwnCodes(t *testing.T) {
+	srv, cookie, _ := newTelemttestConfigServer(t, telemttest.Scenario{WebBusy: true})
+
+	ref := "ws1.0123456789abcdef0123456789abcdef.0000000000000001"
+	w := doRequest(t, srv, cookie, "GET", "/api/telemt/web/sessions/"+ref, nil, nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET session = %d, want 503: %s", w.Code, w.Body)
+	}
+	if !strings.Contains(w.Body.String(), telemt.CodeWebSnapshotBusy) {
+		t.Errorf("body = %s, want %s and NOT capability_unavailable", w.Body, telemt.CodeWebSnapshotBusy)
+	}
+	if strings.Contains(w.Body.String(), "capability_unavailable") {
+		t.Errorf("body = %s: a busy snapshot is not a closed capability", w.Body)
+	}
+
+	// The listing still answers 200 — an EMPTY page naming the plane, which
+	// means "busy", not "no sessions".
+	w = doRequest(t, srv, cookie, "GET", "/api/telemt/web/sessions?limit=20", nil, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET sessions = %d, want 200: %s", w.Code, w.Body)
+	}
+	page := decodeWebJSON[telemt.WebSessionPage](t, w.Body.Bytes())
+	if len(page.Sessions) != 0 || len(page.Partial) != 1 || page.Partial[0] != "manager" {
+		t.Errorf("page = %+v, want an empty page with partial=[manager]", page)
+	}
+
+	body := []byte(`{"runtime_instance":"0123456789abcdef0123456789abcdef",` +
+		`"selector":{"kind":"refs","session_refs":["` + ref + `"]}}`)
+	w = doRequest(t, srv, cookie, "POST", "/api/telemt/web/sessions/close", nil, body)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("POST close = %d, want 409: %s", w.Code, w.Body)
+	}
+	if !strings.Contains(w.Body.String(), telemt.CodeWebOperationInProgress) {
+		t.Errorf("body = %s, want %s", w.Body, telemt.CodeWebOperationInProgress)
 	}
 }

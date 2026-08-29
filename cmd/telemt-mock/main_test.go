@@ -14,7 +14,7 @@ import (
 func TestScenariosCoverTheDocumentedFlagValues(t *testing.T) {
 	want := []string{
 		"full", "old-build", "edge-off", "edge-gated",
-		"me-pool-down", "upstream-source-down", "read-only", "web-off",
+		"me-pool-down", "upstream-source-down", "read-only", "web-off", "web-busy",
 	}
 	if len(scenarios) != len(want) {
 		t.Fatalf("scenarios has %d entries, want %d: %v", len(scenarios), len(want), scenarios)

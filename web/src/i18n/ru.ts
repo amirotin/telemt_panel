@@ -1640,6 +1640,8 @@ export const ru = {
         "Включите minimal_runtime_enabled = true в конфиге Telemt и перезапустите прокси.",
       web_enabled:
         "Включите WEB-режим: `[web] enabled = true` плюс слушатель с `transport = \"web\"` в `[[server.listeners]]`, затем перезапустите прокси.",
+      web_runtime_transitional:
+        "Рантайм WEB сейчас поднимается или останавливается — подождите несколько секунд и обновите. Менять `[web]` в конфиге не нужно.",
       me_pool_unavailable:
         "Пул middle proxy не запущен: включите use_middle_proxy = true в конфиге Telemt и дождитесь инициализации пула.",
       source_temporarily_unavailable:

@@ -173,6 +173,29 @@ describe("ScalarSection (spec §8.1, §9.1)", () => {
     expect(el.textContent).not.toContain("дн.");
   });
 
+  // A contended plane arrives as an explicit null with its name in
+  // `partial[]`, and the page turns that into a badge — the section must say
+  // «занято», not show six absent rows and let a reader conclude the fields
+  // do not exist. Nothing rendered this before: the mock always sent an
+  // empty `partial[]`.
+  it("shows the page-supplied busy badge BESIDE the rows, never instead of them", () => {
+    const sections = resolve(dcDefinition, dc);
+    const instance = byId(sections, "routing") as ScalarSectionInstance;
+    const el = render(
+      <Harness
+        render={(ctx) => (
+          <ScalarSection
+            instance={instance}
+            ctx={{ ...ctx, extrasFor: () => ({ badge: "занято" }) }}
+          />
+        )}
+      />,
+    );
+    expect(el.textContent).toContain("занято");
+    // Still the fields: a badge NEVER replaces content (§10).
+    expect(el.textContent).toContain("available_pct");
+  });
+
   it("never puts an array in a scalar row — the resolver extracted it (§12.7)", () => {
     const sections = resolve(dcDefinition, dc);
     const scalars = byId(sections, "routing") as ScalarSectionInstance;

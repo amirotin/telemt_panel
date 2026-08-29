@@ -81,16 +81,25 @@ var scenarios = map[string]telemttest.Scenario{
 	// 503 web_runtime_unavailable. The panel must render this as a gate
 	// with a "включите [web]" hint, never as an error.
 	"web-off": {RuntimeEdge: true, WebOff: true},
+	// web-busy: a RUNNING WEB runtime whose manager lock is contended.
+	// Distinct from web-off in all three answers: the status snapshot names
+	// the plane in `runtime.partial[]` with the plane itself null, the
+	// sessions listing is an empty 200 page carrying `partial:["manager"]`
+	// ("busy", not "no sessions"), and an exact lookup answers 503
+	// web_snapshot_busy while a close answers 409
+	// web_operation_in_progress. The panel must keep those two codes rather
+	// than collapsing them into "the proxy is down".
+	"web-busy": {RuntimeEdge: true, WebBusy: true},
 }
 
 func main() {
 	listen := flag.String("listen", ":9091", "address to listen on")
-	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off")
+	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off|web-busy")
 	flag.Parse()
 
 	scenario, ok := scenarios[*scenarioName]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off)\n", *scenarioName)
+		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off|web-busy)\n", *scenarioName)
 		os.Exit(1)
 	}
 

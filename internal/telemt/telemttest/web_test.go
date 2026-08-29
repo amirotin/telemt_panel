@@ -279,3 +279,56 @@ func TestWebCloseIsRefusedInReadOnlyMode(t *testing.T) {
 		t.Fatalf("err = %v, want read_only", err)
 	}
 }
+
+// Lock contention is a state of a RUNNING runtime and has three different
+// answers, none of which is "the runtime is off": a status snapshot with the
+// plane null and named in partial[], an EMPTY 200 listing that also names it,
+// and a 503 web_snapshot_busy on the exact lookup that cannot degrade like
+// that. Nothing produced any of them before Scenario.WebBusy existed, so
+// web_snapshot_busy and web_operation_in_progress were mapped but untested.
+func TestWebBusyReportsContentionNotAbsence(t *testing.T) {
+	c := newWebClient(t, Scenario{WebBusy: true})
+	ctx := context.Background()
+
+	status, err := c.WebStatus(ctx)
+	if err != nil {
+		t.Fatalf("WebStatus: %v", err)
+	}
+	if !status.Available || status.Runtime == nil {
+		t.Fatalf("a busy runtime must still be available: %+v", status)
+	}
+	if status.Runtime.Manager != nil {
+		t.Errorf("manager = %+v, want an explicit null", status.Runtime.Manager)
+	}
+	if len(status.Runtime.Partial) != 1 || status.Runtime.Partial[0] != "manager" {
+		t.Errorf("partial = %v, want [manager]", status.Runtime.Partial)
+	}
+
+	page, err := c.WebSessions(ctx, telemt.WebSessionsQuery{Limit: 20})
+	if err != nil {
+		t.Fatalf("WebSessions: %v", err)
+	}
+	if len(page.Sessions) != 0 {
+		t.Errorf("busy listing returned %d rows, want an empty page", len(page.Sessions))
+	}
+	if len(page.Partial) != 1 || page.Partial[0] != "manager" {
+		t.Errorf("page partial = %v, want [manager]: empty must mean busy, not absent", page.Partial)
+	}
+
+	if _, err := c.WebSession(ctx, webSessionRef(1)); !isWebAPICode(err, telemt.CodeWebSnapshotBusy) {
+		t.Errorf("WebSession error = %v, want %s", err, telemt.CodeWebSnapshotBusy)
+	}
+
+	_, err = c.WebSessionsClose(ctx, telemt.WebCloseRequest{
+		RuntimeInstance: webRuntimeInstance,
+		Selector:        telemt.WebCloseSelector{Kind: telemt.WebCloseSelectorRefs, SessionRefs: []string{webSessionRef(1)}},
+	})
+	if !isWebAPICode(err, telemt.CodeWebOperationInProgress) {
+		t.Errorf("close error = %v, want %s", err, telemt.CodeWebOperationInProgress)
+	}
+}
+
+func isWebAPICode(err error, code string) bool {
+	var apiErr *telemt.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == code
+}

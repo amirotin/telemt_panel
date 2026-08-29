@@ -66,6 +66,24 @@ type Scenario struct {
 	// unreachable in every scenario but one, and Scenario.OldBuild already
 	// covers the "this build has no such routes" case.
 	WebOff bool
+	// WebBusy simulates LOCK CONTENTION inside a running WEB runtime, which
+	// is a different thing from the runtime being off and has its own three
+	// answers in Telemt:
+	//
+	//   - the status snapshot comes back with the contended planes as
+	//     explicit nulls and their names in `runtime.partial[]`;
+	//   - the sessions listing comes back 200 with an EMPTY page and
+	//     `partial:["manager"]` — "busy", not "no sessions";
+	//   - an exact lookup (a session detail) cannot degrade like that, so it
+	//     answers 503 web_snapshot_busy, which the panel must keep as its
+	//     own code rather than collapsing into capability_unavailable, and a
+	//     close lands on 409 web_operation_in_progress because one control
+	//     operation runs at a time.
+	//
+	// Without it none of those three states could be produced for a test or
+	// a screenshot, and web_snapshot_busy / web_operation_in_progress were
+	// mapped but never exercised.
+	WebBusy bool
 	// BodyLimitBytes overrides the request body limit used for PATCH
 	// /v1/config (default 64KiB, Telemt's own default —
 	// config/defaults.rs::default_api_request_body_limit_bytes). Tests set

@@ -36,7 +36,12 @@ export type GateHintKey =
   // `transport = "web"` listener. Not a runtime_edge/minimal_runtime flag —
   // /v1/runtime/web/* is registered unconditionally and closes only because
   // the runtime itself is not running (Telemt 3.5.5 src/api/web_runtime.rs).
-  | "web_enabled";
+  | "web_enabled"
+  // web_runtime_transitional is the OPPOSITE advice for the same group: a
+  // runtime that is coming up or going down IS enabled, and telling that
+  // operator to set `[web] enabled = true` and restart the proxy is wrong —
+  // mid-drain it is destructive. Nothing to switch on; the next poll answers.
+  | "web_runtime_transitional";
 
 export function gateHint(s: Dict, key: GateHintKey): string {
   return s.gated.hints[key];
@@ -59,6 +64,14 @@ export interface GateHintByReason {
   readonly feature_disabled?: GateHintKey;
   /** Telemt's `source_unavailable` — the data source, not a flag, is closed. */
   readonly source_unavailable?: GateHintKey;
+  /**
+   * Reason tokens outside that pair, by their exact name. The WEB group is
+   * why this exists: its gate reasons are lifecycle-derived
+   * (`starting`/`no_web_listener`/`runtime_released`/`drained`/
+   * `deadline_exceeded`), and they do NOT all point an operator at the same
+   * place — half of them mean "wait", the other half "switch it on".
+   */
+  readonly byReason?: Readonly<Record<string, GateHintKey>>;
   /** No reason on the wire (the field was omitted entirely) — the route's most likely cause. */
   readonly fallback: GateHintKey;
 }
@@ -74,6 +87,10 @@ export function resolveGateHint(
   reason: string | undefined,
 ): GateHintKey | undefined {
   if (spec === undefined || typeof spec === "string") return spec;
+  if (reason !== undefined) {
+    const named = spec.byReason?.[reason];
+    if (named !== undefined) return named;
+  }
   if (reason === "feature_disabled") return spec.feature_disabled ?? spec.fallback;
   if (reason === "source_unavailable") return spec.source_unavailable ?? spec.fallback;
   return spec.fallback;
@@ -122,14 +139,27 @@ export const ME_POOL_RUNTIME_HINTS: GateHintByReason = {
 /**
  * `/v1/runtime/web/*` — registered unconditionally on Telemt >= 3.5.3. No
  * config FLAG gates the routes; they close because the WEB runtime is not
- * running, which Telemt reports through the status payload's own lifecycle
- * token (`no_web_listener`, `starting`, `drained`, `deadline_exceeded`,
- * `runtime_released`) rather than through the `feature_disabled` /
- * `source_unavailable` pair the other groups use. Every one of those tokens
- * points an operator at the same place — the `[web]` section and its
- * listener — so the fallback answers them all.
+ * running, which Telemt reports through its own reason token rather than
+ * through the `feature_disabled`/`source_unavailable` pair the other groups
+ * use. The token set is exactly `starting | no_web_listener |
+ * runtime_released | drained | deadline_exceeded`
+ * (3.5.5 api/web_runtime.rs:212-223), and it splits in two:
+ *
+ *   * `starting` and `runtime_released` are TRANSITIONAL. That runtime is
+ *     enabled; it is coming up, or the process is letting it go
+ *     (`runtime_released` is what a `Running`/`Draining` lifecycle reports
+ *     when the runtime `Weak` cannot be upgraded — which is why `draining`
+ *     never appears here as a reason). Telling that operator to set
+ *     `[web] enabled = true` and restart the proxy is wrong, and mid-drain
+ *     it is destructive advice.
+ *   * `no_web_listener`, `drained` and `deadline_exceeded` really do mean
+ *     "it is off / it stopped" — the fallback's switch-it-on sentence.
  */
 export const WEB_RUNTIME_HINTS: GateHintByReason = {
+  byReason: {
+    starting: "web_runtime_transitional",
+    runtime_released: "web_runtime_transitional",
+  },
   fallback: "web_enabled",
 };
 

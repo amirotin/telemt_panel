@@ -1520,6 +1520,8 @@ export const en: Dict = {
         "Set minimal_runtime_enabled = true in the Telemt config and restart the proxy.",
       web_enabled:
         "Turn WEB mode on: `[web] enabled = true` plus a listener with `transport = \"web\"` under `[[server.listeners]]`, then restart the proxy.",
+      web_runtime_transitional:
+        "The WEB runtime is starting up or shutting down — wait a few seconds and refresh. Nothing under `[web]` needs changing.",
       me_pool_unavailable:
         "The middle-proxy pool is not running: set use_middle_proxy = true in the Telemt config and wait for the pool to initialize.",
       source_temporarily_unavailable:
