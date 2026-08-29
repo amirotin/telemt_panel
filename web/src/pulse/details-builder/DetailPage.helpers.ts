@@ -2,8 +2,19 @@
 // the way every other non-trivial page in this repo splits its logic out
 // (and so the component file exports only components).
 
-import type { TabDefinition } from "./model";
+
 import type { SectionInstance } from "./resolveSections";
+
+/**
+ * The half of a TabDefinition this module needs. Narrower than the real
+ * type on purpose: TabDefinition is generic in the page context now (its
+ * `count` reads it), and section routing does not care about the context at
+ * all.
+ */
+export interface TabSections {
+  id: string;
+  sections?: string[];
+}
 
 // withUnknownTail guarantees the leftover tail is the LAST section on
 // screen, so §27.4's third term is rendered and not merely computed.
@@ -27,7 +38,7 @@ export function withUnknownTail(
 // claimed.
 export function sectionsForTab(
   sections: readonly SectionInstance[],
-  tabs: readonly TabDefinition[],
+  tabs: readonly TabSections[],
   activeId: string | undefined,
 ): SectionInstance[] {
   const tab = tabs.find((t) => t.id === activeId) ?? tabs[0];

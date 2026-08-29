@@ -367,7 +367,14 @@ export function DetailPage<TPayload, TContext>({
 
           {tabbed && (
             <SectionTabs
-              tabs={tabs.map((tab) => ({ id: tab.id, label: tab.label(s) }))}
+              tabs={tabs.map((tab) => {
+                const count = tab.count?.(context);
+                return {
+                  id: tab.id,
+                  label: tab.label(s),
+                  ...(count !== undefined && count !== null ? { count } : {}),
+                };
+              })}
               activeId={activeTab}
               onSelect={api.setActiveTab}
               panelId={panelId}

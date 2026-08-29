@@ -108,3 +108,49 @@ describe("SectionTabs", () => {
     expect(fades()).toBe(0);
   });
 });
+
+describe("tab count badges (§10, up-sec-desktop.png)", () => {
+  function renderCounts(tabs: { id: string; label: string; count?: number }[]): HTMLElement {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        <SectionTabs
+          tabs={tabs}
+          activeId={tabs[0]?.id}
+          onSelect={() => {}}
+          panelId="panel"
+          label="Разделы"
+        />,
+      ),
+    );
+    mounted = { container, root };
+    return container;
+  }
+
+  it("puts the size beside the label, never instead of it", () => {
+    const el = renderCounts([
+      { id: "posture", label: "Посадка" },
+      { id: "by_ip", label: "По IP", count: 50 },
+    ]);
+    const tabs = Array.from(el.querySelectorAll<HTMLElement>('[role="tab"]'));
+    // The tab with no count is a bare label — no stray "0".
+    expect(tabs[0].textContent).toBe("Посадка");
+    // The one with a count keeps its name and gains the figure.
+    expect(tabs[1].textContent).toContain("По IP");
+    expect(tabs[1].textContent).toContain("50");
+  });
+
+  it("draws no badge for a scope that has not answered", () => {
+    const el = renderCounts([{ id: "by_user", label: "По пользователю" }]);
+    expect(el.querySelector<HTMLElement>('[role="tab"]')!.textContent).toBe("По пользователю");
+  });
+
+  it("does draw a zero for a scope that answered empty", () => {
+    // §14 keeps "no answer" and "answered with nothing" apart, and a badge
+    // is one of the few places the difference is visible at a glance.
+    const el = renderCounts([{ id: "by_cidr", label: "По подсети", count: 0 }]);
+    expect(el.querySelector<HTMLElement>('[role="tab"]')!.textContent).toContain("0");
+  });
+});

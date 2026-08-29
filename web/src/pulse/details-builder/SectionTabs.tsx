@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { CountBadge } from "../../ui/Chip";
 import { tabElementId } from "./DetailPage.helpers";
 import { useRovingFocus } from "./surfaces/rovingFocus";
 
 export interface SectionTab {
   id: string;
   label: string;
+  /** How much this tab holds — a badge beside the label, never instead of it (§10). */
+  count?: number;
 }
 
 export interface SectionTabsProps {
@@ -102,6 +105,11 @@ export function SectionTabs({ tabs, activeId, onSelect, panelId, label }: Sectio
               )}
             >
               {tab.label}
+              {tab.count !== undefined && (
+                <CountBadge tone={selected ? "accent" : "muted"} className="ml-1.5">
+                  {tab.count}
+                </CountBadge>
+              )}
             </button>
           );
         })}

@@ -203,3 +203,24 @@ describe("TLS passthrough with no gate envelope", () => {
     });
   });
 });
+
+describe("ranking tab badges (§10)", () => {
+  const tabs = securityPageDefinition.navigation!.tabs!;
+  const tabById = (id: string) => tabs.find((t) => t.id === id)!;
+
+  it("sizes each of the four scopes from its own array", () => {
+    for (const scope of TLS_SCOPE_PATHS) {
+      expect(tabById(scope).count?.(full!), scope).toBe(tlsFingerprints[scope].length);
+    }
+  });
+
+  it("leaves the posture tab unbadged — it holds no collection", () => {
+    expect(tabById("posture").count).toBeUndefined();
+  });
+
+  it("reports null, not zero, when the TLS source never answered", () => {
+    for (const scope of TLS_SCOPE_PATHS) {
+      expect(tabById(scope).count?.(topicOnly!), scope).toBeNull();
+    }
+  });
+});

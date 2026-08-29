@@ -479,16 +479,24 @@ export interface EntitySelectorDefinition<TPayload> {
   attention?: (item: unknown) => { tone: "warn" | "bad"; reason: Localized } | null;
 }
 
-export interface TabDefinition {
+export interface TabDefinition<TContext = unknown> {
   id: string;
   label: Localized;
   /** Section ids shown under this tab; empty means "all remaining". */
   sections?: string[];
+  /**
+   * Optional badge on the tab: how much the tab holds, so «По IP» says 50
+   * before it is opened (§10's count badge, applied to the tab strip).
+   * Explicit rather than derived from the sections underneath — a tab
+   * holding two collections has no single number, and a tab of scalars has
+   * none at all. Return null for "nothing to count right now".
+   */
+  count?: (context: TContext) => number | null;
 }
 
 export interface NavigationDefinition<TPayload, TContext> {
   entities?: EntitySelectorDefinition<TPayload>;
-  tabs?: TabDefinition[];
+  tabs?: TabDefinition<TContext>[];
   /** Narrows the payload to the currently selected entity. */
   selectEntity?: (payload: TPayload, key: string | undefined) => TContext | null;
 }

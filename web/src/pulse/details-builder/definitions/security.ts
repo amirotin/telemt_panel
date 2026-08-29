@@ -42,6 +42,14 @@ const rowOf = (item: unknown) => item as TlsFingerprintRow;
 export const TLS_SCOPE_PATHS = ["by_fingerprint", "by_ip", "by_cidr", "by_user"] as const;
 export type TlsScopePath = (typeof TLS_SCOPE_PATHS)[number];
 
+// scopeCount is a ranking tab's badge: the number of records the scope
+// holds, or null when the TLS source has not answered (absent key), which is
+// a different thing from an empty ranking.
+function scopeCount(payload: SecurityPageData, path: TlsScopePath): number | null {
+  const rows = payload[path];
+  return rows === undefined ? null : rows.length;
+}
+
 // tlsRanking builds one of §23.3's four tabs. They differ in exactly two
 // ways — which array they read and what names a row — so the shape is
 // written once and the differences are arguments.
@@ -194,14 +202,34 @@ export const securityPageDefinition: DetailPageDefinition<SecurityPageData, Secu
           "limits_user_tcp",
         ],
       },
+      // The four ranking tabs carry their size as a badge (up-sec-desktop
+      // .png): «По IP 50» answers "is there anything in there" without a
+      // tab switch, and an absent TLS payload leaves the badge off rather
+      // than printing a 0 that would read as "measured, and it is zero".
       {
         id: "by_fingerprint",
         label: (s) => s.details.pages.security.tabs.byFingerprint,
         sections: ["capture", "by_fingerprint"],
+        count: (p) => scopeCount(p, "by_fingerprint"),
       },
-      { id: "by_ip", label: (s) => s.details.pages.security.tabs.byIp, sections: ["by_ip"] },
-      { id: "by_cidr", label: (s) => s.details.pages.security.tabs.byCidr, sections: ["by_cidr"] },
-      { id: "by_user", label: (s) => s.details.pages.security.tabs.byUser, sections: ["by_user"] },
+      {
+        id: "by_ip",
+        label: (s) => s.details.pages.security.tabs.byIp,
+        sections: ["by_ip"],
+        count: (p) => scopeCount(p, "by_ip"),
+      },
+      {
+        id: "by_cidr",
+        label: (s) => s.details.pages.security.tabs.byCidr,
+        sections: ["by_cidr"],
+        count: (p) => scopeCount(p, "by_cidr"),
+      },
+      {
+        id: "by_user",
+        label: (s) => s.details.pages.security.tabs.byUser,
+        sections: ["by_user"],
+        count: (p) => scopeCount(p, "by_user"),
+      },
     ],
   },
 
