@@ -69,6 +69,7 @@ export const en: Dict = {
     tagline: "MTProxy management",
   },
   nav: {
+    overview: "Overview",
     people: "People",
     pulse: "Pulse",
     journal: "Journal",

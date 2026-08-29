@@ -1,33 +1,13 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "../lib/cn";
-import { useStrings, type Dict } from "../i18n";
+import { useStrings } from "../i18n";
 import { StatusStrip } from "./StatusStrip";
 import { HeaderMenu } from "./HeaderMenu";
+import { NAV_ITEMS, isNavItemActive } from "./nav";
 import { useKeyboardInset } from "./useKeyboardInset";
 import { useLogout } from "../auth/useLogout";
-import {
-  IconJournal,
-  IconLogout,
-  IconPeople,
-  IconPulse,
-  IconServer,
-  type IconProps,
-} from "../ui/icons";
-
-// `labelKey` indexes the active dictionary at render time (s.nav[labelKey]):
-// a resolved label here would freeze the sidebar to whichever language was
-// active when the module was first imported.
-const NAV_ITEMS: ReadonlyArray<{
-  to: string;
-  labelKey: keyof Dict["nav"];
-  Icon: ComponentType<IconProps>;
-}> = [
-  { to: "/people", labelKey: "people", Icon: IconPeople },
-  { to: "/pulse", labelKey: "pulse", Icon: IconPulse },
-  { to: "/journal", labelKey: "journal", Icon: IconJournal },
-  { to: "/server", labelKey: "server", Icon: IconServer },
-];
+import { IconLogout } from "../ui/icons";
 
 // BrandMark — the square "T" tile from the prototype's sidebar/login. The
 // letter is the product name's own initial rather than a separate asset, so
@@ -149,7 +129,7 @@ export function Shell({ children }: { children: ReactNode }) {
           aria-label={s.shell.navLabel}
         >
           {NAV_ITEMS.map(({ to, labelKey, Icon }) => {
-            const active = pathname === to || pathname.startsWith(`${to}/`);
+            const active = isNavItemActive(to, pathname);
             return (
               <Link
                 key={to}

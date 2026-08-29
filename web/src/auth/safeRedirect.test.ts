@@ -6,6 +6,11 @@ describe("safeRedirectTarget", () => {
     ["/people", "/people"],
     ["/pulse?x=1", "/pulse?x=1"],
     ["/users/a.b", "/users/a.b"],
+    // The five-section IA's own paths, including the one M4 task 9 added:
+    // an interrupted session on Сводка or a Details page must come back to
+    // where it was, not to the landing section.
+    ["/overview", "/overview"],
+    ["/pulse/diag/dc?entity=dc%3A1", "/pulse/diag/dc?entity=dc%3A1"],
   ])("accepts %s", (input, expected) => {
     expect(safeRedirectTarget(input)).toBe(expected);
   });

@@ -81,6 +81,7 @@ export const ru = {
     tagline: "Управление MTProxy",
   },
   nav: {
+    overview: "Сводка",
     people: "Люди",
     pulse: "Пульс",
     journal: "Журнал",
