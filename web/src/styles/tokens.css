@@ -340,15 +340,22 @@
   --text-faint: 164 149 129; /* #a49581 — 4.62:1 on --surface-2 */
 
   --accent: 230 161 23; /* #e6a117 */
-  --accent-strong: 214 148 15; /* #d6940f — the fill, one step down so hover:bg-accent still lifts */
+  /* The fill, deep enough for the switch knob riding ON it to keep its own
+     3:1 boundary (contrast.test.ts's fill-vs-ground family) and still a step
+     under --accent so hover:bg-accent lifts. */
+  --accent-strong: 188 130 13; /* #bc820d — knob on it 3.21:1, label on it 5.01:1 */
   --accent-hover: 235 174 53; /* #ebae35 */
-  --accent-text: 33 30 26; /* #211e1a on the amber fill: 6.9:1 */
+  --accent-text: 33 30 26; /* #211e1a on the amber fill: 5.0:1 */
 
   --ok: 116 193 78; /* #74c14e */
   --warn: 242 153 101; /* #f29965 */
   --error: 238 158 169; /* #ee9ea9 */
-  --error-strong: 171 43 56; /* #ab2b38 — a deep red fill, so its label stays light */
-  --error-text: 255 251 245; /* #fffbf5 — 6.6:1 on --error-strong */
+  /* Light-on-dark, like the accent fill beside it, and for the same reason:
+     the variant's deep #ab2b38 was 2.01:1 against --surface-2, i.e. a badge
+     whose own boundary vanished (WCAG 1.4.11). A dark theme's solid fills go
+     LIGHTER than the ground; this one had gone darker. */
+  --error-strong: 218 108 119; /* #da6c77 — 4.11:1 on --surface-2 */
+  --error-text: 33 30 26; /* #211e1a — 5.05:1 on --error-strong */
   --muted: 183 174 163; /* #b7aea3 */
 
   --focus-ring: 230 161 23;
@@ -384,9 +391,9 @@
   --avatar-alert-text: 238 158 169;
 
   --bar-track: 60 54 46;
-  --bar-fill: 214 148 15;
+  --bar-fill: 188 130 13;
   --bar-fill-warn: 242 153 101;
-  --bar-fill-full: 171 43 56;
+  --bar-fill-full: 218 108 119;
 }
 
 /* «Пергамент» — the warm LIGHT theme (owner's pick A). A cream sepia

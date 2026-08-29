@@ -232,6 +232,44 @@ describe.each(THEMES)("solid fills carry their white label (%s)", (name, p) => {
   });
 });
 
+// WCAG 1.4.11: a solid fill IS the boundary of the component it paints, so
+// it needs 3:1 against whatever it sits on — a separate measurement from
+// "the label reads on the fill" above, and the one the warm palettes fell
+// through. «Мокко» shipped an --error-strong that was 2.01:1 against
+// --surface-2 (a badge with no visible edge) and a switch knob at 2.51:1
+// against its own amber track.
+//
+// Grounds, per fill:
+//   * accent-strong / error-strong / focus-ring — the three page surfaces;
+//   * control-knob — --accent-strong, the track it rides in the ON state.
+//
+// NOT covered, and deliberately: the knob against --surface-3, the OFF
+// track. A white knob on a light grey track is 1.31:1 in Светлая and
+// 1.45:1 in «Пергамент» — the same in every light palette, predating this
+// task. The control is read there from the knob's POSITION plus its
+// shadow, and forcing the pair apart would mean repainting Светлая, which
+// this palette work is explicitly not doing. Recorded as a number rather
+// than left unmeasured.
+describe.each(THEMES)("solid fills keep their own boundary (%s)", (name, p) => {
+  for (const fill of ["accent-strong", "error-strong", "focus-ring"] as const) {
+    for (const surface of SURFACES) {
+      it(`--${fill} against --${surface}`, () => {
+        expect(
+          contrast(token(p, fill), token(p, surface)),
+          `${name}: --${fill} on --${surface}`,
+        ).toBeGreaterThanOrEqual(NON_TEXT);
+      });
+    }
+  }
+
+  it("--control-knob against the accent track it rides", () => {
+    expect(
+      contrast(token(p, "control-knob"), token(p, "accent-strong")),
+      `${name}: --control-knob on --accent-strong`,
+    ).toBeGreaterThanOrEqual(NON_TEXT);
+  });
+});
+
 describe.each(THEMES)("transient hover/active tints clear 3:1 (%s)", (name, p) => {
   for (const [tone, alpha] of TRANSIENT) {
     for (const surface of SURFACES) {
