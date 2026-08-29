@@ -1,14 +1,13 @@
 import { fill, type Dict } from "../../i18n";
 import type { DcStatusData, StatsSnapshot } from "../../realtime/topics";
+import type { DiagDomain } from "../types";
 
 export interface ProblemItem {
   key: string;
   label: string;
   detail?: string;
-  /** A short actionable line under the label (e.g. what to check) — kept separate from `detail` because `detail` alone can double as the right-hand count badge (Problems.tsx's `isCount`). */
+  /** A short actionable line under the label — a second, quieter register than `detail` (what to check, which classes a grouped item covers). */
   hint?: string;
-  /** Explicit right-hand badge text, for items whose `detail` is prose that must stay visible alongside a figure (the rate-based counters' "+12" badge over their "+12 за 15 мин · всего 37 086" line). */
-  count?: string;
 }
 
 export interface StaleTopicInput {
@@ -31,10 +30,10 @@ export function counterDelta(baseline: number | undefined, current: number): num
 }
 
 // rateItem builds the ProblemItem for one cumulative counter that actually
-// moved: the badge carries the delta, the prose line spells the window out
-// and keeps the lifetime total visible so the figure is never hidden, only
-// demoted. Returns null when the counter did not move (or when there is no
-// window yet) — that is the whole point of the rate rules.
+// moved: the line spells the window out and keeps the lifetime total visible
+// beside it, so the figure is never hidden, only demoted. Returns null when
+// the counter did not move (or when there is no window yet) — that is the
+// whole point of the rate rules.
 function rateItem(
   key: string,
   label: string,
@@ -47,7 +46,6 @@ function rateItem(
     key,
     label,
     detail: fill(s.pulse.problems.deltaDetail, { delta, total }),
-    count: `+${delta}`,
   };
 }
 
@@ -202,7 +200,29 @@ export function computeProblems(
     const badByClass = [...(summary.connections_bad_by_class ?? [])].sort(
       (a, b) => b.total - a.total,
     );
+    // The TLS/probe classes are folded into ONE item (concept §19: "не
+    // делать для этого отдельную карточку" — a spike becomes a problem
+    // item). Telemt reports them per class (tls_handshake_bad_client,
+    // tls_mtproto_bad_client), but to an operator they are one phenomenon:
+    // somebody is probing the port. Three near-identical warn rows would
+    // push the real problems off the card.
+    const tlsClasses = badByClass.filter((c) => isTlsProbeClass(c.class));
+    let tlsDelta = 0;
+    let tlsTotal = 0;
+    for (const c of tlsClasses) {
+      tlsDelta += counterDelta(byClassTotal(base.connections_bad_by_class, c.class), c.total) ?? 0;
+      tlsTotal += c.total;
+    }
+    if (tlsDelta > 0) {
+      items.push({
+        key: "tls_probe_anomaly",
+        label: s.pulse.problems.tlsProbeAnomaly,
+        detail: fill(s.pulse.problems.deltaDetail, { delta: tlsDelta, total: tlsTotal }),
+        hint: tlsClasses.map((c) => c.class).join(" · "),
+      });
+    }
     for (const c of badByClass) {
+      if (isTlsProbeClass(c.class)) continue;
       const item = rateItem(
         `connections_bad_${c.class}`,
         `${s.pulse.problems.connectionsBadByClass}: ${c.class}`,
@@ -247,6 +267,46 @@ export function lifetimeCountersNote(stats: StatsSnapshot | null, s: Dict): stri
   if (parts.length === 0) return null;
   return fill(s.pulse.problems.lifetimeCounters, { value: parts.join(" · ") });
 }
+
+// isTlsProbeClass recognizes the bad-connection classes that mean "someone
+// spoke the wrong protocol at the port", which on a public MTProxy is
+// scanning rather than a broken client: Telemt 3.5.5 names them
+// tls_handshake_bad_client and tls_mtproto_bad_client. Matched on the `tls_`
+// prefix and on an explicit `probe` mention so a future class joins the
+// group instead of appearing as its own permanent warn row.
+export function isTlsProbeClass(cls: string): boolean {
+  return cls.startsWith("tls_") || cls.includes("probe");
+}
+
+// problemDomain maps a ProblemItem's key onto the Пульс diagnostics page
+// that explains it, so a row on Сводка is a way IN rather than a dead end
+// (concept §6: "блок Проблемы объясняет причину", and the cause lives one
+// click away). undefined for the items no single page owns — Telemt not
+// ready, read-only mode and capability gaps are facts about the whole
+// install, and sending the reader to an arbitrary page would be a guess.
+export function problemDomain(key: string): DiagDomain | undefined {
+  if (key === "tls_probe_anomaly") return "security";
+  if (
+    key.startsWith("handshake_") ||
+    key.startsWith("connections_bad") ||
+    key === "handshake_timeouts_total"
+  ) {
+    return "counters";
+  }
+  if (key === "me_direct_fallback" || key.startsWith("me_coverage_low")) return "dc";
+  if (key === "me_split_traffic") return "me";
+  if (key.startsWith("stale_")) return STALE_TOPIC_DOMAIN[key.slice("stale_".length)];
+  return undefined;
+}
+
+// Which page owns each SSE topic's data — a stale topic sends the reader to
+// the screen that would show it, not to a generic "something is stale".
+const STALE_TOPIC_DOMAIN: Record<string, DiagDomain | undefined> = {
+  stats: "connections",
+  runtime: "me",
+  upstreams: "upstreams",
+  security: "security",
+};
 
 // problemSeverity maps a ProblemItem's stable `key` onto the app's one
 // status vocabulary (ok|warn|error|muted) so the widget can show the same

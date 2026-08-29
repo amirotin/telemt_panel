@@ -25,7 +25,14 @@ import { TlsFingerprintsWidget } from "./TlsFingerprintsWidget";
 // "tiles" is the one shape that is not a single cell: such a widget renders
 // its OWN grid cells as siblings of the other widgets (Показатели's four
 // three-column tiles), so the page must not wrap it in a column div.
-export type WidgetSize = "third" | "half" | "twoThirds" | "full" | "tiles";
+export type WidgetSize =
+  | "third"
+  | "fiveTwelfths"
+  | "half"
+  | "sevenTwelfths"
+  | "twoThirds"
+  | "full"
+  | "tiles";
 
 export interface WidgetDef {
   /** Also the dictionary key its title comes from — `s.pulse.widgets[id]`. */
@@ -79,7 +86,10 @@ export const WIDGETS: WidgetDef[] = [
     id: "problems",
     topics: ["stats", "runtime", "upstreams", "security"],
     minMode: "critical",
-    size: "third",
+    // 5/12 beside «Онлайн сейчас»'s 7/12 (concept §7): the problem rows are
+    // short lines, the online rows carry four figures each, and an even
+    // split left one card padded and the other cramped.
+    size: "fiveTwelfths",
     hideable: true,
     render: Problems,
   },

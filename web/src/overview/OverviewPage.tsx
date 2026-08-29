@@ -21,7 +21,9 @@ import type { WidgetId } from "../pulse/types";
 // the phone layout is byte-for-byte what it was.
 const SPAN_CLASSES: Record<WidgetSize, string> = {
   third: "lg:col-span-4",
+  fiveTwelfths: "lg:col-span-5",
   half: "lg:col-span-6",
+  sevenTwelfths: "lg:col-span-7",
   twoThirds: "lg:col-span-8",
   full: "lg:col-span-12",
   // A "tiles" widget emits its own cells; the page never wraps it.

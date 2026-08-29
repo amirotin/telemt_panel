@@ -46,7 +46,15 @@ describe("WIDGETS registry invariants", () => {
   });
 
   it("declares a valid grid size for every widget", () => {
-    const valid = new Set(["third", "half", "twoThirds", "full", "tiles"]);
+    const valid = new Set([
+      "third",
+      "fiveTwelfths",
+      "half",
+      "sevenTwelfths",
+      "twoThirds",
+      "full",
+      "tiles",
+    ]);
     for (const w of WIDGETS) {
       expect(valid.has(w.size)).toBe(true);
     }

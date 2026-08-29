@@ -348,6 +348,7 @@ export const en: Dict = {
       connectionsBad: "Bad connections (total)",
       handshakeTimeouts: "Handshake timeouts",
       connectionsBadByClass: "Bad connections",
+      tlsProbeAnomaly: "Suspicious TLS clients",
       meDirectFallback: "Middle proxy unavailable: traffic is going direct (0 alive writers)",
       meDirectFallbackHint: "Check outbound access to Telegram / core.telegram.org (proxy-config download).",
       meCoverageLow: "Low middle-proxy coverage",

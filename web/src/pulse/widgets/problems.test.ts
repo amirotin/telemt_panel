@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeProblems,
   counterDelta,
+  isTlsProbeClass,
+  problemDomain,
   lifetimeCountersNote,
   problemSeverity,
 } from "./problems.helpers";
@@ -227,7 +229,6 @@ describe("computeProblems — cumulative counters are ranked by rate, not by lif
         key: "handshake_unexpected_eof",
         label: "Ошибки хендшейка: unexpected_eof",
         detail: "+12 за 15 мин · всего 37098",
-        count: "+12",
       },
     ]);
     expect(problemSeverity("handshake_unexpected_eof")).toBe("warn");
@@ -253,7 +254,10 @@ describe("computeProblems — cumulative counters are ranked by rate, not by lif
     // bad_secret grew by 6, timeout is a brand-new class (absent from the
     // baseline = a genuine zero) and grew by 3; unexpected_eof did not move.
     expect(items.map((i) => i.key)).toEqual(["handshake_bad_secret", "handshake_timeout"]);
-    expect(items.map((i) => i.count)).toEqual(["+6", "+3"]);
+    expect(items.map((i) => i.detail)).toEqual([
+      "+6 за 15 мин · всего 10",
+      "+3 за 15 мин · всего 3",
+    ]);
   });
 
   it("reports the bad-connection scalars only for their growth", () => {
@@ -263,7 +267,6 @@ describe("computeProblems — cumulative counters are ranked by rate, not by lif
     );
     const items = computeProblems(current, [], [], null, s, baseline);
     expect(items.map((i) => i.key)).toEqual(["connections_bad_total"]);
-    expect(items[0].count).toBe("+4");
     expect(items[0].detail).toBe("+4 за 15 мин · всего 1179");
   });
 
@@ -283,7 +286,10 @@ describe("computeProblems — cumulative counters are ranked by rate, not by lif
       "connections_bad_quota_exceeded",
       "connections_bad_rate_limited",
     ]);
-    expect(items.map((i) => i.count)).toEqual(["+1", "+2"]);
+    expect(items.map((i) => i.detail)).toEqual([
+      "+1 за 15 мин · всего 9",
+      "+2 за 15 мин · всего 2",
+    ]);
   });
 
   it("reports the post-reset counter after Telemt restarted mid-window", () => {
@@ -293,7 +299,7 @@ describe("computeProblems — cumulative counters are ranked by rate, not by lif
     );
     const items = computeProblems(current, [], [], null, s, baseline);
     expect(items.map((i) => i.key)).toEqual(["connections_bad_total"]);
-    expect(items[0].count).toBe("+6");
+    expect(items[0].detail).toBe("+6 за 15 мин · всего 6");
   });
 
   it("stays silent when the baseline snapshot had no summary of its own", () => {
@@ -421,5 +427,85 @@ describe("problemSeverity", () => {
     expect(problemSeverity("read_only")).toBe("warn");
     expect(problemSeverity("stale_stats")).toBe("warn");
     expect(problemSeverity("handshake_tls")).toBe("warn");
+  });
+});
+
+describe("TLS/probe anomalies as ONE problem item (concept §19)", () => {
+  it("recognizes the classes Telemt names for wrong-protocol traffic", () => {
+    expect(isTlsProbeClass("tls_handshake_bad_client")).toBe(true);
+    expect(isTlsProbeClass("tls_mtproto_bad_client")).toBe(true);
+    expect(isTlsProbeClass("probe_detected")).toBe(true);
+    expect(isTlsProbeClass("direct_modes_disabled")).toBe(false);
+    expect(isTlsProbeClass("rate_limited")).toBe(false);
+  });
+
+  it("folds every growing tls_* class into one row with the summed figures", () => {
+    // The live VPS shape: two TLS classes plus one unrelated class.
+    const { current, baseline } = withSummary(
+      {
+        connections_bad_by_class: [
+          { class: "tls_handshake_bad_client", total: 1_012 },
+          { class: "tls_mtproto_bad_client", total: 275 },
+          { class: "direct_modes_disabled", total: 16 },
+        ],
+      },
+      {
+        connections_bad_by_class: [
+          { class: "tls_handshake_bad_client", total: 950 },
+          { class: "tls_mtproto_bad_client", total: 253 },
+          { class: "direct_modes_disabled", total: 14 },
+        ],
+      },
+    );
+    const items = computeProblems(current, [], [], null, s, baseline);
+    expect(items.map((i) => i.key)).toEqual([
+      "tls_probe_anomaly",
+      "connections_bad_direct_modes_disabled",
+    ]);
+    const tls = items[0];
+    expect(tls.label).toBe("Подозрительные TLS-клиенты");
+    // 62 + 22 grown, 1012 + 275 lifetime — one phenomenon, one row.
+    expect(tls.detail).toBe("+84 за 15 мин · всего 1287");
+    // Which classes it covers stays visible, quietly.
+    expect(tls.hint).toBe("tls_handshake_bad_client · tls_mtproto_bad_client");
+  });
+
+  it("stays silent while the TLS classes are not growing", () => {
+    const same = {
+      connections_bad_by_class: [{ class: "tls_handshake_bad_client", total: 1_012 }],
+    };
+    const { current, baseline } = withSummary(same, same);
+    expect(computeProblems(current, [], [], null, s, baseline)).toEqual([]);
+  });
+});
+
+describe("problemDomain — every row that has a cause is a way into Пульс", () => {
+  it("sends counter rows to Счётчики and the TLS row to Безопасность", () => {
+    expect(problemDomain("handshake_unexpected_eof")).toBe("counters");
+    expect(problemDomain("connections_bad_total")).toBe("counters");
+    expect(problemDomain("connections_bad_rate_limited")).toBe("counters");
+    expect(problemDomain("handshake_timeouts_total")).toBe("counters");
+    expect(problemDomain("tls_probe_anomaly")).toBe("security");
+  });
+
+  it("sends the middle-proxy rows to the page that shows writers", () => {
+    expect(problemDomain("me_direct_fallback")).toBe("dc");
+    expect(problemDomain("me_coverage_low_2")).toBe("dc");
+    expect(problemDomain("me_split_traffic")).toBe("me");
+  });
+
+  it("sends a stale topic to the page that would have shown it", () => {
+    expect(problemDomain("stale_stats")).toBe("connections");
+    expect(problemDomain("stale_runtime")).toBe("me");
+    expect(problemDomain("stale_upstreams")).toBe("upstreams");
+    expect(problemDomain("stale_security")).toBe("security");
+  });
+
+  // Facts about the whole install: no single page owns them, and guessing
+  // one would send the reader somewhere that explains nothing.
+  it("has no page for the install-wide states", () => {
+    expect(problemDomain("not_ready")).toBeUndefined();
+    expect(problemDomain("read_only")).toBeUndefined();
+    expect(problemDomain("cap_quota")).toBeUndefined();
   });
 });

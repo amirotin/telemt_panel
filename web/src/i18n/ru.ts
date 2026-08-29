@@ -413,6 +413,9 @@ export const ru = {
       connectionsBad: "Плохие соединения (всего)",
       handshakeTimeouts: "Таймауты хендшейка",
       connectionsBadByClass: "Плохие соединения",
+      // Всплеск сканирования порта: классы tls_* сведены в один пункт
+      // (концепция §19 — отдельной карточки для этого не заводим).
+      tlsProbeAnomaly: "Подозрительные TLS-клиенты",
       meDirectFallback: "Middle-proxy недоступен: трафик идёт напрямую (0 живых writer'ов)",
       meDirectFallbackHint:
         "Проверьте исходящий доступ к Telegram / core.telegram.org (загрузка proxy-config).",
