@@ -24,7 +24,42 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+// The same category, one file type over: a `*/` written INSIDE a CSS
+// comment (`--brand-*/--avatar-text`, meaning "the --brand-* tokens") ends
+// that comment early. Everything after it becomes code, the parser throws
+// the malformed rule away along with whatever followed, and nothing
+// reports it — not the build, not tsc, not eslint. It cost a whole
+// [data-theme] palette and the entire custom base layer once (Task 11);
+// stripping comments the way a parser does and finding a `*/` left over is
+// the exact signal.
+function danglingCommentDelimiter(css: string): boolean {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const start = css.indexOf("/*", i);
+    if (start < 0) {
+      out += css.slice(i);
+      break;
+    }
+    out += css.slice(i, start);
+    const end = css.indexOf("*/", start + 2);
+    // An unterminated comment swallows the rest of the file — also a bug,
+    // and also invisible, so it counts.
+    if (end < 0) return true;
+    i = end + 2;
+  }
+  return out.includes("*/");
+}
+
 describe("source hygiene", () => {
+  it("leaves no CSS comment delimiter stranded outside a comment", () => {
+    const offenders = sourceFiles(SRC_DIR)
+      .filter((path) => path.endsWith(".css"))
+      .filter((path) => danglingCommentDelimiter(readFileSync(path, "utf8")))
+      .map((path) => path.slice(SRC_DIR.length + 1));
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps every source file free of a raw NUL byte", () => {
     const files = sourceFiles(SRC_DIR);
     // A sweep that walked nothing would pass forever; pin that it walked
