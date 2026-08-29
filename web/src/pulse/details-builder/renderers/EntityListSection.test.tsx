@@ -335,6 +335,9 @@ describe("EntityListSection grouping and filters (spec §23.2, §18.2)", () => {
     const select = el.querySelector("select")!;
     expect(select.value).toBe("");
     expect(select.options[0].textContent).toBe("Состояние: Любое");
+    // A closed native select shows only the chosen option, so every option
+    // names the filter — not just the "any" one.
+    expect(select.options[1].textContent).toMatch(/^Состояние: /);
     act(() => {
       select.value = "active";
       select.dispatchEvent(new Event("change", { bubbles: true }));

@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { fieldNameSegments } from "./fieldNameWrap";
 
 export type DescribedRowNameStyle = "field" | "label";
 
@@ -93,7 +94,17 @@ export function DescribedRow({
               : "text-meta text-text-muted",
           )}
         >
-          {name}
+          {/* A Telemt field name is one long unbreakable token; offer the
+              browser the boundaries a reader recognizes rather than letting
+              it split `stun_backoff_remainin`/`g_ms` at 360 px. */}
+          {nameStyle === "field" && typeof name === "string"
+            ? fieldNameSegments(name).map((segment, i) => (
+                <Fragment key={i}>
+                  {i > 0 && <wbr />}
+                  {segment}
+                </Fragment>
+              ))
+            : name}
         </div>
         {description !== undefined && description !== "" && (
           <p className="mt-0.5 break-words text-meta leading-snug text-text-muted">{description}</p>

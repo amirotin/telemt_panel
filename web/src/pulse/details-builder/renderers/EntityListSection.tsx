@@ -163,10 +163,14 @@ export function EntityListSection({
                     ctx.setFilter(filter.key, e.target.value === "" ? undefined : e.target.value)
                   }
                 >
+                  {/* Every option carries the filter's NAME, not just its
+                      value: a closed native select shows only the chosen
+                      option, so «admission» alone stopped saying what it
+                      was filtering the moment a reader picked it. */}
                   <option value="">{`${filter.label(s)}: ${s.details.entity.filterAny}`}</option>
                   {(filter.options ?? []).map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label(s)}
+                      {`${filter.label(s)}: ${option.label(s)}`}
                     </option>
                   ))}
                 </Select>

@@ -298,6 +298,12 @@ export const upstreamsPageDefinition: DetailPageDefinition<
         { path: "upstream_quality.policy.connect_failfast_hard_errors" },
       ],
     },
+    // Two envelopes, two sections, because they are two SOURCES: the route
+    // list rides the `upstreams` topic and the quality payload rides
+    // `runtime`. Under one `sourceId` the three quality rows said «не пришло
+    // в ответе» under a header claiming a healthy source whenever `runtime`
+    // was still loading — the section state has to name the source it
+    // actually describes.
     {
       kind: "scalars",
       id: "metadata",
@@ -307,6 +313,14 @@ export const upstreamsPageDefinition: DetailPageDefinition<
         { path: "stats.enabled" },
         { path: "stats.reason" },
         { path: "stats.generated_at_epoch_secs" },
+      ],
+    },
+    {
+      kind: "scalars",
+      id: "metadata_quality",
+      title: (s) => s.details.pages.upstreams.metadataQuality,
+      sourceId: "quality",
+      fields: [
         { path: "upstream_quality.enabled" },
         { path: "upstream_quality.reason" },
         { path: "upstream_quality.generated_at_epoch_secs" },

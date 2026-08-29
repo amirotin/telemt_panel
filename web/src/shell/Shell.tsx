@@ -59,7 +59,9 @@ export function Shell({ children }: { children: ReactNode }) {
               key={to}
               to={to}
               className={cn(
-                "flex min-h-10 items-center gap-2.5 rounded-md px-2.5 text-row font-semibold",
+                // 06-ui.md's design system asks 44px of every interactive
+                // element, and the sidebar was the one place still at 40.
+                "tap-target flex items-center gap-2.5 rounded-md px-2.5 text-row font-semibold",
                 "text-text-faint transition-colors hover:bg-surface-2 hover:text-text",
                 "data-[status=active]:bg-accent/14 data-[status=active]:text-accent",
               )}
@@ -81,7 +83,7 @@ export function Shell({ children }: { children: ReactNode }) {
               onClick={() => logout.mutate({})}
               disabled={logout.isPending}
               className={cn(
-                "flex min-h-10 flex-1 items-center gap-2.5 rounded-md px-2.5 text-row font-medium",
+                "tap-target flex flex-1 items-center gap-2.5 rounded-md px-2.5 text-row font-medium",
                 "text-text-faint transition-colors hover:bg-surface-2 hover:text-text",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}

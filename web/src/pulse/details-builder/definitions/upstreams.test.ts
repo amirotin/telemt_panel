@@ -114,13 +114,23 @@ describe("Upstreams page definition (spec §23.5)", () => {
     expect(classifyValue(full.zero, { path: "zero" })).toBe("object");
   });
 
-  it("tells the two response envelopes apart in the metadata block", () => {
+  it("gives each response envelope its own block, under its own source", () => {
+    // The two envelopes come from two different topics — `upstreams` and
+    // `runtime` — so they are two sections: one `sourceId` for both made the
+    // quality rows read «не пришло в ответе» under a header claiming a
+    // healthy source whenever `runtime` was still loading.
     const metadata = sectionById(full, "metadata") as ScalarSectionInstance;
+    const quality = sectionById(full, "metadata_quality") as ScalarSectionInstance;
+    expect(metadata.sourceId).toBe("upstreams");
+    expect(quality.sourceId).toBe("quality");
+
     // Without an override every row names itself by the last path segment,
-    // so this block would draw `enabled` / `reason` /
+    // so the two blocks together would draw `enabled` / `reason` /
     // `generated_at_epoch_secs` twice over and leave the sentence
     // underneath as the only clue which endpoint answered.
-    const labels = metadata.rows.map((r) => describeField(r.path, ru).label);
+    const labels = [...metadata.rows, ...quality.rows].map(
+      (r) => describeField(r.path, ru).label,
+    );
     expect(labels).toEqual([
       "stats.enabled",
       "stats.reason",
@@ -131,7 +141,9 @@ describe("Upstreams page definition (spec §23.5)", () => {
     ]);
     // Telemt's own spelling, so the row reads identically in both locales
     // (§8.1) — only the sentence under it is translated.
-    expect(metadata.rows.map((r) => describeField(r.path, en).label)).toEqual(labels);
+    expect(
+      [...metadata.rows, ...quality.rows].map((r) => describeField(r.path, en).label),
+    ).toEqual(labels);
     // The invariant behind the strings above: no two rows of this block may
     // offer the reader the same name.
     expect(new Set(labels).size).toBe(labels.length);
