@@ -97,3 +97,23 @@ describe("getWidgetDef", () => {
     expect(getWidgetDef("nonexistent")).toBeUndefined();
   });
 });
+
+// Concept §14: these four left Сводка's catalog. Re-adding one is a product
+// decision, not a refactor, so the catalog says so out loud.
+describe("Сводка's catalog after concept §14", () => {
+  it("offers no Безопасность, Активные сессии, NAT/STUN or Аптайм card", () => {
+    const ids = WIDGETS.map((w) => String(w.id));
+    for (const gone of ["security_posture", "active_sessions", "nat_stun", "uptime"]) {
+      expect(ids).not.toContain(gone);
+    }
+  });
+
+  it("defaults to Статус, Показатели, Проблемы, Онлайн and nothing else", () => {
+    expect(DEFAULT_LAYOUT).toEqual(["health_hero", "stat_row", "problems", "online_now"]);
+  });
+
+  it("pairs Проблемы and Онлайн into one twelve-column row", () => {
+    expect(getWidgetDef("problems")!.size).toBe("fiveTwelfths");
+    expect(getWidgetDef("online_now")!.size).toBe("sevenTwelfths");
+  });
+});

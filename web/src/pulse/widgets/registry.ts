@@ -5,15 +5,12 @@ import type { DiagDomain, WidgetId } from "../types";
 import { HealthHero } from "./HealthHero";
 import { StatRow } from "./StatRow";
 import { Problems } from "./Problems";
-import { ActiveSessions } from "./ActiveSessions";
 import { OnlineNow } from "./OnlineNow";
 import { DcWidget } from "./DcWidget";
 import { UpstreamsWidget } from "./UpstreamsWidget";
 import { MePoolWidget } from "./MePoolWidget";
-import { NatStunWidget } from "./NatStunWidget";
 import { SelftestWidget } from "./SelftestWidget";
 import { RecentEventsWidget } from "./RecentEventsWidget";
-import { SecurityPostureWidget } from "./SecurityPostureWidget";
 import { TlsFingerprintsWidget } from "./TlsFingerprintsWidget";
 
 // WidgetSize is the widget's span in Сводка's desktop grid (12 columns
@@ -52,6 +49,15 @@ export interface WidgetDef {
   render: FC<{ onHide?: () => void }>;
 }
 
+// Concept §14 removed four cards from Сводка's catalog: Безопасность and
+// NAT/STUN belong in their sections and not on the front page, «Активные
+// сессии» said what the Соединения KPI and «Онлайн сейчас» already say, and
+// the uptime card was folded into the status banner (M5 S1). All four
+// domains keep their Пульс diagnostics pages — this is the CATALOG shrinking,
+// not the data leaving the panel. layout.ts's migrateLayout drops the ids
+// from a stored layout on first load, so a device that had one shown simply
+// stops showing it.
+//
 // WIDGETS is the single registry driving the dashboard's catalog (layout
 // editor's checkbox list), its default/migrated layout, and its actual
 // rendering — 06-ui.md: "один реестр виджетов — каталог и раскладка
@@ -107,15 +113,6 @@ export const WIDGETS: WidgetDef[] = [
     render: OnlineNow,
   },
   {
-    id: "active_sessions",
-    topics: ["stats"],
-    minMode: "basic",
-    size: "third",
-    hideable: true,
-    diagDomain: "connections",
-    render: ActiveSessions,
-  },
-  {
     id: "dc",
     topics: ["upstreams"],
     minMode: "basic",
@@ -137,15 +134,6 @@ export const WIDGETS: WidgetDef[] = [
     render: UpstreamsWidget,
   },
   {
-    id: "security_posture",
-    topics: ["security"],
-    minMode: "basic",
-    size: "third",
-    hideable: true,
-    diagDomain: "security",
-    render: SecurityPostureWidget,
-  },
-  {
     id: "me_pool",
     topics: ["runtime"],
     minMode: "extended",
@@ -153,15 +141,6 @@ export const WIDGETS: WidgetDef[] = [
     hideable: true,
     diagDomain: "me",
     render: MePoolWidget,
-  },
-  {
-    id: "nat_stun",
-    topics: ["runtime"],
-    minMode: "extended",
-    size: "third",
-    hideable: true,
-    diagDomain: "nat",
-    render: NatStunWidget,
   },
   {
     id: "selftest",

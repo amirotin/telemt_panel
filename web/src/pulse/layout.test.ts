@@ -247,3 +247,14 @@ describe("hiddenWidgetIds", () => {
 afterEach(() => {
   localStorage.clear();
 });
+
+// A device that had one of concept §14's removed cards shown keeps working:
+// migrateLayout drops the unknown id on the next load rather than rendering
+// nothing for it or throwing.
+describe("layouts stored before concept §14 removed four cards", () => {
+  it("drops the ids the registry no longer knows and keeps the rest in order", () => {
+    expect(
+      migrateLayout(["health_hero", "security_posture", "stat_row", "nat_stun", "active_sessions"]),
+    ).toEqual(["health_hero", "stat_row"]);
+  });
+});

@@ -32,12 +32,9 @@ export type WidgetId =
   | "stat_row"
   | "problems"
   | "online_now"
-  | "active_sessions"
   | "dc"
   | "upstreams"
   | "me_pool"
-  | "nat_stun"
   | "selftest"
   | "recent_events"
-  | "security_posture"
   | "tls_fingerprints";
