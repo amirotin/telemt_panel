@@ -38,6 +38,9 @@
   --color-muted: rgb(var(--muted));
 
   --color-bar-track: rgb(var(--bar-track));
+  --color-bar-fill: rgb(var(--bar-fill));
+  --color-bar-fill-warn: rgb(var(--bar-fill-warn));
+  --color-bar-fill-full: rgb(var(--bar-fill-full));
 
   --color-focus-ring: rgb(var(--focus-ring));
 

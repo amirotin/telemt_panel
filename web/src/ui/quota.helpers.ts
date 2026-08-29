@@ -28,11 +28,19 @@ export function quotaRatio(usedBytes: number, limitBytes: number | null | undefi
   return Math.max(0, Math.min(1, usedBytes / limitBytes!));
 }
 
-// quotaFillClass mirrors the prototype's three-step bar: accent under 80%,
-// amber from 80%, the solid "exhausted" red at 100%.
+// quotaFillClass mirrors the prototype's three-step bar: the base fill under
+// 80%, the amber step from 80%, the solid "exhausted" red at 100%.
+//
+// The three steps are their own tokens (--bar-fill{,-warn,-full}) rather
+// than borrowed from accent/warn/error-strong. The bar is the one place a
+// tone appears as BARE COLOUR with no word on it, so the steps have to stay
+// apart from each other per theme even where the semantic tones do not: in
+// «Пергамент» the bronze accent and the ochre warn are 16.6 ΔE apart and the
+// 80% step was invisible. styles/contrast.test.ts holds the three to a
+// minimum separation and to 3:1 against the track.
 export function quotaFillClass(ratio: number, unlimited: boolean): string {
-  if (unlimited) return "bg-accent";
-  if (ratio >= 1) return "bg-error-strong";
-  if (ratio >= 0.8) return "bg-warn";
-  return "bg-accent";
+  if (unlimited) return "bg-bar-fill";
+  if (ratio >= 1) return "bg-bar-fill-full";
+  if (ratio >= 0.8) return "bg-bar-fill-warn";
+  return "bg-bar-fill";
 }

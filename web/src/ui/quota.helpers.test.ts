@@ -40,17 +40,17 @@ describe("quotaRatio", () => {
 
 describe("quotaFillClass", () => {
   it("never warns about an unlimited quota", () => {
-    expect(quotaFillClass(1, true)).toBe("bg-accent");
+    expect(quotaFillClass(1, true)).toBe("bg-bar-fill");
   });
 
   it("switches to amber at exactly 80%", () => {
-    expect(quotaFillClass(0.79, false)).toBe("bg-accent");
-    expect(quotaFillClass(0.8, false)).toBe("bg-warn");
-    expect(quotaFillClass(0.99, false)).toBe("bg-warn");
+    expect(quotaFillClass(0.79, false)).toBe("bg-bar-fill");
+    expect(quotaFillClass(0.8, false)).toBe("bg-bar-fill-warn");
+    expect(quotaFillClass(0.99, false)).toBe("bg-bar-fill-warn");
   });
 
   it("switches to the exhausted red at exactly 100%", () => {
-    expect(quotaFillClass(1, false)).toBe("bg-error-strong");
-    expect(quotaFillClass(1.5, false)).toBe("bg-error-strong");
+    expect(quotaFillClass(1, false)).toBe("bg-bar-fill-full");
+    expect(quotaFillClass(1.5, false)).toBe("bg-bar-fill-full");
   });
 });

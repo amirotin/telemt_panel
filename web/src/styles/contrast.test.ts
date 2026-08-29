@@ -241,7 +241,8 @@ describe.each(THEMES)("solid fills carry their white label (%s)", (name, p) => {
 //
 // Grounds, per fill:
 //   * accent-strong / error-strong / focus-ring — the three page surfaces;
-//   * control-knob — --accent-strong, the track it rides in the ON state.
+//   * control-knob — --accent-strong, the track it rides in the ON state;
+//   * the three bar steps — --bar-track.
 //
 // NOT covered, and deliberately: the knob against --surface-3, the OFF
 // track. A white knob on a light grey track is 1.31:1 in Светлая and
@@ -268,6 +269,55 @@ describe.each(THEMES)("solid fills keep their own boundary (%s)", (name, p) => {
       `${name}: --control-knob on --accent-strong`,
     ).toBeGreaterThanOrEqual(NON_TEXT);
   });
+
+  for (const step of ["bar-fill", "bar-fill-warn", "bar-fill-full"] as const) {
+    it(`--${step} against --bar-track`, () => {
+      expect(
+        contrast(token(p, step), token(p, "bar-track")),
+        `${name}: --${step} on --bar-track`,
+      ).toBeGreaterThanOrEqual(NON_TEXT);
+    });
+  }
+});
+
+// CIE76 ΔE — a crude perceptual distance, but the right KIND of measure
+// here: the quota bar's three steps differ from each other by colour alone
+// (ui/quota.helpers.ts), with no word on the fill, so a luminance ratio
+// between them says nothing useful. «Пергамент» is why the floor exists:
+// its accent and its warn are 16.6 apart and the 80 % step was the same
+// stripe as the one below it.
+function lab([r, g, b]: Rgb): readonly [number, number, number] {
+  const R = channel(r);
+  const G = channel(g);
+  const B = channel(b);
+  const x = (0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047;
+  const y = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+  const z = (0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883;
+  const f = (t: number): number => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+function deltaE(a: Rgb, b: Rgb): number {
+  const [l1, a1, b1] = lab(a);
+  const [l2, a2, b2] = lab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+}
+
+/** Well under every theme's real separation, well over the 16.6 that failed. */
+const BAR_STEP_DELTA_E = 25;
+
+describe.each(THEMES)("the quota bar's three steps stay apart (%s)", (name, p) => {
+  const STEPS = ["bar-fill", "bar-fill-warn", "bar-fill-full"] as const;
+  for (let i = 0; i < STEPS.length; i++) {
+    for (let j = i + 1; j < STEPS.length; j++) {
+      it(`--${STEPS[i]} vs --${STEPS[j]}`, () => {
+        expect(
+          deltaE(token(p, STEPS[i]!), token(p, STEPS[j]!)),
+          `${name}: ΔE --${STEPS[i]} vs --${STEPS[j]}`,
+        ).toBeGreaterThanOrEqual(BAR_STEP_DELTA_E);
+      });
+    }
+  }
 });
 
 describe.each(THEMES)("transient hover/active tints clear 3:1 (%s)", (name, p) => {

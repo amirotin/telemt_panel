@@ -476,6 +476,11 @@
 
   --bar-track: 224 210 180;
   --bar-fill: 115 88 15;
-  --bar-fill-warn: 124 68 7;
+  /* NOT --warn: on this ground the bar is bare colour with no word on it,
+     and the bronze accent and the ochre warn are 16.6 ΔE apart — the 80 %
+     step was the same stripe as the 0-80 % one. A brighter, more orange
+     amber separates it (28.3 ΔE from the fill, 28.6 from the exhausted red)
+     while keeping 3.16:1 against the track. */
+  --bar-fill-warn: 174 95 4; /* #ae5f04 */
   --bar-fill-full: 171 60 43;
 }
