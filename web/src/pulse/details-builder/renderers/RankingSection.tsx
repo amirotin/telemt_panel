@@ -8,6 +8,7 @@ import { Select } from "../../../ui/Select";
 import { IconChevronRight } from "../../../ui/icons";
 import { describeField } from "../fieldCatalog";
 import { formatValue } from "../formatting";
+import type { FormatterName } from "../formatting";
 import type { RankingSectionDefinition } from "../model";
 import { childPath, indexPath } from "../paths";
 import type { ClassifyContext, CollectionSectionInstance } from "../resolveSections";
@@ -249,6 +250,7 @@ export function RankingSection({ instance, definition, ctx }: RankingSectionProp
                   rowProps={roving.itemProps(i)}
                   ctx={ctx}
                   {...(definition?.scoreLabel ? { scoreLabel: definition.scoreLabel(s) } : {})}
+                  {...(definition?.scoreFormat ? { scoreFormat: definition.scoreFormat } : {})}
                   openLabel={s.details.entity.openDetails}
                   onOpen={() => ctx.openSurface(entry.key)}
                 />
@@ -364,6 +366,7 @@ function RankingRow({
   entry,
   ctx,
   scoreLabel,
+  scoreFormat,
   openLabel,
   onOpen,
   rowProps,
@@ -372,13 +375,17 @@ function RankingRow({
   entry: RankedEntry;
   ctx: DetailRenderContext;
   scoreLabel?: string;
+  scoreFormat?: FormatterName;
   openLabel: string;
   onOpen: () => void;
   /** Roving-tabindex membership (§21) — supplied by the section. */
   rowProps: RovingItemProps;
 }) {
   const s = useStrings();
-  const score = formatValue(entry.score, s, { nowMs: ctx.nowMs, formatter: "integer" });
+  const score = formatValue(entry.score, s, {
+    nowMs: ctx.nowMs,
+    formatter: scoreFormat ?? "integer",
+  });
   return (
     <li>
       <button

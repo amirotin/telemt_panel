@@ -309,6 +309,13 @@ export interface RankingSectionDefinition<T, TItem = unknown> extends SectionCom
   scoreKey?: string;
   /** What the score counts, printed under the number ("observed"). */
   scoreLabel?: Localized;
+  /**
+   * How the score itself is printed. Defaults to `integer`, which is right
+   * for a count — and wrong for the one ranking whose score is a VOLUME:
+   * `top.by_throughput` scores in octets, and 47 200 000 000 is a number a
+   * reader has to count digits in before it means anything (§13).
+   */
+  scoreFormat?: FormatterName;
   /** Secondary line under the identity: "seen 2 мин. назад · bad/probe 0". */
   meta?: (item: TItem, s: Dict) => string | null;
   paging?: Partial<PagingPolicy>;
