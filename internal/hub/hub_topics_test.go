@@ -354,9 +354,9 @@ func TestStatsSysInfoRefresherCaches(t *testing.T) {
 	r := &statsSysInfoRefresher{tc: tc, interval: time.Minute, now: func() time.Time { return fakeNow }}
 
 	ctx := context.Background()
-	v, u, ok := r.get(ctx)
-	if !ok || v != "1.2.3" || u != 42 {
-		t.Fatalf("first get() = %q, %v, %v, want 1.2.3, 42, true", v, u, ok)
+	view, ok := r.get(ctx)
+	if !ok || view.version != "1.2.3" || view.uptime != 42 {
+		t.Fatalf("first get() = %q, %v, %v, want 1.2.3, 42, true", view.version, view.uptime, ok)
 	}
 	if hits != 1 {
 		t.Fatalf("hits after first get() = %d, want 1", hits)
@@ -364,7 +364,7 @@ func TestStatsSysInfoRefresherCaches(t *testing.T) {
 
 	// Still within the refresh interval: cached value, no new request.
 	fakeNow = fakeNow.Add(30 * time.Second)
-	if _, _, ok := r.get(ctx); !ok {
+	if _, ok := r.get(ctx); !ok {
 		t.Fatal("second get() ok = false, want true (cached)")
 	}
 	if hits != 1 {
@@ -373,7 +373,7 @@ func TestStatsSysInfoRefresherCaches(t *testing.T) {
 
 	// Past the refresh interval: re-fetches.
 	fakeNow = fakeNow.Add(time.Minute)
-	if _, _, ok := r.get(ctx); !ok {
+	if _, ok := r.get(ctx); !ok {
 		t.Fatal("third get() ok = false, want true")
 	}
 	if hits != 2 {
@@ -382,8 +382,8 @@ func TestStatsSysInfoRefresherCaches(t *testing.T) {
 }
 
 // TestHistoryRecording covers deliverable B: after each successful "stats"
-// poll, the hub records connections/active_users/traffic points into the
-// store's RAM ring — traffic only once the "users" topic has been polled
+// poll, the hub records connections/active_users/refusals/traffic points
+// into the store's RAM ring — traffic only once the "users" topic has been polled
 // at least once (its TotalOctets sum is the source), the other two on every
 // stats poll.
 func TestHistoryRecording(t *testing.T) {
@@ -458,7 +458,7 @@ func TestHistoryRecording(t *testing.T) {
 		awaitRecordedTick(t)
 	}
 
-	for _, metric := range []string{metricConnections, metricActiveUsers} {
+	for _, metric := range []string{metricConnections, metricActiveUsers, metricRefusals} {
 		points, err := st.MetricRange(metric, 0)
 		if err != nil {
 			t.Fatalf("MetricRange(%s): %v", metric, err)

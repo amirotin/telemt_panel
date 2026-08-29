@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { getHistoryOptions } from "../lib/api/generated/@tanstack/react-query.gen";
 
-export type HistoryMetric = "connections" | "active_users" | "traffic" | "health";
+export type HistoryMetric =
+  | "connections"
+  | "active_users"
+  | "traffic"
+  | "refusals"
+  | "health";
 
 // useHistorySeries wraps GET /api/history for the stat-row widget's
 // sparklines (06-ui.md: "спарклайны из /api/history"). Always requests the

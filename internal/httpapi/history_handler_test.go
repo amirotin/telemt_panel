@@ -105,6 +105,41 @@ func TestHandleGetHistory_ReturnsRecordedPoints(t *testing.T) {
 	}
 }
 
+// TestHandleGetHistory_AcceptsRefusals covers the metric the M5 Отказы tile
+// reads: it is in the openapi enum and in historyKnownMetrics, so it comes
+// back 200 with its recorded points rather than 400 unknown metric.
+func TestHandleGetHistory_AcceptsRefusals(t *testing.T) {
+	srv := newTestServer(t)
+	now := time.Now().Unix()
+	for i, v := range []float64{0, 4, 9} {
+		if err := srv.st.RecordMetric("refusals", store.MetricPoint{TS: now - int64(20-i*10), Value: v}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+
+	r := httptest.NewRequest("GET", "/api/history?metric=refusals&range=15m", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	var got historySeriesView
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.Points) != 3 {
+		t.Fatalf("points = %v, want 3", got.Points)
+	}
+	// The tile reads newest − oldest: nine refusals across the window.
+	if d := got.Points[2].V - got.Points[0].V; d != 9 {
+		t.Errorf("window delta = %v, want 9", d)
+	}
+}
+
 // TestHandleGetHistory_RequiresSession covers auth: no cookie, 401.
 func TestHandleGetHistory_RequiresSession(t *testing.T) {
 	srv := newTestServer(t)

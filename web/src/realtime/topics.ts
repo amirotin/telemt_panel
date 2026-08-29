@@ -85,6 +85,9 @@ export interface StatsSnapshot {
   connections_summary?: Gated<RuntimeEdgeConnectionsSummary>;
   version?: string;
   uptime_seconds?: number;
+  /** GET /v1/system/info's config-reload pair (hub.go's statsSnapshot): the count is omitted at zero, the timestamp only arrives once a reload has happened. */
+  config_reload_count?: number;
+  last_config_reload_epoch_secs?: number;
 }
 
 // UserLinksWire mirrors api/openapi.yaml's UserLinks schema exactly (the

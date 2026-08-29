@@ -1668,7 +1668,7 @@ export type GetHistoryData = {
     body?: never;
     path?: never;
     query: {
-        metric: 'connections' | 'traffic' | 'health' | 'active_users';
+        metric: 'connections' | 'traffic' | 'health' | 'active_users' | 'refusals';
         range: '15m' | '1h' | '24h' | '7d';
     };
     url: '/api/history';

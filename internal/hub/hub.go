@@ -71,6 +71,10 @@ const (
 	metricConnections = "connections"
 	metricActiveUsers = "active_users"
 	metricTraffic     = "traffic"
+	// metricRefusals is the monotonic refusals counter refusals.go builds
+	// out of the summary's cumulative failure counters — a series whose
+	// window delta is the number of clients turned away in that window.
+	metricRefusals = "refusals"
 )
 
 // Config configures the hub's poll intervals and lifecycle timings. Zero
@@ -216,6 +220,11 @@ type Hub struct {
 	seq         uint64
 	ring        []Event
 
+	// refusals holds the running total behind the "refusals" history
+	// series across polls (refusals.go) — its own lock, since
+	// recordStatsHistory runs outside h.mu.
+	refusals refusalsAccumulator
+
 	// historyRecordedHook, if set, runs synchronously in pollWithContext
 	// immediately after every recordStatsHistory call (whether or not that
 	// call actually wrote a point — see recordStatsHistory's own degrade
@@ -352,6 +361,13 @@ type statsSnapshot struct {
 	ConnectionsSummary *telemt.Gated[telemt.RuntimeEdgeConnectionsSummaryPayload] `json:"connections_summary,omitempty"`
 	Version            string                                                     `json:"version,omitempty"`
 	UptimeSeconds      float64                                                    `json:"uptime_seconds,omitempty"`
+	// The config-reload pair of GET /v1/system/info, for Сводка's status
+	// banner ("последняя перезагрузка конфига"). The count is omitted at
+	// zero (no reload has happened yet) and the timestamp is a pointer
+	// because Telemt only sends it once one has — an absent key stays
+	// distinguishable from a real 0.
+	ConfigReloadCount         uint64 `json:"config_reload_count,omitempty"`
+	LastConfigReloadEpochSecs *int64 `json:"last_config_reload_epoch_secs,omitempty"`
 }
 
 func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRefresher) (json.RawMessage, error) {
@@ -383,9 +399,11 @@ func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRef
 		}
 	}
 
-	if version, uptime, ok := sysInfo.get(ctx); ok {
-		snap.Version = version
-		snap.UptimeSeconds = uptime
+	if info, ok := sysInfo.get(ctx); ok {
+		snap.Version = info.version
+		snap.UptimeSeconds = info.uptime
+		snap.ConfigReloadCount = info.configReloadCount
+		snap.LastConfigReloadEpochSecs = info.lastConfigReload
 	}
 
 	return json.Marshal(snap)
@@ -402,9 +420,18 @@ type statsSysInfoRefresher struct {
 
 	mu      sync.Mutex
 	lastAt  time.Time
-	version string
-	uptime  float64
+	cached  sysInfoView
 	hasData bool
+}
+
+// sysInfoView is the slice of GET /v1/system/info the "stats" topic
+// republishes — version and uptime for the status banner's facts, plus the
+// config-reload pair behind its «последняя перезагрузка конфига» line.
+type sysInfoView struct {
+	version           string
+	uptime            float64
+	configReloadCount uint64
+	lastConfigReload  *int64
 }
 
 // get returns the cached version/uptime if still fresh, otherwise re-fetches
@@ -412,28 +439,34 @@ type statsSysInfoRefresher struct {
 // stale cached value AND the fetch itself failed — the stats topic then
 // simply omits Version/UptimeSeconds for this tick rather than blocking on
 // it or failing the whole poll.
-func (r *statsSysInfoRefresher) get(ctx context.Context) (version string, uptime float64, ok bool) {
+func (r *statsSysInfoRefresher) get(ctx context.Context) (view sysInfoView, ok bool) {
 	r.mu.Lock()
 	if r.hasData && r.now().Sub(r.lastAt) < r.interval {
-		version, uptime = r.version, r.uptime
+		view = r.cached
 		r.mu.Unlock()
-		return version, uptime, true
+		return view, true
 	}
 	r.mu.Unlock()
 
 	info, err := r.tc.SystemInfo(ctx)
 	if err != nil {
 		r.mu.Lock()
-		version, uptime, ok = r.version, r.uptime, r.hasData
+		view, ok = r.cached, r.hasData
 		r.mu.Unlock()
-		return version, uptime, ok
+		return view, ok
 	}
 
 	r.mu.Lock()
-	r.version, r.uptime, r.hasData, r.lastAt = info.Version, info.UptimeSeconds, true, r.now()
-	version, uptime = r.version, r.uptime
+	r.cached = sysInfoView{
+		version:           info.Version,
+		uptime:            info.UptimeSeconds,
+		configReloadCount: info.ConfigReloadCount,
+		lastConfigReload:  info.LastConfigReloadEpochSecs,
+	}
+	r.hasData, r.lastAt = true, r.now()
+	view = r.cached
 	r.mu.Unlock()
-	return version, uptime, true
+	return view, true
 }
 
 // runtimeSnapshot is the "runtime" topic's composite payload (spec
@@ -669,6 +702,10 @@ func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 //     coarser StatsSummary proxies (ConnectionsTotal is a cumulative
 //     counter, not concurrent; ConfiguredUsers is not "active" — both are
 //     the closest fields StatsSummary actually exposes without runtime_edge).
+//   - refusals: the monotonic running total refusalsAccumulator folds out
+//     of StatsSummary's cumulative failure counters (refusals.go) — skipped
+//     entirely when the summary sub-call failed this tick, since the
+//     accumulator must not mistake a missing sample for a counter reset.
 //   - traffic: StatsSummary/ConnectionsSummary expose no byte-traffic
 //     aggregate at all, so this sums TotalOctets across the "users" topic's
 //     latest cached snapshot (already polled independently) — skipped
@@ -692,6 +729,11 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 	case snap.Summary != nil:
 		h.recordMetric(metricConnections, ts, float64(snap.Summary.ConnectionsTotal))
 		h.recordMetric(metricActiveUsers, ts, float64(snap.Summary.ConfiguredUsers))
+	}
+
+	if snap.Summary != nil {
+		total := h.refusals.observe(refusalsTotal(snap.Summary), snap.Summary.UptimeSeconds)
+		h.recordMetric(metricRefusals, ts, float64(total))
 	}
 
 	if traffic, ok := h.usersTrafficTotal(); ok {

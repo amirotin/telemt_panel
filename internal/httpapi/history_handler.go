@@ -31,6 +31,7 @@ var historyKnownMetrics = map[string]bool{
 	"connections":  true,
 	"active_users": true,
 	"traffic":      true,
+	"refusals":     true,
 	"health":       true,
 }
 
