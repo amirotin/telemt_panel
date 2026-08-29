@@ -34,6 +34,13 @@ export interface DescribedRowProps {
    */
   emphasizeValue?: boolean;
   monospaceValue?: boolean;
+  /**
+   * Let the value wrap inside an unbreakable token (`overflow-wrap: anywhere`
+   * rather than `break-word`). Set for addresses, identifiers and other
+   * whitespace-free values, which the narrow value column otherwise pushes
+   * around rather than wrapping.
+   */
+  wrapAnywhere?: boolean;
   /** Apply tabular numerals — set for any rendered number (spec §13). */
   numeric?: boolean;
   /** The value is an absence sentence, not a value: quieter, never bold. */
@@ -64,6 +71,7 @@ export function DescribedRow({
   nameStyle = "field",
   emphasizeValue,
   monospaceValue,
+  wrapAnywhere,
   numeric,
   absent,
   className,
@@ -94,7 +102,8 @@ export function DescribedRow({
       <div className="min-w-0 max-w-[42%] shrink-0 text-right">
         <div
           className={cn(
-            "break-words text-row",
+            wrapAnywhere ? "wrap-anywhere" : "break-words",
+            "text-row",
             numeric && "tabular-nums",
             monospaceValue && "font-mono",
             absent ? "text-text-faint" : cn("text-text", emphasized && "font-semibold"),

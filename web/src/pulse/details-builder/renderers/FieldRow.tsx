@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { useStrings } from "../../../i18n";
 import { DescribedRow } from "../../../ui/DescribedRow";
 import { describeField } from "../fieldCatalog";
@@ -5,6 +6,7 @@ import { formatValue } from "../formatting";
 import type { FormatterName } from "../formatting";
 import type { FieldUnit } from "../model";
 import type { DetailRenderContext, ForcedAbsence } from "./context";
+import { addressSegments } from "./addressWrap";
 import { fieldLabel } from "./unknownFields";
 
 export interface FieldRowProps {
@@ -57,15 +59,35 @@ export function FieldRow({
     ...(absence !== undefined ? { absence } : {}),
   });
 
+  // An address or an identifier has no whitespace to wrap at, so it gets a
+  // break opportunity at every boundary it does have, plus permission to
+  // wrap inside a label that is wider than the column on its own.
+  const monospace = formatted.monospace === true;
+  const segments = monospace ? addressSegments(formatted.text) : [formatted.text];
+
   return (
     <DescribedRow
       name={label ?? field.label ?? fieldLabel(path)}
       description={field.description}
-      value={formatted.text}
+      value={
+        segments.length === 1 ? (
+          formatted.text
+        ) : (
+          <>
+            {segments.map((segment, i) => (
+              <Fragment key={`${i}:${segment}`}>
+                {i > 0 && <wbr />}
+                {segment}
+              </Fragment>
+            ))}
+          </>
+        )
+      }
       {...(formatted.title !== undefined ? { valueTitle: formatted.title } : {})}
       valueNote={valueNote ?? formatted.note}
       numeric={formatted.numeric === true}
-      monospaceValue={formatted.monospace === true}
+      monospaceValue={monospace}
+      wrapAnywhere={monospace}
       absent={formatted.absence !== undefined}
       {...(className !== undefined ? { className } : {})}
     />
