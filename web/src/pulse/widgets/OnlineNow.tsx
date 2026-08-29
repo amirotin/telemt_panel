@@ -1,19 +1,25 @@
 import { Link } from "@tanstack/react-router";
-import { countLabel, fill, formatNumber, useStrings } from "../../i18n";
+import { fill, formatNumber, pluralTemplate, useStrings } from "../../i18n";
 import { formatBytes } from "../../lib/format";
+import { cn } from "../../lib/cn";
 import { Avatar } from "../../ui/Avatar";
+import { buttonClasses } from "../../ui/buttonStyles";
 import { Skeleton } from "../../ui/Skeleton";
 import { IconChevronRight } from "../../ui/icons";
 import { useSnapshot } from "../../realtime";
 import type { UsersTopic } from "../../realtime/topics";
 import { WidgetFrame } from "../WidgetFrame";
-import { computeOnlineNow } from "./onlineNow.helpers";
+import { ONLINE_NOW_LIMIT_PHONE, computeOnlineNow } from "./onlineNow.helpers";
 
-// OnlineNow — the prototype's «Онлайн сейчас» block on Сводка: who is
-// actually connected right now, with the busiest five named and every row a
-// link into Люди.
+// OnlineNow — «Онлайн сейчас» (concept §7): who is actually connected right
+// now, the busiest of them named, and every row a link into Люди.
 //
-// The prototype's row reads «4,5 МБ/с · 3 соед», but the "users" topic
+// The header carries the count and the way out («Онлайн сейчас · 13 из 185»
+// + «Все пользователи →»), so the card's height is its rows and nothing
+// else — no footer link padding the bottom, no filler when there are fewer
+// names than the maximum.
+//
+// The prototype's row read «4,5 МБ/с · 3 соед», but the "users" topic
 // carries no throughput — see people/personMeta.helpers.ts for why the
 // panel refuses to invent one. The same substitution is made here:
 // connections · unique IPs · cumulative traffic, which is what the topic
@@ -31,12 +37,19 @@ export function OnlineNow({ onHide }: { onHide?: () => void }) {
       badge={
         snapshot.data ? (
           <span className="font-mono text-micro tabular-nums text-text-muted">
+            ·{" "}
             {fill(s.overview.onlineOf, {
               online: formatNumber(s, view.online),
               total: formatNumber(s, view.total),
             })}
           </span>
         ) : null
+      }
+      action={
+        <Link to="/people" className={buttonClasses("secondary", "sm", "gap-1")}>
+          {s.overview.allUsers}
+          <IconChevronRight className="h-3.5 w-3.5" />
+        </Link>
       }
     >
       {!snapshot.data ? (
@@ -48,8 +61,17 @@ export function OnlineNow({ onHide }: { onHide?: () => void }) {
         <p className="text-meta text-text-muted">{s.overview.onlineEmpty}</p>
       ) : (
         <ul className="flex flex-col">
-          {view.rows.map((row) => (
-            <li key={row.username} className="border-b border-border last:border-b-0">
+          {view.rows.map((row, index) => (
+            <li
+              key={row.username}
+              // Eight names fit a desktop card without stretching it; a
+              // phone shows five, as it always has. One list, cut by CSS —
+              // a JS breakpoint would re-render the card on every resize.
+              className={cn(
+                "border-b border-border last:border-b-0",
+                index >= ONLINE_NOW_LIMIT_PHONE && "hidden lg:block",
+              )}
+            >
               <Link
                 to="/people/$username"
                 params={{ username: row.username }}
@@ -60,7 +82,7 @@ export function OnlineNow({ onHide }: { onHide?: () => void }) {
                   {row.username}
                 </span>
                 <span className="shrink-0 font-mono text-micro tabular-nums text-text-muted">
-                  {countLabel(s, row.connections, s.shell.connectionsUnit)} ·{" "}
+                  {pluralTemplate(s, row.connections, s.overview.onlineConnections)} ·{" "}
                   {formatNumber(s, row.ips)} {s.people.meta.ipShort} ·{" "}
                   {formatBytes(row.totalOctets, s)}
                 </span>
@@ -70,14 +92,6 @@ export function OnlineNow({ onHide }: { onHide?: () => void }) {
           ))}
         </ul>
       )}
-
-      <Link
-        to="/people"
-        className="inline-flex min-h-[32px] items-center gap-0.5 self-start rounded-md px-1 text-micro font-semibold text-accent transition-colors hover:bg-accent/12"
-      >
-        {s.overview.allPeople}
-        <IconChevronRight className="h-3.5 w-3.5" />
-      </Link>
     </WidgetFrame>
   );
 }

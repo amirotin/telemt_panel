@@ -17,6 +17,13 @@ export interface WidgetFrameProps {
   stale?: boolean;
   /** Trailing slot on the title row, before the actions (a count, a state pill). */
   badge?: ReactNode;
+  /**
+   * The widget's own control at the right of the title row — «Все
+   * пользователи →» and its like. Concept §7 puts it in the header rather
+   * than on a line of its own under the card, so the card's height is its
+   * rows and nothing else.
+   */
+  action?: ReactNode;
   className?: string;
   children: ReactNode;
 }
@@ -39,6 +46,7 @@ export function WidgetFrame({
   onHide,
   stale,
   badge,
+  action,
   className,
   children,
 }: WidgetFrameProps) {
@@ -54,7 +62,8 @@ export function WidgetFrame({
           {badge}
           {stale && <StatePill state="warn">{s.common.stale}</StatePill>}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {action}
           {diagDomain && (
             <Link
               to="/pulse/diag/$domain"

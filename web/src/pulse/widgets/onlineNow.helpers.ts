@@ -18,8 +18,14 @@ export interface OnlineNowView {
   rows: OnlineNowRow[];
 }
 
-/** How many names the block lists before «Все люди» takes over (prototype: five). */
-export const ONLINE_NOW_LIMIT = 5;
+/** How many names a phone lists before «Все пользователи» takes over. */
+export const ONLINE_NOW_LIMIT_PHONE = 5;
+
+// …and how many a desktop card lists (concept §7: the 7/12 card is wide
+// enough that five names left it looking empty). computeOnlineNow always
+// returns the desktop count and OnlineNow.tsx hides the tail below `lg:`,
+// so the two viewports render one list rather than two.
+export const ONLINE_NOW_LIMIT = 8;
 
 // computeOnlineNow picks the busiest people out of the "users" topic.
 //

@@ -100,7 +100,9 @@ export const WIDGETS: WidgetDef[] = [
     id: "online_now",
     topics: ["users"],
     minMode: "basic",
-    size: "half",
+    // 7/12 beside «Проблемы»'s 5/12 (concept §7): each row carries a name
+    // and three figures, and at half width the figures wrapped.
+    size: "sevenTwelfths",
     hideable: true,
     render: OnlineNow,
   },

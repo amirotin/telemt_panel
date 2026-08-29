@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UsersTopicUser } from "../../realtime/topics";
-import { computeOnlineNow } from "./onlineNow.helpers";
+import { ONLINE_NOW_LIMIT, ONLINE_NOW_LIMIT_PHONE, computeOnlineNow } from "./onlineNow.helpers";
 
 function user(overrides: Partial<UsersTopicUser> & { username: string }): UsersTopicUser {
   return {
@@ -67,5 +67,28 @@ describe("computeOnlineNow", () => {
   it("is empty — not a crash — before the first users frame", () => {
     expect(computeOnlineNow(null)).toEqual({ online: 0, total: 0, rows: [] });
     expect(computeOnlineNow([])).toEqual({ online: 0, total: 0, rows: [] });
+  });
+});
+
+describe("how many names the card lists", () => {
+  const busy = (name: string, connections: number) =>
+    user({ username: name, current_connections: connections });
+
+  it("returns the desktop count by default, and the phone cut is a subset of it", () => {
+    const users = Array.from({ length: 20 }, (_, i) =>
+      busy(`u${String(i).padStart(2, "0")}`, 20 - i),
+    );
+    const rows = computeOnlineNow(users).rows;
+    expect(rows.length).toBe(ONLINE_NOW_LIMIT);
+    expect(ONLINE_NOW_LIMIT_PHONE).toBeLessThan(ONLINE_NOW_LIMIT);
+    // The phone shows the first five of the same ordered list — one list,
+    // cut by CSS, so the two viewports can never disagree about who is busiest.
+    expect(rows.slice(0, ONLINE_NOW_LIMIT_PHONE).map((r) => r.username)).toEqual(
+      computeOnlineNow(users, ONLINE_NOW_LIMIT_PHONE).rows.map((r) => r.username),
+    );
+  });
+
+  it("lists only what exists — the card never pads itself to the limit", () => {
+    expect(computeOnlineNow([busy("a", 3), busy("b", 1)]).rows.length).toBe(2);
   });
 });

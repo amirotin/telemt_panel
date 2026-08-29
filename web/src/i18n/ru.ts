@@ -298,7 +298,10 @@ export const ru = {
     title: "Сводка",
     onlineOf: "{online} из {total}",
     onlineEmpty: "Сейчас никто не подключён.",
-    allPeople: "Все люди",
+    // Кнопка в шапке «Онлайн сейчас» (концепция §7) — не строка снизу.
+    allUsers: "Все пользователи",
+    // Строка человека: «13 соединений · 3 IP · 19 ГБ».
+    onlineConnections: ["{n} соединение", "{n} соединения", "{n} соединений"],
     hiddenTitle: "Скрытые блоки",
     showWidget: "Показать",
     // The «Вид» dropdown at the right of the title (concept §16).
