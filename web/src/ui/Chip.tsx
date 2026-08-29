@@ -56,10 +56,12 @@ export interface CountBadgeProps {
 const TONE_CLASSES: Record<CountBadgeTone, string> = {
   // The *-strong fills, not the text-weight tokens: `--accent` is tuned to
   // read as text on a surface and white on it is 2.6:1 (dark) — under AA
-  // for a 10.5px label. `--accent-strong`/`--error-strong` are the fills
-  // white is meant to sit on: 5.15:1 / 4.62:1 dark, 5.49:1 / 5.82:1 light.
+  // for a 10.5px label. `--accent-strong`/`--error-strong` are the fills a
+  // label is meant to sit on, and each carries its own label token
+  // (`--accent-text` / `--error-text`) because a theme is free to darken
+  // one of them without darkening the other.
   accent: "bg-accent-strong text-accent-text",
-  error: "bg-error-strong text-accent-text",
+  error: "bg-error-strong text-error-text",
   warn: "bg-warn/15 text-warn",
   // --text-muted, not --text-faint: faint on surface-2 is 4.37:1 dark /
   // 4.44:1 light — under AA for a 10.5px label. muted is 5.83:1 / 5.33:1.

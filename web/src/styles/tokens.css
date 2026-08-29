@@ -50,6 +50,10 @@
   --accent: 94 166 225; /* #5ea6e1 */
   --accent-strong: 43 113 174; /* #2b71ae — white on it: 5.2:1 */
   --accent-hover: 106 183 238; /* #6ab7ee */
+  /* The label ON a solid accent fill (Button primary, IconButton accent,
+     CountBadge accent) — a per-theme role, not "white": a theme whose
+     accent fill is a light amber has to darken this instead of dimming
+     the fill into brown. */
   --accent-text: 255 255 255;
 
   /* The one status set (06-ui.md): ok | warn | error | muted.
@@ -65,9 +69,31 @@
   /* The prototype's solid "STOP" red, darkened from #d9564a: CountBadge
      paints white on it and 3.90:1 was under AA for a 10.5px label. */
   --error-strong: 197 78 67; /* #c54e43 — white on it: 4.62:1 */
+  /* The twin of --accent-text for the solid error fill. Separate because
+     the two fills are free to sit on opposite sides of the light/dark
+     line within one theme (Мокко: light amber accent, deep red error). */
+  --error-text: 255 255 255;
   --muted: 148 162 175; /* #94a2af — the tinted twin of --text-faint */
 
   --focus-ring: 74 155 221;
+
+  /* The modal scrim (ui/Sheet.tsx). A token rather than `bg-black/60`,
+     because a hard black dim over a cream page reads as a hole punched in
+     it; black here reproduces the previous rendering exactly. */
+  --scrim: 0 0 0;
+
+  /* The knob of the 42×25 pill switch (ui/Toggle.tsx and Сводка's layout
+     editor checkbox) — it rides both an accent-strong and a surface-3
+     track, so it is its own role rather than either fill's label. */
+  --control-knob: 255 255 255;
+
+  /* The brand tile ("T" in Shell's BrandMark and on the login page).
+     Its own gradient rather than avatar-1's: they merely happened to be
+     the same blue, and a per-theme avatar ramp must be free to move
+     without repainting the logo. */
+  --brand-from: 46 92 138;
+  --brand-to: 74 155 221;
+  --brand-text: 255 255 255;
 
   /* Avatar hues — the prototype's five initial gradients plus a sixth
      (rose) so the deterministic hash spreads a little further. Each is a
@@ -84,6 +110,8 @@
   --avatar-5-to: 209 151 90;
   --avatar-6-from: 168 74 106; /* rose    #a84a6a → #e07694 */
   --avatar-6-to: 224 118 148;
+  /* The initial drawn on those six gradients. */
+  --avatar-text: 255 255 255;
   /* Offline / attention avatars (prototype: var(--sur2)+var(--sec), and
      #3a2a2c + #e88 for a quota-exhausted user). */
   --avatar-idle-bg: 28 36 46;
@@ -166,9 +194,17 @@
   --error: 161 52 41; /* #a13429 (was #b53a2e = 3.95:1) */
   /* A solid fill under white text, not a text colour — 5.82:1, left alone. */
   --error-strong: 181 58 46;
+  --error-text: 255 255 255;
   --muted: 83 92 102; /* #535c66 — the tinted twin of --text-faint */
 
   --focus-ring: 30 108 176;
+
+  --scrim: 0 0 0;
+  --control-knob: 255 255 255;
+
+  --brand-from: 36 76 118;
+  --brand-to: 56 128 190;
+  --brand-text: 255 255 255;
 
   /* Same six hues, darkened so white initials stay legible on light. */
   --avatar-1-from: 36 76 118;
@@ -183,6 +219,7 @@
   --avatar-5-to: 176 118 64;
   --avatar-6-from: 140 56 84;
   --avatar-6-to: 186 82 112;
+  --avatar-text: 255 255 255;
   --avatar-idle-bg: 231 236 241;
   --avatar-idle-text: 84 97 111;
   --avatar-alert-bg: 250 228 226;
@@ -223,9 +260,17 @@
     --warn: 124 82 9;
     --error: 161 52 41;
     --error-strong: 181 58 46;
+    --error-text: 255 255 255;
     --muted: 83 92 102;
 
     --focus-ring: 30 108 176;
+
+    --scrim: 0 0 0;
+    --control-knob: 255 255 255;
+
+    --brand-from: 36 76 118;
+    --brand-to: 56 128 190;
+    --brand-text: 255 255 255;
 
     --avatar-1-from: 36 76 118;
     --avatar-1-to: 56 128 190;
@@ -239,6 +284,7 @@
     --avatar-5-to: 176 118 64;
     --avatar-6-from: 140 56 84;
     --avatar-6-to: 186 82 112;
+    --avatar-text: 255 255 255;
     --avatar-idle-bg: 231 236 241;
     --avatar-idle-text: 84 97 111;
     --avatar-alert-bg: 250 228 226;

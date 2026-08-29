@@ -188,11 +188,14 @@ describe.each(THEMES)("solid fills carry their white label (%s)", (name, p) => {
   // (white) on a *-strong fill. The text-weight `--accent` is NOT a fill —
   // white on it is 2.6:1 dark — which is the whole reason the strong tokens
   // exist.
-  for (const fill of ["accent-strong", "error-strong"] as const) {
-    it(`--accent-text on --${fill}`, () => {
+  for (const [label, fill] of [
+    ["accent-text", "accent-strong"],
+    ["error-text", "error-strong"],
+  ] as const) {
+    it(`--${label} on --${fill}`, () => {
       expect(
-        contrast(token(p, "accent-text"), token(p, fill)),
-        `${name}: white on --${fill}`,
+        contrast(token(p, label), token(p, fill)),
+        `${name}: --${label} on --${fill}`,
       ).toBeGreaterThanOrEqual(AA);
     });
   }

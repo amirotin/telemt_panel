@@ -34,11 +34,16 @@
   --color-warn: rgb(var(--warn));
   --color-error: rgb(var(--error));
   --color-error-strong: rgb(var(--error-strong));
+  --color-error-text: rgb(var(--error-text));
   --color-muted: rgb(var(--muted));
 
   --color-bar-track: rgb(var(--bar-track));
 
   --color-focus-ring: rgb(var(--focus-ring));
+
+  --color-scrim: rgb(var(--scrim));
+  --color-control-knob: rgb(var(--control-knob));
+  --color-brand-text: rgb(var(--brand-text));
 
   /* Radii from the prototype's card language: inputs/buttons 12px, small
      cards 10-11px, panels/cards 14px, sheets 18-20px, pills 999px. These
@@ -86,14 +91,12 @@
   min-height: 44px;
   min-width: 44px;
 }
-/* The brand/avatar gradient direction, so the six avatar hue pairs and the
-   sidebar's "T" tile all share one angle (prototype: 135deg). */
+/* The sidebar/login "T" tile, at the same 135deg angle the six avatar hue
+   pairs use. It reads --brand-*, not --avatar-1-*: the two were the same
+   blue by coincidence, and the warm themes move the avatar ramp without
+   moving the logo. */
 @utility brand-gradient {
-  background-image: linear-gradient(
-    135deg,
-    rgb(var(--avatar-1-from)),
-    rgb(var(--avatar-1-to))
-  );
+  background-image: linear-gradient(135deg, rgb(var(--brand-from)), rgb(var(--brand-to)));
 }
 
 /* The Details layout model (spec §15) — the three lengths tokens.css

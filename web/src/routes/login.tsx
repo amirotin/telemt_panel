@@ -59,7 +59,7 @@ function LoginPage() {
     <main className="mx-auto flex min-h-dvh w-full max-w-[360px] flex-col justify-center gap-3.5 px-4 py-10">
       <div className="flex flex-col items-center gap-1.5 pb-1">
         <span
-          className="brand-gradient inline-flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white"
+          className="brand-gradient inline-flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-brand-text"
           aria-hidden="true"
         >
           T

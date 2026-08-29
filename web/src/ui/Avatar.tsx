@@ -58,7 +58,7 @@ export function Avatar({
         : "rgb(var(--avatar-idle-bg))";
   const color =
     tone === "hue"
-      ? "#fff"
+      ? "rgb(var(--avatar-text))"
       : tone === "alert"
         ? "rgb(var(--avatar-alert-text))"
         : "rgb(var(--avatar-idle-text))";

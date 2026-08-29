@@ -221,7 +221,7 @@ const SWITCH_CLASSES = [
   "bg-surface-3 transition-colors checked:bg-accent-strong",
   "disabled:cursor-not-allowed disabled:opacity-50",
   "before:absolute before:left-[2.5px] before:top-[2.5px] before:h-5 before:w-5",
-  "before:rounded-full before:bg-white before:transition-[left] before:content-['']",
+  "before:rounded-full before:bg-control-knob before:transition-[left] before:content-['']",
   "checked:before:left-[19.5px]",
 ].join(" ");
 

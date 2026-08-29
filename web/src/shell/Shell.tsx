@@ -19,7 +19,7 @@ export function BrandMark({ className }: { className?: string }) {
       aria-hidden="true"
       className={cn(
         "brand-gradient inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
-        "text-[13px] font-bold leading-none text-white",
+        "text-[13px] font-bold leading-none text-brand-text",
         className,
       )}
     >

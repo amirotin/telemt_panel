@@ -108,7 +108,7 @@ export function Sheet({
   return createPortal(
     <div className={cn("fixed inset-0 z-50", CONTAINER_CLASSES[placement])}>
       <div
-        className="absolute inset-0 bg-black/60"
+        className="absolute inset-0 bg-scrim/60"
         onClick={onClose}
         aria-hidden="true"
       />

@@ -32,7 +32,7 @@ export function Toggle({ checked, onChange, disabled, className, ...rest }: Togg
       <span
         aria-hidden="true"
         className={cn(
-          "absolute top-[2.5px] h-5 w-5 rounded-full bg-white shadow-sm transition-[left]",
+          "absolute top-[2.5px] h-5 w-5 rounded-full bg-control-knob shadow-sm transition-[left]",
           checked ? "left-[19.5px]" : "left-[2.5px]",
         )}
       />

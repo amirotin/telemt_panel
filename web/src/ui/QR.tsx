@@ -45,6 +45,9 @@ export function QR({ value, size = 200, className }: QRProps) {
 
   return (
     <div
+      // Literally white, not a surface token: a QR code's quiet zone has
+      // to be the lightest half of the pattern for a scanner to lock on,
+      // in every theme.
       className={cn("inline-block rounded-lg bg-white p-2", className)}
       style={{ width: size + 16, height: size + 16 }}
       // qrcode's SVG output is generated locally from `value` we control —
