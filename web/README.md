@@ -44,6 +44,8 @@ frontend dev server.
 | `npm run lint` | ESLint (typescript-eslint + react-hooks + react-refresh), one command, no Prettier |
 | `npm test` | vitest (jsdom where a test renders DOM) |
 | `npm run gen` | Regenerate the API client from `../api/openapi.yaml` — see below |
+| `npm run e2e` | Playwright against the real built binary — see below |
+| `npm run screenshots` | The §27.1 viewport matrix into `screenshots-out/` (gitignored, on demand) |
 
 ## Generated API client
 
@@ -207,6 +209,90 @@ Notes:
   it almost immediately, without waiting for that topic's normal poll
   interval — this is what `web/e2e/mobile.spec.ts`'s "user appears in the
   list without a manual reload" step exercises end to end.
+
+## Details pages: adding one by definition
+
+Every page under `/pulse/diag/$domain` is a `DetailPageDefinition`
+(`src/pulse/details-builder/model.ts`) plus a ~40-line component that owns
+nothing but the subscriptions. `src/pulse/details-builder/DetailPage.tsx`
+renders header, summary tiles, entity selector, tabs, attention card,
+sections and the unknown tail; no page draws a row of its own. The normative
+spec is `v2/design/uploads/TELEMT_DETAILS_PAGE_BUILDER_SPEC.md`.
+
+To add a page:
+
+1. **Describe the fields.** Add the payload's leaves to
+   `fieldCatalog.ts` — an exact path, a `*` wildcard, or an endpoint-scoped
+   entry (ruling R9: the most specific rule wins). A leaf with no entry is
+   not lost, it lands in the unknown tail; a leaf with a *wrong* entry is
+   worse than none, so scope narrowly.
+2. **Write the definition** in `definitions/<domain>.ts`: `sources` (a topic
+   id or a REST endpoint, `required` or not), optional `freshness`, `summary`
+   tiles, optional `navigation` (`entities` for a selector, `tabs` — each
+   tab may carry a `count(context)` badge), and `sections`. Section kinds are
+   §9's eight: `scalars`, `array`, `entityList`, `breakdown`, `timeline`,
+   `ranking`, `dynamicMap`, `custom`. Bind each section to the `sourceId` it
+   actually reads — a section under the wrong source says "did not arrive"
+   under a header claiming a healthy one.
+3. **Write the adapter** in `diag/<domain>.helpers.ts` if the wire shape and
+   the page context differ (they usually do — a gate wrapper to unwrap, two
+   endpoints to merge). Keep it a projection, never a filter: a field it
+   drops never reaches the unknown tail either.
+4. **Write the component** in `diag/<Domain>Page.tsx`: subscribe, build the
+   payload, build `inputs` for `useDetailSources`, render `<DetailPage>`.
+   For a gated source pass `gated: data?.field ?? null` — `undefined` means
+   "no gate", `null` means "the gate is off" (`sources.ts`).
+5. **Add the hub card** in `hub/hubCards.ts`, reusing the definition's own
+   `summary` tiles so the card and the page cannot print different numbers.
+6. **Tests.** Every definition has a `definitions/<domain>.test.ts` with the
+   §27.4 completeness equation over the production-size fixture:
+   `all leaf paths − consumed − explicitly ignored = the unknown tail`, and
+   the residue must be empty. `completeness.test.ts` runs it for every page.
+
+Fixtures live in `details-builder/__fixtures__/` — production-SIZED and
+seeded, never hand-written three-element mocks, because the whole point of
+the builder is what happens at 50 records and 1955 leaves.
+
+## When Telemt is bumped
+
+A new Telemt release adds fields, and a field with no description is a field
+the panel shows as a bare key. Run through this before shipping a bump:
+
+1. `npm test` — `fieldCatalog.coverage.test.ts` fails first and loudest. It
+   pins the payload cardinalities the catalog was built against (DC 284, TLS
+   1955, security 53, ME 1064, counters 120 entries); a changed number means
+   the payload changed and the catalog has to be read again, not that the
+   pin is stale.
+2. Read the two `summary.*` assertions in that file specifically. `summary.*`
+   is a bare global prefix owned by three domains at once (ME, Upstreams,
+   Connections); the guards assert no path carries two different
+   `descriptionKey`s and no `summary.*` path is declared twice. A new
+   `summary.<something>` on any of the three is where a silent collision
+   would come from.
+3. Check the classification table test (`resolveSections.test.ts`): a new
+   object may need to be a `dynamicMap` rather than a record, or the reverse.
+4. Update `__fixtures__/` to the new payloads, then re-read the completeness
+   residue in every `definitions/*.test.ts` — new leaves land in the unknown
+   tail until a section or an `alsoConsumes` claims them.
+5. Update the RU **and** EN catalog entries together; `fieldCatalog.test.ts`
+   fails on a key present in one dictionary only.
+6. If the bump adds a capability, decide `disabled` vs `unsupported` for it
+   (ruling R5) — a REST route that is absent must answer 501
+   `capability_absent`, a gate that is off 503 `capability_unavailable`.
+7. `npm run screenshots` and look at the pages whose payloads changed.
+
+## Visual regression policy
+
+No PNG baselines live in this repo. A pixel baseline for ten screens across
+nine viewports is ninety files that a font-hinting difference between two
+machines invalidates wholesale, and re-recording one is not reviewing it.
+
+The CI guard is behavioural: `mobile`/`desktop`/`details` assert the DOM and
+sweep every §27.1 viewport for horizontal overflow. The picture matrix is
+reproducible on demand — `npm run screenshots` writes
+`screenshots-out/<viewport>/<screen>.png` (gitignored; `SCREENSHOT_DIR`
+overrides the destination), driven by `e2e/screenshots.ts` in an opt-in
+Playwright project that a normal `npm run e2e` never runs.
 
 ## e2e (Playwright)
 
