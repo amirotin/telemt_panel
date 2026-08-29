@@ -38,7 +38,24 @@ var scenarios = map[string]telemttest.Scenario{
 	// same as Scenario{}'s zero value, spelled out explicitly here so the
 	// flag's value is self-documenting rather than relying on a reader
 	// already knowing Scenario's zero value is the "off" case.
+	//
+	// End to end this is the OMITTED-field wire shape: the panel's
+	// capability probe reads `enabled:false` off /v1/runtime/connections/
+	// summary, so hub.go never fetches the runtime-edge payloads and drops
+	// `connections_summary`/`recent_events` from the topic JSON entirely
+	// (their `omitempty` tags). The Details builder must read that absence
+	// as the gate being off — details-builder/sources.ts.
 	"edge-off": {},
+	// edge-gated: the other wire shape — an EXPLICIT `{enabled:false,
+	// reason}` wrapper instead of a missing key. runtime_edge is on (so
+	// Соединения/События/TLS have real data and the capability probe
+	// passes), while minimal_runtime_enabled is off, which is how Telemt
+	// gates me_pool_state, me_quality, nat_stun, me_selftest and the
+	// `minimal` payload — all of them fetched unconditionally and all of
+	// them arriving as a present-but-disabled wrapper. Пульс's NAT/ME cards
+	// and their Details pages take the wrapper branch here and the missing-
+	// key branch under `edge-off`; both must land on the same GatedNote.
+	"edge-gated": {RuntimeEdge: true, MinimalRuntimeOff: true},
 	// read-only: every mutation 403s with read_only, matching Telemt's
 	// read_only config gate.
 	"read-only": {ReadOnly: true},
@@ -46,12 +63,12 @@ var scenarios = map[string]telemttest.Scenario{
 
 func main() {
 	listen := flag.String("listen", ":9091", "address to listen on")
-	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|read-only")
+	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|read-only")
 	flag.Parse()
 
 	scenario, ok := scenarios[*scenarioName]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|read-only)\n", *scenarioName)
+		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|read-only)\n", *scenarioName)
 		os.Exit(1)
 	}
 

@@ -12,7 +12,7 @@ import (
 // TestScenariosCoverTheDocumentedFlagValues locks the -scenario flag's
 // usage string to the actual map keys, so the two can't drift apart.
 func TestScenariosCoverTheDocumentedFlagValues(t *testing.T) {
-	want := []string{"full", "old-build", "edge-off", "read-only"}
+	want := []string{"full", "old-build", "edge-off", "edge-gated", "read-only"}
 	if len(scenarios) != len(want) {
 		t.Fatalf("scenarios has %d entries, want %d: %v", len(scenarios), len(want), scenarios)
 	}
@@ -87,6 +87,44 @@ func TestScenarioEdgeOff(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &got)
 	if got.Data.Enabled {
 		t.Error("edge-off scenario: connections/summary enabled = true, want false")
+	}
+}
+
+// TestScenarioEdgeGated covers the "edge-gated" scenario: the OTHER wire
+// shape a gate can take. runtime_edge is on, so the panel's capability
+// probe passes and connections/events carry real data, while the minimal
+// runtime group answers with a present-but-disabled Gated wrapper instead
+// of a missing key — the branch details-builder/sources.ts resolves through
+// gatedStatus rather than through the absent-wrapper rule.
+func TestScenarioEdgeGated(t *testing.T) {
+	fake := telemttest.New(scenarios["edge-gated"])
+	defer fake.Close()
+
+	var gate struct {
+		Data struct {
+			Enabled bool   `json:"enabled"`
+			Reason  string `json:"reason"`
+		} `json:"data"`
+	}
+	get := func(path string) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		fake.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		gate.Data.Enabled, gate.Data.Reason = false, ""
+		if err := json.Unmarshal(w.Body.Bytes(), &gate); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+	}
+
+	get("/v1/runtime/connections/summary")
+	if !gate.Data.Enabled {
+		t.Error("edge-gated: connections/summary enabled = false, want true (the capability probe must pass)")
+	}
+	for _, path := range []string{"/v1/runtime/nat-stun", "/v1/runtime/me-pool-state"} {
+		get(path)
+		if gate.Data.Enabled || gate.Data.Reason == "" {
+			t.Errorf("edge-gated: %s = %+v, want an explicit disabled wrapper with a reason", path, gate.Data)
+		}
 	}
 }
 
