@@ -46,7 +46,7 @@ describe("field catalog lookup order (spec §8.2, amended by ruling R9)", () => 
     );
   });
 
-  it("2. an endpoint-scoped rule beats a global wildcard (ruling R9)", () => {
+  it("1. an endpoint-scoped rule beats BOTH global steps (ruling R9)", () => {
     // Most specific wins: a rule written FOR one endpoint outranks a
     // catalog-wide pattern, which is the reverse of the spec's own §8.2
     // ordering and the reason R9 was recorded.
@@ -56,11 +56,16 @@ describe("field catalog lookup order (spec §8.2, amended by ruling R9)", () => 
     });
     expect(result.source).toBe("endpoint");
     expect(result.entry?.descriptionKey).toBe("dc.load");
-    // …but an exact global entry still beats it: exact is step 1.
-    expect(lookupField("writers[0].rtt_ema_ms", { catalog, endpoint: "/api/telemt/zero" }).source).toBe(
-      "exact",
-    );
-    // …and with no endpoint in play the global wildcard answers as before.
+    // …and it outranks a global EXACT entry too (M4 task 8b). A bare field
+    // name belongs to whichever domain is on screen: `reason`, `state`,
+    // `host`, `user` and `attempt` are all names two Telemt payloads use for
+    // different things, so a global exact winning here put the DC sentence
+    // on a WEB row.
+    expect(
+      lookupField("writers[0].rtt_ema_ms", { catalog, endpoint: "/api/telemt/zero" }).source,
+    ).toBe("endpoint");
+    // …while with no endpoint in play both global steps answer as before.
+    expect(lookupField("writers[0].rtt_ema_ms", { catalog }).source).toBe("exact");
     expect(lookupField("writers[7].rtt_ema_ms", { catalog }).source).toBe("wildcard");
   });
 

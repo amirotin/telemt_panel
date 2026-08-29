@@ -11,15 +11,16 @@
 //
 // §8.2's resolution order, implemented literally:
 //
-//   1. exact normalized path            dcs[0].rtt_ms  -> "dc.rtt_ms"
-//   2. endpoint-specific path           (entries scoped to a source id)
+//   1. endpoint-specific path           (entries scoped to a source id)
+//   2. exact normalized path            dcs[0].rtt_ms  -> "dc.rtt_ms"
 //   3. wildcard path                    dcs.*.rtt_ms
 //   4. known counters family            *_total, *_bytes, *_pct, …
 //   5. neutral fallback text            "Параметр Telemt; описания пока нет"
 //
-// Steps 2 and 3 are swapped relative to the spec's own list, by controller
-// ruling R9: most specific wins, so a rule written for ONE endpoint beats a
-// catalog-wide wildcard rather than losing to it.
+// The endpoint step is hoisted ABOVE both global steps, by controller ruling
+// R9: most specific wins. A rule written for ONE endpoint beats a
+// catalog-wide wildcard — and beats a global exact too, since a bare field
+// name like `reason` or `state` belongs to whichever domain is on screen.
 //
 // Step 5 is a hard stop: the builder MUST NOT invent business meaning for a
 // field it has never seen (§8.2).
@@ -2452,17 +2453,17 @@ export function lookupField(path: string, ctx: FieldLookupContext = {}): FieldLo
 }
 
 function resolve(path: string, endpoint: string | undefined, c: CompiledCatalog): FieldLookupResult {
-  // 1. exact normalized path
-  const exact = c.exact.get(path);
-  if (exact) return { source: "exact", entry: exact };
-
-  // 2. endpoint-specific path (ruling R9)
+  // 1. endpoint-specific path (ruling R9)
   //
   // The spec's §8.2 list reads exact -> wildcard -> endpoint-specific, which
   // would let a broad global pattern such as `writers.*.rtt_ema_ms` outrank a
-  // rule written FOR one endpoint. R9 settles it the other way: most specific
-  // wins, so a rule scoped to a single endpoint beats a catalog-wide
-  // wildcard. Within the endpoint table, exact still beats wildcard.
+  // rule written FOR one endpoint. R9 settles it the other way: MOST SPECIFIC
+  // WINS, and a rule scoped to one endpoint is more specific than any global
+  // one — including a global EXACT. That last part is not academic: the WEB
+  // domain's `reason` and `state` are Telemt's own field names, and so are
+  // DC's; before this order, opening WEB Details printed the DC sentence
+  // («Почему режим middle proxy выключен») on a WEB lifecycle row. Within the
+  // endpoint table, exact still beats wildcard.
   if (endpoint) {
     const ex = c.endpointExact.get(endpoint)?.get(path);
     if (ex) return { source: "endpoint", entry: ex };
@@ -2470,6 +2471,10 @@ function resolve(path: string, endpoint: string | undefined, c: CompiledCatalog)
       if (matchesPattern(path, entry.path)) return { source: "endpoint", entry };
     }
   }
+
+  // 2. exact normalized path
+  const exact = c.exact.get(path);
+  if (exact) return { source: "exact", entry: exact };
 
   // 3. wildcard path
   for (const entry of c.wildcard) {

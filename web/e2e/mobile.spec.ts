@@ -132,7 +132,7 @@ test("login → people → create user → share → sub-page → overview → p
 
     // The Sessions tab is a SECOND request (fetch-on-visit, cursor-paged).
     await page.getByRole("tab", { name: "Сессии" }).click();
-    const firstRow = page.getByRole("button", { name: /^Открыть подробности/ }).first();
+    const firstRow = page.getByRole("button", { name: /^Открыть детали/ }).first();
     await expect(firstRow).toBeVisible();
 
     // «Загрузить ещё» is a real request: the mock seeds 24 sessions and the
@@ -157,6 +157,11 @@ test("login → people → create user → share → sub-page → overview → p
     // confirmation exists, not that a mock session dies.
     await page.getByRole("button", { name: "Отмена" }).click();
     await expect(page.getByText(/Сессия будет закрыта немедленно/)).toBeHidden();
+    // Cancelling closes the confirmation, not the surface underneath it —
+    // the reader is back where they were, still looking at the session.
+    await expect(surface).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(surface).toBeHidden();
 
     // §15: nothing on this page may widen the document.
     const overflow = await page.evaluate(

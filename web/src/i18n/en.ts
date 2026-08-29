@@ -249,7 +249,7 @@ export const en: Dict = {
     showWidget: "Show",
   },
   hub: {
-    lede: "Eight diagnostics sections. Open a card for the full picture.",
+    lede: "Nine diagnostics sections. Open a card for the full picture.",
     metrics: {
       dcTotal: "Data centers",
       coverage: "Coverage",

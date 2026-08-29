@@ -37,7 +37,7 @@ const VIEWPORTS = [
   { name: "desktop-1920x1080", width: 1920, height: 1080 },
 ] as const;
 
-// Сводка, Пульс and the eight Details pages — the wave's whole surface.
+// Сводка, Пульс and the nine Details pages — the wave's whole surface.
 const SCREENS = [
   { name: "01-overview", url: "/overview" },
   { name: "02-pulse", url: "/pulse" },
@@ -49,6 +49,7 @@ const SCREENS = [
   { name: "08-upstreams", url: "/pulse/diag/upstreams" },
   { name: "09-nat", url: "/pulse/diag/nat" },
   { name: "10-events", url: "/pulse/diag/events" },
+  { name: "11-web", url: "/pulse/diag/web" },
 ] as const;
 
 const OUT_DIR = path.resolve(process.env["SCREENSHOT_DIR"] ?? "screenshots-out");

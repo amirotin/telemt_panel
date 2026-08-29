@@ -460,12 +460,20 @@ describe("field catalog coverage: WEB domain (endpoint-scoped, ruling R9)", () =
     }
   });
 
-  it("never falls back to a counters-family guess or to the neutral text", () => {
-    const sources = new Set(
-      catalogCoverage(context, { endpoint: WEB_ENDPOINT }).rows.map((row) => row.source),
+  it("answers EVERY WEB path from the WEB table, never from a global entry", () => {
+    // Stronger than "described": a global entry answering a WEB path would
+    // still count as described, and would still be the wrong sentence.
+    // `reason` is the one that actually collided — Telemt uses that name in
+    // both the DC payload and the WEB status — and it printed «Почему режим
+    // middle proxy выключен» on a WEB lifecycle row until the endpoint step
+    // was hoisted above the global exact one (R9).
+    const rows = catalogCoverage(context, { endpoint: WEB_ENDPOINT }).rows;
+    const strays = rows.filter((row) => row.source !== "endpoint");
+    expect(strays.map((r) => `${r.path} (${r.source})`)).toEqual([]);
+    expect(lookupField("reason", { endpoint: WEB_ENDPOINT }).entry?.descriptionKey).toBe(
+      "web.reason",
     );
-    expect(sources.has("fallback")).toBe(false);
-    expect(sources.has("family")).toBe(false);
+    expect(lookupField("reason").entry?.descriptionKey).toBe("dc.reason");
   });
 
   it("keeps a busy-plane payload described too", () => {

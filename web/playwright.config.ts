@@ -47,16 +47,18 @@ export default defineConfig({
       use: { baseURL: DEV_URL, viewport: { width: 390, height: 844 }, hasTouch: true },
       testMatch: /details\.spec\.ts/,
     },
-    // The §27.1 picture matrix (`npm run screenshots`). Opt-in, because it
-    // is ninety page loads and it asserts nothing: this repo keeps NO PNG
-    // baselines, and the regression guard is the overflow sweep and the DOM
-    // assertions in the three projects above. See e2e/screenshots.ts.
+    // The §27.1 picture matrix (`npm run screenshots`) and the WEB
+    // three-build sweep (e2e/web-scenarios.spec.ts). Opt-in: the matrix is
+    // ninety page loads and asserts nothing (this repo keeps NO PNG
+    // baselines — the regression guard is the overflow sweep and the DOM
+    // assertions in the three projects above), and the WEB sweep needs the
+    // stack restarted once per SCENARIO.
     ...(process.env["SCREENSHOTS"]
       ? [
           {
             name: "screenshots",
             use: { baseURL: BASE_URL, viewport: { width: 1280, height: 800 } },
-            testMatch: /screenshots\.ts/,
+            testMatch: /screenshots\.ts|web-scenarios\.spec\.ts/,
           },
         ]
       : []),
