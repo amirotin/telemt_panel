@@ -3,12 +3,10 @@ import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { IconClose, IconWarning } from "../../ui/icons";
 import { StatCard } from "../../ui/StatCard";
-import { describeField } from "./fieldCatalog";
 import type { FieldLookupContext } from "./fieldCatalog";
-import { formatValue } from "./formatting";
 import type { SummaryMetricDefinition, SummaryShortcut, SummaryTone } from "./model";
 import { showsAtMode } from "./renderers/context";
-import { fieldLabel } from "./renderers/unknownFields";
+import { resolveSummaryMetric } from "./summaryMetric";
 import type { DisplayMode } from "../../display-mode";
 
 type MetricTone = SummaryTone;
@@ -82,21 +80,13 @@ export function SummaryGrid<T>({
       )}
     >
       {visible.map((metric) => {
-        const path = metric.path ?? metric.id;
-        const field = describeField(path, s, lookup ?? {});
-        // A tile is named by a HUMAN short label, not by the raw key the
-        // §8.1 rows show: the renders read "Fresh coverage", never
-        // `fresh_coverage_pct`. The key is the last resort, for a path the
-        // catalog has never heard of.
-        const label = metric.label ? metric.label(s) : (field.shortLabel ?? fieldLabel(path));
-        const raw = metric.value(context);
-        const formatted = formatValue(raw, s, {
+        // Naming and formatting live in summaryMetric.ts — the Пульс hub's
+        // preview cards resolve the SAME tiles through it, so a card and the
+        // page it links to cannot print different numbers for one metric.
+        const { label, text, tone } = resolveSummaryMetric(metric, context, s, {
           nowMs,
-          ...(metric.format !== undefined ? { formatter: metric.format } : {}),
-          ...(metric.unit !== undefined ? { unit: metric.unit } : {}),
+          ...(lookup ? { lookup } : {}),
         });
-        const tone =
-          typeof metric.tone === "function" ? metric.tone(context) : (metric.tone ?? "neutral");
         const marker = TONE_MARKERS[tone];
         const card = (
           <StatCard
@@ -114,7 +104,7 @@ export function SummaryGrid<T>({
                     </span>
                   </>
                 )}
-                <span className={cn(dense && "text-lg")}>{formatted.text}</span>
+                <span className={cn(dense && "text-lg")}>{text}</span>
               </span>
             }
           />

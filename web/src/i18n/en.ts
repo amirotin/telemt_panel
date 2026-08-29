@@ -247,6 +247,15 @@ export const en: Dict = {
     hiddenTitle: "Hidden blocks",
     showWidget: "Show",
   },
+  hub: {
+    lede: "Eight diagnostics sections. Open a card for the full picture.",
+    metrics: {
+      dcTotal: "Data centers",
+      coverage: "Coverage",
+      rttWorst: "Max RTT",
+      logLevel: "Log level",
+    },
+  },
   pulse: {
     title: "Pulse",
     configure: "Customize",

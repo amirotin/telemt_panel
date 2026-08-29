@@ -290,6 +290,15 @@ export const ru = {
     hiddenTitle: "Скрытые блоки",
     showWidget: "Показать",
   },
+  hub: {
+    lede: "Восемь разделов диагностики. Откройте карточку, чтобы увидеть подробности.",
+    metrics: {
+      dcTotal: "Дата-центров",
+      coverage: "Покрытие",
+      rttWorst: "RTT макс.",
+      logLevel: "Уровень логов",
+    },
+  },
   pulse: {
     title: "Пульс",
     configure: "Настроить",
