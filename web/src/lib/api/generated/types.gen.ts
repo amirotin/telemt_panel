@@ -1385,6 +1385,14 @@ export type CloseTelemtWebSessionsErrors = {
      */
     409: Error;
     /**
+     * payload_too_large — the close body exceeds Telemt's own 64 KiB control-body cap
+     */
+    413: Error;
+    /**
+     * unsupported_media_type — Telemt's control routes require exactly one byte-exact `Content-Type: application/json`. Unreachable through the panel (the SDK sets the header itself) but declared because the code is Telemt's own.
+     */
+    415: Error;
+    /**
      * capability_absent — this Telemt build predates the WEB runtime routes
      */
     501: Error;

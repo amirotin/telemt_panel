@@ -154,11 +154,16 @@ func (c *Client) WebOperation(ctx context.Context, id string) (WebControlOperati
 }
 
 // IsWebRouteAbsent reports whether err says this Telemt build has no WEB
-// runtime routes at all (< 3.5.3) — a bare 404/405 with no envelope, which
+// runtime routes at all (< 3.5.3) — a bare 404 with no envelope, which
 // client.go reports as the synthetic `http_error` code. A well-formed WEB
 // error (web_session_not_found, web_operation_not_found) is explicitly NOT
 // this: the route exists, the thing behind it does not. Rule R5's
 // `unsupported` vs `disabled` split starts here.
+//
+// 405 is deliberately excluded. On 3.5.3+ every WEB path has an entry in
+// `allowed_methods`, so a 405 means "wrong method on a route that exists" —
+// a panel bug — and reading it as "old build" would tell the operator to
+// upgrade Telemt for it.
 func IsWebRouteAbsent(err error) bool {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
@@ -168,7 +173,7 @@ func IsWebRouteAbsent(err error) bool {
 	case CodeWebSessionNotFound, CodeWebOperationNotFound, "not_found":
 		return false
 	}
-	return apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed
+	return apiErr.Status == http.StatusNotFound
 }
 
 // IsWebRuntimeUnavailable reports whether err is the 503 the sessions/close/

@@ -571,6 +571,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { description: read_only — the Telemt API runs in read-only mode, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "409": { description: web_runtime_mismatch, web_issuance_enabled or web_operation_in_progress, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "413": { description: payload_too_large — the close body exceeds Telemt's own 64 KiB control-body cap, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "415": { description: "unsupported_media_type — Telemt's control routes require exactly one byte-exact `Content-Type: application/json`. Unreachable through the panel (the SDK sets the header itself) but declared because the code is Telemt's own.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
         "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }

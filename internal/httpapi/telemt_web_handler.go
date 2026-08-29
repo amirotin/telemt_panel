@@ -104,7 +104,7 @@ func parseWebSessionsQuery(r *http.Request) (telemt.WebSessionsQuery, error) {
 //     than claim the proxy is down.
 //
 // Everything else falls through to writeTelemtError with capabilityGated
-// on, which turns a bare 404/405 (a build predating the WEB routes) into
+// on, which turns a bare 404 (a build predating the WEB routes) into
 // 501 capability_absent — R5's `unsupported`, distinct from `disabled`.
 // A well-formed web_session_not_found/web_operation_not_found is answered
 // here rather than there, for the same reason: that branch reads ANY 404 as
@@ -170,6 +170,10 @@ func (s *Server) handleGetTelemtWebSession(w http.ResponseWriter, r *http.Reques
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "session ref is required")
 		return
 	}
+	if r.URL.RawQuery != "" {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "query parameters are not accepted")
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), telemtConfigRequestTimeout)
 	defer cancel()
@@ -188,6 +192,12 @@ func (s *Server) handleGetTelemtWebOperation(w http.ResponseWriter, r *http.Requ
 	id := r.PathValue("id")
 	if id == "" {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "operation id is required")
+		return
+	}
+	// Telemt calls reject_query() on both detail routes (web_runtime.rs:76,
+	// 99): an ignored query string is a filter the caller thinks applied.
+	if r.URL.RawQuery != "" {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "query parameters are not accepted")
 		return
 	}
 
@@ -219,6 +229,15 @@ func (s *Server) handlePostTelemtWebSessionsClose(w http.ResponseWriter, r *http
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWebCloseBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
+		// An oversize body is not a syntax error, and telling the caller it
+		// is sends them looking for a typo in a request that was simply
+		// too big.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			auth.WriteError(w, http.StatusRequestEntityTooLarge, "payload_too_large",
+				"close request body exceeds the limit")
+			return
+		}
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid close request body")
 		return
 	}
@@ -227,7 +246,16 @@ func (s *Server) handlePostTelemtWebSessionsClose(w http.ResponseWriter, r *http
 		return
 	}
 	switch req.Selector.Kind {
-	case telemt.WebCloseSelectorRefs, telemt.WebCloseSelectorFilter, telemt.WebCloseSelectorAll:
+	case telemt.WebCloseSelectorRefs:
+		// SessionRefs carries omitempty, so an empty list would re-encode as
+		// a bare {"kind":"refs"} and earn a generic serde "missing field"
+		// 400 from Telemt instead of its own 1..200 message.
+		if len(req.Selector.SessionRefs) == 0 || len(req.Selector.SessionRefs) > telemt.WebSessionsMaxLimit {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request",
+				fmt.Sprintf("selector.session_refs must hold 1..%d references", telemt.WebSessionsMaxLimit))
+			return
+		}
+	case telemt.WebCloseSelectorFilter, telemt.WebCloseSelectorAll:
 	default:
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "selector.kind must be refs, filter or all")
 		return

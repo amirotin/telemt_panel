@@ -331,3 +331,41 @@ func TestWebBusyKeepsItsOwnCodes(t *testing.T) {
 		t.Errorf("body = %s, want %s", w.Body, telemt.CodeWebOperationInProgress)
 	}
 }
+
+// The narrow-request lows from the task-8b review, one assertion each.
+func TestWebRoutesRejectMalformedRequestsPrecisely(t *testing.T) {
+	srv, cookie, _ := newTelemttestConfigServer(t, telemttest.Scenario{})
+	ref := "ws1.0123456789abcdef0123456789abcdef.0000000000000001"
+
+	// L4 — Telemt calls reject_query() on both detail routes, so a query
+	// string an operator believes filtered something must not be ignored.
+	for _, path := range []string{
+		"/api/telemt/web/sessions/" + ref + "?limit=1",
+		"/api/telemt/web/operations/wo1.0123456789abcdef0123456789abcdef.0000000000000001?x=1",
+	} {
+		if w := doRequest(t, srv, cookie, "GET", path, nil, nil); w.Code != http.StatusBadRequest {
+			t.Errorf("GET %s = %d, want 400: %s", path, w.Code, w.Body)
+		}
+	}
+
+	// L7 — an empty refs list would re-encode as a bare {"kind":"refs"} and
+	// earn a generic serde "missing field" 400 from Telemt.
+	body := []byte(`{"runtime_instance":"0123456789abcdef0123456789abcdef","selector":{"kind":"refs","session_refs":[]}}`)
+	w := doRequest(t, srv, cookie, "POST", "/api/telemt/web/sessions/close", nil, body)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "1..200") {
+		t.Errorf("empty refs = %d %s, want 400 naming the 1..200 bound", w.Code, w.Body)
+	}
+
+	// L3 — an oversize body is 413, not "malformed JSON": the caller is not
+	// looking for a typo.
+	refs := make([]string, 0, 4000)
+	for i := 0; i < 4000; i++ {
+		refs = append(refs, `"`+ref+`"`)
+	}
+	huge := []byte(`{"runtime_instance":"0123456789abcdef0123456789abcdef","selector":{"kind":"refs","session_refs":[` +
+		strings.Join(refs, ",") + `]}}`)
+	w = doRequest(t, srv, cookie, "POST", "/api/telemt/web/sessions/close", nil, huge)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversize close = %d, want 413: %s", w.Code, w.Body)
+	}
+}

@@ -265,7 +265,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	case r.Method == http.MethodGet && path == "/v1/system/info":
 		writeOK(w, http.StatusOK, telemt.SystemInfoData{
-			Version: "3.5.2", TargetArch: "x86_64", TargetOS: "linux", BuildProfile: "release",
+			Version: "3.5.5", TargetArch: "x86_64", TargetOS: "linux", BuildProfile: "release",
 			ProcessStartedAtEpochSec: 1000, UptimeSeconds: 3600,
 			ConfigPath: "/etc/telemt/telemt.toml", ConfigHash: s.revision(), ConfigReloadCount: 1,
 		}, s.revision())

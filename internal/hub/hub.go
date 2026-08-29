@@ -1013,13 +1013,35 @@ var volatileKeysByTopic = map[string][]string{
 	"web": {"lifecycle_age_ms", "age_ms"},
 }
 
-// volatileKeysFor returns the set of field names diffKey zeroes for topic.
-func volatileKeysFor(topic string) map[string]struct{} {
-	keys := map[string]struct{}{volatileTimestampKey: {}}
-	for _, k := range volatileKeysByTopic[topic] {
-		keys[k] = struct{}{}
+// volatileKeySets is volatileKeysByTopic resolved once, at init, into the
+// set diffKey actually indexes. Built at package scope rather than per call
+// because diffKey runs on EVERY successful poll of EVERY topic, and the
+// poll loop does not allocate (Global Constraints).
+var volatileKeySets = buildVolatileKeySets()
+
+// defaultVolatileKeys is what a topic with no extra names of its own gets —
+// one shared, read-only set rather than a fresh map per poll.
+var defaultVolatileKeys = map[string]struct{}{volatileTimestampKey: {}}
+
+func buildVolatileKeySets() map[string]map[string]struct{} {
+	sets := make(map[string]map[string]struct{}, len(volatileKeysByTopic))
+	for topic, names := range volatileKeysByTopic {
+		keys := map[string]struct{}{volatileTimestampKey: {}}
+		for _, name := range names {
+			keys[name] = struct{}{}
+		}
+		sets[topic] = keys
 	}
-	return keys
+	return sets
+}
+
+// volatileKeysFor returns the set of field names diffKey zeroes for topic.
+// The returned map is shared and must not be mutated.
+func volatileKeysFor(topic string) map[string]struct{} {
+	if keys, ok := volatileKeySets[topic]; ok {
+		return keys
+	}
+	return defaultVolatileKeys
 }
 
 // stripVolatileTimestamps recursively zeroes every entry of v (a

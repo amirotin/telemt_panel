@@ -11,10 +11,14 @@ package telemt
 // or null both leave Data nil), so this type is correct against either wire
 // behavior; see the package doc comment on this discrepancy.
 type Gated[T any] struct {
-	Enabled              bool   `json:"enabled"`
-	Reason               string `json:"reason,omitempty"`
-	GeneratedAtEpochSecs int64  `json:"generated_at_epoch_secs"`
-	Data                 *T     `json:"data,omitempty"`
+	Enabled bool   `json:"enabled"`
+	Reason  string `json:"reason,omitempty"`
+	// omitempty because not every gated payload HAS one: the WEB status
+	// route is not a Gated[T] in Telemt at all, so hub's fetchWeb builds
+	// the wrapper by hand and has no timestamp to put here — emitting a
+	// constant 0 would be a stamp that says "1970".
+	GeneratedAtEpochSecs int64 `json:"generated_at_epoch_secs,omitempty"`
+	Data                 *T    `json:"data,omitempty"`
 }
 
 // RuntimeGatesData is the payload of GET /v1/runtime/gates. Unlike the other
