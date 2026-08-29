@@ -279,6 +279,17 @@ export const ru = {
       expiredAgoTemplate: "Истёк {amount} назад",
     },
   },
+  // Сводка — the widget dashboard's own page chrome. The widget catalog
+  // itself stays under `pulse` (that is the registry's namespace, and the
+  // Пульс hub reads the same domain titles from `diag.domains`).
+  overview: {
+    title: "Сводка",
+    onlineOf: "{online} из {total}",
+    onlineEmpty: "Сейчас никто не подключён.",
+    allPeople: "Все люди",
+    hiddenTitle: "Скрытые блоки",
+    showWidget: "Показать",
+  },
   pulse: {
     title: "Пульс",
     configure: "Настроить",
@@ -301,6 +312,7 @@ export const ru = {
       health_hero: "Статус",
       stat_row: "Показатели",
       problems: "Проблемы",
+      online_now: "Онлайн сейчас",
       active_sessions: "Активные сессии",
       dc: "Дата-центры",
       upstreams: "Апстримы",

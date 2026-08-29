@@ -6,6 +6,7 @@ import { HealthHero } from "./HealthHero";
 import { StatRow } from "./StatRow";
 import { Problems } from "./Problems";
 import { ActiveSessions } from "./ActiveSessions";
+import { OnlineNow } from "./OnlineNow";
 import { DcWidget } from "./DcWidget";
 import { UpstreamsWidget } from "./UpstreamsWidget";
 import { MePoolWidget } from "./MePoolWidget";
@@ -67,6 +68,17 @@ export const WIDGETS: WidgetDef[] = [
     formFactor: "card",
     hideable: true,
     render: Problems,
+  },
+  {
+    // «Онлайн сейчас» (06-ui.md §Информационная архитектура): a dashboard
+    // widget rather than a fixed page block, so it obeys the same layout,
+    // ordering and display-mode rules as everything else on Сводка.
+    id: "online_now",
+    topics: ["users"],
+    minMode: "basic",
+    formFactor: "card",
+    hideable: true,
+    render: OnlineNow,
   },
   {
     id: "active_sessions",
@@ -158,8 +170,16 @@ export const WIDGETS: WidgetDef[] = [
 ];
 
 // DEFAULT_LAYOUT is the dashboard's out-of-the-box ordered widget list
-// (06-ui.md: "HealthHero, стат-ряд, Проблемы").
-export const DEFAULT_LAYOUT: WidgetId[] = ["health_hero", "stat_row", "problems"];
+// (06-ui.md: "HealthHero, стат-ряд, Проблемы", plus «Онлайн сейчас» — the
+// prototype's Сводка puts it directly under Проблемы). An existing user's
+// stored layout is NOT rewritten to match: migrateLayout only re-inserts
+// non-hideable ids, so this is the first-run set, not a forced one.
+export const DEFAULT_LAYOUT: WidgetId[] = [
+  "health_hero",
+  "stat_row",
+  "problems",
+  "online_now",
+];
 
 export function getWidgetDef(id: WidgetId): WidgetDef | undefined {
   return WIDGETS.find((w) => w.id === id);

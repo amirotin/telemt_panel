@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PulseDashboard } from "../../../pulse/PulseDashboard";
+import { OverviewPage } from "../../../overview/OverviewPage";
 
 export const Route = createFileRoute("/_authed/pulse/")({
-  component: PulseDashboard,
+  component: OverviewPage,
 });

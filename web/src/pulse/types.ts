@@ -27,6 +27,7 @@ export type WidgetId =
   | "health_hero"
   | "stat_row"
   | "problems"
+  | "online_now"
   | "active_sessions"
   | "dc"
   | "upstreams"

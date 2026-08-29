@@ -8,6 +8,7 @@ import {
   moveWidget,
   resetLayout,
   setStoredLayout,
+  hiddenWidgetIds,
   showWidget,
   visibleWidgetIds,
   type Layout,
@@ -209,6 +210,37 @@ describe("editorRows", () => {
     const rows = editorRows(layout, "basic");
     expect(rows).toHaveLength(WIDGETS.length);
     expect(new Set(rows.map((r) => r.id)).size).toBe(WIDGETS.length);
+  });
+});
+
+describe("hiddenWidgetIds", () => {
+  it("lists registry widgets absent from the layout, in registry order", () => {
+    const layout: Layout = ["health_hero", "problems"];
+    const hidden = hiddenWidgetIds(layout, "extended");
+    expect(hidden).not.toContain("health_hero");
+    expect(hidden).not.toContain("problems");
+    expect(hidden).toEqual(
+      WIDGETS.filter((w) => w.id !== "health_hero" && w.id !== "problems").map((w) => w.id),
+    );
+  });
+
+  it("omits a widget the display mode filters out — it is out of scope, not hidden", () => {
+    // me_pool's minMode is "extended": in basic mode «показать» could not
+    // put it on screen, so the list must not offer it.
+    expect(hiddenWidgetIds([], "basic")).not.toContain("me_pool");
+    expect(hiddenWidgetIds([], "extended")).toContain("me_pool");
+  });
+
+  it("is empty when every available widget is already shown", () => {
+    expect(hiddenWidgetIds(WIDGETS.map((w) => w.id), "extended")).toEqual([]);
+  });
+
+  it("is the exact complement of visibleWidgetIds within one mode", () => {
+    const layout: Layout = ["health_hero", "stat_row", "online_now"];
+    const shown = new Set(visibleWidgetIds(layout, "extended"));
+    const hidden = new Set(hiddenWidgetIds(layout, "extended"));
+    for (const id of shown) expect(hidden.has(id)).toBe(false);
+    expect(shown.size + hidden.size).toBe(WIDGETS.length);
   });
 });
 

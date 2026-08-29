@@ -92,6 +92,17 @@ export function visibleWidgetIds(layout: Layout, mode: DisplayMode): WidgetId[] 
   });
 }
 
+// hiddenWidgetIds is visibleWidgetIds' complement for the Сводка page's
+// «Скрытые блоки» list: registry widgets absent from the layout, in registry
+// order. A widget the DISPLAY MODE filters out is not in this list — it is
+// not hidden, it is out of scope for the current density, and offering
+// «показать» for it would leave the reader tapping a button that changes
+// nothing on screen.
+export function hiddenWidgetIds(layout: Layout, mode: DisplayMode): WidgetId[] {
+  const shown = new Set(layout);
+  return WIDGETS.filter((w) => !shown.has(w.id) && visibleFor(w.minMode, mode)).map((w) => w.id);
+}
+
 // moveWidget swaps a widget with its up/down neighbor in the stored order;
 // a request past either end of the array is a no-op (nothing to swap with).
 export function moveWidget(layout: Layout, id: WidgetId, direction: "up" | "down"): Layout {

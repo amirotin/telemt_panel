@@ -239,6 +239,14 @@ export const en: Dict = {
       expiredAgoTemplate: "Expired {amount} ago",
     },
   },
+  overview: {
+    title: "Overview",
+    onlineOf: "{online} of {total}",
+    onlineEmpty: "Nobody is connected right now.",
+    allPeople: "All people",
+    hiddenTitle: "Hidden blocks",
+    showWidget: "Show",
+  },
   pulse: {
     title: "Pulse",
     configure: "Customize",
@@ -261,6 +269,7 @@ export const en: Dict = {
       health_hero: "Status",
       stat_row: "Key figures",
       problems: "Issues",
+      online_now: "Online now",
       active_sessions: "Active sessions",
       dc: "Data centers",
       upstreams: "Upstreams",

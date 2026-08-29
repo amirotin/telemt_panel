@@ -9,10 +9,10 @@ import { EmptyState } from "../ui/EmptyState";
 import { Sheet } from "../ui/Sheet";
 import { ConfirmView } from "../ui/ConfirmView";
 import { DisplayModeSwitch, useDisplayMode, type DisplayMode } from "../display-mode";
-import { getWidgetDef, type FormFactor } from "./widgets/registry";
-import { editorRows, visibleWidgetIds, type EditorRow } from "./layout";
-import { usePulseLayout } from "./usePulseLayout";
-import type { WidgetId } from "./types";
+import { getWidgetDef, type FormFactor } from "../pulse/widgets/registry";
+import { editorRows, hiddenWidgetIds, visibleWidgetIds, type EditorRow } from "../pulse/layout";
+import { usePulseLayout } from "../pulse/usePulseLayout";
+import type { WidgetId } from "../pulse/types";
 
 const SPAN_CLASSES: Record<FormFactor, string> = {
   stat: "",
@@ -21,16 +21,21 @@ const SPAN_CLASSES: Record<FormFactor, string> = {
   table: "lg:col-span-3",
 };
 
-// PulseDashboard is the /pulse page: the user's layout, filtered by display
-// mode, rendered through the widget registry — plus the "Настроить" catalog
-// editor (06-ui.md §Пульс). No parallel widget list exists anywhere else;
-// both the normal grid and the catalog below read from WIDGETS/usePulseLayout.
+// OverviewPage is /overview — «Сводка», the configurable widget dashboard:
+// the user's layout, filtered by display mode, rendered through the widget
+// registry, plus the "Настроить" catalog editor and the «Скрытые блоки»
+// list (06-ui.md §Информационная архитектура). It is the M3 «Пульс» page
+// under its new name; /pulse is now the diagnostics hub (pulse/hub).
+// No parallel widget list exists anywhere else; the grid, the catalog and
+// the hidden list all read from WIDGETS/usePulseLayout.
 //
 // Header follows the prototype: the page title owns the first line on its
 // own, and the density switch sits under it as a pill strip with «Настроить»
 // as a quiet button at its right — previously the two controls shared the
-// title's line and outweighed it.
-export function PulseDashboard() {
+// title's line and outweighed it. The switch lives HERE and only here: it
+// filters this dashboard's widgets, and the Пульс hub shows a fixed set of
+// eight cards it has no say over.
+export function OverviewPage() {
   const s = useStrings();
   const { mode } = useDisplayMode();
   const { layout, move, show, hide, reset } = usePulseLayout();
@@ -42,7 +47,7 @@ export function PulseDashboard() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
-        <h1 className="text-title font-extrabold tracking-tight text-text">{s.pulse.title}</h1>
+        <h1 className="text-title font-extrabold tracking-tight text-text">{s.overview.title}</h1>
         {/* Three density chips plus «Настроить» do not fit 360px on one
             line, so the row wraps on a phone and only pushes the button to
             the far right once there is room for it. */}
@@ -86,6 +91,8 @@ export function PulseDashboard() {
         </div>
       )}
 
+      {!configuring && <HiddenWidgets layout={layout} mode={mode} onShow={show} />}
+
       <Sheet open={confirmingReset} onClose={() => setConfirmingReset(false)} title={s.pulse.reset}>
         <ConfirmView
           description={s.pulse.resetConfirm}
@@ -99,6 +106,53 @@ export function PulseDashboard() {
         />
       </Sheet>
     </div>
+  );
+}
+
+interface HiddenWidgetsProps {
+  layout: WidgetId[];
+  mode: DisplayMode;
+  onShow: (id: WidgetId) => void;
+}
+
+// HiddenWidgets — the prototype's «Скрытые блоки» footer: everything the
+// registry offers that this layout does not currently show, each with a
+// one-tap «показать». Without it the only way back to a widget the reader
+// once hid was to open «Настроить» and hunt for its row, which is why the
+// prototype put the list on the page itself.
+//
+// Widgets filtered out by the display MODE are deliberately absent: they are
+// not hidden, they are out of scope for the current density, and offering
+// «показать» for one would either lie (it stays invisible) or silently
+// override the mode. The editor row already explains that case in words.
+function HiddenWidgets({ layout, mode, onShow }: HiddenWidgetsProps) {
+  const s = useStrings();
+  const hidden = hiddenWidgetIds(layout, mode);
+  if (hidden.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint">
+        {s.overview.hiddenTitle}
+      </h2>
+      <CardList>
+        <ul className="flex flex-col">
+          {hidden.map((id) => (
+            <li
+              key={id}
+              className="flex min-h-[46px] items-center gap-3 border-b border-border py-2 last:border-b-0"
+            >
+              <span className="min-w-0 flex-1 truncate text-row text-text-muted">
+                {s.pulse.widgets[id]}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => onShow(id)}>
+                {s.overview.showWidget}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CardList>
+    </section>
   );
 }
 
