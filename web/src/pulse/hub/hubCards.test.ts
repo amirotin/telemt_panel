@@ -18,6 +18,10 @@ import {
   upstreamsSnapshot,
   writerCount,
   zeroAll,
+  capabilityAbsentRuntimeSnapshot,
+  edgeOffRuntimeSnapshot,
+  oldBuildRuntimeSnapshot,
+  oldBuildStatsSnapshot,
 } from "../details-builder/__fixtures__";
 import type { QuerySourceInput } from "../details-builder/sources";
 import {
@@ -272,5 +276,77 @@ describe("before anything has arrived", () => {
     expect(card.status).toBe("stale");
     expect(card.pill).toBe("warn");
     expect(card.metrics.length).toBe(3);
+  });
+});
+
+// Ruling R5 across Telemt builds, on the hub — the one screen that shows all
+// eight domains at once, and therefore the one where a wrong word is
+// repeated eight times.
+describe("cross-version: the hub on three different builds", () => {
+  it("says «switched off» on a 3.4.x build, pointing at a setting", () => {
+    // The topic cannot tell "route absent" from "gate closed" — hub.go drops
+    // the key either way — so the panel makes the recoverable claim. An
+    // operator who looks for the setting and does not find it has lost a
+    // minute; one sent to upgrade a proxy they did not need to upgrade has
+    // lost an evening.
+    const cards = buildHubCards(
+      inputs({
+        stats: topic<StatsSnapshot>(oldBuildStatsSnapshot),
+        runtime: topic<RuntimeTopic>(oldBuildRuntimeSnapshot),
+      }),
+      ru,
+    );
+    for (const domain of ["connections", "events"] as const) {
+      const card = cards.find((c) => c.domain === domain)!;
+      expect(card.status, domain).toBe("disabled");
+      expect(card.gate?.variant, domain).toBe("disabled");
+      expect(card.gate?.hint, domain).toBe("runtime_edge");
+    }
+  });
+
+  it("says «not in this version» when the build names the absence itself", () => {
+    const cards = buildHubCards(
+      inputs({ runtime: topic<RuntimeTopic>(capabilityAbsentRuntimeSnapshot) }),
+      ru,
+    );
+    const nat = cards.find((c) => c.domain === "nat")!;
+    expect(nat.status).toBe("unsupported");
+    expect(nat.gate).toEqual({
+      variant: "unsupported",
+      reason: "capability_absent",
+      hint: "telemt_outdated",
+    });
+    // Never both sentences at once, and never the setting hint.
+    expect(nat.gate?.hint).not.toBe("runtime_edge");
+  });
+
+  it("keeps the two apart on the SAME hub render", () => {
+    const cards = buildHubCards(
+      inputs({
+        runtime: topic<RuntimeTopic>({
+          ...edgeOffRuntimeSnapshot,
+          me_pool_state: capabilityAbsentRuntimeSnapshot.me_pool_state,
+        }),
+      }),
+      ru,
+    );
+    expect(cards.find((c) => c.domain === "nat")!.status).toBe("disabled");
+    expect(cards.find((c) => c.domain === "events")!.status).toBe("disabled");
+  });
+
+  it("never shows the working domains as anything but themselves", () => {
+    // §14: a gate on one source must not take the rest of the screen with it.
+    const cards = buildHubCards(
+      inputs({
+        stats: topic<StatsSnapshot>(oldBuildStatsSnapshot),
+        runtime: topic<RuntimeTopic>(oldBuildRuntimeSnapshot),
+      }),
+      ru,
+    );
+    for (const domain of ["dc", "me", "security", "upstreams"] as const) {
+      const card = cards.find((c) => c.domain === domain)!;
+      expect(card.status, domain).toBe("ready");
+      expect(card.metrics.length, domain).toBeGreaterThan(0);
+    }
   });
 });

@@ -10,8 +10,12 @@ import {
   natStunLive0,
   natStunLive10,
   natStunLive7,
+  capabilityAbsentRuntimeSnapshot,
+  edgeOffRuntimeSnapshot,
+  oldBuildRuntimeSnapshot,
 } from "../__fixtures__";
-import type { RuntimeNatStun } from "../../../realtime/topics";
+import type { RuntimeNatStun, RuntimeTopic } from "../../../realtime/topics";
+import { hintKeyFor, noticeVariantFor, resolveTopicSource } from "../sources";
 import { classifyValue, resolveSections } from "../resolveSections";
 import type { CollectionSectionInstance, ScalarSectionInstance } from "../resolveSections";
 import { liveTone, natPageDefinition, reflectionAgeSecs } from "./nat";
@@ -187,5 +191,54 @@ describe("checkpoint R5-NAT: completeness (§27.4, ruling R7)", () => {
     // …and the four declared rows keep their claim, so nothing is drawn twice.
     expect(result.consumedPaths).toContain("reflection.v4.addr");
     expect(result.consumedPaths).toContain("reflection.v6.age_secs");
+  });
+});
+
+// Cross-version (ruling R5) on a Details page rather than on the hub: the
+// three builds that all have "no NAT/STUN data" and the three different
+// things the page has to say about it.
+describe("cross-version: what the page says on three builds", () => {
+  const snapshot = (data: RuntimeTopic | null) => ({
+    data,
+    ts: 1_756_000_000,
+    stale: false,
+    error: null,
+  });
+  // The exact expression diag/NatPage.tsx builds.
+  const natSource = (data: RuntimeTopic | null) =>
+    resolveTopicSource("nat", {
+      kind: "topic",
+      snapshot: snapshot(data),
+      gated: data?.nat_stun ?? null,
+    });
+
+  it("is disabled when the wrapper says the feature is switched off", () => {
+    const state = natSource(edgeOffRuntimeSnapshot);
+    expect(state).toMatchObject({ status: "disabled", reason: "feature_disabled" });
+    expect(noticeVariantFor(state)).toBe("disabled");
+    expect(hintKeyFor(state, "minimal_runtime_enabled")).toBe("minimal_runtime_enabled");
+  });
+
+  it("is unsupported when the wrapper says the build has no such thing", () => {
+    const state = natSource(capabilityAbsentRuntimeSnapshot);
+    expect(state).toMatchObject({ status: "unsupported", reason: "capability_absent" });
+    expect(noticeVariantFor(state)).toBe("unsupported");
+    // Never "flip a setting your binary does not have".
+    expect(hintKeyFor(state, "minimal_runtime_enabled")).toBe("telemt_outdated");
+  });
+
+  it("falls back to disabled on a 3.4.x build, which sends nothing at all", () => {
+    // oldBuildRuntimeSnapshot keeps the minimal group, so NAT still answers;
+    // the absent-wrapper case is what an even older build produces, and it
+    // reads as the recoverable claim.
+    const withoutNat = { ...oldBuildRuntimeSnapshot } as RuntimeTopic;
+    delete (withoutNat as { nat_stun?: unknown }).nat_stun;
+    const state = natSource(withoutNat);
+    expect(state.status).toBe("disabled");
+    expect(state.reason).toBeUndefined();
+  });
+
+  it("is none of the three before the topic has arrived", () => {
+    expect(natSource(null).status).toBe("loading");
   });
 });

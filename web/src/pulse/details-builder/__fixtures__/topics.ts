@@ -23,6 +23,7 @@ import {
 } from "./runtime";
 import { dcs, meWriters, minimalAll, summary, upstreams, upstreamQuality } from "./stats";
 import { effectiveLimits, posture, whitelist } from "./security";
+import { gatedOff } from "./edges";
 
 export const statsSnapshot: StatsSnapshot = {
   health: { status: "ok", read_only: false },
@@ -66,4 +67,57 @@ export const securitySnapshot: SecurityTopic = {
   posture,
   whitelist,
   effective_limits: effectiveLimits,
+};
+
+// --- cross-version snapshots (ruling R5) ---------------------------------
+//
+// Three builds, three different ways the same capability is "not here", and
+// the panel must not blur them into one sentence:
+//
+//   * `oldBuildStatsSnapshot`/`oldBuildRuntimeSnapshot` — Telemt 3.4.x. The
+//     runtime-edge routes do not exist, so the panel's capability probe
+//     fails, hub.go never fetches them, and `connections_summary`/
+//     `recent_events` are simply not on the wire. This is indistinguishable
+//     ON THE TOPIC from the same build with the feature switched off, which
+//     is why the panel says `disabled` for both: "here is the setting" is
+//     the recoverable mistake, "go upgrade your proxy" is not. The REST half
+//     of the same story IS distinguishable and stays so — an absent route
+//     answers 501 capability_absent, a closed gate 503
+//     capability_unavailable (internal/httpapi/telemt_tls_handler.go).
+//   * `capabilityAbsentRuntimeSnapshot` — a build that DOES answer and says
+//     the feature is absent in the wrapper's own reason token. That one is
+//     `unsupported`, and its hint points at an update rather than a switch.
+//   * `edgeOffRuntimeSnapshot` — present wrapper, `feature_disabled`: the
+//     admin has a switch to flip.
+
+const withoutKeys = <T extends object>(base: T, keys: readonly (keyof T)[]): T => {
+  const next = { ...base };
+  for (const key of keys) delete next[key];
+  return next;
+};
+
+/** Telemt 3.4.x: no runtime-edge routes at all, so no `connections_summary`. */
+export const oldBuildStatsSnapshot: StatsSnapshot = {
+  ...withoutKeys(statsSnapshot, ["connections_summary"]),
+  version: "3.4.9",
+};
+
+/** The same build's runtime topic: no `recent_events`, minimal group intact. */
+export const oldBuildRuntimeSnapshot: RuntimeTopic = withoutKeys(runtimeSnapshot, [
+  "recent_events",
+]);
+
+/** A build that answers and names the absence itself — R5's `unsupported`. */
+export const capabilityAbsentRuntimeSnapshot: RuntimeTopic = {
+  ...runtimeSnapshot,
+  nat_stun: gatedOff("capability_absent"),
+  me_pool_state: gatedOff("capability_absent"),
+};
+
+/** runtime_edge switched off on a build that has it — R5's `disabled`. */
+export const edgeOffRuntimeSnapshot: RuntimeTopic = {
+  ...runtimeSnapshot,
+  nat_stun: gatedOff(),
+  me_pool_state: gatedOff(),
+  recent_events: gatedOff(),
 };
