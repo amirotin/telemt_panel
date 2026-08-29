@@ -3,8 +3,9 @@ import { cn } from "../lib/cn";
 import { useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 import { CardList } from "../ui/Card";
+import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
-import { IconArrowDown, IconArrowUp } from "../ui/icons";
+import { IconArrowDown, IconArrowUp, IconPlus } from "../ui/icons";
 import { EmptyState } from "../ui/EmptyState";
 import { Sheet } from "../ui/Sheet";
 import { ConfirmView } from "../ui/ConfirmView";
@@ -153,23 +154,24 @@ function HiddenWidgets({ layout, mode, onShow }: HiddenWidgetsProps) {
       <h2 className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint">
         {s.overview.hiddenTitle}
       </h2>
-      <CardList>
-        <ul className="flex flex-col">
-          {hidden.map((id) => (
-            <li
-              key={id}
-              className="flex min-h-[46px] items-center gap-3 border-b border-border py-2 last:border-b-0"
-            >
-              <span className="min-w-0 flex-1 truncate text-row text-text-muted">
-                {s.pulse.widgets[id]}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => onShow(id)}>
-                {s.overview.showWidget}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </CardList>
+      {/* A wrapping row of chips, not a list of rows: these are four short
+          names and a one-tap action each, and a full-width card row per name
+          spent a screenful of space saying almost nothing. The chip IS the
+          «показать» — its own accessible name spells that out, since «+ DC»
+          alone would not. */}
+      <div className="flex flex-wrap gap-2">
+        {hidden.map((id) => (
+          <Chip
+            key={id}
+            size="md"
+            icon={<IconPlus className="h-3.5 w-3.5" />}
+            aria-label={`${s.overview.showWidget}: ${s.pulse.widgets[id]}`}
+            onClick={() => onShow(id)}
+          >
+            {s.pulse.widgets[id]}
+          </Chip>
+        ))}
+      </div>
     </section>
   );
 }
