@@ -1779,6 +1779,25 @@ export const en: Dict = {
     payload_too_large: "The request is too large.",
     api_disabled: "Telemt's API is turned off.",
     maestro_unavailable: "An internal Telemt service is unavailable.",
+    unsupported_media_type:
+      "The proxy rejected the request format. Update the panel — this one is on its side.",
+    // The WEB group (Telemt >= 3.5.3). Every line has to say what to DO:
+    // this is the one screen where a refusal lands on a destructive action,
+    // and "try again" means nothing there.
+    web_runtime_unavailable:
+      "The WEB runtime isn't running. Set [web] enabled = true, add a listener with transport = \"web\", then restart the proxy.",
+    web_snapshot_busy:
+      "The WEB data is busy with another read — try again in a couple of seconds, nothing is lost.",
+    web_runtime_mismatch:
+      "The proxy restarted: those session references belong to a process that has ended. Reload the page and try again.",
+    web_issuance_enabled:
+      "Closing every session needs issuance switched off. Set [web] enabled = false in the config, wait for issuance_enabled = false, then try again.",
+    web_operation_in_progress:
+      "The proxy is already closing sessions — wait for the current operation to finish.",
+    web_session_not_found:
+      "That WEB session is gone: it closed and its record has already been evicted. Reload the list.",
+    web_operation_not_found:
+      "That close operation is no longer tracked — Telemt keeps only the last 32. Reload the session list to see the result.",
     network: "No connection to the server. Check your network and try again.",
     default: "The request failed. Try again.",
   },

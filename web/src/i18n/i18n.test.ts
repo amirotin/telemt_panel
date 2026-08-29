@@ -84,7 +84,44 @@ describe("dictionary shape parity", () => {
   });
 });
 
+// The WEB group's codes are declared once, in the Go SDK, and every one of
+// them can reach the browser on a destructive action — so they are read
+// straight out of that file rather than copied here. A code added to
+// types_web.go without a message in both dictionaries fails this test, which
+// is the hole that let all seven ship rendering «Попробуйте ещё раз».
+function sdkWebErrorCodes(): string[] {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(
+    path.join(here, "..", "..", "..", "internal", "telemt", "types_web.go"),
+    "utf8",
+  );
+  const codes = [...source.matchAll(/^\tCode[A-Za-z]+ += +"([a-z_]+)"$/gm)].map((m) => m[1]);
+  if (codes.length < 8) throw new Error(`types_web.go: found only ${codes.length} error codes`);
+  return codes;
+}
+
 describe("errors completeness", () => {
+  it.each(DICTS)(
+    "%s has an actionable message for every WEB code the Go SDK declares",
+    (_locale, dict) => {
+      const table = dict.errors as unknown as Record<string, string>;
+      for (const code of sdkWebErrorCodes()) {
+        const text = table[code];
+        expect(text, `missing message for code "${code}"`).toBeTruthy();
+        // Actionable, not a restatement of the code: every one of these
+        // arrives on a close the operator just confirmed.
+        expect(text.length, `message for "${code}" is too short to be advice`).toBeGreaterThan(30);
+      }
+    },
+  );
+
+  it("keeps openapi.yaml's enum in step with the Go SDK's WEB codes", () => {
+    const documented = new Set(documentedErrorCodes());
+    for (const code of sdkWebErrorCodes()) {
+      expect(documented.has(code), `openapi.yaml Error.code is missing "${code}"`).toBe(true);
+    }
+  });
+
   it.each(DICTS)(
     "%s has a non-empty message for every code in openapi.yaml's Error.code enum",
     (_locale, dict) => {

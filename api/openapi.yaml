@@ -879,6 +879,14 @@ components:
             - payload_too_large
             - api_disabled
             - maestro_unavailable
+            - unsupported_media_type
+            - web_runtime_unavailable
+            - web_snapshot_busy
+            - web_runtime_mismatch
+            - web_issuance_enabled
+            - web_operation_in_progress
+            - web_session_not_found
+            - web_operation_not_found
           description: >
             Machine code. Panel codes actually emitted today (grepped from every
             WriteError call site): bad_request, invalid_credentials, rate_limited,
@@ -914,6 +922,14 @@ components:
             access_not_editable/section_not_editable/field_not_editable/
             config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config,
             which the panel remaps to HTTP 422 regardless of Telemt's own status.
+            The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds
+            web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress,
+            web_snapshot_busy, web_session_not_found, web_operation_not_found and
+            unsupported_media_type; web_runtime_unavailable is listed because it is
+            Telemt's own code, but the panel remaps it to capability_unavailable
+            (rule R5) so the closed-capability gate is drawn instead of an error.
+            Every code in this enum must carry a message in BOTH dictionaries —
+            web/src/i18n/i18n.test.ts walks this list.
         message: { type: string }
 
     User:
