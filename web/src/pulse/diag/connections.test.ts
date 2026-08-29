@@ -1,116 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { connectionsGroups, summaryGroup, usersTrafficTotal } from "./connections.helpers";
-import type { RuntimeEdgeConnectionsSummary, StatsSummary, UsersTopic } from "../../realtime/topics";
-import { ru as s } from "../../i18n";
+import { connectionsPagePayload, usersTrafficTotal } from "./connections.helpers";
+import { connectionsSummary, summary } from "../details-builder/__fixtures__";
+import type { UsersTopic } from "../../realtime/topics";
 
-const data: RuntimeEdgeConnectionsSummary = {
-  cache: { ttl_ms: 1000, served_from_cache: true, stale_cache_used: false },
-  totals: { current_connections: 5, current_connections_me: 3, current_connections_direct: 2, active_users: 4 },
-  top: {
-    limit: 10,
-    by_connections: [{ username: "alice", current_connections: 2, total_octets: 100 }],
-    by_throughput: [],
-  },
-  telemetry: { user_enabled: true, throughput_is_cumulative: false },
-};
-
-describe("connectionsGroups", () => {
-  it("emits one group per sub-object, in a stable order", () => {
-    const groups = connectionsGroups(data, s);
-    expect(groups.map((g) => g.title)).toEqual([
-      "Итого",
-      "Кэш",
-      "Топ по соединениям",
-      "Топ по трафику",
-      "Телеметрия",
-    ]);
-  });
-
-  it("flattens the totals into individual rows", () => {
-    const groups = connectionsGroups(data, s);
-    const totals = groups[0];
-    expect(totals.rows).toEqual([
-      { key: "current_connections", label: "current connections", value: "5" },
-      { key: "current_connections_me", label: "current connections me", value: "3" },
-      { key: "current_connections_direct", label: "current connections direct", value: "2" },
-      { key: "active_users", label: "active users", value: "4" },
-    ]);
-  });
-
-  it("expands the by_connections array by index", () => {
-    const groups = connectionsGroups(data, s);
-    const top = groups[2];
-    expect(top.rows.map((r) => r.key)).toEqual([
-      "[0].username",
-      "[0].current_connections",
-      "[0].total_octets",
-    ]);
-  });
-
-  it("still emits an (empty) group for an empty array field", () => {
-    const groups = connectionsGroups(data, s);
-    expect(groups[3]).toEqual({ title: "Топ по трафику", rows: [] });
-  });
-});
-
-describe("summaryGroup", () => {
-  const summary: StatsSummary = {
-    uptime_seconds: 3600,
-    connections_total: 42,
-    connections_bad_total: 3,
-    handshake_timeouts_total: 1,
-    configured_users: 7,
-    connections_bad_by_class: [{ class: "rate_limited", total: 3 }],
-    handshake_failures_by_class: [{ class: "tls", total: 1 }],
-  };
-
-  it("returns no group when summary is null (sub-call failed this poll)", () => {
-    expect(summaryGroup(null, null, s)).toEqual([]);
-  });
-
-  it("flattens every summary scalar/array under one Сводка group", () => {
-    const groups = summaryGroup(summary, null, s);
-    expect(groups).toHaveLength(1);
-    expect(groups[0].title).toBe("Сводка");
-    const keys = groups[0].rows.map((r) => r.key);
-    expect(keys).toEqual([
-      "uptime_seconds",
-      "connections_total",
-      "connections_bad_total",
-      "handshake_timeouts_total",
-      "configured_users",
-      "connections_bad_by_class.rate_limited",
-      "handshake_failures_by_class.tls",
-    ]);
-  });
-
-  it("appends the lifetime traffic total — the figure Пульс's 15-min row no longer shows", () => {
-    const groups = summaryGroup(summary, 274_877_906_944, s);
-    const last = groups[0].rows[groups[0].rows.length - 1];
-    expect(last).toEqual({ key: "users_traffic_total", label: "Трафик всего", value: "256 ГБ" });
-  });
-
-  it("still shows the traffic total when the summary sub-call failed", () => {
-    expect(summaryGroup(null, 1024, s)).toEqual([
-      { title: "Сводка", rows: [{ key: "users_traffic_total", label: "Трафик всего", value: "1.0 КБ" }] },
-    ]);
-  });
-});
+const users = {
+  users: [
+    { username: "a", total_octets: 10 },
+    { username: "b", total_octets: 32 },
+  ],
+} as unknown as UsersTopic;
 
 describe("usersTrafficTotal", () => {
-  it("is null until the users topic has loaded — an absent payload is not 0 B", () => {
-    expect(usersTrafficTotal(null)).toBeNull();
+  it("sums every user's lifetime octets", () => {
+    expect(usersTrafficTotal(users)).toBe(42);
   });
 
-  it("sums total_octets across every user", () => {
-    expect(
-      usersTrafficTotal({
-        users: [
-          { username: "alice", total_octets: 100 },
-          { username: "bob", total_octets: 25 },
-        ] as UsersTopic["users"],
-        quota: null,
-      } as UsersTopic),
-    ).toBe(125);
+  it("returns null before the users topic has answered, never 0", () => {
+    // A cumulative total rendered as "0 B" would be a claim the panel
+    // cannot make yet (§13.1).
+    expect(usersTrafficTotal(null)).toBeNull();
+  });
+});
+
+describe("connectionsPagePayload", () => {
+  it("returns null when neither half has answered", () => {
+    expect(connectionsPagePayload(null, null, null)).toBeNull();
+  });
+
+  it("spreads the gated report's four blocks flat, as the catalog keys them", () => {
+    const payload = connectionsPagePayload(summary, connectionsSummary, 42);
+    expect(payload?.totals).toEqual(connectionsSummary.totals);
+    expect(payload?.top?.by_connections).toHaveLength(10);
+    expect(payload?.top?.by_throughput).toHaveLength(10);
+    expect(payload?.cache).toEqual(connectionsSummary.cache);
+    expect(payload?.telemetry).toEqual(connectionsSummary.telemetry);
+    expect(payload?.users_traffic_total).toBe(42);
+  });
+
+  it("keeps the always-on half usable with the gate off (§14)", () => {
+    const payload = connectionsPagePayload(summary, null, null);
+    expect(payload?.summary).toEqual(summary);
+    expect(payload?.totals).toBeUndefined();
+    expect(Object.hasOwn(payload ?? {}, "users_traffic_total")).toBe(false);
   });
 });

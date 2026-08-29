@@ -1,83 +1,82 @@
 import { describe, expect, it } from "vitest";
-import { upstreamsGroups } from "./upstreams.helpers";
-import type { RuntimeUpstreamQualityData, UpstreamsData } from "../../realtime/topics";
-import { ru as s } from "../../i18n";
+import { mergeUpstreams, upstreamsPagePayload } from "./upstreams.helpers";
+import { upstreams, upstreamQuality } from "../details-builder/__fixtures__";
+import type { UpstreamStatus } from "../../realtime/topics";
 
-function zero(): UpstreamsData["zero"] {
+function upstream(overrides: Partial<UpstreamStatus> = {}): UpstreamStatus {
   return {
-    connect_attempt_total: 1,
-    connect_success_total: 1,
-    connect_fail_total: 0,
-    connect_failfast_hard_error_total: 0,
-    connect_attempts_bucket_1: 1,
-    connect_attempts_bucket_2: 0,
-    connect_attempts_bucket_3_4: 0,
-    connect_attempts_bucket_gt_4: 0,
-    connect_duration_success_bucket_le_100ms: 1,
-    connect_duration_success_bucket_101_500ms: 0,
-    connect_duration_success_bucket_501_1000ms: 0,
-    connect_duration_success_bucket_gt_1000ms: 0,
-    connect_duration_fail_bucket_le_100ms: 0,
-    connect_duration_fail_bucket_101_500ms: 0,
-    connect_duration_fail_bucket_501_1000ms: 0,
-    connect_duration_fail_bucket_gt_1000ms: 0,
+    upstream_id: 0,
+    route_kind: "direct",
+    address: "direct",
+    weight: 1,
+    scopes: "all",
+    healthy: true,
+    fails: 0,
+    last_check_age_secs: 12,
+    effective_latency_ms: 41,
+    dc: [],
+    ...overrides,
   };
 }
 
-describe("upstreamsGroups", () => {
-  it("emits summary, zero-counters, then one group per upstream", () => {
-    const data: UpstreamsData = {
-      enabled: true,
-      generated_at_epoch_secs: 0,
-      zero: zero(),
-      summary: { configured_total: 1, healthy_total: 1, unhealthy_total: 0, direct_total: 1, socks4_total: 0, socks5_total: 0, shadowsocks_total: 0 },
-      upstreams: [{ upstream_id: 7, route_kind: "direct", address: "1.2.3.4:443", weight: 1, scopes: "all", healthy: true, fails: 0, last_check_age_secs: 1, effective_latency_ms: 5, dc: [] }],
-    };
-    const groups = upstreamsGroups(data, s);
-    expect(groups.map((g) => g.title)).toEqual(["Сводка", "Счётчики подключений", "Апстримы #7"]);
+describe("mergeUpstreams (TELEMT_LIVE_API_DATA §7)", () => {
+  it("folds the two endpoints' copies of one upstream into a single row", () => {
+    const merged = mergeUpstreams(upstreams.upstreams, upstreamQuality.upstreams);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].upstream_id).toBe(0);
+    // The nested dc[] survives the merge intact — it is the block §23.5
+    // wants rendered, not a casualty of joining two records.
+    expect(merged[0].dc).toHaveLength(5);
   });
 
-  it("omits the per-upstream groups when upstreams is absent", () => {
-    const data: UpstreamsData = { enabled: true, generated_at_epoch_secs: 0, zero: zero() };
-    const groups = upstreamsGroups(data, s);
-    expect(groups.map((g) => g.title)).toEqual(["Счётчики подключений"]);
+  it("prefers the stats copy and fills only what stats left null", () => {
+    const merged = mergeUpstreams(
+      [upstream({ effective_latency_ms: null, fails: 2 })],
+      [upstream({ effective_latency_ms: 88, fails: 9 })],
+    );
+    expect(merged[0].effective_latency_ms).toBe(88);
+    expect(merged[0].fails).toBe(2);
   });
 
-  it("omits the summary group when summary is absent", () => {
-    const data: UpstreamsData = { enabled: true, generated_at_epoch_secs: 0, zero: zero(), upstreams: [] };
-    const groups = upstreamsGroups(data, s);
-    expect(groups.find((g) => g.title === "Сводка")).toBeUndefined();
+  it("appends an upstream only the quality endpoint knows about, last", () => {
+    const merged = mergeUpstreams([upstream({ upstream_id: 0 })], [upstream({ upstream_id: 7 })]);
+    expect(merged.map((u) => u.upstream_id)).toEqual([0, 7]);
   });
 
-  const quality: RuntimeUpstreamQualityData = {
-    enabled: true,
-    generated_at_epoch_secs: 0,
-    policy: { connect_retry_attempts: 3, connect_retry_backoff_ms: 100, connect_budget_ms: 5000, unhealthy_fail_threshold: 3, connect_failfast_hard_errors: true },
-    counters: { connect_attempt_total: 10, connect_success_total: 9, connect_fail_total: 1, connect_failfast_hard_error_total: 0 },
-    summary: { configured_total: 1, healthy_total: 1, unhealthy_total: 0, direct_total: 1, socks4_total: 0, socks5_total: 0, shadowsocks_total: 0 },
-    upstreams: [{ upstream_id: 7, route_kind: "direct", address: "1.2.3.4:443", weight: 1, scopes: "all", healthy: true, fails: 0, last_check_age_secs: 1, effective_latency_ms: 5, dc: [{ dc: 2, latency_ema_ms: 5, ip_preference: "prefer_v4" }] }],
-  };
+  it("works with either half missing", () => {
+    expect(mergeUpstreams(undefined, [upstream()])).toHaveLength(1);
+    expect(mergeUpstreams([upstream()], undefined)).toHaveLength(1);
+    expect(mergeUpstreams(undefined, undefined)).toEqual([]);
+  });
+});
 
-  it("appends policy/counters/summary/per-upstream groups when quality is enabled", () => {
-    const data: UpstreamsData = { enabled: true, generated_at_epoch_secs: 0, zero: zero() };
-    const groups = upstreamsGroups(data, s, quality);
-    expect(groups.map((g) => g.title)).toEqual([
-      "Счётчики подключений",
-      "Политика подключения",
-      "Счётчики подключения",
-      "Сводка по маршрутам",
-      "Качество апстрима #7",
-    ]);
+describe("upstreamsPagePayload", () => {
+  it("returns null when neither endpoint has answered", () => {
+    expect(upstreamsPagePayload(null, null)).toBeNull();
+    expect(upstreamsPagePayload(undefined, undefined)).toBeNull();
   });
 
-  it("omits quality groups entirely when quality is disabled", () => {
-    const data: UpstreamsData = { enabled: true, generated_at_epoch_secs: 0, zero: zero() };
-    const groups = upstreamsGroups(data, s, { ...quality, enabled: false });
-    expect(groups.map((g) => g.title)).toEqual(["Счётчики подключений"]);
+  it("nests both response envelopes so neither borrows the DC domain's sentences", () => {
+    const payload = upstreamsPagePayload(upstreams, upstreamQuality);
+    expect(payload?.stats?.generated_at_epoch_secs).toBe(upstreams.generated_at_epoch_secs);
+    expect(payload?.upstream_quality?.policy).toEqual(upstreamQuality.policy);
+    // The bare spellings must NOT appear at the root: `reason` and
+    // `generated_at_epoch_secs` are the DC domain's exact catalog keys.
+    expect(Object.hasOwn(payload ?? {}, "reason")).toBe(false);
+    expect(Object.hasOwn(payload ?? {}, "generated_at_epoch_secs")).toBe(false);
   });
 
-  it("omits quality groups when quality is absent entirely", () => {
-    const data: UpstreamsData = { enabled: true, generated_at_epoch_secs: 0, zero: zero() };
-    expect(upstreamsGroups(data, s)).toEqual(upstreamsGroups(data, s, undefined));
+  it("shows the four connect counters once, from stats", () => {
+    const payload = upstreamsPagePayload(upstreams, upstreamQuality);
+    expect(payload?.zero?.connect_attempt_total).toBe(upstreams.zero.connect_attempt_total);
+    expect(payload?.zero?.connect_attempts_bucket_1).toBe(upstreams.zero.connect_attempts_bucket_1);
+  });
+
+  it("falls back to quality's four counters when the stats half is unavailable", () => {
+    const payload = upstreamsPagePayload(null, upstreamQuality);
+    expect(payload?.zero?.connect_attempt_total).toBe(upstreamQuality.counters.connect_attempt_total);
+    // …and says nothing about the twelve buckets it does not have.
+    expect(payload?.zero?.connect_attempts_bucket_1).toBeUndefined();
+    expect(payload?.summary).toEqual(upstreamQuality.summary);
   });
 });

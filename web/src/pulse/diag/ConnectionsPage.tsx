@@ -1,46 +1,51 @@
-import { useSnapshot, useRefreshTopic } from "../../realtime";
+import { useNavigate } from "@tanstack/react-router";
+import { useSnapshot } from "../../realtime";
 import type { StatsSnapshot, UsersTopic } from "../../realtime/topics";
-import { useStrings } from "../../i18n";
-import { DiagShell } from "./DiagShell";
-import { DiagTopicState } from "./DiagTopicState";
-import { KVGroupList } from "./KVGroupList";
+import { DetailPage } from "../details-builder/DetailPage";
+import { connectionsPageDefinition } from "../details-builder/definitions/connections";
+import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
 import { resolveGated } from "../widgets/gated";
-import { connectionsGroups, summaryGroup, usersTrafficTotal } from "./connections.helpers";
-import { GatedNote } from "../GatedNote";
+import { connectionsPagePayload, usersTrafficTotal } from "./connections.helpers";
 
-// ConnectionsPage: the always-on stats.summary scalars (Сводка) render
-// first regardless of gate state, so the page stays useful even when
-// connections_summary itself is gated off — only the runtime-edge-gated
-// connections_summary groups fall back to the Gated block below it. The
-// users topic is subscribed purely for the lifetime traffic total the
-// Сводка group carries (see summaryGroup).
+// ConnectionsPage — /pulse/diag/connections, spec §23.5. The two top-10
+// lists the old page flattened into thirty KV rows are now two
+// RankingSections built from definitions/connections.ts.
+//
+// The `users` topic is subscribed purely for the lifetime traffic total the
+// summary block carries — Пульс's «Трафик (15 мин)» row is a per-window
+// delta by design, so the cumulative number needs a home. It is NOT a
+// declared source: an unfinished users poll leaves that ONE row saying it
+// did not arrive, which is a smaller claim than marking the whole page
+// partial over a figure the endpoint itself never sends.
 export function ConnectionsPage() {
-  const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const users = useSnapshot<UsersTopic>("users");
-  const refreshTopic = useRefreshTopic();
+  const navigate = useNavigate();
+
+  const gated = stats.data ? resolveGated(stats.data.connections_summary) : null;
+  const payload = connectionsPagePayload(
+    stats.data?.summary,
+    gated?.status === "ok" ? gated.data : null,
+    usersTrafficTotal(users.data),
+  );
+
+  const inputs: Record<string, DetailSourceInput> = {
+    stats: { kind: "topic", snapshot: stats },
+    connections: {
+      kind: "topic",
+      snapshot: stats,
+      gated: stats.data?.connections_summary ?? null,
+    },
+  };
+  const sources = useDetailSources(connectionsPageDefinition.sources, inputs);
 
   return (
-    <DiagShell title={s.diag.domains.connections}>
-      <DiagTopicState data={stats.data} error={stats.error} stale={stats.stale} onRetry={() => refreshTopic("stats")}>
-        {(data) => {
-          const result = resolveGated(data.connections_summary);
-          return (
-            <>
-              <KVGroupList
-                groups={summaryGroup(data.summary, usersTrafficTotal(users.data), s)}
-              />
-              {result.status === "gated" ? (
-                <GatedNote reason={result.reason} hint="runtime_edge" className="mt-4" />
-              ) : (
-                <div className="mt-4">
-                  <KVGroupList groups={connectionsGroups(result.data, s)} />
-                </div>
-              )}
-            </>
-          );
-        }}
-      </DiagTopicState>
-    </DiagShell>
+    <DetailPage
+      definition={connectionsPageDefinition}
+      payload={payload}
+      sources={sources}
+      onBack={() => void navigate({ to: "/pulse" })}
+      disabledHints={{ connections: "runtime_edge" }}
+    />
   );
 }

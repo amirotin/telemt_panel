@@ -1,30 +1,37 @@
-import { useSnapshot, useRefreshTopic } from "../../realtime";
+import { useNavigate } from "@tanstack/react-router";
+import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
-import { useStrings } from "../../i18n";
-import { DiagShell } from "./DiagShell";
-import { DiagTopicState } from "./DiagTopicState";
-import { KVGroupList } from "./KVGroupList";
+import { DetailPage } from "../details-builder/DetailPage";
+import { natPageDefinition } from "../details-builder/definitions/nat";
+import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
 import { resolveGated } from "../widgets/gated";
-import { natGroups } from "./nat.helpers";
-import { GatedNote } from "../GatedNote";
 
+// NatPage — /pulse/diag/nat, spec §23.5. The three flattened KV groups the
+// old page produced are now definitions/nat.ts: the configured and live
+// server lists get array blocks of their own, and both reflection families
+// are named whether or not they answered.
+//
+// No adapter: the page payload IS the gated `nat_stun` object, so there is
+// nothing to join and `nat.helpers.ts` went away with the groups it built.
 export function NatPage() {
-  const s = useStrings();
-  const topic = useSnapshot<RuntimeTopic>("runtime");
-  const refreshTopic = useRefreshTopic();
+  const runtime = useSnapshot<RuntimeTopic>("runtime");
+  const navigate = useNavigate();
+
+  const nat = runtime.data ? resolveGated(runtime.data.nat_stun) : null;
+  const payload = nat?.status === "ok" ? nat.data : null;
+
+  const inputs: Record<string, DetailSourceInput> = {
+    nat: { kind: "topic", snapshot: runtime, gated: runtime.data?.nat_stun ?? null },
+  };
+  const sources = useDetailSources(natPageDefinition.sources, inputs);
 
   return (
-    <DiagShell title={s.diag.domains.nat}>
-      <DiagTopicState data={topic.data} error={topic.error} stale={topic.stale} onRetry={() => refreshTopic("runtime")}>
-        {(data) => {
-          const nat = resolveGated(data.nat_stun);
-          return nat.status === "gated" ? (
-            <GatedNote reason={nat.reason} hint="runtime_edge" />
-          ) : (
-            <KVGroupList groups={natGroups(nat.data, s)} />
-          );
-        }}
-      </DiagTopicState>
-    </DiagShell>
+    <DetailPage
+      definition={natPageDefinition}
+      payload={payload}
+      sources={sources}
+      onBack={() => void navigate({ to: "/pulse" })}
+      disabledHints={{ nat: "runtime_edge" }}
+    />
   );
 }
