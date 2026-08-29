@@ -74,16 +74,23 @@ var scenarios = map[string]telemttest.Scenario{
 	// read-only: every mutation 403s with read_only, matching Telemt's
 	// read_only config gate.
 	"read-only": {ReadOnly: true},
+	// web-off: a Telemt 3.5.3+ build whose WEB runtime is not running —
+	// no `transport = "web"` listener, or `web.enabled = false`. The WEB
+	// status route still answers (available:false, reason
+	// `no_web_listener`) while the sessions/close/operations routes answer
+	// 503 web_runtime_unavailable. The panel must render this as a gate
+	// with a "включите [web]" hint, never as an error.
+	"web-off": {RuntimeEdge: true, WebOff: true},
 }
 
 func main() {
 	listen := flag.String("listen", ":9091", "address to listen on")
-	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only")
+	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off")
 	flag.Parse()
 
 	scenario, ok := scenarios[*scenarioName]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only)\n", *scenarioName)
+		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off)\n", *scenarioName)
 		os.Exit(1)
 	}
 

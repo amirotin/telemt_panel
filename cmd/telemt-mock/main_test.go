@@ -14,7 +14,7 @@ import (
 func TestScenariosCoverTheDocumentedFlagValues(t *testing.T) {
 	want := []string{
 		"full", "old-build", "edge-off", "edge-gated",
-		"me-pool-down", "upstream-source-down", "read-only",
+		"me-pool-down", "upstream-source-down", "read-only", "web-off",
 	}
 	if len(scenarios) != len(want) {
 		t.Fatalf("scenarios has %d entries, want %d: %v", len(scenarios), len(want), scenarios)
@@ -215,5 +215,38 @@ func TestScenarioReadOnly(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &got)
 	if got.Error.Code != "read_only" {
 		t.Errorf("code = %q, want read_only", got.Error.Code)
+	}
+}
+
+// TestScenarioWebOff covers the "web-off" scenario's distinguishing
+// behavior: the WEB status route still answers 200 (that route never
+// fails), reporting the closure in its own fields, while the data routes
+// answer 503 web_runtime_unavailable.
+func TestScenarioWebOff(t *testing.T) {
+	fake := telemttest.New(scenarios["web-off"])
+	defer fake.Close()
+
+	w := httptest.NewRecorder()
+	fake.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/runtime/web/status", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET web/status = %d, want 200", w.Code)
+	}
+	var status struct {
+		Data struct {
+			Available bool   `json:"available"`
+			Reason    string `json:"reason"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if status.Data.Available || status.Data.Reason != "no_web_listener" {
+		t.Errorf("status = %+v, want available=false reason=no_web_listener", status.Data)
+	}
+
+	w = httptest.NewRecorder()
+	fake.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/runtime/web/sessions", nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("GET web/sessions = %d, want 503", w.Code)
 	}
 }

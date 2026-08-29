@@ -33,6 +33,7 @@ func newTelemttestHub(t *testing.T, scenario telemttest.Scenario, st store.Store
 		RuntimeInterval:   10 * time.Millisecond,
 		UpstreamsInterval: 10 * time.Millisecond,
 		SecurityInterval:  10 * time.Millisecond,
+		WebInterval:       10 * time.Millisecond,
 		Grace:             time.Second,
 	}, tc, st)
 	t.Cleanup(h.Close)
@@ -721,13 +722,125 @@ func TestDiffKeyStripsVolatileTimestampAtAnyDepth(t *testing.T) {
 	a := json.RawMessage(`{"generated_at_epoch_secs":1000,"nested":{"generated_at_epoch_secs":1000,"value":42},"list":[{"generated_at_epoch_secs":1000}]}`)
 	b := json.RawMessage(`{"generated_at_epoch_secs":2000,"nested":{"generated_at_epoch_secs":2000,"value":42},"list":[{"generated_at_epoch_secs":2000}]}`)
 
-	if !bytes.Equal(diffKey(a), diffKey(b)) {
-		t.Fatalf("diffKey(a)=%s, diffKey(b)=%s — want equal after stripping every generated_at_epoch_secs", diffKey(a), diffKey(b))
+	if !bytes.Equal(diffKey("runtime", a), diffKey("runtime", b)) {
+		t.Fatalf("diffKey(a)=%s, diffKey(b)=%s — want equal after stripping every generated_at_epoch_secs", diffKey("runtime", a), diffKey("runtime", b))
 	}
 
 	// A real change (nested.value) still produces a different key.
 	c := json.RawMessage(`{"generated_at_epoch_secs":1000,"nested":{"generated_at_epoch_secs":1000,"value":43},"list":[{"generated_at_epoch_secs":1000}]}`)
-	if bytes.Equal(diffKey(a), diffKey(c)) {
+	if bytes.Equal(diffKey("runtime", a), diffKey("runtime", c)) {
 		t.Fatal("diffKey(a) == diffKey(c) after a real field changed, want different keys")
+	}
+}
+
+// --- the "web" topic (M4 task 8b) ---------------------------------------
+
+// TestWebTopicWrapsTheStatusInAGate covers the "web" topic's whole reason
+// for existing: Telemt's own status route is NOT gated, and the hub puts it
+// behind the same Gated[T] envelope the edge topics use so the browser has
+// one way — not two — to render "closed, and here is why".
+func TestWebTopicWrapsTheStatusInAGate(t *testing.T) {
+	_, h := newTelemttestHub(t, telemttest.Scenario{}, nil)
+	data := subscribeAndAwait(t, h, "web")
+
+	var snap webSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("decode web snapshot: %v (data=%s)", err, data)
+	}
+	if snap.Status == nil {
+		t.Fatal("web snapshot has no status")
+	}
+	if !snap.Status.Enabled || snap.Status.Data == nil {
+		t.Fatalf("status = %+v, want an open gate carrying the payload", snap.Status)
+	}
+	if snap.Status.Data.Runtime == nil || snap.Status.Data.Runtime.Manager == nil {
+		t.Fatal("the runtime planes did not survive the round trip through the hub")
+	}
+	// permits is a tuple array on the wire; the hub re-marshals the topic,
+	// so a broken codec would show up here as an object or a null.
+	if !bytes.Contains(data, []byte(`["http_connections",{`)) {
+		t.Errorf("permits lost their tuple shape on the way out:\n%s", data)
+	}
+}
+
+// A WEB runtime that is not running is a GATE, not an error: the topic must
+// still publish, with enabled:false and Telemt's own reason token.
+func TestWebTopicClosedGateWhenWebIsOff(t *testing.T) {
+	_, h := newTelemttestHub(t, telemttest.Scenario{WebOff: true}, nil)
+	data := subscribeAndAwait(t, h, "web")
+
+	var snap webSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("decode web snapshot: %v (data=%s)", err, data)
+	}
+	if snap.Status.Enabled {
+		t.Error("gate open while WEB is off")
+	}
+	if snap.Status.Reason != "no_web_listener" {
+		t.Errorf("reason = %q, want Telemt's own no_web_listener", snap.Status.Reason)
+	}
+	// The payload is kept even behind a closed gate: lifecycle, listeners
+	// and effective_config_enabled are what explain WHY it is closed.
+	if snap.Status.Data == nil || snap.Status.Data.Lifecycle != telemt.WebLifecycleNoWebListener {
+		t.Errorf("data = %+v, want the closed-runtime payload", snap.Status.Data)
+	}
+}
+
+// A build that predates the WEB routes answers a bare 404. That is
+// `unsupported`, not `disabled` (rule R5) — and never a source_error.
+func TestWebTopicUnsupportedOnAnOldBuild(t *testing.T) {
+	_, h := newTelemttestHub(t, telemttest.Scenario{OldBuild: true}, nil)
+	data := subscribeAndAwait(t, h, "web")
+
+	var snap webSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("decode web snapshot: %v (data=%s)", err, data)
+	}
+	if snap.Status.Enabled || snap.Status.Data != nil {
+		t.Errorf("status = %+v, want a closed gate with no payload", snap.Status)
+	}
+	if snap.Status.Reason != webGateReasonUnsupported {
+		t.Errorf("reason = %q, want %q", snap.Status.Reason, webGateReasonUnsupported)
+	}
+}
+
+// An unreachable Telemt is still a source_error — the gate branches above
+// must not swallow a real failure.
+func TestWebTopicSourceErrorWhenUnreachable(t *testing.T) {
+	h := New(Config{WebInterval: 10 * time.Millisecond, Grace: time.Second}, telemt.New("http://127.0.0.1:1", ""), nil)
+	t.Cleanup(h.Close)
+	ch, _, cancel, err := h.Subscribe([]string{"web"})
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	defer cancel()
+	if ev := recvEvent(t, ch, 2*time.Second); ev.Err != "telemt_unreachable" {
+		t.Errorf("Err = %q, want telemt_unreachable", ev.Err)
+	}
+}
+
+// TestWebDiffKeyIgnoresTheClockDerivedAges is the push-on-change half:
+// lifecycle_age_ms and the learning plane's age_ms are re-read from the
+// clock on every request, so two byte-identical WEB snapshots that differ
+// only in those two numbers must compare EQUAL — otherwise an idle WEB
+// runtime would broadcast a "change" on every poll.
+func TestWebDiffKeyIgnoresTheClockDerivedAges(t *testing.T) {
+	a := json.RawMessage(`{"status":{"enabled":true,"data":{"lifecycle":"running","lifecycle_age_ms":1000,` +
+		`"runtime":{"learning":{"age_ms":1000,"entries":0}}}}}`)
+	b := json.RawMessage(`{"status":{"enabled":true,"data":{"lifecycle":"running","lifecycle_age_ms":99000,` +
+		`"runtime":{"learning":{"age_ms":99000,"entries":0}}}}}`)
+	c := json.RawMessage(`{"status":{"enabled":true,"data":{"lifecycle":"running","lifecycle_age_ms":1000,` +
+		`"runtime":{"learning":{"age_ms":1000,"entries":1}}}}}`)
+
+	if !bytes.Equal(diffKey("web", a), diffKey("web", b)) {
+		t.Errorf("diffKey differs on ages alone:\n%s\n%s", diffKey("web", a), diffKey("web", b))
+	}
+	if bytes.Equal(diffKey("web", a), diffKey("web", c)) {
+		t.Error("diffKey ignored a real field change")
+	}
+	// …and the extra keys are scoped to this topic: another topic's own
+	// age_ms must keep its diffing power.
+	if bytes.Equal(diffKey("runtime", a), diffKey("runtime", b)) {
+		t.Error("the web-only volatile keys leaked into another topic")
 	}
 }

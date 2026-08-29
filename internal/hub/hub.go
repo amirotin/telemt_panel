@@ -27,10 +27,14 @@ const (
 	defaultRuntimeInterval   = 10 * time.Second
 	defaultUpstreamsInterval = 15 * time.Second
 	defaultSecurityInterval  = 30 * time.Second
-	defaultGrace             = 30 * time.Second
-	defaultHeartbeat         = 25 * time.Second
-	defaultSubscriberBuffer  = 64
-	defaultReplayRingSize    = 256
+	// defaultWebInterval matches the "runtime" cadence: the WEB status is a
+	// process view of the same shape and volume as the runtime group, and
+	// the M4 task-8b brief pins it there explicitly.
+	defaultWebInterval      = 10 * time.Second
+	defaultGrace            = 30 * time.Second
+	defaultHeartbeat        = 25 * time.Second
+	defaultSubscriberBuffer = 64
+	defaultReplayRingSize   = 256
 
 	// defaultStatsSysInfoRefresh bounds how often the "stats" topic's poll
 	// re-fetches GET /v1/system/info for its version/uptime fields — every
@@ -77,6 +81,7 @@ type Config struct {
 	RuntimeInterval   time.Duration
 	UpstreamsInterval time.Duration
 	SecurityInterval  time.Duration
+	WebInterval       time.Duration
 	Grace             time.Duration
 	Heartbeat         time.Duration
 	SubscriberBuffer  int
@@ -105,6 +110,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.SecurityInterval <= 0 {
 		c.SecurityInterval = defaultSecurityInterval
+	}
+	if c.WebInterval <= 0 {
+		c.WebInterval = defaultWebInterval
 	}
 	if c.Grace <= 0 {
 		c.Grace = defaultGrace
@@ -228,7 +236,7 @@ type Hub struct {
 }
 
 // New creates a Hub polling tc for this package's topic registry (users,
-// stats, runtime, upstreams, security). No poller runs until the first
+// stats, runtime, upstreams, security, web). No poller runs until the first
 // Subscribe call for its topic. st records the "stats" topic's history
 // points (recordStatsHistory) into the RAM ring GET /api/history reads;
 // nil is accepted (e.g. tests that don't exercise history) and simply
@@ -279,6 +287,12 @@ func New(cfg Config, tc *telemt.Client, st store.Store) *Hub {
 			wake:     make(chan struct{}, 1),
 			interval: cfg.SecurityInterval,
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchSecurity(ctx, tc) },
+		},
+		"web": {
+			name:     "web",
+			wake:     make(chan struct{}, 1),
+			interval: cfg.WebInterval,
+			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchWeb(ctx, tc) },
 		},
 		// "update" is event-driven, not polled: the update engine and
 		// auto-updater push snapshots into it directly via PublishUpdate.
@@ -593,6 +607,56 @@ func fetchSecurity(ctx context.Context, tc *telemt.Client) (json.RawMessage, err
 	return json.Marshal(snap)
 }
 
+// webSnapshot is the "web" topic's payload: the WEB runtime status behind
+// the same Gated[T] envelope the edge topics use.
+//
+// Telemt's own GET /v1/runtime/web/status is NOT gated — it answers 200 even
+// with WEB off, reporting the closure through `available`/`reason`
+// (api/web_runtime.rs). The wrapper is built here instead, for one reason:
+// the browser already has ONE way to render "this source is closed, here is
+// why" (caps/Gated + details-builder/sources.ts), and the alternative was a
+// second, WEB-only convention in the frontend for the same three states.
+//
+// Data is filled in even while the gate is closed: `lifecycle`, `listeners`
+// and `effective_config_enabled` are exactly what an operator needs to see
+// to understand WHY it is closed, and dropping them would make the page
+// emptier the moment it matters most.
+type webSnapshot struct {
+	Status *telemt.Gated[telemt.WebStatusData] `json:"status"`
+}
+
+// webGateReasonUnsupported is the reason token the panel puts on the gate
+// when the route itself is missing. It is the panel's own vocabulary, not
+// Telemt's: details-builder/sources.ts reads it as `unsupported` (rule R5),
+// which is what makes the card offer "update Telemt" instead of "flip a
+// setting your binary does not have".
+const webGateReasonUnsupported = "capability_absent"
+
+func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+	status, err := tc.WebStatus(ctx)
+	switch {
+	case err == nil:
+		gated := telemt.Gated[telemt.WebStatusData]{
+			Enabled: status.Available,
+			Reason:  status.Reason,
+			Data:    &status,
+		}
+		return json.Marshal(webSnapshot{Status: &gated})
+	case telemt.IsWebRouteAbsent(err):
+		// Telemt < 3.5.3 does not register /v1/runtime/web/* at all. Not an
+		// error: an old build is a state the panel renders, not a failure.
+		return json.Marshal(webSnapshot{Status: &telemt.Gated[telemt.WebStatusData]{Reason: webGateReasonUnsupported}})
+	case telemt.IsWebRuntimeUnavailable(err):
+		// Defensive: the status route itself never answers 503 today, but
+		// the code is the group's documented "runtime is not running"
+		// signal and mapping it to a closed gate keeps the topic honest if
+		// a future build starts using it here too.
+		return json.Marshal(webSnapshot{Status: &telemt.Gated[telemt.WebStatusData]{Reason: telemt.CodeWebRuntimeUnavailable}})
+	default:
+		return nil, fmt.Errorf("web: %w", err)
+	}
+}
+
 // recordStatsHistory appends one point to each history metric series
 // (ruling R3: RAM ring only) this milestone tracks from a just-fetched
 // "stats" topic snapshot: connections, active_users and traffic. A metric
@@ -869,7 +933,7 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	key := diffKey(data)
+	key := diffKey(t.name, data)
 	if t.hasData && bytes.Equal(t.lastKey, key) {
 		return
 	}
@@ -909,7 +973,10 @@ func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
 // DcStatusData/MeWritersData/UpstreamsData/SecurityWhitelistData structs.
 // This also means any *future* endpoint added to a topic with the same
 // field name is covered automatically, with no separate opt-in.
-func diffKey(data json.RawMessage) json.RawMessage {
+//
+// One topic needs more than that one key, which is why the topic name is a
+// parameter: see volatileKeysByTopic.
+func diffKey(topic string, data json.RawMessage) json.RawMessage {
 	var v any
 	if err := json.Unmarshal(data, &v); err != nil {
 		// data just came from this package's own json.Marshal a moment
@@ -918,7 +985,7 @@ func diffKey(data json.RawMessage) json.RawMessage {
 		// robust to the volatile-timestamp issue) instead of panicking.
 		return data
 	}
-	stripVolatileTimestamps(v)
+	stripVolatileTimestamps(v, volatileKeysFor(topic))
 	normalized, err := json.Marshal(v)
 	if err != nil {
 		return data
@@ -926,28 +993,51 @@ func diffKey(data json.RawMessage) json.RawMessage {
 	return normalized
 }
 
-// volatileTimestampKey is the JSON field name diffKey strips — see its doc
-// comment. A single named constant so every occurrence (Gated[T], the flat
-// stats-group structs) is covered by construction rather than requiring a
-// matching list to be kept in sync.
+// volatileTimestampKey is the JSON field name diffKey strips on EVERY topic
+// — see its doc comment. A single named constant so every occurrence
+// (Gated[T], the flat stats-group structs) is covered by construction
+// rather than requiring a matching list to be kept in sync.
 const volatileTimestampKey = "generated_at_epoch_secs"
 
-// stripVolatileTimestamps recursively zeroes every volatileTimestampKey
-// entry in v (a json.Unmarshal-into-any result: nested map[string]any /
-// []any / scalars), in place.
-func stripVolatileTimestamps(v any) {
+// volatileKeysByTopic adds per-topic clock-derived field names on top of
+// volatileTimestampKey. Scoped by topic rather than global because these
+// names are generic enough to mean something stable elsewhere, and zeroing
+// a meaningful field would make push-on-change MISS a real update.
+//
+// "web": WebStatusData.lifecycle_age_ms and the learning plane's age_ms are
+// both `SystemTime::now() - epoch` re-read per request
+// (src/api/web_runtime.rs, src/web/manager/status.rs), so without them a
+// poll of an idle WEB runtime would broadcast a "change" every 10 s with
+// every other field byte-identical.
+var volatileKeysByTopic = map[string][]string{
+	"web": {"lifecycle_age_ms", "age_ms"},
+}
+
+// volatileKeysFor returns the set of field names diffKey zeroes for topic.
+func volatileKeysFor(topic string) map[string]struct{} {
+	keys := map[string]struct{}{volatileTimestampKey: {}}
+	for _, k := range volatileKeysByTopic[topic] {
+		keys[k] = struct{}{}
+	}
+	return keys
+}
+
+// stripVolatileTimestamps recursively zeroes every entry of v (a
+// json.Unmarshal-into-any result: nested map[string]any / []any / scalars)
+// whose key is in keys, in place.
+func stripVolatileTimestamps(v any, keys map[string]struct{}) {
 	switch val := v.(type) {
 	case map[string]any:
 		for k, sub := range val {
-			if k == volatileTimestampKey {
+			if _, ok := keys[k]; ok {
 				val[k] = 0
 				continue
 			}
-			stripVolatileTimestamps(sub)
+			stripVolatileTimestamps(sub, keys)
 		}
 	case []any:
 		for _, sub := range val {
-			stripVolatileTimestamps(sub)
+			stripVolatileTimestamps(sub, keys)
 		}
 	}
 }

@@ -31,8 +31,8 @@ func recvEventOrFail(t *testing.T, ch <-chan hub.Event) hub.Event {
 }
 
 // TestHandleEventsNewTopicsInitialSnapshot is the golden SSE test for M3
-// task-2's three new hub topics (deliverable A/H): subscribing to
-// runtime, upstreams and security together against a telemttest fixture
+// task-2's three new hub topics (deliverable A/H), plus M4 task 8b's
+// "web": subscribing to them together against a telemttest fixture
 // must deliver one snapshot event per topic on connect, each carrying its
 // documented composite fields. Follows TestHandleEventsWritesInitialSnapshot's
 // pre-warm-then-cancel pattern (sse_test.go) — a canceled request context
@@ -45,12 +45,12 @@ func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 	srv, cookie := newSSETestServer(t, tc, hub.Config{})
 
 	warmCtx, warmCancel := context.WithTimeout(context.Background(), snapshotFetchTimeout)
-	if _, err := srv.hub.Snapshot(warmCtx, []string{"runtime", "upstreams", "security", "stats"}); err != nil {
+	if _, err := srv.hub.Snapshot(warmCtx, []string{"runtime", "upstreams", "security", "stats", "web"}); err != nil {
 		t.Fatalf("warm snapshot: %v", err)
 	}
 	warmCancel()
 
-	r := httptest.NewRequest("GET", "/api/events?topics=runtime,upstreams,security,stats", nil)
+	r := httptest.NewRequest("GET", "/api/events?topics=runtime,upstreams,security,stats,web", nil)
 	r.AddCookie(cookie)
 	reqCtx, reqCancel := context.WithCancel(r.Context())
 	reqCancel()
@@ -64,7 +64,7 @@ func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 	}
 	body := w.Body.String()
 
-	for _, want := range []string{"event: runtime", "event: upstreams", "event: security", "event: stats"} {
+	for _, want := range []string{"event: runtime", "event: upstreams", "event: security", "event: stats", "event: web"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q:\n%s", want, body)
 		}
@@ -81,6 +81,10 @@ func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 		`"upstreams"`, `"dcs"`, `"me_writers"`,
 		`"posture"`, `"whitelist"`, `"effective_limits"`,
 		`"ready"`, `"connections_summary"`,
+		// M4 task 8b: the "web" topic's gated status snapshot, including
+		// the tuple-shaped permits array and the runtime planes.
+		`"effective_config_enabled"`, `"runtime_instance"`, `"issuance_enabled"`,
+		`["http_connections",{`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing field %s:\n%s", want, body)
@@ -98,7 +102,7 @@ func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 }
 
 // TestHandleEventsNewTopicsSourceErrorWhenUnreachable covers the SSE-level
-// half of the "full failure -> source_error" rule for the three new
+// half of the "full failure -> source_error" rule for the four new
 // topics: an unreachable Telemt must produce source_error events (the same
 // ones handleEvents forwards verbatim as SSE frames — see writeSSEEvent),
 // not a hang or a panic anywhere in the poll path.
@@ -106,12 +110,12 @@ func TestHandleEventsNewTopicsSourceErrorWhenUnreachable(t *testing.T) {
 	tc := telemt.New("http://127.0.0.1:1", "") // nothing listens here
 	srv, _ := newSSETestServer(t, tc, hub.Config{})
 
-	ch, _, cancel, err := srv.hub.Subscribe([]string{"runtime", "upstreams", "security"})
+	ch, _, cancel, err := srv.hub.Subscribe([]string{"runtime", "upstreams", "security", "web"})
 	if err != nil {
 		t.Fatalf("Subscribe: %v", err)
 	}
 	defer cancel()
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		ev := recvEventOrFail(t, ch)
 		if ev.Err != "telemt_unreachable" {
 			t.Errorf("topic %q: Err = %q, want telemt_unreachable", ev.Topic, ev.Err)

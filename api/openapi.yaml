@@ -561,7 +561,7 @@ paths:
       tags: [realtime]
       operationId: streamEvents
       description: >
-        SSE stream. Events: one per subscribed topic (users|stats|runtime|upstreams|security|update)
+        SSE stream. Events: one per subscribed topic (users|stats|runtime|upstreams|security|web|update)
         carrying full topic snapshots, plus `event: heartbeat` (data `{}`, every ~25s of
         quiet) and source_error. Supports Last-Event-ID. Protocol: 02-hub-sse.md.
       parameters:

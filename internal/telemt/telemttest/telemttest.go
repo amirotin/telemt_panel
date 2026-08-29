@@ -54,6 +54,18 @@ type Scenario struct {
 	// /v1/runtime/upstream-quality report `source_unavailable` with their
 	// policy/counters still filled. A momentary source state, not a switch.
 	UpstreamSourceDown bool
+	// WebOff simulates a Telemt whose WEB runtime is not running: no
+	// `transport = "web"` listener, or `web.enabled = false`. GET
+	// /v1/runtime/web/status still answers 200 (that route never fails) but
+	// reports available:false with reason `no_web_listener`, while
+	// sessions/close/operations answer 503 web_runtime_unavailable — the
+	// exact pair recorded off a real 3.5.5 started without a WEB listener.
+	//
+	// The zero value leaves the WEB runtime RUNNING, unlike the other
+	// gates here: a mock whose default was "off" would make the WEB screens
+	// unreachable in every scenario but one, and Scenario.OldBuild already
+	// covers the "this build has no such routes" case.
+	WebOff bool
 	// BodyLimitBytes overrides the request body limit used for PATCH
 	// /v1/config (default 64KiB, Telemt's own default —
 	// config/defaults.rs::default_api_request_body_limit_bytes). Tests set
@@ -92,6 +104,10 @@ type Server struct {
 	revisionSeq  int
 	nextReloadID uint64
 	reloads      map[uint64]telemt.ReloadStatus
+
+	webSessions      []telemt.WebSessionRow
+	webOperations    map[string]telemt.WebControlOperationStatus
+	nextWebOperation uint64
 }
 
 // New starts a fake Telemt server seeded with one default user ("alice").
@@ -102,6 +118,9 @@ func New(scenario Scenario) *Server {
 		secrets:  map[string]string{},
 		quota:    map[string]telemt.QuotaEntry{},
 		reloads:  map[uint64]telemt.ReloadStatus{},
+
+		webSessions:   webSeedSessions(),
+		webOperations: map[string]telemt.WebControlOperationStatus{},
 	}
 	s.seedDefaultUser()
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
@@ -306,6 +325,44 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	case r.Method == http.MethodGet && path == "/v1/security/whitelist":
 		s.handleWhitelist(w)
+		return
+	case r.Method == http.MethodGet && path == "/v1/runtime/web/status":
+		// The WEB group is Telemt >= 3.5.3 only: an older build has no such
+		// routes at all, which is a BARE 404 (no envelope) — the shape the
+		// panel reads as `unsupported` rather than `disabled` (rule R5).
+		if s.scenario.OldBuild {
+			writeBareNotFound(w)
+			return
+		}
+		s.handleWebStatus(w)
+		return
+	case r.Method == http.MethodGet && path == "/v1/runtime/web/sessions":
+		if s.scenario.OldBuild {
+			writeBareNotFound(w)
+			return
+		}
+		s.handleWebSessions(w, query)
+		return
+	case r.Method == http.MethodPost && path == "/v1/runtime/web/sessions/close":
+		if s.scenario.OldBuild {
+			writeBareNotFound(w)
+			return
+		}
+		s.handleWebSessionsClose(w, r, query)
+		return
+	case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1/runtime/web/sessions/"):
+		if s.scenario.OldBuild {
+			writeBareNotFound(w)
+			return
+		}
+		s.handleWebSession(w, strings.TrimPrefix(path, "/v1/runtime/web/sessions/"))
+		return
+	case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1/runtime/web/operations/"):
+		if s.scenario.OldBuild {
+			writeBareNotFound(w)
+			return
+		}
+		s.handleWebOperation(w, strings.TrimPrefix(path, "/v1/runtime/web/operations/"))
 		return
 	case r.Method == http.MethodGet && path == "/v1/config":
 		s.handleGetConfig(w)
