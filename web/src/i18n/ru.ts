@@ -294,6 +294,16 @@ export const ru = {
     allPeople: "Все люди",
     hiddenTitle: "Скрытые блоки",
     showWidget: "Показать",
+    // The status banner's own strings (owner decision 2026-08-30): the
+    // facts at its right edge and the update chip beside them.
+    status: {
+      versionLabel: "Версия Telemt",
+      configReloadLabel: "Перезагрузка конфига",
+      ago: "{value} назад",
+      reloadTimes: ["{n} раз", "{n} раза", "{n} раз"],
+      neverReloaded: "не было",
+      updateAvailable: "Доступна {version}",
+    },
   },
   hub: {
     lede: "Девять разделов диагностики. Откройте карточку, чтобы увидеть подробности.",
@@ -343,6 +353,14 @@ export const ru = {
       notReady: "Не готов",
       readOnly: "Только чтение",
       noReason: "Причина не указана.",
+      // The banner's headline when /v1/health/ready says the proxy is not
+      // serving — it replaces the state word, it does not sit beside it.
+      notAccepting: "Не принимает клиентов",
+      // Telemt's two `reason` tokens (src/api/mod.rs @3.5.5), in words.
+      readyReason: {
+        admissionClosed: "Приём новых подключений закрыт.",
+        noHealthyUpstreams: "Ни один апстрим не отвечает.",
+      },
     },
     stat: {
       connections: "Соединения",

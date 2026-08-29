@@ -32,7 +32,7 @@ test("five-section sidebar navigates, and the raw config editor (CodeMirror) mou
   // destinations with distinct content.
   await sidebar.getByRole("link", { name: "Сводка" }).click();
   await expect(page).toHaveURL(/\/overview$/);
-  await expect(page.getByRole("heading", { name: "Статус", level: 2 })).toBeVisible();
+  await expect(page.getByTestId("status-banner")).toBeVisible();
 
   await sidebar.getByRole("link", { name: "Пульс" }).click();
   await expect(page).toHaveURL(/\/pulse$/);

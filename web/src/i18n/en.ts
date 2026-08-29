@@ -249,6 +249,14 @@ export const en: Dict = {
     allPeople: "All people",
     hiddenTitle: "Hidden blocks",
     showWidget: "Show",
+    status: {
+      versionLabel: "Telemt version",
+      configReloadLabel: "Config reload",
+      ago: "{value} ago",
+      reloadTimes: ["{n} time", "{n} times", "{n} times"],
+      neverReloaded: "never",
+      updateAvailable: "{version} available",
+    },
   },
   hub: {
     lede: "Nine diagnostics sections. Open a card for the full picture.",
@@ -298,6 +306,11 @@ export const en: Dict = {
       notReady: "Not ready",
       readOnly: "Read-only",
       noReason: "No reason given.",
+      notAccepting: "Not accepting clients",
+      readyReason: {
+        admissionClosed: "New connections are not being admitted.",
+        noHealthyUpstreams: "No upstream is responding.",
+      },
     },
     stat: {
       connections: "Connections",
