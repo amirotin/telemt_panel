@@ -18,6 +18,7 @@ import { ReadOnlyJsonView } from "./ReadOnlyJsonView";
 import { ReloadPolicyPicker } from "./ReloadPolicyPicker";
 import { ReloadStepper } from "./ReloadStepper";
 import { PatchResultNotice } from "./PatchResultNotice";
+import { recordPendingChanges } from "./pendingChanges";
 import { ConflictBanner } from "./ConflictBanner";
 import { useConfigEditor, type ConfigSnapshot } from "./useConfigEditor";
 import { orderedSections } from "./orderSections.helpers";
@@ -98,6 +99,9 @@ export function ConfigPage() {
     ...patchTelemtConfigMutation(),
     onSuccess: async (result) => {
       setPatchResult(result);
+      // Telemt reports "not applied yet" only in this response, so the
+      // panel remembers it for Сводка's banner (pendingChanges.ts).
+      recordPendingChanges(result);
       setConflict(null);
       setPatchErrorCode(null);
       if (result.reload) setActiveReloadId(result.reload.reload_id);

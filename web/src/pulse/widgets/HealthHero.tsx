@@ -1,14 +1,20 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
-import type { StatsSnapshot } from "../../realtime/topics";
+import type { RuntimeTopic, StatsSnapshot } from "../../realtime/topics";
 import type { State } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { StatePill } from "../../ui/StatePill";
-import { IconUpgrade } from "../../ui/icons";
+import { IconUpgrade, IconWarning } from "../../ui/icons";
 import { getUpdatesOptions } from "../../lib/api/generated/@tanstack/react-query.gen";
 import { fill, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
+import {
+  clearPendingChanges,
+  getPendingChanges,
+  resolvePendingChanges,
+} from "../../server/config/pendingChanges";
 import { computeHealthHero, telemtUpdateVersion, type HeroFact } from "./healthHero.helpers";
 
 // The banner is the one block in the app painted as a *tinted* panel rather
@@ -66,7 +72,19 @@ function Fact({ fact }: { fact: HeroFact }) {
 export function HealthHero() {
   const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
-  const view = computeHealthHero(stats.data, s);
+  const runtime = useSnapshot<RuntimeTopic>("runtime");
+  const view = computeHealthHero(
+    { stats: stats.data, runtime: runtime.data, unreachable: stats.error !== null },
+    s,
+  );
+  // Read once per mount: only the Конфигурация page writes it, and getting
+  // back here means a remount.
+  const [pending] = useState(getPendingChanges);
+  const unapplied = resolvePendingChanges(pending, stats.data);
+  const stillPending = unapplied.runtimeReload || unapplied.processRestart;
+  useEffect(() => {
+    if (pending && !stillPending) clearPendingChanges();
+  }, [pending, stillPending]);
   // The release list behind the chip: a plain REST resource with its own
   // cache upstream (the update engine's), so a long staleTime and no retry
   // — the banner must never wait on GitHub, and an unreachable GitHub just
@@ -103,6 +121,16 @@ export function HealthHero() {
             </div>
             {view.reason && (
               <p className="mt-1 text-meta leading-relaxed text-text-muted">{view.reason}</p>
+            )}
+            {/* Present only when Telemt is running something other than what
+                its config file says — absent in the normal case. */}
+            {stillPending && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-meta text-warn">
+                <IconWarning aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                {unapplied.processRestart
+                  ? s.overview.status.pendingProcessRestart
+                  : s.overview.status.pendingRuntimeReload}
+              </p>
             )}
           </div>
 

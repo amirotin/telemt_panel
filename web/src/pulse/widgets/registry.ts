@@ -57,7 +57,9 @@ export interface WidgetDef {
 export const WIDGETS: WidgetDef[] = [
   {
     id: "health_hero",
-    topics: ["stats"],
+    // "runtime" for the gates the banner's route-mode fact and its
+    // «Запускается» state read (healthHero.helpers.ts).
+    topics: ["stats", "runtime"],
     minMode: "critical",
     size: "full",
     hideable: false,

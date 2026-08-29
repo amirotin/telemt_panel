@@ -308,10 +308,14 @@ export const ru = {
     // facts at its right edge and the update chip beside them.
     status: {
       versionLabel: "Версия Telemt",
-      configReloadLabel: "Перезагрузка конфига",
-      ago: "{value} назад",
-      reloadTimes: ["{n} раз", "{n} раза", "{n} раз"],
-      neverReloaded: "не было",
+      // Which way traffic is actually going — real operational state, not
+      // the config flag (concept §4).
+      routeLabel: "Маршрут",
+      routeMe: "ME",
+      routeDirect: "Direct",
+      routeFallback: "ME → Direct",
+      pendingRuntimeReload: "Есть изменения, требующие перезагрузки runtime.",
+      pendingProcessRestart: "Есть изменения, требующие перезапуска процесса.",
       updateAvailable: "Доступна {version}",
     },
   },
@@ -366,6 +370,11 @@ export const ru = {
       // The banner's headline when /v1/health/ready says the proxy is not
       // serving — it replaces the state word, it does not sit beside it.
       notAccepting: "Не принимает клиентов",
+      // The banner's four aggregated states (concept §4). «Работает»,
+      // «Запускается» and «Нет данных» come from the shared `health` group
+      // the status strip also reads.
+      limited: "Ограничено",
+      unavailable: "Недоступен",
       // Telemt's two `reason` tokens (src/api/mod.rs @3.5.5), in words.
       readyReason: {
         admissionClosed: "Приём новых подключений закрыт.",
