@@ -194,6 +194,34 @@ describe("gated and unsupported sources (ruling R5)", () => {
     expect(unsupported.gate?.hint).toBe("telemt_outdated");
   });
 
+  it("treats an OMITTED gated field the same as an explicit off wrapper", () => {
+    // What a stock build actually sends: hub.go omits `recent_events` and
+    // `connections_summary` from the JSON when runtime_edge is off, and
+    // leaves `nat_stun` an explicit null. None of the three may end up as a
+    // blank card under a green «Актуально» pill.
+    const runtimeWithout: RuntimeTopic = { ...runtimeSnapshot };
+    delete (runtimeWithout as { recent_events?: unknown }).recent_events;
+    runtimeWithout.nat_stun = null;
+    const statsWithout: StatsSnapshot = { ...statsSnapshot };
+    delete (statsWithout as { connections_summary?: unknown }).connections_summary;
+
+    const cards = buildHubCards(
+      inputs({
+        runtime: topic<RuntimeTopic>(runtimeWithout),
+        stats: topic<StatsSnapshot>(statsWithout),
+      }),
+      ru,
+    );
+    for (const domain of ["nat", "events", "connections"] as const) {
+      const card = cards.find((c) => c.domain === domain)!;
+      expect(card.status, domain).toBe("disabled");
+      expect(card.pill, domain).toBe("muted");
+      expect(card.metrics, domain).toEqual([]);
+      // No wire reason to quote — GatedNote's localized default carries it.
+      expect(card.gate, domain).toEqual({ variant: "disabled", hint: "runtime_edge" });
+    }
+  });
+
   it("turns middle_proxy_enabled: false into the DC and ME cards' own gate", () => {
     const dcs = upstreamsSnapshot.dcs!;
     const meWriters = upstreamsSnapshot.me_writers!;

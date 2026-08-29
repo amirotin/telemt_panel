@@ -8,6 +8,7 @@ import { effectiveLimits, posture, tlsFingerprints, whitelist } from "../__fixtu
 import { securityPageData } from "../../diag/security.helpers";
 import { TLS_FINGERPRINTS_ENDPOINT } from "../fieldCatalog";
 import { resolveSections } from "../resolveSections";
+import { aggregateSources, resolveQuerySource, type GatedLike } from "../sources";
 import type { CollectionSectionInstance, ScalarSectionInstance } from "../resolveSections";
 import { securityPageDefinition, TLS_SCOPE_PATHS, type SecurityPageData } from "./security";
 
@@ -147,5 +148,58 @@ describe("checkpoint R5-Sec: completeness (§27.4, ruling R7)", () => {
     const result = resolve(securityPageData(null, tlsFingerprints));
     expect(result.lostPaths).toEqual([]);
     expect(result.unknownPaths).toEqual([]);
+  });
+});
+
+// The TLS half of this page rides a REST passthrough whose 200 body is a
+// Gated envelope. SecurityPage hands the raw query in as
+// `gated: tls.data ?? null` — a build that answers 200 without the envelope
+// (or a query that resolved to nothing) is the capability being off, and
+// must land on the posture tab with a GatedNote, never on four empty
+// rankings under a green pill.
+describe("TLS passthrough with no gate envelope", () => {
+  function resolveTls(data: unknown) {
+    // The exact expression diag/SecurityPage.tsx builds.
+    return resolveQuerySource("tls", {
+      kind: "query",
+      isPending: false,
+      isError: false,
+      error: null,
+      data,
+      dataUpdatedAt: 1_756_000_000_000,
+      gated: (data as GatedLike | null | undefined) ?? null,
+    });
+  }
+
+  it("is disabled, not ready, when the envelope never came", () => {
+    expect(resolveTls(null)).toMatchObject({ status: "disabled", hasData: false });
+  });
+
+  it("is loading while the request is still out", () => {
+    expect(
+      resolveQuerySource("tls", { kind: "query", isPending: true, isError: false, gated: null })
+        .status,
+    ).toBe("loading");
+  });
+
+  it("keeps the topic-backed half of the page usable — partial, not disabled", () => {
+    const byId = {
+      security: {
+        id: "security",
+        status: "ready" as const,
+        freshnessMs: 1_756_000_000_000,
+        hasData: true,
+      },
+      tls: resolveTls(null),
+    };
+    expect(aggregateSources(securityPageDefinition.sources, byId).status).toBe("partial");
+  });
+
+  it("reads a real envelope as before", () => {
+    expect(resolveTls({ enabled: true, data: tlsFingerprints }).status).toBe("ready");
+    expect(resolveTls({ enabled: false, reason: "feature_disabled" })).toMatchObject({
+      status: "disabled",
+      reason: "feature_disabled",
+    });
   });
 });

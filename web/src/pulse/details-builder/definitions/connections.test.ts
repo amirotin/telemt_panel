@@ -3,7 +3,9 @@
 
 import { describe, expect, it } from "vitest";
 import { ru } from "../../../i18n";
-import { connectionsSummary, connectionsTopLimit, summary } from "../__fixtures__";
+import { connectionsSummary, connectionsTopLimit, statsSnapshot, summary } from "../__fixtures__";
+import type { StatsSnapshot } from "../../../realtime/topics";
+import { aggregateSources, resolveTopicSource } from "../sources";
 import { connectionsPagePayload } from "../../diag/connections.helpers";
 import { classifyValue, resolveSections } from "../resolveSections";
 import type { CollectionSectionInstance, ScalarSectionInstance } from "../resolveSections";
@@ -167,5 +169,52 @@ describe("checkpoint R5-Connections: completeness (§27.4, ruling R7)", () => {
     );
     expect(result.lostPaths).toEqual([]);
     expect(result.unknownPaths).toEqual([]);
+  });
+});
+
+// A stock build (runtime_edge off) omits `connections_summary` from the
+// stats topic entirely — internal/hub/hub.go's `omitempty`. ConnectionsPage
+// normalizes that to `null`; this pins what the builder makes of it, so the
+// page cannot land on a green pill over two blank rankings.
+describe("runtime_edge off, the way a stock build sends it", () => {
+  const withoutGate: StatsSnapshot = { ...statsSnapshot };
+  delete (withoutGate as { connections_summary?: unknown }).connections_summary;
+
+  function resolveGateSource(data: StatsSnapshot | null) {
+    // The exact expression diag/ConnectionsPage.tsx builds.
+    return resolveTopicSource("connections", {
+      kind: "topic",
+      snapshot: { data, ts: 1_756_000_000, stale: false, error: null },
+      gated: data?.connections_summary ?? null,
+    });
+  }
+
+  it("marks the gated source disabled once the stats topic has arrived", () => {
+    const state = resolveGateSource(withoutGate);
+    expect(state.status).toBe("disabled");
+    expect(state.hasData).toBe(false);
+  });
+
+  it("still reports the ungated summary section's own source as ready", () => {
+    const state = resolveTopicSource("stats", {
+      kind: "topic",
+      snapshot: { data: withoutGate, ts: 1_756_000_000, stale: false, error: null },
+    });
+    expect(state.status).toBe("ready");
+  });
+
+  it("does not call it disabled before the first frame", () => {
+    expect(resolveGateSource(null).status).toBe("loading");
+  });
+
+  it("leaves the page partial, not ready — the summary still renders", () => {
+    const byId = {
+      stats: resolveTopicSource("stats", {
+        kind: "topic",
+        snapshot: { data: withoutGate, ts: 1_756_000_000, stale: false, error: null },
+      }),
+      connections: resolveGateSource(withoutGate),
+    };
+    expect(aggregateSources(connectionsPageDefinition.sources, byId).status).toBe("partial");
   });
 });

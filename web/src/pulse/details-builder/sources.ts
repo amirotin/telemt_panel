@@ -141,12 +141,47 @@ export function isEmptyPayload(value: unknown): boolean {
 export interface TopicSourceInput {
   kind: "topic";
   snapshot: TopicSnapshot<unknown>;
-  /** Normalized path to a `Gated<T>` wrapper inside the topic payload. */
+  /**
+   * The `Gated<T>` wrapper this source rides on. THREE-VALUED on purpose:
+   * omit the key when the source has no gate at all, pass `null` when the
+   * definition declares a gate whose wrapper is absent from the payload.
+   */
   gated?: GatedLike | null;
   /** R5: this Telemt build predates the field entirely (from caps/TelemtInfo.version). */
   buildTooOld?: boolean;
+  /** Reason to attribute to an ABSENT gate wrapper, when the topic knows one. */
+  gateReason?: string;
   /** Payload's own generation stamp, when it carries one (seconds or ms). */
   generatedAt?: number | null;
+}
+
+// absentGateState is the answer to "the definition says this source is
+// gated, and the gate wrapper is not in the payload".
+//
+// Telemt omits the key entirely rather than sending `{enabled:false}` when
+// the capability is off (internal/hub/hub.go: `json:"connections_summary,
+// omitempty"` / `recent_events,omitempty`; `nat_stun`/`me_pool_state` have
+// no omitempty and arrive as an explicit JSON null when the sub-call is
+// gated) — so the callers' `data?.field ?? null` normalizes BOTH wire
+// shapes to `null`, and `null` here means "the gate is off", never "no gate
+// declared". Treating it as the latter is what put blank Connections/Events
+// cards under a green «Актуально» pill on a stock build.
+//
+// The reason is left undefined when the payload carries none: GatedNote
+// falls back to the localized `s.gated.defaultReason`, which is a real
+// sentence, where a panel-invented token would be untranslated prose.
+function absentGateState(
+  id: string,
+  freshnessMs: number | null,
+  opts: { buildTooOld?: boolean; gateReason?: string },
+): SourceState {
+  return {
+    id,
+    status: opts.buildTooOld ? "unsupported" : "disabled",
+    freshnessMs,
+    ...(opts.gateReason ? { reason: opts.gateReason } : {}),
+    hasData: false,
+  };
 }
 
 // resolveTopicSource extends pulse/diag/DiagTopicState.helpers.ts's
@@ -156,6 +191,14 @@ export interface TopicSourceInput {
 export function resolveTopicSource(id: string, input: TopicSourceInput): SourceState {
   const { snapshot } = input;
   const freshnessMs = normalizeFreshness(input.generatedAt ?? snapshot.ts);
+
+  // An absent wrapper only means "gate off" once the topic itself has
+  // arrived; before that there is nothing to be absent FROM, and the
+  // loading branch below is the honest answer.
+  const topicArrived = snapshot.data !== null && snapshot.data !== undefined;
+  if (input.gated === null && topicArrived) {
+    return absentGateState(id, freshnessMs, input);
+  }
 
   if (input.gated) {
     const status = gatedStatus(input.gated, { buildTooOld: input.buildTooOld });
@@ -173,7 +216,7 @@ export function resolveTopicSource(id: string, input: TopicSourceInput): SourceS
     }
   }
 
-  if (snapshot.data === null || snapshot.data === undefined) {
+  if (!topicArrived) {
     // Same branch order as decideDiagTopicState: an error with nothing to
     // show is an error; no error and nothing yet is still loading.
     return snapshot.error
@@ -210,9 +253,15 @@ export interface QuerySourceInput {
   error?: { code?: string } | null;
   data?: unknown;
   dataUpdatedAt?: number;
-  /** Set when the payload is a `Gated<T>` envelope (the /api/telemt/* passthroughs). */
+  /**
+   * Set when the payload is a `Gated<T>` envelope (the /api/telemt/*
+   * passthroughs). Three-valued exactly as on TopicSourceInput: omitted =
+   * ungated source, `null` = declared gate whose wrapper never arrived.
+   */
   gated?: GatedLike | null;
   buildTooOld?: boolean;
+  /** Reason to attribute to an ABSENT gate wrapper, when the caller knows one. */
+  gateReason?: string;
 }
 
 // resolveQuerySource maps a REST source onto the same seven states.
@@ -240,6 +289,11 @@ export function resolveQuerySource(id: string, input: QuerySourceInput): SourceS
   }
   if (input.isPending || input.data === undefined) {
     return { id, status: "loading", freshnessMs, hasData: false };
+  }
+  // Past the pending branch the response IS here, so an absent wrapper is
+  // the gate being off — same three-valued rule as resolveTopicSource.
+  if (input.gated === null) {
+    return absentGateState(id, freshnessMs, input);
   }
   if (input.gated) {
     const status = gatedStatus(input.gated, { buildTooOld: input.buildTooOld });

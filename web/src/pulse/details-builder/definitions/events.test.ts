@@ -5,9 +5,10 @@
 import { describe, expect, it } from "vitest";
 import { ru } from "../../../i18n";
 import { describeField, lookupField } from "../fieldCatalog";
-import { admissionEventCount, eventCount, events } from "../__fixtures__";
+import { admissionEventCount, eventCount, events, runtimeSnapshot } from "../__fixtures__";
 import { eventsPagePayload } from "../../diag/events.helpers";
-import type { RuntimeEdgeEventRecord } from "../../../realtime/topics";
+import type { RuntimeEdgeEventRecord, RuntimeTopic } from "../../../realtime/topics";
+import { aggregateSources, resolveTopicSource } from "../sources";
 import { classifyValue, resolveSections } from "../resolveSections";
 import type { CollectionSectionInstance, ScalarSectionInstance } from "../resolveSections";
 import type { EventsPagePayload } from "./events";
@@ -181,5 +182,49 @@ describe("checkpoint R5-Events: completeness (§27.4, ruling R7)", () => {
     expect(result.lostPaths).toEqual([]);
     expect(result.unknownPaths).toEqual([]);
     expect(listOf(empty).presence).toBe("empty");
+  });
+});
+
+// `recent_events` is `json:"recent_events,omitempty"` in internal/hub/hub.go:
+// with runtime_edge off the key is not on the wire at all. EventsPage turns
+// that into `gated: null`, and the page's ONLY source is the gated one — so
+// getting this wrong means an empty feed under a green «Актуально» pill.
+describe("runtime_edge off, the way a stock build sends it", () => {
+  const withoutEvents: RuntimeTopic = { ...runtimeSnapshot };
+  delete (withoutEvents as { recent_events?: unknown }).recent_events;
+
+  function resolveGateSource(data: RuntimeTopic | null) {
+    // The exact expression diag/EventsPage.tsx builds.
+    return resolveTopicSource("events", {
+      kind: "topic",
+      snapshot: { data, ts: 1_756_000_000, stale: false, error: null },
+      gated: data?.recent_events ?? null,
+    });
+  }
+
+  it("marks the page's only source disabled, not ready", () => {
+    expect(resolveGateSource(withoutEvents)).toMatchObject({
+      status: "disabled",
+      hasData: false,
+    });
+  });
+
+  it("makes the whole page disabled, since that source is required", () => {
+    const byId = { events: resolveGateSource(withoutEvents) };
+    expect(aggregateSources(eventsPageDefinition.sources, byId).status).toBe("disabled");
+  });
+
+  it("is still loading before the runtime topic arrives", () => {
+    expect(resolveGateSource(null).status).toBe("loading");
+  });
+
+  it("says unsupported instead when the build predates the field (R5)", () => {
+    const state = resolveTopicSource("events", {
+      kind: "topic",
+      snapshot: { data: withoutEvents, ts: 1_756_000_000, stale: false, error: null },
+      gated: withoutEvents.recent_events ?? null,
+      buildTooOld: true,
+    });
+    expect(state.status).toBe("unsupported");
   });
 });

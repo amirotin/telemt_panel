@@ -128,6 +128,79 @@ describe("SSE topic sources (spec §14)", () => {
   });
 });
 
+describe("an OMITTED gate wrapper is the gate being off", () => {
+  // internal/hub/hub.go drops `connections_summary`/`recent_events` from the
+  // JSON entirely when runtime_edge is off (`omitempty`), and sends
+  // `nat_stun`/`me_pool_state` as an explicit null; every page normalizes
+  // both to `null` with `data?.field ?? null`. Reading that as "no gate
+  // declared" is what showed blank cards under a green «Актуально» pill.
+  it("is disabled, not ready, once the topic itself has arrived", () => {
+    const state = resolveTopicSource("connections", {
+      kind: "topic",
+      snapshot: snapshot({ data: { summary: { connections_total: 7 } }, ts: 1756000000 }),
+      gated: null,
+    });
+    expect(state.status).toBe("disabled");
+    expect(state.hasData).toBe(false);
+    // No panel-invented token: GatedNote's localized default reason wins.
+    expect(state.reason).toBeUndefined();
+  });
+
+  it("is still loading while the topic has not arrived", () => {
+    // `stats.data?.connections_summary ?? null` is null in this case too —
+    // the absence must not be read as a gate before the first frame.
+    expect(
+      resolveTopicSource("connections", { kind: "topic", snapshot: snapshot(), gated: null })
+        .status,
+    ).toBe("loading");
+  });
+
+  it("keeps an omitted key distinct from a source with no gate at all", () => {
+    const ungated = resolveTopicSource("stats", {
+      kind: "topic",
+      snapshot: snapshot({ data: { summary: { connections_total: 7 } }, ts: 1756000000 }),
+    });
+    expect(ungated.status).toBe("ready");
+  });
+
+  it("carries the topic-level reason when the topic knows one", () => {
+    const state = resolveTopicSource("events", {
+      kind: "topic",
+      snapshot: snapshot({ data: { gates: {} }, ts: 1756000000 }),
+      gated: null,
+      gateReason: "runtime_edge_off",
+    });
+    expect(state).toMatchObject({ status: "disabled", reason: "runtime_edge_off" });
+  });
+
+  it("says unsupported instead of disabled when the build predates the field (R5)", () => {
+    const state = resolveTopicSource("events", {
+      kind: "topic",
+      snapshot: snapshot({ data: { gates: {} }, ts: 1756000000 }),
+      gated: null,
+      buildTooOld: true,
+    });
+    expect(state.status).toBe("unsupported");
+  });
+
+  it("applies the same rule to a REST source that answered without its envelope", () => {
+    expect(
+      resolveQuerySource("tls", {
+        kind: "query",
+        isPending: false,
+        isError: false,
+        data: {},
+        gated: null,
+      }).status,
+    ).toBe("disabled");
+    // ...but not before the response is in.
+    expect(
+      resolveQuerySource("tls", { kind: "query", isPending: true, isError: false, gated: null })
+        .status,
+    ).toBe("loading");
+  });
+});
+
 describe("ruling R5: unsupported is not disabled", () => {
   it("maps an old build to unsupported and a switched-off capability to disabled", () => {
     expect(gatedStatus(gatedOff("feature_disabled"))).toBe("disabled");
