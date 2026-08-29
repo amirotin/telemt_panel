@@ -1940,22 +1940,47 @@ const UPSTREAMS_ENTRIES: FieldCatalogEntry[] = [
     descriptionKey: "upstreams.policy.connect_failfast_hard_errors",
     format: "boolean",
   },
-  { path: "stats.enabled", descriptionKey: "upstreams.stats.enabled", format: "boolean" },
-  { path: "stats.reason", descriptionKey: "upstreams.stats.reason", format: "enum" },
+  // The Upstreams page shows the response metadata of BOTH endpoints in one
+  // block, so `enabled`, `reason` and `generated_at_epoch_secs` each appear
+  // twice. A row names its field by the last path segment, which would print
+  // the same three words twice and leave the envelope to be guessed from the
+  // sentence underneath. The label override carries the envelope, still
+  // spelled the way Telemt nests it (§8.1) — same mechanism as the NAT
+  // reflection rows below.
+  {
+    path: "stats.enabled",
+    descriptionKey: "upstreams.stats.enabled",
+    label: "stats.enabled",
+    format: "boolean",
+  },
+  {
+    path: "stats.reason",
+    descriptionKey: "upstreams.stats.reason",
+    label: "stats.reason",
+    format: "enum",
+  },
   {
     path: "stats.generated_at_epoch_secs",
     descriptionKey: "upstreams.stats.generated_at_epoch_secs",
+    label: "stats.generated_at_epoch_secs",
     unit: "timestamp",
   },
   {
     path: "upstream_quality.enabled",
     descriptionKey: "upstreams.quality.enabled",
+    label: "upstream_quality.enabled",
     format: "boolean",
   },
-  { path: "upstream_quality.reason", descriptionKey: "upstreams.quality.reason", format: "enum" },
+  {
+    path: "upstream_quality.reason",
+    descriptionKey: "upstreams.quality.reason",
+    label: "upstream_quality.reason",
+    format: "enum",
+  },
   {
     path: "upstream_quality.generated_at_epoch_secs",
     descriptionKey: "upstreams.quality.generated_at_epoch_secs",
+    label: "upstream_quality.generated_at_epoch_secs",
     unit: "timestamp",
   },
 ];

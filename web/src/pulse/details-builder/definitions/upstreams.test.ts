@@ -2,7 +2,7 @@
 // page's own §27.4 completeness equation over the production-size payload.
 
 import { describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { en, ru } from "../../../i18n";
 import { describeField, lookupField } from "../fieldCatalog";
 import { upstreams, upstreamQuality } from "../__fixtures__";
 import { upstreamsPagePayload } from "../../diag/upstreams.helpers";
@@ -112,6 +112,29 @@ describe("Upstreams page definition (spec §23.5)", () => {
     expect(classifyValue(full.upstreams?.[0], { path: "upstreams[0]" })).toBe("object");
     expect(classifyValue(full.summary, { path: "summary" })).toBe("object");
     expect(classifyValue(full.zero, { path: "zero" })).toBe("object");
+  });
+
+  it("tells the two response envelopes apart in the metadata block", () => {
+    const metadata = sectionById(full, "metadata") as ScalarSectionInstance;
+    // Without an override every row names itself by the last path segment,
+    // so this block would draw `enabled` / `reason` /
+    // `generated_at_epoch_secs` twice over and leave the sentence
+    // underneath as the only clue which endpoint answered.
+    const labels = metadata.rows.map((r) => describeField(r.path, ru).label);
+    expect(labels).toEqual([
+      "stats.enabled",
+      "stats.reason",
+      "stats.generated_at_epoch_secs",
+      "upstream_quality.enabled",
+      "upstream_quality.reason",
+      "upstream_quality.generated_at_epoch_secs",
+    ]);
+    // Telemt's own spelling, so the row reads identically in both locales
+    // (§8.1) — only the sentence under it is translated.
+    expect(metadata.rows.map((r) => describeField(r.path, en).label)).toEqual(labels);
+    // The invariant behind the strings above: no two rows of this block may
+    // offer the reader the same name.
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
 
