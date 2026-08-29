@@ -47,7 +47,10 @@ export function WidgetFrame({
     <div className={cn("flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-3.5", className)}>
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <h3 className="truncate text-[13px] font-semibold text-text">{title}</h3>
+          {/* h2, not h3: a widget is a top-level section of Сводка and there
+              is no intermediate heading above it — h1 straight to h3 left a
+              gap in the outline a screen reader reads as a missing level. */}
+          <h2 className="truncate text-[13px] font-semibold text-text">{title}</h2>
           {badge}
           {stale && <StatePill state="warn">{s.common.stale}</StatePill>}
         </div>
