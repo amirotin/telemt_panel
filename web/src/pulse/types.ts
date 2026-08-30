@@ -35,6 +35,7 @@ export type WidgetId =
   | "dc"
   | "upstreams"
   | "me_pool"
+  | "web"
   | "selftest"
   | "recent_events"
   | "tls_fingerprints";

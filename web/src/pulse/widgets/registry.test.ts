@@ -3,7 +3,7 @@ import { DEFAULT_LAYOUT, STACK_SIZE, WIDGETS, getWidgetDef } from "./registry";
 import { ru } from "../../i18n";
 import { visibleFor } from "../../display-mode";
 
-const KNOWN_TOPICS = new Set(["users", "stats", "runtime", "upstreams", "security", "update"]);
+const KNOWN_TOPICS = new Set(["users", "stats", "runtime", "upstreams", "security", "web", "update"]);
 
 const SPAN: Record<string, number> = {
   third: 4,

@@ -9,6 +9,7 @@ import { OnlineNow } from "./OnlineNow";
 import { DcWidget } from "./DcWidget";
 import { UpstreamsWidget } from "./UpstreamsWidget";
 import { MePoolWidget } from "./MePoolWidget";
+import { WebWidget } from "./WebWidget";
 import { SelftestWidget } from "./SelftestWidget";
 import { RecentEventsWidget } from "./RecentEventsWidget";
 import { TlsFingerprintsWidget } from "./TlsFingerprintsWidget";
@@ -147,8 +148,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   // ME, WEB and Апстримы are concept §13's infrastructure level. They do
   // not form a row of their own: they STACK in the four columns beside the
-  // data-center board, ME first. WEB arrives in S4 and joins the same
-  // stack — no cell is held open for it meanwhile.
+  // data-center board, in that order.
   {
     id: "me_pool",
     topics: ["runtime"],
@@ -162,6 +162,19 @@ export const WIDGETS: WidgetDef[] = [
     // No diagDomain: the card's whole body is the link to /pulse/diag/me,
     // so a second header link to the same page would only be noise.
     render: MePoolWidget,
+  },
+  {
+    id: "web",
+    topics: ["web"],
+    // §13 counts WEB as part of the dashboard's infrastructure level, so
+    // the standard density shows it — including on the builds where all it
+    // has to say is «Нет в этой версии».
+    minMode: "basic",
+    size: "third",
+    stack: "infra",
+    hideable: true,
+    // No diagDomain: the card's whole body is the link to /pulse/diag/web.
+    render: WebWidget,
   },
   {
     id: "upstreams",

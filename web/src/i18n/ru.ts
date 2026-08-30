@@ -362,6 +362,7 @@ export const ru = {
       // Концепция §10/§13 называет карточку просто «ME» — pool/quality это
       // её внутренности, они на странице диагностики.
       me_pool: "ME",
+      web: "WEB",
       selftest: "Self-test",
       recent_events: "События",
       tls_fingerprints: "TLS fingerprints",
@@ -504,6 +505,29 @@ export const ru = {
         degradedWriters: "Писателей с деградацией: {count}",
         family: "Семейство {family}: {state}",
       },
+    },
+    // Карточка подсистемы WEB (концепция §11). На главной — только
+    // состояние и то, что можно посчитать; всё остальное на /pulse/diag/web.
+    web: {
+      state: {
+        running: "Работает",
+        starting: "Запускается",
+        draining: "Дренаж",
+        disabled: "Выключен",
+        // Маршрут /v1/runtime/web/* появился в Telemt 3.5.3. На старой
+        // сборке это не ошибка и не выключенная настройка — это версия.
+        unsupported: "Нет в этой версии",
+        unavailable: "Недоступен",
+      },
+      // Компактная карточка: одна строка объяснения вместо цифр, которых нет.
+      hint: {
+        unsupported: "Появится после обновления Telemt.",
+        closed: "Веб-режим сейчас не обслуживает клиентов.",
+      },
+      listeners: ["{n} слушатель", "{n} слушателя", "{n} слушателей"],
+      sessions: ["{n} сессия", "{n} сессии", "{n} сессий"],
+      noListeners: "Адресов не занято",
+      limitHits: "упоры в лимит {count}",
     },
     natStun: {
       probeEnabled: "Проба NAT включена",

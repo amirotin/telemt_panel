@@ -303,6 +303,7 @@ export const en: Dict = {
       dc: "Data centers",
       upstreams: "Upstreams",
       me_pool: "ME",
+      web: "WEB",
       selftest: "Self-test",
       recent_events: "Events",
       tls_fingerprints: "TLS fingerprints",
@@ -404,6 +405,24 @@ export const en: Dict = {
         degradedWriters: "Writers degraded: {count}",
         family: "Family {family}: {state}",
       },
+    },
+    web: {
+      state: {
+        running: "Running",
+        starting: "Starting",
+        draining: "Draining",
+        disabled: "Disabled",
+        unsupported: "Not in this version",
+        unavailable: "Unavailable",
+      },
+      hint: {
+        unsupported: "Arrives with a Telemt update.",
+        closed: "Web mode is not serving clients right now.",
+      },
+      listeners: ["{n} listener", "{n} listeners", "{n} listeners"],
+      sessions: ["{n} session", "{n} sessions", "{n} sessions"],
+      noListeners: "No addresses bound",
+      limitHits: "limit hits {count}",
     },
     natStun: {
       probeEnabled: "NAT probe on",
