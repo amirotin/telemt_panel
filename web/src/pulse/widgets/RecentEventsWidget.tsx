@@ -23,6 +23,7 @@ import { resolveGated } from "./gated";
 import {
   computeRecentEventsView,
   eventCategory,
+  eventLine,
   eventTime,
   eventTone,
   type EventCategory,
@@ -130,6 +131,7 @@ function TimelineRow({ event }: { event: RuntimeEdgeEventRecord }) {
   const s = useStrings();
   const category = eventCategory(event.event_type);
   const tone = eventTone(event.event_type);
+  const line = eventLine(event, s);
   const Glyph = category === "neutral" ? null : CATEGORY_ICON[category];
 
   return (
@@ -156,12 +158,12 @@ function TimelineRow({ event }: { event: RuntimeEdgeEventRecord }) {
       >
         {eventTime(event.ts_epoch_secs, s)}
       </time>
-      {/* One line, verbatim: Telemt's own type names the row and its own
-          context explains it (§11.2's rule for these strings everywhere
-          else in the panel). */}
+      {/* One line: the sentence for a type this catalog knows, Telemt's own
+          type for one it does not, and Telemt's own context after either
+          (§11.2's rule for these strings everywhere else in the panel). */}
       <span className="min-w-0 flex-1 truncate text-meta text-text">
-        {event.event_type}
-        {event.context && <span className="text-text-muted"> · {event.context}</span>}
+        {line.text}
+        {line.detail && <span className="text-text-muted"> · {line.detail}</span>}
       </span>
     </li>
   );

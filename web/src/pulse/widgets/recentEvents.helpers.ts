@@ -100,3 +100,97 @@ export function eventTime(tsEpochSecs: number, s: Dict): string {
     hour12: false,
   });
 }
+
+// --- the event, in words (concept §15) -----------------------------------
+
+/** A key under `pulse.recentEvents.types` — one human sentence. */
+export type EventPhraseKey = keyof Dict["pulse"]["recentEvents"]["types"];
+
+/**
+ * The rules that turn Telemt's own event type into a sentence, in order.
+ *
+ * A TABLE and not a free-form matcher: an event type is a contract, and the
+ * only honest way to claim "this means the configuration was reloaded" is
+ * to name the type that means it. The patterns are anchored on the OUTCOME
+ * segment so a failed operation can never borrow its success sentence —
+ * `api.user.create.failed` matches nothing here and stays verbatim, which
+ * is also what every type this catalog has never seen does.
+ *
+ * `admission.state` is not in the table: its meaning is in the CONTEXT, so
+ * it is read separately below.
+ */
+const EVENT_PHRASES: Array<readonly [RegExp, EventPhraseKey]> = [
+  [/^config\.(reload|apply)(\.[a-z0-9_]+)*\.(applied|ok|success|done)$/, "configReloaded"],
+  [/^config\.(reload|apply)(\.[a-z0-9_]+)*\.(fail|failed|failure|error)$/, "configReloadFailed"],
+  [/^(process|runtime|service|proxy)\.restart(ed)?(\.(ok|done))?$/, "restarted"],
+  [/(^|\.)listener\.(start|started|bound|up)$/, "listenerStarted"],
+  [/(^|\.)listener\.(stop|stopped|closed|down)$/, "listenerStopped"],
+  [/(^|\.)(reroute|fallback)\.(direct|active|on)$/, "routeFallback"],
+  [/^me\.route\.fallback$/, "routeFallback"],
+  [/(^|\.)(reroute|fallback)\.(middle|restored|off)$/, "routeRestored"],
+  [/^me\.route\.restored$/, "routeRestored"],
+  [/(^|\.)user\.(create|created)(\.(ok|success|done))?$/, "userCreated"],
+  [/(^|\.)user\.(delete|deleted|remove|removed)(\.(ok|success|done))?$/, "userDeleted"],
+  [/(^|\.)user\.(disable|disabled)(\.(ok|success|done))?$/, "userDisabled"],
+  [/(^|\.)user\.(enable|enabled)(\.(ok|success|done))?$/, "userEnabled"],
+];
+
+export const ADMISSION_EVENT_TYPE = "admission.state";
+
+/**
+ * Whether `admission.state` is reporting an OPEN or a CLOSED door.
+ *
+ * Two spellings are in the wild for the same fact: the live proxies send
+ * `generation=1 accepting_new_connections=true`, and the recorded API
+ * snapshot the fixtures are built from sends `open (healthy_upstreams=1)`.
+ * Anything else returns null and the row falls back to verbatim rather than
+ * guessing which way the door is.
+ */
+export function admissionPhrase(context: string): EventPhraseKey | null {
+  const flag = /accepting_new_connections\s*=\s*(true|false)/i.exec(context);
+  if (flag) return flag[1]!.toLowerCase() === "true" ? "admissionOpen" : "admissionClosed";
+  const word = /^\s*(open|closed)\b/i.exec(context);
+  if (word) return word[1]!.toLowerCase() === "open" ? "admissionOpen" : "admissionClosed";
+  return null;
+}
+
+/** The sentence key for one event, or null when this catalog has none. */
+export function eventPhraseKey(event: Pick<RuntimeEdgeEventRecord, "event_type" | "context">): EventPhraseKey | null {
+  const type = event.event_type.trim().toLowerCase();
+  if (type === ADMISSION_EVENT_TYPE) return admissionPhrase(event.context);
+  for (const [pattern, key] of EVENT_PHRASES) {
+    if (pattern.test(type)) return key;
+  }
+  return null;
+}
+
+/** One timeline row's text: a sentence, and Telemt's own detail after it. */
+export interface EventLine {
+  text: string;
+  /** Telemt's `context`, shown muted after the text; absent when the text already says it. */
+  detail?: string;
+}
+
+/**
+ * eventLine is what a row prints.
+ *
+ * A known type becomes the sentence, with the raw context kept beside it —
+ * «Пользователь создан · username=user_15» — because the context is the
+ * only place the WHICH lives. `admission.state` is the exception: its
+ * context IS the fact the sentence already states, so repeating it would
+ * make the row longer and say nothing.
+ *
+ * An unknown type keeps S3's verbatim shape, `event_type · context`: the
+ * vocabulary grows with every API verb Telemt adds, and a row the panel
+ * cannot phrase must still be a row the operator can read and search for.
+ */
+export function eventLine(event: RuntimeEdgeEventRecord, s: Dict): EventLine {
+  const key = eventPhraseKey(event);
+  const detail = event.context.trim();
+  if (key === null) {
+    return { text: event.event_type, ...(detail ? { detail } : {}) };
+  }
+  const text = s.pulse.recentEvents.types[key];
+  if (key === "admissionOpen" || key === "admissionClosed") return { text };
+  return { text, ...(detail ? { detail } : {}) };
+}
