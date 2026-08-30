@@ -175,3 +175,41 @@ describe("meReasonText", () => {
     );
   });
 });
+
+// The card is the top of a column of three (§13). Its geometry has to be
+// constant, so every field it prints is present in every state — the
+// adaptivity §17 asks for is in the WORDS, not in the height.
+describe("the card's four standing facts", () => {
+  it("carries refill, draining, degraded and fallback in the healthy state too", () => {
+    const view = computeMeCard(pool(), quality(), gates());
+    expect(view.reason).toBeNull();
+    expect(view).toMatchObject({ refillInflight: 0, draining: 0, degraded: 0, fallback: false });
+  });
+
+  it("reports each of them from the pool it was given", () => {
+    const view = computeMeCard(
+      { ...pool({ draining: 2, degraded: 3, alive_non_draining: 44 }), refill: { inflight_endpoints_total: 5, inflight_dc_total: 2, by_dc: [] } },
+      quality(),
+      gates(),
+    );
+    expect(view).toMatchObject({ refillInflight: 5, draining: 2, degraded: 3 });
+  });
+
+  it("says fallback is on exactly when traffic is bypassing ME", () => {
+    expect(computeMeCard(pool(), quality(), gates({ reroute_active: true })).fallback).toBe(true);
+    expect(computeMeCard(pool(), quality(), gates({ route_mode: "direct" })).fallback).toBe(true);
+    // Middle proxy switched off entirely is not a fallback — there is no
+    // ME for the traffic to be bypassing.
+    expect(
+      computeMeCard(pool(), quality(), gates({ use_middle_proxy: false, route_mode: "direct" }))
+        .fallback,
+    ).toBe(false);
+  });
+
+  it("keeps degraded writers as a fact even while a worse reason wins the status line", () => {
+    const view = computeMeCard(pool({ draining: 1, degraded: 4 }), quality(), gates());
+    expect(view.reason).toEqual({ kind: "draining", count: 1 });
+    expect(view.degraded).toBe(4);
+    expect(view.draining).toBe(1);
+  });
+});

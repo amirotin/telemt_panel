@@ -33,14 +33,17 @@ export interface MeCardView {
   rttMs: number | null;
   refillInflight: number;
   draining: number;
-  /** null while healthy: concept §17's compact card has no reason line. */
+  degraded: number;
+  /** Traffic bypassing ME right now — one of the card's four standing facts. */
+  fallback: boolean;
+  /** null while healthy — the status line then says so in words instead. */
   reason: MeReason | null;
 }
 
 // Route mode as the ME card reads it: middle-proxy IS configured but the
 // relay is sending traffic direct. Same two gate fields healthHero's
 // routeModeValue reads — real operational state, not the config flag.
-function isFallback(gates: RuntimeGates | null | undefined): boolean {
+export function isFallback(gates: RuntimeGates | null | undefined): boolean {
   if (!gates || !gates.use_middle_proxy) return false;
   return gates.reroute_active || gates.route_mode === "direct";
 }
@@ -105,8 +108,11 @@ function firstReason(
 
 /**
  * computeMeCard — concept §10's subsystem card: a state word, the writer
- * count, one line of coverage and latency, one line of pool churn, and —
- * only when something is wrong (§17) — the reason.
+ * count, coverage and latency, the four standing pool facts, and a status
+ * line that is either the reason the card is unwell or the plain statement
+ * that it is not. Every field is ALWAYS present: the card is one of three
+ * in a column beside the data-center board, and a card that grew a line
+ * whenever the pool sneezed moved the two cards under it.
  *
  * `quality` and `gates` are optional because each arrives behind its own
  * gate: with ME quality off the card still knows its writers, it just has
@@ -132,6 +138,8 @@ export function computeMeCard(
     rttMs,
     refillInflight: pool.refill.inflight_endpoints_total,
     draining: pool.writers.draining,
+    degraded: pool.writers.degraded,
+    fallback: isFallback(gates),
     reason,
   };
 }

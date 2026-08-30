@@ -1,10 +1,10 @@
-import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
 import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
-import { fill, formatNumber, useStrings } from "../../i18n";
+import { formatNumber, useStrings } from "../../i18n";
+import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
 import { resolveGated } from "./gated";
 import { computeMeCard, meReasonText, type MeCardView } from "./mePool.helpers";
@@ -17,8 +17,13 @@ import { GatedNote } from "../GatedNote";
 // state word, the writer count as the card's one large figure, coverage and
 // latency on one line, pool churn on the next.
 //
-// Adaptive per §17: healthy is exactly that and nothing more — the reason
-// line appears only when the card has stopped being «Healthy».
+// The card's height is FIXED: writers, a coverage/RTT line that keeps its
+// place with an em dash when ME quality is gated off, a 2×2 grid of the
+// four standing pool facts, and a status line that always says something —
+// the reason when unwell, «Все писатели живы» when not. §17's adaptivity is
+// in the WORDS, not in the geometry: this card is the top of a column of
+// three, and a line appearing here shoved WEB and Апстримы down the page
+// every time the pool sneezed.
 export function MePoolWidget({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const topic = useSnapshot<RuntimeTopic>("runtime");
@@ -71,42 +76,74 @@ export function MePoolWidget({ onHide }: { onHide?: () => void }) {
 
 function MeBody({ view }: { view: MeCardView }) {
   const s = useStrings();
-  const facts: ReactNode[] = [];
-  if (view.coveragePct !== null) {
-    facts.push(
-      `${s.pulse.mePool.coverage} ${formatNumber(s, Math.round(view.coveragePct))} %`,
-    );
-  }
-  if (view.rttMs !== null) {
-    facts.push(`RTT ${formatNumber(s, Math.round(view.rttMs))} ${s.pulse.dc.rttUnit}`);
-  }
+  const dash = "—";
+  const facts: Array<{ key: string; label: string; value: string }> = [
+    {
+      key: "refill",
+      label: s.pulse.mePool.facts.refill,
+      value: formatNumber(s, view.refillInflight),
+    },
+    { key: "draining", label: s.pulse.mePool.facts.draining, value: formatNumber(s, view.draining) },
+    {
+      key: "fallback",
+      label: s.pulse.mePool.facts.fallback,
+      value: view.fallback ? s.common.yes : s.common.no,
+    },
+    { key: "degraded", label: s.pulse.mePool.facts.degraded, value: formatNumber(s, view.degraded) },
+  ];
 
   return (
     <>
-      <p className="flex items-baseline gap-1.5">
-        <span className="font-mono text-[26px] font-semibold leading-none tabular-nums text-text">
-          {formatNumber(s, view.writersAlive)} / {formatNumber(s, view.writersTotal)}
-        </span>
-        <span className="text-meta text-text-muted">{s.pulse.mePool.writersUnit}</span>
-      </p>
-      {facts.length > 0 && (
-        <p className="text-meta tabular-nums text-text-muted">{facts.join(" · ")}</p>
-      )}
-      <p className="text-micro tabular-nums text-text-faint">
-        {fill(s.pulse.mePool.churn, {
-          refill: formatNumber(s, view.refillInflight),
-          draining: formatNumber(s, view.draining),
-        })}
-      </p>
-      {/* §17: the card grows one line when it has something to say. */}
-      {view.reason && (
-        <p
-          data-testid="me-reason"
-          className={view.state === "fallback" ? "text-meta text-error" : "text-meta text-warn"}
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <p className="flex items-baseline gap-1.5">
+            <span className="font-mono text-[26px] font-semibold leading-none tabular-nums text-text">
+              {formatNumber(s, view.writersAlive)} / {formatNumber(s, view.writersTotal)}
+            </span>
+            <span className="text-meta text-text-muted">{s.pulse.mePool.writersUnit}</span>
+          </p>
+          {/* Always one line, an em dash where ME quality is gated off: the
+              line disappearing took 18px out of the middle of the card. */}
+          <p className="truncate text-meta tabular-nums text-text-muted" data-testid="me-quality">
+            {s.pulse.mePool.coverage}{" "}
+            {view.coveragePct === null ? dash : `${formatNumber(s, Math.round(view.coveragePct))} %`}
+            {" · RTT "}
+            {view.rttMs === null
+              ? dash
+              : `${formatNumber(s, Math.round(view.rttMs))} ${s.pulse.dc.rttUnit}`}
+          </p>
+        </div>
+        {/* The four standing facts, 2×2, values always shown. They were one
+            «пополнение 0 · дренаж 0» line that said half as much and left
+            the card's right half empty. */}
+        <dl
+          data-testid="me-facts"
+          className="grid w-1/2 shrink-0 grid-cols-2 gap-x-2 gap-y-0.5 text-micro"
         >
-          {meReasonText(view.reason, s)}
-        </p>
-      )}
+          {facts.map((fact) => (
+            <div key={fact.key} className="min-w-0">
+              <dt className="truncate text-text-faint">{fact.label}</dt>
+              <dd className="truncate font-mono tabular-nums text-text-muted">{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      {/* The status line is a RESERVED slot, not a line that appears: it
+          says the reason when there is one and «Все писатели живы» when
+          there is not, so the two cards below never move. */}
+      <p
+        data-testid="me-status"
+        className={cn(
+          "truncate text-meta",
+          view.reason === null
+            ? "text-text-muted"
+            : view.state === "fallback"
+              ? "text-error"
+              : "text-warn",
+        )}
+      >
+        {view.reason === null ? s.pulse.mePool.allAlive : meReasonText(view.reason, s)}
+      </p>
     </>
   );
 }

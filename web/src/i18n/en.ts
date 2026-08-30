@@ -389,7 +389,13 @@ export const en: Dict = {
       },
       writersUnit: "writers",
       coverage: "Coverage",
-      churn: "refill {refill} · draining {draining}",
+      facts: {
+        refill: "refill",
+        draining: "draining",
+        fallback: "fallback",
+        degraded: "degraded",
+      },
+      allAlive: "All writers alive",
       reason: {
         fallback: "Traffic is going direct, bypassing ME",
         coverage: "Coverage {pct} %",
