@@ -406,6 +406,7 @@ export const en: Dict = {
     recentEvents: {
       empty: "No events yet.",
       dropped: "dropped",
+      all: "All events",
     },
     securityPosture: {
       readOnly: "Read-only",

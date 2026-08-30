@@ -127,7 +127,13 @@ describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
       "online_now",
       "dc",
       "me_pool",
+      "recent_events",
     ]);
+  });
+
+  it("closes the page with the event timeline, full width", () => {
+    expect(DEFAULT_LAYOUT.at(-1)).toBe("recent_events");
+    expect(getWidgetDef("recent_events")!.size).toBe("full");
   });
 
   it("gives the data-center board a row of its own", () => {

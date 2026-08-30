@@ -166,12 +166,16 @@ export const WIDGETS: WidgetDef[] = [
   {
     id: "recent_events",
     topics: ["runtime"],
-    minMode: "extended",
-    size: "half",
+    // Concept §20 closes the page with the event timeline, which puts it in
+    // the standard density rather than behind the extended one.
+    minMode: "basic",
+    // §15's rail runs the width of the page: the row is a marker, a stamp
+    // and one line of text, and half a grid truncated most of that line.
+    size: "full",
     hideable: true,
-    // M4 task 8 gave the domain a page: the card shows the last few lines,
-    // «Диагностика →» opens all fifty with a filter (spec §23.5).
-    diagDomain: "events",
+    // No diagDomain: «Все события →» in the header is that link, and M4
+    // task 8's page (all fifty records behind a family filter) is where it
+    // goes (spec §23.5).
     render: RecentEventsWidget,
   },
   {
@@ -199,6 +203,7 @@ export const DEFAULT_LAYOUT: WidgetId[] = [
   "online_now",
   "dc",
   "me_pool",
+  "recent_events",
 ];
 
 export function getWidgetDef(id: WidgetId): WidgetDef | undefined {
