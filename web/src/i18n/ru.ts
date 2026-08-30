@@ -356,9 +356,11 @@ export const ru = {
       online_now: "Онлайн сейчас",
       dc: "Дата-центры",
       upstreams: "Апстримы",
-      me_pool: "ME pool",
+      // Концепция §10/§13 называет карточку просто «ME» — pool/quality это
+      // её внутренности, они на странице диагностики.
+      me_pool: "ME",
       selftest: "Self-test",
-      recent_events: "Последние события",
+      recent_events: "События",
       tls_fingerprints: "TLS fingerprints",
     },
     health: {

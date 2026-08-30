@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { DcStatus, UpstreamsTopic } from "../../realtime/topics";
 import type { State } from "../../ui/StatePill";
-import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { EmptyState } from "../../ui/EmptyState";
 import { useStrings } from "../../i18n";
@@ -13,7 +12,6 @@ import { dcEntityKey } from "../details-builder/definitions/dc";
 import {
   computeDc,
   dcBoardRows,
-  dcCoverageState,
   dcNodeAriaLabel,
   dcNodeTone,
   dcRttText,
@@ -22,9 +20,10 @@ import {
   isTestDc,
 } from "./dc.helpers";
 
-// The ring's geometry. 36 units across with a 2-unit stroke leaves r = 17,
-// which is the "тонкое кольцо" of concept §9 — thin enough that the number
-// inside it, not the ring, is what the eye lands on first.
+// The ring's geometry, in the SVG's own 40-unit box: r = 17 with a 2-unit
+// stroke leaves the circle just inside the viewBox and its own width at
+// ~6 % of the diameter — the "тонкое кольцо" of concept §9, thin enough
+// that the number inside it, not the ring, is what the eye lands on first.
 const RING_RADIUS = 17;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
@@ -57,23 +56,12 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
   const view = computeDc(topic.data?.dcs ?? null);
-  const okCount =
-    view.status === "ok" ? view.dcs.filter((dc) => dcCoverageState(dc) === "ok").length : 0;
 
+  // No "12/12" badge any more: the board IS that count, node for node, and
+  // §2.1's rule against saying the same thing twice is also what keeps the
+  // title from being truncated to «Дат…» on a 360px header.
   return (
-    <WidgetFrame
-      title={s.pulse.widgets.dc}
-      diagDomain="dc"
-      onHide={onHide}
-      stale={topic.stale}
-      badge={
-        view.status === "ok" && view.dcs.length > 0 ? (
-          <StatePill state={okCount === view.dcs.length ? "ok" : "warn"}>
-            {okCount}/{view.dcs.length}
-          </StatePill>
-        ) : undefined
-      }
-    >
+    <WidgetFrame title={s.pulse.widgets.dc} diagDomain="dc" onHide={onHide} stale={topic.stale}>
       {view.status === "loading" && <Skeleton className="h-40 w-full" />}
       {view.status === "disabled" && <GatedNote reason={view.reason} />}
       {view.status === "ok" && view.dcs.length === 0 && <EmptyState title={s.pulse.dc.empty} />}
@@ -81,7 +69,7 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
         // The board is capped and centred rather than stretched: six nodes
         // spread over a 1440px row would each be a 230px letterbox, which is
         // the opposite of the compact node §9 asks for.
-        <div className="mx-auto flex w-full max-w-[640px] flex-col gap-2">
+        <div className="mx-auto flex w-full max-w-[600px] flex-col gap-2">
           {dcBoardRows(view.dcs).map((row) => (
             <ul key={row[0]!.dc} className="grid grid-cols-3 gap-2 lg:grid-cols-6">
               {row.map((dc) => (
@@ -117,13 +105,13 @@ export function DcNode({ dc }: { dc: DcStatus }) {
       aria-label={dcNodeAriaLabel(dc, s)}
       data-testid="dc-node"
       className={cn(
-        "flex h-full min-h-[72px] flex-col items-center gap-1 rounded-lg border border-border bg-surface-2 px-1 py-1.5",
+        "flex h-full min-h-[72px] flex-col items-center gap-0.5 rounded-lg border border-border bg-surface-2 px-1 py-1",
         "transition-colors hover:border-accent/40 hover:bg-surface-3",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
       )}
     >
-      <span className="relative flex h-9 w-9 items-center justify-center">
-        <svg viewBox="0 0 40 40" className="h-9 w-9 -rotate-90" aria-hidden="true">
+      <span className="relative flex h-8 w-8 items-center justify-center">
+        <svg viewBox="0 0 40 40" className="h-8 w-8 -rotate-90" aria-hidden="true">
           <circle
             cx="20"
             cy="20"

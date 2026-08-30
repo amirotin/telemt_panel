@@ -70,7 +70,10 @@ export function meQualitySummary(quality: RuntimeMeQuality | undefined): {
     if (dc.rtt_ema_ms !== null) rtts.push(dc.rtt_ema_ms);
   }
   return {
-    coveragePct: required > 0 ? (alive / required) * 100 : null,
+    // Capped at the full circle, as Telemt's own me-writers summary caps
+    // it: a pool can carry more writers than its floor demands, and
+    // «Покрытие 102 %» reads as an error rather than as spare capacity.
+    coveragePct: required > 0 ? Math.min((alive / required) * 100, 100) : null,
     rttMs: rtts.length > 0 ? rtts.reduce((a, b) => a + b, 0) / rtts.length : null,
   };
 }

@@ -301,9 +301,9 @@ export const en: Dict = {
       online_now: "Online now",
       dc: "Data centers",
       upstreams: "Upstreams",
-      me_pool: "ME pool",
+      me_pool: "ME",
       selftest: "Self-test",
-      recent_events: "Recent events",
+      recent_events: "Events",
       tls_fingerprints: "TLS fingerprints",
     },
     health: {
