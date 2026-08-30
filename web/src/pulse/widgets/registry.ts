@@ -31,6 +31,21 @@ export type WidgetSize =
   | "full"
   | "tiles";
 
+// StackId names a COLUMN several widgets share instead of each taking a
+// grid cell of its own. Concept §13's infrastructure cards sit beside the
+// data-center board rather than under it: the board spans eight columns and
+// the stack spans four, and ME / WEB / Апстримы pile up inside that four —
+// which a flat twelve-column grid cannot express, since the second card
+// after the board would start a new row at column one.
+//
+// Consecutive visible widgets declaring the same stack become one cell
+// (pulse/layout.ts's overviewCells). A widget's own `size` is then the
+// stack's business, not its own.
+export type StackId = "infra";
+
+/** The column span each stack takes on the desktop grid. */
+export const STACK_SIZE: Record<StackId, WidgetSize> = { infra: "third" };
+
 export interface WidgetDef {
   /** Also the dictionary key its title comes from — `s.pulse.widgets[id]`. */
   id: WidgetId;
@@ -44,6 +59,12 @@ export interface WidgetDef {
   size: WidgetSize;
   /** false only for health_hero — every other widget can be hidden from the layout editor. */
   hideable: boolean;
+  /**
+   * Shares a column with the widgets around it instead of taking a grid
+   * cell of its own — see StackId. `size` is ignored for such a widget:
+   * STACK_SIZE owns the span.
+   */
+  stack?: StackId;
   /** Links the widget's "Диагностика →" action to a drill-down page, when one exists. */
   diagDomain?: DiagDomain;
   render: FC<{ onHide?: () => void }>;
@@ -116,19 +137,18 @@ export const WIDGETS: WidgetDef[] = [
     id: "dc",
     topics: ["upstreams"],
     minMode: "basic",
-    // Concept §20 gives «Дата-центры» a row of its own: the board is six
-    // nodes wide on a desktop and three on a phone, and neither shape fits
-    // beside another card.
-    size: "full",
+    // Eight of twelve columns: the board is six nodes wide on a desktop
+    // and three on a phone, and the four columns it leaves are concept
+    // §13's infrastructure stack standing beside it.
+    size: "twoThirds",
     hideable: true,
     diagDomain: "dc",
     render: DcWidget,
   },
-  // ME, WEB and Апстримы are concept §13's infrastructure row: three
-  // `third` cards side by side under the DC board. ME is the only one of
-  // the three that exists yet — the row is a row because all three declare
-  // the same span and follow each other in DEFAULT_LAYOUT, so nothing has
-  // to hold empty cells open until WEB and Апстримы join it.
+  // ME, WEB and Апстримы are concept §13's infrastructure level. They do
+  // not form a row of their own: they STACK in the four columns beside the
+  // data-center board, ME first. WEB arrives in S4 and joins the same
+  // stack — no cell is held open for it meanwhile.
   {
     id: "me_pool",
     topics: ["runtime"],
@@ -137,6 +157,7 @@ export const WIDGETS: WidgetDef[] = [
     // than the pool-internals dump it used to be.
     minMode: "basic",
     size: "third",
+    stack: "infra",
     hideable: true,
     // No diagDomain: the card's whole body is the link to /pulse/diag/me,
     // so a second header link to the same page would only be noise.
@@ -150,6 +171,7 @@ export const WIDGETS: WidgetDef[] = [
     topics: ["upstreams", "runtime"],
     minMode: "basic",
     size: "third",
+    stack: "infra",
     hideable: true,
     diagDomain: "upstreams",
     render: UpstreamsWidget,

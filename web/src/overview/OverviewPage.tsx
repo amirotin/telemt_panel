@@ -11,8 +11,14 @@ import { Sheet } from "../ui/Sheet";
 import { ConfirmView } from "../ui/ConfirmView";
 import { useDisplayMode, type DisplayMode } from "../display-mode";
 import { ViewMenu } from "./ViewMenu";
-import { getWidgetDef, type WidgetSize } from "../pulse/widgets/registry";
-import { editorRows, hiddenWidgetIds, visibleWidgetIds, type EditorRow } from "../pulse/layout";
+import { STACK_SIZE, getWidgetDef, type WidgetSize } from "../pulse/widgets/registry";
+import {
+  editorRows,
+  hiddenWidgetIds,
+  overviewCells,
+  visibleWidgetIds,
+  type EditorRow,
+} from "../pulse/layout";
 import { usePulseLayout } from "../pulse/usePulseLayout";
 import type { WidgetId } from "../pulse/types";
 
@@ -93,20 +99,29 @@ export function OverviewPage() {
         <EmptyState title={s.pulse.emptyLayoutTitle} description={s.pulse.emptyLayoutDescription} />
       ) : (
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-5">
-          {visibleIds.map((id) => {
-            const def = getWidgetDef(id);
-            if (!def) return null;
-            const Widget = def.render;
-            const onHide = def.hideable ? () => hide(id) : undefined;
-            // A "tiles" widget IS its own set of grid cells — wrapping it
-            // would nest a second grid inside a single column.
-            if (def.size === "tiles") return <Widget key={id} onHide={onHide} />;
-            return (
-              <div key={id} className={cn("min-w-0", SPAN_CLASSES[def.size])}>
-                <Widget onHide={onHide} />
+          {overviewCells(visibleIds).map((cell) =>
+            cell.kind === "stack" ? (
+              // One grid cell holding a column of cards — concept §13's ME
+              // (and, from S4, WEB and Апстримы) standing beside the
+              // data-center board rather than starting a row under it. The
+              // grid is `items-start`, so the column's top edge lines up
+              // with the board's.
+              <div
+                key={`stack:${cell.stack}`}
+                data-testid={`widget-stack-${cell.stack}`}
+                className={cn(
+                  "flex min-w-0 flex-col gap-4 lg:gap-5",
+                  SPAN_CLASSES[STACK_SIZE[cell.stack]],
+                )}
+              >
+                {cell.ids.map((id) => (
+                  <RenderWidget key={id} id={id} onHide={hide} />
+                ))}
               </div>
-            );
-          })}
+            ) : (
+              <GridWidget key={cell.id} id={cell.id} onHide={hide} />
+            ),
+          )}
         </div>
       )}
 
@@ -124,6 +139,35 @@ export function OverviewPage() {
           }}
         />
       </Sheet>
+    </div>
+  );
+}
+
+interface RenderWidgetProps {
+  id: WidgetId;
+  onHide: (id: WidgetId) => void;
+}
+
+// RenderWidget resolves the registry entry and wires the hide action; it
+// renders the widget BARE, with no grid cell of its own — the caller owns
+// the cell (a stack column does, and GridWidget does).
+function RenderWidget({ id, onHide }: RenderWidgetProps) {
+  const def = getWidgetDef(id);
+  if (!def) return null;
+  const Widget = def.render;
+  return <Widget onHide={def.hideable ? () => onHide(id) : undefined} />;
+}
+
+// GridWidget is one widget in one cell of the twelve-column grid.
+function GridWidget({ id, onHide }: RenderWidgetProps) {
+  const def = getWidgetDef(id);
+  if (!def) return null;
+  // A "tiles" widget IS its own set of grid cells — wrapping it would nest
+  // a second grid inside a single column.
+  if (def.size === "tiles") return <RenderWidget id={id} onHide={onHide} />;
+  return (
+    <div className={cn("min-w-0", SPAN_CLASSES[def.size])}>
+      <RenderWidget id={id} onHide={onHide} />
     </div>
   );
 }

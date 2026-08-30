@@ -51,7 +51,8 @@ const DOT_ON: Record<State, string> = {
 // Two rows on a desktop (§9's «Альтернативная компоновка»: negative ids
 // over positive ones, paired by column), three columns on a phone (§21) —
 // one markup, because the rows are two separate grids and each wraps on its
-// own.
+// own. The board spans eight of the page's twelve columns and fills them;
+// the remaining four are the infrastructure stack beside it (§13).
 export function DcWidget({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
@@ -66,12 +67,12 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
       {view.status === "disabled" && <GatedNote reason={view.reason} />}
       {view.status === "ok" && view.dcs.length === 0 && <EmptyState title={s.pulse.dc.empty} />}
       {view.status === "ok" && view.dcs.length > 0 && (
-        // The board is capped and centred rather than stretched: six nodes
-        // spread over a 1440px row would each be a 230px letterbox, which is
-        // the opposite of the compact node §9 asks for.
-        <div className="mx-auto flex w-full max-w-[600px] flex-col gap-2">
+        // The board fills the eight columns the widget spans: the nodes and
+        // the gutter between them grow with it rather than leaving a
+        // centred island of whitespace on either side.
+        <div className="flex w-full flex-col gap-2 lg:gap-3">
           {dcBoardRows(view.dcs).map((row) => (
-            <ul key={row[0]!.dc} className="grid grid-cols-3 gap-2 lg:grid-cols-6">
+            <ul key={row[0]!.dc} className="grid grid-cols-3 gap-2 lg:grid-cols-6 lg:gap-3">
               {row.map((dc) => (
                 <li key={dc.dc}>
                   <DcNode dc={dc} />
@@ -105,13 +106,13 @@ export function DcNode({ dc }: { dc: DcStatus }) {
       aria-label={dcNodeAriaLabel(dc, s)}
       data-testid="dc-node"
       className={cn(
-        "flex h-full min-h-[72px] flex-col items-center gap-0.5 rounded-lg border border-border bg-surface-2 px-1 py-1",
+        "flex h-full min-h-[72px] flex-col items-center gap-0.5 rounded-lg border border-border bg-surface-2 px-1 py-1 lg:min-h-[84px] lg:gap-1 lg:py-2",
         "transition-colors hover:border-accent/40 hover:bg-surface-3",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
       )}
     >
-      <span className="relative flex h-8 w-8 items-center justify-center">
-        <svg viewBox="0 0 40 40" className="h-8 w-8 -rotate-90" aria-hidden="true">
+      <span className="relative flex h-8 w-8 items-center justify-center lg:h-10 lg:w-10">
+        <svg viewBox="0 0 40 40" className="h-8 w-8 -rotate-90 lg:h-10 lg:w-10" aria-hidden="true">
           <circle
             cx="20"
             cy="20"
@@ -137,7 +138,7 @@ export function DcNode({ dc }: { dc: DcStatus }) {
         </svg>
         <span
           className={cn(
-            "absolute font-mono text-[10px] font-semibold tabular-nums tracking-tight",
+            "absolute font-mono text-[10px] font-semibold tabular-nums tracking-tight lg:text-[12px]",
             isTestDc(dc) ? "text-text-muted" : "text-text",
           )}
         >
@@ -151,21 +152,21 @@ export function DcNode({ dc }: { dc: DcStatus }) {
               <span
                 key={i}
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full",
+                  "h-1.5 w-1.5 rounded-full lg:h-2 lg:w-2",
                   alive ? DOT_ON[tone] : "bg-surface-3 ring-1 ring-inset ring-border",
                 )}
               />
             ))}
           </span>
         )}
-        <span className="font-mono text-[10px] tabular-nums text-text-muted">
+        <span className="font-mono text-[10px] tabular-nums text-text-muted lg:text-[11px]">
           {dc.alive_writers}/{dc.required_writers}
         </span>
       </span>
       <span
         data-testid="dc-rtt"
         className={cn(
-          "font-mono text-[10px] tabular-nums",
+          "font-mono text-[10px] tabular-nums lg:text-[11px]",
           rttWarn ? "text-warn" : "text-text-faint",
         )}
       >

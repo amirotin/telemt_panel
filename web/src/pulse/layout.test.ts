@@ -12,6 +12,7 @@ import {
   showWidget,
   visibleWidgetIds,
   type Layout,
+  overviewCells,
 } from "./layout";
 import { DEFAULT_LAYOUT, WIDGETS } from "./widgets/registry";
 
@@ -256,5 +257,55 @@ describe("layouts stored before concept §14 removed four cards", () => {
     expect(
       migrateLayout(["health_hero", "security_posture", "stat_row", "nat_stun", "active_sessions"]),
     ).toEqual(["health_hero", "stat_row"]);
+  });
+});
+
+
+// Concept §13: the infrastructure cards share the four columns beside the
+// data-center board instead of each taking a cell of its own.
+describe("overviewCells", () => {
+  it("gives a widget with no stack a cell of its own", () => {
+    expect(overviewCells(["health_hero", "stat_row"])).toEqual([
+      { kind: "widget", id: "health_hero" },
+      { kind: "widget", id: "stat_row" },
+    ]);
+  });
+
+  it("collapses a run of stacked widgets into one column cell", () => {
+    expect(overviewCells(["dc", "me_pool", "upstreams", "recent_events"])).toEqual([
+      { kind: "widget", id: "dc" },
+      { kind: "stack", stack: "infra", ids: ["me_pool", "upstreams"] },
+      { kind: "widget", id: "recent_events" },
+    ]);
+  });
+
+  it("keeps the reader's own order — two runs stay two columns", () => {
+    expect(overviewCells(["me_pool", "dc", "upstreams"])).toEqual([
+      { kind: "stack", stack: "infra", ids: ["me_pool"] },
+      { kind: "widget", id: "dc" },
+      { kind: "stack", stack: "infra", ids: ["upstreams"] },
+    ]);
+  });
+
+  it("lays the default layout out as the concept's rows", () => {
+    expect(overviewCells(defaultLayout())).toEqual([
+      { kind: "widget", id: "health_hero" },
+      { kind: "widget", id: "stat_row" },
+      { kind: "widget", id: "problems" },
+      { kind: "widget", id: "online_now" },
+      { kind: "widget", id: "dc" },
+      { kind: "stack", stack: "infra", ids: ["me_pool"] },
+      { kind: "widget", id: "recent_events" },
+    ]);
+  });
+
+  it("names every id exactly once, whatever the grouping", () => {
+    const ids = defaultLayout();
+    const flat = overviewCells(ids).flatMap((c) => (c.kind === "stack" ? c.ids : [c.id]));
+    expect(flat).toEqual(ids);
+  });
+
+  it("is empty for an empty render list", () => {
+    expect(overviewCells([])).toEqual([]);
   });
 });

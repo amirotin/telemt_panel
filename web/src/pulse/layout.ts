@@ -1,5 +1,5 @@
 import { visibleFor, type DisplayMode } from "../display-mode";
-import { DEFAULT_LAYOUT, WIDGETS, getWidgetDef } from "./widgets/registry";
+import { DEFAULT_LAYOUT, WIDGETS, getWidgetDef, type StackId } from "./widgets/registry";
 import type { WidgetId } from "./types";
 
 // Layout is the user's ordered, per-device widget list (06-ui.md: "раскладка
@@ -90,6 +90,42 @@ export function visibleWidgetIds(layout: Layout, mode: DisplayMode): WidgetId[] 
     const def = getWidgetDef(id);
     return def !== undefined && visibleFor(def.minMode, mode);
   });
+}
+
+/**
+ * One cell of Сводка's desktop grid. Most widgets are their own cell; a run
+ * of widgets sharing a `stack` is ONE cell holding them in a column.
+ */
+export type OverviewCell =
+  | { kind: "widget"; id: WidgetId }
+  | { kind: "stack"; stack: StackId; ids: WidgetId[] };
+
+/**
+ * overviewCells turns the render list into the cells the page lays out.
+ *
+ * The only thing it does beyond a 1:1 mapping is collapse CONSECUTIVE
+ * widgets that declare the same stack into one cell — which is what puts
+ * concept §13's infrastructure cards in the four columns beside the
+ * data-center board instead of on a row of their own. Consecutive, not
+ * "all of them": the reader's own order is the layout, and gathering
+ * widgets from opposite ends of it would move a card they deliberately put
+ * somewhere else.
+ *
+ * Below `lg:` the grid is one column, so a stack cell simply renders its
+ * widgets one after another — the phone layout is the same list either way.
+ */
+export function overviewCells(ids: readonly WidgetId[]): OverviewCell[] {
+  const cells: OverviewCell[] = [];
+  for (const id of ids) {
+    const stack = getWidgetDef(id)?.stack;
+    const last = cells.at(-1);
+    if (stack !== undefined && last?.kind === "stack" && last.stack === stack) {
+      last.ids.push(id);
+      continue;
+    }
+    cells.push(stack === undefined ? { kind: "widget", id } : { kind: "stack", stack, ids: [id] });
+  }
+  return cells;
 }
 
 // hiddenWidgetIds is visibleWidgetIds' complement for the Сводка page's

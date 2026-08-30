@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LAYOUT, WIDGETS, getWidgetDef } from "./registry";
+import { DEFAULT_LAYOUT, STACK_SIZE, WIDGETS, getWidgetDef } from "./registry";
 import { ru } from "../../i18n";
 import { visibleFor } from "../../display-mode";
 
 const KNOWN_TOPICS = new Set(["users", "stats", "runtime", "upstreams", "security", "update"]);
+
+const SPAN: Record<string, number> = {
+  third: 4,
+  fiveTwelfths: 5,
+  half: 6,
+  sevenTwelfths: 7,
+  twoThirds: 8,
+  full: 12,
+  tiles: 12,
+};
+
+/** The board plus the stack beside it — concept §13's row, in columns. */
+const SPAN_CLASSES_TOTAL = SPAN[getWidgetDef("dc")!.size]! + SPAN[STACK_SIZE.infra]!;
 
 describe("WIDGETS registry invariants", () => {
   it("has unique widget ids", () => {
@@ -136,20 +149,30 @@ describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
     expect(getWidgetDef("recent_events")!.size).toBe("full");
   });
 
-  it("gives the data-center board a row of its own", () => {
-    expect(getWidgetDef("dc")!.size).toBe("full");
+  // Eight columns for the board, four for the stack beside it — one row.
+  it("gives the data-center board eight of the twelve columns", () => {
+    expect(getWidgetDef("dc")!.size).toBe("twoThirds");
+    expect(SPAN_CLASSES_TOTAL).toBe(12);
   });
 
-  // Concept §13: ME, WEB and Апстримы are one infrastructure row of three
-  // equal cards. WEB arrives in S4; the row is already a row because the
-  // cards that will fill it declare the same span.
-  it("sizes the infrastructure cards as thirds of one row", () => {
-    expect(getWidgetDef("me_pool")!.size).toBe("third");
-    expect(getWidgetDef("upstreams")!.size).toBe("third");
+  // Concept §13: ME, WEB and Апстримы are the infrastructure level, and
+  // they STACK in the four columns beside the board rather than forming a
+  // row under it. WEB arrives in S4 and joins the same stack.
+  it("puts the infrastructure cards in one stacked column", () => {
+    expect(getWidgetDef("me_pool")!.stack).toBe("infra");
+    expect(getWidgetDef("upstreams")!.stack).toBe("infra");
+    expect(STACK_SIZE.infra).toBe("third");
   });
 
-  it("puts ME straight after the data-center board, where the row starts", () => {
+  it("puts ME straight after the data-center board, where the stack starts", () => {
     expect(DEFAULT_LAYOUT.indexOf("me_pool")).toBe(DEFAULT_LAYOUT.indexOf("dc") + 1);
+  });
+
+  it("only stacks widgets that also declare a span for the stack to use", () => {
+    for (const w of WIDGETS) {
+      if (w.stack === undefined) continue;
+      expect(w.size).toBe(STACK_SIZE[w.stack]);
+    }
   });
 
   it("shows every default widget in the default display mode", () => {
