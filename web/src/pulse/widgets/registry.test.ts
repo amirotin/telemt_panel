@@ -130,7 +130,8 @@ describe("Сводка's catalog after concept §14", () => {
 
 // Concept §20's desktop order, which DEFAULT_LAYOUT reproduces top to
 // bottom: status banner, KPI tiles, Проблемы beside Онлайн, the data-center
-// board, the infrastructure row, the event timeline.
+// board with the infrastructure column beside it, and «События» beside
+// «Квоты и сроки».
 describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
   it("is exactly the concept's list, in the concept's order", () => {
     expect(DEFAULT_LAYOUT).toEqual([
@@ -140,13 +141,44 @@ describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
       "online_now",
       "dc",
       "me_pool",
+      "web",
+      "upstreams",
       "recent_events",
+      "quotas",
     ]);
   });
 
-  it("closes the page with the event timeline, at half width", () => {
-    expect(DEFAULT_LAYOUT.at(-1)).toBe("recent_events");
+  it("closes the page with the timeline beside the quota card, half each", () => {
+    expect(DEFAULT_LAYOUT.slice(-2)).toEqual(["recent_events", "quotas"]);
     expect(getWidgetDef("recent_events")!.size).toBe("half");
+    expect(getWidgetDef("quotas")!.size).toBe("half");
+  });
+
+  // Every row adds up to twelve, so no cell is held open and nothing
+  // wraps into a row of its own.
+  it("lays the default layout out in full twelve-column rows", () => {
+    const rows = [
+      ["health_hero"],
+      ["problems", "online_now"],
+      ["dc", "me_pool"],
+      ["recent_events", "quotas"],
+    ];
+    const span: Record<string, number> = {
+      third: 4,
+      fiveTwelfths: 5,
+      half: 6,
+      sevenTwelfths: 7,
+      twoThirds: 8,
+      full: 12,
+    };
+    for (const row of rows) {
+      const total = row.reduce((sum, id) => {
+        const def = getWidgetDef(id as (typeof DEFAULT_LAYOUT)[number])!;
+        const size = def.stack ? STACK_SIZE[def.stack] : def.size;
+        return sum + span[size]!;
+      }, 0);
+      expect(total).toBe(12);
+    }
   });
 
   // Eight columns for the board, four for the stack beside it — one row.
@@ -157,11 +189,17 @@ describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
 
   // Concept §13: ME, WEB and Апстримы are the infrastructure level, and
   // they STACK in the four columns beside the board rather than forming a
-  // row under it. WEB arrives in S4 and joins the same stack.
-  it("puts the infrastructure cards in one stacked column", () => {
-    expect(getWidgetDef("me_pool")!.stack).toBe("infra");
-    expect(getWidgetDef("upstreams")!.stack).toBe("infra");
+  // row under it.
+  it("puts the three infrastructure cards in one stacked column, in §13's order", () => {
+    for (const id of ["me_pool", "web", "upstreams"] as const) {
+      expect(getWidgetDef(id)!.stack).toBe("infra");
+    }
     expect(STACK_SIZE.infra).toBe("third");
+    expect(DEFAULT_LAYOUT.slice(DEFAULT_LAYOUT.indexOf("me_pool"), DEFAULT_LAYOUT.indexOf("me_pool") + 3)).toEqual([
+      "me_pool",
+      "web",
+      "upstreams",
+    ]);
   });
 
   it("puts ME straight after the data-center board, where the stack starts", () => {

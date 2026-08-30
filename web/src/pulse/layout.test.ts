@@ -294,8 +294,9 @@ describe("overviewCells", () => {
       { kind: "widget", id: "problems" },
       { kind: "widget", id: "online_now" },
       { kind: "widget", id: "dc" },
-      { kind: "stack", stack: "infra", ids: ["me_pool"] },
+      { kind: "stack", stack: "infra", ids: ["me_pool", "web", "upstreams"] },
       { kind: "widget", id: "recent_events" },
+      { kind: "widget", id: "quotas" },
     ]);
   });
 

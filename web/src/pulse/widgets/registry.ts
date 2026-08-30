@@ -241,10 +241,14 @@ export const WIDGETS: WidgetDef[] = [
 
 // DEFAULT_LAYOUT is the dashboard's out-of-the-box ordered widget list, in
 // concept §20's desktop order: status banner, KPI tiles, Проблемы beside
-// Онлайн, the data-center board, the infrastructure row, the event
-// timeline. An existing user's stored layout is NOT rewritten to match:
-// migrateLayout only re-inserts non-hideable ids, so this is the first-run
-// set, not a forced one.
+// Онлайн, the data-center board with the infrastructure column (ME, WEB,
+// Апстримы) beside it, and the page closing on «События» beside «Квоты и
+// сроки». Five rows, each of them twelve columns wide, with no cell held
+// open for anything.
+//
+// An existing user's stored layout is NOT rewritten to match: migrateLayout
+// only re-inserts non-hideable ids, so this is the first-run set, not a
+// forced one.
 export const DEFAULT_LAYOUT: WidgetId[] = [
   "health_hero",
   "stat_row",
@@ -252,7 +256,10 @@ export const DEFAULT_LAYOUT: WidgetId[] = [
   "online_now",
   "dc",
   "me_pool",
+  "web",
+  "upstreams",
   "recent_events",
+  "quotas",
 ];
 
 export function getWidgetDef(id: WidgetId): WidgetDef | undefined {
