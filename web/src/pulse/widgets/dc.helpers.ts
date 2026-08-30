@@ -1,4 +1,6 @@
 import type { DcStatus } from "../../realtime/topics";
+import type { State } from "../../ui/StatePill";
+import { fill, formatNumber, type Dict } from "../../i18n";
 
 export type DcResult =
   | { status: "loading" }
@@ -19,9 +21,118 @@ export function computeDc(
 
 // dcCoverageState maps a DC's coverage_pct to the StatePill semantic set —
 // full coverage is ok, any shortfall relative to the floor is a problem
-// worth flagging (warn under 100%, error at 0 alive writers).
+// worth flagging (warn under 100%, error at 0 alive writers). Same rule as
+// details-builder's dcAttentionTone, in the widget's own vocabulary.
 export function dcCoverageState(dc: DcStatus): "ok" | "warn" | "error" {
   if (dc.alive_writers === 0) return "error";
   if (dc.coverage_pct < 100) return "warn";
   return "ok";
+}
+
+/**
+ * Telegram's test data centers carry the NEGATIVE ids — the same split
+ * details-builder/definitions/dc.ts orders the diagnostics rail by
+ * ("production data centers first … then the test sites").
+ */
+export function isTestDc(dc: Pick<DcStatus, "dc">): boolean {
+  return dc.dc < 0;
+}
+
+// dcNodeTone is the coverage ring's colour (concept §9's "Цветовая логика
+// DC"): the card itself stays dark, the RING carries the state. A healthy
+// TEST site is drawn muted rather than green — concept §9 asks for the test
+// nodes to be visually quieter, and a green ring on a site that carries no
+// client traffic spends attention on nothing. A test site that is actually
+// degraded keeps its warn/error ring: quieter must never mean silent.
+export function dcNodeTone(dc: DcStatus): State {
+  const state = dcCoverageState(dc);
+  if (state === "ok" && isTestDc(dc)) return "muted";
+  return state;
+}
+
+/**
+ * The RTT above which a data center's latency reads as amber (concept §9:
+ * «Если RTT выходит за нормальный диапазон, значение становится amber»).
+ *
+ * Telemt reports no expected range of its own, so this is the panel's own
+ * threshold rather than a rule read off the API. 150 ms is a round number
+ * above the round-trip to a Telegram DC on another continent from a
+ * European host (the live snapshot spans 19–187 ms) and below the point
+ * where a relay hop is visibly slow to a client.
+ */
+export const DC_RTT_WARN_MS = 150;
+
+export function dcRttTone(rttMs: number | null): "warn" | null {
+  if (rttMs === null) return null;
+  return rttMs > DC_RTT_WARN_MS ? "warn" : null;
+}
+
+/**
+ * Writers as dots — `● ● ○` for 2 of 3 (concept §9: "гораздо быстрее
+ * считывается визуально, чем текст"). One entry per REQUIRED writer, true
+ * where a live one covers it.
+ *
+ * `null` when the dots would stop being readable: a DC whose floor is above
+ * DC_WRITER_DOTS_MAX (the live snapshot has one at ten) would render a row
+ * of specks nobody counts, so that node shows the `10/10` fraction alone.
+ */
+export const DC_WRITER_DOTS_MAX = 5;
+
+export function dcWriterDots(dc: DcStatus): boolean[] | null {
+  if (dc.required_writers <= 0 || dc.required_writers > DC_WRITER_DOTS_MAX) return null;
+  return Array.from({ length: dc.required_writers }, (_, i) => i < dc.alive_writers);
+}
+
+// Ids of magnitude >= 100 are the 203-family sites; they close their row
+// rather than sorting by number, which would put DC -203 at the head of the
+// negative row and DC 203 in the middle of nothing.
+const FAR_DC_MAGNITUDE = 100;
+
+function byBoardOrder(a: { dc: number }, b: { dc: number }): number {
+  const far = Number(Math.abs(a.dc) >= FAR_DC_MAGNITUDE) - Number(Math.abs(b.dc) >= FAR_DC_MAGNITUDE);
+  return far !== 0 ? far : a.dc - b.dc;
+}
+
+/**
+ * Concept §9's «Альтернативная компоновка» — the board's two rows:
+ *
+ *     DC-5   DC-4   DC-3   DC-2   DC-1   DC-203
+ *     DC1    DC2    DC3    DC4    DC5    DC203
+ *
+ * Negative ids on top, positive underneath, each row ascending with the
+ * 203-family site last, so a column pairs a test site with the production
+ * DC facing it and the block reads like a route panel.
+ *
+ * Returned as ROWS rather than one flat list because the two rows are
+ * rendered as two grids: that is what makes the pairing survive a payload
+ * with an odd number of sites, and what turns the same markup into concept
+ * §21's 3×4 on a phone (three columns × two rows, twice).
+ */
+export function dcBoardRows<T extends { dc: number }>(dcs: readonly T[]): T[][] {
+  const negative = dcs.filter((dc) => dc.dc < 0).sort(byBoardOrder);
+  const positive = dcs.filter((dc) => dc.dc >= 0).sort(byBoardOrder);
+  return [negative, positive].filter((row) => row.length > 0);
+}
+
+/** The RTT as the node prints it — `42 ms`, or an em dash when unmeasured. */
+export function dcRttText(dc: DcStatus, s: Dict): string {
+  if (dc.rtt_ms === null) return "—";
+  return `${formatNumber(s, Math.round(dc.rtt_ms))} ${s.pulse.dc.rttUnit}`;
+}
+
+/**
+ * The node's accessible name. A node is a 88×72 tile of a ring, three dots
+ * and a number — every one of concept §9's four facts is encoded visually,
+ * so the label has to spell all four out, plus the "test site" that the
+ * muted ring is the only cue for.
+ */
+export function dcNodeAriaLabel(dc: DcStatus, s: Dict): string {
+  const base = fill(s.pulse.dc.nodeLabel, {
+    dc: formatNumber(s, dc.dc),
+    coverage: formatNumber(s, Math.round(dc.coverage_pct)),
+    alive: formatNumber(s, dc.alive_writers),
+    required: formatNumber(s, dc.required_writers),
+    rtt: dcRttText(dc, s),
+  });
+  return isTestDc(dc) ? `${base} · ${s.pulse.dc.testSite}` : base;
 }

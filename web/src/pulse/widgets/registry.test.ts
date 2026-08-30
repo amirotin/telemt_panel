@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_LAYOUT, WIDGETS, getWidgetDef } from "./registry";
 import { ru } from "../../i18n";
+import { visibleFor } from "../../display-mode";
 
 const KNOWN_TOPICS = new Set(["users", "stats", "runtime", "upstreams", "security", "update"]);
 
@@ -108,12 +109,33 @@ describe("Сводка's catalog after concept §14", () => {
     }
   });
 
-  it("defaults to Статус, Показатели, Проблемы, Онлайн and nothing else", () => {
-    expect(DEFAULT_LAYOUT).toEqual(["health_hero", "stat_row", "problems", "online_now"]);
-  });
-
   it("pairs Проблемы and Онлайн into one twelve-column row", () => {
     expect(getWidgetDef("problems")!.size).toBe("fiveTwelfths");
     expect(getWidgetDef("online_now")!.size).toBe("sevenTwelfths");
+  });
+});
+
+// Concept §20's desktop order, which DEFAULT_LAYOUT reproduces top to
+// bottom: status banner, KPI tiles, Проблемы beside Онлайн, the data-center
+// board, the infrastructure row, the event timeline.
+describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
+  it("is exactly the concept's list, in the concept's order", () => {
+    expect(DEFAULT_LAYOUT).toEqual([
+      "health_hero",
+      "stat_row",
+      "problems",
+      "online_now",
+      "dc",
+    ]);
+  });
+
+  it("gives the data-center board a row of its own", () => {
+    expect(getWidgetDef("dc")!.size).toBe("full");
+  });
+
+  it("shows every default widget in the default display mode", () => {
+    for (const id of DEFAULT_LAYOUT) {
+      expect(visibleFor(getWidgetDef(id)!.minMode, "basic")).toBe(true);
+    }
   });
 });

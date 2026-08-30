@@ -365,6 +365,9 @@ export const en: Dict = {
       writers: "Writers",
       load: "Load",
       empty: "No data-center data.",
+      rttUnit: "ms",
+      nodeLabel: "DC {dc} · coverage {coverage} % · writers {alive} of {required} · RTT {rtt}",
+      testSite: "test data center",
     },
     upstreams: {
       route: "Route",

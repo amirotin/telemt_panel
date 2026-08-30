@@ -116,7 +116,10 @@ export const WIDGETS: WidgetDef[] = [
     id: "dc",
     topics: ["upstreams"],
     minMode: "basic",
-    size: "half",
+    // Concept §20 gives «Дата-центры» a row of its own: the board is six
+    // nodes wide on a desktop and three on a phone, and neither shape fits
+    // beside another card.
+    size: "full",
     hideable: true,
     diagDomain: "dc",
     render: DcWidget,
@@ -174,16 +177,18 @@ export const WIDGETS: WidgetDef[] = [
   },
 ];
 
-// DEFAULT_LAYOUT is the dashboard's out-of-the-box ordered widget list
-// (06-ui.md: "HealthHero, стат-ряд, Проблемы", plus «Онлайн сейчас» — the
-// prototype's Сводка puts it directly under Проблемы). An existing user's
-// stored layout is NOT rewritten to match: migrateLayout only re-inserts
-// non-hideable ids, so this is the first-run set, not a forced one.
+// DEFAULT_LAYOUT is the dashboard's out-of-the-box ordered widget list, in
+// concept §20's desktop order: status banner, KPI tiles, Проблемы beside
+// Онлайн, the data-center board, the infrastructure row, the event
+// timeline. An existing user's stored layout is NOT rewritten to match:
+// migrateLayout only re-inserts non-hideable ids, so this is the first-run
+// set, not a forced one.
 export const DEFAULT_LAYOUT: WidgetId[] = [
   "health_hero",
   "stat_row",
   "problems",
   "online_now",
+  "dc",
 ];
 
 export function getWidgetDef(id: WidgetId): WidgetDef | undefined {
