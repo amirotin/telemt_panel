@@ -379,6 +379,8 @@ export const en: Dict = {
       route: "Route",
       healthy: "Healthy",
       unhealthy: "Unhealthy",
+      healthyOf: "{healthy} / {total} healthy",
+      onAverage: "avg",
       empty: "No upstreams configured.",
       successRate: "Connection success rate",
     },
