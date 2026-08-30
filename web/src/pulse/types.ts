@@ -38,4 +38,5 @@ export type WidgetId =
   | "web"
   | "selftest"
   | "recent_events"
+  | "quotas"
   | "tls_fingerprints";

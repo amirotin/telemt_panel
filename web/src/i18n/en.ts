@@ -251,6 +251,7 @@ export const en: Dict = {
     onlineOf: "{online} of {total}",
     onlineEmpty: "Nobody is connected right now.",
     allUsers: "All users",
+    allPeople: "All people",
     onlineConnections: ["{n} connection", "{n} connections", "{n} connections"],
     onlineConnectionsShort: "{n} conn.",
     hiddenTitle: "Hidden blocks",
@@ -306,6 +307,7 @@ export const en: Dict = {
       web: "WEB",
       selftest: "Self-test",
       recent_events: "Events",
+      quotas: "Quotas and expiry",
       tls_fingerprints: "TLS fingerprints",
     },
     health: {
@@ -480,6 +482,11 @@ export const en: Dict = {
         userDisabled: "User disabled",
         userEnabled: "User enabled",
       },
+    },
+    quotas: {
+      empty: "Quotas and expiry dates are fine",
+      expiresIn: "expires in {duration}",
+      expired: "expired",
     },
     securityPosture: {
       readOnly: "Read-only",

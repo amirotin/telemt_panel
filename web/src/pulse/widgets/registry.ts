@@ -12,6 +12,7 @@ import { MePoolWidget } from "./MePoolWidget";
 import { WebWidget } from "./WebWidget";
 import { SelftestWidget } from "./SelftestWidget";
 import { RecentEventsWidget } from "./RecentEventsWidget";
+import { QuotasWidget } from "./QuotasWidget";
 import { TlsFingerprintsWidget } from "./TlsFingerprintsWidget";
 
 // WidgetSize is the widget's span in Сводка's desktop grid (12 columns
@@ -213,6 +214,18 @@ export const WIDGETS: WidgetDef[] = [
     // task 8's page (all fifty records behind a family filter) is where it
     // goes (spec §23.5).
     render: RecentEventsWidget,
+  },
+  {
+    // «Квоты и сроки» — the people whose access is about to stop working,
+    // half the grid beside the event timeline.
+    id: "quotas",
+    topics: ["users"],
+    minMode: "basic",
+    size: "half",
+    hideable: true,
+    // No diagDomain: this is a people question, and «Все люди →» in the
+    // header is where it goes.
+    render: QuotasWidget,
   },
   {
     // No `topics`: this widget left the SSE topics in M4 task 1 and fetches
