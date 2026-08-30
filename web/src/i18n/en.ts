@@ -369,6 +369,7 @@ export const en: Dict = {
       nodeLabel: "DC {dc} · coverage {coverage} % · writers {alive} of {required} · RTT {rtt}",
       mediaGroup: "media servers of DC {dc}",
       testSite: "test site",
+      testTag: "test",
       rowMedia: "Media",
       rowMain: "Main",
     },

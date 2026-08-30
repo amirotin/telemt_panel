@@ -77,19 +77,21 @@ export function dcRttTone(rttMs: number | null): "warn" | null {
 }
 
 /**
- * Writers as dots — `● ● ○` for 2 of 3 (concept §9: "гораздо быстрее
- * считывается визуально, чем текст"). One entry per REQUIRED writer, true
- * where a live one covers it.
+ * Writers as a FILL FRACTION — `alive / required`, clamped to 0…1.
  *
- * `null` when the dots would stop being readable: a DC whose floor is above
- * DC_WRITER_DOTS_MAX (the live snapshot has one at ten) would render a row
- * of specks nobody counts, so that node shows the `10/10` fraction alone.
+ * The node used to draw one dot per required writer. Dots only work while
+ * the floor is small: the live fleet has a data center needing ten, which
+ * rendered as a row of specks nobody counts, and the node then had to fall
+ * back to the bare fraction for exactly that DC — one node in twelve
+ * speaking a different visual language. A thin bar says the same thing at
+ * any floor, and the fraction underneath still gives the exact numbers.
+ *
+ * A pool over its floor clamps at a full bar, the same way coverage does:
+ * a bar past its own track reads as a bug, not as spare capacity.
  */
-export const DC_WRITER_DOTS_MAX = 5;
-
-export function dcWriterDots(dc: DcStatus): boolean[] | null {
-  if (dc.required_writers <= 0 || dc.required_writers > DC_WRITER_DOTS_MAX) return null;
-  return Array.from({ length: dc.required_writers }, (_, i) => i < dc.alive_writers);
+export function dcWriterRatio(dc: Pick<DcStatus, "alive_writers" | "required_writers">): number {
+  if (dc.required_writers <= 0) return dc.alive_writers > 0 ? 1 : 0;
+  return Math.min(Math.max(dc.alive_writers / dc.required_writers, 0), 1);
 }
 
 // Ids of magnitude >= 100 are the 203-family sites; they close their row
@@ -102,25 +104,39 @@ function byBoardOrder(a: { dc: number }, b: { dc: number }): number {
   return far !== 0 ? far : a.dc - b.dc;
 }
 
+/** Which half of the board a row is — the word the row label prints. */
+export type DcBoardRowKind = "media" | "main";
+
+export interface DcBoardRow<T> {
+  kind: DcBoardRowKind;
+  dcs: T[];
+}
+
 /**
  * Concept §9's «Альтернативная компоновка» — the board's two rows:
  *
- *     DC-5   DC-4   DC-3   DC-2   DC-1   DC-203     ← media groups
- *     DC1    DC2    DC3    DC4    DC5    DC203      ← main groups
+ *     Медиа      DC-5  DC-4  DC-3  DC-2  DC-1  DC-203
+ *     Основные   DC1   DC2   DC3   DC4   DC5   DC203
  *
  * Media groups (negative ids) on top, main groups underneath, each row
  * ascending with the 203-family site last, so a column pairs a data center
- * with its own media servers and the block reads like a route panel.
+ * with its own media servers and the block reads like a route panel. Each
+ * row carries its KIND because the two halves are no longer told apart by
+ * colour — every node is coloured by its state now — and «-5» alone does
+ * not say "media servers of DC 5" to anyone who has not been told.
  *
  * Returned as ROWS rather than one flat list because the two rows are
  * rendered as two grids: that is what makes the pairing survive a payload
  * with an odd number of sites, and what turns the same markup into concept
  * §21's 3×4 on a phone (three columns × two rows, twice).
  */
-export function dcBoardRows<T extends { dc: number }>(dcs: readonly T[]): T[][] {
-  const negative = dcs.filter((dc) => dc.dc < 0).sort(byBoardOrder);
-  const positive = dcs.filter((dc) => dc.dc >= 0).sort(byBoardOrder);
-  return [negative, positive].filter((row) => row.length > 0);
+export function dcBoardRows<T extends { dc: number }>(dcs: readonly T[]): DcBoardRow<T>[] {
+  const media = dcs.filter((dc) => dc.dc < 0).sort(byBoardOrder);
+  const main = dcs.filter((dc) => dc.dc >= 0).sort(byBoardOrder);
+  return [
+    { kind: "media" as const, dcs: media },
+    { kind: "main" as const, dcs: main },
+  ].filter((row) => row.dcs.length > 0);
 }
 
 /** The RTT as the node prints it — `42 ms`, or an em dash when unmeasured. */

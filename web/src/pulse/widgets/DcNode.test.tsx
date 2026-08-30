@@ -131,17 +131,24 @@ describe("DcNode — the coverage ring (concept §9)", () => {
 });
 
 describe("DcNode — writers and RTT", () => {
-  it("draws one dot per required writer beside the fraction", async () => {
-    const el = await mount(<DcNode dc={dc({ required_writers: 3, alive_writers: 2, coverage_pct: 67 })} />);
-    const dots = el.querySelector('[data-testid="dc-dots"]')!;
-    expect(dots.children).toHaveLength(3);
-    expect(el.textContent).toContain("2/3");
+  it("fills the writers bar to the live share of the floor", async () => {
+    const el = await mount(<DcNode dc={dc({ required_writers: 4, alive_writers: 3, coverage_pct: 75 })} />);
+    const fill = el.querySelector<HTMLElement>('[data-testid="dc-writers-fill"]')!;
+    expect(fill.style.width).toBe("75%");
+    expect(el.textContent).toContain("3/4");
   });
 
-  it("omits the dots when the floor is too high to count", async () => {
-    const el = await mount(<DcNode dc={dc({ required_writers: 10, alive_writers: 10 })} />);
-    expect(el.querySelector('[data-testid="dc-dots"]')).toBeNull();
-    expect(el.textContent).toContain("10/10");
+  it("draws the same bar at a floor of ten, where the dots used to give up", async () => {
+    const el = await mount(<DcNode dc={dc({ required_writers: 10, alive_writers: 9, coverage_pct: 90 })} />);
+    const fill = el.querySelector<HTMLElement>('[data-testid="dc-writers-fill"]')!;
+    expect(fill.style.width).toBe("90%");
+    expect(fill.className).toContain("bg-warn");
+    expect(el.textContent).toContain("9/10");
+  });
+
+  it("tones the bar with the node's state", async () => {
+    const el = await mount(<DcNode dc={dc({ required_writers: 3, alive_writers: 3, coverage_pct: 100 })} />);
+    expect(el.querySelector('[data-testid="dc-writers-fill"]')!.className).toContain("bg-ok");
   });
 
   it("keeps a normal RTT neutral and turns a slow one amber", async () => {
@@ -157,6 +164,25 @@ describe("DcNode — writers and RTT", () => {
     const slowRtt = slow.querySelector('[data-testid="dc-rtt"]')!;
     expect(slowRtt.textContent).toBe(`188 ${ru.pulse.dc.rttUnit}`);
     expect(slowRtt.className).toContain("text-warn");
+  });
+});
+
+describe("DcNode — media groups and the test site", () => {
+  it("draws a solid ring track on a media group and tags nothing", async () => {
+    const el = await mount(<DcNode dc={dc({ dc: -4 })} />);
+    expect(el.querySelector('[data-testid="dc-track"]')!.getAttribute("data-dashed")).toBe("false");
+    expect(el.querySelector('[data-testid="dc-test-tag"]')).toBeNull();
+  });
+
+  it("dashes the ring track and tags only the test site", async () => {
+    const el = await mount(<DcNode dc={dc({ dc: 203 })} />);
+    expect(el.querySelector('[data-testid="dc-track"]')!.getAttribute("data-dashed")).toBe("true");
+    expect(el.querySelector('[data-testid="dc-test-tag"]')!.textContent).toBe(ru.pulse.dc.testTag);
+  });
+
+  it("dashes the test site's own media group too", async () => {
+    const el = await mount(<DcNode dc={dc({ dc: -203 })} />);
+    expect(el.querySelector('[data-testid="dc-track"]')!.getAttribute("data-dashed")).toBe("true");
   });
 });
 

@@ -16,7 +16,9 @@ import {
   dcNodeTone,
   dcRttText,
   dcRttTone,
-  dcWriterDots,
+  dcWriterRatio,
+  isTestDc,
+  type DcBoardRowKind,
 } from "./dc.helpers";
 
 // The ring's geometry, in the SVG's own 40-unit box: r = 17 with a 2-unit
@@ -33,11 +35,18 @@ const RING_STROKE: Record<State, string> = {
   muted: "text-text-faint",
 };
 
-const DOT_ON: Record<State, string> = {
+// The writers bar's fill, same semantic set as the ring: one glance says
+// how far from the floor this data center is, whatever that floor is.
+const BAR_FILL: Record<State, string> = {
   ok: "bg-ok",
   warn: "bg-warn",
   error: "bg-error",
   muted: "bg-text-faint",
+};
+
+const ROW_LABEL_KEY: Record<DcBoardRowKind, "rowMedia" | "rowMain"> = {
+  media: "rowMedia",
+  main: "rowMain",
 };
 
 // DcWidget — «Дата-центры» as concept §8–9's board of DC Nodes, replacing
@@ -69,15 +78,26 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
         // The board fills the eight columns the widget spans: the nodes and
         // the gutter between them grow with it rather than leaving a
         // centred island of whitespace on either side.
-        <div className="flex w-full flex-col gap-2 lg:gap-3">
+        <div className="flex w-full flex-col gap-2.5 lg:gap-3">
           {dcBoardRows(view.dcs).map((row) => (
-            <ul key={row[0]!.dc} className="grid grid-cols-3 gap-2 lg:grid-cols-6 lg:gap-3">
-              {row.map((dc) => (
-                <li key={dc.dc}>
-                  <DcNode dc={dc} />
-                </li>
-              ))}
-            </ul>
+            // The row label is what tells «-5» from «5»: the two halves used
+            // to be told apart by a muted ring, and that muting was wrong
+            // (a media group is production traffic). One quiet word each.
+            <section key={row.kind} className="flex flex-col gap-1">
+              <h3
+                data-testid={`dc-row-${row.kind}`}
+                className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint"
+              >
+                {s.pulse.dc[ROW_LABEL_KEY[row.kind]]}
+              </h3>
+              <ul className="grid grid-cols-3 gap-2 lg:grid-cols-6 lg:gap-3">
+                {row.dcs.map((dc) => (
+                  <li key={dc.dc}>
+                    <DcNode dc={dc} />
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
         </div>
       )}
@@ -91,7 +111,8 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
 export function DcNode({ dc }: { dc: DcStatus }) {
   const s = useStrings();
   const tone = dcNodeTone(dc);
-  const dots = dcWriterDots(dc);
+  const writers = dcWriterRatio(dc);
+  const test = isTestDc(dc);
   const rttWarn = dcRttTone(dc.rtt_ms) === "warn";
   // Never below zero and never past the full circle: Telemt reports
   // coverage as a percentage of the floor, which a DC can exceed.
@@ -105,13 +126,18 @@ export function DcNode({ dc }: { dc: DcStatus }) {
       aria-label={dcNodeAriaLabel(dc, s)}
       data-testid="dc-node"
       className={cn(
-        "flex h-full min-h-[72px] flex-col items-center gap-0.5 rounded-lg border border-border bg-surface-2 px-1 py-1 lg:min-h-[84px] lg:gap-1 lg:py-2",
+        "relative flex h-full min-h-[72px] flex-col items-center gap-0.5 rounded-lg border border-border bg-surface-2 px-1 py-1 lg:min-h-[84px] lg:gap-1 lg:py-2",
         "transition-colors hover:border-accent/40 hover:bg-surface-3",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
       )}
     >
       <span className="relative flex h-8 w-8 items-center justify-center lg:h-10 lg:w-10">
         <svg viewBox="0 0 40 40" className="h-8 w-8 -rotate-90 lg:h-10 lg:w-10" aria-hidden="true">
+          {/* The track is DASHED on the test site (203 and its media group)
+              and solid everywhere else — the one visual difference left
+              between a node that carries client traffic and one that does
+              not. It is on the track, not on the arc: a dashed arc would
+              read as a fraction of a fraction. */}
           <circle
             cx="20"
             cy="20"
@@ -119,6 +145,9 @@ export function DcNode({ dc }: { dc: DcStatus }) {
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
+            strokeDasharray={test ? "3 3" : undefined}
+            data-testid="dc-track"
+            data-dashed={test ? "true" : "false"}
             className="text-border"
           />
           <circle
@@ -139,33 +168,37 @@ export function DcNode({ dc }: { dc: DcStatus }) {
           {dc.dc}
         </span>
       </span>
-      <span className="flex items-center gap-1">
-        {dots && (
-          <span className="flex items-center gap-[3px]" data-testid="dc-dots">
-            {dots.map((alive, i) => (
-              <span
-                key={i}
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full lg:h-2 lg:w-2",
-                  alive ? DOT_ON[tone] : "bg-surface-3 ring-1 ring-inset ring-border",
-                )}
-              />
-            ))}
-          </span>
-        )}
-        <span className="font-mono text-[10px] tabular-nums text-text-muted lg:text-[11px]">
+      {/* Writers as a thin fill bar under the ring: one dot per required
+          writer only worked while the floor was small, and the fleet has a
+          data center needing ten. The exact numbers stay underneath. */}
+      <span className="h-1 w-8 overflow-hidden rounded-full bg-surface-3 lg:w-12" data-testid="dc-writers-bar">
+        <span
+          data-testid="dc-writers-fill"
+          data-fill={writers}
+          className={cn("block h-full rounded-full", BAR_FILL[tone])}
+          style={{ width: `${writers * 100}%` }}
+        />
+      </span>
+      <span className="flex items-center gap-1 font-mono text-[10px] tabular-nums lg:text-[11px]">
+        <span className="text-text-muted">
           {dc.alive_writers}/{dc.required_writers}
         </span>
+        <span className="text-border" aria-hidden="true">
+          ·
+        </span>
+        <span data-testid="dc-rtt" className={rttWarn ? "text-warn" : "text-text-faint"}>
+          {dcRttText(dc, s)}
+        </span>
       </span>
-      <span
-        data-testid="dc-rtt"
-        className={cn(
-          "font-mono text-[10px] tabular-nums lg:text-[11px]",
-          rttWarn ? "text-warn" : "text-text-faint",
-        )}
-      >
-        {dcRttText(dc, s)}
-      </span>
+      {test && (
+        <span
+          data-testid="dc-test-tag"
+          aria-hidden="true"
+          className="absolute right-1 top-0.5 rounded bg-surface-3 px-1 text-[8px] font-semibold uppercase tracking-[0.06em] text-text-faint"
+        >
+          {s.pulse.dc.testTag}
+        </span>
+      )}
     </Link>
   );
 }

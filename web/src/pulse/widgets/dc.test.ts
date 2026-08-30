@@ -9,7 +9,7 @@ import {
   dcRttText,
   dcRttTone,
   dcKindLabel,
-  dcWriterDots,
+  dcWriterRatio,
   isMediaDc,
   isTestDc,
 } from "./dc.helpers";
@@ -138,58 +138,68 @@ describe("dcRttTone", () => {
   });
 });
 
-describe("dcWriterDots", () => {
-  it("draws one dot per required writer, filled up to the alive count", () => {
-    expect(dcWriterDots(dc({ required_writers: 3, alive_writers: 2 }))).toEqual([true, true, false]);
+describe("dcWriterRatio", () => {
+  it("is the live share of the floor", () => {
+    expect(dcWriterRatio({ required_writers: 4, alive_writers: 3 })).toBe(0.75);
   });
 
-  it("fills every dot at full coverage", () => {
-    expect(dcWriterDots(dc({ required_writers: 3, alive_writers: 3 }))).toEqual([true, true, true]);
+  it("is a full bar at the floor", () => {
+    expect(dcWriterRatio({ required_writers: 3, alive_writers: 3 })).toBe(1);
   });
 
-  it("draws no dots when the floor is too high to count at a glance", () => {
-    expect(dcWriterDots(dc({ required_writers: 10, alive_writers: 10 }))).toBeNull();
+  it("reads the same way at any floor — including the one that broke the dots", () => {
+    expect(dcWriterRatio({ required_writers: 10, alive_writers: 9 })).toBe(0.9);
+    expect(dcWriterRatio({ required_writers: 10, alive_writers: 10 })).toBe(1);
   });
 
-  it("draws no dots when nothing is required", () => {
-    expect(dcWriterDots(dc({ required_writers: 0, alive_writers: 0 }))).toBeNull();
+  it("clamps a pool running over its floor", () => {
+    expect(dcWriterRatio({ required_writers: 3, alive_writers: 5 })).toBe(1);
+  });
+
+  it("is empty when nothing is alive, full when nothing is required", () => {
+    expect(dcWriterRatio({ required_writers: 3, alive_writers: 0 })).toBe(0);
+    expect(dcWriterRatio({ required_writers: 0, alive_writers: 0 })).toBe(0);
+    expect(dcWriterRatio({ required_writers: 0, alive_writers: 2 })).toBe(1);
   });
 });
 
 // Concept §9's «Альтернативная компоновка», exactly:
-//   DC-5  DC-4  DC-3  DC-2  DC-1  DC-203
-//   DC1   DC2   DC3   DC4   DC5   DC203
+//   Медиа      DC-5  DC-4  DC-3  DC-2  DC-1  DC-203
+//   Основные   DC1   DC2   DC3   DC4   DC5   DC203
 describe("dcBoardRows", () => {
   const live = [-203, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 203].map((id) => ({ dc: id }));
 
-  it("puts the negative ids on the first row and the positive ones on the second", () => {
+  it("puts the media groups on the first row and the main ones on the second", () => {
     const rows = dcBoardRows(live);
     expect(rows).toHaveLength(2);
-    expect(rows[0]!.map((d) => d.dc)).toEqual([-5, -4, -3, -2, -1, -203]);
-    expect(rows[1]!.map((d) => d.dc)).toEqual([1, 2, 3, 4, 5, 203]);
+    expect(rows.map((row) => row.kind)).toEqual(["media", "main"]);
+    expect(rows[0]!.dcs.map((d) => d.dc)).toEqual([-5, -4, -3, -2, -1, -203]);
+    expect(rows[1]!.dcs.map((d) => d.dc)).toEqual([1, 2, 3, 4, 5, 203]);
   });
 
   it("pairs each column with the data center facing it", () => {
-    const [negative, positive] = dcBoardRows(live);
-    expect(negative!.length).toBe(positive!.length);
+    const [media, main] = dcBoardRows(live);
+    expect(media!.dcs.length).toBe(main!.dcs.length);
     // Column six is the 203-family pair; the closing slot on both rows.
-    expect(negative!.at(-1)!.dc).toBe(-203);
-    expect(positive!.at(-1)!.dc).toBe(203);
+    expect(media!.dcs.at(-1)!.dc).toBe(-203);
+    expect(main!.dcs.at(-1)!.dc).toBe(203);
   });
 
   it("does not depend on the payload's own order", () => {
     const shuffled = [...live].reverse();
-    expect(dcBoardRows(shuffled).map((row) => row.map((d) => d.dc))).toEqual(
-      dcBoardRows(live).map((row) => row.map((d) => d.dc)),
+    expect(dcBoardRows(shuffled).map((row) => row.dcs.map((d) => d.dc))).toEqual(
+      dcBoardRows(live).map((row) => row.dcs.map((d) => d.dc)),
     );
   });
 
   it("omits a row that has no data centers", () => {
-    expect(dcBoardRows([{ dc: 1 }, { dc: 2 }]).map((r) => r.map((d) => d.dc))).toEqual([[1, 2]]);
+    const rows = dcBoardRows([{ dc: 1 }, { dc: 2 }]);
+    expect(rows.map((r) => r.kind)).toEqual(["main"]);
+    expect(rows.map((r) => r.dcs.map((d) => d.dc))).toEqual([[1, 2]]);
   });
 
   it("keeps every data center exactly once", () => {
-    const flat = dcBoardRows(live).flat();
+    const flat = dcBoardRows(live).flatMap((row) => row.dcs);
     expect(flat).toHaveLength(live.length);
     expect(new Set(flat.map((d) => d.dc)).size).toBe(live.length);
   });
