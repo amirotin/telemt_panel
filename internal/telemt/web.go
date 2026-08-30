@@ -154,11 +154,22 @@ func (c *Client) WebOperation(ctx context.Context, id string) (WebControlOperati
 }
 
 // IsWebRouteAbsent reports whether err says this Telemt build has no WEB
-// runtime routes at all (< 3.5.3) — a bare 404 with no envelope, which
-// client.go reports as the synthetic `http_error` code. A well-formed WEB
-// error (web_session_not_found, web_operation_not_found) is explicitly NOT
-// this: the route exists, the thing behind it does not. Rule R5's
-// `unsupported` vs `disabled` split starts here.
+// runtime routes at all (< 3.5.3). Rule R5's `unsupported` vs `disabled`
+// split starts here.
+//
+// The excluded codes are the WEB group's OWN 404s — web_session_not_found,
+// web_operation_not_found — where the route exists and the thing behind it
+// does not. Everything else that answers 404 is the router saying it has no
+// such path.
+//
+// `not_found` used to be excluded alongside them, on the assumption that an
+// old build answers "a bare 404 with no envelope". A live 3.4.25 does not:
+// GET /v1/runtime/web/status there returns a perfectly well-formed
+// `{"ok":false,"error":{"code":"not_found","message":"Route not found"}}`,
+// which is that build's generic router 404 — exactly the case this
+// predicate exists to catch. Excluding it turned the panel's «Нет в этой
+// версии» card into a topic-wide `telemt_unreachable` error on every proxy
+// too old to have WEB at all.
 //
 // 405 is deliberately excluded. On 3.5.3+ every WEB path has an entry in
 // `allowed_methods`, so a 405 means "wrong method on a route that exists" —
@@ -170,7 +181,7 @@ func IsWebRouteAbsent(err error) bool {
 		return false
 	}
 	switch apiErr.Code {
-	case CodeWebSessionNotFound, CodeWebOperationNotFound, "not_found":
+	case CodeWebSessionNotFound, CodeWebOperationNotFound:
 		return false
 	}
 	return apiErr.Status == http.StatusNotFound

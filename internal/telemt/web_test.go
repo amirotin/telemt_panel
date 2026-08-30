@@ -393,9 +393,20 @@ func TestWebStatusReportsClosedRuntimeWithoutAnError(t *testing.T) {
 	}
 }
 
-// An old build has no WEB routes at all: a bare 404 with no envelope, which
-// must read as "this build is too old" (unsupported), not as a well-formed
-// not_found (R5).
+// TestWebRouteAbsentOnRecordedOldBuild404 is the case that matters in the
+// field, and the one the predicate originally got wrong: this is the REAL
+// body a live Telemt 3.4.25 answers on GET /v1/runtime/web/status — its
+// router's generic 404, well-formed and with the code `not_found`. It has
+// to read as "this build is too old", not as a failed poll.
+func TestWebRouteAbsentOnRecordedOldBuild404(t *testing.T) {
+	srv := newWebErrorFake(t, http.StatusNotFound, "not_found", "Route not found")
+	if _, err := New(srv.URL, "").WebStatus(context.Background()); !IsWebRouteAbsent(err) {
+		t.Errorf("WebStatus err = %v, want route-absent", err)
+	}
+}
+
+// An old build may also answer a bare 404 with no envelope, which client.go
+// reports as the synthetic `http_error` code. Same verdict (R5).
 func TestWebRouteAbsentOnOldBuild(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
