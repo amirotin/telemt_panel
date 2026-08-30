@@ -469,6 +469,33 @@ export function IconUserPlus(props: IconProps) {
   );
 }
 
+// --- events timeline (concept §15's category glyphs) ---
+//
+// The concept names six categories with typographic stand-ins — `↻ ◎ ⇄ ♙ ⚠
+// ✕`. Four of them already had a glyph here (IconRefresh, IconPeople,
+// IconWarning, IconClose); these two are the ones that did not, drawn in
+// the same 24×24 / stroke-2 grammar so a timeline rail reads as one set.
+
+// IconTarget — `◎`, a listener: concentric rings around a bound port.
+export function IconTarget(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="3.2" />
+    </Icon>
+  );
+}
+
+// IconSwap — `⇄`, routing and fallback: two arrows pointing opposite ways.
+export function IconSwap(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 9h15M15.5 5.5 19 9l-3.5 3.5" />
+      <path d="M20 17H5M8.5 13.5 5 17l3.5 3.5" />
+    </Icon>
+  );
+}
+
 export function IconTelegram(props: IconProps) {
   return (
     <Icon {...props} fill="currentColor" stroke="none">
