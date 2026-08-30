@@ -26,6 +26,7 @@ import {
 // ~6 % of the diameter — the "тонкое кольцо" of concept §9, thin enough
 // that the number inside it, not the ring, is what the eye lands on first.
 const RING_RADIUS = 17;
+
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 const RING_STROKE: Record<State, string> = {
@@ -133,11 +134,6 @@ export function DcNode({ dc }: { dc: DcStatus }) {
     >
       <span className="relative flex h-8 w-8 items-center justify-center lg:h-10 lg:w-10">
         <svg viewBox="0 0 40 40" className="h-8 w-8 -rotate-90 lg:h-10 lg:w-10" aria-hidden="true">
-          {/* The track is DASHED on the test site (203 and its media group)
-              and solid everywhere else — the one visual difference left
-              between a node that carries client traffic and one that does
-              not. It is on the track, not on the arc: a dashed arc would
-              read as a fraction of a fraction. */}
           <circle
             cx="20"
             cy="20"
@@ -145,9 +141,7 @@ export function DcNode({ dc }: { dc: DcStatus }) {
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
-            strokeDasharray={test ? "3 3" : undefined}
             data-testid="dc-track"
-            data-dashed={test ? "true" : "false"}
             className="text-border"
           />
           <circle
@@ -163,6 +157,26 @@ export function DcNode({ dc }: { dc: DcStatus }) {
             data-testid="dc-ring"
             data-coverage={covered}
           />
+          {/* The test site's ring is DASHED, and the dashes are cut into it
+              rather than drawn under it: a dashed TRACK is completely
+              hidden by a full-coverage arc, i.e. invisible on exactly the
+              nodes that are healthy. This overlay strokes the tile's own
+              background over the ring in `pathLength` units, so the gaps
+              land the same way at any radius and any coverage. */}
+          {test && (
+            <circle
+              cx="20"
+              cy="20"
+              r={RING_RADIUS}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.6"
+              pathLength="100"
+              strokeDasharray="2.4 5.6"
+              data-testid="dc-dashes"
+              className="text-surface-2"
+            />
+          )}
         </svg>
         <span className="absolute font-mono text-[10px] font-semibold tabular-nums tracking-tight text-text lg:text-[12px]">
           {dc.dc}

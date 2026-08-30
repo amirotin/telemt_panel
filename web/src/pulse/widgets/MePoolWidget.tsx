@@ -94,13 +94,20 @@ function MeBody({ view }: { view: MeCardView }) {
 
   return (
     <>
-      <div className="flex items-start gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="flex items-baseline gap-1.5">
-            <span className="font-mono text-[26px] font-semibold leading-none tabular-nums text-text">
+      {/* Two columns from `lg:`, stacked below it: a third of the grid is
+          360px on a 1440 desktop and 306 on a phone, and at 306 the writer
+          count and the four facts cannot both have half of it. */}
+      <div className="flex flex-col gap-1.5 lg:flex-row lg:items-start lg:gap-3">
+        <div className="flex min-w-0 flex-col gap-1 lg:flex-1">
+          {/* Never two lines: the figure holds its width and the unit
+              truncates, because the card's height is the whole point. */}
+          <p className="flex items-baseline gap-1.5 whitespace-nowrap">
+            <span className="shrink-0 font-mono text-[26px] font-semibold leading-none tabular-nums text-text">
               {formatNumber(s, view.writersAlive)} / {formatNumber(s, view.writersTotal)}
             </span>
-            <span className="text-meta text-text-muted">{s.pulse.mePool.writersUnit}</span>
+            <span className="min-w-0 truncate text-meta text-text-muted">
+              {s.pulse.mePool.writersUnit}
+            </span>
           </p>
           {/* Always one line, an em dash where ME quality is gated off: the
               line disappearing took 18px out of the middle of the card. */}
@@ -118,12 +125,14 @@ function MeBody({ view }: { view: MeCardView }) {
             the card's right half empty. */}
         <dl
           data-testid="me-facts"
-          className="grid w-1/2 shrink-0 grid-cols-2 gap-x-2 gap-y-0.5 text-micro"
+          className="grid grid-cols-4 gap-x-2 gap-y-0.5 lg:w-[42%] lg:shrink-0 lg:grid-cols-2"
         >
           {facts.map((fact) => (
             <div key={fact.key} className="min-w-0">
-              <dt className="truncate text-text-faint">{fact.label}</dt>
-              <dd className="truncate font-mono tabular-nums text-text-muted">{fact.value}</dd>
+              <dt className="truncate text-[10px] leading-tight text-text-faint">{fact.label}</dt>
+              <dd className="truncate font-mono text-micro tabular-nums text-text-muted">
+                {fact.value}
+              </dd>
             </div>
           ))}
         </dl>

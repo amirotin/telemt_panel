@@ -168,22 +168,34 @@ describe("DcNode — writers and RTT", () => {
 });
 
 describe("DcNode — media groups and the test site", () => {
-  it("draws a solid ring track on a media group and tags nothing", async () => {
+  it("draws a solid ring on a media group and tags nothing", async () => {
     const el = await mount(<DcNode dc={dc({ dc: -4 })} />);
-    expect(el.querySelector('[data-testid="dc-track"]')!.getAttribute("data-dashed")).toBe("false");
+    expect(el.querySelector('[data-testid="dc-dashes"]')).toBeNull();
     expect(el.querySelector('[data-testid="dc-test-tag"]')).toBeNull();
   });
 
-  it("dashes the ring track and tags only the test site", async () => {
+  it("dashes the ring and tags only the test site", async () => {
     const el = await mount(<DcNode dc={dc({ dc: 203 })} />);
-    expect(el.querySelector('[data-testid="dc-track"]')!.getAttribute("data-dashed")).toBe("true");
+    expect(el.querySelector('[data-testid="dc-dashes"]')).not.toBeNull();
     expect(el.querySelector('[data-testid="dc-test-tag"]')!.textContent).toBe(ru.pulse.dc.testTag);
   });
 
   it("dashes the test site's own media group too", async () => {
     const el = await mount(<DcNode dc={dc({ dc: -203 })} />);
-    expect(el.querySelector('[data-testid="dc-track"]')!.getAttribute("data-dashed")).toBe("true");
+    expect(el.querySelector('[data-testid="dc-dashes"]')).not.toBeNull();
   });
+
+  it("cuts the dashes INTO the ring, so a full arc cannot hide them", async () => {
+    const el = await mount(<DcNode dc={dc({ dc: 203, coverage_pct: 100, alive_writers: 3 })} />);
+    const dashes = el.querySelector('[data-testid="dc-dashes"]')!;
+    // Same radius as the arc and painted after it, in the tile's own
+    // background — a dashed track under a 100 % arc would be invisible.
+    expect(dashes.getAttribute("r")).toBe(ring(el).getAttribute("r"));
+    expect(dashes.getAttribute("class")).toContain("text-surface-2");
+    expect(Number(dashes.getAttribute("stroke-width"))).toBeGreaterThan(2);
+    expect(arcFraction(el)).toBe(1);
+  });
+
 });
 
 describe("DcNode — the link and the label", () => {

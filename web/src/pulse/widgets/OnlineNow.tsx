@@ -41,6 +41,12 @@ export function OnlineNow({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const snapshot = useSnapshot<UsersTopic>("users");
   const view = computeOnlineNow(snapshot.data?.users, ONLINE_NOW_LIMIT, snapshot.data?.quota);
+  // The bar's slot is held open so the chevrons line up — but only when
+  // SOMEBODY on the card has a cap. A fleet with no quotas at all (the
+  // common one) would otherwise spend 40px of every row on an empty track,
+  // and at half the card's width that is the difference between «marat»
+  // and «m…».
+  const anyQuota = view.rows.some((row) => row.quotaFill !== null);
 
   return (
     <WidgetFrame
@@ -87,7 +93,7 @@ export function OnlineNow({ onHide }: { onHide?: () => void }) {
                 index >= ONLINE_NOW_LIMIT_PHONE && "hidden lg:block",
               )}
             >
-              <OnlineRow row={row} />
+              <OnlineRow row={row} reserveQuota={anyQuota} />
             </li>
           ))}
         </ul>
@@ -96,17 +102,20 @@ export function OnlineNow({ onHide }: { onHide?: () => void }) {
   );
 }
 
-function OnlineRow({ row }: { row: OnlineNowRow }) {
+function OnlineRow({ row, reserveQuota }: { row: OnlineNowRow; reserveQuota: boolean }) {
   const s = useStrings();
   return (
     <Link
       to="/people/$username"
       params={{ username: row.username }}
       data-testid="online-row"
-      className="tap-target flex items-center gap-2 rounded-md px-1 transition-colors hover:bg-surface-2"
+      className="tap-target flex items-center gap-1.5 rounded-md px-1 transition-colors hover:bg-surface-2"
     >
       <Avatar name={row.username} size="sm" online ringOn="surface" />
-      <span className="min-w-0 shrink truncate text-row font-medium text-text">{row.username}</span>
+      {/* The name takes every pixel the fixed parts leave, which is also
+          what lines the chevrons up: each row's non-name width is the
+          same. */}
+      <span className="min-w-0 flex-1 truncate text-row font-medium text-text">{row.username}</span>
       <span
         data-testid="online-facts"
         className="shrink-0 font-mono text-micro tabular-nums text-text-muted"
@@ -114,18 +123,18 @@ function OnlineRow({ row }: { row: OnlineNowRow }) {
         {fill(s.overview.onlineConnectionsShort, { n: formatNumber(s, row.connections) })} ·{" "}
         {formatNumber(s, row.ips)} {s.people.meta.ipShort} · {formatBytes(row.totalOctets, s)}
       </span>
-      {/* The slot is there whether or not this person has a cap, so the
-          chevrons stay in one column across the card. */}
-      <span className="ml-auto h-1 w-10 shrink-0 overflow-hidden rounded-full" data-testid="online-quota">
-        {row.quotaFill !== null && (
-          <span className="block h-full w-full rounded-full bg-bar-track">
-            <span
-              className={cn("block h-full rounded-full", quotaFillClass(row.quotaFill, false))}
-              style={{ width: `${row.quotaFill * 100}%` }}
-            />
-          </span>
-        )}
-      </span>
+      {reserveQuota && (
+        <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full" data-testid="online-quota">
+          {row.quotaFill !== null && (
+            <span className="block h-full w-full rounded-full bg-bar-track">
+              <span
+                className={cn("block h-full rounded-full", quotaFillClass(row.quotaFill, false))}
+                style={{ width: `${row.quotaFill * 100}%` }}
+              />
+            </span>
+          )}
+        </span>
+      )}
       <IconChevronRight className="h-3.5 w-3.5 shrink-0 text-text-faint" />
     </Link>
   );
