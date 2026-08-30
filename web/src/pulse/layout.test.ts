@@ -152,7 +152,7 @@ describe("showWidget / hideWidget", () => {
 });
 
 describe("visibleWidgetIds", () => {
-  const layout: Layout = ["health_hero", "stat_row", "problems", "me_pool"];
+  const layout: Layout = ["health_hero", "stat_row", "problems", "selftest"];
 
   it("keeps only widgets whose minMode is at or below the current mode", () => {
     expect(visibleWidgetIds(layout, "critical")).toEqual(["health_hero", "problems"]);
@@ -171,11 +171,11 @@ describe("visibleWidgetIds", () => {
 });
 
 describe("editorRows", () => {
-  const layout: Layout = ["health_hero", "problems", "me_pool"];
+  const layout: Layout = ["health_hero", "problems", "selftest"];
 
   it("marks every row in the layout as shown, in the layout's own order first", () => {
     const rows = editorRows(layout, "extended");
-    expect(rows.slice(0, 3).map((r) => r.id)).toEqual(["health_hero", "problems", "me_pool"]);
+    expect(rows.slice(0, 3).map((r) => r.id)).toEqual(["health_hero", "problems", "selftest"]);
     expect(rows.slice(0, 3).every((r) => r.shown)).toBe(true);
   });
 
@@ -187,11 +187,11 @@ describe("editorRows", () => {
   });
 
   it("marks a shown widget unavailable when its minMode exceeds the current mode, without dropping it", () => {
-    // me_pool's minMode is "extended" — in critical mode it's still shown
+    // selftest's minMode is "extended" — in critical mode it's still shown
     // (present in the layout) but not available.
     const rows = editorRows(layout, "critical");
-    const mePool = rows.find((r) => r.id === "me_pool");
-    expect(mePool).toEqual({ id: "me_pool", shown: true, availableInMode: false });
+    const selftest = rows.find((r) => r.id === "selftest");
+    expect(selftest).toEqual({ id: "selftest", shown: true, availableInMode: false });
   });
 
   it("marks a shown widget available when its minMode is satisfied", () => {
@@ -225,10 +225,10 @@ describe("hiddenWidgetIds", () => {
   });
 
   it("omits a widget the display mode filters out — it is out of scope, not hidden", () => {
-    // me_pool's minMode is "extended": in basic mode «показать» could not
+    // selftest's minMode is "extended": in basic mode «показать» could not
     // put it on screen, so the list must not offer it.
-    expect(hiddenWidgetIds([], "basic")).not.toContain("me_pool");
-    expect(hiddenWidgetIds([], "extended")).toContain("me_pool");
+    expect(hiddenWidgetIds([], "basic")).not.toContain("selftest");
+    expect(hiddenWidgetIds([], "extended")).toContain("selftest");
   });
 
   it("is empty when every available widget is already shown", () => {

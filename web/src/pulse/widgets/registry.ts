@@ -124,6 +124,24 @@ export const WIDGETS: WidgetDef[] = [
     diagDomain: "dc",
     render: DcWidget,
   },
+  // ME, WEB and Апстримы are concept §13's infrastructure row: three
+  // `third` cards side by side under the DC board. ME is the only one of
+  // the three that exists yet — the row is a row because all three declare
+  // the same span and follow each other in DEFAULT_LAYOUT, so nothing has
+  // to hold empty cells open until WEB and Апстримы join it.
+  {
+    id: "me_pool",
+    topics: ["runtime"],
+    // In the standard density, not the extended one: §13 calls this level
+    // part of the dashboard, and the card is now a five-line summary rather
+    // than the pool-internals dump it used to be.
+    minMode: "basic",
+    size: "third",
+    hideable: true,
+    // No diagDomain: the card's whole body is the link to /pulse/diag/me,
+    // so a second header link to the same page would only be noise.
+    render: MePoolWidget,
+  },
   {
     id: "upstreams",
     // "runtime" is also subscribed for upstream_quality's compact
@@ -131,19 +149,10 @@ export const WIDGETS: WidgetDef[] = [
     // not this widget's primary one.
     topics: ["upstreams", "runtime"],
     minMode: "basic",
-    size: "half",
+    size: "third",
     hideable: true,
     diagDomain: "upstreams",
     render: UpstreamsWidget,
-  },
-  {
-    id: "me_pool",
-    topics: ["runtime"],
-    minMode: "extended",
-    size: "third",
-    hideable: true,
-    diagDomain: "me",
-    render: MePoolWidget,
   },
   {
     id: "selftest",
@@ -189,6 +198,7 @@ export const DEFAULT_LAYOUT: WidgetId[] = [
   "problems",
   "online_now",
   "dc",
+  "me_pool",
 ];
 
 export function getWidgetDef(id: WidgetId): WidgetDef | undefined {

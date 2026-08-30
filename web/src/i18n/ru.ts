@@ -456,12 +456,25 @@ export const ru = {
       empty: "Нет настроенных апстримов.",
       successRate: "Успешность подключения",
     },
+    // Карточка подсистемы ME (концепция §10) — на главной только сводка,
+    // подробные счётчики на /pulse/diag/me.
     mePool: {
-      writersTotal: "Писателей всего",
-      writersAlive: "Живых писателей",
-      writersDraining: "В дренаже",
-      hardswapPending: "Ожидает hardswap",
-      reconnects: "Переподключения (успех/попытки)",
+      // Три слова состояния из концепции — на латинице, как в макете.
+      state: { healthy: "Healthy", degraded: "Degraded", fallback: "Fallback" },
+      // Подпись под крупной цифрой «44 / 44».
+      writersUnit: "писателей",
+      coverage: "Покрытие",
+      // Вторая строка: движение пула.
+      churn: "refill {refill} · дренаж {draining}",
+      // Строка причины — появляется, только когда карточка не Healthy (§17).
+      reason: {
+        fallback: "Трафик идёт напрямую, минуя ME",
+        coverage: "Покрытие {pct} %",
+        writersLost: "Не хватает писателей: {count}",
+        draining: "В дренаже писателей: {count}",
+        degradedWriters: "Писателей с деградацией: {count}",
+        family: "Семейство {family}: {state}",
+      },
     },
     natStun: {
       probeEnabled: "Проба NAT включена",

@@ -377,11 +377,18 @@ export const en: Dict = {
       successRate: "Connection success rate",
     },
     mePool: {
-      writersTotal: "Writers total",
-      writersAlive: "Writers alive",
-      writersDraining: "Draining",
-      hardswapPending: "Hardswap pending",
-      reconnects: "Reconnects (ok/attempts)",
+      state: { healthy: "Healthy", degraded: "Degraded", fallback: "Fallback" },
+      writersUnit: "writers",
+      coverage: "Coverage",
+      churn: "refill {refill} · draining {draining}",
+      reason: {
+        fallback: "Traffic is going direct, bypassing ME",
+        coverage: "Coverage {pct} %",
+        writersLost: "Writers missing: {count}",
+        draining: "Writers draining: {count}",
+        degradedWriters: "Writers degraded: {count}",
+        family: "Family {family}: {state}",
+      },
     },
     natStun: {
       probeEnabled: "NAT probe on",

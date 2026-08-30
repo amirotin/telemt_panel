@@ -126,11 +126,24 @@ describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
       "problems",
       "online_now",
       "dc",
+      "me_pool",
     ]);
   });
 
   it("gives the data-center board a row of its own", () => {
     expect(getWidgetDef("dc")!.size).toBe("full");
+  });
+
+  // Concept §13: ME, WEB and Апстримы are one infrastructure row of three
+  // equal cards. WEB arrives in S4; the row is already a row because the
+  // cards that will fill it declare the same span.
+  it("sizes the infrastructure cards as thirds of one row", () => {
+    expect(getWidgetDef("me_pool")!.size).toBe("third");
+    expect(getWidgetDef("upstreams")!.size).toBe("third");
+  });
+
+  it("puts ME straight after the data-center board, where the row starts", () => {
+    expect(DEFAULT_LAYOUT.indexOf("me_pool")).toBe(DEFAULT_LAYOUT.indexOf("dc") + 1);
   });
 
   it("shows every default widget in the default display mode", () => {
