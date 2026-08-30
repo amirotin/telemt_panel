@@ -9,6 +9,13 @@ import type { DiagDomain } from "./types";
 
 export interface WidgetFrameProps {
   title: string;
+  /**
+   * Native tooltip on the title — a fact ABOUT the widget that is not one of
+   * its rows. «События» uses it for Telemt's `dropped_total`: the records
+   * evicted from its fifty-slot ring, which the panel will never show and
+   * which was costing a line in a five-line feed.
+   */
+  titleTooltip?: string;
   /** Links to the matching Диагностика drill-down page, when the widget has one. */
   diagDomain?: DiagDomain;
   /** "Скрыть виджет" action — wired to the layout store by PulseDashboard. */
@@ -42,6 +49,7 @@ export interface WidgetFrameProps {
 // hairline box.
 export function WidgetFrame({
   title,
+  titleTooltip,
   diagDomain,
   onHide,
   stale,
@@ -58,7 +66,9 @@ export function WidgetFrame({
           {/* h2, not h3: a widget is a top-level section of Сводка and there
               is no intermediate heading above it — h1 straight to h3 left a
               gap in the outline a screen reader reads as a missing level. */}
-          <h2 className="truncate text-[13px] font-semibold text-text">{title}</h2>
+          <h2 className="truncate text-[13px] font-semibold text-text" title={titleTooltip}>
+            {title}
+          </h2>
           {badge}
           {stale && <StatePill state="warn">{s.common.stale}</StatePill>}
         </div>

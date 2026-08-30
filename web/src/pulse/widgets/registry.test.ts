@@ -144,9 +144,9 @@ describe("DEFAULT_LAYOUT follows concept §20's page order", () => {
     ]);
   });
 
-  it("closes the page with the event timeline, full width", () => {
+  it("closes the page with the event timeline, at half width", () => {
     expect(DEFAULT_LAYOUT.at(-1)).toBe("recent_events");
-    expect(getWidgetDef("recent_events")!.size).toBe("full");
+    expect(getWidgetDef("recent_events")!.size).toBe("half");
   });
 
   // Eight columns for the board, four for the stack beside it — one row.

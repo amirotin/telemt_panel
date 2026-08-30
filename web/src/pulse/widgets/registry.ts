@@ -191,9 +191,10 @@ export const WIDGETS: WidgetDef[] = [
     // Concept §20 closes the page with the event timeline, which puts it in
     // the standard density rather than behind the extended one.
     minMode: "basic",
-    // §15's rail runs the width of the page: the row is a marker, a stamp
-    // and one line of text, and half a grid truncated most of that line.
-    size: "full",
+    // Half the grid, beside «Квоты и сроки». The rail's row is a marker,
+    // one line of words and a relative stamp; at full width the line ran out
+    // long before the card did, and coalescing made the rows shorter still.
+    size: "half",
     hideable: true,
     // No diagDomain: «Все события →» in the header is that link, and M4
     // task 8's page (all fifty records behind a family filter) is where it

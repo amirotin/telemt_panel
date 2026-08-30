@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   TIMELINE_LIMIT,
+  coalesceEvents,
+  coalescedLine,
   computeRecentEventsView,
+  eventAgo,
   eventCategory,
   eventLine,
   eventPhraseKey,
+  eventRepeatText,
   eventTime,
   eventTone,
 } from "./recentEvents.helpers";
 import { events as eventsFixture } from "../details-builder/__fixtures__";
-import type { RuntimeEdgeEvents } from "../../realtime/topics";
+import type { RuntimeEdgeEventRecord, RuntimeEdgeEvents } from "../../realtime/topics";
 import { en, ru } from "../../i18n";
 
+// Distinct types by default, so the coalescer has nothing to fold and the
+// view's ordering/limit can be checked on its own.
 function events(count: number): RuntimeEdgeEvents {
   return {
     capacity: 50,
@@ -19,21 +25,30 @@ function events(count: number): RuntimeEdgeEvents {
     events: Array.from({ length: count }, (_, i) => ({
       seq: i + 1,
       ts_epoch_secs: 1_788_000_000 + i,
-      event_type: "admission.state",
+      event_type: `api.thing${i}.ok`,
       context: `generation=${i}`,
     })),
+  };
+}
+
+function record(over: Partial<RuntimeEdgeEventRecord> & { seq: number }): RuntimeEdgeEventRecord {
+  return {
+    ts_epoch_secs: 1_788_000_000 + over.seq,
+    event_type: "admission.state",
+    context: "accepting_new_connections=true",
+    ...over,
   };
 }
 
 describe("computeRecentEventsView", () => {
   it("puts the newest event first", () => {
     const view = computeRecentEventsView(events(3));
-    expect(view.events.map((e) => e.seq)).toEqual([3, 2, 1]);
+    expect(view.rows.map((r) => r.latest.seq)).toEqual([3, 2, 1]);
   });
 
   it("shows five rows by default — concept §15's timeline", () => {
     expect(TIMELINE_LIMIT).toBe(5);
-    expect(computeRecentEventsView(events(50)).events).toHaveLength(5);
+    expect(computeRecentEventsView(events(50)).rows).toHaveLength(5);
   });
 
   it("does not reorder the payload in place", () => {
@@ -45,6 +60,149 @@ describe("computeRecentEventsView", () => {
   it("carries the dropped counter through", () => {
     const payload = { ...events(1), dropped_total: 7 };
     expect(computeRecentEventsView(payload).droppedTotal).toBe(7);
+  });
+
+  it("fills five rows out of a ring that repeats one fact", () => {
+    // Fifty admission flips plus four other events: without coalescing the
+    // whole feed is admission, five rows deep.
+    const flips = Array.from({ length: 46 }, (_, i) =>
+      record({ seq: i + 5, context: `accepting_new_connections=${i % 2 === 0}` }),
+    );
+    const others = [
+      record({ seq: 1, event_type: "config.reload.applied", context: "" }),
+      record({ seq: 2, event_type: "api.user.create.ok", context: "username=a" }),
+      record({ seq: 3, event_type: "config.reload.failed", context: "bad toml" }),
+      record({ seq: 4, event_type: "api.user.delete.ok", context: "username=b" }),
+    ];
+    const view = computeRecentEventsView({
+      capacity: 50,
+      dropped_total: 0,
+      events: [...others, ...flips],
+    });
+    expect(view.rows).toHaveLength(5);
+    expect(view.rows[0]!.count).toBe(46);
+    expect(view.rows.slice(1).map((r) => r.latest.event_type)).toEqual([
+      "api.user.delete.ok",
+      "config.reload.failed",
+      "api.user.create.ok",
+      "config.reload.applied",
+    ]);
+  });
+});
+
+describe("coalesceEvents", () => {
+  it("leaves distinct events alone", () => {
+    const rows = coalesceEvents([
+      record({ seq: 3, event_type: "config.reload.applied" }),
+      record({ seq: 2, event_type: "api.user.create.ok" }),
+      record({ seq: 1, event_type: "admission.state" }),
+    ]);
+    expect(rows.map((r) => r.count)).toEqual([1, 1, 1]);
+  });
+
+  it("collapses a run and keeps both of its ends", () => {
+    const rows = coalesceEvents([record({ seq: 3 }), record({ seq: 2 }), record({ seq: 1 })]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.count).toBe(3);
+    expect(rows[0]!.latest.seq).toBe(3);
+    expect(rows[0]!.oldest.seq).toBe(1);
+  });
+
+  it("only collapses CONSECUTIVE events — a reload between two flips splits them", () => {
+    const rows = coalesceEvents([
+      record({ seq: 4 }),
+      record({ seq: 3, event_type: "config.reload.applied" }),
+      record({ seq: 2 }),
+      record({ seq: 1 }),
+    ]);
+    expect(rows.map((r) => r.count)).toEqual([1, 1, 2]);
+  });
+
+  it("keeps a success and a failure of the same operation apart", () => {
+    const rows = coalesceEvents([
+      record({ seq: 2, event_type: "config.reload.failed" }),
+      record({ seq: 1, event_type: "config.reload.applied" }),
+    ]);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("counts the whole run even past the row limit", () => {
+    const run = Array.from({ length: 12 }, (_, i) => record({ seq: 12 - i }));
+    const rows = coalesceEvents([...run, record({ seq: 0, event_type: "config.reload.applied" })], 1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.count).toBe(12);
+  });
+});
+
+describe("coalescedLine", () => {
+  it("states the transition when a run's two ends are opposite states", () => {
+    const rows = coalesceEvents([
+      record({ seq: 3, context: "accepting_new_connections=true" }),
+      record({ seq: 2, context: "accepting_new_connections=false" }),
+      record({ seq: 1, context: "accepting_new_connections=false" }),
+    ]);
+    expect(coalescedLine(rows[0]!, ru).text).toBe("Приём клиентов: закрыт → открыт");
+    expect(coalescedLine(rows[0]!, en).text).toBe("Client admission: closed → open");
+  });
+
+  it("keeps the newest sentence when both ends say the same thing", () => {
+    const rows = coalesceEvents([
+      record({ seq: 2, context: "accepting_new_connections=true" }),
+      record({ seq: 1, context: "accepting_new_connections=true" }),
+    ]);
+    expect(coalescedLine(rows[0]!, ru).text).toBe(ru.pulse.recentEvents.types.admissionOpen);
+  });
+
+  it("has no transition to state for a type with no opposite", () => {
+    const rows = coalesceEvents([
+      record({ seq: 2, event_type: "config.reload.applied", context: "" }),
+      record({ seq: 1, event_type: "config.reload.applied", context: "" }),
+    ]);
+    expect(coalescedLine(rows[0]!, ru).text).toBe(ru.pulse.recentEvents.types.configReloaded);
+  });
+
+  it("prints an uncollapsed row exactly as eventLine does", () => {
+    const one = record({ seq: 1, event_type: "api.user.create.ok", context: "username=user_15" });
+    expect(coalescedLine({ latest: one, oldest: one, count: 1 }, ru)).toEqual(eventLine(one, ru));
+  });
+});
+
+describe("eventRepeatText", () => {
+  it("says nothing for a row that collapsed nothing", () => {
+    const one = record({ seq: 1 });
+    expect(eventRepeatText({ latest: one, oldest: one, count: 1 }, ru)).toBeNull();
+  });
+
+  it("counts the run and spans it", () => {
+    const row = {
+      latest: record({ seq: 3, ts_epoch_secs: 1_788_007_200 }),
+      oldest: record({ seq: 1, ts_epoch_secs: 1_788_000_000 }),
+      count: 3,
+    };
+    expect(eventRepeatText(row, ru)).toBe("×3 за 2 ч.");
+    expect(eventRepeatText(row, en)).toBe("×3 in 2 hours");
+  });
+
+  it("does not invent a span for a burst inside one minute", () => {
+    const row = {
+      latest: record({ seq: 3, ts_epoch_secs: 1_788_000_010 }),
+      oldest: record({ seq: 1, ts_epoch_secs: 1_788_000_000 }),
+      count: 3,
+    };
+    expect(eventRepeatText(row, ru)).toBe(`×3 ${ru.pulse.recentEvents.spanShort}`);
+  });
+});
+
+describe("eventAgo", () => {
+  const at = 1_788_000_000;
+
+  it("says «только что» inside the first minute", () => {
+    expect(eventAgo(at, at * 1000 + 30_000, ru)).toBe(ru.pulse.recentEvents.justNow);
+  });
+
+  it("counts back in one coarse unit", () => {
+    expect(eventAgo(at, at * 1000 + 12 * 60_000, ru)).toBe("12 мин. назад");
+    expect(eventAgo(at, at * 1000 + 3 * 3_600_000, en)).toBe("3 hours ago");
   });
 });
 

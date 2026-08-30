@@ -1,26 +1,84 @@
 import type { RuntimeEdgeEventRecord, RuntimeEdgeEvents } from "../../realtime/topics";
-import { localeOf, type Dict } from "../../i18n";
-
-export interface RecentEventsView {
-  events: RuntimeEdgeEventRecord[];
-  droppedTotal: number;
-}
+import { fill, formatNumber, localeOf, type Dict } from "../../i18n";
+import { formatDurationApprox } from "../../people/expiry";
 
 /** How many rows concept §15's timeline shows before «Все события →». */
 export const TIMELINE_LIMIT = 5;
 
+/**
+ * One timeline row: a RUN of consecutive events of the same type, collapsed.
+ *
+ * Telemt's ring is fifty slots and a flapping proxy fills it with one fact
+ * repeated — the live panel showed five rows of «Приём клиентов открыт /
+ * закрыт / открыт / закрыт / открыт», which is five rows saying one thing.
+ * A run becomes one row stamped with its NEWEST event, counted, and spanned.
+ */
+export interface CoalescedEvent {
+  /** The newest record of the run — the row's identity, stamp and detail. */
+  latest: RuntimeEdgeEventRecord;
+  /** The oldest record of the run — the "from" end of a state transition. */
+  oldest: RuntimeEdgeEventRecord;
+  /** How many records the row stands for; 1 means nothing was collapsed. */
+  count: number;
+}
+
+export interface RecentEventsView {
+  rows: CoalescedEvent[];
+  droppedTotal: number;
+}
+
+/**
+ * The grouping key. Telemt's `event_type` already carries the outcome in
+ * its last segment (`config.reload.applied` vs `config.reload.failed`), so
+ * one key is enough to keep a success and a failure of the same operation
+ * apart while still folding a run of the same fact together.
+ *
+ * `admission.state` is the case that makes this worth doing: ONE type whose
+ * context flips between open and closed, which is exactly the run the
+ * timeline should state once, as a transition.
+ */
+export function coalesceKey(event: Pick<RuntimeEdgeEventRecord, "event_type">): string {
+  return event.event_type.trim().toLowerCase();
+}
+
+/**
+ * Collapses CONSECUTIVE same-key events, newest first. Consecutive only:
+ * an unrelated event between two reloads means they were two separate
+ * reloads, and merging across it would put a count on a run that never
+ * happened.
+ */
+export function coalesceEvents(
+  events: readonly RuntimeEdgeEventRecord[],
+  limit = TIMELINE_LIMIT,
+): CoalescedEvent[] {
+  const rows: CoalescedEvent[] = [];
+  for (const event of events) {
+    const last = rows.at(-1);
+    if (last && coalesceKey(last.latest) === coalesceKey(event)) {
+      last.oldest = event;
+      last.count += 1;
+      continue;
+    }
+    if (rows.length === limit) break;
+    rows.push({ latest: event, oldest: event, count: 1 });
+  }
+  return rows;
+}
+
 // computeRecentEventsView returns the newest events first (Telemt's own
 // events/recent already lists them oldest-first per seq, matching a normal
-// log — the compact feed widget wants most-recent-on-top). The SDK
-// normalizes every decoded slice to non-nil (internal/telemt/normalize.go,
-// mini-task 2c) before it ever reaches the hub, so `events` is always a
-// real (possibly empty) array on the wire — no defensive `?? []` needed here.
+// log — the compact feed widget wants most-recent-on-top), coalesced into
+// at most `limit` rows. The SDK normalizes every decoded slice to non-nil
+// (internal/telemt/normalize.go, mini-task 2c) before it ever reaches the
+// hub, so `events` is always a real (possibly empty) array on the wire — no
+// defensive `?? []` needed here.
 export function computeRecentEventsView(
   payload: RuntimeEdgeEvents,
   limit = TIMELINE_LIMIT,
 ): RecentEventsView {
+  const newestFirst = [...payload.events].sort((a, b) => b.seq - a.seq);
   return {
-    events: [...payload.events].sort((a, b) => b.seq - a.seq).slice(0, limit),
+    rows: coalesceEvents(newestFirst, limit),
     droppedTotal: payload.dropped_total,
   };
 }
@@ -88,9 +146,8 @@ export function eventTone(eventType: string): EventTone {
 }
 
 /**
- * The timeline's `HH:MM` stamp. Explicitly 24-hour in both languages: the
- * rail's whole point is that five stamps line up as five equal-width
- * columns, and an English «9:43 PM» breaks that alignment for no gain to an
+ * The timeline's `HH:MM` stamp. Explicitly 24-hour in both languages: an
+ * English «9:43 PM» would be wider than every other stamp for no gain to an
  * operator reading a server log.
  */
 export function eventTime(tsEpochSecs: number, s: Dict): string {
@@ -98,6 +155,47 @@ export function eventTime(tsEpochSecs: number, s: Dict): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+  });
+}
+
+/**
+ * The full instant, for the row's `title`. The visible stamp is relative
+ * («12 мин назад») because that is the question an operator actually has
+ * about a five-row feed; the exact moment stays one hover away rather than
+ * being dropped.
+ */
+export function eventTimestamp(tsEpochSecs: number, s: Dict): string {
+  return new Date(tsEpochSecs * 1000).toLocaleString(localeOf(s), {
+    dateStyle: "medium",
+    timeStyle: "medium",
+    hour12: false,
+  });
+}
+
+/** Below this, "just now" is more honest than rounding up to a minute. */
+const JUST_NOW_MS = 60_000;
+
+/** «12 мин назад» — how long ago the row's newest event happened. */
+export function eventAgo(tsEpochSecs: number, nowMs: number, s: Dict): string {
+  const elapsed = nowMs - tsEpochSecs * 1000;
+  if (elapsed < JUST_NOW_MS) return s.pulse.recentEvents.justNow;
+  return fill(s.pulse.recentEvents.ago, { duration: formatDurationApprox(elapsed, s) });
+}
+
+/**
+ * «×3 за 2 ч.» — what a collapsed row adds to the one event it shows.
+ * `null` for a row that collapsed nothing: a «×1» on four rows out of five
+ * is noise.
+ */
+export function eventRepeatText(row: CoalescedEvent, s: Dict): string | null {
+  if (row.count < 2) return null;
+  const span = (row.latest.ts_epoch_secs - row.oldest.ts_epoch_secs) * 1000;
+  return fill(s.pulse.recentEvents.repeat, {
+    count: formatNumber(s, row.count),
+    span:
+      span < JUST_NOW_MS
+        ? s.pulse.recentEvents.spanShort
+        : fill(s.pulse.recentEvents.span, { duration: formatDurationApprox(span, s) }),
   });
 }
 
@@ -164,11 +262,65 @@ export function eventPhraseKey(event: Pick<RuntimeEdgeEventRecord, "event_type" 
   return null;
 }
 
+/**
+ * Phrase keys that come in OPPOSING pairs — the two ends of one switch.
+ *
+ * A run of these is not «Приём клиентов открыт ×3»: the proxy went closed,
+ * open, closed, open, and the row that says so is «Приём клиентов: закрыт →
+ * открыт». Only pairs are listed — a run of «Конфигурация перезагружена»
+ * has no other end to name and stays the sentence with a count on it.
+ */
+export type EventSubjectKey = keyof Dict["pulse"]["recentEvents"]["subjects"];
+export type EventStateKey = keyof Dict["pulse"]["recentEvents"]["states"];
+
+const PHRASE_PAIRS: Partial<Record<EventPhraseKey, { subject: EventSubjectKey; state: EventStateKey }>> = {
+  admissionOpen: { subject: "admission", state: "open" },
+  admissionClosed: { subject: "admission", state: "closed" },
+  listenerStarted: { subject: "listener", state: "started" },
+  listenerStopped: { subject: "listener", state: "stopped" },
+  routeFallback: { subject: "route", state: "direct" },
+  routeRestored: { subject: "route", state: "me" },
+  userEnabled: { subject: "user", state: "enabled" },
+  userDisabled: { subject: "user", state: "disabled" },
+};
+
+function phrasePairOf(
+  event: Pick<RuntimeEdgeEventRecord, "event_type" | "context">,
+): { subject: EventSubjectKey; state: EventStateKey } | undefined {
+  const key = eventPhraseKey(event);
+  return key === null ? undefined : PHRASE_PAIRS[key];
+}
+
 /** One timeline row's text: a sentence, and Telemt's own detail after it. */
 export interface EventLine {
   text: string;
   /** Telemt's `context`, shown muted after the text; absent when the text already says it. */
   detail?: string;
+}
+
+/**
+ * The row's text for a COALESCED run.
+ *
+ * When the run's two ends are opposite states of one subject, the row states
+ * the transition — that is the only formulation that stays true of every
+ * event it stands for. Otherwise the row is the newest event's own sentence,
+ * exactly as an uncollapsed row would print it.
+ */
+export function coalescedLine(row: CoalescedEvent, s: Dict): EventLine {
+  if (row.count > 1) {
+    const from = phrasePairOf(row.oldest);
+    const to = phrasePairOf(row.latest);
+    if (from && to && from.subject === to.subject && from.state !== to.state) {
+      return {
+        text: fill(s.pulse.recentEvents.transition, {
+          subject: s.pulse.recentEvents.subjects[from.subject],
+          from: s.pulse.recentEvents.states[from.state],
+          to: s.pulse.recentEvents.states[to.state],
+        }),
+      };
+    }
+  }
+  return eventLine(row.latest, s);
 }
 
 /**

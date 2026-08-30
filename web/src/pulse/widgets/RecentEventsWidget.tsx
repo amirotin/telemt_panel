@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
-import type { RuntimeEdgeEventRecord, RuntimeTopic } from "../../realtime/topics";
+import type { RuntimeTopic } from "../../realtime/topics";
 import { EmptyState } from "../../ui/EmptyState";
 import { Skeleton } from "../../ui/Skeleton";
 import { buttonClasses } from "../../ui/buttonStyles";
@@ -15,17 +15,21 @@ import {
   IconWarning,
   type IconProps,
 } from "../../ui/icons";
-import { useStrings } from "../../i18n";
+import { fill, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
+import { useNow } from "../../people/useNow";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
 import { resolveGated } from "./gated";
 import {
+  coalescedLine,
   computeRecentEventsView,
+  eventAgo,
   eventCategory,
-  eventLine,
-  eventTime,
+  eventRepeatText,
+  eventTimestamp,
   eventTone,
+  type CoalescedEvent,
   type EventCategory,
   type EventTone,
 } from "./recentEvents.helpers";
@@ -53,15 +57,22 @@ const TONE_ICON: Record<EventTone, string> = {
 };
 
 // RecentEventsWidget — «События» as concept §15's timeline: a rail, a
-// category marker per row, the time, and the event on one line. It replaces
-// the two-column list whose left column was the raw type and whose right
-// column was a truncated context nobody could line up against it.
+// category marker per row, the event in words, and how long ago it was.
 //
-// The last five rows only; «Все события →» in the header opens
-// /pulse/diag/events, where all fifty live behind a family filter.
+// Five rows, and each row is a RUN rather than a record. A flapping proxy
+// fills Telemt's fifty-slot ring with one fact repeated, and the widget
+// used to spend all five rows on it («Приём клиентов открыт / закрыт /
+// открыт / закрыт / открыт»); now that run is one row that states the
+// transition and counts itself — «Приём клиентов: закрыт → открыт · ×3 за
+// 2 ч.» — and the other four rows show the four other things that happened.
+//
+// `dropped_total` moved to the title's tooltip. It is a fact about the ring
+// (records evicted since start, which the panel will never see), not an
+// event, and it was costing a line of a five-line feed.
 export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
   const s = useStrings();
   const topic = useSnapshot<RuntimeTopic>("runtime");
+  const now = useNow();
 
   if (!topic.data) {
     return (
@@ -73,35 +84,32 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
 
   const events = resolveGated(topic.data.recent_events);
   let body: ReactNode;
+  let tooltip: string | undefined;
   if (events.status === "gated") {
     body = <GatedNote reason={events.reason} hint="runtime_edge" />;
   } else {
     const view = computeRecentEventsView(events.data);
+    if (view.droppedTotal > 0) {
+      tooltip = fill(s.pulse.recentEvents.dropped, { count: String(view.droppedTotal) });
+    }
     body =
-      view.events.length === 0 ? (
+      view.rows.length === 0 ? (
         <EmptyState title={s.pulse.recentEvents.empty} />
       ) : (
-        <div className="flex flex-col gap-2">
-          {/* The rail is one line drawn from the first marker's centre to
-              the last one's, behind markers that carry the card's own
-              background — every row is a single line, so the two ends land
-              on the two centres without measuring anything. */}
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="absolute bottom-[15px] left-3 top-[15px] w-px -translate-x-1/2 bg-border"
-            />
-            <ol className="relative flex flex-col">
-              {view.events.map((event) => (
-                <TimelineRow key={event.seq} event={event} />
-              ))}
-            </ol>
-          </div>
-          {view.droppedTotal > 0 && (
-            <p className="text-micro text-text-muted">
-              {view.droppedTotal} {s.pulse.recentEvents.dropped}
-            </p>
-          )}
+        // The rail is one line drawn from the first marker's centre to the
+        // last one's, behind markers that carry the card's own background —
+        // every row is a single line, so the two ends land on the two
+        // centres without measuring anything.
+        <div className="relative">
+          <span
+            aria-hidden="true"
+            className="absolute bottom-[15px] left-3 top-[15px] w-px -translate-x-1/2 bg-border"
+          />
+          <ol className="relative flex flex-col">
+            {view.rows.map((row) => (
+              <TimelineRow key={row.latest.seq} row={row} now={now} />
+            ))}
+          </ol>
         </div>
       );
   }
@@ -109,6 +117,7 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
   return (
     <WidgetFrame
       title={s.pulse.widgets.recent_events}
+      titleTooltip={tooltip}
       onHide={onHide}
       stale={topic.stale}
       action={
@@ -127,11 +136,13 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
   );
 }
 
-function TimelineRow({ event }: { event: RuntimeEdgeEventRecord }) {
+function TimelineRow({ row, now }: { row: CoalescedEvent; now: number }) {
   const s = useStrings();
+  const event = row.latest;
   const category = eventCategory(event.event_type);
   const tone = eventTone(event.event_type);
-  const line = eventLine(event, s);
+  const line = coalescedLine(row, s);
+  const repeat = eventRepeatText(row, s);
   const Glyph = category === "neutral" ? null : CATEGORY_ICON[category];
 
   return (
@@ -152,19 +163,29 @@ function TimelineRow({ event }: { event: RuntimeEdgeEventRecord }) {
           <span className="h-1.5 w-1.5 rounded-full bg-current" />
         )}
       </span>
-      <time
-        dateTime={new Date(event.ts_epoch_secs * 1000).toISOString()}
-        className="shrink-0 font-mono text-micro tabular-nums text-text-faint"
-      >
-        {eventTime(event.ts_epoch_secs, s)}
-      </time>
-      {/* One line: the sentence for a type this catalog knows, Telemt's own
-          type for one it does not, and Telemt's own context after either
-          (§11.2's rule for these strings everywhere else in the panel). */}
+      {/* One line: the transition for a collapsed run, the sentence for a
+          type this catalog knows, Telemt's own type for one it does not,
+          and Telemt's own context after either (§11.2's rule for these
+          strings everywhere else in the panel). */}
       <span className="min-w-0 flex-1 truncate text-meta text-text">
         {line.text}
         {line.detail && <span className="text-text-muted"> · {line.detail}</span>}
+        {repeat && (
+          <span className="text-text-faint" data-testid="event-repeat">
+            {" · "}
+            {repeat}
+          </span>
+        )}
       </span>
+      {/* Relative, because "how fresh is this" is the question a five-row
+          feed answers; the exact instant is one hover away. */}
+      <time
+        dateTime={new Date(event.ts_epoch_secs * 1000).toISOString()}
+        title={eventTimestamp(event.ts_epoch_secs, s)}
+        className="shrink-0 text-micro tabular-nums text-text-faint"
+      >
+        {eventAgo(event.ts_epoch_secs, now, s)}
+      </time>
     </li>
   );
 }
