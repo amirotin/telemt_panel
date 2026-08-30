@@ -61,7 +61,53 @@ describe("computeOnlineNow", () => {
 
   it("carries the figures the row prints", () => {
     const [row] = computeOnlineNow(users).rows;
-    expect(row).toEqual({ username: "marat", connections: 3, ips: 2, totalOctets: 900 });
+    expect(row).toEqual({
+      username: "marat",
+      connections: 3,
+      ips: 2,
+      totalOctets: 900,
+      quotaFill: null,
+    });
+  });
+
+  // The bar at the row's right edge: the same getUserQuota/quotaRatio pair
+  // the Люди list paints with, so one name cannot read two fills.
+  describe("the quota bar the row ends in", () => {
+    it("is null for a person with no cap — there is nothing to fill", () => {
+      expect(computeOnlineNow(users).rows.every((r) => r.quotaFill === null)).toBe(true);
+    });
+
+    it("prefers Telemt's tracked usage when the quota capability is on", () => {
+      const capped = [user({ username: "marat", current_connections: 1, total_octets: 900 })];
+      const rows = computeOnlineNow(capped, ONLINE_NOW_LIMIT, {
+        marat: { data_quota_bytes: 1000, used_bytes: 870, last_reset_epoch_secs: 0 },
+      }).rows;
+      expect(rows[0]!.quotaFill).toBeCloseTo(0.87);
+    });
+
+    it("falls back to the user's own limit against cumulative traffic", () => {
+      const capped = [
+        user({
+          username: "lena",
+          current_connections: 1,
+          total_octets: 500,
+          data_quota_bytes: 1000,
+        }),
+      ];
+      expect(computeOnlineNow(capped).rows[0]!.quotaFill).toBe(0.5);
+    });
+
+    it("clamps a person past their cap instead of overflowing the track", () => {
+      const capped = [
+        user({
+          username: "over",
+          current_connections: 1,
+          total_octets: 4000,
+          data_quota_bytes: 1000,
+        }),
+      ];
+      expect(computeOnlineNow(capped).rows[0]!.quotaFill).toBe(1);
+    });
   });
 
   it("is empty — not a crash — before the first users frame", () => {

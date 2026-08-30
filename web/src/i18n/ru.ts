@@ -302,6 +302,9 @@ export const ru = {
     allUsers: "Все пользователи",
     // Строка человека: «13 соединений · 3 IP · 19 ГБ».
     onlineConnections: ["{n} соединение", "{n} соединения", "{n} соединений"],
+    // Две колонки на десктопе: строка стала вдвое уже, и «соединений»
+    // выталкивало трафик за край.
+    onlineConnectionsShort: "{n} соед.",
     hiddenTitle: "Скрытые блоки",
     showWidget: "Показать",
     // The «Вид» dropdown at the right of the title (concept §16).

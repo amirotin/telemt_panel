@@ -1,5 +1,6 @@
-import type { UsersTopicUser } from "../../realtime/topics";
-import { isOnline } from "../../people/users.helpers";
+import type { UsersTopicQuotaEntry, UsersTopicUser } from "../../realtime/topics";
+import { getUserQuota, isOnline } from "../../people/users.helpers";
+import { isUnlimitedQuota, quotaRatio } from "../../ui/quota.helpers";
 
 /** One row of the «Онлайн сейчас» block — a person who has a live connection. */
 export interface OnlineNowRow {
@@ -7,6 +8,13 @@ export interface OnlineNowRow {
   connections: number;
   ips: number;
   totalOctets: number;
+  /**
+   * 0…1 quota fill, or null for a person with no cap configured. The row
+   * ends in this bar, so it is computed here rather than in the component:
+   * the same getUserQuota/quotaRatio pair the Люди list paints with, so a
+   * name cannot read 87 % on one screen and 62 % on the other.
+   */
+  quotaFill: number | null;
 }
 
 export interface OnlineNowView {
@@ -40,6 +48,7 @@ export const ONLINE_NOW_LIMIT = 8;
 export function computeOnlineNow(
   users: readonly UsersTopicUser[] | null | undefined,
   limit: number = ONLINE_NOW_LIMIT,
+  quota?: Record<string, UsersTopicQuotaEntry> | null,
 ): OnlineNowView {
   if (!users) return { online: 0, total: 0, rows: [] };
   const online = users.filter(isOnline);
@@ -51,11 +60,17 @@ export function computeOnlineNow(
         a.username.localeCompare(b.username),
     )
     .slice(0, Math.max(0, limit))
-    .map((user) => ({
-      username: user.username,
-      connections: user.current_connections,
-      ips: user.active_unique_ips,
-      totalOctets: user.total_octets,
-    }));
+    .map((user) => {
+      const view = getUserQuota(user, quota?.[user.username]);
+      return {
+        username: user.username,
+        connections: user.current_connections,
+        ips: user.active_unique_ips,
+        totalOctets: user.total_octets,
+        quotaFill: isUnlimitedQuota(view.limitBytes)
+          ? null
+          : quotaRatio(view.usedBytes, view.limitBytes),
+      };
+    });
   return { online: online.length, total: users.length, rows };
 }

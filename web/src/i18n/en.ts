@@ -252,6 +252,7 @@ export const en: Dict = {
     onlineEmpty: "Nobody is connected right now.",
     allUsers: "All users",
     onlineConnections: ["{n} connection", "{n} connections", "{n} connections"],
+    onlineConnectionsShort: "{n} conn.",
     hiddenTitle: "Hidden blocks",
     showWidget: "Show",
     viewLabel: "View: {mode}",
