@@ -129,7 +129,7 @@ const PILL_STATE: Record<SourceStatus, State> = {
 /**
  * Fleet-wide coverage: alive writers over required writers across every data
  * center, NOT the mean of the per-DC percentages — a DC that needs 40
- * writers and a test site that needs 2 must not weigh the same.
+ * writers and a media group that needs 2 must not weigh the same.
  *
  * Clamped at 100 because `required_writers` is a FLOOR (`floor_target`), so
  * an over-provisioned pool routinely runs more writers than it needs and the

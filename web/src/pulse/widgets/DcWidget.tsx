@@ -17,7 +17,6 @@ import {
   dcRttText,
   dcRttTone,
   dcWriterDots,
-  isTestDc,
 } from "./dc.helpers";
 
 // The ring's geometry, in the SVG's own 40-unit box: r = 17 with a 2-unit
@@ -136,12 +135,7 @@ export function DcNode({ dc }: { dc: DcStatus }) {
             data-coverage={covered}
           />
         </svg>
-        <span
-          className={cn(
-            "absolute font-mono text-[10px] font-semibold tabular-nums tracking-tight lg:text-[12px]",
-            isTestDc(dc) ? "text-text-muted" : "text-text",
-          )}
-        >
+        <span className="absolute font-mono text-[10px] font-semibold tabular-nums tracking-tight text-text lg:text-[12px]">
           {dc.dc}
         </span>
       </span>

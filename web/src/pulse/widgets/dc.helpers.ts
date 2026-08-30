@@ -30,24 +30,33 @@ export function dcCoverageState(dc: DcStatus): "ok" | "warn" | "error" {
 }
 
 /**
- * Telegram's test data centers carry the NEGATIVE ids — the same split
- * details-builder/definitions/dc.ts orders the diagnostics rail by
- * ("production data centers first … then the test sites").
+ * A NEGATIVE id is not a test site: by Telegram's own convention (Telemt's
+ * `transport/middle_proxy/pool_config.rs` — "negative DC entries mirror
+ * positives when absent (Telegram convention)") DC −N is the MEDIA/download
+ * server group of DC N. It carries real client traffic, just a different
+ * kind of it.
  */
-export function isTestDc(dc: Pick<DcStatus, "dc">): boolean {
+export function isMediaDc(dc: Pick<DcStatus, "dc">): boolean {
   return dc.dc < 0;
 }
 
+/**
+ * The one id that really is the test environment — DC 203, and −203 its
+ * media group. Everything else, sign regardless, is production.
+ */
+export const TEST_DC_ID = 203;
+
+export function isTestDc(dc: Pick<DcStatus, "dc">): boolean {
+  return Math.abs(dc.dc) === TEST_DC_ID;
+}
+
 // dcNodeTone is the coverage ring's colour (concept §9's "Цветовая логика
-// DC"): the card itself stays dark, the RING carries the state. A healthy
-// TEST site is drawn muted rather than green — concept §9 asks for the test
-// nodes to be visually quieter, and a green ring on a site that carries no
-// client traffic spends attention on nothing. A test site that is actually
-// degraded keeps its warn/error ring: quieter must never mean silent.
+// DC"): the card itself stays dark, the RING carries the state. EVERY node
+// is coloured by its state — the muting that used to quiet the negative ids
+// rested on reading them as test sites, and a media group of a production DC
+// is not a place where a lost writer matters less.
 export function dcNodeTone(dc: DcStatus): State {
-  const state = dcCoverageState(dc);
-  if (state === "ok" && isTestDc(dc)) return "muted";
-  return state;
+  return dcCoverageState(dc);
 }
 
 /**
@@ -96,12 +105,12 @@ function byBoardOrder(a: { dc: number }, b: { dc: number }): number {
 /**
  * Concept §9's «Альтернативная компоновка» — the board's two rows:
  *
- *     DC-5   DC-4   DC-3   DC-2   DC-1   DC-203
- *     DC1    DC2    DC3    DC4    DC5    DC203
+ *     DC-5   DC-4   DC-3   DC-2   DC-1   DC-203     ← media groups
+ *     DC1    DC2    DC3    DC4    DC5    DC203      ← main groups
  *
- * Negative ids on top, positive underneath, each row ascending with the
- * 203-family site last, so a column pairs a test site with the production
- * DC facing it and the block reads like a route panel.
+ * Media groups (negative ids) on top, main groups underneath, each row
+ * ascending with the 203-family site last, so a column pairs a data center
+ * with its own media servers and the block reads like a route panel.
  *
  * Returned as ROWS rather than one flat list because the two rows are
  * rendered as two grids: that is what makes the pairing survive a payload
@@ -121,10 +130,25 @@ export function dcRttText(dc: DcStatus, s: Dict): string {
 }
 
 /**
- * The node's accessible name. A node is a 88×72 tile of a ring, three dots
- * and a number — every one of concept §9's four facts is encoded visually,
- * so the label has to spell all four out, plus the "test site" that the
- * muted ring is the only cue for.
+ * What a node's id MEANS, in words — the half of its identity the number
+ * alone cannot carry. `null` for a plain production data center, whose id
+ * already says everything.
+ */
+export function dcKindLabel(dc: Pick<DcStatus, "dc">, s: Dict): string | null {
+  const parts: string[] = [];
+  if (isMediaDc(dc)) {
+    parts.push(fill(s.pulse.dc.mediaGroup, { dc: formatNumber(s, Math.abs(dc.dc)) }));
+  }
+  if (isTestDc(dc)) parts.push(s.pulse.dc.testSite);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/**
+ * The node's accessible name. A node is a small tile of a ring, a writers
+ * bar and a number — every one of concept §9's four facts is encoded
+ * visually, so the label has to spell all four out, plus what kind of DC
+ * group this is (media / test), which only a dashed ring and a tiny tag
+ * hint at on screen.
  */
 export function dcNodeAriaLabel(dc: DcStatus, s: Dict): string {
   const base = fill(s.pulse.dc.nodeLabel, {
@@ -134,5 +158,6 @@ export function dcNodeAriaLabel(dc: DcStatus, s: Dict): string {
     required: formatNumber(s, dc.required_writers),
     rtt: dcRttText(dc, s),
   });
-  return isTestDc(dc) ? `${base} · ${s.pulse.dc.testSite}` : base;
+  const kind = dcKindLabel(dc, s);
+  return kind === null ? base : `${base} · ${kind}`;
 }

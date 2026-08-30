@@ -87,8 +87,8 @@ export function meDcLabel(dc: number | null): string {
   return dc === null ? "DC —" : `DC ${dc}`;
 }
 
-// meDcGroupOrder sorts the chips the way the DC rail is sorted: production
-// data centers first ascending, then the test sites by id magnitude.
+// meDcGroupOrder sorts the chips the way the DC rail is sorted: the main
+// data-center group first ascending, then the media groups by id magnitude.
 export function meDcGroupOrder(a: string, b: string): number {
   const parse = (id: string) => (id === "dc-none" ? Number.POSITIVE_INFINITY : Number(id.slice(2)));
   const na = parse(a);
@@ -102,7 +102,7 @@ export function meDcGroupOrder(a: string, b: string): number {
 }
 
 // orderedDcRtt puts the RTT series in the SAME order as the writer chips
-// and the DC rail: production data centers first ascending, test sites
+// and the DC rail: main data centers first ascending, their media groups
 // after. Telemt sends `dc_rtt` numerically ascending, so reading it as it
 // arrives opens the chart on DC −203 while the chips beside it open on
 // DC 1 — one screen, two orders of the same twelve data centers.

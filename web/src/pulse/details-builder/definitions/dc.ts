@@ -45,19 +45,25 @@ export function dcEntityKey(dc: Pick<DcStatus, "dc">): string {
 
 /**
  * Orders the rail the way the render does (`up-dc-mobile.png`,
- * `up-dc-desktop-dc4.png`): production data centers first, ascending, then
- * the test sites by id magnitude — `1 … 203`, then `-1 … -203`.
+ * `up-dc-desktop-dc4.png`): the MAIN data-center group first, ascending,
+ * then the MEDIA groups by id magnitude — `1 … 203`, then `-1 … -203`.
+ *
+ * A negative id is not a test site: by Telegram's own convention (Telemt's
+ * `transport/middle_proxy/pool_config.rs`) DC −N is the media/download
+ * server group of DC N, and the one test environment is DC 203. The order
+ * is unchanged — an operator looks up DC 4 before DC 4's media servers —
+ * only the name for it is.
  *
  * The payload order is Telemt's, and Telemt sorts numerically ascending, so
- * reading `dcs` as it arrives puts `DC -203` — a test site carrying no
- * traffic — at the head of the rail and makes it the default selection. The
- * fixture happens to be hand-ordered production-first, which is exactly why
- * this has to be enforced here rather than trusted from the data.
+ * reading `dcs` as it arrives puts `DC -203` at the head of the rail and
+ * makes it the default selection. The fixture happens to be hand-ordered
+ * main-first, which is exactly why this has to be enforced here rather than
+ * trusted from the data.
  */
 export function orderDcs<T extends Pick<DcStatus, "dc">>(dcs: readonly T[]): T[] {
-  const production = dcs.filter((dc) => dc.dc >= 0).sort((a, b) => a.dc - b.dc);
-  const test = dcs.filter((dc) => dc.dc < 0).sort((a, b) => b.dc - a.dc);
-  return [...production, ...test];
+  const main = dcs.filter((dc) => dc.dc >= 0).sort((a, b) => a.dc - b.dc);
+  const media = dcs.filter((dc) => dc.dc < 0).sort((a, b) => b.dc - a.dc);
+  return [...main, ...media];
 }
 
 /**
@@ -233,8 +239,8 @@ export function selectDcContext(
   payload: DcPagePayload,
   key: string | undefined,
 ): DcPageContext | null {
-  // Same order as the rail, so "no selection yet" lands on the first
-  // production DC rather than on whichever one Telemt sent first.
+  // Same order as the rail, so "no selection yet" lands on the first main
+  // data center rather than on whichever one Telemt sent first.
   const ordered = orderDcs(payload.dcs);
   const dc = ordered.find((candidate) => dcEntityKey(candidate) === key) ?? ordered[0];
   if (dc === undefined) return null;

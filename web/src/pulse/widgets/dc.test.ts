@@ -8,7 +8,9 @@ import {
   dcNodeTone,
   dcRttText,
   dcRttTone,
+  dcKindLabel,
   dcWriterDots,
+  isMediaDc,
   isTestDc,
 } from "./dc.helpers";
 import type { DcStatus } from "../../realtime/topics";
@@ -66,28 +68,57 @@ describe("dcCoverageState", () => {
   });
 });
 
-// Concept §9: the card stays dark and the RING carries the state, with the
-// test sites drawn quieter — but never quiet enough to hide a real fault.
+// Concept §9: the card stays dark and the RING carries the state — every
+// node, media groups included. Nothing on this board is drawn quieter for
+// being a negative id.
 describe("dcNodeTone", () => {
-  it("is ok for a healthy production data center", () => {
+  it("is ok for a healthy data center", () => {
     expect(dcNodeTone(dc({ dc: 4 }))).toBe("ok");
   });
 
-  it("is muted for a healthy test site", () => {
-    expect(dcNodeTone(dc({ dc: -4 }))).toBe("muted");
+  it("is ok — not muted — for a healthy media group", () => {
+    expect(dcNodeTone(dc({ dc: -4 }))).toBe("ok");
   });
 
-  it("still warns on a degraded test site", () => {
+  it("is ok for the healthy test site too", () => {
+    expect(dcNodeTone(dc({ dc: 203 }))).toBe("ok");
+    expect(dcNodeTone(dc({ dc: -203 }))).toBe("ok");
+  });
+
+  it("warns on a degraded media group", () => {
     expect(dcNodeTone(dc({ dc: -4, alive_writers: 1, coverage_pct: 50 }))).toBe("warn");
   });
 
-  it("still errors on a test site with no writers", () => {
+  it("errors on a media group with no writers", () => {
     expect(dcNodeTone(dc({ dc: -4, alive_writers: 0, coverage_pct: 0 }))).toBe("error");
   });
+});
 
-  it("calls the negative ids the test sites", () => {
+// The correction owner and Telemt agree (transport/middle_proxy/
+// pool_config.rs): DC −N is the media-server group of DC N, and the test
+// environment is 203 — not "every negative id".
+describe("what a DC id means", () => {
+  it("reads a negative id as a media group, not a test site", () => {
+    expect(isMediaDc({ dc: -1 })).toBe(true);
+    expect(isTestDc({ dc: -1 })).toBe(false);
+    expect(isMediaDc({ dc: 1 })).toBe(false);
+    expect(isTestDc({ dc: 1 })).toBe(false);
+  });
+
+  it("reads 203 and −203 as the test site and its media group", () => {
+    expect(isTestDc({ dc: 203 })).toBe(true);
+    expect(isMediaDc({ dc: 203 })).toBe(false);
     expect(isTestDc({ dc: -203 })).toBe(true);
-    expect(isTestDc({ dc: 203 })).toBe(false);
+    expect(isMediaDc({ dc: -203 })).toBe(true);
+  });
+
+  it("labels the four ids the way the board and the rail must", () => {
+    expect(dcKindLabel({ dc: 1 }, ru)).toBeNull();
+    expect(dcKindLabel({ dc: -1 }, ru)).toBe("медиа-серверы DC 1");
+    expect(dcKindLabel({ dc: 203 }, ru)).toBe(ru.pulse.dc.testSite);
+    expect(dcKindLabel({ dc: -203 }, ru)).toBe(
+      `медиа-серверы DC 203 · ${ru.pulse.dc.testSite}`,
+    );
   });
 });
 
@@ -183,8 +214,10 @@ describe("dcNodeAriaLabel", () => {
     expect(label).toContain("33 ms");
   });
 
-  it("says a test site is one, since only the muted ring shows it", () => {
-    expect(dcNodeAriaLabel(dc({ dc: -4 }), ru)).toContain(ru.pulse.dc.testSite);
+  it("names the group kind, which only a dashed ring and a tag hint at", () => {
+    expect(dcNodeAriaLabel(dc({ dc: -4 }), ru)).toContain("медиа-серверы DC 4");
+    expect(dcNodeAriaLabel(dc({ dc: 203 }), ru)).toContain(ru.pulse.dc.testSite);
     expect(dcNodeAriaLabel(dc({ dc: 4 }), ru)).not.toContain(ru.pulse.dc.testSite);
+    expect(dcNodeAriaLabel(dc({ dc: 4 }), ru)).not.toContain("медиа-серверы");
   });
 });

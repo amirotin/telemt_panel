@@ -118,9 +118,9 @@ describe("DcNode — the coverage ring (concept §9)", () => {
     expect(ok.querySelector('[data-testid="dc-node"]')!.className).toContain("bg-surface-2");
   });
 
-  it("mutes a healthy test site's ring and keeps a broken one loud", async () => {
-    const quiet = await mount(<DcNode dc={dc({ dc: -4 })} />);
-    expect(ring(quiet).getAttribute("class")).toContain("text-text-faint");
+  it("colours a media group by state like any other node", async () => {
+    const healthy = await mount(<DcNode dc={dc({ dc: -4 })} />);
+    expect(ring(healthy).getAttribute("class")).toContain("text-ok");
     act(() => root!.unmount());
     container!.remove();
     root = null;
