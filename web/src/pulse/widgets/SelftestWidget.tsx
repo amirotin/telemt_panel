@@ -10,13 +10,13 @@ import { resolveGated } from "./gated";
 import { computeSelftestView, selftestPillState } from "./selftest.helpers";
 import { GatedNote } from "../GatedNote";
 
-export function SelftestWidget({ onHide }: { onHide?: () => void }) {
+export function SelftestWidget() {
   const s = useStrings();
   const topic = useSnapshot<RuntimeTopic>("runtime");
 
   if (!topic.data) {
     return (
-      <WidgetFrame title={s.pulse.widgets.selftest} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.selftest}>
         <Skeleton className="h-16 w-full" />
       </WidgetFrame>
     );
@@ -51,7 +51,7 @@ export function SelftestWidget({ onHide }: { onHide?: () => void }) {
   }
 
   return (
-    <WidgetFrame title={s.pulse.widgets.selftest} diagDomain="me" onHide={onHide} stale={topic.stale}>
+    <WidgetFrame title={s.pulse.widgets.selftest} diagDomain="me" stale={topic.stale}>
       {body}
     </WidgetFrame>
   );

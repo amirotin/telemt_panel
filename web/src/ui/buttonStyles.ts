@@ -23,7 +23,7 @@ const sizeClasses: Record<ButtonSize, string> = {
 // buttonClasses is the recipe ui/Button applies, in its own module so it can
 // also dress the one control a <button> cannot be: one that NAVIGATES. A
 // router <Link> wearing these classes keeps the button's look while staying
-// an anchor — the right element for «Все пользователи →», and the one that
+// an anchor — the right element for overview's shared «Детали →», and the one that
 // middle-click and "open in new tab" actually work on.
 //
 // It lives here rather than in Button.tsx so that file keeps exporting only

@@ -4,7 +4,7 @@
 // reach; that is the argument. This file is the evidence: MePage mounted on
 // the router, subscribed through sseClient to a FakeEventSource, put into
 // each of the four states a reader is actually in when a frame lands —
-// scrolled, with a detail surface open, mid-search, and past a «Показать
+// scrolled, with a writer row open, mid-search, and past a «Показать
 // ещё» — and then pushed a new snapshot with changed numbers.
 //
 // The frame carries a brand-new object graph every time (JSON.parse of a
@@ -23,7 +23,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DisplayModeProvider } from "../../display-mode";
 import { SSEProvider } from "../../realtime";
 import { createSSEClient, type SSEClient } from "../../realtime/sseClient";
-import { FakeEventSource, fakeEventSourceFactory, latestInstance } from "../../realtime/testing/fakeEventSource";
+import {
+  FakeEventSource,
+  fakeEventSourceFactory,
+  latestInstance,
+} from "../../realtime/testing/fakeEventSource";
 import type { UpstreamsTopic } from "../../realtime/topics";
 import { MePage } from "../diag/MePage";
 import { upstreamsSnapshot } from "./__fixtures__";
@@ -67,7 +71,11 @@ async function mountPage(url = "/pulse/diag/me?tab=writers") {
       </DisplayModeProvider>
     ),
   });
-  const pulseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/pulse", component: () => null });
+  const pulseRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/pulse",
+    component: () => null,
+  });
   const router = createRouter({
     routeTree: rootRoute.addChildren([pageRoute, pulseRoute]),
     history: createMemoryHistory({ initialEntries: [url] }),
@@ -94,16 +102,15 @@ function byText(el: HTMLElement, text: string): HTMLButtonElement {
   return found;
 }
 
-/** Opens the writers section if the tab lands on it collapsed. */
+/** Guards that the writers tab is active and rendered. */
 function openWriters(el: HTMLElement): void {
-  const toggle = el.querySelector<HTMLButtonElement>('button[aria-controls="writers-panel"]');
-  if (toggle?.getAttribute("aria-expanded") === "false") act(() => toggle.click());
-}
-
-// The surface is a portal into document.body (ui/Sheet), not a child of the
-// page container.
-function surface(): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>('[role="dialog"]');
+  if (!el.querySelector('[data-testid="me-writers"]')) {
+    const tab = buttons(el).find((button) => (button.textContent ?? "").includes("Writers"));
+    if (tab) act(() => tab.click());
+  }
+  if (!el.querySelector('[data-testid="me-writers"]')) {
+    throw new Error("the writers tab must be rendered");
+  }
 }
 
 // React tracks an input's value on the node itself, so assigning `.value`
@@ -117,9 +124,12 @@ function type(input: HTMLInputElement, value: string): void {
   });
 }
 
-function writerRows(el: HTMLElement): HTMLButtonElement[] {
-  const panel = el.querySelector<HTMLElement>("#writers-panel");
-  return panel ? Array.from(panel.querySelectorAll<HTMLButtonElement>("button[data-roving-item]")) : [];
+function writerRows(el: HTMLElement): HTMLDetailsElement[] {
+  return Array.from(
+    el.querySelectorAll<HTMLDetailsElement>(
+      '[data-testid="me-writers"] details[data-writer-state]',
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -157,13 +167,13 @@ describe("a realtime frame during interaction (spec §19.1)", () => {
   it("does not scroll the page or close an open accordion", async () => {
     const el = await mountPage();
     openWriters(el);
-    const opened = el.querySelector<HTMLElement>("#writers-panel")!;
+    const opened = el.querySelector<HTMLElement>('[data-testid="me-writers"]')!;
     expect(opened.hidden).toBe(false);
     const before = scrolls;
 
     pushUpstreams(5, TS + 30);
 
-    expect(el.querySelector<HTMLElement>("#writers-panel")!.hidden).toBe(false);
+    expect(el.querySelector<HTMLElement>('[data-testid="me-writers"]')!.hidden).toBe(false);
     // §19.1: "не возвращать scroll наверх" — the page never asks the window
     // to move because a number changed.
     expect(scrolls).toBe(before);
@@ -177,7 +187,9 @@ describe("a realtime frame during interaction (spec §19.1)", () => {
     const all = writerRows(el).length;
     // One writer's own identity, so the result set is unambiguously narrower
     // than the page's visible limit rather than merely different.
-    const identity = writerRows(el)[0].querySelector("span span")!.textContent!;
+    const identity = writerRows(el)[0]
+      .querySelector("summary strong")!
+      .textContent!.replace("#", "");
     type(search, identity);
     const filtered = writerRows(el).length;
     expect(filtered).toBeGreaterThan(0);
@@ -205,21 +217,23 @@ describe("a realtime frame during interaction (spec §19.1)", () => {
     expect(writerRows(el).length).toBe(revealed);
   });
 
-  it("keeps an open detail surface on the same entity", async () => {
+  it("keeps an expanded writer on the same entity", async () => {
     const el = await mountPage();
     openWriters(el);
     const row = writerRows(el)[0];
     if (!row) throw new Error("entity rows must be reachable as controls (§21)");
-    act(() => row.click());
-    expect(surface()).not.toBeNull();
-    const identity = surface()!.getAttribute("aria-label");
+    const summary = row.querySelector<HTMLElement>("summary")!;
+    act(() => summary.click());
+    expect(row.open).toBe(true);
+    const identity = summary.querySelector("strong")!.textContent;
     expect(identity).toBeTruthy();
 
     pushUpstreams(11, TS + 120);
 
     // Same entity, not a jump to whoever is first in the new array (§19.2).
-    expect(surface()).not.toBeNull();
-    expect(surface()!.getAttribute("aria-label")).toBe(identity);
+    const expanded = writerRows(el).find((item) => item.open);
+    expect(expanded).toBe(row);
+    expect(expanded!.querySelector("summary strong")!.textContent).toBe(identity);
   });
 
   it("moves focus nowhere", async () => {

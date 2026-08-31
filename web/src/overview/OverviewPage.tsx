@@ -1,354 +1,63 @@
-import { useState } from "react";
-import { cn } from "../lib/cn";
 import { useStrings } from "../i18n";
-import { Button } from "../ui/Button";
-import { CardList } from "../ui/Card";
-import { Chip } from "../ui/Chip";
-import { IconButton } from "../ui/IconButton";
-import { IconArrowDown, IconArrowUp, IconPlus } from "../ui/icons";
-import { EmptyState } from "../ui/EmptyState";
-import { Sheet } from "../ui/Sheet";
-import { ConfirmView } from "../ui/ConfirmView";
-import { useDisplayMode, type DisplayMode } from "../display-mode";
-import { ViewMenu } from "./ViewMenu";
-import { STACK_SIZE, getWidgetDef, type WidgetSize } from "../pulse/widgets/registry";
-import {
-  editorRows,
-  hiddenWidgetIds,
-  overviewCells,
-  visibleWidgetIds,
-  type EditorRow,
-} from "../pulse/layout";
-import { usePulseLayout } from "../pulse/usePulseLayout";
-import type { WidgetId } from "../pulse/types";
+import { HealthHero } from "../pulse/widgets/HealthHero";
+import { StatRow } from "../pulse/widgets/StatRow";
+import { Problems } from "../pulse/widgets/Problems";
+import { DcWidget } from "../pulse/widgets/DcWidget";
+import { MePoolWidget } from "../pulse/widgets/MePoolWidget";
+import { UpstreamsWidget } from "../pulse/widgets/UpstreamsWidget";
+import { OnlineNow } from "../pulse/widgets/OnlineNow";
+import { RecentEventsWidget } from "../pulse/widgets/RecentEventsWidget";
+import { QuotasWidget } from "../pulse/widgets/QuotasWidget";
 
-// Сводка's desktop grid is twelve columns with a 20px gutter (`lg:gap-5`),
-// and each widget's registry `size` is the only thing that picks its span.
-// Below `lg:` the grid is a single column and none of these classes apply —
-// the phone layout is byte-for-byte what it was.
-const SPAN_CLASSES: Record<WidgetSize, string> = {
-  third: "lg:col-span-4",
-  fiveTwelfths: "lg:col-span-5",
-  half: "lg:col-span-6",
-  sevenTwelfths: "lg:col-span-7",
-  twoThirds: "lg:col-span-8",
-  full: "lg:col-span-12",
-  // A "tiles" widget emits its own cells; the page never wraps it.
-  tiles: "",
-};
+const CONTENT_MAX = "mx-auto w-full max-w-[1440px]";
 
-// Сводка is a dashboard, not a reading surface, so it is not held to
-// `--layout-readable-max` (06-ui.md: "приборная доска — нет") — but a
-// twelve-column grid stretched across 2560px turns every tile into a
-// letterbox. 1440px is the widest the grid still reads as a grid; beyond
-// it the margins grow instead of the cells.
-const CONTENT_MAX = "mx-auto w-full lg:max-w-[1440px]";
-
-// OverviewPage is /overview — «Сводка», the configurable widget dashboard:
-// the user's layout, filtered by display mode, rendered through the widget
-// registry, plus the "Настроить" catalog editor and the «Скрытые блоки»
-// list (06-ui.md §Информационная архитектура). It is the M3 «Пульс» page
-// under its new name; /pulse is now the diagnostics hub (pulse/hub).
-// No parallel widget list exists anywhere else; the grid, the catalog and
-// the hidden list all read from WIDGETS/usePulseLayout.
-//
-// Header follows the prototype: the page title owns the first line on its
-// own, and the density switch sits under it as a pill strip with «Настроить»
-// as a quiet button at its right — previously the two controls shared the
-// title's line and outweighed it. The switch lives HERE and only here: it
-// filters this dashboard's widgets, and the Пульс hub shows a fixed set of
-// eight cards it has no say over.
+// Overview is deliberately fixed. An operator console benefits from stable
+// positions and muscle memory; a linear user-defined list could not preserve
+// the pairs and proportions of this twelve-column layout, and allowed critical
+// operational sections to be hidden altogether.
 export function OverviewPage() {
   const s = useStrings();
-  const { mode } = useDisplayMode();
-  const { layout, move, show, hide, reset } = usePulseLayout();
-  const [configuring, setConfiguring] = useState(false);
-  const [confirmingReset, setConfirmingReset] = useState(false);
-
-  const visibleIds = visibleWidgetIds(layout, mode);
-
   return (
-    <div className={cn("flex flex-col gap-4", CONTENT_MAX)}>
-      {/* Title and «Вид» share one line at every width (concept §16):
-          the row wraps on a narrow phone rather than truncating either. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-title font-extrabold tracking-tight text-text">{s.overview.title}</h1>
-        {configuring ? (
-          <Button variant="ghost" size="sm" onClick={() => setConfiguring(false)} className="ml-auto">
-            {s.pulse.done}
-          </Button>
-        ) : (
-          <ViewMenu
-            className="ml-auto"
-            onConfigure={() => setConfiguring(true)}
-            onReset={() => setConfirmingReset(true)}
-          />
-        )}
-      </div>
+    <div className={`${CONTENT_MAX} flex flex-col gap-4 lg:gap-5`}>
+      <h1 className="text-page-title font-bold text-text">{s.overview.title}</h1>
 
-      {configuring ? (
-        <LayoutEditor
-          layout={layout}
-          mode={mode}
-          onMove={move}
-          onShow={show}
-          onHide={hide}
-          onReset={() => setConfirmingReset(true)}
-        />
-      ) : visibleIds.length === 0 ? (
-        <EmptyState title={s.pulse.emptyLayoutTitle} description={s.pulse.emptyLayoutDescription} />
-      ) : (
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-5">
-          {overviewCells(visibleIds).map((cell) =>
-            cell.kind === "stack" ? (
-              // One grid cell holding a column of cards — concept §13's ME
-              // (and, from S4, WEB and Апстримы) standing beside the
-              // data-center board rather than starting a row under it. The
-              // grid is `items-start`, so the column's top edge lines up
-              // with the board's.
-              <div
-                key={`stack:${cell.stack}`}
-                data-testid={`widget-stack-${cell.stack}`}
-                className={cn(
-                  "flex min-w-0 flex-col gap-4 lg:gap-5",
-                  SPAN_CLASSES[STACK_SIZE[cell.stack]],
-                )}
-              >
-                {cell.ids.map((id) => (
-                  <RenderWidget key={id} id={id} onHide={hide} />
-                ))}
-              </div>
-            ) : (
-              <GridWidget key={cell.id} id={cell.id} onHide={hide} />
-            ),
-          )}
+      <HealthHero />
+      <StatRow />
+
+      {/* The operator workspace has one primary scan column and a dedicated
+          event rail. Below xl the rail rejoins the content so tablet and
+          phone widths never squeeze operational cards into empty slivers. */}
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-12 xl:gap-5">
+        <div className="flex min-w-0 flex-col gap-4 xl:col-span-9 xl:gap-5">
+          <Problems />
+          <DcWidget />
+
+          <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:gap-5 [&>*]:h-full">
+            <MePoolWidget />
+            <UpstreamsWidget />
+          </div>
+
+          <div className="grid min-w-0 grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-1 xl:gap-5 [&>*]:h-full">
+            <OnlineNow />
+            <div className="xl:hidden">
+              <RecentEventsWidget />
+            </div>
+          </div>
+
+          {/* QuotasWidget removes itself in the normal state. */}
+          <QuotasWidget />
         </div>
-      )}
 
-      {!configuring && <HiddenWidgets layout={layout} mode={mode} onShow={show} />}
-
-      <Sheet open={confirmingReset} onClose={() => setConfirmingReset(false)} title={s.pulse.reset}>
-        <ConfirmView
-          description={s.pulse.resetConfirm}
-          confirmLabel={s.pulse.reset}
-          pending={false}
-          onCancel={() => setConfirmingReset(false)}
-          onConfirm={() => {
-            reset();
-            setConfirmingReset(false);
-          }}
-        />
-      </Sheet>
-    </div>
-  );
-}
-
-interface RenderWidgetProps {
-  id: WidgetId;
-  onHide: (id: WidgetId) => void;
-}
-
-// RenderWidget resolves the registry entry and wires the hide action; it
-// renders the widget BARE, with no grid cell of its own — the caller owns
-// the cell (a stack column does, and GridWidget does).
-function RenderWidget({ id, onHide }: RenderWidgetProps) {
-  const def = getWidgetDef(id);
-  if (!def) return null;
-  const Widget = def.render;
-  return <Widget onHide={def.hideable ? () => onHide(id) : undefined} />;
-}
-
-// GridWidget is one widget in one cell of the twelve-column grid.
-function GridWidget({ id, onHide }: RenderWidgetProps) {
-  const def = getWidgetDef(id);
-  if (!def) return null;
-  // A "tiles" widget IS its own set of grid cells — wrapping it would nest
-  // a second grid inside a single column.
-  if (def.size === "tiles") return <RenderWidget id={id} onHide={onHide} />;
-  return (
-    <div className={cn("min-w-0", SPAN_CLASSES[def.size])}>
-      <RenderWidget id={id} onHide={onHide} />
-    </div>
-  );
-}
-
-interface HiddenWidgetsProps {
-  layout: WidgetId[];
-  mode: DisplayMode;
-  onShow: (id: WidgetId) => void;
-}
-
-// HiddenWidgets — the prototype's «Скрытые блоки» footer: everything the
-// registry offers that this layout does not currently show, each with a
-// one-tap «показать». Without it the only way back to a widget the reader
-// once hid was to open «Настроить» and hunt for its row, which is why the
-// prototype put the list on the page itself.
-//
-// Widgets filtered out by the display MODE are deliberately absent: they are
-// not hidden, they are out of scope for the current density, and offering
-// «показать» for one would either lie (it stays invisible) or silently
-// override the mode. The editor row already explains that case in words.
-function HiddenWidgets({ layout, mode, onShow }: HiddenWidgetsProps) {
-  const s = useStrings();
-  const hidden = hiddenWidgetIds(layout, mode);
-  if (hidden.length === 0) return null;
-
-  return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint">
-        {s.overview.hiddenTitle}
-      </h2>
-      {/* A wrapping row of chips, not a list of rows: these are four short
-          names and a one-tap action each, and a full-width card row per name
-          spent a screenful of space saying almost nothing. The chip IS the
-          «показать» — its own accessible name spells that out, since «+ DC»
-          alone would not. */}
-      <div className="flex flex-wrap gap-2">
-        {hidden.map((id) => (
-          <Chip
-            key={id}
-            size="md"
-            icon={<IconPlus className="h-3.5 w-3.5" />}
-            aria-label={`${s.overview.showWidget}: ${s.pulse.widgets[id]}`}
-            onClick={() => onShow(id)}
-          >
-            {s.pulse.widgets[id]}
-          </Chip>
-        ))}
+        <aside
+          aria-label={s.pulse.widgets.recent_events}
+          className="hidden min-w-0 xl:col-span-3 xl:block"
+          data-testid="overview-event-rail"
+        >
+          <div className="sticky top-5">
+            <RecentEventsWidget rail />
+          </div>
+        </aside>
       </div>
-    </section>
-  );
-}
-
-interface LayoutEditorProps {
-  layout: WidgetId[];
-  mode: DisplayMode;
-  onMove: (id: WidgetId, direction: "up" | "down") => void;
-  onShow: (id: WidgetId) => void;
-  onHide: (id: WidgetId) => void;
-  onReset: () => void;
-}
-
-// LayoutEditor lists every registry widget once, via layout.ts's editorRows
-// — the user's current layout order first (so up/down arrows make sense)
-// followed by the not-yet-shown widgets in registry order. A row whose
-// widget is in the layout but filtered out by the current display mode
-// (availableInMode: false) stays visible, greyed, with a "недоступно в
-// текущем режиме" hint and its checkbox still toggleable — never silently
-// dropped from the list (fix round 1, item 1).
-function LayoutEditor({ layout, mode, onMove, onShow, onHide, onReset }: LayoutEditorProps) {
-  const s = useStrings();
-  const rows = editorRows(layout, mode);
-  const shownRows = rows.filter((r) => r.shown);
-
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-meta text-text-muted">{s.pulse.catalogHint}</p>
-      <CardList>
-        <ul className="flex flex-col">
-          {rows.map((row) => (
-            <LayoutEditorRow
-              key={row.id}
-              row={row}
-              shownIndex={row.shown ? shownRows.findIndex((r) => r.id === row.id) : -1}
-              shownCount={shownRows.length}
-              onMove={onMove}
-              onShow={onShow}
-              onHide={onHide}
-            />
-          ))}
-        </ul>
-      </CardList>
-      <Button variant="ghost" size="sm" onClick={onReset} className="self-start">
-        {s.pulse.reset}
-      </Button>
     </div>
-  );
-}
-
-interface LayoutEditorRowProps {
-  row: EditorRow;
-  /** Index within the shown subset — used for the up/down arrows' disabled bounds. -1 when not shown. */
-  shownIndex: number;
-  shownCount: number;
-  onMove: (id: WidgetId, direction: "up" | "down") => void;
-  onShow: (id: WidgetId) => void;
-  onHide: (id: WidgetId) => void;
-}
-
-// The visibility control stays a real <input type="checkbox"> — restyled
-// with `appearance-none` into the prototype's 42×25 pill switch rather than
-// swapped for a role="switch" button, so it keeps the checkbox role that
-// assistive tech (and e2e/mobile.spec.ts's `.uncheck()`) addresses it by.
-const SWITCH_CLASSES = [
-  "relative h-[25px] w-[42px] shrink-0 cursor-pointer appearance-none rounded-full",
-  "bg-surface-3 transition-colors checked:bg-accent-strong",
-  "disabled:cursor-not-allowed disabled:opacity-50",
-  "before:absolute before:left-[2.5px] before:top-[2.5px] before:h-5 before:w-5",
-  "before:rounded-full before:bg-control-knob before:transition-[left] before:content-['']",
-  "checked:before:left-[19.5px]",
-].join(" ");
-
-function LayoutEditorRow({ row, shownIndex, shownCount, onMove, onShow, onHide }: LayoutEditorRowProps) {
-  const s = useStrings();
-  const def = getWidgetDef(row.id);
-  if (!def) return null;
-
-  const hint = !row.availableInMode
-    ? s.pulse.unavailableInMode
-    : row.shown && !def.hideable
-      ? s.pulse.alwaysOn
-      : null;
-
-  return (
-    // Row markup mirrors ui/Card's CardRow, inlined because this one has to
-    // be an <li> inside the editor's list.
-    <li
-      className={cn(
-        "flex min-h-[46px] items-center gap-3 border-b border-border py-2 last:border-b-0",
-        !row.availableInMode && "opacity-60",
-      )}
-    >
-      <label className="flex min-w-0 flex-1 items-center gap-3">
-        <input
-          type="checkbox"
-          checked={row.shown}
-          disabled={row.shown && !def.hideable}
-          onChange={() => (row.shown ? def.hideable && onHide(def.id) : onShow(def.id))}
-          className={SWITCH_CLASSES}
-        />
-        <span className="min-w-0 flex-1">
-          <span
-            className={cn(
-              "block truncate text-row font-medium",
-              row.availableInMode ? "text-text" : "text-text-muted",
-            )}
-          >
-            {s.pulse.widgets[def.id]}
-          </span>
-          {hint && <span className="block truncate text-micro text-text-muted">{hint}</span>}
-        </span>
-      </label>
-      {row.shown && (
-        <div className="flex shrink-0 items-center gap-0.5">
-          <IconButton
-            aria-label={s.pulse.moveUp}
-            disabled={shownIndex === 0}
-            onClick={() => onMove(row.id, "up")}
-            className="text-[16px]"
-          >
-            <IconArrowUp />
-          </IconButton>
-          <IconButton
-            aria-label={s.pulse.moveDown}
-            disabled={shownIndex === shownCount - 1}
-            onClick={() => onMove(row.id, "down")}
-            className="text-[16px]"
-          >
-            <IconArrowDown />
-          </IconButton>
-        </div>
-      )}
-    </li>
   );
 }

@@ -18,7 +18,7 @@ import type { RuntimeNatStun, RuntimeTopic } from "../../../realtime/topics";
 import { hintKeyFor, noticeVariantFor, resolveTopicSource } from "../sources";
 import { classifyValue, resolveSections } from "../resolveSections";
 import type { CollectionSectionInstance, ScalarSectionInstance } from "../resolveSections";
-import { liveTone, natPageDefinition, reflectionAgeSecs } from "./nat";
+import { liveTone, natPageDefinition, reflectionAgeSecs, reflectionTone } from "./nat";
 
 function resolveFor(context: RuntimeNatStun) {
   return resolveSections({ definition: natPageDefinition, context });
@@ -90,8 +90,8 @@ describe("NAT/STUN page definition (spec §23.5)", () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
-  it("tones the live tile by how many of the configured servers answered", () => {
-    expect(liveTone(natStunLive10)).toBe("warn");
+  it("treats the server pool as redundancy rather than a required quorum", () => {
+    expect(liveTone(natStunLive10)).toBe("good");
     expect(liveTone(natStunLive0)).toBe("bad");
     expect(liveTone({ ...natStunLive10, servers: { configured: [], live: [], live_total: 0 } })).toBe(
       "neutral",
@@ -111,6 +111,38 @@ describe("NAT/STUN page definition (spec §23.5)", () => {
     expect(reflectionAgeSecs(natStunLive10)).toBe(41);
     expect(reflectionAgeSecs(natStunLive0)).toBeNull();
     expect(reflectionAgeSecs(null)).toBeNull();
+  });
+
+  it("uses reflection and probe state for health instead of the responder snapshot", () => {
+    const cachedReflection: RuntimeNatStun = {
+      ...natStunLive10,
+      flags: { ...natStunLive10.flags, nat_probe_attempts: 0 },
+      servers: { ...natStunLive10.servers, live: [], live_total: 0 },
+      reflection: { v4: { addr: "31.56.179.50:46872", age_secs: 124 } },
+    };
+    expect(liveTone(cachedReflection)).toBe("neutral");
+    expect(reflectionTone(cachedReflection)).toBe("good");
+    expect(reflectionTone(natStunLive0)).toBe("bad");
+
+    const waiting: RuntimeNatStun = {
+      ...natStunLive0,
+      flags: { ...natStunLive0.flags, nat_probe_attempts: 0 },
+      stun_backoff_remaining_ms: 0,
+    };
+    expect(reflectionTone(waiting)).toBe("neutral");
+
+    const idleStale: RuntimeNatStun = {
+      ...cachedReflection,
+      reflection: { v4: { addr: "31.56.179.50:46872", age_secs: 601 } },
+    };
+    expect(reflectionTone(idleStale)).toBe("neutral");
+    expect(
+      reflectionTone({
+        ...idleStale,
+        flags: { ...idleStale.flags, nat_probe_attempts: 1 },
+        stun_backoff_remaining_ms: 120_000,
+      }),
+    ).toBe("warn");
   });
 
   it("reads the two bound records as records, never as counters maps", () => {

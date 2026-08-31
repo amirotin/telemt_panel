@@ -19,7 +19,7 @@ import { useTlsFingerprints } from "./useTlsFingerprints";
 // failure is an ErrorState with retry, and a failed refetch after a good
 // one keeps the last rows on screen behind a stale badge — the same rule
 // the SSE topics follow, which this widget must not lose by moving to REST.
-export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
+export function TlsFingerprintsWidget() {
   const s = useStrings();
   const fp = useTlsFingerprints();
 
@@ -54,7 +54,6 @@ export function TlsFingerprintsWidget({ onHide }: { onHide?: () => void }) {
     <WidgetFrame
       title={s.pulse.widgets.tls_fingerprints}
       diagDomain="security"
-      onHide={onHide}
       stale={fp.status === "ok" && fp.stale}
     >
       {body}

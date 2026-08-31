@@ -1,5 +1,5 @@
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
-import { visibleFor, type DisplayMode } from "../../display-mode";
+import type { DisplayMode } from "../../display-mode";
 import { COUNTER_GROUP_PATHS } from "../details-builder/definitions/counters";
 
 // countersRefetchMs: the poll that MAKES the deltas (ruling R4). The panel
@@ -17,8 +17,11 @@ export const countersRefetchMs = 10_000;
 // can see and still cost a 4 KB dump every ten seconds — so basic fetches
 // the dump ONCE, for the tiles and the three breakdowns it does show, and
 // leaves it there.
-export function countersRefetchInterval(mode: DisplayMode): number | false {
-  return visibleFor("extended", mode) ? countersRefetchMs : false;
+export function countersRefetchInterval(_mode: DisplayMode): number {
+  // The custom page puts measured movement on its first tab in every display
+  // mode. Once the operator opens this route, a second snapshot is therefore
+  // primary data rather than an extended-only deep dump.
+  return countersRefetchMs;
 }
 
 /** One counter reading, keyed by the normalized path the map renderer uses. */
@@ -82,6 +85,8 @@ export interface CounterDeltaInput {
 export interface CounterDeltas {
   /** Change per second since the previous response, by normalized path. */
   perSecond: CounterSnapshot;
+  /** Absolute change inside the latest measured window. */
+  sincePrevious: CounterSnapshot;
   /** Absolute change since the page-open baseline, by normalized path. */
   sinceOpen: CounterSnapshot;
 }
@@ -104,6 +109,7 @@ export interface CounterDeltas {
 //     moment a reader opens this page.
 export function computeCounterDeltas(input: CounterDeltaInput): CounterDeltas {
   const perSecond: CounterSnapshot = {};
+  const sincePrevious: CounterSnapshot = {};
   const sinceOpen: CounterSnapshot = {};
 
   const { previous, baseline, current } = input;
@@ -114,6 +120,7 @@ export function computeCounterDeltas(input: CounterDeltaInput): CounterDeltas {
       for (const [path, value] of Object.entries(current.values)) {
         const before = previous.values[path];
         if (before === undefined) continue;
+        sincePrevious[path] = value - before;
         const rate = (value - before) / seconds;
         // Round to two decimals: the row prints a rate, not a measurement.
         perSecond[path] = Math.round(rate * 100) / 100;
@@ -127,5 +134,5 @@ export function computeCounterDeltas(input: CounterDeltaInput): CounterDeltas {
       sinceOpen[path] = value - before;
     }
   }
-  return { perSecond, sinceOpen };
+  return { perSecond, sincePrevious, sinceOpen };
 }

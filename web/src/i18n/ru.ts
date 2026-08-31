@@ -97,10 +97,15 @@ export const ru = {
     pulse: "Пульс",
     journal: "Журнал",
     server: "Сервер",
+    web: "WEB",
+    more: "Ещё",
   },
   shell: {
     menu: "Меню",
     navLabel: "Основная навигация",
+    overviewGroup: "Обзор",
+    managementGroup: "Управление",
+    panelSettings: "Настройки панели",
     connections: "Соединения",
     // Abbreviated counter for the compact status readouts (sidebar card,
     // mobile strip) — "713 соед. · 18,3 ГБ" in the prototype.
@@ -159,8 +164,7 @@ export const ru = {
     },
     create: "Создать",
     emptyTitle: "Пока нет пользователей",
-    emptyDescription:
-      "Создайте первого пользователя, чтобы выдать доступ к прокси.",
+    emptyDescription: "Создайте первого пользователя, чтобы выдать доступ к прокси.",
     notFoundTitle: "Пользователь не найден",
     online: "Онлайн",
     offline: "Оффлайн",
@@ -199,30 +203,24 @@ export const ru = {
       delete: "Удалить",
       cancel: "Отмена",
       confirmDelete: "Удалить пользователя?",
-      confirmDeleteDescription:
-        "Доступ будет отозван немедленно. Действие необратимо.",
+      confirmDeleteDescription: "Доступ будет отозван немедленно. Действие необратимо.",
       confirmResetQuota: "Сбросить использованную квоту трафика?",
-      confirmDisable:
-        "Отключить пользователя? Активные соединения будут прерваны.",
+      confirmDisable: "Отключить пользователя? Активные соединения будут прерваны.",
       confirmEnable: "Включить пользователя?",
-      confirmRotateSecret:
-        "Перевыпустить секрет? Старая ссылка подключения перестанет работать.",
+      confirmRotateSecret: "Перевыпустить секрет? Старая ссылка подключения перестанет работать.",
       noTelegramLink: "У пользователя нет ссылки для подключения.",
-      unsafeTelegramLink:
-        "Ссылка подключения имеет неожиданный формат — переход отменён.",
+      unsafeTelegramLink: "Ссылка подключения имеет неожиданный формат — переход отменён.",
       rotateSecret: "Сменить секрет",
     },
     share: {
       title: "Поделиться доступом",
       unavailableModule: "Страница подписки отключена в настройках панели.",
-      unavailableNoLink:
-        "У пользователя нет classic- или secure-ссылки, чтобы построить подписку.",
+      unavailableNoLink: "У пользователя нет classic- или secure-ссылки, чтобы построить подписку.",
       regenerate: "Перевыпустить ссылку",
       // Short form for the inspector's three-button row, where the full
       // label would wrap onto two lines.
       regenerateShort: "Перевыпуск",
-      confirmRegenerate:
-        "Перевыпустить ссылку? Старая ссылка перестанет работать.",
+      confirmRegenerate: "Перевыпустить ссылку? Старая ссылка перестанет работать.",
       linkLabel: "Ссылка подписки",
     },
     form: {
@@ -291,15 +289,16 @@ export const ru = {
       expiredAgoTemplate: "Истёк {amount} назад",
     },
   },
-  // Сводка — the widget dashboard's own page chrome. The widget catalog
-  // itself stays under `pulse` (that is the registry's namespace, and the
-  // Пульс hub reads the same domain titles from `diag.domains`).
+  // Сводка — the operational dashboard's page chrome.
   overview: {
     title: "Сводка",
     onlineOf: "{online} из {total}",
+    onlineSummary: "{online} из {total} · {connections} соед.",
     onlineEmpty: "Сейчас никто не подключён.",
     // Кнопка в шапке «Онлайн сейчас» (концепция §7) — не строка снизу.
     allUsers: "Все пользователи",
+    topUsers: "Наибольшая текущая нагрузка",
+    sortedByConnections: "По текущим соединениям",
     // Кнопка в шапке «Квоты и сроки» — тем же словом, что и вкладка «Люди».
     allPeople: "Все люди",
     // Строка человека: «13 соединений · 3 IP · 19 ГБ».
@@ -307,11 +306,20 @@ export const ru = {
     // Две колонки на десктопе: строка стала вдвое уже, и «соединений»
     // выталкивало трафик за край.
     onlineConnectionsShort: "{n} соед.",
-    hiddenTitle: "Скрытые блоки",
-    showWidget: "Показать",
-    // The «Вид» dropdown at the right of the title (concept §16).
-    viewLabel: "Вид: {mode}",
-    configureBlocks: "Настроить сводку…",
+    clients: {
+      noAttention: "Клиентских отклонений нет",
+      noAttentionHint: "Квоты, лимиты, сроки и runtime — без отклонений.",
+      needsAttention: "Требуют внимания",
+      quota: "Квота использована на {pct}%",
+      connections: "Соединения: {current} из {limit}",
+      ips: "Уникальные IP: {current} из {limit}",
+      expiresIn: "Истекает через {duration}",
+      expired: "Истёк {duration} назад",
+      runtime: "Не применён в runtime",
+      moreSignals: "+{count}",
+      concentration: "Наибольшая доля соединений",
+      concentrationValue: "{username} · {pct}%",
+    },
     // The status banner's own strings (owner decision 2026-08-30): the
     // facts at its right edge and the update chip beside them.
     status: {
@@ -328,7 +336,71 @@ export const ru = {
     },
   },
   hub: {
-    lede: "Девять разделов диагностики. Откройте карточку, чтобы увидеть подробности.",
+    lede: "Состояние системы и путь к детальной диагностике.",
+    freshness: "обновлено {age}",
+    freshnessUnknown: "время обновления неизвестно",
+    current: "Данные актуальны · {age}",
+    currentPartial: "Часть данных требует обновления",
+    groups: {
+      traffic: "Тракт трафика",
+      trafficNote: "От клиента до дата-центров Telegram",
+      evidence: "Диагностика и свидетельства",
+      evidenceNote: "Среда, события и накопленные сигналы",
+      additional: "Дополнительные источники",
+    },
+    states: {
+      ok: "В норме",
+      warn: "Внимание",
+      error: "Ошибка",
+      muted: "Недоступно",
+    },
+    attention: {
+      healthy: "Все области работают штатно",
+      healthyDescription: "Активных проблем и деградаций не обнаружено.",
+      description: "Откройте раздел, чтобы увидеть причину и связанные данные.",
+      open: "Открыть",
+    },
+    unavailable: "Источник сейчас не предоставляет данные.",
+    cardMetrics: {
+      active: "Активны",
+      total: "Всего",
+      healthy: "Здоровы",
+      degraded: "Деградация",
+      clients: "Клиентов",
+      admission: "Приём клиентов",
+      access: "Доступ к API",
+      apiMode: "Изменения API",
+      quality: "Качество · 15 мин",
+      refusals15m: "Отказы · 15 мин",
+      attempts15m: "Попытки · 15 мин",
+      reflection: "Reflection",
+      retries: "Повторы",
+      lastEvent: "Последнее событие",
+      event: "Событие",
+      events24h: "За 24 часа",
+      minRtt: "RTT мин.",
+      attempts: "Попытки",
+      types: "Типов",
+      evicted: "Вытеснено",
+      whitelist: "Whitelist",
+    },
+    values: {
+      silent: "Тихо",
+      open: "Открыт",
+      closed: "Закрыт",
+      notReady: "Не готов",
+      admissionOpen: "Приём открыт",
+      admissionClosed: "Приём закрыт",
+      configReload: "Конфигурация применена",
+      restricted: "Ограничен",
+      unrestricted: "Не ограничен",
+      readOnly: "Запрещены",
+      readWrite: "Разрешены",
+      collecting: "Ждём",
+      ipv4And6: "IPv4 + IPv6",
+      none: "Нет",
+      noEvents: "Событий нет",
+    },
     metrics: {
       dcTotal: "Дата-центров",
       coverage: "Покрытие",
@@ -338,27 +410,12 @@ export const ru = {
   },
   pulse: {
     title: "Пульс",
-    configure: "Настроить",
-    done: "Готово",
-    reset: "Сбросить к умолчанию",
-    resetConfirm: "Вернуть раскладку дашборда к умолчанию?",
-    catalogTitle: "Виджеты",
-    catalogHint: "Отметьте виджеты и настройте порядок стрелками.",
-    moveUp: "Переместить вверх",
-    moveDown: "Переместить вниз",
-    show: "Показать",
-    hide: "Скрыть",
-    hideWidget: "Скрыть виджет",
-    alwaysOn: "Всегда включён",
-    unavailableInMode: "Недоступно в текущем режиме",
-    diagLink: "Диагностика",
-    emptyLayoutTitle: "Дашборд пуст",
-    emptyLayoutDescription: "Включите виджеты в режиме «Настроить».",
+    diagLink: "Детали",
     widgets: {
       health_hero: "Статус",
       stat_row: "Показатели",
       problems: "Проблемы",
-      online_now: "Онлайн сейчас",
+      online_now: "Клиенты",
       dc: "Дата-центры",
       upstreams: "Апстримы",
       // Концепция §10/§13 называет карточку просто «ME» — pool/quality это
@@ -379,11 +436,11 @@ export const ru = {
       // The banner's headline when /v1/health/ready says the proxy is not
       // serving — it replaces the state word, it does not sit beside it.
       notAccepting: "Не принимает клиентов",
-      // The banner's four aggregated states (concept §4). «Работает»,
-      // «Запускается» and «Нет данных» come from the shared `health` group
-      // the status strip also reads.
-      limited: "Ограничено",
-      unavailable: "Недоступен",
+      // The banner keeps one short state word. Stable operational states are
+      // «Работает», «Деградация» and «Нет связи»; startup/no-data remain
+      // transient states from the shared `health` group.
+      limited: "Деградация",
+      unavailable: "Нет связи",
       // Telemt's two `reason` tokens (src/api/mod.rs @3.5.5), in words.
       readyReason: {
         admissionClosed: "Приём новых подключений закрыт.",
@@ -414,6 +471,8 @@ export const ru = {
     problems: {
       // Компактное состояние карточки (концепция §6/§17) — одна строка.
       none: "Проблем не обнаружено",
+      noneHint:
+        "Текущее состояние подсистем и динамика ошибок за последние 15 минут — без отклонений.",
       handshakeFailures: "Ошибки хендшейка",
       staleTopic: "Устарели данные:",
       notReady: "Telemt не готов",
@@ -431,6 +490,7 @@ export const ru = {
       meCoverageLow: "Низкое покрытие middle-proxy",
       meCoverageLowDetail: "{alive}/{floor} писателей, покрытие {pct}%",
       meSplitTraffic: "Часть соединений обслуживается напрямую, минуя ME",
+      meRuntimeDegraded: "Подсистема ME работает с деградацией",
       // Детали для правил на счётчиках: сам счётчик в Telemt накопительный
       // (за всё время работы), поэтому в проблемы попадает только прирост за
       // окно, а полное значение остаётся рядом справочно.
@@ -438,6 +498,7 @@ export const ru = {
       // Расширенный режим: одна приглушённая строка о накопительных
       // счётчиках, которые сейчас не растут и потому не считаются проблемой.
       lifetimeCounters: "Счётчики за всё время: {value} (см. Соединения)",
+      more: "ещё",
     },
     activeSessions: {
       current: "Текущие соединения",
@@ -455,17 +516,34 @@ export const ru = {
       // Доступное имя узла (концепция §9): кольцо, полоса и число кодируют
       // четыре факта визуально, поэтому подпись называет все четыре.
       nodeLabel: "DC {dc} · покрытие {coverage} % · писатели {alive} из {required} · RTT {rtt}",
-      // Отрицательный id — не тестовая площадка, а группа медиа-серверов
+      // Отрицательный id — не тестовая площадка, а медиа-маршрут
       // того же дата-центра (соглашение Telegram, Telemt
-      // transport/middle_proxy/pool_config.rs). Тестовая площадка одна —
-      // 203 (и -203 её медиа-группа).
-      mediaGroup: "медиа-серверы DC {dc}",
-      testSite: "тестовая площадка",
-      // Крошечная метка в углу узла — только у 203 и -203.
-      testTag: "тест",
+      // transport/middle_proxy/pool_config.rs). Все 12 узлов рабочие.
+      mediaGroup: "медиа-маршрут DC {dc}",
       // Подписи рядов доски.
       rowMedia: "Медиа",
       rowMain: "Основные",
+      coverageSummary: "Покрытие",
+      writersSummary: "Писатели",
+      p95Rtt: "RTT p95",
+      attention: "Требуют внимания",
+      allHealthy: "Все дата-центры в норме",
+      mainName: "DC {dc}",
+      mediaName: "Медиа {dc}",
+      fleetCount: "{count} DC",
+      groupCount: "{groups} DC · {routes} маршрутов",
+      mainRoute: "RPC",
+      mediaRoute: "Media",
+      cdn: "CDN",
+      state: {
+        healthy: "В норме",
+        degraded: "Деградация",
+        attention: "Внимание",
+        unavailable: "Недоступен",
+      },
+      routeMissing: "Не настроен",
+      endpoints: "Адреса",
+      connections: "Соединения",
     },
     upstreams: {
       route: "Маршрут",
@@ -478,6 +556,8 @@ export const ru = {
       onAverage: "в среднем",
       empty: "Нет настроенных апстримов.",
       successRate: "Успешность подключения",
+      checkedAgo: "проверен {seconds} с назад",
+      more: "ещё {count}",
     },
     // Карточка подсистемы ME (концепция §10) — на главной только сводка,
     // подробные счётчики на /pulse/diag/me.
@@ -492,15 +572,12 @@ export const ru = {
       },
       // Подпись под крупной цифрой «44 / 44».
       writersUnit: "писателей",
+      availableRequired: "доступно / нужно",
       coverage: "Покрытие",
-      // Четыре постоянных факта справа, 2×2. «refill» — имя поля Telemt,
-      // на экране оно по-русски.
-      facts: {
-        refill: "пополнение",
-        draining: "дренаж",
-        fallback: "fallback",
-        degraded: "деградация",
-      },
+      healthy: "здоровы",
+      degraded: "деградация",
+      draining: "дренаж",
+      refill: "пополнение",
       // Строка состояния в норме — слот под неё есть всегда, поэтому
       // здоровая карточка тоже что-то в нём говорит.
       allAlive: "Все писатели живы",
@@ -508,7 +585,7 @@ export const ru = {
       reason: {
         fallback: "Трафик идёт напрямую, минуя ME",
         coverage: "Покрытие {pct} %",
-        writersLost: "Не хватает писателей: {count}",
+        writersLost: "Маршрутов ниже минимума писателей: {count}",
         draining: "В дренаже писателей: {count}",
         degradedWriters: "Писателей с деградацией: {count}",
         family: "Семейство {family}: {state}",
@@ -791,7 +868,7 @@ export const ru = {
       dc: {
         title: "Дата-центры",
         description:
-          "Выберите дата-центр — ниже показано только его состояние, а не все двенадцать сразу.",
+          "Состояние маршрутов Telegram: положительный номер — RPC, отрицательный — Media. Связанные маршруты одного DC показаны парой.",
         routing: "Маршрутизация и ёмкость",
         endpoints: "Адреса middle proxy, полученные от Telegram для этого дата-центра.",
         endpointWriters: "Сколько живых писателей держит каждый адрес.",
@@ -800,6 +877,47 @@ export const ru = {
         attention: {
           degraded: "покрытие неполное",
           uncovered: "нет живых писателей",
+        },
+        view: {
+          loading: "Получаем данные дата-центров",
+          loadingDescription: "Маршруты появятся после первого ответа Telemt.",
+          sourceUnavailable: "Данные дата-центров недоступны",
+          noDataCenters: "Нет данных по дата-центрам",
+          noDataCentersDescription:
+            "Telemt ответил без списка маршрутов. Возможно, Middle End отключён в конфигурации.",
+          sixPairs: "Шесть связанных пар",
+          chooseDataCenter: "Выберите дата-центр",
+          dcPairs: "Пары дата-центров",
+          selectedPair: "Выбранная пара",
+          healthy: "В норме",
+          needsAttention: "Требует внимания",
+          unavailable: "Недоступен",
+          highRtt: "Высокий RTT",
+          pairHealthy: "RPC и Media: покрытие и задержка в норме",
+          coverage: "Покрытие",
+          writers: "Writers",
+          fresh: "Свежие",
+          freshWriters: "Свежих writers",
+          endpoints: "Endpoint’ы",
+          endpointsAvailable: "Доступно endpoint’ов",
+          load: "Нагрузка",
+          destinations: "Точки назначения",
+          endpointsAndWriters: "Endpoint’ы и writers",
+          activeRequired: "активные / требуемые",
+          available: "доступны",
+          noEndpoints: "Endpoint’ы не пришли в ответе.",
+          adaptiveCapacity: "Адаптивная ёмкость",
+          writerRange: "Рабочий диапазон writers",
+          minimum: "Min",
+          target: "Target",
+          maximum: "Max",
+          capped: "лимит достигнут",
+          notCapped: "без ограничения",
+          capacityExplanation:
+            "Target меняется вместе с числом доступных endpoint’ов. Capped показывает, что верхний предел уже ограничил расчёт.",
+          technical: "Технические параметры",
+          technicalDescription: "Выбранные адреса, IP-предпочтение и метаданные снимка.",
+          ms: "мс",
         },
       },
       security: {
@@ -830,14 +948,133 @@ export const ru = {
           byCidr: "Подсети",
           byUser: "Пользователи",
         },
+        view: {
+          breadcrumb: "ПУЛЬС / БЕЗОПАСНОСТЬ",
+          description: "Защита управляющего API, сигналы TLS ClientHello и эффективные сетевые лимиты.",
+          postureTab: "Защита API",
+          tlsTab: "TLS ClientHello",
+          limitsTab: "Лимиты",
+          postureTabShort: "API",
+          tlsTabShort: "TLS",
+          limitsTabShort: "Лимиты",
+          verdictKicker: "Итоговая оценка",
+          verdictOpen: "Контур управления открыт",
+          verdictTls: "Нужен разбор TLS",
+          verdictWeak: "Защита ослаблена",
+          verdictRestricted: "Доступ ограничен",
+          verdictUnknown: "Ожидаем условия доступа",
+          verdictOpenDescription: "Нет whitelist и auth header, при этом API разрешает изменения.",
+          verdictTlsDescription: "{count} наблюдений отмечены как некорректные или похожие на сканирование.",
+          verdictRestrictedDescription: "Whitelist ограничивает обращения к API; изменения разрешены после прохождения сетевого фильтра.",
+          verdictUnknownDescription: "Оценка уточнится после получения всех условий доступа.",
+          conditionsMet: "защитные условия выполняются",
+          attentionRequired: "требует внимания",
+          apiAccess: "Доступ к API",
+          whitelist: "Whitelist",
+          unfiltered: "Без фильтра",
+          allowedNetworks: "разрешённых сетей: {count}",
+          anyAddress: "принимаются любые адреса",
+          awaitingData: "ожидаем данные Telemt",
+          apiMode: "Режим API",
+          changesDenied: "изменения запрещены",
+          changesAvailable: "управляющие операции доступны",
+          tlsSignals: "TLS-сигналы",
+          badOrProbe: "некорректные / сканы",
+          captureWindow: "в текущем окне захвата",
+          requestPath: "Путь запроса",
+          apiProtection: "Как защищён управляющий API",
+          sequentialConditions: "условия применяются последовательно",
+          networkFilter: "Сетевой фильтр",
+          whitelistOn: "Whitelist включён · {count} CIDR",
+          whitelistOff: "Whitelist выключен · пропускает всех",
+          authRequired: "Секретный заголовок обязателен",
+          authMissing: "Дополнительная авторизация не задана",
+          permissions: "Полномочия",
+          readOnlyDescription: "Только чтение",
+          readWriteDescription: "Read-write · изменения разрешены",
+          openExplanation: "Одновременно отсутствуют оба барьера, а API принимает изменяющие запросы. Контур действительно открыт.",
+          barrierExplanation: "Отдельный выключенный механизм не считается уязвимостью сам по себе: оценка учитывает всю последовательность условий.",
+          extraProperties: "Дополнительные свойства",
+          transportObservability: "Транспорт и наблюдаемость",
+          clientAddressHint: "адрес клиента от балансировщика",
+          coreSignals: "базовые сигналы ядра",
+          userAggregation: "агрегация по пользователям",
+          logLevel: "Уровень логов",
+          processLogging: "журналирование процесса",
+          meDetail: "детализация middle proxy",
+          enabled: "Включено",
+          disabled: "Выключено",
+          allowedNetworksTitle: "Разрешённые сети",
+          apiWhitelist: "Whitelist API",
+          realCidrs: "Действующие CIDR из конфигурации Telemt.",
+          whitelistDisabledDescription: "Список отключён: записи не участвуют в фильтрации запросов.",
+          noRestriction: "Нет действующего ограничения",
+          clientHelloWindow: "Окно TLS ClientHello",
+          captureState: "Состояние захвата",
+          retention: "retention · {value}",
+          observations: "Наблюдений",
+          fourDimensions: "одно окно, четыре измерения",
+          parseErrors: "Ошибки разбора",
+          evicted: "Вытеснено",
+          bufferCapacity: "буфер {count} записей",
+          fingerprints: "Отпечатки",
+          subnets: "Подсети",
+          users: "Пользователи",
+          tlsDimensions: "Измерения TLS-наблюдений",
+          searchPlaceholder: "Поиск в выбранном измерении",
+          searchLabel: "Поиск TLS-наблюдений",
+          ranking: "Рейтинг",
+          sortedByTotal: "Сортировка: всего ↓",
+          noMatches: "В выбранном измерении совпадений нет",
+          rowsShown: "Показано {visible} из {total}",
+          showMore: "Показать ещё",
+          needReview: "требуют разбора: {count}",
+          noSignals: "без сигналов",
+          effectiveValues: "Эффективные значения",
+          connectionBudgets: "Бюджеты клиентского соединения",
+          afterDefaults: "после применения defaults",
+          handshakeHint: "клиент должен завершить рукопожатие",
+          telegramConnectHint: "подключение к выбранному маршруту",
+          keepaliveHint: "интервал поддержания соединения",
+          firstByteHint: "ожидание первого байта клиента",
+          upstreamRetries: "Повторы апстрима",
+          runtimeBudgets: "Рантайм и Middle End",
+          userPolicies: "Политики пользователя",
+          connectAttempts: "Попытки подключения",
+          backoff: "Backoff",
+          totalBudget: "Общий бюджет",
+          unhealthyThreshold: "Порог unhealthy",
+          failfastHardErrors: "Fail-fast на hard errors",
+          configRefresh: "Обновление конфигурации",
+          meReinit: "Повторная инициализация ME",
+          meForceClose: "Force close пула ME",
+          clientAck: "Ожидание ACK клиента",
+          meRetryTimeout: "ME retry / timeout",
+          ipPolicyMode: "Режим IP-политики",
+          ipPolicyLimit: "Лимит IP",
+          ipPolicyWindow: "Окно IP-политики",
+          tcpPolicyLimit: "Лимит TCP-сессий",
+          limitsExplanation: "Это параметры поведения, а не самостоятельные security-alerts. Они отделены от оценки доступа, чтобы не размывать её десятками чисел.",
+          technical: "Технические параметры",
+          technicalDescription: "Имена полей API и полная конфигурация middle proxy.",
+          loading: "Загружаем данные безопасности",
+          loadingText: "Ожидаем снимок Telemt.",
+          sourceError: "Не удалось обновить данные",
+          sourceErrorText: "Последний запрос завершился ошибкой. Можно повторить его без перезагрузки страницы.",
+          unavailable: "Данные пока недоступны",
+          unavailableText: "Telemt не вернул этот раздел в текущем снимке.",
+          retry: "Повторить",
+          minutes: "{count} мин",
+          seconds: "{count} с",
+        },
       },
       me: {
         title: "Middle End",
         description:
-          "Самый большой ответ Telemt разложен по вопросам, на которые он отвечает: писатели, качество, запуск и настройки рантайма — вместо одной простыни из тысячи строк.",
+          "Пул постоянных writer-соединений между клиентскими сессиями и дата-центрами Telegram.",
         tabs: {
           overview: "Обзор",
-          writers: "Писатели",
+          writers: "Writers",
           quality: "Качество",
           initialization: "Инициализация",
           runtime: "Рантайм",
@@ -884,6 +1121,148 @@ export const ru = {
         runtimePicker: "Выбор писателя",
         runtimeQuarantine: "Карантин адресов",
         quarantinedEndpoints: "Адреса в карантине",
+        view: {
+          loading: "Загружаем состояние Middle End",
+          loadingDescription: "Ожидаем writers и данные среды выполнения Telemt.",
+          sourceUnavailable: "Данные Middle End пока недоступны",
+          routeKicker: "Маршрут новых сессий",
+          modeMiddle: "Через Middle End",
+          modeFallback: "Fallback на Direct",
+          modeDirect: "Direct без ME",
+          modeMiddleDescription: "ME runtime готов, автоматический reroute не активен.",
+          modeFallbackDescription:
+            "ME выбран конфигурацией, но новые сессии временно отправляются напрямую.",
+          modeDirectDescription: "Middle End отключён конфигурацией; Direct — основной маршрут.",
+          writers: "Writers",
+          requiredReserve: "требуется · запас",
+          coverage: "Покрытие",
+          endpointsAvailable: "endpoint’ов доступны",
+          boundClients: "Привязано клиентов",
+          distributed: "распределены между writers",
+          rttP95: "RTT p95",
+          activeWriters: "по активным writers",
+          topology: "Топология пула",
+          writersByPairs: "Writers по DC-парам",
+          rttEma: "RTT EMA · мс",
+          totalWriters: "writers суммарно",
+          controller: "Решение контроллера",
+          routeReadiness: "Готовность маршрута",
+          newSessions: "Новые сессии",
+          routeMode: "route_mode",
+          meRuntime: "ME runtime",
+          ready: "Готов",
+          notReady: "Не готов",
+          degradedWriters: "Деградировали",
+          noCoverageEffect: "не влияют на покрытие",
+          endpoints: "Endpoint’ы",
+          temporaryUnavailable: "временно недоступны",
+          drainGate: "Drain gate",
+          quorumAndRedundancy: "quorum и redundancy",
+          open: "Открыт",
+          blocked: "Заблокирован",
+          reserveNote:
+            "Покрытие ограничено 100%. Запас writers показан отдельно: это ёмкость пула, а не ещё один процент покрытия.",
+          fallbackNote:
+            "Fallback — отдельный рабочий режим: пул диагностируется, но новые сессии идут напрямую.",
+          directNote:
+            "ME отключён конфигурацией. Отсутствие пула в этом режиме не является деградацией.",
+          activeGeneration: "Активное поколение",
+          healthy: "здоровы",
+          degraded: "degraded",
+          draining: "draining",
+          noPoolData: "Состав пула недоступен для текущего режима.",
+          pointDiagnostics: "Точечная диагностика",
+          writersAndClients: "Writers и привязанные клиенты",
+          total: "всего",
+          all: "Все",
+          active: "Active",
+          searchPlaceholder: "ID, DC или endpoint",
+          noWriters: "По выбранному фильтру writers не найдены.",
+          writer: "Writer",
+          route: "Маршрут",
+          endpoint: "Endpoint",
+          clients: "Клиенты",
+          state: "Состояние",
+          generation: "Generation",
+          idle: "Idle",
+          desiredMap: "В целевой карте",
+          activeGenerationMatch: "Активное поколение",
+          drainFallback: "Drain fallback",
+          yes: "да",
+          no: "нет",
+          secondsShort: "с",
+          ms: "мс",
+          latency: "Задержка маршрутов",
+          rttByPairs: "RTT по DC-парам",
+          lowerIsBetter: "меньше — лучше",
+          currentSignals: "Текущие сигналы",
+          safeToUse: "Можно ли безопасно использовать пул",
+          addressFamilies: "IPv4 / IPv6",
+          failStreak: "серия ошибок",
+          queueFull: "Queue full",
+          kdfDrift: "KDF drift",
+          threshold: "порог",
+          lifetime: "Накопительно с запуска",
+          investigationCounters: "Счётчики для расследования",
+          cumulativeNotHealth: "накопительные значения не определяют здоровье сами по себе",
+          reconnectAttempts: "Reconnect attempts",
+          reconnectSuccess: "Reconnect success",
+          noConnection: "No connection",
+          channelClosed: "Channel closed",
+          peerIdleEof: "Peer idle / EOF",
+          lastStart: "Последний запуск",
+          proxyReady: "Прокси готов к работе",
+          proxyNotReady: "Прокси ещё запускается",
+          transportMode: "transport mode",
+          meReadiness: "Готовность ME",
+          initAttempt: "Попытка инициализации",
+          components: "Компоненты",
+          started: "Запущен",
+          criticalPath: "Критический путь",
+          startupSequence: "Последовательность запуска",
+          groupedComponents: "сгруппировано из компонентов Telemt",
+          initConfig: "Конфигурация",
+          initServices: "API, TLS и службы",
+          initNetwork: "Проверка сети",
+          initSecret: "ME secret и конфигурация",
+          initPool: "Пул writers",
+          initOptional: "Необязательные проверки",
+          completed: "Ready",
+          skipped: "Skipped",
+          inProgress: "Выполняется",
+          failed: "Ошибка",
+          ageVsDuration:
+            "Возраст процесса и длительность запуска — разные величины. Здесь показан возраст и фактические этапы, а не неоднозначное total_elapsed_ms.",
+          runtimeGates: "Управляющие гейты",
+          whatNow: "Что Telemt делает прямо сейчас",
+          operationalFlags: "операционные флаги",
+          admission: "Admission",
+          accepting: "Открыт",
+          notAccepting: "Закрыт",
+          fallback: "Fallback",
+          allowed: "Разрешён",
+          disabled: "Отключён",
+          fastFallback: "fast fallback",
+          poolLifecycle: "Жизненный цикл пула",
+          generationsAndRefill: "Поколения и дозаполнение",
+          warmGeneration: "Warm generation",
+          none: "нет",
+          hardswapPending: "Hardswap ожидается",
+          refillInflight: "Refill inflight",
+          selftest: "Self-test",
+          environment: "Среда выполнения",
+          clockSkew: "Clock skew",
+          ipv4: "IPv4",
+          ipv6: "IPv6",
+          pid: "PID",
+          socksBnd: "SOCKS BND",
+          notUsed: "не используется",
+          technical: "Технические параметры",
+          technicalDescription:
+            "Метаданные снимка и параметры пула, не нужные для первичного сканирования.",
+          runtimeSettings: "Настройки ME runtime",
+          runtimeSettingsDescription: "Полный набор эффективных параметров пула.",
+        },
       },
       counters: {
         title: "Счётчики",
@@ -906,6 +1285,104 @@ export const ru = {
         connectionsBadByClass: "Почему подключения не состоялись.",
         handshakeFailuresByClass: "Почему рукопожатия не состоялись.",
         handshakeErrorCodes: "С какими кодами middle proxy отклонял рукопожатия.",
+        view: {
+          breadcrumb: "ПУЛЬС / СЧЁТЧИКИ",
+          description: "Изменения за измеренное окно, причины отказов и накопительные значения пяти подсистем Telemt.",
+          activityTab: "Сейчас",
+          failuresTab: "Причины отказов",
+          explorerTab: "Все счётчики",
+          activityTabShort: "Сейчас",
+          failuresTabShort: "Отказы",
+          explorerTabShort: "Счётчики",
+          currentWindow: "Текущее окно",
+          collectingBaseline: "Собирается baseline",
+          failuresMoving: "Растут счётчики отказов",
+          flowStable: "Поток стабилен",
+          baselineDescription: "Нужен второй снимок, чтобы отделить текущее движение от истории процесса.",
+          restartDescription: "Telemt перезапустился: предыдущие абсолюты отброшены, начинается новое измерение.",
+          failuresMovingDescription: "За последнее окно выросли failure-счётчики: {count} новых сигналов.",
+          flowStableDescription: "Трафик проходит через активные подсистемы без нового движения failure-счётчиков.",
+          newConnections: "Новые соединения",
+          perWindow: "за измеренное окно",
+          upstreamSuccess: "Успех upstream",
+          successAttempts: "успешно / попыток",
+          measuredRate: "скорость по двум снимкам",
+          newSignals: "Новые сигналы",
+          notLifetimeSum: "не сумма за время работы",
+          nextSnapshot: "ожидание второго снимка",
+          secondsWindow: "окно {count} с",
+          secondShort: "с",
+          twoSnapshots: "Два снимка · {window}",
+          currentTrafficPath: "Путь текущего трафика",
+          absolutesInExplorer: "Абсолюты доступны во вкладке «Все счётчики»",
+          baselineWindowNote: "После открытия нужен второй снимок. Панель не превращает накопительные абсолюты в текущую скорость.",
+          restartWindowNote: "После рестарта нужен второй снимок. Сброшенные абсолюты не отображаются как отрицательная скорость.",
+          measuredWindowNote: "Значения показывают прирост, измеренный панелью. Telemt отдаёт только накопительные счётчики.",
+          baseline: "baseline",
+          active: "активен",
+          hasFailures: "есть отказы",
+          success100: "100% успех",
+          transmitting: "передаёт данные",
+          noTraffic: "нет движения",
+          clientConnectionsWindow: "клиентских соединений за окно",
+          connectAttemptsWindow: "попыток подключения за окно",
+          payloadToClients: "полезной нагрузки к клиентам",
+          unsuccessful: "Неуспешные",
+          successful: "Успешно",
+          failureShare: "Доля отказов",
+          writers: "Писатели",
+          poolEventsHint: "удаления, refill и восстановления",
+          protocol: "Протокол",
+          desyncHint: "новые рассинхронизации",
+          uptimeBoundary: "граница жизни накопительных значений",
+          eventsCount: "+{count} событий",
+          noMovement: "без движения",
+          restarted: "перезапущен",
+          continuous: "непрерывен",
+          failureDiagnostics: "Диагностика отказов",
+          newThenAccumulated: "Сначала новое, затем накопленное",
+          newSignalsWindow: "Новые сигналы за окно",
+          crossFamilyNavigation: "межсемейная сумма только для навигации",
+          lifetimeShare: "{value} за всё время",
+          lifetimeAttemptsShare: "{value} попыток за всё время",
+          accumulated: "накопительно",
+          whyConnectionsFailed: "Почему соединения не стали сессиями",
+          whyHandshakeFailed: "Почему handshake не завершился",
+          middleProxyRejections: "Отклонения со стороны middle proxy",
+          classesCount: "строк: {count}",
+          noCodes: "Коды не зарегистрированы",
+          emptyArrayHonest: "Массив присутствует в ответе и пуст. Это не отсутствие данных и не скрытая ошибка.",
+          accumulatedCause: "накопленная причина",
+          sinceStart: "с запуска",
+          deltaPerWindow: "{delta} · {window}",
+          technicalExplorer: "Технический исследователь",
+          allBySubsystem: "Все счётчики по подсистемам",
+          absoluteAndMeasured: "Абсолют + измеренное изменение",
+          searchPlaceholder: "Поиск по ключу или описанию",
+          searchLabel: "Поиск по счётчикам",
+          filterAll: "Все",
+          filterNonzero: "Только ненулевые",
+          filterErrors: "Ошибки и drops",
+          resetBaseline: "Сбросить baseline",
+          rowsAndKeys: "{count} строк · исходные ключи API",
+          counter: "Счётчик",
+          absolute: "Абсолют",
+          sinceOpen: "С открытия",
+          noMatches: "По выбранному фильтру ничего не найдено.",
+          sourceAndMethod: "Источник и метод измерения",
+          technicalDescription: "Endpoint, интервал сравнения и граница жизни накопительных значений.",
+          snapshotNotHistory: "snapshot, не history",
+          panelInterval: "Интервал панели",
+          neighborDifference: "разность соседних снимков",
+          processReset: "Сброс процесса",
+          reanchorsBaseline: "уменьшение переякоривает baseline",
+          sourceTimestamp: "метка текущего ответа Telemt",
+          loading: "Получаем счётчики Telemt",
+          loadingDescription: "Первый снимок станет baseline; текущее движение появится после следующего ответа.",
+          sourceError: "Не удалось получить счётчики",
+          sourceErrorDescription: "Запрос zero/all завершился ошибкой. Его можно повторить без перезагрузки страницы.",
+          retry: "Повторить",
+        },
       },
       upstreams: {
         title: "Апстримы",
@@ -924,11 +1401,75 @@ export const ru = {
         successTile: "Успешных подключений",
         latencyTile: "Лучшая задержка",
         filterUnhealthy: "Только нездоровые",
+        view: {
+          loading: "Получаем данные апстримов",
+          loadingDescription: "Статистика маршрутов появится после первого ответа Telemt.",
+          sourceUnavailable: "Данные апстримов недоступны",
+          availableForSelection: "Доступны для выбора",
+          of: "из",
+          howSelectionWorks: "Как Telemt выбирает маршрут",
+          scope: "Scope",
+          health: "здоровье",
+          weightAndRtt: "вес × 1 / RTT",
+          randomChoice: "случайный выбор",
+          selectionDescription:
+            "Выбор выполняется заново для каждого соединения и нужного DC. Постоянного основного маршрута нет.",
+          generalPool: "Общий пул",
+          noRoutes: "Апстримы не настроены",
+          noRoutesDescription:
+            "Telemt ответил успешно, но в текущей конфигурации нет маршрутов выхода к Telegram.",
+          routes: "Маршруты",
+          configured: "в конфигурации",
+          eligible: "Пригоден",
+          excluded: "Исключён",
+          excludedFromSelection: "Исключён из выбора",
+          noUnhealthy: "Проблемных маршрутов нет.",
+          effectiveRtt: "Эффективный RTT",
+          availableDcAverage: "среднее по доступным DC",
+          failureStreak: "Серия неудач",
+          untilExcluded: "до исключения из выбора",
+          consecutiveFailures: "неудач подряд",
+          lastCheck: "Последняя проверка",
+          secondsAgo: "с назад",
+          healthCheck: "проверка доступности маршрута",
+          routeWeight: "Вес маршрута",
+          byDirection: "Задержка по направлениям",
+          rttThroughRoute: "RTT через выбранный маршрут",
+          lowerIsBetter: "меньше — лучше",
+          noDcLatency: "Telemt пока не передал задержку по DC.",
+          dcLatencyChartLabel: "Задержка выбранного маршрута по дата-центрам",
+          routeParticipates:
+            "Маршрут участвует в своём пуле. Вероятность выбора зависит от веса и RTT нужного дата-центра.",
+          routeExcluded:
+            "Маршрут исключён из выбора после серии неудачных циклов. Telemt использует другие пригодные маршруты этого scope.",
+          telegramConnections: "Подключения к Telegram",
+          attemptHistory: "Что происходило с попытками",
+          lifetime: "накопительно · с момента запуска",
+          attemptsSucceeded: "попыток завершились успехом",
+          attempts: "Попыток",
+          successful: "Успешных",
+          exhaustedCycles: "Циклов без результата",
+          hardErrors: "Жёстких ошибок",
+          counterExplanation:
+            "Попытки и окончательно проваленные циклы имеют разные знаменатели: промежуточный retry увеличивает число попыток, но не является отдельным проваленным подключением.",
+          policy: "Политика",
+          failureHandling: "Как Telemt переживает сбой",
+          retryAttempts: "попытки",
+          totalBudget: "общий бюджет",
+          excludedAfter: "Маршрут исключается после",
+          failedCyclesInRow: "неудачных циклов подряд",
+          policyUnavailable:
+            "Политика подключения не пришла из runtime API. Состояние маршрутов и накопительные счётчики выше остаются актуальны.",
+          technical: "Технические параметры",
+          technicalDescription: "Политика, счётчики и метаданные источников без интерпретации.",
+          ms: "мс",
+          secondsShort: "с",
+        },
       },
       connections: {
         title: "Соединения",
         description:
-          "Клиентские соединения: постоянные счётчики прокси и, если включён runtime_edge, два рейтинга пользователей — по числу соединений и по трафику.",
+          "Текущая клиентская нагрузка, качество приёма и распределение по пользователям. Накопительные счётчики сохранены как контекст, а не как текущая авария.",
         summary: "Счётчики соединений",
         badByClass: "Почему подключения не состоялись.",
         handshakeByClass: "Почему рукопожатия не состоялись.",
@@ -938,6 +1479,59 @@ export const ru = {
         metaConnections: "соединений сейчас: {count}",
         cache: "Кэш ответа",
         reporting: "Как собран отчёт",
+        view: {
+          liveLoad: "Живая нагрузка · 30 минут",
+          connectionsNow: "соединений сейчас",
+          connections: "Соединения",
+          activeUsers: "Активных пользователей",
+          perUser: "На пользователя",
+          peak: "Пик",
+          chartLabel: "Соединения и активные пользователи за последние 30 минут",
+          historyCollecting: "История собирается",
+          availableMinutes: "доступно {minutes} мин. из 30",
+          thirtyMinutesAgo: "30 мин. назад",
+          fifteenMinutesAgo: "15 мин.",
+          now: "Сейчас",
+          admission: "Приём подключений",
+          open: "открыт",
+          closed: "закрыт",
+          unknown: "неизвестно",
+          openDescription: "Прокси принимает новые клиентские соединения без ограничений.",
+          closedDescription: "Новые клиентские соединения сейчас не принимаются.",
+          attempts: "Попыток",
+          refusals: "Отказов",
+          accepted: "Принято",
+          lastThirtyMinutes: "За последние 30 минут",
+          lastAvailableMinutes: "За доступные {minutes} мин.",
+          quality: "Качество",
+          sinceStart: "за время работы",
+          acceptanceLifetime: "подключений принято",
+          acceptedLower: "принято",
+          refusedLower: "отклонено",
+          cumulativeExplanation:
+            "Причины доступны только как накопительные счётчики. Они объясняют состав отказов, но сами по себе не объявляют текущую деградацию.",
+          clients: "Клиенты",
+          loadCreators: "Кто создаёт нагрузку",
+          traffic: "Трафик",
+          topClients: "Топ-5 держат соединений",
+          noClients: "Активных клиентов в рейтинге нет.",
+          noReasons: "Причины отказов не зарегистрированы.",
+          runtimeUnavailable:
+            "runtime_edge сейчас не предоставляет распределение по пользователям. Живая история и постоянные счётчики остаются доступны.",
+          clientsUnavailable:
+            "Рейтинг клиентов доступен только при включённом runtime_edge. Это не означает, что клиентов сейчас нет.",
+          sourceUnavailable: "Источник временно недоступен",
+          loading: "Получаем состояние соединений",
+          loadingDescription: "Страница появится после первого снимка stats.",
+          technical: "Технические счётчики",
+          technicalDescription: "Накопительные значения и параметры источника",
+          badTlsClient: "Некорректный TLS-клиент",
+          badMtprotoClient: "Некорректный MTProto-клиент",
+          directDisabled: "Прямой режим недоступен",
+          daysShort: "дн.",
+          hoursShort: "ч.",
+          minutesShort: "мин.",
+        },
       },
       nat: {
         title: "NAT/STUN",
@@ -952,6 +1546,155 @@ export const ru = {
         liveDescription: "Серверы, ответившие в последней пробе.",
         configuredTile: "В конфигурации",
         reflectionAgeTile: "Возраст ответа",
+        view: {
+          tabs: { overview: "Обзор", servers: "STUN-серверы" },
+          mechanismState: "Состояние механизма",
+          freshTitle: "Reflection пригоден",
+          freshDetail:
+            "Внешний адрес находится внутри TTL 600 секунд. Пустой live[] относится только к последней пробе и не отменяет сохранённый cache.",
+          freshNote: "Data plane не объявляется деградировавшим",
+          delayedTitle: "Обновление reflection задержано",
+          delayedDetail:
+            "Cache старше штатных 10 минут, а последние попытки обновления не получили ответа. Это проблема автоопределения адреса, а не утверждение об отказе клиентов.",
+          delayedNote: "Новые ME writers могут использовать старый cache во время backoff",
+          staleTitle: "Reflection старше TTL",
+          staleDetail:
+            "Сохранённый внешний адрес устарел, но runtime пока не сообщает о неудачной серии обновлений.",
+          staleNote: "Требуется наблюдение за следующей пробой",
+          pendingTitle: "Ожидание reflection",
+          pendingDetail:
+            "Внешний адрес ещё не появился в runtime snapshot, но признаков неудачной серии проб или backoff нет.",
+          pendingNote: "Нейтральное состояние до результата следующей пробы",
+          missingTitle: "Reflection не получен",
+          missingDetail:
+            "Runtime не содержит внешнего адреса. Предупреждение появляется только вместе с попытками или backoff.",
+          missingNote: "Проверьте STUN-доступность и конфигурацию NAT",
+          disabledTitle: "Автоопределение выключено",
+          disabledDetail:
+            "Telemt не запускает STUN-пробы. Это может быть штатно при публичном bind-адресе или ручном middle_proxy_nat_ip — runtime endpoint не сообщает, какой вариант используется.",
+          disabledNote: "Состояние нейтральное: проверяется конфигурация, а не доступность STUN",
+          fallbackTitle: "Fallback: Direct",
+          fallbackDetail:
+            "ME включён как основной режим, но сейчас недоступен. Telemt обслуживает клиентский трафик через резервный маршрут Direct.",
+          fallbackNote:
+            "Сервис работает; предупреждение относится к отклонению от основного маршрута",
+          directTitle: "Direct",
+          directDetail:
+            "ME отключён конфигурацией. Telemt подключается к дата-центрам напрямую, поэтому NAT/STUN для ME не требуется.",
+          directNote: "Direct — основной штатный режим, а не fallback",
+          activeRoute: "Активный маршрут",
+          connectionsDirect: "соединения идут напрямую к DC",
+          directRole: "Роль Direct",
+          reserve: "резервный",
+          primary: "основной",
+          fallbackActivated: "включён после недоступности ME",
+          selectedByConfig: "выбран конфигурацией",
+          middleEnd: "Middle End",
+          enabledNotReady: "включён · не готов",
+          disabled: "выключен",
+          primaryUnavailable: "основной маршрут временно недоступен",
+          poolNotCreated: "ME pool намеренно не создаётся",
+          natForMe: "NAT/STUN для ME",
+          sourceUnavailable: "источник недоступен",
+          notRequired: "не требуется",
+          sourceUnavailableExplained: "source_unavailable объясняется состоянием ME pool",
+          sourceUnavailableExpected: "source_unavailable ожидаем без ME pool",
+          fallbackExplanation:
+            "Fallback — самостоятельный рабочий режим. Здесь показан активный Direct и отдельно объяснена причина ухода с ME.",
+          directExplanation:
+            "Direct — самостоятельный штатный режим. Отсутствие ME pool и NAT/STUN здесь не является ошибкой или fallback.",
+          ipv4Reflection: "IPv4 reflection",
+          ipv6Reflection: "IPv6 reflection",
+          ageTtl: "Возраст / TTL",
+          lastProbe: "Последняя проба",
+          noData: "нет данных",
+          runtimeAddress: "адрес из runtime snapshot",
+          cachedFreshness: "свежесть cached reflection",
+          familyAbsenceNotError: "отсутствие семейства ≠ ошибка",
+          answeredNotQuorum: "ответили сейчас · не кворум",
+          howAddressUsed: "Как используется адрес",
+          pathTitle: "Путь NAT reflection",
+          pathMeta: "Механизм относится к формированию ME writers",
+          localBind: "Локальный bind",
+          notExposed: "не раскрыт",
+          localBindDescription: "Runtime endpoint NAT/STUN не сообщает локальный bind-адрес.",
+          known: "известен",
+          unknown: "неизвестен",
+          stunDiscovery: "STUN discovery",
+          serversSuffix: "серверов",
+          notStarted: "не запускается",
+          autoProbeDisabled: "Автопроба выключена конфигурацией или runtime.",
+          refreshDelayed: "Последний refresh не получил ответа; действует backoff.",
+          parallelProbe: "Параллельная проба ищет отражённый внешний адрес.",
+          refreshDelayedState: "refresh delayed",
+          reflectionCache: "Reflection cache",
+          noCache: "нет cache",
+          familyNotInSnapshot: "Reflection этого семейства не представлен в runtime snapshot.",
+          savedAgo: "Сохранён",
+          ttlTenMinutes: "TTL — 10 минут.",
+          olderTtl: "старше TTL",
+          current: "актуален",
+          meAddress: "ME address",
+          dependsOnConfig: "зависит от config",
+          addressPrepared: "адрес подготовлен",
+          notDetermined: "не определён",
+          manualNatPossible:
+            "Возможен публичный bind или ручной NAT IP, которых этот endpoint не раскрывает.",
+          reflectionUsage: "Reflected IP используется только для непубличного локального адреса.",
+          checkConfig: "проверить config",
+          readyByCache: "готов по cache",
+          ready: "готов",
+          byIpFamily: "Раздельно по IP family",
+          knownAddresses: "Известные внешние адреса",
+          portFromReflection: "Порт приходит из STUN reflection",
+          cacheFresh: "cache актуален",
+          needsRefresh: "нужен refresh",
+          noReflection: "нет reflection",
+          notReceived: "Не получен",
+          addressSeenByStun: "Адрес, которым STUN видит исходящее соединение Telemt.",
+          endpointNoFamily: "Endpoint честно не содержит эту ветку reflection.",
+          familySeparateState:
+            "Это отдельное состояние семейства. Оно не становится общей ошибкой, если семейство не используется.",
+          ageUnavailable: "Возраст недоступен",
+          cacheAge: "Возраст cache",
+          probeState: "Состояние пробы",
+          whatNow: "Что происходит сейчас",
+          notProxyHealth: "не health-check прокси",
+          autoDiscovery: "Автоопределение",
+          enabled: "включено",
+          consecutiveAttempts: "Последовательных попыток",
+          backoff: "Backoff",
+          notActive: "не действует",
+          answeredSnapshot: "Ответили в последнем снимке",
+          delayedProbeNote:
+            "Cache старше TTL вместе с серией попыток и backoff — достаточная причина показать предупреждение именно для refresh.",
+          disabledProbeNote:
+            "Выключенная проба не красится в ошибку: по этому endpoint нельзя исключить ручной NAT IP.",
+          freshProbeNote:
+            "live[] может быть пуст после отдельной неудачной пробы, пока reflection cache остаётся пригодным.",
+          lastCompletedProbe: "Последняя завершённая проба",
+          configurationAndSnapshot: "Конфигурация и transient live snapshot",
+          liveSnapshotNote:
+            "Список live не является непрерывным мониторингом и не задаёт требуемый кворум. Он полностью заменяется результатом последнего прогона; reflection хранится отдельно.",
+          configured: "В конфигурации",
+          liveSnapshot: "В live snapshot",
+          refreshAttempt: "Попытка refresh",
+          successfulEarlier: "успешна ранее",
+          cacheIpv4: "Cache IPv4",
+          cacheIpv6: "Cache IPv6",
+          notQueried: "не опрашивался",
+          answered: "ответил",
+          absentFromSnapshot: "нет в снимке",
+          technical: "Технические параметры",
+          technicalDescription: "Исходные флаги runtime и границы интерпретации",
+          loading: "Получаем состояние NAT/STUN",
+          loadingDescription: "Ожидаем runtime snapshot от Telemt.",
+          unavailableTitle: "Данные NAT/STUN временно недоступны",
+          unavailableDescription:
+            "ME выбран активным маршрутом, но runtime не вернул состояние механизма.",
+          secondsShort: "с",
+          minutesShort: "мин.",
+        },
       },
       events: {
         title: "События",
@@ -963,6 +1706,56 @@ export const ru = {
         countTile: "Событий",
         typesTile: "Типов событий",
         filterFamily: "Семейство",
+        view: {
+          latestEvent: "Последнее событие",
+          noEvents: "Событий пока нет",
+          bufferReady: "Буфер создан и готов принимать управляющие события.",
+          stored: "В буфере",
+          storedNote: "записей доступно через API",
+          historyPeriod: "Период истории",
+          historyNote: "от самой старой до новой записи",
+          eventTypes: "Типов событий",
+          typesNote: "уникальные event_type",
+          noHistory: "нет истории",
+          newestFirst: "Новые сверху",
+          timeline: "Временная ось",
+          lastTemplate: "Последние {shown} из {total}",
+          foundTemplate: "Найдено {count}",
+          all: "Все",
+          admission: "Admission",
+          config: "Config",
+          api: "API",
+          other: "Другие",
+          searchPlaceholder: "Тип, context, username…",
+          searchLabel: "Поиск по событиям",
+          nothingFound: "Ничего не найдено",
+          changeFilter: "Измените семейство или поисковый запрос.",
+          newEventsAppear: "Новые управляющие события появятся здесь автоматически.",
+          composition: "Состав буфера",
+          dominates: "Что доминирует",
+          compositionEmpty: "Состав появится после первого события.",
+          admissionDominates:
+            "Admission занимает почти всю историю. Фильтр Config или API быстрее найдёт редкое событие, чем прокрутка общей ленты.",
+          ringBuffer: "Кольцевой буфер",
+          historyBoundary: "Граница истории",
+          occupied: "занято",
+          evicted: "Вытеснено старых записей",
+          evictionExplanation:
+            "Счётчик накопительный: старые события удалялись при заполнении ring buffer. Это не потеря текущего трафика.",
+          bufferNotReached:
+            "История ещё не достигала границы буфера; ни одна старая запись не вытеснена.",
+          disabledKicker: "Функция наблюдаемости выключена",
+          journalDisabled: "Журнал событий выключен",
+          disabledDescription:
+            "Telemt работает, но runtime_edge отключён конфигурацией. Источник recent_events отсутствует, поэтому интерфейс не показывает фиктивные нули, пустой буфер или «нет событий».",
+          disabledObservability: "Это состояние функции наблюдаемости, а не data plane.",
+          enableRuntimeEdge: "Включение server.api.runtime_edge_enabled возвращает журнал.",
+          logsSeparate: "Журнал и системные логи остаются разными источниками.",
+          technical: "Технические параметры",
+          technicalDescription: "Источник, границы ring buffer и последовательность записей",
+          loading: "Получаем события runtime",
+          loadingDescription: "Ожидаем первый runtime snapshot от Telemt.",
+        },
       },
       web: {
         title: "WEB",
@@ -1038,6 +1831,159 @@ export const ru = {
         closeConflictTemplate: "Не удалось закрыть: {count}",
         closeFailed: "Закрытие не завершилось",
         closeUnavailable: "Закрывать нечего: рантайм не запущен",
+        view: {
+          breadcrumb: "Пульс / WEB",
+          running: "Работает",
+          pressure: "Близко к пределу",
+          draining: "Завершение",
+          partial: "Снимок неполный",
+          off: "WEB выключен",
+          unsupported: "Нет в этой версии",
+          overview: "Обзор",
+          mode: "Режим",
+          runningMode: "Running",
+          drainingMode: "Draining",
+          inStateTemplate: "в состоянии {age}",
+          issuance: "Выдача сессий",
+          issuanceAllowed: "Разрешена",
+          issuanceStopped: "Остановлена",
+          issuanceAllowedNote: "новые credentials выдаются",
+          issuanceStoppedNote: "живые сессии продолжают работу",
+          liveSessions: "Живые сессии",
+          liveStreams: "Живые streams",
+          limitTemplate: "предел {value}",
+          limitHits: "Отказы по лимиту",
+          noLimitHits: "не зафиксированы",
+          sinceStart: "накопительно с запуска",
+          managerBusy: "manager занят",
+          capacityKicker: "Где заканчивается запас",
+          capacityTitle: "Ёмкость рантайма",
+          usedLimit: "использовано / предел",
+          capacitySessions: "Сессии",
+          capacityStreams: "Streams",
+          capacityHttp: "HTTP connections",
+          capacityQueue: "Очереди DATA",
+          capacityWebsocket: "Память WebSocket",
+          capacityNote:
+            "Цвет предупреждения появляется только при 75% и 90%. Низкое заполнение остаётся спокойным индикатором ёмкости.",
+          runtimeKicker: "Как запущено",
+          runtimeTitle: "Рантайм и listeners",
+          configuration: "Конфигурация",
+          webEnabled: "WEB включён",
+          webDisabled: "WEB выключен",
+          listener: "Listener",
+          carrierLearning: "Carrier learning",
+          debugCapture: "Debug capture",
+          enabled: "включён",
+          disabled: "выключен",
+          flowKicker: "Накопительно с запуска",
+          flowTitle: "Что прошло через WEB",
+          notRealtime: "не скорость в реальном времени",
+          streamsOpened: "Streams открыто",
+          rejectedTemplate: "{count} отклонено",
+          noRejections: "отклонений нет",
+          sessionsClosed: "Сессии закрыто",
+          remainLiveTemplate: "{count} остаются живыми",
+          registryUnavailable: "текущий registry недоступен",
+          trafficUp: "Трафик вверх",
+          trafficDown: "Трафик вниз",
+          sinceRuntime: "с запуска runtime",
+          planesKicker: "Подсистемы",
+          planesTitle: "Плоскости WEB",
+          planesIndependent: "каждая блокируется независимо",
+          websocketRegistry: "WebSocket registry",
+          carrierLearningName: "Carrier learning",
+          debugRecorder: "Debug recorder",
+          captureOff: "capture выключен · буфер пуст",
+          pressureTitle: "Рантайм уже упирался в лимиты",
+          pressureTextTemplate: "{count} отказов с запуска. Проверьте заполнение ёмкости ниже.",
+          drainingTitle: "Новые сессии больше не выдаются",
+          drainingTextTemplate:
+            "Draining ждёт завершения {count} живых сессий. Отключение [web] само по себе их не закрывает.",
+          partialTitle: "Снимок получен частично",
+          partialTextTemplate:
+            "{planes} не отдали данные из-за занятого try_lock. Это не нули и не отказ остальных плоскостей.",
+          noListenerKicker: "NO_WEB_LISTENER",
+          noListenerTitle: "WEB-транспорт не запущен",
+          noListenerText:
+            "В конфигурации нет активного WEB listener. Это штатная конфигурация, а не отказ основного прокси.",
+          noListenerSessions: "Живых WEB-сессий и process runtime сейчас нет.",
+          noListenerHow: "Для запуска нужны WEB listener, vhost и хотя бы один профиль.",
+          unsupportedKicker: "CAPABILITY_ABSENT",
+          unsupportedTitle: "WEB runtime недоступен в этой версии Telemt",
+          unsupportedText:
+            "Панель не получила /v1/runtime/web/status, поэтому не показывает строки из тире и не делает вывод, что WEB выключен.",
+          unsupportedTraffic: "Текущий сервер продолжает обслуживать обычный MTProxy-трафик.",
+          unsupportedHow: "Раздел появляется после обновления Telemt до версии с WEB runtime API.",
+          loading: "Получаем состояние WEB runtime",
+          loadingText: "Ожидаем первый снимок темы web от Telemt.",
+          sourceError: "Не удалось получить состояние WEB",
+          sourceErrorText:
+            "Панель повторит подписку автоматически; остальные режимы прокси не затронуты.",
+          unavailable: "WEB runtime временно недоступен",
+          unavailableText:
+            "Telemt знает WEB API, но process runtime не отдал данные в этом снимке. Это не означает, что основной прокси остановлен.",
+          sessionsKicker: "Живые подключения",
+          loadedAllTemplate: "{count} живых сессий загружено полностью.",
+          loadedPartialTemplate: "{count} строк загружено · registry сообщает {total}.",
+          boundedScan: "Общего total у bounded scan нет.",
+          closeFoundTemplate: "Закрыть найденные · {count}",
+          byState: "По состоянию",
+          byCarrier: "По carrier",
+          scan: "Сканирование",
+          scannedTemplate: "{count} просмотрено",
+          notTruncated: "не усечено",
+          truncated: "достигнут предел обхода",
+          all: "Все",
+          provisional: "Provisional",
+          httpsLanes: "HTTPS lanes",
+          websocket: "WebSocket",
+          searchPlaceholder: "Пользователь, IP, host…",
+          searchLabel: "Поиск WEB-сессий",
+          openSessionDetailsTemplate: "Открыть детали: {user}, {ip}",
+          sessionIdentity: "Идентификация",
+          sessionTransport: "Транспорт и состояние",
+          sessionActivity: "Активность",
+          sessionQueues: "Очереди",
+          stateUser: "Состояние / пользователь",
+          route: "Маршрут",
+          activity: "Активность",
+          load: "Нагрузка",
+          client: "Клиент",
+          age: "возраст",
+          idleTemplate: "idle {age}",
+          pendingTemplate: "{bytes} pending",
+          userAgentMissing: "не передан",
+          close: "Закрыть",
+          showMoreTemplate: "Показать ещё {count}",
+          loadedRowsOnly: "Сейчас показаны только загруженные строки",
+          loadNext: "Загрузить следующую страницу",
+          noMatches: "Ничего не найдено",
+          changeSearch: "Измените фильтр или поисковый запрос.",
+          sessionsBusyTitle: "Список временно недоступен",
+          sessionsBusyText:
+            "Endpoint ответил успешно, но partial содержит manager. Пустая выборка в этом случае не означает отсутствие клиентов.",
+          retry: "Повторить запрос",
+          loadingSessions: "Получаем живые сессии…",
+          sessionsError: "Не удалось загрузить список сессий.",
+          technical: "Технические параметры",
+          technicalDescription: "Process fence, поколения, permits и полный набор лимитов",
+          source: "Источник",
+          endpointAbsent: "endpoint отсутствует",
+          reason: "Причина",
+          newerVersion: "нужна более новая версия Telemt",
+          processFence: "process fence для control actions",
+          runtimeGeneration: "поколение runtime",
+          lifecycleEpoch: "смена состояния процесса",
+          busyPlanes: "занятые плоскости этого poll",
+          empty: "пусто",
+          semaphoresTemplate: "{count} семафоров",
+          limitsCountTemplate: "{count} значений",
+          processOwned: "process-owned, требуют restart",
+          globalSessions: "общий registry сессий",
+          allStreams: "все логические streams",
+          globalDataBudget: "глобальный DATA budget",
+        },
       },
     },
     // Разбивка «имя → число» (§9.4): одна строка на пару, доля от суммы
@@ -1141,80 +2087,119 @@ export const ru = {
       },
       descriptions: {
         "upstreams.upstreams": "Маршруты к Telegram, настроенные в конфигурации прокси.",
-        "upstreams.row.upstream_id": "Номер маршрута в конфигурации; он же ключ, по которому сведены статистика и качество.",
-        "upstreams.row.route_kind": "Тип маршрута: прямое подключение или прокси (SOCKS4/SOCKS5/Shadowsocks).",
+        "upstreams.row.upstream_id":
+          "Номер маршрута в конфигурации; он же ключ, по которому сведены статистика и качество.",
+        "upstreams.row.route_kind":
+          "Тип маршрута: прямое подключение или прокси (SOCKS4/SOCKS5/Shadowsocks).",
         "upstreams.row.address": "Адрес маршрута; для прямого подключения — слово direct.",
-        "upstreams.row.weight": "Вес маршрута при выборе: чем больше, тем чаще прокси берёт именно его.",
+        "upstreams.row.weight":
+          "Вес маршрута при выборе: чем больше, тем чаще прокси берёт именно его.",
         "upstreams.row.scopes": "Для каких соединений применяется маршрут.",
         "upstreams.row.healthy": "Считает ли прокси маршрут пригодным прямо сейчас.",
-        "upstreams.row.fails": "Сколько неудач подряд насчитал маршрут; на пороге он признаётся нездоровым.",
+        "upstreams.row.fails":
+          "Сколько неудач подряд насчитал маршрут; на пороге он признаётся нездоровым.",
         "upstreams.row.last_check_age_secs": "Сколько прошло с последней проверки маршрута.",
-        "upstreams.row.effective_latency_ms": "Задержка, которую прокси считает актуальной для этого маршрута.",
+        "upstreams.row.effective_latency_ms":
+          "Задержка, которую прокси считает актуальной для этого маршрута.",
         "upstreams.row.dc": "Задержки этого маршрута до дата-центров Telegram.",
-        "upstreams.dc.dc": "Номер дата-центра Telegram; отрицательный — группа медиа-серверов того же DC; 203 — тестовая площадка.",
+        "upstreams.dc.dc": "Номер дата-центра Telegram; отрицательный — медиа-маршрут того же DC.",
         "upstreams.dc.latency_ema_ms": "Сглаженная задержка маршрута до этого дата-центра.",
-        "upstreams.dc.ip_preference": "Какое семейство адресов маршрут выбрал для этого дата-центра.",
+        "upstreams.dc.ip_preference":
+          "Какое семейство адресов маршрут выбрал для этого дата-центра.",
         "upstreams.summary.configured_total": "Сколько маршрутов настроено.",
         "upstreams.summary.healthy_total": "Сколько маршрутов прокси сейчас считает пригодными.",
         "upstreams.summary.unhealthy_total": "Сколько маршрутов признаны нездоровыми.",
-        "upstreams.summary.direct_total": "Сколько маршрутов ходят напрямую, без промежуточного прокси.",
+        "upstreams.summary.direct_total":
+          "Сколько маршрутов ходят напрямую, без промежуточного прокси.",
         "upstreams.summary.socks4_total": "Сколько маршрутов ходят через SOCKS4.",
         "upstreams.summary.socks5_total": "Сколько маршрутов ходят через SOCKS5.",
         "upstreams.summary.shadowsocks_total": "Сколько маршрутов ходят через Shadowsocks.",
-        "upstreams.zero.connect_attempt_total": "Сколько раз прокси пытался подключиться через маршрут.",
+        "upstreams.zero.connect_attempt_total":
+          "Сколько раз прокси пытался подключиться через маршрут.",
         "upstreams.zero.connect_success_total": "Сколько попыток подключения завершились успехом.",
         "upstreams.zero.connect_fail_total": "Сколько попыток подключения закончились неудачей.",
-        "upstreams.zero.connect_failfast_hard_error_total": "Сколько попыток прокси прервал сразу, не тратя бюджет: ошибка была заведомо неустранимой.",
+        "upstreams.zero.connect_failfast_hard_error_total":
+          "Сколько попыток прокси прервал сразу, не тратя бюджет: ошибка была заведомо неустранимой.",
         "upstreams.zero.connect_attempts_bucket_1": "Подключений, удавшихся с первой попытки.",
         "upstreams.zero.connect_attempts_bucket_2": "Подключений, потребовавших двух попыток.",
-        "upstreams.zero.connect_attempts_bucket_3_4": "Подключений, потребовавших трёх-четырёх попыток.",
-        "upstreams.zero.connect_attempts_bucket_gt_4": "Подключений, потребовавших более четырёх попыток.",
-        "upstreams.zero.connect_duration_success_bucket_le_100ms": "Успешных подключений быстрее 100 мс.",
-        "upstreams.zero.connect_duration_success_bucket_101_500ms": "Успешных подключений за 101–500 мс.",
-        "upstreams.zero.connect_duration_success_bucket_501_1000ms": "Успешных подключений за 501–1000 мс.",
-        "upstreams.zero.connect_duration_success_bucket_gt_1000ms": "Успешных подключений дольше секунды.",
-        "upstreams.zero.connect_duration_fail_bucket_le_100ms": "Неуспешных попыток, оборвавшихся быстрее 100 мс.",
-        "upstreams.zero.connect_duration_fail_bucket_101_500ms": "Неуспешных попыток длительностью 101–500 мс.",
-        "upstreams.zero.connect_duration_fail_bucket_501_1000ms": "Неуспешных попыток длительностью 501–1000 мс.",
-        "upstreams.zero.connect_duration_fail_bucket_gt_1000ms": "Неуспешных попыток длительностью больше секунды.",
-        "upstreams.policy.connect_retry_attempts": "Сколько раз прокси повторяет подключение, прежде чем считать попытку проваленной.",
+        "upstreams.zero.connect_attempts_bucket_3_4":
+          "Подключений, потребовавших трёх-четырёх попыток.",
+        "upstreams.zero.connect_attempts_bucket_gt_4":
+          "Подключений, потребовавших более четырёх попыток.",
+        "upstreams.zero.connect_duration_success_bucket_le_100ms":
+          "Успешных подключений быстрее 100 мс.",
+        "upstreams.zero.connect_duration_success_bucket_101_500ms":
+          "Успешных подключений за 101–500 мс.",
+        "upstreams.zero.connect_duration_success_bucket_501_1000ms":
+          "Успешных подключений за 501–1000 мс.",
+        "upstreams.zero.connect_duration_success_bucket_gt_1000ms":
+          "Успешных подключений дольше секунды.",
+        "upstreams.zero.connect_duration_fail_bucket_le_100ms":
+          "Неуспешных попыток, оборвавшихся быстрее 100 мс.",
+        "upstreams.zero.connect_duration_fail_bucket_101_500ms":
+          "Неуспешных попыток длительностью 101–500 мс.",
+        "upstreams.zero.connect_duration_fail_bucket_501_1000ms":
+          "Неуспешных попыток длительностью 501–1000 мс.",
+        "upstreams.zero.connect_duration_fail_bucket_gt_1000ms":
+          "Неуспешных попыток длительностью больше секунды.",
+        "upstreams.policy.connect_retry_attempts":
+          "Сколько раз прокси повторяет подключение, прежде чем считать попытку проваленной.",
         "upstreams.policy.connect_retry_backoff_ms": "Пауза между повторами подключения.",
-        "upstreams.policy.connect_budget_ms": "Сколько времени отводится на всё подключение вместе с повторами.",
-        "upstreams.policy.unhealthy_fail_threshold": "Сколько неудач подряд переводят маршрут в нездоровые.",
-        "upstreams.policy.connect_failfast_hard_errors": "Прерывать ли попытку сразу при заведомо неустранимой ошибке.",
+        "upstreams.policy.connect_budget_ms":
+          "Сколько времени отводится на всё подключение вместе с повторами.",
+        "upstreams.policy.unhealthy_fail_threshold":
+          "Сколько неудач подряд переводят маршрут в нездоровые.",
+        "upstreams.policy.connect_failfast_hard_errors":
+          "Прерывать ли попытку сразу при заведомо неустранимой ошибке.",
         "upstreams.stats.enabled": "Собирает ли прокси статистику по маршрутам.",
         "upstreams.stats.reason": "Почему статистика по маршрутам недоступна, словами Telemt.",
-        "upstreams.stats.generated_at_epoch_secs": "Когда прокси собрал снимок статистики по маршрутам.",
+        "upstreams.stats.generated_at_epoch_secs":
+          "Когда прокси собрал снимок статистики по маршрутам.",
         "upstreams.quality.enabled": "Включён ли отчёт о качестве маршрутов.",
         "upstreams.quality.reason": "Почему отчёт о качестве маршрутов недоступен, словами Telemt.",
-        "upstreams.quality.generated_at_epoch_secs": "Когда прокси собрал снимок качества маршрутов.",
+        "upstreams.quality.generated_at_epoch_secs":
+          "Когда прокси собрал снимок качества маршрутов.",
         "connections.summary.uptime_seconds": "Сколько прокси работает без перезапуска.",
-        "connections.summary.connections_total": "Сколько клиентских соединений прокси принял с момента запуска.",
-        "connections.summary.connections_bad_total": "Сколько соединений прокси отклонил или не смог обслужить.",
-        "connections.summary.handshake_timeouts_total": "Сколько рукопожатий не уложились в отведённое время.",
+        "connections.summary.connections_total":
+          "Сколько клиентских соединений прокси принял с момента запуска.",
+        "connections.summary.connections_bad_total":
+          "Сколько соединений прокси отклонил или не смог обслужить.",
+        "connections.summary.handshake_timeouts_total":
+          "Сколько рукопожатий не уложились в отведённое время.",
         "connections.summary.configured_users": "Сколько пользователей заведено в конфигурации.",
-        "connections.summary.connections_bad_by_class": "Разбивка неуспешных соединений по причинам.",
-        "connections.summary.handshake_failures_by_class": "Разбивка неуспешных рукопожатий по причинам.",
+        "connections.summary.connections_bad_by_class":
+          "Разбивка неуспешных соединений по причинам.",
+        "connections.summary.handshake_failures_by_class":
+          "Разбивка неуспешных рукопожатий по причинам.",
         "connections.class": "Причина, как её называет сам Telemt.",
         "connections.class_total": "Сколько раз встретилась эта причина.",
         "connections.users_traffic_total": "Суммарный трафик всех пользователей за всё время.",
         "connections.cache.ttl_ms": "Сколько прокси держит этот отчёт, прежде чем собрать заново.",
         "connections.cache.served_from_cache": "Отдан ли отчёт из кэша, а не собран заново.",
-        "connections.cache.stale_cache_used": "Пришлось ли отдать устаревший кэш, потому что пересобрать не удалось.",
-        "connections.totals.current_connections": "Сколько клиентских соединений открыто прямо сейчас.",
-        "connections.totals.current_connections_me": "Сколько текущих соединений идут через middle proxy.",
+        "connections.cache.stale_cache_used":
+          "Пришлось ли отдать устаревший кэш, потому что пересобрать не удалось.",
+        "connections.totals.current_connections":
+          "Сколько клиентских соединений открыто прямо сейчас.",
+        "connections.totals.current_connections_me":
+          "Сколько текущих соединений идут через middle proxy.",
         "connections.totals.current_connections_direct": "Сколько из них идут напрямую к Telegram.",
-        "connections.totals.active_users": "Сколько пользователей сейчас держат хотя бы одно соединение.",
+        "connections.totals.active_users":
+          "Сколько пользователей сейчас держат хотя бы одно соединение.",
         "connections.top.limit": "Сколько записей прокси кладёт в каждый рейтинг.",
         "connections.top.by_connections": "Пользователи с наибольшим числом открытых соединений.",
         "connections.top.by_throughput": "Пользователи с наибольшим трафиком.",
         "connections.top.username": "Имя пользователя в конфигурации прокси.",
-        "connections.top.current_connections": "Сколько соединений пользователь держит прямо сейчас.",
+        "connections.top.current_connections":
+          "Сколько соединений пользователь держит прямо сейчас.",
         "connections.top.total_octets": "Сколько трафика пользователь передал за всё время.",
-        "connections.telemetry.user_enabled": "Ведёт ли прокси учёт по отдельным пользователям; без него рейтинги пустые.",
-        "connections.telemetry.throughput_is_cumulative": "Трафик в рейтинге накопительный, а не за окно.",
-        "nat.flags.nat_probe_enabled": "Опрашивает ли прокси STUN-серверы, чтобы узнать свой внешний адрес.",
-        "nat.flags.nat_probe_disabled_runtime": "Отключил ли прокси пробу сам — например, после череды неудач.",
+        "connections.telemetry.user_enabled":
+          "Ведёт ли прокси учёт по отдельным пользователям; без него рейтинги пустые.",
+        "connections.telemetry.throughput_is_cumulative":
+          "Трафик в рейтинге накопительный, а не за окно.",
+        "nat.flags.nat_probe_enabled":
+          "Опрашивает ли прокси STUN-серверы, чтобы узнать свой внешний адрес.",
+        "nat.flags.nat_probe_disabled_runtime":
+          "Отключил ли прокси пробу сам — например, после череды неудач.",
         "nat.flags.nat_probe_attempts": "Сколько попыток прокси делает за одну пробу.",
         "nat.stun_backoff_remaining_ms": "Сколько осталось ждать до следующей пробы после неудачи.",
         "nat.servers.configured": "STUN-серверы из конфигурации прокси.",
@@ -1236,7 +2221,7 @@ export const ru = {
         "dc.reason": "Почему режим middle proxy выключен, словами Telemt.",
         "dc.generated_at_epoch_secs": "Когда прокси собрал этот снимок по дата-центрам.",
         "dc.dcs": "Список дата-центров Telegram, с которыми работает прокси.",
-        "dc.dc": "Номер дата-центра Telegram; отрицательный — группа медиа-серверов того же DC; 203 — тестовая площадка.",
+        "dc.dc": "Номер дата-центра Telegram; отрицательный — медиа-маршрут того же DC.",
         "dc.endpoints": "Адреса middle proxy этого дата-центра, полученные от Telegram.",
         "dc.endpoint": "Адрес middle proxy: IP и порт.",
         "dc.endpoint_writers": "Сколько писателей держит соединение с каждым адресом.",
@@ -1276,7 +2261,8 @@ export const ru = {
         "tls.by_ip": "Рейтинг по IP-адресу клиента.",
         "tls.by_cidr": "Рейтинг по подсети клиента.",
         "tls.by_user": "Рейтинг по имени пользователя панели.",
-        "tls.scope": "Ключ группировки: IP, подсеть или пользователь; в общем рейтинге отсутствует.",
+        "tls.scope":
+          "Ключ группировки: IP, подсеть или пользователь; в общем рейтинге отсутствует.",
         "tls.ja3": "MD5-хеш TLS ClientHello в формате JA3.",
         "tls.ja3_raw": "Исходная строка полей ClientHello, из которой вычислен JA3.",
         "tls.ja4": "Отпечаток TLS-клиента в формате JA4.",
@@ -1290,79 +2276,114 @@ export const ru = {
         // (TELEMT_LIVE_API_DATA §12, §20). Пути пространственно разделены
         // префиксом топика, поэтому записи глобальные, а не эндпойнтные.
         "security.posture.api_read_only": "Работает ли API прокси в режиме «только чтение».",
-        "security.posture.api_whitelist_enabled": "Включена ли фильтрация обращений к API по белому списку адресов.",
+        "security.posture.api_whitelist_enabled":
+          "Включена ли фильтрация обращений к API по белому списку адресов.",
         "security.posture.api_whitelist_entries": "Сколько адресов сейчас в белом списке API.",
         "security.posture.api_auth_header_enabled": "Требует ли API заголовок авторизации.",
-        "security.posture.proxy_protocol_enabled": "Принимает ли прокси PROXY-protocol от вышестоящего балансировщика.",
+        "security.posture.proxy_protocol_enabled":
+          "Принимает ли прокси PROXY-protocol от вышестоящего балансировщика.",
         "security.posture.log_level": "Текущий уровень журналирования прокси.",
         "security.posture.telemetry_core_enabled": "Собирает ли прокси базовую телеметрию ядра.",
-        "security.posture.telemetry_user_enabled": "Собирает ли прокси телеметрию в разрезе пользователей.",
-        "security.posture.telemetry_me_level": "Насколько подробно собирается телеметрия middle proxy.",
-        "security.whitelist.generated_at_epoch_secs": "Когда прокси собрал этот снимок белого списка.",
+        "security.posture.telemetry_user_enabled":
+          "Собирает ли прокси телеметрию в разрезе пользователей.",
+        "security.posture.telemetry_me_level":
+          "Насколько подробно собирается телеметрия middle proxy.",
+        "security.whitelist.generated_at_epoch_secs":
+          "Когда прокси собрал этот снимок белого списка.",
         "security.whitelist.enabled": "Включён ли белый список адресов для API.",
         "security.whitelist.entries_total": "Сколько записей содержит белый список.",
         "security.whitelist.entries": "Адреса и подсети, которым разрешено обращаться к API.",
         "security.whitelist.entry": "Адрес или подсеть, которой разрешено обращаться к API.",
         "security.limits.update_every_secs": "Как часто прокси пересчитывает действующие лимиты.",
-        "security.limits.me_reinit_every_secs": "Период плановой переинициализации пула middle proxy.",
-        "security.limits.me_pool_force_close_secs": "Через сколько прокси принудительно закрывает писателя из пула.",
-        "security.limits.timeouts.client_first_byte_idle_secs": "Сколько прокси ждёт первый байт от клиента.",
-        "security.limits.timeouts.client_handshake_secs": "Отведённое время на рукопожатие с клиентом.",
+        "security.limits.me_reinit_every_secs":
+          "Период плановой переинициализации пула middle proxy.",
+        "security.limits.me_pool_force_close_secs":
+          "Через сколько прокси принудительно закрывает писателя из пула.",
+        "security.limits.timeouts.client_first_byte_idle_secs":
+          "Сколько прокси ждёт первый байт от клиента.",
+        "security.limits.timeouts.client_handshake_secs":
+          "Отведённое время на рукопожатие с клиентом.",
         "security.limits.timeouts.tg_connect_secs": "Отведённое время на подключение к Telegram.",
-        "security.limits.timeouts.client_keepalive_secs": "Как долго держится простаивающее клиентское соединение.",
+        "security.limits.timeouts.client_keepalive_secs":
+          "Как долго держится простаивающее клиентское соединение.",
         "security.limits.timeouts.client_ack_secs": "Сколько прокси ждёт подтверждения от клиента.",
-        "security.limits.timeouts.me_one_retry": "Сколько повторов допускается на одну операцию middle proxy.",
+        "security.limits.timeouts.me_one_retry":
+          "Сколько повторов допускается на одну операцию middle proxy.",
         "security.limits.timeouts.me_one_timeout_ms": "Таймаут одной операции middle proxy.",
-        "security.limits.upstream.connect_retry_attempts": "Сколько раз прокси повторяет подключение к апстриму.",
-        "security.limits.upstream.connect_retry_backoff_ms": "Пауза между повторами подключения к апстриму.",
-        "security.limits.upstream.connect_budget_ms": "Общий бюджет времени на подключение через апстрим.",
-        "security.limits.upstream.unhealthy_fail_threshold": "После скольких неудач апстрим считается нездоровым.",
-        "security.limits.upstream.connect_failfast_hard_errors": "Прекращать ли повторы сразу при неустранимой ошибке подключения.",
+        "security.limits.upstream.connect_retry_attempts":
+          "Сколько раз прокси повторяет подключение к апстриму.",
+        "security.limits.upstream.connect_retry_backoff_ms":
+          "Пауза между повторами подключения к апстриму.",
+        "security.limits.upstream.connect_budget_ms":
+          "Общий бюджет времени на подключение через апстрим.",
+        "security.limits.upstream.unhealthy_fail_threshold":
+          "После скольких неудач апстрим считается нездоровым.",
+        "security.limits.upstream.connect_failfast_hard_errors":
+          "Прекращать ли повторы сразу при неустранимой ошибке подключения.",
         // middle_proxy — forward-compatible набор внутренних ручек пула
         // (типизирован как Record<string, unknown>): панель показывает их
         // как есть и не придумывает бизнес-смысл незнакомому ключу (§8.2).
-        "security.limits.middle_proxy": "Внутренняя ручка адаптивной политики пула middle proxy; показана как есть.",
-        "security.limits.user_ip_policy.global_each": "Сколько IP-адресов допускается одному пользователю.",
+        "security.limits.middle_proxy":
+          "Внутренняя ручка адаптивной политики пула middle proxy; показана как есть.",
+        "security.limits.user_ip_policy.global_each":
+          "Сколько IP-адресов допускается одному пользователю.",
         "security.limits.user_ip_policy.mode": "Режим применения лимита по IP пользователя.",
-        "security.limits.user_ip_policy.window_secs": "Окно, в котором считаются IP-адреса пользователя.",
-        "security.limits.user_tcp_policy.global_each": "Сколько одновременных TCP-сессий допускается одному пользователю.",
-        "me.summary.configured_dc_groups": "Сколько групп дата-центров настроено для пула middle proxy.",
-        "me.summary.configured_endpoints": "Сколько адресов middle proxy настроено суммарно по всем группам.",
-        "me.summary.available_endpoints": "Сколько адресов middle proxy сейчас пригодны для подключения.",
+        "security.limits.user_ip_policy.window_secs":
+          "Окно, в котором считаются IP-адреса пользователя.",
+        "security.limits.user_tcp_policy.global_each":
+          "Сколько одновременных TCP-сессий допускается одному пользователю.",
+        "me.summary.configured_dc_groups":
+          "Сколько групп дата-центров настроено для пула middle proxy.",
+        "me.summary.configured_endpoints":
+          "Сколько адресов middle proxy настроено суммарно по всем группам.",
+        "me.summary.available_endpoints":
+          "Сколько адресов middle proxy сейчас пригодны для подключения.",
         "me.summary.available_pct": "Доля пригодных адресов от всех настроенных.",
         "me.summary.required_writers": "Сколько писателей требует текущая политика пола пула.",
         "me.summary.alive_writers": "Сколько писателей пула сейчас живы.",
         "me.summary.coverage_pct": "Доля живых писателей от требуемого числа.",
         "me.summary.fresh_alive_writers": "Живые писатели, подтверждённые недавним обменом.",
         "me.summary.fresh_coverage_pct": "Покрытие пула только свежими писателями.",
-        "me.writers": "Список писателей пула middle proxy: по одному соединению с адресом Telegram.",
+        "me.writers":
+          "Список писателей пула middle proxy: по одному соединению с адресом Telegram.",
         "me.writers.writer_id": "Идентификатор писателя в текущем процессе прокси.",
-        "me.writers.dc": "Дата-центр Telegram, который обслуживает этот писатель; null — писатель ещё не привязан.",
+        "me.writers.dc":
+          "Дата-центр Telegram, который обслуживает этот писатель; null — писатель ещё не привязан.",
         "me.writers.endpoint": "Адрес middle proxy, к которому подключён писатель.",
         "me.writers.generation": "Поколение пула, которому принадлежит писатель.",
         "me.writers.state": "Состояние писателя: warm, active или draining.",
         "me.writers.draining": "Писатель выводится из пула и не берёт новых клиентов.",
         "me.writers.degraded": "Писатель помечен деградировавшим и не берёт новых клиентов.",
         "me.writers.bound_clients": "Сколько клиентов сейчас привязано к этому писателю.",
-        "me.writers.idle_for_secs": "Сколько писатель простаивает без трафика; null — писатель не простаивает.",
+        "me.writers.idle_for_secs":
+          "Сколько писатель простаивает без трафика; null — писатель не простаивает.",
         "me.writers.rtt_ema_ms": "Сглаженное время оборота писателя до его дата-центра.",
         "me.writers.matches_active_generation": "Принадлежит ли писатель активному поколению пула.",
         "me.writers.in_desired_map": "Остаётся ли адрес писателя в желаемой топологии пула.",
-        "me.writers.allow_drain_fallback": "Разрешено ли переводить клиентов этого писателя на запасной путь при выводе.",
-        "me.writers.drain_started_at_epoch_secs": "Когда начался вывод писателя из пула; null — вывод не начинался.",
-        "me.writers.drain_deadline_epoch_secs": "Крайний срок вывода писателя из пула; null — срок не назначен.",
+        "me.writers.allow_drain_fallback":
+          "Разрешено ли переводить клиентов этого писателя на запасной путь при выводе.",
+        "me.writers.drain_started_at_epoch_secs":
+          "Когда начался вывод писателя из пула; null — вывод не начинался.",
+        "me.writers.drain_deadline_epoch_secs":
+          "Крайний срок вывода писателя из пула; null — срок не назначен.",
         "me.writers.drain_over_ttl": "Вывод писателя превысил отведённое ему время.",
-        "me.gates.accepting_new_connections": "Принимает ли прокси новые клиентские подключения прямо сейчас.",
-        "me.gates.conditional_cast_enabled": "Включена ли условная логика допуска через middle proxy.",
+        "me.gates.accepting_new_connections":
+          "Принимает ли прокси новые клиентские подключения прямо сейчас.",
+        "me.gates.conditional_cast_enabled":
+          "Включена ли условная логика допуска через middle proxy.",
         "me.gates.me_runtime_ready": "Готов ли рантайм middle proxy обслуживать сессии.",
-        "me.gates.me2dc_fallback_enabled": "Разрешён ли откат с middle proxy на прямое подключение к дата-центру.",
+        "me.gates.me2dc_fallback_enabled":
+          "Разрешён ли откат с middle proxy на прямое подключение к дата-центру.",
         "me.gates.me2dc_fast_enabled": "Разрешён ли быстрый откат на прямое подключение.",
-        "me.gates.use_middle_proxy": "Какой транспорт предпочитает прокси сейчас: middle proxy или прямой.",
+        "me.gates.use_middle_proxy":
+          "Какой транспорт предпочитает прокси сейчас: middle proxy или прямой.",
         "me.gates.route_mode": "Режим маршрутизации, выбранный контроллером маршрутов.",
         "me.gates.reroute_active": "Новые сессии сейчас уводятся на прямое подключение.",
-        "me.gates.reroute_to_direct_at_epoch_secs": "Когда начался текущий увод сессий на прямое подключение.",
+        "me.gates.reroute_to_direct_at_epoch_secs":
+          "Когда начался текущий увод сессий на прямое подключение.",
         "me.gates.reroute_reason": "Почему сессии уведены на прямое подключение, словами Telemt.",
-        "me.gates.startup_status": "Состояние запуска прокси: pending, initializing, ready, failed или skipped.",
+        "me.gates.startup_status":
+          "Состояние запуска прокси: pending, initializing, ready, failed или skipped.",
         "me.gates.startup_stage": "Текущий этап запуска прокси.",
         "me.gates.startup_progress_pct": "Прогресс запуска прокси.",
         "me.init.status": "Состояние запуска: pending, initializing, ready, failed или skipped.",
@@ -1370,7 +2391,8 @@ export const ru = {
         "me.init.current_stage": "Этап запуска, на котором прокси находится сейчас.",
         "me.init.progress_pct": "Общий прогресс запуска.",
         "me.init.started_at_epoch_secs": "Когда процесс прокси был запущен.",
-        "me.init.ready_at_epoch_secs": "Когда запуск дошёл до состояния ready; отсутствует, пока не дошёл.",
+        "me.init.ready_at_epoch_secs":
+          "Когда запуск дошёл до состояния ready; отсутствует, пока не дошёл.",
         "me.init.total_elapsed_ms": "Сколько занял запуск целиком.",
         "me.init.transport_mode": "Транспорт, с которым прокси стартовал: middle_proxy или direct.",
         "me.init.components": "Последовательность этапов запуска с их состоянием и длительностью.",
@@ -1390,9 +2412,12 @@ export const ru = {
         "me.init.component.details": "Короткое пояснение к состоянию этапа, словами Telemt.",
         "me.pool.generations.active_generation": "Номер активного поколения пула писателей.",
         "me.pool.generations.warm_generation": "Номер прогреваемого поколения пула.",
-        "me.pool.generations.pending_hardswap_generation": "Поколение, ожидающее жёсткой смены; 0 — ожидающих нет.",
-        "me.pool.generations.pending_hardswap_age_secs": "Сколько ожидающее поколение уже ждёт жёсткой смены; null — ожидающих нет.",
-        "me.pool.generations.draining_generations": "Поколения пула, которые сейчас выводятся из работы.",
+        "me.pool.generations.pending_hardswap_generation":
+          "Поколение, ожидающее жёсткой смены; 0 — ожидающих нет.",
+        "me.pool.generations.pending_hardswap_age_secs":
+          "Сколько ожидающее поколение уже ждёт жёсткой смены; null — ожидающих нет.",
+        "me.pool.generations.draining_generations":
+          "Поколения пула, которые сейчас выводятся из работы.",
         "me.pool.generations.draining_generations.*": "Номер выводимого поколения пула.",
         "me.pool.hardswap.enabled": "Включена ли жёсткая смена поколений пула.",
         "me.pool.hardswap.pending": "Есть ли поколение, ожидающее жёсткой смены.",
@@ -1406,44 +2431,70 @@ export const ru = {
         "me.pool.writers.health.healthy": "Здоровые писатели: не выводятся и не деградировали.",
         "me.pool.writers.health.degraded": "Деградировавшие писатели, которые ещё не выводятся.",
         "me.pool.writers.health.draining": "Писатели, которые выводятся из пула.",
-        "me.pool.refill.inflight_endpoints_total": "Сколько операций дозаполнения пула сейчас выполняется по адресам.",
-        "me.pool.refill.inflight_dc_total": "По скольким парам «дата-центр + семейство адресов» идёт дозаполнение.",
+        "me.pool.refill.inflight_endpoints_total":
+          "Сколько операций дозаполнения пула сейчас выполняется по адресам.",
+        "me.pool.refill.inflight_dc_total":
+          "По скольким парам «дата-центр + семейство адресов» идёт дозаполнение.",
         "me.pool.refill.by_dc": "Дозаполнение пула в разрезе дата-центров и семейств адресов.",
         "me.pool.refill.by_dc.*.family": "Семейство адресов строки дозаполнения: V4 или V6.",
         "me.pool.refill.by_dc.*.inflight": "Сколько операций дозаполнения идёт по этой строке.",
-        "me.quality.counters.idle_close_by_peer_total": "Сколько раз соединение с middle proxy закрыла удалённая сторона по простою.",
-        "me.quality.counters.reader_eof_total": "Сколько раз читатель middle proxy получил конец потока.",
-        "me.quality.counters.kdf_drift_total": "Сколько раз обнаружено расхождение ключевого материала с middle proxy.",
-        "me.quality.counters.kdf_port_only_drift_total": "Сколько раз расхождение ключевого материала касалось только порта.",
-        "me.quality.counters.reconnect_attempt_total": "Сколько попыток переподключения к middle proxy было сделано.",
-        "me.quality.counters.reconnect_success_total": "Сколько попыток переподключения завершились успехом.",
-        "me.quality.route_drops.no_conn_total": "Сколько пакетов отброшено из-за отсутствия привязанного соединения.",
-        "me.quality.route_drops.channel_closed_total": "Сколько пакетов отброшено из-за закрытого канала назначения.",
-        "me.quality.route_drops.queue_full_total": "Сколько пакетов отброшено из-за переполнения очереди, всего.",
-        "me.quality.route_drops.queue_full_base_total": "Сколько пакетов отброшено переполнением обычной очереди.",
-        "me.quality.route_drops.queue_full_high_total": "Сколько пакетов отброшено переполнением приоритетной очереди.",
+        "me.quality.counters.idle_close_by_peer_total":
+          "Сколько раз соединение с middle proxy закрыла удалённая сторона по простою.",
+        "me.quality.counters.reader_eof_total":
+          "Сколько раз читатель middle proxy получил конец потока.",
+        "me.quality.counters.kdf_drift_total":
+          "Сколько раз обнаружено расхождение ключевого материала с middle proxy.",
+        "me.quality.counters.kdf_port_only_drift_total":
+          "Сколько раз расхождение ключевого материала касалось только порта.",
+        "me.quality.counters.reconnect_attempt_total":
+          "Сколько попыток переподключения к middle proxy было сделано.",
+        "me.quality.counters.reconnect_success_total":
+          "Сколько попыток переподключения завершились успехом.",
+        "me.quality.route_drops.no_conn_total":
+          "Сколько пакетов отброшено из-за отсутствия привязанного соединения.",
+        "me.quality.route_drops.channel_closed_total":
+          "Сколько пакетов отброшено из-за закрытого канала назначения.",
+        "me.quality.route_drops.queue_full_total":
+          "Сколько пакетов отброшено из-за переполнения очереди, всего.",
+        "me.quality.route_drops.queue_full_base_total":
+          "Сколько пакетов отброшено переполнением обычной очереди.",
+        "me.quality.route_drops.queue_full_high_total":
+          "Сколько пакетов отброшено переполнением приоритетной очереди.",
         "me.quality.family_states": "Состояние маршрутов middle proxy по семействам адресов.",
         "me.quality.family_states.*.family": "Семейство адресов, к которому относится строка.",
         "me.quality.family_states.*.state": "Текущее состояние семейства адресов, словами Telemt.",
-        "me.quality.family_states.*.state_since_epoch_secs": "Когда семейство адресов перешло в текущее состояние.",
-        "me.quality.family_states.*.suppressed_until_epoch_secs": "До какого момента семейство адресов остаётся подавленным.",
-        "me.quality.family_states.*.fail_streak": "Сколько неудач подряд по этому семейству адресов.",
-        "me.quality.family_states.*.recover_success_streak": "Сколько успешных восстановлений подряд по этому семейству.",
-        "me.quality.drain_gate.route_quorum_ok": "Хватает ли кворума маршрутов, чтобы разрешить вывод писателей.",
-        "me.quality.drain_gate.redundancy_ok": "Хватает ли запаса писателей, чтобы разрешить вывод.",
-        "me.quality.drain_gate.block_reason": "Почему вывод писателей сейчас заблокирован, словами Telemt.",
-        "me.quality.drain_gate.updated_at_epoch_secs": "Когда решение о выводе писателей пересчитывалось в последний раз.",
+        "me.quality.family_states.*.state_since_epoch_secs":
+          "Когда семейство адресов перешло в текущее состояние.",
+        "me.quality.family_states.*.suppressed_until_epoch_secs":
+          "До какого момента семейство адресов остаётся подавленным.",
+        "me.quality.family_states.*.fail_streak":
+          "Сколько неудач подряд по этому семейству адресов.",
+        "me.quality.family_states.*.recover_success_streak":
+          "Сколько успешных восстановлений подряд по этому семейству.",
+        "me.quality.drain_gate.route_quorum_ok":
+          "Хватает ли кворума маршрутов, чтобы разрешить вывод писателей.",
+        "me.quality.drain_gate.redundancy_ok":
+          "Хватает ли запаса писателей, чтобы разрешить вывод.",
+        "me.quality.drain_gate.block_reason":
+          "Почему вывод писателей сейчас заблокирован, словами Telemt.",
+        "me.quality.drain_gate.updated_at_epoch_secs":
+          "Когда решение о выводе писателей пересчитывалось в последний раз.",
         "me.quality.dc_rtt": "Время оборота и покрытие писателями в разрезе дата-центров.",
         "me.selftest.kdf.state": "Итог самопроверки ключевого материала: ok или error.",
-        "me.selftest.kdf.ewma_errors_per_min": "Сглаженная частота ошибок ключевого материала в минуту.",
-        "me.selftest.kdf.threshold_errors_per_min": "Порог частоты ошибок, выше которого самопроверка даёт error.",
+        "me.selftest.kdf.ewma_errors_per_min":
+          "Сглаженная частота ошибок ключевого материала в минуту.",
+        "me.selftest.kdf.threshold_errors_per_min":
+          "Порог частоты ошибок, выше которого самопроверка даёт error.",
         "me.selftest.kdf.errors_total": "Сколько ошибок ключевого материала накоплено с запуска.",
         "me.selftest.timeskew.state": "Итог самопроверки расхождения часов: ok или error.",
-        "me.selftest.timeskew.max_skew_secs_15m": "Наибольшее расхождение часов за последние 15 минут; null — замеров не было.",
-        "me.selftest.timeskew.samples_15m": "Сколько замеров расхождения часов сделано за 15 минут.",
+        "me.selftest.timeskew.max_skew_secs_15m":
+          "Наибольшее расхождение часов за последние 15 минут; null — замеров не было.",
+        "me.selftest.timeskew.samples_15m":
+          "Сколько замеров расхождения часов сделано за 15 минут.",
         "me.selftest.timeskew.last_skew_secs": "Последнее измеренное расхождение часов.",
         "me.selftest.timeskew.last_source": "Откуда взят последний замер расхождения часов.",
-        "me.selftest.timeskew.last_seen_age_secs": "Сколько времени прошло с последнего замера расхождения часов.",
+        "me.selftest.timeskew.last_seen_age_secs":
+          "Сколько времени прошло с последнего замера расхождения часов.",
         "me.selftest.ip": "Какие адреса интерфейса прокси видит у себя.",
         "me.selftest.ip.v4.addr": "IPv4-адрес интерфейса, определённый прокси.",
         "me.selftest.ip.v4.state": "Оценка IPv4-адреса интерфейса: good, bogon или loopback.",
@@ -1451,217 +2502,369 @@ export const ru = {
         "me.selftest.ip.v6.state": "Оценка IPv6-адреса интерфейса: good, bogon или loopback.",
         "me.selftest.pid.pid": "Номер процесса прокси в системе.",
         "me.selftest.pid.state": "Метка процесса: one, если PID равен 1, иначе non-one.",
-        "me.selftest.bnd": "Самопроверка адреса и порта, которые прокси сообщает по SOCKS; null — данных ещё нет.",
+        "me.selftest.bnd":
+          "Самопроверка адреса и порта, которые прокси сообщает по SOCKS; null — данных ещё нет.",
         "me.selftest.bnd.addr_state": "Оценка адреса SOCKS BND: ok, bogon или error.",
         "me.selftest.bnd.port_state": "Оценка порта SOCKS BND: ok, zero или error.",
         "me.selftest.bnd.last_addr": "Последний наблюдавшийся адрес SOCKS BND.",
-        "me.selftest.bnd.last_seen_age_secs": "Сколько времени прошло с последнего замера SOCKS BND.",
+        "me.selftest.bnd.last_seen_age_secs":
+          "Сколько времени прошло с последнего замера SOCKS BND.",
         "me.selftest.upstreams": "Самопроверка по каждому настроенному апстриму.",
         "me.selftest.upstreams.*.upstream_id": "Номер апстрима в текущем процессе прокси.",
-        "me.selftest.upstreams.*.route_kind": "Тип маршрута апстрима: direct, socks4, socks5 или shadowsocks.",
+        "me.selftest.upstreams.*.route_kind":
+          "Тип маршрута апстрима: direct, socks4, socks5 или shadowsocks.",
         "me.selftest.upstreams.*.address": "Адрес апстрима.",
         "me.selftest.upstreams.*.ip": "Адрес, который прокси наблюдал через этот апстрим.",
         "me.runtime.active_generation": "Активное поколение пула писателей.",
         "me.runtime.warm_generation": "Прогреваемое поколение пула писателей.",
         "me.runtime.pending_hardswap_generation": "Поколение, ожидающее жёсткой смены.",
-        "me.runtime.pending_hardswap_age_secs": "Сколько ожидающее поколение ждёт жёсткой смены; null — ожидающих нет.",
+        "me.runtime.pending_hardswap_age_secs":
+          "Сколько ожидающее поколение ждёт жёсткой смены; null — ожидающих нет.",
         "me.runtime.hardswap_enabled": "Включена ли жёсткая смена поколений пула.",
         "me.runtime.floor_mode": "Режим пола писателей: статический или адаптивный.",
-        "me.runtime.adaptive_floor_idle_secs": "После какого простоя адаптивный пол снижает число писателей.",
-        "me.runtime.adaptive_floor_min_writers_single_endpoint": "Минимум писателей на дата-центр с одним адресом в адаптивном режиме.",
-        "me.runtime.adaptive_floor_min_writers_multi_endpoint": "Минимум писателей на дата-центр с несколькими адресами в адаптивном режиме.",
-        "me.runtime.adaptive_floor_recover_grace_secs": "Отсрочка, после которой адаптивный пол возвращается к прежнему уровню.",
-        "me.runtime.adaptive_floor_writers_per_core_total": "Целевой бюджет писателей на одно ядро процессора.",
-        "me.runtime.adaptive_floor_cpu_cores_override": "Заданное вручную число ядер; 0 — определять автоматически.",
-        "me.runtime.adaptive_floor_max_extra_writers_single_per_core": "Сколько дополнительных писателей на ядро допускается для дата-центров с одним адресом.",
-        "me.runtime.adaptive_floor_max_extra_writers_multi_per_core": "Сколько дополнительных писателей на ядро допускается для дата-центров с несколькими адресами.",
-        "me.runtime.adaptive_floor_max_active_writers_per_core": "Потолок активных писателей на одно ядро.",
-        "me.runtime.adaptive_floor_max_warm_writers_per_core": "Потолок прогреваемых писателей на одно ядро.",
-        "me.runtime.adaptive_floor_max_active_writers_global": "Общий потолок активных писателей на весь процесс.",
-        "me.runtime.adaptive_floor_max_warm_writers_global": "Общий потолок прогреваемых писателей на весь процесс.",
+        "me.runtime.adaptive_floor_idle_secs":
+          "После какого простоя адаптивный пол снижает число писателей.",
+        "me.runtime.adaptive_floor_min_writers_single_endpoint":
+          "Минимум писателей на дата-центр с одним адресом в адаптивном режиме.",
+        "me.runtime.adaptive_floor_min_writers_multi_endpoint":
+          "Минимум писателей на дата-центр с несколькими адресами в адаптивном режиме.",
+        "me.runtime.adaptive_floor_recover_grace_secs":
+          "Отсрочка, после которой адаптивный пол возвращается к прежнему уровню.",
+        "me.runtime.adaptive_floor_writers_per_core_total":
+          "Целевой бюджет писателей на одно ядро процессора.",
+        "me.runtime.adaptive_floor_cpu_cores_override":
+          "Заданное вручную число ядер; 0 — определять автоматически.",
+        "me.runtime.adaptive_floor_max_extra_writers_single_per_core":
+          "Сколько дополнительных писателей на ядро допускается для дата-центров с одним адресом.",
+        "me.runtime.adaptive_floor_max_extra_writers_multi_per_core":
+          "Сколько дополнительных писателей на ядро допускается для дата-центров с несколькими адресами.",
+        "me.runtime.adaptive_floor_max_active_writers_per_core":
+          "Потолок активных писателей на одно ядро.",
+        "me.runtime.adaptive_floor_max_warm_writers_per_core":
+          "Потолок прогреваемых писателей на одно ядро.",
+        "me.runtime.adaptive_floor_max_active_writers_global":
+          "Общий потолок активных писателей на весь процесс.",
+        "me.runtime.adaptive_floor_max_warm_writers_global":
+          "Общий потолок прогреваемых писателей на весь процесс.",
         "me.runtime.adaptive_floor_cpu_cores_detected": "Сколько ядер процессора обнаружил прокси.",
-        "me.runtime.adaptive_floor_cpu_cores_effective": "Сколько ядер используется в расчёте адаптивных потолков.",
-        "me.runtime.adaptive_floor_global_cap_raw": "Общий потолок писателей до ограничения настройками.",
-        "me.runtime.adaptive_floor_global_cap_effective": "Общий потолок писателей после ограничения настройками.",
-        "me.runtime.adaptive_floor_target_writers_total": "Текущая цель адаптивного пола по общему числу писателей.",
-        "me.runtime.adaptive_floor_active_cap_configured": "Настроенный общий потолок активных писателей.",
-        "me.runtime.adaptive_floor_active_cap_effective": "Действующий общий потолок активных писателей.",
-        "me.runtime.adaptive_floor_warm_cap_configured": "Настроенный общий потолок прогреваемых писателей.",
-        "me.runtime.adaptive_floor_warm_cap_effective": "Действующий общий потолок прогреваемых писателей.",
-        "me.runtime.adaptive_floor_active_writers_current": "Сколько активных писателей сейчас в пуле.",
-        "me.runtime.adaptive_floor_warm_writers_current": "Сколько прогреваемых писателей сейчас в пуле.",
+        "me.runtime.adaptive_floor_cpu_cores_effective":
+          "Сколько ядер используется в расчёте адаптивных потолков.",
+        "me.runtime.adaptive_floor_global_cap_raw":
+          "Общий потолок писателей до ограничения настройками.",
+        "me.runtime.adaptive_floor_global_cap_effective":
+          "Общий потолок писателей после ограничения настройками.",
+        "me.runtime.adaptive_floor_target_writers_total":
+          "Текущая цель адаптивного пола по общему числу писателей.",
+        "me.runtime.adaptive_floor_active_cap_configured":
+          "Настроенный общий потолок активных писателей.",
+        "me.runtime.adaptive_floor_active_cap_effective":
+          "Действующий общий потолок активных писателей.",
+        "me.runtime.adaptive_floor_warm_cap_configured":
+          "Настроенный общий потолок прогреваемых писателей.",
+        "me.runtime.adaptive_floor_warm_cap_effective":
+          "Действующий общий потолок прогреваемых писателей.",
+        "me.runtime.adaptive_floor_active_writers_current":
+          "Сколько активных писателей сейчас в пуле.",
+        "me.runtime.adaptive_floor_warm_writers_current":
+          "Сколько прогреваемых писателей сейчас в пуле.",
         "me.runtime.me_keepalive_enabled": "Шлёт ли прокси keepalive-пакеты в middle proxy.",
         "me.runtime.me_keepalive_interval_secs": "Период отправки keepalive-пакетов.",
-        "me.runtime.me_keepalive_jitter_secs": "Случайный разброс, добавляемый к периоду keepalive.",
+        "me.runtime.me_keepalive_jitter_secs":
+          "Случайный разброс, добавляемый к периоду keepalive.",
         "me.runtime.me_keepalive_payload_random": "Заполняется ли keepalive случайными данными.",
         "me.runtime.rpc_proxy_req_every_secs": "Период отправки сигнала активности RPC-прокси.",
-        "me.runtime.me_reconnect_max_concurrent_per_dc": "Сколько переподключений к одному дата-центру идёт одновременно.",
+        "me.runtime.me_reconnect_max_concurrent_per_dc":
+          "Сколько переподключений к одному дата-центру идёт одновременно.",
         "me.runtime.me_reconnect_backoff_base_ms": "Базовая пауза перед повтором подключения.",
         "me.runtime.me_reconnect_backoff_cap_ms": "Наибольшая пауза перед повтором подключения.",
-        "me.runtime.me_reconnect_fast_retry_count": "Сколько быстрых повторов делается до перехода к обычным паузам.",
-        "me.runtime.me_pool_drain_ttl_secs": "Сколько времени writer остаётся выводимым, прежде чем его закроют.",
-        "me.runtime.me_pool_force_close_secs": "Через сколько выводимый writer закрывается принудительно.",
-        "me.runtime.me_pool_min_fresh_ratio": "Какая доля писателей должна быть свежей, чтобы разрешить смену поколения.",
+        "me.runtime.me_reconnect_fast_retry_count":
+          "Сколько быстрых повторов делается до перехода к обычным паузам.",
+        "me.runtime.me_pool_drain_ttl_secs":
+          "Сколько времени writer остаётся выводимым, прежде чем его закроют.",
+        "me.runtime.me_pool_force_close_secs":
+          "Через сколько выводимый writer закрывается принудительно.",
+        "me.runtime.me_pool_min_fresh_ratio":
+          "Какая доля писателей должна быть свежей, чтобы разрешить смену поколения.",
         "me.runtime.me_bind_stale_mode": "Политика привязки клиентов к устаревшим писателям.",
-        "me.runtime.me_bind_stale_ttl_secs": "Сколько writer считается пригодным для привязки после устаревания.",
-        "me.runtime.me_single_endpoint_shadow_writers": "Сколько теневых писателей держится для дата-центра с одним адресом.",
-        "me.runtime.me_single_endpoint_outage_mode_enabled": "Включён ли аварийный режим для дата-центров с одним адресом.",
-        "me.runtime.me_single_endpoint_outage_disable_quarantine": "Отключается ли карантин адресов в аварийном режиме.",
-        "me.runtime.me_single_endpoint_outage_backoff_min_ms": "Наименьшая пауза перед повтором подключения в аварийном режиме.",
-        "me.runtime.me_single_endpoint_outage_backoff_max_ms": "Наибольшая пауза перед повтором подключения в аварийном режиме.",
-        "me.runtime.me_single_endpoint_shadow_rotate_every_secs": "Как часто ротируются теневые писатели.",
+        "me.runtime.me_bind_stale_ttl_secs":
+          "Сколько writer считается пригодным для привязки после устаревания.",
+        "me.runtime.me_single_endpoint_shadow_writers":
+          "Сколько теневых писателей держится для дата-центра с одним адресом.",
+        "me.runtime.me_single_endpoint_outage_mode_enabled":
+          "Включён ли аварийный режим для дата-центров с одним адресом.",
+        "me.runtime.me_single_endpoint_outage_disable_quarantine":
+          "Отключается ли карантин адресов в аварийном режиме.",
+        "me.runtime.me_single_endpoint_outage_backoff_min_ms":
+          "Наименьшая пауза перед повтором подключения в аварийном режиме.",
+        "me.runtime.me_single_endpoint_outage_backoff_max_ms":
+          "Наибольшая пауза перед повтором подключения в аварийном режиме.",
+        "me.runtime.me_single_endpoint_shadow_rotate_every_secs":
+          "Как часто ротируются теневые писатели.",
         "me.runtime.me_deterministic_writer_sort": "Упорядочиваются ли писатели детерминированно.",
         "me.runtime.me_writer_pick_mode": "Как выбирается писатель под клиента: sorted_rr или p2c.",
         "me.runtime.me_writer_pick_sample_size": "Размер выборки кандидатов для режима выбора p2c.",
         "me.runtime.me_socks_kdf_policy": "Политика ключевого материала SOCKS, действующая сейчас.",
-        "me.runtime.quarantined_endpoints_total": "Сколько адресов middle proxy сейчас в карантине.",
-        "me.runtime.quarantined_endpoints": "Адреса middle proxy, выведенные в карантин, и остаток срока.",
-        "me.runtime.quarantined_endpoints.*.endpoint": "Адрес middle proxy, находящийся в карантине.",
-        "me.runtime.quarantined_endpoints.*.remaining_ms": "Сколько адресу осталось до выхода из карантина.",
+        "me.runtime.quarantined_endpoints_total":
+          "Сколько адресов middle proxy сейчас в карантине.",
+        "me.runtime.quarantined_endpoints":
+          "Адреса middle proxy, выведенные в карантин, и остаток срока.",
+        "me.runtime.quarantined_endpoints.*.endpoint":
+          "Адрес middle proxy, находящийся в карантине.",
+        "me.runtime.quarantined_endpoints.*.remaining_ms":
+          "Сколько адресу осталось до выхода из карантина.",
         "counters.core.uptime_seconds": "Сколько времени процесс прокси работает без перезапуска.",
-        "counters.core.connections_total": "Сколько клиентских подключений принято с момента запуска.",
-        "counters.core.connections_bad_total": "Сколько подключений оказались некорректными или не прошли проверку.",
+        "counters.core.connections_total":
+          "Сколько клиентских подключений принято с момента запуска.",
+        "counters.core.connections_bad_total":
+          "Сколько подключений оказались некорректными или не прошли проверку.",
         "counters.core.connections_bad_by_class": "Некорректные подключения в разрезе причин.",
         "counters.core.handshake_failures_by_class": "Неудачные рукопожатия в разрезе причин.",
-        "counters.core.handshake_failures_by_stage": "Неудачные рукопожатия в разрезе этапов конечного автомата.",
-        "counters.core.handshake_timeouts_total": "Сколько рукопожатий не уложились в отведённое время.",
-        "counters.core.accept_permit_timeout_total": "Сколько раз слушатель не дождался разрешения принять подключение.",
+        "counters.core.handshake_failures_by_stage":
+          "Неудачные рукопожатия в разрезе этапов конечного автомата.",
+        "counters.core.handshake_timeouts_total":
+          "Сколько рукопожатий не уложились в отведённое время.",
+        "counters.core.accept_permit_timeout_total":
+          "Сколько раз слушатель не дождался разрешения принять подключение.",
         "counters.core.configured_users": "Сколько пользователей настроено у прокси.",
         "counters.core.telemetry_core_enabled": "Собирает ли прокси базовую телеметрию ядра.",
-        "counters.core.telemetry_user_enabled": "Собирает ли прокси телеметрию в разрезе пользователей.",
-        "counters.core.telemetry_me_level": "Насколько подробно собирается телеметрия middle proxy: off, normal или verbose.",
-        "counters.core.conntrack_control_enabled": "Разрешено ли прокси управлять таблицей conntrack.",
-        "counters.core.conntrack_control_available": "Доступен ли механизм управления conntrack прямо сейчас.",
-        "counters.core.conntrack_pressure_active": "Действует ли сейчас режим давления на таблицу conntrack.",
-        "counters.core.conntrack_event_queue_depth": "Сколько событий закрытия ждут обработки в очереди conntrack.",
-        "counters.core.conntrack_rule_apply_ok": "Успешно ли применилось последнее правило conntrack.",
-        "counters.core.conntrack_delete_attempt_total": "Сколько попыток удалить запись conntrack было сделано.",
-        "counters.core.conntrack_delete_success_total": "Сколько записей conntrack удалено успешно.",
-        "counters.core.conntrack_delete_not_found_total": "Сколько удалений conntrack не нашли записи.",
-        "counters.core.conntrack_delete_error_total": "Сколько удалений conntrack завершились ошибкой.",
-        "counters.core.conntrack_close_event_drop_total": "Сколько событий закрытия conntrack отброшено.",
-        "counters.upstream.connect_attempt_total": "Сколько попыток подключиться через апстрим было сделано.",
+        "counters.core.telemetry_user_enabled":
+          "Собирает ли прокси телеметрию в разрезе пользователей.",
+        "counters.core.telemetry_me_level":
+          "Насколько подробно собирается телеметрия middle proxy: off, normal или verbose.",
+        "counters.core.conntrack_control_enabled":
+          "Разрешено ли прокси управлять таблицей conntrack.",
+        "counters.core.conntrack_control_available":
+          "Доступен ли механизм управления conntrack прямо сейчас.",
+        "counters.core.conntrack_pressure_active":
+          "Действует ли сейчас режим давления на таблицу conntrack.",
+        "counters.core.conntrack_event_queue_depth":
+          "Сколько событий закрытия ждут обработки в очереди conntrack.",
+        "counters.core.conntrack_rule_apply_ok":
+          "Успешно ли применилось последнее правило conntrack.",
+        "counters.core.conntrack_delete_attempt_total":
+          "Сколько попыток удалить запись conntrack было сделано.",
+        "counters.core.conntrack_delete_success_total":
+          "Сколько записей conntrack удалено успешно.",
+        "counters.core.conntrack_delete_not_found_total":
+          "Сколько удалений conntrack не нашли записи.",
+        "counters.core.conntrack_delete_error_total":
+          "Сколько удалений conntrack завершились ошибкой.",
+        "counters.core.conntrack_close_event_drop_total":
+          "Сколько событий закрытия conntrack отброшено.",
+        "counters.upstream.connect_attempt_total":
+          "Сколько попыток подключиться через апстрим было сделано.",
         "counters.upstream.connect_success_total": "Сколько подключений через апстрим удались.",
         "counters.upstream.connect_fail_total": "Сколько подключений через апстрим не удались.",
-        "counters.upstream.connect_failfast_hard_error_total": "Сколько подключений прервано сразу из-за неустранимой ошибки.",
+        "counters.upstream.connect_failfast_hard_error_total":
+          "Сколько подключений прервано сразу из-за неустранимой ошибки.",
         "counters.upstream.connect_attempts_bucket_1": "Подключения, удавшиеся с первой попытки.",
         "counters.upstream.connect_attempts_bucket_2": "Подключения, потребовавшие двух попыток.",
-        "counters.upstream.connect_attempts_bucket_3_4": "Подключения, потребовавшие трёх-четырёх попыток.",
-        "counters.upstream.connect_attempts_bucket_gt_4": "Подключения, потребовавшие более четырёх попыток.",
-        "counters.upstream.connect_duration_success_bucket_le_100ms": "Удачные подключения быстрее 100 мс.",
-        "counters.upstream.connect_duration_success_bucket_101_500ms": "Удачные подключения за 101–500 мс.",
-        "counters.upstream.connect_duration_success_bucket_501_1000ms": "Удачные подключения за 501–1000 мс.",
-        "counters.upstream.connect_duration_success_bucket_gt_1000ms": "Удачные подключения дольше 1000 мс.",
-        "counters.upstream.connect_duration_fail_bucket_le_100ms": "Неудачные подключения, отпавшие быстрее 100 мс.",
-        "counters.upstream.connect_duration_fail_bucket_101_500ms": "Неудачные подключения, отпавшие за 101–500 мс.",
-        "counters.upstream.connect_duration_fail_bucket_501_1000ms": "Неудачные подключения, отпавшие за 501–1000 мс.",
-        "counters.upstream.connect_duration_fail_bucket_gt_1000ms": "Неудачные подключения, отпавшие позже 1000 мс.",
-        "counters.middle_proxy.keepalive_sent_total": "Сколько keepalive-пакетов отправлено в middle proxy.",
-        "counters.middle_proxy.keepalive_failed_total": "Сколько keepalive-пакетов не удалось отправить.",
+        "counters.upstream.connect_attempts_bucket_3_4":
+          "Подключения, потребовавшие трёх-четырёх попыток.",
+        "counters.upstream.connect_attempts_bucket_gt_4":
+          "Подключения, потребовавшие более четырёх попыток.",
+        "counters.upstream.connect_duration_success_bucket_le_100ms":
+          "Удачные подключения быстрее 100 мс.",
+        "counters.upstream.connect_duration_success_bucket_101_500ms":
+          "Удачные подключения за 101–500 мс.",
+        "counters.upstream.connect_duration_success_bucket_501_1000ms":
+          "Удачные подключения за 501–1000 мс.",
+        "counters.upstream.connect_duration_success_bucket_gt_1000ms":
+          "Удачные подключения дольше 1000 мс.",
+        "counters.upstream.connect_duration_fail_bucket_le_100ms":
+          "Неудачные подключения, отпавшие быстрее 100 мс.",
+        "counters.upstream.connect_duration_fail_bucket_101_500ms":
+          "Неудачные подключения, отпавшие за 101–500 мс.",
+        "counters.upstream.connect_duration_fail_bucket_501_1000ms":
+          "Неудачные подключения, отпавшие за 501–1000 мс.",
+        "counters.upstream.connect_duration_fail_bucket_gt_1000ms":
+          "Неудачные подключения, отпавшие позже 1000 мс.",
+        "counters.middle_proxy.keepalive_sent_total":
+          "Сколько keepalive-пакетов отправлено в middle proxy.",
+        "counters.middle_proxy.keepalive_failed_total":
+          "Сколько keepalive-пакетов не удалось отправить.",
         "counters.middle_proxy.keepalive_pong_total": "Сколько ответов на keepalive получено.",
-        "counters.middle_proxy.keepalive_timeout_total": "Сколько keepalive остались без ответа в срок.",
-        "counters.middle_proxy.rpc_proxy_req_signal_sent_total": "Сколько сигналов активности RPC-прокси отправлено.",
-        "counters.middle_proxy.rpc_proxy_req_signal_failed_total": "Сколько сигналов активности RPC-прокси не удалось отправить.",
-        "counters.middle_proxy.rpc_proxy_req_signal_skipped_no_meta_total": "Сколько сигналов пропущено из-за отсутствия метаданных.",
-        "counters.middle_proxy.rpc_proxy_req_signal_response_total": "Сколько ответов на сигналы RPC-прокси получено.",
-        "counters.middle_proxy.rpc_proxy_req_signal_close_sent_total": "Сколько сигналов закрытия RPC-прокси отправлено.",
-        "counters.middle_proxy.reconnect_attempt_total": "Сколько попыток переподключения к middle proxy сделано.",
-        "counters.middle_proxy.reconnect_success_total": "Сколько переподключений к middle proxy удались.",
-        "counters.middle_proxy.handshake_reject_total": "Сколько рукопожатий с middle proxy отклонено.",
-        "counters.middle_proxy.handshake_error_codes": "Отклонённые рукопожатия в разрезе кодов ошибок.",
-        "counters.middle_proxy.reader_eof_total": "Сколько раз читатель middle proxy получил конец потока.",
-        "counters.middle_proxy.idle_close_by_peer_total": "Сколько раз удалённая сторона закрыла соединение по простою.",
-        "counters.middle_proxy.route_drop_no_conn_total": "Пакеты, отброшенные из-за отсутствия привязанного соединения.",
-        "counters.middle_proxy.route_drop_channel_closed_total": "Пакеты, отброшенные из-за закрытого канала назначения.",
-        "counters.middle_proxy.route_drop_queue_full_total": "Пакеты, отброшенные переполнением очереди, всего.",
-        "counters.middle_proxy.route_drop_queue_full_base_total": "Пакеты, отброшенные переполнением обычной очереди.",
-        "counters.middle_proxy.route_drop_queue_full_high_total": "Пакеты, отброшенные переполнением приоритетной очереди.",
-        "counters.middle_proxy.d2c_batches_total": "Сколько пачек кадров отправлено от дата-центра к клиенту.",
+        "counters.middle_proxy.keepalive_timeout_total":
+          "Сколько keepalive остались без ответа в срок.",
+        "counters.middle_proxy.rpc_proxy_req_signal_sent_total":
+          "Сколько сигналов активности RPC-прокси отправлено.",
+        "counters.middle_proxy.rpc_proxy_req_signal_failed_total":
+          "Сколько сигналов активности RPC-прокси не удалось отправить.",
+        "counters.middle_proxy.rpc_proxy_req_signal_skipped_no_meta_total":
+          "Сколько сигналов пропущено из-за отсутствия метаданных.",
+        "counters.middle_proxy.rpc_proxy_req_signal_response_total":
+          "Сколько ответов на сигналы RPC-прокси получено.",
+        "counters.middle_proxy.rpc_proxy_req_signal_close_sent_total":
+          "Сколько сигналов закрытия RPC-прокси отправлено.",
+        "counters.middle_proxy.reconnect_attempt_total":
+          "Сколько попыток переподключения к middle proxy сделано.",
+        "counters.middle_proxy.reconnect_success_total":
+          "Сколько переподключений к middle proxy удались.",
+        "counters.middle_proxy.handshake_reject_total":
+          "Сколько рукопожатий с middle proxy отклонено.",
+        "counters.middle_proxy.handshake_error_codes":
+          "Отклонённые рукопожатия в разрезе кодов ошибок.",
+        "counters.middle_proxy.reader_eof_total":
+          "Сколько раз читатель middle proxy получил конец потока.",
+        "counters.middle_proxy.idle_close_by_peer_total":
+          "Сколько раз удалённая сторона закрыла соединение по простою.",
+        "counters.middle_proxy.route_drop_no_conn_total":
+          "Пакеты, отброшенные из-за отсутствия привязанного соединения.",
+        "counters.middle_proxy.route_drop_channel_closed_total":
+          "Пакеты, отброшенные из-за закрытого канала назначения.",
+        "counters.middle_proxy.route_drop_queue_full_total":
+          "Пакеты, отброшенные переполнением очереди, всего.",
+        "counters.middle_proxy.route_drop_queue_full_base_total":
+          "Пакеты, отброшенные переполнением обычной очереди.",
+        "counters.middle_proxy.route_drop_queue_full_high_total":
+          "Пакеты, отброшенные переполнением приоритетной очереди.",
+        "counters.middle_proxy.d2c_batches_total":
+          "Сколько пачек кадров отправлено от дата-центра к клиенту.",
         "counters.middle_proxy.d2c_batch_frames_total": "Сколько кадров вошло в эти пачки.",
-        "counters.middle_proxy.d2c_batch_bytes_total": "Сколько байтов полезной нагрузки вошло в эти пачки.",
-        "counters.middle_proxy.d2c_flush_reason_queue_drain_total": "Пачки, отправленные потому, что очередь опустела.",
-        "counters.middle_proxy.d2c_flush_reason_batch_frames_total": "Пачки, отправленные по достижении предела кадров.",
-        "counters.middle_proxy.d2c_flush_reason_batch_bytes_total": "Пачки, отправленные по достижении предела байтов.",
-        "counters.middle_proxy.d2c_flush_reason_max_delay_total": "Пачки, отправленные по исчерпании допустимой задержки.",
-        "counters.middle_proxy.d2c_flush_reason_ack_immediate_total": "Пачки, отправленные из-за политики немедленного подтверждения.",
-        "counters.middle_proxy.d2c_flush_reason_close_total": "Пачки, отправленные при закрытии соединения.",
+        "counters.middle_proxy.d2c_batch_bytes_total":
+          "Сколько байтов полезной нагрузки вошло в эти пачки.",
+        "counters.middle_proxy.d2c_flush_reason_queue_drain_total":
+          "Пачки, отправленные потому, что очередь опустела.",
+        "counters.middle_proxy.d2c_flush_reason_batch_frames_total":
+          "Пачки, отправленные по достижении предела кадров.",
+        "counters.middle_proxy.d2c_flush_reason_batch_bytes_total":
+          "Пачки, отправленные по достижении предела байтов.",
+        "counters.middle_proxy.d2c_flush_reason_max_delay_total":
+          "Пачки, отправленные по исчерпании допустимой задержки.",
+        "counters.middle_proxy.d2c_flush_reason_ack_immediate_total":
+          "Пачки, отправленные из-за политики немедленного подтверждения.",
+        "counters.middle_proxy.d2c_flush_reason_close_total":
+          "Пачки, отправленные при закрытии соединения.",
         "counters.middle_proxy.d2c_data_frames_total": "Кадры с данными, отправленные клиенту.",
         "counters.middle_proxy.d2c_ack_frames_total": "Кадры подтверждения, отправленные клиенту.",
-        "counters.middle_proxy.d2c_payload_bytes_total": "Байты полезной нагрузки, отправленные клиенту.",
-        "counters.middle_proxy.d2c_write_mode_coalesced_total": "Записи клиенту, объединённые в одну операцию.",
-        "counters.middle_proxy.d2c_write_mode_split_total": "Записи клиенту, разбитые на несколько операций.",
-        "counters.middle_proxy.d2c_quota_reject_pre_write_total": "Отказы по квоте до записи клиенту.",
-        "counters.middle_proxy.d2c_quota_reject_post_write_total": "Отказы по квоте после записи клиенту.",
-        "counters.middle_proxy.d2c_frame_buf_shrink_total": "Сколько раз буфер кадров клиента ужимался.",
-        "counters.middle_proxy.d2c_frame_buf_shrink_bytes_total": "Сколько байтов освободило ужатие буфера кадров.",
-        "counters.middle_proxy.socks_kdf_strict_reject_total": "Отказы SOCKS по строгой политике ключевого материала.",
-        "counters.middle_proxy.socks_kdf_compat_fallback_total": "Переходы SOCKS на совместимую политику ключевого материала.",
-        "counters.middle_proxy.endpoint_quarantine_total": "Сколько раз адрес middle proxy отправлялся в карантин.",
-        "counters.middle_proxy.kdf_drift_total": "Сколько раз обнаружено расхождение ключевого материала.",
-        "counters.middle_proxy.kdf_port_only_drift_total": "Сколько раз расхождение ключевого материала касалось только порта.",
-        "counters.middle_proxy.hardswap_pending_reuse_total": "Сколько раз ожидающее поколение было переиспользовано.",
-        "counters.middle_proxy.hardswap_pending_ttl_expired_total": "Сколько ожидающих поколений просрочили свой срок.",
-        "counters.middle_proxy.single_endpoint_outage_enter_total": "Сколько раз включался аварийный режим для дата-центра с одним адресом.",
-        "counters.middle_proxy.single_endpoint_outage_exit_total": "Сколько раз аварийный режим выключался.",
-        "counters.middle_proxy.single_endpoint_outage_reconnect_attempt_total": "Попытки переподключения в аварийном режиме.",
-        "counters.middle_proxy.single_endpoint_outage_reconnect_success_total": "Удачные переподключения в аварийном режиме.",
-        "counters.middle_proxy.single_endpoint_quarantine_bypass_total": "Сколько раз карантин адреса обходился в аварийном режиме.",
-        "counters.middle_proxy.single_endpoint_shadow_rotate_total": "Сколько ротаций теневых писателей выполнено.",
-        "counters.middle_proxy.single_endpoint_shadow_rotate_skipped_quarantine_total": "Сколько ротаций пропущено из-за карантина адреса.",
-        "counters.middle_proxy.floor_mode_switch_total": "Сколько раз режим пола писателей переключался.",
-        "counters.middle_proxy.floor_mode_switch_static_to_adaptive_total": "Переключения пола писателей со статического на адаптивный.",
-        "counters.middle_proxy.floor_mode_switch_adaptive_to_static_total": "Переключения пола писателей с адаптивного на статический.",
+        "counters.middle_proxy.d2c_payload_bytes_total":
+          "Байты полезной нагрузки, отправленные клиенту.",
+        "counters.middle_proxy.d2c_write_mode_coalesced_total":
+          "Записи клиенту, объединённые в одну операцию.",
+        "counters.middle_proxy.d2c_write_mode_split_total":
+          "Записи клиенту, разбитые на несколько операций.",
+        "counters.middle_proxy.d2c_quota_reject_pre_write_total":
+          "Отказы по квоте до записи клиенту.",
+        "counters.middle_proxy.d2c_quota_reject_post_write_total":
+          "Отказы по квоте после записи клиенту.",
+        "counters.middle_proxy.d2c_frame_buf_shrink_total":
+          "Сколько раз буфер кадров клиента ужимался.",
+        "counters.middle_proxy.d2c_frame_buf_shrink_bytes_total":
+          "Сколько байтов освободило ужатие буфера кадров.",
+        "counters.middle_proxy.socks_kdf_strict_reject_total":
+          "Отказы SOCKS по строгой политике ключевого материала.",
+        "counters.middle_proxy.socks_kdf_compat_fallback_total":
+          "Переходы SOCKS на совместимую политику ключевого материала.",
+        "counters.middle_proxy.endpoint_quarantine_total":
+          "Сколько раз адрес middle proxy отправлялся в карантин.",
+        "counters.middle_proxy.kdf_drift_total":
+          "Сколько раз обнаружено расхождение ключевого материала.",
+        "counters.middle_proxy.kdf_port_only_drift_total":
+          "Сколько раз расхождение ключевого материала касалось только порта.",
+        "counters.middle_proxy.hardswap_pending_reuse_total":
+          "Сколько раз ожидающее поколение было переиспользовано.",
+        "counters.middle_proxy.hardswap_pending_ttl_expired_total":
+          "Сколько ожидающих поколений просрочили свой срок.",
+        "counters.middle_proxy.single_endpoint_outage_enter_total":
+          "Сколько раз включался аварийный режим для дата-центра с одним адресом.",
+        "counters.middle_proxy.single_endpoint_outage_exit_total":
+          "Сколько раз аварийный режим выключался.",
+        "counters.middle_proxy.single_endpoint_outage_reconnect_attempt_total":
+          "Попытки переподключения в аварийном режиме.",
+        "counters.middle_proxy.single_endpoint_outage_reconnect_success_total":
+          "Удачные переподключения в аварийном режиме.",
+        "counters.middle_proxy.single_endpoint_quarantine_bypass_total":
+          "Сколько раз карантин адреса обходился в аварийном режиме.",
+        "counters.middle_proxy.single_endpoint_shadow_rotate_total":
+          "Сколько ротаций теневых писателей выполнено.",
+        "counters.middle_proxy.single_endpoint_shadow_rotate_skipped_quarantine_total":
+          "Сколько ротаций пропущено из-за карантина адреса.",
+        "counters.middle_proxy.floor_mode_switch_total":
+          "Сколько раз режим пола писателей переключался.",
+        "counters.middle_proxy.floor_mode_switch_static_to_adaptive_total":
+          "Переключения пола писателей со статического на адаптивный.",
+        "counters.middle_proxy.floor_mode_switch_adaptive_to_static_total":
+          "Переключения пола писателей с адаптивного на статический.",
         "counters.pool.pool_swap_total": "Сколько раз пул писателей менял поколение.",
         "counters.pool.pool_drain_active": "Сколько поколений пула выводится прямо сейчас.",
-        "counters.pool.pool_force_close_total": "Сколько писателей закрыто принудительно по тайм-ауту вывода.",
-        "counters.pool.pool_stale_pick_total": "Сколько раз клиент был привязан к устаревшему писателю.",
+        "counters.pool.pool_force_close_total":
+          "Сколько писателей закрыто принудительно по тайм-ауту вывода.",
+        "counters.pool.pool_stale_pick_total":
+          "Сколько раз клиент был привязан к устаревшему писателю.",
         "counters.pool.writer_removed_total": "Сколько писателей удалено из пула.",
-        "counters.pool.writer_removed_unexpected_total": "Сколько писателей удалено из пула незапланированно.",
+        "counters.pool.writer_removed_unexpected_total":
+          "Сколько писателей удалено из пула незапланированно.",
         "counters.pool.refill_triggered_total": "Сколько раз запускалось дозаполнение пула.",
-        "counters.pool.refill_skipped_inflight_total": "Сколько дозаполнений пропущено, потому что предыдущее ещё шло.",
+        "counters.pool.refill_skipped_inflight_total":
+          "Сколько дозаполнений пропущено, потому что предыдущее ещё шло.",
         "counters.pool.refill_failed_total": "Сколько дозаполнений завершились неудачей.",
-        "counters.pool.writer_restored_same_endpoint_total": "Сколько писателей восстановлено на том же адресе.",
-        "counters.pool.writer_restored_fallback_total": "Сколько писателей восстановлено на запасном адресе.",
-        "counters.desync.secure_padding_invalid_total": "Сколько кадров пришли с некорректным защитным заполнением.",
+        "counters.pool.writer_restored_same_endpoint_total":
+          "Сколько писателей восстановлено на том же адресе.",
+        "counters.pool.writer_restored_fallback_total":
+          "Сколько писателей восстановлено на запасном адресе.",
+        "counters.desync.secure_padding_invalid_total":
+          "Сколько кадров пришли с некорректным защитным заполнением.",
         "counters.desync.desync_total": "Сколько раз обнаружено рассогласование потока кадров.",
-        "counters.desync.desync_full_logged_total": "Сколько рассогласований записано в журнал полностью.",
+        "counters.desync.desync_full_logged_total":
+          "Сколько рассогласований записано в журнал полностью.",
         "counters.desync.desync_suppressed_total": "Сколько записей о рассогласовании подавлено.",
         "counters.desync.desync_frames_bucket_0": "Рассогласования, затронувшие ноль кадров.",
         "counters.desync.desync_frames_bucket_1_2": "Рассогласования, затронувшие один-два кадра.",
-        "counters.desync.desync_frames_bucket_3_10": "Рассогласования, затронувшие от трёх до десяти кадров.",
-        "counters.desync.desync_frames_bucket_gt_10": "Рассогласования, затронувшие более десяти кадров.",
+        "counters.desync.desync_frames_bucket_3_10":
+          "Рассогласования, затронувшие от трёх до десяти кадров.",
+        "counters.desync.desync_frames_bucket_gt_10":
+          "Рассогласования, затронувшие более десяти кадров.",
         "counters.class": "Причина, по которой подключение или рукопожатие не состоялось.",
         "counters.class_total": "Сколько раз встретилась эта причина с момента запуска.",
         "counters.stage": "Этап конечного автомата рукопожатия, на котором произошёл сбой.",
         "counters.stage_total": "Сколько сбоев рукопожатия пришлось на этот этап.",
         "counters.error_code": "Код ошибки, с которым middle proxy отклонил рукопожатие.",
         "counters.error_code_total": "Сколько отклонений пришлось на этот код ошибки.",
-        "web.plane.manager": "Плоскость реестра сессий. null означает, что её замок был занят при этом опросе, а не что данных нет.",
-        "web.plane.streams": "Плоскость логических потоков. null означает, что её замок был занят при этом опросе, а не что данных нет.",
-        "web.plane.budget": "Плоскость бюджета очередей. null означает, что её замок был занят при этом опросе, а не что данных нет.",
-        "web.plane.websockets": "Плоскость WebSocket-соединений. null означает, что её замок был занят при этом опросе, а не что данных нет.",
-        "web.plane.learning": "Плоскость обучения транспорту. null означает, что её замок был занят при этом опросе, а не что данных нет.",
-        "web.plane.debug": "Плоскость захвата запросов. null означает, что её замок был занят при этом опросе, а не что данных нет.",
-        "web.lifecycle": "Состояние WEB-рантайма в процессе прокси: starting, no_web_listener, running, draining, drained, deadline_exceeded.",
-        "web.lifecycle_epoch": "Сколько раз WEB-рантайм пересоздавался с момента запуска прокси; растёт при каждой перезагрузке конфигурации, затронувшей WEB.",
+        "web.plane.manager":
+          "Плоскость реестра сессий. null означает, что её замок был занят при этом опросе, а не что данных нет.",
+        "web.plane.streams":
+          "Плоскость логических потоков. null означает, что её замок был занят при этом опросе, а не что данных нет.",
+        "web.plane.budget":
+          "Плоскость бюджета очередей. null означает, что её замок был занят при этом опросе, а не что данных нет.",
+        "web.plane.websockets":
+          "Плоскость WebSocket-соединений. null означает, что её замок был занят при этом опросе, а не что данных нет.",
+        "web.plane.learning":
+          "Плоскость обучения транспорту. null означает, что её замок был занят при этом опросе, а не что данных нет.",
+        "web.plane.debug":
+          "Плоскость захвата запросов. null означает, что её замок был занят при этом опросе, а не что данных нет.",
+        "web.lifecycle":
+          "Состояние WEB-рантайма в процессе прокси: starting, no_web_listener, running, draining, drained, deadline_exceeded.",
+        "web.lifecycle_epoch":
+          "Сколько раз WEB-рантайм пересоздавался с момента запуска прокси; растёт при каждой перезагрузке конфигурации, затронувшей WEB.",
         "web.lifecycle_age_ms": "Сколько времени рантайм находится в текущем состоянии.",
-        "web.available": "Может ли рантайм отвечать на запросы прямо сейчас: он жив и находится в состоянии running или draining.",
-        "web.reason": "Почему рантайм недоступен. Показывается только при available = false; runtime_released означает, что процесс уже отпустил рантайм.",
-        "web.effective_config_enabled": "Включён ли раздел [web] в конфигурации, действующей прямо сейчас. Это желаемое состояние; lifecycle — фактическое.",
+        "web.available":
+          "Может ли рантайм отвечать на запросы прямо сейчас: он жив и находится в состоянии running или draining.",
+        "web.reason":
+          "Почему рантайм недоступен. Показывается только при available = false; runtime_released означает, что процесс уже отпустил рантайм.",
+        "web.effective_config_enabled":
+          "Включён ли раздел [web] в конфигурации, действующей прямо сейчас. Это желаемое состояние; lifecycle — фактическое.",
         "web.listeners": "Адреса, на которых прокси слушает WEB-трафик от терминатора TLS.",
         "web.listeners_item": "Адрес и порт одного WEB-слушателя.",
-        "web.runtime_instance": "Идентификатор процесса-владельца WEB-рантайма. Он же — предохранитель: запрос на закрытие сессий с чужим идентификатором отклоняется, а не применяется к перезапущенному прокси.",
-        "web.generation_id": "Поколение релея: растёт при перезагрузке конфигурации; новые логические потоки берут актуальное поколение, существующие сессии остаются в своём.",
-        "web.manager.issuance_enabled": "Выдаёт ли рантайм новые bootstrap-токены и сессии. Пока true, закрытие «всех сессий» запрещено.",
+        "web.runtime_instance":
+          "Идентификатор процесса-владельца WEB-рантайма. Он же — предохранитель: запрос на закрытие сессий с чужим идентификатором отклоняется, а не применяется к перезапущенному прокси.",
+        "web.generation_id":
+          "Поколение релея: растёт при перезагрузке конфигурации; новые логические потоки берут актуальное поколение, существующие сессии остаются в своём.",
+        "web.manager.issuance_enabled":
+          "Выдаёт ли рантайм новые bootstrap-токены и сессии. Пока true, закрытие «всех сессий» запрещено.",
         "web.manager.issuance_generation": "Поколение политики выдачи; растёт при её изменении.",
         "web.manager.shutdown": "Начата ли остановка рантайма.",
         "web.manager.sessions": "Сколько WEB-сессий живо прямо сейчас.",
-        "web.manager.bootstraps": "Сколько выданных bootstrap-токенов ещё не превратились в сессию и не истекли.",
-        "web.manager.client_ips": "Сколько различных клиентских адресов держат сессии; по нему считается лимит сессий на адрес.",
+        "web.manager.bootstraps":
+          "Сколько выданных bootstrap-токенов ещё не превратились в сессию и не истекли.",
+        "web.manager.client_ips":
+          "Сколько различных клиентских адресов держат сессии; по нему считается лимит сессий на адрес.",
         "web.manager.profiles": "Сколько профилей vhost сейчас обслуживают сессии.",
-        "web.manager.closed_sessions": "Сколько закрытых сессий рантайм ещё помнит — по ним отдаётся надгробие вместо 404.",
-        "web.manager.closed_tokens": "Сколько отозванных токенов рантайм помнит, чтобы отличать повторную попытку от подделки.",
-        "web.streams.live": "Сколько логических потоков MTProxy идёт внутри WEB-сессий прямо сейчас.",
+        "web.manager.closed_sessions":
+          "Сколько закрытых сессий рантайм ещё помнит — по ним отдаётся надгробие вместо 404.",
+        "web.manager.closed_tokens":
+          "Сколько отозванных токенов рантайм помнит, чтобы отличать повторную попытку от подделки.",
+        "web.streams.live":
+          "Сколько логических потоков MTProxy идёт внутри WEB-сессий прямо сейчас.",
         "web.streams.profiles": "Сколько профилей владеет живыми потоками.",
         "web.streams.closed": "Закрыт ли реестр потоков — он закрывается при остановке рантайма.",
         "web.budget.queue_bytes": "Сколько байт лежит в очередях на отправку клиенту.",
@@ -1669,20 +2872,27 @@ export const ru = {
         "web.budget.control_bytes": "Сколько байт занимают служебные кадры сессий.",
         "web.budget.control_items": "Сколько служебных кадров ожидает отправки.",
         "web.budget.websocket_bytes": "Сколько байт бюджета занято WebSocket-соединениями.",
-        "web.budget.high_water_bytes": "Максимум занятых байт с момента запуска рантайма — по нему видно, насколько близко к пределу подходила нагрузка.",
+        "web.budget.high_water_bytes":
+          "Максимум занятых байт с момента запуска рантайма — по нему видно, насколько близко к пределу подходила нагрузка.",
         "web.budget.owners": "Сколько сессий держат долю бюджета.",
         "web.budget.closed": "Закрыт ли бюджет — он закрывается при остановке рантайма.",
         "web.websockets.entries": "Сколько WebSocket-соединений обслуживает рантайм.",
-        "web.websockets.claims": "Сколько заявок на WebSocket-соединение выдано, включая ещё не поднятые.",
-        "web.websockets.evictions_in_flight": "Сколько соединений сейчас вытесняется из-за нехватки бюджета.",
+        "web.websockets.claims":
+          "Сколько заявок на WebSocket-соединение выдано, включая ещё не поднятые.",
+        "web.websockets.evictions_in_flight":
+          "Сколько соединений сейчас вытесняется из-за нехватки бюджета.",
         "web.websockets.closed": "Закрыт ли реестр WebSocket-соединений.",
-        "web.learning.enabled": "Включено ли обучение выбору транспорта. Оно работает только при непустом web.carriers.",
-        "web.learning.aggressiveness": "Насколько быстро обучение принимает решение: conservative, balanced или aggressive.",
+        "web.learning.enabled":
+          "Включено ли обучение выбору транспорта. Оно работает только при непустом web.carriers.",
+        "web.learning.aggressiveness":
+          "Насколько быстро обучение принимает решение: conservative, balanced или aggressive.",
         "web.learning.entries": "Сколько записей накопило обучение.",
-        "web.learning.capacity": "Предел числа записей обучения (web.limits.max_carrier_learning_entries).",
+        "web.learning.capacity":
+          "Предел числа записей обучения (web.limits.max_carrier_learning_entries).",
         "web.learning.lifetime_secs": "Сколько живёт одна запись обучения.",
         "web.learning.age_ms": "Сколько времени прошло с последнего сброса накопленного знания.",
-        "web.learning.epoch": "Поколение накопленного знания: растёт при сбросе. null — сбросов ещё не было.",
+        "web.learning.epoch":
+          "Поколение накопленного знания: растёт при сбросе. null — сбросов ещё не было.",
         "web.debug.records": "Сколько записей захвата запросов лежит в буфере.",
         "web.debug.records_capacity": "Предел числа записей захвата.",
         "web.debug.used_bytes": "Сколько байт занимают записи захвата.",
@@ -1696,47 +2906,70 @@ export const ru = {
         "web.debug.policy_generation": "Поколение политики захвата: растёт при её изменении.",
         "web.debug.policy": "Политика захвата запросов из конфигурации Telemt.",
         "web.debug.policy_field": "Параметр политики захвата запросов; панель его не редактирует.",
-        "web.permits": "Семафоры рантайма: сколько единиц каждого ресурса занято и сколько осталось.",
+        "web.permits":
+          "Семафоры рантайма: сколько единиц каждого ресурса занято и сколько осталось.",
         "web.permits.name": "Имя семафора, как его называет сам Telemt.",
         "web.permits.used": "Сколько единиц ресурса занято сейчас.",
         "web.permits.available": "Сколько единиц ещё можно выдать.",
         "web.permits.capacity": "Предел семафора, выведенный из [web.limits].",
         "web.permits.closed": "Закрыт ли семафор — он закрывается при остановке рантайма.",
-        "web.limits": "Пределы WEB-режима из раздела [web.limits]. Их изменение применяется только после перезапуска прокси.",
-        "web.limits_field": "Предел WEB-режима из [web.limits]; применяется после перезапуска прокси.",
-        "web.totals.bytes_up": "Сколько байт ушло от клиентов в Telegram через WEB с момента запуска рантайма.",
-        "web.totals.bytes_down": "Сколько байт пришло из Telegram клиентам через WEB с момента запуска рантайма.",
-        "web.totals.streams_opened": "Сколько логических потоков открыто с момента запуска рантайма.",
-        "web.totals.streams_rejected": "Сколько попыток открыть поток отклонено — по лимиту, по разбору или по состоянию сессии.",
-        "web.totals.session_incarnations_created": "Сколько воплощений сессий создано с момента запуска рантайма.",
+        "web.limits":
+          "Пределы WEB-режима из раздела [web.limits]. Их изменение применяется только после перезапуска прокси.",
+        "web.limits_field":
+          "Предел WEB-режима из [web.limits]; применяется после перезапуска прокси.",
+        "web.totals.bytes_up":
+          "Сколько байт ушло от клиентов в Telegram через WEB с момента запуска рантайма.",
+        "web.totals.bytes_down":
+          "Сколько байт пришло из Telegram клиентам через WEB с момента запуска рантайма.",
+        "web.totals.streams_opened":
+          "Сколько логических потоков открыто с момента запуска рантайма.",
+        "web.totals.streams_rejected":
+          "Сколько попыток открыть поток отклонено — по лимиту, по разбору или по состоянию сессии.",
+        "web.totals.session_incarnations_created":
+          "Сколько воплощений сессий создано с момента запуска рантайма.",
         "web.totals.session_incarnations_closed": "Сколько воплощений сессий закрыто.",
         "web.totals.limit_hits": "Сколько раз запрос упёрся в предел WEB-режима.",
         "web.totals.auxiliary_tasks": "Сколько служебных задач рантайма работает.",
-        "web.partial": "Плоскости, чей замок был занят при этом опросе: их значения не прочитаны, а не отсутствуют.",
+        "web.partial":
+          "Плоскости, чей замок был занят при этом опросе: их значения не прочитаны, а не отсутствуют.",
         "web.partial_item": "Имя занятой плоскости.",
-        "web.sessions.next_cursor": "Метка продолжения обхода. null — обход дошёл до конца реестра.",
+        "web.sessions.next_cursor":
+          "Метка продолжения обхода. null — обход дошёл до конца реестра.",
         "web.sessions.scanned": "Сколько кандидатов просмотрел последний обход реестра.",
-        "web.sessions.scan_truncated": "Упёрся ли обход в потолок Telemt (1000 кандидатов) — тогда за ним остались непросмотренные сессии.",
-        "web.sessions.partial_sessions": "Сколько сессий пропущено, потому что их замок был занят в момент обхода.",
-        "web.sessions.partial": "Плоскости, чей замок был занят при обходе. [\"manager\"] означает, что пустая страница — это «занято», а не «сессий нет».",
-        "web.session.session_ref": "Непрозрачная ссылка на сессию — по ней сессию можно найти и закрыть.",
+        "web.sessions.scan_truncated":
+          "Упёрся ли обход в потолок Telemt (1000 кандидатов) — тогда за ним остались непросмотренные сессии.",
+        "web.sessions.partial_sessions":
+          "Сколько сессий пропущено, потому что их замок был занят в момент обхода.",
+        "web.sessions.partial":
+          'Плоскости, чей замок был занят при обходе. ["manager"] означает, что пустая страница — это «занято», а не «сессий нет».',
+        "web.session.session_ref":
+          "Непрозрачная ссылка на сессию — по ней сессию можно найти и закрыть.",
         "web.session.user_agent": "User-Agent клиента, как его передал терминатор TLS.",
-        "web.session.user_agent_id": "Отпечаток User-Agent: по нему обучение группирует клиентов, не храня саму строку.",
-        "web.session.trace_session_id": "Внутренний номер сессии — он же встречается в записях захвата запросов.",
-        "web.session.client_ip": "Адрес клиента, полученный из X-Forwarded-For доверенного терминатора.",
+        "web.session.user_agent_id":
+          "Отпечаток User-Agent: по нему обучение группирует клиентов, не храня саму строку.",
+        "web.session.trace_session_id":
+          "Внутренний номер сессии — он же встречается в записях захвата запросов.",
+        "web.session.client_ip":
+          "Адрес клиента, полученный из X-Forwarded-For доверенного терминатора.",
         "web.session.host": "Публичный vhost, через который пришёл клиент.",
         "web.session.user": "Пользователь Telemt, чьим профилем авторизована сессия.",
         "web.session.key_id": "Идентификатор ключа профиля, которым авторизована сессия.",
-        "web.session.carrier": "Транспорт сессии: https, https-lanes, websocket или websocket-lanes.",
+        "web.session.carrier":
+          "Транспорт сессии: https, https-lanes, websocket или websocket-lanes.",
         "web.session.attempt": "Номер попытки согласования транспорта, с единицы.",
-        "web.session.client_class": "Как клиент себя объявил: legacy, bridge, browser-hint или ios.",
-        "web.session.automatic": "Выбран ли транспорт автосогласованием, а не фиксированной настройкой.",
-        "web.session.state": "Состояние сессии: provisional, replacing, committed, superseded, healthy, closing или closed.",
+        "web.session.client_class":
+          "Как клиент себя объявил: legacy, bridge, browser-hint или ios.",
+        "web.session.automatic":
+          "Выбран ли транспорт автосогласованием, а не фиксированной настройкой.",
+        "web.session.state":
+          "Состояние сессии: provisional, replacing, committed, superseded, healthy, closing или closed.",
         "web.session.streams": "Сколько логических потоков идёт внутри этой сессии.",
         "web.session.tasks": "Сколько задач обслуживает эту сессию.",
-        "web.session.lanes": "Сколько полос занято: у lane-транспортов на каждый поток своя полоса.",
+        "web.session.lanes":
+          "Сколько полос занято: у lane-транспортов на каждый поток своя полоса.",
         "web.session.lane_open_waits": "Сколько запросов ждут открытия своей полосы.",
-        "web.session.websocket_lane_reservations": "Сколько полос зарезервировано под WebSocket-соединения.",
+        "web.session.websocket_lane_reservations":
+          "Сколько полос зарезервировано под WebSocket-соединения.",
         "web.session.websocket_active": "Держит ли сессия живое WebSocket-соединение.",
         "web.session.pending_bytes": "Сколько байт ждут отправки клиенту в этой сессии.",
         "web.session.pending_items": "Сколько кадров ждут отправки клиенту.",
@@ -1744,7 +2977,8 @@ export const ru = {
         "web.session.control_items": "Сколько служебных кадров ждут отправки.",
         "web.session.age_ms": "Сколько живёт сессия.",
         "web.session.idle_ms": "Сколько времени прошло с последней активности клиента.",
-        "web.session.negotiation_remaining_ms": "Сколько осталось до конца окна согласования транспорта. Поле отсутствует, когда транспорт уже зафиксирован.",
+        "web.session.negotiation_remaining_ms":
+          "Сколько осталось до конца окна согласования транспорта. Поле отсутствует, когда транспорт уже зафиксирован.",
         "web.sessions.rows": "Живые WEB-сессии, загруженные на данный момент.",
       },
     },
@@ -1813,30 +3047,26 @@ export const ru = {
     defaultReason: "функция недоступна на этом сервере.",
     unsupportedReason: "сборка прокси не отдаёт эти данные.",
     howToEnable: "Как включить",
-    hideWidget: "Скрыть виджет",
     // Keyed by GateHintKey (web/src/caps/gateHints.ts) — the "как включить"
     // follow-up text for a disabled Telemt capability/gate. Kept here (not
     // in caps/gateHints.ts) per the single-strings-module rule; that module
     // only owns the key type + the lookup, not the Russian text itself.
     hints: {
-      runtime_edge:
-        "Включите runtime_edge_enabled = true в конфиге Telemt и перезапустите прокси.",
+      runtime_edge: "Включите runtime_edge_enabled = true в конфиге Telemt и перезапустите прокси.",
       telemt_outdated: "Обновите Telemt — этот раздел появился в более новой версии.",
       quota: "Обновите Telemt — квоты трафика появились в более новой версии.",
-      config_api:
-        "Обновите Telemt или включите редактирование конфигурации через его API.",
+      config_api: "Обновите Telemt или включите редактирование конфигурации через его API.",
       reload_api:
         "Обновите Telemt — горячая перезагрузка конфигурации появилась в более новой версии.",
       user_enable_disable:
         "Обновите Telemt — включение и отключение пользователей появилось в более новой версии.",
-      rotate_secret:
-        "Обновите Telemt — смена секрета через API появилась в более новой версии.",
+      rotate_secret: "Обновите Telemt — смена секрета через API появилась в более новой версии.",
       log_stream:
         "Живые логи недоступны на этой платформе — используйте разовый показ последних строк.",
       minimal_runtime_enabled:
         "Включите minimal_runtime_enabled = true в конфиге Telemt и перезапустите прокси.",
       web_enabled:
-        "Включите WEB-режим: `[web] enabled = true` плюс слушатель с `transport = \"web\"` в `[[server.listeners]]`, затем перезапустите прокси.",
+        'Включите WEB-режим: `[web] enabled = true` плюс слушатель с `transport = "web"` в `[[server.listeners]]`, затем перезапустите прокси.',
       web_runtime_transitional:
         "Рантайм WEB сейчас поднимается или останавливается — подождите несколько секунд и обновите. Менять `[web]` в конфиге не нужно.",
       me_pool_unavailable:
@@ -1870,7 +3100,7 @@ export const ru = {
       },
       settings: {
         title: "Настройки панели",
-        description: "Сессии, тема, раскладка дашборда",
+        description: "Сессии, язык, тема, детализация",
       },
     },
     config: {
@@ -1914,26 +3144,21 @@ export const ru = {
       noChanges: "Нет изменений",
       saved: "Конфигурация обновлена",
       changedTitle: "Изменённые ключи",
-      runtimeReloadNotice:
-        "Требуется перезагрузка конфигурации для применения изменений.",
+      runtimeReloadNotice: "Требуется перезагрузка конфигурации для применения изменений.",
       processRestartNotice: "Часть изменений требует перезапуска Telemt:",
-      processRestartNoticeNoFields:
-        "Часть изменений требует перезапуска Telemt.",
+      processRestartNoticeNoFields: "Часть изменений требует перезапуска Telemt.",
       reloadNow: "Перезагрузить сейчас",
       restartNow: "Перезапустить Telemt",
       conflictTitle: "Конфигурация изменена на сервере",
       conflictDescription:
         "Пока вы редактировали конфигурацию, она изменилась на сервере. Изменившиеся ключи:",
       conflictReload: "Перезагрузить и повторить",
-      conflictOverlapWarning:
-        "Эти же ключи изменили и вы — выберите, что оставить",
+      conflictOverlapWarning: "Эти же ключи изменили и вы — выберите, что оставить",
       conflictReapplyMine: "Применить мои изменения поверх",
       conflictDiscardMine: "Отменить мои изменения",
-      rawEditorDesktopOnly:
-        "Raw-редактор доступен только на компьютере — здесь только просмотр.",
+      rawEditorDesktopOnly: "Raw-редактор доступен только на компьютере — здесь только просмотр.",
       rawEditorTitle: "Raw JSON (секции конфигурации)",
-      rawParseError:
-        "Некорректный JSON — изменения не будут сохранены, пока ошибка не исправлена.",
+      rawParseError: "Некорректный JSON — изменения не будут сохранены, пока ошибка не исправлена.",
       rawUnsafeInteger:
         "Число вне безопасного диапазона (потеряет точность) — редактируйте это поле иначе",
       reload: {
@@ -2012,8 +3237,7 @@ export const ru = {
       },
       logLevel: "Уровень логирования",
       telemetryMeLevel: "Телеметрия ME",
-      tlsExtendedOnly:
-        "TLS-отпечатки показываются только в расширенном режиме.",
+      tlsExtendedOnly: "TLS-отпечатки показываются только в расширенном режиме.",
     },
     platform: {
       title: "Платформа",
@@ -2031,8 +3255,7 @@ export const ru = {
       },
       manualCommandsTitle: "Ручные команды",
       restartTelemt: "Перезапустить Telemt",
-      restartConfirm:
-        "Перезапустить Telemt сейчас? Активные соединения будут разорваны.",
+      restartConfirm: "Перезапустить Telemt сейчас? Активные соединения будут разорваны.",
       restarted: "Telemt перезапускается",
     },
     settings: {
@@ -2050,10 +3273,6 @@ export const ru = {
       created: "Создана",
       displayTitle: "Отображение",
       dangerZoneTitle: "Опасная зона",
-      resetLayout: "Сбросить раскладку дашборда",
-      resetLayoutConfirm:
-        "Сбросить раскладку дашборда Пульса к значениям по умолчанию?",
-      resetLayoutDone: "Раскладка сброшена",
       signOut: "Выйти",
     },
   },
@@ -2086,15 +3305,13 @@ export const ru = {
     invalid_credentials: "Неверное имя пользователя или пароль.",
     rate_limited: "Слишком много попыток входа. Подождите минуту и повторите.",
     session_expired: "Сессия истекла. Войдите снова.",
-    csrf_rejected:
-      "Запрос отклонён проверкой безопасности — обновите страницу и повторите.",
+    csrf_rejected: "Запрос отклонён проверкой безопасности — обновите страницу и повторите.",
     internal_error: "Внутренняя ошибка панели. Попробуйте ещё раз.",
     not_found: "Не найдено.",
     telemt_unreachable: "Telemt недоступен — проверьте, что прокси запущен.",
     capability_absent: "Эта версия Telemt не поддерживает данную функцию.",
     capability_unavailable: "Функция сейчас недоступна на этом сервере.",
-    manual_restart_required:
-      "Автоматический перезапуск недоступен — выполните команду вручную.",
+    manual_restart_required: "Автоматический перезапуск недоступен — выполните команду вручную.",
     update_locked: "Обновление уже выполняется.",
     sublink_unavailable: "Страница подписки отключена.",
     log_tail_unavailable: "Просмотр последних строк логов недоступен.",
@@ -2103,8 +3320,7 @@ export const ru = {
     // Reserved for milestones not yet implemented, kept so a stray response
     // from a partially-rolled-out backend still shows something sensible.
     totp_required: "Требуется код двухфакторной аутентификации.",
-    telemt_auth_failed:
-      "Telemt отклонил авторизацию панели — проверьте auth_header в конфиге.",
+    telemt_auth_failed: "Telemt отклонил авторизацию панели — проверьте auth_header в конфиге.",
     // Telemt *APIError codes passed through verbatim.
     user_exists: "Пользователь с таким именем уже существует.",
     last_user_forbidden: "Нельзя удалить последнего пользователя.",
@@ -2112,16 +3328,14 @@ export const ru = {
     revision_conflict: "Конфигурация изменена — обновите её и повторите попытку.",
     reload_in_progress: "Перезагрузка конфигурации уже выполняется.",
     reload_not_found: "Задача перезагрузки не найдена.",
-    ambiguous_listeners:
-      "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
+    ambiguous_listeners: "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
     access_not_editable: "Этот раздел конфигурации нельзя изменить через API.",
     section_not_editable: "Этот раздел конфигурации доступен только для чтения.",
     field_not_editable: "Это поле нельзя изменить через API.",
     unauthorized: "Telemt отклонил запрос авторизации.",
     forbidden: "Операция запрещена.",
     method_not_allowed: "Метод не поддерживается.",
-    config_patch_not_atomic:
-      "Не удалось применить изменения конфигурации атомарно.",
+    config_patch_not_atomic: "Не удалось применить изменения конфигурации атомарно.",
     payload_too_large: "Слишком большой запрос.",
     api_disabled: "API Telemt отключён.",
     maestro_unavailable: "Внутренний сервис Telemt недоступен.",
@@ -2131,7 +3345,7 @@ export const ru = {
     // сделать: это единственный экран панели, где отказ приходит на
     // разрушающем действии, и «попробуйте ещё раз» там ничего не значит.
     web_runtime_unavailable:
-      "WEB-рантайм не запущен. Включите [web] enabled = true и слушатель с transport = \"web\", затем перезапустите прокси.",
+      'WEB-рантайм не запущен. Включите [web] enabled = true и слушатель с transport = "web", затем перезапустите прокси.',
     web_snapshot_busy:
       "Данные WEB заняты другим обращением — повторите через пару секунд, значения не потеряны.",
     web_runtime_mismatch:

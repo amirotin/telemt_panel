@@ -29,25 +29,21 @@ export function dcCoverageState(dc: DcStatus): "ok" | "warn" | "error" {
   return "ok";
 }
 
-/**
- * A NEGATIVE id is not a test site: by Telegram's own convention (Telemt's
- * `transport/middle_proxy/pool_config.rs` — "negative DC entries mirror
- * positives when absent (Telegram convention)") DC −N is the MEDIA/download
- * server group of DC N. It carries real client traffic, just a different
- * kind of it.
- */
-export function isMediaDc(dc: Pick<DcStatus, "dc">): boolean {
-  return dc.dc < 0;
+/** Coverage drives degradation; high RTT is a separate attention state. */
+export function dcRouteState(dc: DcStatus): "ok" | "warn" | "error" {
+  const coverage = dcCoverageState(dc);
+  if (coverage !== "ok") return coverage;
+  return dcRttTone(dc.rtt_ms) === "warn" ? "warn" : "ok";
 }
 
 /**
- * The one id that really is the test environment — DC 203, and −203 its
- * media group. Everything else, sign regardless, is production.
+ * A NEGATIVE id is not a test site. In MTProxy's signed target id it selects
+ * the media-only route for the same logical DC; test DCs use the separate
+ * +10000 convention. Telemt keeps +N and −N as distinct writer groups even
+ * when their configured ME endpoints happen to be identical.
  */
-export const TEST_DC_ID = 203;
-
-export function isTestDc(dc: Pick<DcStatus, "dc">): boolean {
-  return Math.abs(dc.dc) === TEST_DC_ID;
+export function isMediaDc(dc: Pick<DcStatus, "dc">): boolean {
+  return dc.dc < 0;
 }
 
 // dcNodeTone is the coverage ring's colour (concept §9's "Цветовая логика
@@ -76,69 +72,34 @@ export function dcRttTone(rttMs: number | null): "warn" | null {
   return rttMs > DC_RTT_WARN_MS ? "warn" : null;
 }
 
-/**
- * Writers as a FILL FRACTION — `alive / required`, clamped to 0…1.
- *
- * The node used to draw one dot per required writer. Dots only work while
- * the floor is small: the live fleet has a data center needing ten, which
- * rendered as a row of specks nobody counts, and the node then had to fall
- * back to the bare fraction for exactly that DC — one node in twelve
- * speaking a different visual language. A thin bar says the same thing at
- * any floor, and the fraction underneath still gives the exact numbers.
- *
- * A pool over its floor clamps at a full bar, the same way coverage does:
- * a bar past its own track reads as a bug, not as spare capacity.
- */
-export function dcWriterRatio(dc: Pick<DcStatus, "alive_writers" | "required_writers">): number {
-  if (dc.required_writers <= 0) return dc.alive_writers > 0 ? 1 : 0;
-  return Math.min(Math.max(dc.alive_writers / dc.required_writers, 0), 1);
-}
-
 // Ids of magnitude >= 100 are the 203-family sites; they close their row
 // rather than sorting by number, which would put DC -203 at the head of the
 // negative row and DC 203 in the middle of nothing.
 const FAR_DC_MAGNITUDE = 100;
 
-function byBoardOrder(a: { dc: number }, b: { dc: number }): number {
-  const far = Number(Math.abs(a.dc) >= FAR_DC_MAGNITUDE) - Number(Math.abs(b.dc) >= FAR_DC_MAGNITUDE);
-  return far !== 0 ? far : a.dc - b.dc;
+export interface DcRouteGroup<T> {
+  id: number;
+  main?: T;
+  media?: T;
+}
+
+/** Pair the signed ME routes under the logical DC id an operator scans for. */
+export function dcRouteGroups<T extends { dc: number }>(dcs: readonly T[]): DcRouteGroup<T>[] {
+  const groups = new Map<number, DcRouteGroup<T>>();
+  for (const dc of dcs) {
+    const id = Math.abs(dc.dc);
+    const group = groups.get(id) ?? { id };
+    if (dc.dc < 0) group.media = dc;
+    else group.main = dc;
+    groups.set(id, group);
+  }
+  return [...groups.values()].sort((a, b) => {
+    const far = Number(a.id >= FAR_DC_MAGNITUDE) - Number(b.id >= FAR_DC_MAGNITUDE);
+    return far !== 0 ? far : a.id - b.id;
+  });
 }
 
 /** Which half of the board a row is — the word the row label prints. */
-export type DcBoardRowKind = "media" | "main";
-
-export interface DcBoardRow<T> {
-  kind: DcBoardRowKind;
-  dcs: T[];
-}
-
-/**
- * Concept §9's «Альтернативная компоновка» — the board's two rows:
- *
- *     Медиа      DC-5  DC-4  DC-3  DC-2  DC-1  DC-203
- *     Основные   DC1   DC2   DC3   DC4   DC5   DC203
- *
- * Media groups (negative ids) on top, main groups underneath, each row
- * ascending with the 203-family site last, so a column pairs a data center
- * with its own media servers and the block reads like a route panel. Each
- * row carries its KIND because the two halves are no longer told apart by
- * colour — every node is coloured by its state now — and «-5» alone does
- * not say "media servers of DC 5" to anyone who has not been told.
- *
- * Returned as ROWS rather than one flat list because the two rows are
- * rendered as two grids: that is what makes the pairing survive a payload
- * with an odd number of sites, and what turns the same markup into concept
- * §21's 3×4 on a phone (three columns × two rows, twice).
- */
-export function dcBoardRows<T extends { dc: number }>(dcs: readonly T[]): DcBoardRow<T>[] {
-  const media = dcs.filter((dc) => dc.dc < 0).sort(byBoardOrder);
-  const main = dcs.filter((dc) => dc.dc >= 0).sort(byBoardOrder);
-  return [
-    { kind: "media" as const, dcs: media },
-    { kind: "main" as const, dcs: main },
-  ].filter((row) => row.dcs.length > 0);
-}
-
 /** The RTT as the node prints it — `42 ms`, or an em dash when unmeasured. */
 export function dcRttText(dc: DcStatus, s: Dict): string {
   if (dc.rtt_ms === null) return "—";
@@ -146,25 +107,21 @@ export function dcRttText(dc: DcStatus, s: Dict): string {
 }
 
 /**
- * What a node's id MEANS, in words — the half of its identity the number
- * alone cannot carry. `null` for a plain production data center, whose id
- * already says everything.
+ * What a signed route id means in words. `null` for the main route, whose
+ * positive id already says everything.
  */
 export function dcKindLabel(dc: Pick<DcStatus, "dc">, s: Dict): string | null {
-  const parts: string[] = [];
   if (isMediaDc(dc)) {
-    parts.push(fill(s.pulse.dc.mediaGroup, { dc: formatNumber(s, Math.abs(dc.dc)) }));
+    return fill(s.pulse.dc.mediaGroup, { dc: formatNumber(s, Math.abs(dc.dc)) });
   }
-  if (isTestDc(dc)) parts.push(s.pulse.dc.testSite);
-  return parts.length > 0 ? parts.join(" · ") : null;
+  return null;
 }
 
 /**
  * The node's accessible name. A node is a small tile of a ring, a writers
  * bar and a number — every one of concept §9's four facts is encoded
  * visually, so the label has to spell all four out, plus what kind of DC
- * group this is (media / test), which only a dashed ring and a tiny tag
- * hint at on screen.
+ * group this is (main / media).
  */
 export function dcNodeAriaLabel(dc: DcStatus, s: Dict): string {
   const base = fill(s.pulse.dc.nodeLabel, {
@@ -176,4 +133,40 @@ export function dcNodeAriaLabel(dc: DcStatus, s: Dict): string {
   });
   const kind = dcKindLabel(dc, s);
   return kind === null ? base : `${base} · ${kind}`;
+}
+
+export interface DcOverview {
+  total: number;
+  covered: number;
+  writersAlive: number;
+  writersRequired: number;
+  p95RttMs: number | null;
+  attention: DcStatus[];
+}
+
+// Overview carries the conclusion, not the full twelve-node board. Nodes
+// needing attention are ordered by coverage first and RTT second; a healthy
+// fleet therefore occupies three summary facts and no inventory wall.
+export function computeDcOverview(dcs: readonly DcStatus[]): DcOverview {
+  const rtts = dcs
+    .map((dc) => dc.rtt_ms)
+    .filter((value): value is number => value !== null)
+    .sort((a, b) => a - b);
+  const p95Index = Math.max(0, Math.ceil(rtts.length * 0.95) - 1);
+  const attention = dcs
+    .filter((dc) => dcCoverageState(dc) !== "ok" || dcRttTone(dc.rtt_ms) === "warn")
+    .sort((a, b) => {
+      const severity = (dc: DcStatus) =>
+        dcCoverageState(dc) === "error" ? 2 : dcCoverageState(dc) === "warn" ? 1 : 0;
+      return severity(b) - severity(a) || (b.rtt_ms ?? -1) - (a.rtt_ms ?? -1);
+    })
+    .slice(0, 3);
+  return {
+    total: dcs.length,
+    covered: dcs.filter((dc) => dcCoverageState(dc) === "ok").length,
+    writersAlive: dcs.reduce((sum, dc) => sum + dc.alive_writers, 0),
+    writersRequired: dcs.reduce((sum, dc) => sum + dc.required_writers, 0),
+    p95RttMs: rtts.length > 0 ? rtts[p95Index]! : null,
+    attention,
+  };
 }

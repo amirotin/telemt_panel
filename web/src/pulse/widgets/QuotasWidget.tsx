@@ -3,39 +3,43 @@ import { useSnapshot } from "../../realtime";
 import type { UsersTopic } from "../../realtime/topics";
 import { Avatar } from "../../ui/Avatar";
 import { Skeleton } from "../../ui/Skeleton";
-import { buttonClasses } from "../../ui/buttonStyles";
 import { IconChevronRight } from "../../ui/icons";
 import { quotaFillClass } from "../../ui/quota.helpers";
 import { fill, formatNumber, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatDurationApprox } from "../../people/expiry";
 import { useNow } from "../../people/useNow";
+import { WidgetActionLabel } from "../WidgetActionLabel";
+import { widgetActionClassName } from "../widgetActionStyles";
 import { WidgetFrame } from "../WidgetFrame";
 import { computeQuotaWatch, type QuotaWatchRow } from "./quotas.helpers";
 
 // QuotasWidget — «Квоты и сроки»: the people whose access is about to stop
 // working, for either of the two reasons access stops working. It closes
-// Сводка beside «События», half the grid each.
+// Сводка only when somebody needs attention.
 //
 // The Люди list already knows all of this, and that is the point: the front
 // page's job is to say WHICH of two hundred names needs a decision this
 // week, so the card is six rows deep, sorted by urgency, and its empty
 // state is one line rather than an illustration of nothing.
-export function QuotasWidget({ onHide }: { onHide?: () => void }) {
+export function QuotasWidget() {
   const s = useStrings();
   const snapshot = useSnapshot<UsersTopic>("users");
   const now = useNow();
   const rows = computeQuotaWatch(snapshot.data, now);
 
+  // Healthy quota state is already covered by the attention strip. Overview
+  // spends a full row here only when somebody actually needs a decision.
+  if (snapshot.data && rows.length === 0) return null;
+
   return (
     <WidgetFrame
       title={s.pulse.widgets.quotas}
-      onHide={onHide}
+      className="lg:col-span-12"
       stale={snapshot.stale}
       action={
-        <Link to="/people" className={buttonClasses("secondary", "sm", "gap-1")}>
-          {s.overview.allPeople}
-          <IconChevronRight className="h-3.5 w-3.5" />
+        <Link to="/people" className={widgetActionClassName} data-testid="widget-action">
+          <WidgetActionLabel />
         </Link>
       }
     >
@@ -44,12 +48,6 @@ export function QuotasWidget({ onHide }: { onHide?: () => void }) {
           <Skeleton className="h-5 w-full" />
           <Skeleton className="h-5 w-2/3" />
         </div>
-      ) : rows.length === 0 ? (
-        // One line, not an empty-state block: "nothing to do" is good news
-        // and should take the least room on the page, not the most (§17).
-        <p className="text-meta text-text-muted" data-testid="quotas-empty">
-          {s.pulse.quotas.empty}
-        </p>
       ) : (
         <ul className="flex flex-col">
           {rows.map((row) => (

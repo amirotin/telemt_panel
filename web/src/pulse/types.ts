@@ -1,10 +1,4 @@
-// Shared identifier types for the Пульс dashboard (widgets/registry.ts,
-// layout.ts, WidgetFrame.tsx, the Диагностика routes) — pulled out of
-// registry.ts so WidgetFrame can reference DiagDomain without importing the
-// registry itself (which imports every widget component, including ones
-// that render WidgetFrame — a type-only import would be erased at compile
-// time either way, but keeping the value-importing edges one-directional
-// avoids the question entirely).
+// Shared identifier types for overview widgets and diagnostics routes.
 
 // DiagDomain enumerates the nine Диагностика drill-down pages
 // (06-ui.md §Пульс: "Соединения · DC · Upstreams · ME · NAT/STUN · Security
@@ -24,19 +18,3 @@ export type DiagDomain =
   // the hub; on an older build it reads as `unsupported`, not as a gate the
   // operator can flip.
   | "web";
-
-// WidgetId enumerates the dashboard's widget catalog (06-ui.md's widget
-// list) — the layout store persists an ordered array of these.
-export type WidgetId =
-  | "health_hero"
-  | "stat_row"
-  | "problems"
-  | "online_now"
-  | "dc"
-  | "upstreams"
-  | "me_pool"
-  | "web"
-  | "selftest"
-  | "recent_events"
-  | "quotas"
-  | "tls_fingerprints";

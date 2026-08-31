@@ -15,10 +15,11 @@ import { fileURLToPath } from "node:url";
 import { ADMIN_PASSWORD, ADMIN_USERNAME, BASE_URL, MOCK_PORT, MOCK_URL, PANEL_PORT, SUBPAGE_SECRET } from "./env";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// web/e2e -> web -> src (the Go module root, and where `make build` drops
-// ./telemt-panel — see Makefile's `build` target).
+// web/e2e -> web -> src (the Go module root). CI may keep the historical
+// in-tree binary, while local development points at the isolated runtime so
+// build artefacts never have to enter the Git working tree.
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const PANEL_BINARY = path.join(REPO_ROOT, "telemt-panel");
+const PANEL_BINARY = process.env["TELEMT_PANEL_E2E_BINARY"] ?? path.join(REPO_ROOT, "telemt-panel");
 
 export interface Stack {
   panel: ChildProcess;
@@ -83,7 +84,7 @@ async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
 export async function startStack(): Promise<Stack> {
   if (!existsSync(PANEL_BINARY)) {
     throw new Error(
-      `e2e: ${PANEL_BINARY} not found — run "make build" from the repo root (src/) before the e2e suite. ` +
+      `e2e: ${PANEL_BINARY} not found — set TELEMT_PANEL_E2E_BINARY or run "make build" from the repo root (src/). ` +
         "The e2e stack deliberately builds nothing for the panel itself; see web/README.md's e2e section.",
     );
   }

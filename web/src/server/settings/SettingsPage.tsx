@@ -16,7 +16,6 @@ import { ThemeToggle } from "../../components/ThemeToggle";
 import { LanguageToggle } from "../../i18n";
 import { DisplayModeSwitch, useDisplayMode, visibleFor } from "../../display-mode";
 import { useLogout } from "../../auth/useLogout";
-import { resetLayout } from "../../pulse/layout";
 import { formatAuditTimestamp } from "../../journal/timestamp.helpers";
 import {
   listSessionsOptions,
@@ -27,12 +26,10 @@ import {
 import { sessionDeviceLabel, sessionUserAgentRaw, sortSessions } from "./sessions.helpers";
 
 // SettingsPage — /server/settings (06-ui.md §Сервер): sessions/devices,
-// theme, display mode, dashboard layout reset, sign out. No passkeys/TOTP
+// theme, display mode, sign out. No passkeys/TOTP
 // slots — ruling R1 defers those to M4.
 //
-// The two irreversible-ish actions (сброс раскладки, выход) sit in a
-// separate error-tinted block at the bottom rather than being scattered
-// among the display preferences — the prototype's own "danger zone" shape.
+// Sign out sits in a separate error-tinted block at the bottom.
 export function SettingsPage() {
   const s = useStrings();
   const queryClient = useQueryClient();
@@ -43,8 +40,6 @@ export function SettingsPage() {
   const [confirmRevoke, setConfirmRevoke] = useState<string | "others" | null>(
     null,
   );
-  const [confirmResetLayout, setConfirmResetLayout] = useState(false);
-  const [layoutResetDone, setLayoutResetDone] = useState(false);
 
   function invalidateSessions() {
     queryClient.invalidateQueries({ queryKey: listSessionsQueryKey() });
@@ -206,33 +201,6 @@ export function SettingsPage() {
         <SectionLabel className="text-error">
           {s.server.settings.dangerZoneTitle}
         </SectionLabel>
-        {/* Only the раскладка button swaps for its confirmation — «Выйти»
-            stays reachable throughout. It used to share the branch, so
-            starting a layout reset hid the one action an admin might be on
-            this page for. */}
-        {confirmResetLayout ? (
-          <ConfirmView
-            description={s.server.settings.resetLayoutConfirm}
-            confirmLabel={s.server.settings.resetLayout}
-            danger
-            pending={false}
-            onCancel={() => setConfirmResetLayout(false)}
-            onConfirm={() => {
-              resetLayout();
-              setConfirmResetLayout(false);
-              setLayoutResetDone(true);
-              pushToast(s.server.settings.resetLayoutDone, "ok");
-            }}
-          />
-        ) : (
-          <Button
-            variant="danger"
-            className="self-start"
-            onClick={() => setConfirmResetLayout(true)}
-          >
-            {s.server.settings.resetLayout}
-          </Button>
-        )}
         <Button
           variant="danger"
           className="self-start"
@@ -241,11 +209,6 @@ export function SettingsPage() {
         >
           {s.server.settings.signOut}
         </Button>
-        {layoutResetDone && (
-          <p className="text-micro text-text-faint">
-            {s.server.settings.resetLayoutDone}
-          </p>
-        )}
       </Card>
     </ServerShell>
   );

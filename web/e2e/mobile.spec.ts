@@ -68,33 +68,30 @@ test("login → people → create user → share → sub-page → overview → p
     await expect(page.getByRole("dialog")).toBeHidden();
   });
 
-  await test.step("Сводка renders HealthHero + default widgets, and the layout editor persists across reload", async () => {
+  await test.step("Сводка renders the fixed operational composition across reload", async () => {
     await page.getByRole("link", { name: "Сводка" }).click();
     await expect(page.getByRole("heading", { name: "Сводка", level: 1 })).toBeVisible();
     // The status banner carries no heading of its own any more (M5 S1:
     // one indicator, no caption over it) — the block itself is the assert.
     await expect(page.getByTestId("status-banner")).toBeVisible();
-    // «Онлайн сейчас» ships in the default layout (M4 task 9): the seeded
-    // user list is what it counts against.
-    await expect(page.getByRole("heading", { name: "Онлайн сейчас", level: 2 })).toBeVisible();
-    const statRow = page.getByRole("heading", { name: "Показатели", level: 2 });
+    // The KPI row owns the online totals; this block owns client-level
+    // attention and therefore names the entity, not the duplicated count.
+    await expect(page.getByRole("heading", { name: "Клиенты", level: 2 })).toBeVisible();
+    const statRow = page.getByTestId("kpi-grid");
     await expect(statRow).toBeVisible();
+    await expect(page.getByTestId("dc-board")).toBeVisible();
+    expect(await page.locator('[data-testid^="dc-group-"]').count()).toBeGreaterThan(0);
+    expect(await page.locator('[data-testid^="dc-card-"]').count()).toBeGreaterThan(0);
+    await expect(page.getByTestId("overview-event-rail")).toBeHidden();
 
-    // The layout editor now lives behind the «Вид» dropdown (concept §16).
-    await page.getByRole("button", { name: /^Вид:/ }).click();
-    await page.getByRole("button", { name: "Настроить сводку…" }).click();
-    const statRowRow = page.getByRole("listitem").filter({ hasText: "Показатели" });
-    await statRowRow.getByRole("checkbox").uncheck();
-    await page.getByRole("button", { name: "Готово" }).click();
-    await expect(statRow).not.toBeVisible();
-
-    // A hidden widget lands in «Скрытые блоки» with a one-tap way back —
-    // the prototype's footer list, not a trip through «Настроить».
-    await expect(page.getByRole("heading", { name: "Скрытые блоки", level: 2 })).toBeVisible();
-
+    // There is no widget editor and the composition stays stable.
+    await expect(page.getByRole("button", { name: /^Вид:/ })).toHaveCount(0);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
     await page.reload();
     await expect(page.getByTestId("status-banner")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Показатели", level: 2 })).not.toBeVisible();
+    await expect(page.getByTestId("kpi-grid")).toBeVisible();
   });
 
   await test.step("Пульс is the diagnostics hub: card → Details → back", async () => {
@@ -125,9 +122,13 @@ test("login → people → create user → share → sub-page → overview → p
     await expect(page.getByRole("heading", { name: "Пульс", level: 1 })).toBeVisible();
   });
 
-  await test.step("WEB Details: overview, sessions, a session surface and the close confirmation", async () => {
-    await page.getByTestId("hub-card-web").click();
-    await expect(page).toHaveURL(/\/pulse\/diag\/web$/);
+  await test.step("WEB management: overview, sessions, a session surface and the close confirmation", async () => {
+    await page.getByRole("button", { name: "Ещё" }).click();
+    await page
+      .getByRole("dialog", { name: "Ещё" })
+      .getByRole("menuitem", { name: "WEB", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/web$/);
     await expect(page.getByRole("heading", { name: "WEB", level: 1 })).toBeVisible();
 
     // The Overview reads the `web` topic: the runtime is running on the
@@ -141,7 +142,7 @@ test("login → people → create user → share → sub-page → overview → p
 
     // «Загрузить ещё» is a real request: the mock seeds 24 sessions and the
     // page asks for 20, so the cursor continuation has work to do.
-    const loadMore = page.getByRole("button", { name: "Загрузить ещё" });
+    const loadMore = page.getByRole("button", { name: "Загрузить следующую страницу" });
     await expect(loadMore).toBeVisible();
     await loadMore.click();
     await expect(loadMore).toBeHidden();
@@ -184,7 +185,8 @@ test("login → people → create user → share → sub-page → overview → p
   });
 
   await test.step("Сервер → Платформа shows the capability matrix", async () => {
-    await page.getByRole("link", { name: "Сервер" }).click();
+    await page.getByRole("button", { name: "Ещё" }).click();
+    await page.getByRole("dialog", { name: "Ещё" }).getByRole("menuitem", { name: "Сервер" }).click();
     await page.getByRole("link", { name: "Платформа" }).click();
     await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
   });

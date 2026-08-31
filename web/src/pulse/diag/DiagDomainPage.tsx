@@ -20,7 +20,7 @@ const PAGES: Record<DiagDomain, () => React.ReactElement> = {
   security: SecurityPage,
   counters: CountersPage,
   events: EventsPage,
-  web: WebPage,
+  web: () => <WebPage />,
 };
 
 function isDiagDomain(v: string): v is DiagDomain {

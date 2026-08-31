@@ -49,10 +49,10 @@ export function dcEntityKey(dc: Pick<DcStatus, "dc">): string {
  * then the MEDIA groups by id magnitude — `1 … 203`, then `-1 … -203`.
  *
  * A negative id is not a test site: by Telegram's own convention (Telemt's
- * `transport/middle_proxy/pool_config.rs`) DC −N is the media/download
- * server group of DC N, and the one test environment is DC 203. The order
- * is unchanged — an operator looks up DC 4 before DC 4's media servers —
- * only the name for it is.
+ * `transport/middle_proxy/pool_config.rs`) DC −N is the media-only route
+ * of DC N. DC 203 and −203 are production routes as well. The order is
+ * unchanged — an operator looks up DC 4 before DC 4's media route — only
+ * the name for it is.
  *
  * The payload order is Telemt's, and Telemt sorts numerically ascending, so
  * reading `dcs` as it arrives puts `DC -203` at the head of the rail and

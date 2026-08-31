@@ -57,8 +57,8 @@ describe("Counters page definition (spec §23.4)", () => {
     }
     // The poll exists to make the deltas on that dump, so it stops where
     // the dump stops rather than costing a basic reader 4 KB every 10 s.
-    expect(countersRefetchInterval("basic")).toBe(false);
-    expect(countersRefetchInterval("critical")).toBe(false);
+    expect(countersRefetchInterval("basic")).toBe(countersRefetchMs);
+    expect(countersRefetchInterval("critical")).toBe(countersRefetchMs);
     expect(countersRefetchInterval("extended")).toBe(countersRefetchMs);
   });
 

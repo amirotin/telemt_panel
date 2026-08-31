@@ -2,16 +2,15 @@ import { expect, test } from "./fixtures";
 
 // desktop.spec.ts — 1280×800 smoke (M3 Task 9 brief: "смоук 1280×800 —
 // sidebar, raw-конфиг виден"). Two things the mobile spec structurally
-// cannot cover: the `lg:` sidebar (Shell.tsx's `aside`, `hidden lg:flex`)
+// cannot cover: the wide sidebar
 // and the Конфигурация raw editor (CodeMirror, `lg:`-only per
 // useIsDesktop.ts / ConfigPage.tsx — the mobile view is read-only with no
-// editor to mount at all). M4 task 9 added the five-section walk: the
-// sidebar renders the same NAV_ITEMS the tab bar does, so Сводка/Пульс
-// being two destinations has to hold at this width too.
-test("five-section sidebar navigates, and the raw config editor (CodeMirror) mounts at lg:", async ({ page, login }) => {
+// editor to mount at all). The sidebar also proves the grouped operational
+// and management information architecture at this width.
+test("grouped sidebar navigates, and the raw config editor (CodeMirror) mounts at lg:", async ({ page, login }) => {
   await login();
 
-  const sidebar = page.locator("aside");
+  const sidebar = page.getByTestId("full-sidebar");
   await expect(sidebar).toBeVisible();
 
   // The sidebar status card owns its own GET /api/history query
@@ -22,8 +21,8 @@ test("five-section sidebar navigates, and the raw config editor (CodeMirror) mou
   await expect(traffic).toBeVisible();
   // A real formatted figure, not the «н/д» placeholder and not an empty node.
   await expect(traffic).toHaveText(/\d/, { timeout: 30_000 });
-  // All five sections of the IA (06-ui.md), in order.
-  for (const section of ["Сводка", "Люди", "Пульс", "Журнал", "Сервер"]) {
+  // Four operational sections followed by two management sections.
+  for (const section of ["Сводка", "Люди", "Пульс", "Журнал", "Сервер", "WEB"]) {
     await expect(sidebar.getByRole("link", { name: section })).toBeVisible();
   }
 
@@ -33,6 +32,15 @@ test("five-section sidebar navigates, and the raw config editor (CodeMirror) mou
   await sidebar.getByRole("link", { name: "Сводка" }).click();
   await expect(page).toHaveURL(/\/overview$/);
   await expect(page.getByTestId("status-banner")).toBeVisible();
+  await expect(page.getByTestId("kpi-grid")).toBeVisible();
+  // The full mock intentionally exposes one RPC-only DC. Assert the
+  // composition contract (one board, real groups/cards), not the old
+  // prototype fixture's hard-coded 6 pairs / 12 routes.
+  await expect(page.getByTestId("dc-board")).toBeVisible();
+  expect(await page.locator('[data-testid^="dc-group-"]').count()).toBeGreaterThan(0);
+  expect(await page.locator('[data-testid^="dc-card-"]').count()).toBeGreaterThan(0);
+  await expect(page.getByTestId("overview-event-rail")).toBeVisible();
+  await expect(page.getByTestId("overview-event-rail").getByTestId("widget-action")).toHaveText("Детали");
 
   await sidebar.getByRole("link", { name: "Пульс" }).click();
   await expect(page).toHaveURL(/\/pulse$/);
@@ -42,9 +50,9 @@ test("five-section sidebar navigates, and the raw config editor (CodeMirror) mou
   await page.getByRole("button", { name: "Назад" }).click();
   await expect(page).toHaveURL(/\/pulse$/);
 
-  // The mobile bottom tab bar (`lg:hidden`) must stay hidden at this
+  // The mobile bottom tab bar must stay hidden at this
   // viewport — the sidebar replaces it, not sits alongside it.
-  await expect(page.getByRole("navigation", { name: "Основная навигация" })).toBeHidden();
+  await expect(page.getByTestId("mobile-bottom-nav")).toBeHidden();
 
   await sidebar.getByRole("link", { name: "Сервер" }).click();
   await page.getByRole("link", { name: "Конфигурация" }).click();

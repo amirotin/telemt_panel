@@ -1,104 +1,75 @@
 import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { DcStatus, UpstreamsTopic } from "../../realtime/topics";
-import type { State } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { EmptyState } from "../../ui/EmptyState";
-import { useStrings } from "../../i18n";
+import { StatePill } from "../../ui/StatePill";
+import { fill, formatNumber, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
 import { dcEntityKey } from "../details-builder/definitions/dc";
 import {
   computeDc,
-  dcBoardRows,
+  dcCoverageState,
   dcNodeAriaLabel,
-  dcNodeTone,
-  dcRttText,
+  dcRouteState,
+  dcRouteGroups,
   dcRttTone,
-  dcWriterRatio,
-  isTestDc,
-  type DcBoardRowKind,
+  type DcRouteGroup,
 } from "./dc.helpers";
 
-// The ring's geometry, in the SVG's own 40-unit box: r = 17 with a 2-unit
-// stroke leaves the circle just inside the viewBox and its own width at
-// ~6 % of the diameter — the "тонкое кольцо" of concept §9, thin enough
-// that the number inside it, not the ring, is what the eye lands on first.
-const RING_RADIUS = 17;
+type RouteKind = "main" | "media";
+type RouteState = "ok" | "warn" | "error";
 
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-
-const RING_STROKE: Record<State, string> = {
-  ok: "text-ok",
-  warn: "text-warn",
-  error: "text-error",
-  muted: "text-text-faint",
+const COVERAGE_GRADIENT: Record<RouteState, string> = {
+  ok: "linear-gradient(180deg, rgba(63, 185, 80, .30), rgba(63, 185, 80, .06))",
+  warn: "linear-gradient(180deg, rgba(210, 153, 34, .30), rgba(210, 153, 34, .06))",
+  error: "linear-gradient(180deg, rgba(248, 81, 73, .30), rgba(248, 81, 73, .06))",
 };
 
-// The writers bar's fill, same semantic set as the ring: one glance says
-// how far from the floor this data center is, whatever that floor is.
-const BAR_FILL: Record<State, string> = {
-  ok: "bg-ok",
-  warn: "bg-warn",
-  error: "bg-error",
-  muted: "bg-text-faint",
-};
-
-const ROW_LABEL_KEY: Record<DcBoardRowKind, "rowMedia" | "rowMain"> = {
-  media: "rowMedia",
-  main: "rowMain",
-};
-
-// DcWidget — «Дата-центры» as concept §8–9's board of DC Nodes, replacing
-// the strip of tinted mini-cards the concept calls out by name ("выглядят
-// как мини-таблицы, плохо читаются"). Each node is ~88×72: the id inside a
-// coverage ring, writers as dots, RTT as a number. The card stays dark
-// throughout — a healthy DC is NOT a green tile (§9), the ring is the only
-// thing that carries colour.
-//
-// Two rows on a desktop (§9's «Альтернативная компоновка»: negative ids
-// over positive ones, paired by column), three columns on a phone (§21) —
-// one markup, because the rows are two separate grids and each wraps on its
-// own. The board spans eight of the page's twelve columns and fills them;
-// the remaining four are the infrastructure stack beside it (§13).
-export function DcWidget({ onHide }: { onHide?: () => void }) {
+// +N and −N are one logical DC with two independently monitored routes.
+// Coverage is the tank level, while RTT stays the dominant numeric value.
+export function DcWidget() {
   const s = useStrings();
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
   const view = computeDc(topic.data?.dcs ?? null);
+  const groups = view.status === "ok" ? dcRouteGroups(view.dcs) : [];
+  const hasAttention = view.status === "ok" && view.dcs.some((dc) => dcRouteState(dc) !== "ok");
 
-  // No "12/12" badge any more: the board IS that count, node for node, and
-  // §2.1's rule against saying the same thing twice is also what keeps the
-  // title from being truncated to «Дат…» on a 360px header.
   return (
-    <WidgetFrame title={s.pulse.widgets.dc} diagDomain="dc" onHide={onHide} stale={topic.stale}>
-      {view.status === "loading" && <Skeleton className="h-40 w-full" />}
+    <WidgetFrame
+      title={s.pulse.widgets.dc}
+      diagDomain="dc"
+      stale={topic.stale}
+      badge={
+        view.status === "ok" && view.dcs.length > 0 ? (
+          <span
+            className={cn(
+              "shrink-0 whitespace-nowrap text-micro font-semibold tabular-nums text-accent",
+              hasAttention && "text-warn",
+            )}
+          >
+            <span className="sm:hidden">
+              {fill(s.pulse.dc.fleetCount, { count: formatNumber(s, groups.length) })}
+            </span>
+            <span className="hidden sm:inline">
+              {fill(s.pulse.dc.groupCount, {
+                groups: formatNumber(s, groups.length),
+                routes: formatNumber(s, view.dcs.length),
+              })}
+            </span>
+          </span>
+        ) : undefined
+      }
+    >
+      {view.status === "loading" && <Skeleton className="h-64 w-full" />}
       {view.status === "disabled" && <GatedNote reason={view.reason} />}
       {view.status === "ok" && view.dcs.length === 0 && <EmptyState title={s.pulse.dc.empty} />}
       {view.status === "ok" && view.dcs.length > 0 && (
-        // The board fills the eight columns the widget spans: the nodes and
-        // the gutter between them grow with it rather than leaving a
-        // centred island of whitespace on either side.
-        <div className="flex w-full flex-col gap-2.5 lg:gap-3">
-          {dcBoardRows(view.dcs).map((row) => (
-            // The row label is what tells «-5» from «5»: the two halves used
-            // to be told apart by a muted ring, and that muting was wrong
-            // (a media group is production traffic). One quiet word each.
-            <section key={row.kind} className="flex flex-col gap-1">
-              <h3
-                data-testid={`dc-row-${row.kind}`}
-                className="text-micro font-semibold uppercase tracking-[0.06em] text-text-faint"
-              >
-                {s.pulse.dc[ROW_LABEL_KEY[row.kind]]}
-              </h3>
-              <ul className="grid grid-cols-3 gap-2 lg:grid-cols-6 lg:gap-3">
-                {row.dcs.map((dc) => (
-                  <li key={dc.dc}>
-                    <DcNode dc={dc} />
-                  </li>
-                ))}
-              </ul>
-            </section>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3" data-testid="dc-board">
+          {groups.map((group, index) => (
+            <DcGroup key={group.id} group={group} index={index} />
           ))}
         </div>
       )}
@@ -106,18 +77,78 @@ export function DcWidget({ onHide }: { onHide?: () => void }) {
   );
 }
 
-// Exported for DcNode.test.tsx: the node is the piece with the geometry and
-// the tones in it, and a test that had to stand up the whole widget would
-// need the SSE context as well as the router just to look at one tile.
-export function DcNode({ dc }: { dc: DcStatus }) {
+function groupState(group: DcRouteGroup<DcStatus>): RouteState {
+  const states = [group.main, group.media].filter((dc): dc is DcStatus => dc !== undefined).map(dcRouteState);
+  if (states.includes("error")) return "error";
+  if (states.includes("warn")) return "warn";
+  return "ok";
+}
+
+function stateLabel(state: RouteState, s: ReturnType<typeof useStrings>) {
+  if (state === "error") return s.pulse.dc.state.unavailable;
+  if (state === "warn") return s.pulse.dc.state.attention;
+  return s.pulse.dc.state.healthy;
+}
+
+function DcGroup({ group, index }: { group: DcRouteGroup<DcStatus>; index: number }) {
   const s = useStrings();
-  const tone = dcNodeTone(dc);
-  const writers = dcWriterRatio(dc);
-  const test = isTestDc(dc);
-  const rttWarn = dcRttTone(dc.rtt_ms) === "warn";
-  // Never below zero and never past the full circle: Telemt reports
-  // coverage as a percentage of the floor, which a DC can exceed.
-  const covered = Math.min(Math.max(dc.coverage_pct, 0), 100) / 100;
+  const state = groupState(group);
+  const name = fill(s.pulse.dc.mainName, { dc: formatNumber(s, group.id) });
+
+  return (
+    <section
+      aria-label={`${name}: ${stateLabel(state, s)}`}
+      className={cn(
+        "relative min-w-0 border-border/60",
+        index > 0 && "border-t pt-4",
+        index < 2 && "sm:border-t-0 sm:pt-0",
+        index >= 2 && "sm:border-t sm:pt-4",
+        index < 3 && "xl:border-t-0 xl:pt-0",
+        index >= 3 && "xl:border-t xl:pt-4",
+      )}
+      data-state={state}
+      data-testid={`dc-group-${group.id}`}
+    >
+      {index % 2 === 1 && (
+        <span
+          aria-hidden="true"
+          data-testid="dc-divider-vertical"
+          className="absolute -left-2 inset-y-0 hidden w-px bg-border/60 sm:block xl:hidden"
+        />
+      )}
+      {index % 3 !== 0 && (
+        <span
+          aria-hidden="true"
+          data-testid="dc-divider-vertical"
+          className="absolute -left-2 inset-y-0 hidden w-px bg-border/60 xl:block"
+        />
+      )}
+      <div className="mb-2 flex h-6 items-start gap-2 px-0.5">
+        <h3 className="text-[14px] font-semibold leading-[18px] text-text">{name}</h3>
+        {group.id === 203 && (
+          <span className="rounded-md bg-accent/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase leading-[14px] text-accent">
+            {s.pulse.dc.cdn}
+          </span>
+        )}
+        <StatePill state={state} className="ml-auto !px-2 !py-0.5">
+          {stateLabel(state, s)}
+        </StatePill>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        {group.main ? <DcRoute dc={group.main} kind="main" /> : <MissingRoute kind="main" />}
+        {group.media ? <DcRoute dc={group.media} kind="media" /> : <MissingRoute kind="media" />}
+      </div>
+    </section>
+  );
+}
+
+function DcRoute({ dc, kind }: { dc: DcStatus; kind: RouteKind }) {
+  const s = useStrings();
+  const coverageState = dcCoverageState(dc);
+  const coverage = Math.max(0, Math.min(100, dc.coverage_pct));
+  const rttWarning = dcRttTone(dc.rtt_ms) === "warn";
+  const rtt = dc.rtt_ms === null ? "—" : formatNumber(s, Math.round(dc.rtt_ms));
+  const signedId = dc.dc < 0 ? `−${formatNumber(s, Math.abs(dc.dc))}` : `+${formatNumber(s, dc.dc)}`;
 
   return (
     <Link
@@ -125,94 +156,112 @@ export function DcNode({ dc }: { dc: DcStatus }) {
       params={{ domain: "dc" }}
       search={{ entity: dcEntityKey(dc) }}
       aria-label={dcNodeAriaLabel(dc, s)}
-      data-testid="dc-node"
+      data-rtt-warning={rttWarning}
+      data-testid={`dc-card-${dc.dc}`}
       className={cn(
-        "relative flex h-full min-h-[72px] flex-col items-center gap-0.5 rounded-lg border border-border bg-surface-2 px-1 py-1 lg:min-h-[84px] lg:gap-1 lg:py-2",
-        "transition-colors hover:border-accent/40 hover:bg-surface-3",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+        "group relative block h-[116px] min-w-0 overflow-hidden rounded-[10px] border border-border-strong bg-surface-sunken outline-none transition-colors",
+        "hover:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent",
       )}
     >
-      <span className="relative flex h-8 w-8 items-center justify-center lg:h-10 lg:w-10">
-        <svg viewBox="0 0 40 40" className="h-8 w-8 -rotate-90 lg:h-10 lg:w-10" aria-hidden="true">
-          <circle
-            cx="20"
-            cy="20"
-            r={RING_RADIUS}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            data-testid="dc-track"
-            className="text-border"
-          />
-          <circle
-            cx="20"
-            cy="20"
-            r={RING_RADIUS}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeDasharray={`${RING_CIRCUMFERENCE * covered} ${RING_CIRCUMFERENCE}`}
-            className={RING_STROKE[tone]}
-            data-testid="dc-ring"
-            data-coverage={covered}
-          />
-          {/* The test site's ring is DASHED, and the dashes are cut into it
-              rather than drawn under it: a dashed TRACK is completely
-              hidden by a full-coverage arc, i.e. invisible on exactly the
-              nodes that are healthy. This overlay strokes the tile's own
-              background over the ring in `pathLength` units, so the gaps
-              land the same way at any radius and any coverage. */}
-          {test && (
-            <circle
-              cx="20"
-              cy="20"
-              r={RING_RADIUS}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.6"
-              pathLength="100"
-              strokeDasharray="2.4 5.6"
-              data-testid="dc-dashes"
-              className="text-surface-2"
-            />
-          )}
-        </svg>
-        <span className="absolute font-mono text-[10px] font-semibold tabular-nums tracking-tight text-text lg:text-[12px]">
-          {dc.dc}
-        </span>
-      </span>
-      {/* Writers as a thin fill bar under the ring: one dot per required
-          writer only worked while the floor was small, and the fleet has a
-          data center needing ten. The exact numbers stay underneath. */}
-      <span className="h-1 w-8 overflow-hidden rounded-full bg-surface-3 lg:w-12" data-testid="dc-writers-bar">
+      <span
+        aria-hidden="true"
+        data-testid="dc-coverage-fill"
+        data-coverage={coverage}
+        className={cn("absolute inset-x-0 bottom-0", coverage < 100 && "border-t-2")}
+        style={{
+          height: `${coverage}%`,
+          borderTopColor: coverageState === "error" ? "#f85149" : coverageState === "warn" ? "#d29922" : "#3fb950",
+          background: COVERAGE_GRADIENT[coverageState],
+        }}
+      />
+
+      <div className="relative z-[1] flex items-center gap-1.5 px-[11px] pt-[9px]">
         <span
-          data-testid="dc-writers-fill"
-          data-fill={writers}
-          className={cn("block h-full rounded-full", BAR_FILL[tone])}
-          style={{ width: `${writers * 100}%` }}
-        />
-      </span>
-      <span className="flex items-center gap-1 font-mono text-[10px] tabular-nums lg:text-[11px]">
-        <span className="text-text-muted">
-          {dc.alive_writers}/{dc.required_writers}
-        </span>
-        <span className="text-border" aria-hidden="true">
-          ·
-        </span>
-        <span data-testid="dc-rtt" className={rttWarn ? "text-warn" : "text-text-faint"}>
-          {dcRttText(dc, s)}
-        </span>
-      </span>
-      {test && (
-        <span
-          data-testid="dc-test-tag"
           aria-hidden="true"
-          className="absolute right-1 top-0.5 rounded bg-surface-3 px-1 text-[8px] font-semibold uppercase tracking-[0.06em] text-text-faint"
-        >
-          {s.pulse.dc.testTag}
-        </span>
-      )}
+          className={cn(
+            "h-[7px] w-[7px] shrink-0 rounded-full",
+            coverageState === "error" ? "bg-error" : coverageState === "warn" ? "bg-warn" : "bg-ok",
+          )}
+        />
+        <strong className="text-[13px] leading-4 text-text">
+          {kind === "media" ? s.pulse.dc.mediaRoute : s.pulse.dc.mainRoute}
+        </strong>
+        <small className="font-mono text-[10px] tabular-nums text-text-muted">{signedId}</small>
+      </div>
+
+      <CoverageScale />
+
+      <div className="absolute bottom-2 left-[11px] right-[29px] z-[1]">
+        <div className="flex items-baseline gap-1 whitespace-nowrap">
+          <strong
+            className={cn(
+              "font-mono text-[24px] leading-6 tracking-[-0.045em] text-text",
+              rttWarning && "text-warn",
+            )}
+          >
+            {rtt}
+          </strong>
+          <span className={cn("text-[9px] text-text-muted", rttWarning && "text-warn")}>
+            {s.pulse.dc.rttUnit} RTT
+          </span>
+        </div>
+        <div className="mt-0.5 flex items-baseline gap-1 whitespace-nowrap">
+          <strong
+            className={cn(
+              "text-[11px] text-text",
+              coverageState !== "ok" && (coverageState === "error" ? "text-error" : "text-warn"),
+            )}
+          >
+            {formatNumber(s, dc.alive_writers)}/{formatNumber(s, dc.required_writers)}
+          </strong>
+          <span className="text-[10px] lowercase text-text-muted">{s.pulse.dc.writers}</span>
+        </div>
+      </div>
     </Link>
+  );
+}
+
+function CoverageScale() {
+  const marks = [
+    { value: 100, className: "top-0", labelClassName: "top-1" },
+    { value: 66, className: "top-[34%]", labelClassName: "top-1/2 -translate-y-1/2" },
+    { value: 33, className: "top-[67%]", labelClassName: "top-1/2 -translate-y-1/2" },
+    { value: 0, className: "bottom-0", labelClassName: "bottom-[3px]" },
+  ] as const;
+
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="dc-coverage-scale"
+      className="pointer-events-none absolute inset-y-1.5 right-1.5 z-[1] w-6"
+    >
+      <span className="absolute inset-y-0 right-0 w-px bg-text-muted/30" />
+      {marks.map((mark) => (
+        <i
+          key={mark.value}
+          className={cn("absolute right-0 h-px w-2 border-t border-text-muted/40 not-italic", mark.className)}
+        >
+          <b
+            className={cn(
+              "absolute right-2.5 font-mono text-[8px] font-semibold leading-none text-text/45",
+              mark.labelClassName,
+            )}
+          >
+            {mark.value}
+          </b>
+        </i>
+      ))}
+    </span>
+  );
+}
+
+function MissingRoute({ kind }: { kind: RouteKind }) {
+  const s = useStrings();
+  return (
+    <div className="flex h-[116px] min-w-0 flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-border-strong bg-surface-sunken px-2 text-center text-micro text-text-faint">
+      <span className="h-[7px] w-[7px] rounded-full bg-text-faint" aria-hidden="true" />
+      <span>{kind === "media" ? s.pulse.dc.mediaRoute : s.pulse.dc.mainRoute}</span>
+      <span>{s.pulse.dc.routeMissing}</span>
+    </div>
   );
 }

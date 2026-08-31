@@ -15,12 +15,10 @@
 //     that predates the feature), which is what decides which Gated hint the
 //     card offers.
 //
-// Only two domains cannot reuse their page's tiles as-is. DC's tiles
-// describe ONE selected data center, so the card carries three aggregates
-// over all of them instead; Security's describe the TLS capture report,
-// which is a ~120 KB fetch-on-visit payload (M4 task 1) that a hub of eight
-// cards must not pull — the card previews the always-on posture half of the
-// `security` topic and leaves the aggregates to the page.
+// The hub deliberately curates OPERATIONAL signals rather than blindly
+// repeating each detail page's first three fields. Detail pages still own
+// exhaustive diagnostics; the hub answers the smaller question "is this
+// path working now, and what number explains the state?".
 
 import {
   ME_POOL_RUNTIME_HINTS,
@@ -32,7 +30,7 @@ import {
   type GateHintKey,
   type GateHintSpec,
 } from "../../caps/gateHints";
-import type { Dict } from "../../i18n";
+import { formatNumber, type Dict } from "../../i18n";
 import type {
   DcStatus,
   RuntimeTopic,
@@ -43,22 +41,16 @@ import type {
   WebTopic,
 } from "../../realtime/topics";
 import type { TopicSnapshot } from "../../realtime/types";
-import type { ZeroAllData } from "../../lib/api/generated/types.gen";
+import type { HistorySeries } from "../../lib/api/generated/types.gen";
+import { formatDurationApprox } from "../../people/expiry";
 import type { State } from "../../ui/StatePill";
 import { connectionsPagePayload, usersTrafficTotal } from "../diag/connections.helpers";
-import { eventsPagePayload } from "../diag/events.helpers";
-import { mePagePayload } from "../diag/me.helpers";
-import { securityPageData } from "../diag/security.helpers";
 import { upstreamsPagePayload } from "../diag/upstreams.helpers";
 import { webPagePayload } from "../diag/web.helpers";
 import { connectionsPageDefinition } from "../details-builder/definitions/connections";
-import { countersPageDefinition } from "../details-builder/definitions/counters";
-import { eventsPageDefinition } from "../details-builder/definitions/events";
-import { mePageDefinition } from "../details-builder/definitions/me";
 import { natPageDefinition } from "../details-builder/definitions/nat";
 import { upstreamsPageDefinition } from "../details-builder/definitions/upstreams";
 import { WEB_ENDPOINT, webPageDefinition } from "../details-builder/definitions/web";
-import type { SecurityPageData } from "../details-builder/definitions/security";
 import type { DetailPageDefinition, SummaryMetricDefinition, SummaryTone } from "../details-builder/model";
 import {
   resolveSource,
@@ -68,7 +60,9 @@ import {
   type SourceStatus,
 } from "../details-builder/sources";
 import { resolveSummaryMetric } from "../details-builder/summaryMetric";
+import { dcRttTone } from "../widgets/dc.helpers";
 import { resolveGated } from "../widgets/gated";
+import { connectionQuality, historyWindowDelta, windowSeries } from "../widgets/statRow.helpers";
 import type { DiagDomain } from "../types";
 
 export interface HubCardMetric {
@@ -89,6 +83,9 @@ export interface HubCard {
   domain: DiagDomain;
   title: string;
   status: SourceStatus;
+  freshnessMs: number | null;
+  health: State;
+  healthLabel: string;
   pill: State;
   pillLabel: string;
   /** Empty while the source is loading or gated — the card says so instead. */
@@ -105,8 +102,12 @@ export interface HubInputs {
   security: TopicSnapshot<SecurityTopic>;
   users: TopicSnapshot<UsersTopic>;
   web: TopicSnapshot<WebTopic>;
-  /** `GET /api/telemt/zero`, the Счётчики card's only source. */
+  /** `GET /api/telemt/zero` gates the Счётчики drill-down and supplies freshness. */
   counters: QuerySourceInput;
+  history: {
+    attempts?: HistorySeries;
+    refusals?: HistorySeries;
+  };
   nowMs: number;
 }
 
@@ -123,6 +124,29 @@ const PILL_STATE: Record<SourceStatus, State> = {
   error: "error",
   empty: "muted",
 };
+
+function hubMetric(
+  id: string,
+  label: string,
+  text: string,
+  tone: SummaryTone = "neutral",
+): HubCardMetric {
+  return { id, label, text, tone };
+}
+
+function integerText(value: number, s: Dict): string {
+  return formatNumber(s, value);
+}
+
+function eventTypeText(eventType: string, context: string, s: Dict): string {
+  if (eventType === "admission.state") {
+    return context.includes("accepting_new_connections=true")
+      ? s.hub.values.admissionOpen
+      : s.hub.values.admissionClosed;
+  }
+  if (eventType === "config.reload.applied") return s.hub.values.configReload;
+  return eventType;
+}
 
 // --- DC aggregates -------------------------------------------------------
 
@@ -176,25 +200,9 @@ const DC_HUB_METRICS: SummaryMetricDefinition<readonly DcStatus[]>[] = [
     label: (s) => s.hub.metrics.rttWorst,
     value: dcWorstRtt,
     unit: "milliseconds",
-  },
-];
-
-// --- Security posture ----------------------------------------------------
-
-const SECURITY_HUB_METRICS: SummaryMetricDefinition<SecurityPageData>[] = [
-  {
-    id: "whitelist_size",
-    label: (s) => s.details.pages.security.whitelistSize,
-    // The whitelist snapshot is the authoritative count; posture's own
-    // figure is the fallback for a poll where only posture came back.
-    value: (p) => p.whitelist?.entries_total ?? p.posture?.api_whitelist_entries ?? null,
-    format: "integer",
-  },
-  {
-    id: "log_level",
-    label: (s) => s.hub.metrics.logLevel,
-    value: (p) => p.posture?.log_level ?? null,
-    format: "enum",
+    // A high value is highlighted locally but does not call the whole fleet
+    // degraded while coverage remains intact.
+    tone: (dcs) => (dcRttTone(dcWorstRtt(dcs)) === "warn" ? "warn" : "neutral"),
   },
 ];
 
@@ -210,6 +218,10 @@ interface HubDomainSpec {
   source: (i: HubInputs) => DetailSourceInput;
   /** Resolved only when the source actually has data — see buildHubCards. */
   metrics: (i: HubInputs, s: Dict) => HubCardMetric[];
+  /** Only these metrics can promote the whole domain to attention/error. */
+  healthMetricIds?: readonly string[];
+  /** A partial value is informational, while a `bad` one stays actionable. */
+  ignoreMetricWarnings?: boolean;
 }
 
 /**
@@ -257,6 +269,7 @@ function metricsOf<T>(
 export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   {
     domain: "dc",
+    healthMetricIds: ["coverage"],
     // /v1/stats/dcs: the flag really gates it, but the ME pool being down
     // closes it too — and only one of the two is a setting to flip.
     disabledHint: MINIMAL_STATS_HINTS,
@@ -282,6 +295,7 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "me",
+    healthMetricIds: ["degraded"],
     // /v1/stats/me-writers — same pair of causes as the DC card.
     disabledHint: MINIMAL_STATS_HINTS,
     source: ({ upstreams }) => {
@@ -301,38 +315,98 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
         generatedAt: writers?.generated_at_epoch_secs ?? null,
       };
     },
-    metrics: ({ upstreams, nowMs }, s) =>
-      fromTiles(
-        mePageDefinition,
-        ["writers", "degraded", "bound_clients"],
-        mePagePayload({ meWriters: upstreams.data?.me_writers ?? null }),
-        s,
-        nowMs,
-      ),
+    metrics: ({ upstreams }, s) => {
+      const writers = upstreams.data?.me_writers?.writers;
+      if (!writers) return [];
+      const degraded = writers.filter((writer) => writer.degraded).length;
+      const healthy = writers.length - degraded;
+      const clients = writers.reduce((sum, writer) => sum + writer.bound_clients, 0);
+      return [
+        hubMetric(
+          "healthy_writers",
+          s.hub.cardMetrics.healthy,
+          `${integerText(healthy, s)} / ${integerText(writers.length, s)}`,
+          degraded > 0 ? "warn" : "good",
+        ),
+        hubMetric(
+          "degraded",
+          s.hub.cardMetrics.degraded,
+          integerText(degraded, s),
+          degraded > 0 ? "warn" : "good",
+        ),
+        hubMetric("bound_clients", s.hub.cardMetrics.clients, integerText(clients, s)),
+      ];
+    },
   },
   {
     domain: "security",
+    healthMetricIds: ["whitelist_state"],
     source: ({ security }) => ({ kind: "topic", snapshot: security }),
-    metrics: ({ security, nowMs }, s) =>
-      metricsOf(SECURITY_HUB_METRICS, securityPageData(security.data, undefined), s, nowMs),
+    metrics: ({ security }, s) => {
+      const posture = security.data?.posture;
+      const whitelist = security.data?.whitelist;
+      if (!posture && !whitelist) return [];
+      const enabled = whitelist?.enabled ?? posture?.api_whitelist_enabled ?? false;
+      const entries = whitelist?.entries_total ?? posture?.api_whitelist_entries ?? 0;
+      return [
+        hubMetric(
+          "whitelist_state",
+          s.hub.cardMetrics.access,
+          enabled ? s.hub.values.restricted : s.hub.values.unrestricted,
+          enabled ? "good" : "warn",
+        ),
+        hubMetric("whitelist_size", s.hub.cardMetrics.whitelist, integerText(entries, s)),
+        hubMetric(
+          "api_mode",
+          s.hub.cardMetrics.apiMode,
+          posture?.api_read_only ? s.hub.values.readOnly : s.hub.values.readWrite,
+        ),
+      ];
+    },
   },
   {
     domain: "counters",
+    // The detail page remains the full lifetime counter dump. The hub uses
+    // the panel's monotonic history pair to answer a CURRENT 15-minute
+    // question instead of alarming on old non-zero buckets.
+    healthMetricIds: ["quality"],
     source: ({ counters }) => counters,
-    metrics: ({ counters, nowMs }, s) =>
-      fromTiles(
-        countersPageDefinition,
-        ["total", "non_zero", "errors"],
-        // QuerySourceInput carries `data` as unknown by design (it resolves
-        // states, not payloads); the query this card is handed is the same
-        // getTelemtZeroOptions() CountersPage uses, so the shape is known.
-        (counters.data as ZeroAllData | undefined) ?? null,
-        s,
-        nowMs,
-      ),
+    metrics: ({ history }, s) => {
+      const quality = connectionQuality(history.attempts, history.refusals);
+      const attempts = historyWindowDelta(windowSeries(history.attempts));
+      const refusals = historyWindowDelta(windowSeries(history.refusals));
+      const qualityTone: SummaryTone = quality.percent === null
+        ? "neutral"
+        : quality.percent < 90
+          ? "bad"
+          : quality.percent < 98
+            ? "warn"
+            : "good";
+      return [
+        hubMetric(
+          "quality",
+          s.hub.cardMetrics.quality,
+          quality.percent === null
+            ? s.hub.values.collecting
+            : `${formatNumber(s, Math.round(quality.percent * 10) / 10)} %`,
+          qualityTone,
+        ),
+        hubMetric(
+          "refusals_15m",
+          s.hub.cardMetrics.refusals15m,
+          refusals === null ? s.hub.values.collecting : integerText(refusals, s),
+        ),
+        hubMetric(
+          "attempts_15m",
+          s.hub.cardMetrics.attempts15m,
+          attempts === null ? s.hub.values.collecting : integerText(attempts, s),
+        ),
+      ];
+    },
   },
   {
     domain: "connections",
+    healthMetricIds: ["admission"],
     disabledHint: RUNTIME_EDGE_HINTS,
     source: ({ stats }) => ({
       kind: "topic",
@@ -341,9 +415,9 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
     }),
     metrics: ({ stats, users, nowMs }, s) => {
       const gated = stats.data ? resolveGated(stats.data.connections_summary) : null;
-      return fromTiles(
+      const load = fromTiles(
         connectionsPageDefinition,
-        ["current_connections", "active_users", "connections_total"],
+        ["current_connections", "active_users"],
         connectionsPagePayload(
           stats.data?.summary,
           gated?.status === "ok" ? gated.data : null,
@@ -352,10 +426,27 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
         s,
         nowMs,
       );
+      const readiness = stats.data?.ready;
+      if (!readiness) return load;
+      const available = readiness.ready && readiness.admission_open;
+      return [
+        ...load,
+        hubMetric(
+          "admission",
+          s.hub.cardMetrics.admission,
+          !readiness.ready
+            ? s.hub.values.notReady
+            : readiness.admission_open
+              ? s.hub.values.open
+              : s.hub.values.closed,
+          available ? "good" : "bad",
+        ),
+      ];
     },
   },
   {
     domain: "upstreams",
+    healthMetricIds: ["healthy"],
     // /v1/stats/upstreams — gated by minimal_runtime_enabled, but its
     // `source_unavailable` is a lost `try_read` on the upstream manager,
     // not a switch.
@@ -388,6 +479,10 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
   },
   {
     domain: "nat",
+    // `servers.live` is a diagnostic snapshot, not a quorum: Telemt may
+    // clear it on a runtime reset while continuing to use a fresh reflection
+    // cache. Reflection freshness is the actionable NAT signal.
+    healthMetricIds: ["reflection_age"],
     // NO config flag gates this card. `/v1/runtime/nat-stun` is registered
     // and dispatched unconditionally (07-telemt-sdk.md §57) and
     // runtime_min.rs::build_runtime_nat_stun_data takes no ApiConfig at all:
@@ -403,17 +498,34 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
     }),
     metrics: ({ runtime, nowMs }, s) => {
       const nat = runtime.data ? resolveGated(runtime.data.nat_stun) : null;
-      return fromTiles(
+      if (nat?.status !== "ok") return [];
+      const reflection = fromTiles(
         natPageDefinition,
-        ["live_total", "configured", "attempts"],
-        nat?.status === "ok" ? nat.data : null,
+        ["reflection_age"],
+        nat.data,
         s,
         nowMs,
       );
+      const v4 = Boolean(nat.data.reflection?.v4);
+      const v6 = Boolean(nat.data.reflection?.v6);
+      const families = v4 && v6 ? s.hub.values.ipv4And6 : v4 ? "IPv4" : v6 ? "IPv6" : s.hub.values.none;
+      const attempts = nat.data.flags?.nat_probe_attempts ?? 0;
+      return [
+        ...reflection,
+        hubMetric("reflection_families", s.hub.cardMetrics.reflection, families),
+        hubMetric(
+          "probe_attempts",
+          s.hub.cardMetrics.retries,
+          integerText(attempts, s),
+          attempts > 0 ? "warn" : "good",
+        ),
+      ];
     },
   },
   {
     domain: "events",
+    // dropped_total is ring-history eviction, not live event loss.
+    healthMetricIds: [],
     disabledHint: RUNTIME_EDGE_HINTS,
     source: ({ runtime }) => ({
       kind: "topic",
@@ -422,17 +534,34 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
     }),
     metrics: ({ runtime, nowMs }, s) => {
       const events = runtime.data ? resolveGated(runtime.data.recent_events) : null;
-      return fromTiles(
-        eventsPageDefinition,
-        ["count", "types", "dropped_total"],
-        eventsPagePayload(events?.status === "ok" ? events.data : null),
-        s,
-        nowMs,
+      if (events?.status !== "ok") return [];
+      const records = events.data.events ?? [];
+      const latest = records.reduce<(typeof records)[number] | null>(
+        (current, event) => (!current || event.ts_epoch_secs > current.ts_epoch_secs ? event : current),
+        null,
       );
+      const dayAgo = nowMs / 1000 - 24 * 60 * 60;
+      const count24h = records.filter((event) => event.ts_epoch_secs >= dayAgo).length;
+      return [
+        hubMetric(
+          "last_event",
+          s.hub.cardMetrics.lastEvent,
+          latest
+            ? formatDurationApprox(Math.max(0, nowMs - latest.ts_epoch_secs * 1000), s)
+            : s.hub.values.noEvents,
+        ),
+        hubMetric(
+          "event_type",
+          s.hub.cardMetrics.event,
+          latest ? eventTypeText(latest.event_type, latest.context, s) : s.hub.values.none,
+        ),
+        hubMetric("events_24h", s.hub.cardMetrics.events24h, integerText(count24h, s)),
+      ];
     },
   },
   {
     domain: "web",
+    healthMetricIds: ["lifecycle"],
     // No config FLAG gates /v1/runtime/web/*: the routes are registered
     // unconditionally on 3.5.3+ and close only because the WEB runtime is
     // not running. On an older build the hub's own R5 rule takes over and
@@ -471,6 +600,35 @@ function gateHintOf(
   return hint !== undefined ? { hint } : {};
 }
 
+function healthLabel(health: State, s: Dict): string {
+  switch (health) {
+    case "ok":
+      return s.hub.states.ok;
+    case "warn":
+      return s.hub.states.warn;
+    case "error":
+      return s.hub.states.error;
+    default:
+      return s.hub.states.muted;
+  }
+}
+
+function cardHealth(
+  spec: HubDomainSpec,
+  status: SourceStatus,
+  metrics: readonly HubCardMetric[],
+): State {
+  if (status === "error") return "error";
+  if (status === "stale" || status === "partial") return "warn";
+  if (status !== "ready") return "muted";
+
+  const ids = spec.healthMetricIds ?? metrics.map((metric) => metric.id);
+  const signals = metrics.filter((metric) => ids.includes(metric.id));
+  if (signals.some((metric) => metric.tone === "bad")) return "error";
+  if (!spec.ignoreMetricWarnings && signals.some((metric) => metric.tone === "warn")) return "warn";
+  return "ok";
+}
+
 export function buildHubCards(inputs: HubInputs, s: Dict): HubCard[] {
   return HUB_DOMAINS.map((spec) => {
     const state = resolveSource(spec.domain, spec.source(inputs));
@@ -487,13 +645,19 @@ export function buildHubCards(inputs: HubInputs, s: Dict): HubCard[] {
           }
         : null;
 
+    const metrics = gate === null && state.hasData ? spec.metrics(inputs, s) : [];
+    const health = cardHealth(spec, state.status, metrics);
+
     return {
       domain: spec.domain,
       title: s.diag.domains[spec.domain],
       status: state.status,
+      freshnessMs: state.freshnessMs,
+      health,
+      healthLabel: healthLabel(health, s),
       pill: PILL_STATE[state.status],
       pillLabel: sourceStatusShortLabel(state.status, s),
-      metrics: gate === null && state.hasData ? spec.metrics(inputs, s) : [],
+      metrics,
       gate,
     };
   });

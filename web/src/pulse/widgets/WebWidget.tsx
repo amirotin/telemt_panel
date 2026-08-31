@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { WebTopic } from "../../realtime/topics";
 import { StatePill } from "../../ui/StatePill";
@@ -20,13 +19,13 @@ import { computeWebCard, type WebCardView } from "./web.helpers";
 // hub.go turns that into a gate with its own reason token rather than an
 // error, and the card reports it as a version, calmly, with no "enable
 // this" advice for a setting the binary does not have.
-export function WebWidget({ onHide }: { onHide?: () => void }) {
+export function WebWidget() {
   const s = useStrings();
   const topic = useSnapshot<WebTopic>("web");
 
   if (!topic.data) {
     return (
-      <WidgetFrame title={s.pulse.widgets.web} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.web} diagDomain="web">
         <Skeleton className="h-12 w-full" />
       </WidgetFrame>
     );
@@ -37,25 +36,17 @@ export function WebWidget({ onHide }: { onHide?: () => void }) {
   return (
     <WidgetFrame
       title={s.pulse.widgets.web}
-      onHide={onHide}
       stale={topic.stale}
+      diagDomain="web"
       badge={
         <StatePill state={view.tone} title={view.reason}>
           {s.pulse.web.state[view.state]}
         </StatePill>
       }
     >
-      {/* The card's body is the way into /pulse/diag/web, so the frame
-          carries no second «Диагностика →» link to the same page. */}
-      <Link
-        to="/pulse/diag/$domain"
-        params={{ domain: "web" }}
-        aria-label={`${s.pulse.widgets.web}: ${s.pulse.diagLink}`}
-        data-testid="web-card"
-        className="-mx-1 flex flex-col gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-      >
+      <div data-testid="web-card" className="flex flex-col gap-1">
         <WebBody view={view} />
-      </Link>
+      </div>
     </WidgetFrame>
   );
 }

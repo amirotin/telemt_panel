@@ -2,7 +2,7 @@ import type { RuntimeEdgeEventRecord, RuntimeEdgeEvents } from "../../realtime/t
 import { fill, formatNumber, localeOf, type Dict } from "../../i18n";
 import { formatDurationApprox } from "../../people/expiry";
 
-/** How many rows concept §15's timeline shows before «Все события →». */
+/** How many rows concept §15's timeline shows before the shared details action. */
 export const TIMELINE_LIMIT = 5;
 
 /**

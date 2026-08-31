@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { useStrings } from "../i18n";
-import { Button } from "../ui/Button";
 import { IconInfo } from "../ui/icons";
 import { gateHint, type GateHintKey } from "./gateHints";
 
@@ -22,8 +21,6 @@ export interface GatedProps {
    * at an update rather than at a setting (ruling R5).
    */
   variant?: "disabled" | "unsupported";
-  /** Optional "скрыть виджет" action (06-ui.md: dashboard widgets offer this). */
-  onHide?: () => void;
   className?: string;
   children?: ReactNode;
 }
@@ -38,7 +35,6 @@ export function Gated({
   reason,
   hint,
   variant = "disabled",
-  onHide,
   className,
   children,
 }: GatedProps) {
@@ -69,11 +65,6 @@ export function Gated({
         <p className="pl-6 text-meta leading-relaxed text-text-faint">
           {s.gated.howToEnable}: {gateHint(s, hint)}
         </p>
-      )}
-      {onHide && (
-        <Button variant="ghost" size="sm" onClick={onHide} className="self-start">
-          {s.gated.hideWidget}
-        </Button>
       )}
     </div>
   );

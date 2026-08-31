@@ -1,6 +1,7 @@
 import { fill, type Dict } from "../../i18n";
 import type { DcStatusData, StatsSnapshot } from "../../realtime/topics";
 import type { DiagDomain } from "../types";
+import { meReasonText, type MeReason } from "./mePool.helpers";
 
 export interface ProblemItem {
   key: string;
@@ -14,6 +15,31 @@ export interface StaleTopicInput {
   topic: string;
   stale: boolean;
   error: string | null;
+}
+
+// The DC-derived checks do not cover every degraded ME runtime state (for
+// example draining writers or a recovering route family). Fold the ME card's
+// own reason into the same attention list, while keeping fallback/coverage
+// incidents that computeProblems already reported to a single row.
+export function addMeRuntimeProblem(
+  items: readonly ProblemItem[],
+  reason: MeReason | null,
+  s: Dict,
+): ProblemItem[] {
+  if (!reason) return [...items];
+  const coveredElsewhere =
+    (reason.kind === "fallback" && items.some((item) => item.key === "me_direct_fallback")) ||
+    ((reason.kind === "coverage" || reason.kind === "writersLost") &&
+      items.some((item) => item.key.startsWith("me_coverage_low")));
+  if (coveredElsewhere) return [...items];
+  return [
+    {
+      key: `me_runtime_${reason.kind}`,
+      label: s.pulse.problems.meRuntimeDegraded,
+      detail: meReasonText(reason, s),
+    },
+    ...items,
+  ];
 }
 
 // counterDelta turns a pair of readings of one CUMULATIVE counter into the
@@ -299,6 +325,7 @@ export function problemDomain(key: string): DiagDomain | undefined {
   if (key.startsWith("handshake_") || key.startsWith("connections_bad")) return "counters";
   if (key === "me_direct_fallback" || key.startsWith("me_coverage_low")) return "dc";
   if (key === "me_split_traffic") return "me";
+  if (key.startsWith("me_runtime_")) return "me";
   if (key.startsWith("stale_")) return STALE_TOPIC_DOMAIN[key.slice("stale_".length)];
   return undefined;
 }

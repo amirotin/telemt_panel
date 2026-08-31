@@ -1,12 +1,9 @@
 import type { ComponentType, ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic } from "../../realtime/topics";
 import { EmptyState } from "../../ui/EmptyState";
 import { Skeleton } from "../../ui/Skeleton";
-import { buttonClasses } from "../../ui/buttonStyles";
 import {
-  IconChevronRight,
   IconClose,
   IconPeople,
   IconRefresh,
@@ -27,6 +24,7 @@ import {
   eventAgo,
   eventCategory,
   eventRepeatText,
+  eventTime,
   eventTimestamp,
   eventTone,
   type CoalescedEvent,
@@ -50,10 +48,10 @@ const CATEGORY_ICON: Record<Exclude<EventCategory, "neutral">, ComponentType<Ico
 // tint their marker. The TEXT stays neutral in every case — a timeline
 // where five rows out of five are coloured says nothing.
 const TONE_ICON: Record<EventTone, string> = {
-  neutral: "text-text-muted",
-  warn: "text-warn",
-  error: "text-error",
-  ok: "text-ok",
+  neutral: "border-accent/40 text-accent",
+  warn: "border-warn/50 text-warn",
+  error: "border-error/50 text-error",
+  ok: "border-ok/45 text-ok",
 };
 
 // RecentEventsWidget — «События» as concept §15's timeline: a rail, a
@@ -69,14 +67,14 @@ const TONE_ICON: Record<EventTone, string> = {
 // `dropped_total` moved to the title's tooltip. It is a fact about the ring
 // (records evicted since start, which the panel will never see), not an
 // event, and it was costing a line of a five-line feed.
-export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
+export function RecentEventsWidget({ rail = false }: { rail?: boolean }) {
   const s = useStrings();
   const topic = useSnapshot<RuntimeTopic>("runtime");
   const now = useNow();
 
   if (!topic.data) {
     return (
-      <WidgetFrame title={s.pulse.widgets.recent_events} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.recent_events} diagDomain="events">
         <Skeleton className="h-24 w-full" />
       </WidgetFrame>
     );
@@ -88,7 +86,7 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
   if (events.status === "gated") {
     body = <GatedNote reason={events.reason} hint="runtime_edge" />;
   } else {
-    const view = computeRecentEventsView(events.data);
+    const view = computeRecentEventsView(events.data, rail ? 6 : 5);
     if (view.droppedTotal > 0) {
       tooltip = fill(s.pulse.recentEvents.dropped, { count: String(view.droppedTotal) });
     }
@@ -96,14 +94,21 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
       view.rows.length === 0 ? (
         <EmptyState title={s.pulse.recentEvents.empty} />
       ) : (
-        // The rail is one line drawn from the first marker's centre to the
-        // last one's, behind markers that carry the card's own background —
-        // every row is a single line, so the two ends land on the two
-        // centres without measuring anything.
-        <div className="relative">
+        // The selected design-lab variant keeps a dedicated HH:MM column,
+        // a softly fading axis and a full typographic column. Repeats and
+        // relative age stay on the third line, where narrow rails cannot
+        // squeeze them beside the event sentence.
+        <div
+          className={cn("relative pt-1", rail && "max-h-[680px] overflow-y-auto pr-1")}
+          data-testid="event-timeline"
+        >
           <span
             aria-hidden="true"
-            className="absolute bottom-[15px] left-3 top-[15px] w-px -translate-x-1/2 bg-border"
+            className="absolute bottom-8 left-[77px] top-3 w-0.5"
+            style={{
+              background:
+                "linear-gradient(180deg, rgb(var(--accent) / .72), rgb(var(--ok) / .32) 55%, rgb(var(--border-strong) / .3))",
+            }}
           />
           <ol className="relative flex flex-col">
             {view.rows.map((row) => (
@@ -118,18 +123,9 @@ export function RecentEventsWidget({ onHide }: { onHide?: () => void }) {
     <WidgetFrame
       title={s.pulse.widgets.recent_events}
       titleTooltip={tooltip}
-      onHide={onHide}
+      diagDomain="events"
       stale={topic.stale}
-      action={
-        <Link
-          to="/pulse/diag/$domain"
-          params={{ domain: "events" }}
-          className={buttonClasses("secondary", "sm", "gap-1")}
-        >
-          {s.pulse.recentEvents.all}
-          <IconChevronRight className="h-3.5 w-3.5" />
-        </Link>
-      }
+      className={rail ? "min-h-[620px]" : undefined}
     >
       {body}
     </WidgetFrame>
@@ -143,49 +139,53 @@ function TimelineRow({ row, now }: { row: CoalescedEvent; now: number }) {
   const tone = eventTone(event.event_type);
   const line = coalescedLine(row, s);
   const repeat = eventRepeatText(row, s);
+  const ago = eventAgo(event.ts_epoch_secs, now, s);
   const Glyph = category === "neutral" ? null : CATEGORY_ICON[category];
 
   return (
-    <li className="flex items-center gap-2.5 py-[3px]" data-testid="event-row">
+    <li
+      className="relative grid min-h-[98px] grid-cols-[64px_26px_minmax(0,1fr)] items-start"
+      data-testid="event-row"
+    >
+      <time
+        dateTime={new Date(event.ts_epoch_secs * 1000).toISOString()}
+        title={eventTimestamp(event.ts_epoch_secs, s)}
+        className="pr-2.5 pt-0.5 text-right font-mono text-[11px] leading-[1.35] tabular-nums text-accent"
+        data-testid="event-time"
+      >
+        {eventTime(event.ts_epoch_secs, s)}
+      </time>
       <span
         data-testid="event-marker"
         data-category={category}
         data-tone={tone}
         className={cn(
-          "relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-surface",
+          "relative z-[1] grid h-5 w-5 place-items-center justify-self-center rounded-[7px] border bg-surface shadow-[0_0_0_4px_rgb(var(--surface))]",
           TONE_ICON[tone],
         )}
         aria-hidden="true"
       >
         {Glyph ? (
-          <Glyph className="h-3.5 w-3.5" />
+          <Glyph className="h-3 w-3" />
         ) : (
-          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+          <span className="h-1.5 w-1.5 rounded-sm bg-current" />
         )}
       </span>
-      {/* One line: the transition for a collapsed run, the sentence for a
-          type this catalog knows, Telemt's own type for one it does not,
-          and Telemt's own context after either (§11.2's rule for these
-          strings everywhere else in the panel). */}
-      <span className="min-w-0 flex-1 truncate text-meta text-text">
-        {line.text}
-        {line.detail && <span className="text-text-muted"> · {line.detail}</span>}
-        {repeat && (
-          <span className="text-text-faint" data-testid="event-repeat">
-            {" · "}
-            {repeat}
-          </span>
-        )}
-      </span>
-      {/* Relative, because "how fresh is this" is the question a five-row
-          feed answers; the exact instant is one hover away. */}
-      <time
-        dateTime={new Date(event.ts_epoch_secs * 1000).toISOString()}
-        title={eventTimestamp(event.ts_epoch_secs, s)}
-        className="shrink-0 text-micro tabular-nums text-text-faint"
-      >
-        {eventAgo(event.ts_epoch_secs, now, s)}
-      </time>
+      <div className="min-w-0 pb-3 pl-2.5" data-testid="event-copy">
+        <p className="text-[13px] font-semibold leading-[1.4] text-text">{line.text}</p>
+        {line.detail && <p className="mt-1 text-[11px] leading-[1.45] text-text-muted">{line.detail}</p>}
+        <p className="mt-1.5 text-[10px] leading-[1.35] text-accent">
+          {repeat ? (
+            <>
+              <span data-testid="event-repeat">{repeat}</span>
+              <span aria-hidden="true"> · </span>
+              {ago}
+            </>
+          ) : (
+            ago
+          )}
+        </p>
+      </div>
     </li>
   );
 }

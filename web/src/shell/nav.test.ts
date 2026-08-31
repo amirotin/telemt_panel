@@ -2,22 +2,37 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { en, ru, type Dict } from "../i18n";
-import { NAV_ITEMS, isNavItemActive } from "./nav";
+import {
+  MANAGEMENT_NAV_ITEMS,
+  NAV_ITEMS,
+  OPERATIONAL_NAV_ITEMS,
+  isNavItemActive,
+} from "./nav";
 
-// The five sections of 06-ui.md's information architecture, in order. The
+// The operational and management sections of the navigation concept. The
 // list is spelled out here rather than derived from NAV_ITEMS: a test that
 // read the same array it checks would happily accept a section silently
 // dropped from the bar.
-const SECTIONS = [
+const OPERATIONAL_SECTIONS = [
   { to: "/overview", labelKey: "overview" },
   { to: "/people", labelKey: "people" },
   { to: "/pulse", labelKey: "pulse" },
   { to: "/journal", labelKey: "journal" },
-  { to: "/server", labelKey: "server" },
 ] as const;
+const MANAGEMENT_SECTIONS = [
+  { to: "/server", labelKey: "server" },
+  { to: "/web", labelKey: "web" },
+] as const;
+const SECTIONS = [...OPERATIONAL_SECTIONS, ...MANAGEMENT_SECTIONS] as const;
 
-describe("the five-section navigation", () => {
-  it("lists Сводка · Люди · Пульс · Журнал · Сервер, in that order", () => {
+describe("the grouped navigation", () => {
+  it("keeps operational sections before management sections", () => {
+    expect(OPERATIONAL_NAV_ITEMS.map(({ to, labelKey }) => ({ to, labelKey }))).toEqual([
+      ...OPERATIONAL_SECTIONS,
+    ]);
+    expect(MANAGEMENT_NAV_ITEMS.map(({ to, labelKey }) => ({ to, labelKey }))).toEqual([
+      ...MANAGEMENT_SECTIONS,
+    ]);
     expect(NAV_ITEMS.map(({ to, labelKey }) => ({ to, labelKey }))).toEqual([...SECTIONS]);
   });
 
@@ -38,6 +53,7 @@ describe("the five-section navigation", () => {
       "Пульс",
       "Журнал",
       "Сервер",
+      "WEB",
     ]);
   });
 

@@ -2,6 +2,7 @@ import { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { dcs, meQuality, zeroAll } from "../__fixtures__";
+import { withUnknownTail } from "../DetailPage.helpers";
 import type { DetailPageDefinition } from "../model";
 import { resolveSections, type ScalarSectionInstance, type SectionInstance } from "../resolveSections";
 import { ScalarSection } from "./ScalarSection";
@@ -88,9 +89,7 @@ const dc = dcs.dcs[0];
 
 function resolve<T>(definition: DetailPageDefinition<T, T>, context: T): SectionInstance[] {
   const result = resolveSections({ definition, context });
-  return result.unknownFields === null
-    ? result.sections
-    : [...result.sections, result.unknownFields];
+  return withUnknownTail(result.sections, result.unknownFields);
 }
 
 function byId(sections: SectionInstance[], id: string): SectionInstance {

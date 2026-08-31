@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addMeRuntimeProblem,
   computeProblems,
   counterDelta,
   isTlsProbeClass,
@@ -13,6 +14,22 @@ import { ru as s } from "../../i18n";
 function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
   return { health: null, summary: null, ready: null, ...overrides };
 }
+
+describe("addMeRuntimeProblem", () => {
+  it("surfaces an ME runtime family that is recovering", () => {
+    const items = addMeRuntimeProblem([], { kind: "family", family: "203", state: "recovering" }, s);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ key: "me_runtime_family", label: s.pulse.problems.meRuntimeDegraded });
+    expect(problemDomain(items[0]!.key)).toBe("me");
+  });
+
+  it("does not duplicate fallback or coverage already reported from DC state", () => {
+    const fallback = [{ key: "me_direct_fallback", label: "fallback" }];
+    expect(addMeRuntimeProblem(fallback, { kind: "fallback" }, s)).toEqual(fallback);
+    const coverage = [{ key: "me_coverage_low_2", label: "coverage" }];
+    expect(addMeRuntimeProblem(coverage, { kind: "writersLost", missing: 2 }, s)).toEqual(coverage);
+  });
+});
 
 // summary fills every StatsSummary scalar with a neutral zero so a test only
 // states the counters it actually cares about.

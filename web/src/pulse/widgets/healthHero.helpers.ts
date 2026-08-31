@@ -18,6 +18,8 @@ export interface HealthHeroInput {
   runtime: RuntimeTopic | null;
   /** The stats topic is reporting source_error — Telemt itself is unreachable. */
   unreachable: boolean;
+  /** A supporting subsystem is impaired while Telemt itself is still serving. */
+  degraded?: boolean;
 }
 
 export interface HealthHeroView {
@@ -88,9 +90,9 @@ function isStarting(runtime: RuntimeTopic | null): boolean {
 // 2026-08-30 and the dashboard concept §4): no heading, ONE aggregated
 // state, and facts on the right that no other card repeats.
 //
-// The four states, worst first — Недоступен (Telemt is not answering at
-// all), Запускается (up, still initializing), Ограничено (up, refusing
-// clients or reporting a degraded health), Работает. Readiness OVERRIDES
+// The operational states, worst first — Нет связи (Telemt is not answering
+// at all), Запускается (up, still initializing), Деградация (up, refusing
+// clients or with an impaired supporting subsystem), Работает. Readiness OVERRIDES
 // health: a proxy whose /v1/health says "ok" while it turns every client
 // away is not «Работает», and that sentence is the whole point of the
 // banner.
@@ -99,7 +101,7 @@ function isStarting(runtime: RuntimeTopic | null): boolean {
 // condition, and «Проблемы» already lists it in words; repeating it as a
 // chip is exactly the pile-up of indicators this banner replaced.
 export function computeHealthHero(input: HealthHeroInput, s: Dict): HealthHeroView | null {
-  const { stats, runtime, unreachable } = input;
+  const { stats, runtime, unreachable, degraded = false } = input;
   if (!stats && !unreachable) return null;
 
   const uptimeSeconds = stats?.uptime_seconds ?? stats?.summary?.uptime_seconds ?? null;
@@ -132,10 +134,13 @@ export function computeHealthHero(input: HealthHeroInput, s: Dict): HealthHeroVi
       };
     }
     const health = stats?.health?.status;
-    if (!health) return { tone: "muted", label: s.health.unknown };
-    if (healthPillState(health) !== "ok") {
+    if (health && healthPillState(health) !== "ok") {
       return { tone: "warn", label: s.pulse.health.limited, reason: healthLabel(health, s) };
     }
+    if (degraded) {
+      return { tone: "warn", label: s.health.degraded };
+    }
+    if (!health) return { tone: "muted", label: s.health.unknown };
     return { tone: "ok", label: s.health.ok };
   })();
 

@@ -40,6 +40,11 @@ export type CounterGroupPath = (typeof COUNTER_GROUP_PATHS)[number];
  */
 const ERROR_KEY = /(errors?|failures?|failed|fail|drops?|drop|reject|timeouts?|invalid)/;
 
+export function isFailureCounterPath(path: string): boolean {
+  const key = path.split(".").at(-1) ?? path;
+  return ERROR_KEY.test(key);
+}
+
 interface CounterLeaf {
   path: string;
   key: string;
@@ -83,7 +88,7 @@ export function nonZeroCounters(data: ZeroAllData | null | undefined): number | 
 export function errorCounters(data: ZeroAllData | null | undefined): number | null {
   if (!data) return null;
   return counterLeaves(data).filter(
-    (leaf) => ERROR_KEY.test(leaf.key) && typeof leaf.value === "number" && leaf.value > 0,
+    (leaf) => isFailureCounterPath(leaf.key) && typeof leaf.value === "number" && leaf.value > 0,
   ).length;
 }
 

@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { Dict } from "../i18n";
 import {
+  IconGlobe,
   IconJournal,
   IconPeople,
   IconPulse,
@@ -20,20 +21,28 @@ export interface NavItem {
   Icon: ComponentType<IconProps>;
 }
 
-// NAV_ITEMS is the app's five sections, in the order 06-ui.md fixes them:
-// Сводка · Люди · Пульс · Журнал · Сервер. ONE list, rendered twice by
-// Shell.tsx — as the bottom tab bar below `lg:` and as the sidebar above it
-// — so the two can never disagree about what the app contains.
+// One information architecture, rendered as bottom bar, rail or sidebar.
+// Operational sections always remain one tap away; management moves behind
+// «Ещё» when the viewport cannot carry the full sidebar.
 //
 // Люди is still the LANDING section (routes/index.tsx): being second in the
 // bar and being where a login lands are two different decisions, and the
 // prototype makes both.
-export const NAV_ITEMS: readonly NavItem[] = [
+export const OPERATIONAL_NAV_ITEMS: readonly NavItem[] = [
   { to: "/overview", labelKey: "overview", Icon: IconSummary },
   { to: "/people", labelKey: "people", Icon: IconPeople },
   { to: "/pulse", labelKey: "pulse", Icon: IconPulse },
   { to: "/journal", labelKey: "journal", Icon: IconJournal },
+];
+
+export const MANAGEMENT_NAV_ITEMS: readonly NavItem[] = [
   { to: "/server", labelKey: "server", Icon: IconServer },
+  { to: "/web", labelKey: "web", Icon: IconGlobe },
+];
+
+export const NAV_ITEMS: readonly NavItem[] = [
+  ...OPERATIONAL_NAV_ITEMS,
+  ...MANAGEMENT_NAV_ITEMS,
 ];
 
 // isNavItemActive — a tab is current for its own path and for everything

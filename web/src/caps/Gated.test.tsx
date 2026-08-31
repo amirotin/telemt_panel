@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, afterEach } from "vitest";
 import { Gated } from "./Gated";
 
 function renderInto(node: React.ReactElement): { container: HTMLElement; root: Root } {
@@ -50,14 +50,4 @@ describe("Gated", () => {
     expect(mounted.container.textContent).toContain("функция недоступна на этом сервере.");
   });
 
-  it("calls onHide when the hide button is clicked", () => {
-    const onHide = vi.fn();
-    mounted = renderInto(<Gated enabled={false} reason="off" onHide={onHide} />);
-    const button = mounted.container.querySelector("button");
-    expect(button).not.toBeNull();
-    act(() => {
-      button!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(onHide).toHaveBeenCalledOnce();
-  });
 });

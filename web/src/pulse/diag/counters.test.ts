@@ -53,6 +53,7 @@ describe("computeCounterDeltas (ruling R4)", () => {
       current: at(11_000, { "core.a_total": 200 }),
     });
     expect(result.perSecond["core.a_total"]).toBe(10);
+    expect(result.sincePrevious["core.a_total"]).toBe(100);
     expect(result.sinceOpen["core.a_total"]).toBe(100);
   });
 
@@ -65,6 +66,7 @@ describe("computeCounterDeltas (ruling R4)", () => {
     // A new key is not a jump from zero — inventing one would report a rate
     // for a counter Telemt only just started sending.
     expect(result.perSecond).toEqual({});
+    expect(result.sincePrevious).toEqual({});
     expect(result.sinceOpen).toEqual({});
   });
 
@@ -75,6 +77,7 @@ describe("computeCounterDeltas (ruling R4)", () => {
       current: at(5_000, { "core.a_total": 9 }),
     });
     expect(result.perSecond).toEqual({});
+    expect(result.sincePrevious).toEqual({});
     // The since-open column still works: it is a difference, not a rate.
     expect(result.sinceOpen["core.a_total"]).toBe(8);
   });
@@ -86,6 +89,7 @@ describe("computeCounterDeltas (ruling R4)", () => {
       current: at(1_000, { "core.a_total": 3 }),
     });
     expect(result.perSecond).toEqual({});
+    expect(result.sincePrevious).toEqual({});
     expect(result.sinceOpen).toEqual({});
   });
 

@@ -12,12 +12,11 @@ export interface ConfirmViewProps {
 
 // ConfirmView — the one "are you sure?" step every irreversible/disruptive
 // action goes through (delete, reset quota, enable/disable, rotate secret,
-// regenerate sub-link, reset dashboard layout): a description plus
+// regenerate sub-link): a description plus
 // cancel/confirm, no native confirm(). Originally extracted out of
 // UserActionSheet so SublinkPanel's own "перевыпустить" uses the exact
 // same confirmation step rather than a second copy that could drift;
-// promoted to ui/ (single-primitives-source rule) once pulse/PulseDashboard
-// needed the same step for its own "Сбросить к умолчанию" action.
+// promoted to ui/ as the shared confirmation primitive.
 export function ConfirmView({
   description,
   confirmLabel,

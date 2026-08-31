@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
-import type { RuntimeTopic, StatsSnapshot } from "../../realtime/topics";
+import type { RuntimeTopic, StatsSnapshot, UpstreamsTopic } from "../../realtime/topics";
 import type { State } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { StatePill } from "../../ui/StatePill";
@@ -16,6 +16,9 @@ import {
   resolvePendingChanges,
 } from "../../server/config/pendingChanges";
 import { computeHealthHero, telemtUpdateVersion, type HeroFact } from "./healthHero.helpers";
+import { dcCoverageState } from "./dc.helpers";
+import { resolveGated } from "./gated";
+import { computeMeCard } from "./mePool.helpers";
 
 // The banner is the one block in the app painted as a *tinted* panel rather
 // than a flat surface: a 135° wash of the state colour with a matching
@@ -47,13 +50,30 @@ const TONE: Record<State, { wash: string; border: string; text: string }> = {
 // Fact — one of the small-caps pairs at the banner's right edge: the label
 // above in the same caps grammar the app's section labels use, the value
 // under it in tabular figures so three facts side by side stay aligned.
-function Fact({ fact }: { fact: HeroFact }) {
+function Fact({ fact, updateVersion }: { fact: HeroFact; updateVersion: string | null }) {
+  const mobileUpdate = fact.key === "version" && updateVersion;
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="truncate text-micro font-semibold uppercase tracking-[0.06em] text-text-faint">
         {fact.label}
       </span>
-      <span className="truncate text-row font-semibold tabular-nums text-text">{fact.value}</span>
+      {mobileUpdate ? (
+        <>
+          <Link
+            to="/server/updates"
+            className="-my-2 inline-flex min-h-11 min-w-0 items-center gap-1 text-row font-semibold tabular-nums text-text sm:hidden"
+          >
+            <span className="truncate">{fact.value}</span>
+            <IconUpgrade className="h-3 w-3 shrink-0 text-accent" />
+            <span className="truncate text-accent">{updateVersion}</span>
+          </Link>
+          <span className="hidden truncate text-row font-semibold tabular-nums text-text sm:block">
+            {fact.value}
+          </span>
+        </>
+      ) : (
+        <span className="truncate text-row font-semibold tabular-nums text-text">{fact.value}</span>
+      )}
     </div>
   );
 }
@@ -73,8 +93,34 @@ export function HealthHero() {
   const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
   const runtime = useSnapshot<RuntimeTopic>("runtime");
+  const upstreams = useSnapshot<UpstreamsTopic>("upstreams");
+  let meDegraded = false;
+  if (runtime.data) {
+    const pool = resolveGated(runtime.data.me_pool_state);
+    const quality = resolveGated(runtime.data.me_quality);
+    if (pool.status === "ok") {
+      meDegraded =
+        computeMeCard(
+          pool.data,
+          quality.status === "ok" ? quality.data : undefined,
+          runtime.data.gates,
+        ).reason !== null;
+    }
+  }
+  const dcDegraded =
+    upstreams.data?.dcs?.dcs.some((dc) => dcCoverageState(dc) !== "ok") ?? false;
   const view = computeHealthHero(
-    { stats: stats.data, runtime: runtime.data, unreachable: stats.error !== null },
+    {
+      stats: stats.data,
+      runtime: runtime.data,
+      unreachable: stats.error !== null,
+      degraded:
+        Boolean(stats.data?.health?.read_only) ||
+        runtime.error !== null ||
+        upstreams.error !== null ||
+        meDegraded ||
+        dcDegraded,
+    },
     s,
   );
   // Read once per mount: only the Конфигурация page writes it, and getting
@@ -105,10 +151,10 @@ export function HealthHero() {
   return (
     <section aria-label={s.pulse.widgets.health_hero} data-testid="status-banner">
       <div
-        className={cn("rounded-2xl border px-4 py-3.5", tone.border)}
+        className={cn("rounded-xl border px-3 py-2.5 sm:rounded-2xl sm:px-4 sm:py-3.5", tone.border)}
         style={{ backgroundImage: tone.wash }}
       >
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-6 sm:gap-y-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className={cn("text-[19px] font-bold leading-tight", tone.text)}>
@@ -134,20 +180,20 @@ export function HealthHero() {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
+          <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 sm:w-auto sm:gap-x-6 sm:gap-y-2.5">
             {view.facts.map((fact) => (
-              <Fact key={fact.key} fact={fact} />
+              <Fact key={fact.key} fact={fact} updateVersion={updateVersion} />
             ))}
             {updateVersion && (
               <Link
                 to="/server/updates"
                 className={cn(
-                  "inline-flex min-h-[32px] shrink-0 items-center gap-1.5 rounded-full px-3",
+                  "hidden min-h-[32px] shrink-0 items-center gap-1.5 rounded-full px-3 sm:inline-flex",
                   "bg-accent/12 text-micro font-semibold text-accent transition-colors hover:bg-accent/20",
                 )}
               >
                 <IconUpgrade className="h-3.5 w-3.5" />
-                {fill(s.overview.status.updateAvailable, { version: updateVersion })}
+                <span>{fill(s.overview.status.updateAvailable, { version: updateVersion })}</span>
               </Link>
             )}
           </div>

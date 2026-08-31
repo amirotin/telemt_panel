@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "../lib/cn";
 import { useStrings } from "../i18n";
-import { IconButton } from "../ui/IconButton";
-import { IconChevronRight, IconClose } from "../ui/icons";
 import { StatePill } from "../ui/StatePill";
 import type { DiagDomain } from "./types";
+import { WidgetActionLabel } from "./WidgetActionLabel";
+import { widgetActionClassName } from "./widgetActionStyles";
 
 export interface WidgetFrameProps {
   title: string;
@@ -16,19 +16,15 @@ export interface WidgetFrameProps {
    * which was costing a line in a five-line feed.
    */
   titleTooltip?: string;
-  /** Links to the matching Диагностика drill-down page, when the widget has one. */
+  /** Links to the matching details page, when the widget has one. */
   diagDomain?: DiagDomain;
-  /** "Скрыть виджет" action — wired to the layout store by PulseDashboard. */
-  onHide?: () => void;
   /** SSE topic staleness (useSnapshot's `.stale`) — shown as a badge, data stays visible underneath. */
   stale?: boolean;
   /** Trailing slot on the title row, before the actions (a count, a state pill). */
   badge?: ReactNode;
   /**
-   * The widget's own control at the right of the title row — «Все
-   * пользователи →» and its like. Concept §7 puts it in the header rather
-   * than on a line of its own under the card, so the card's height is its
-   * rows and nothing else.
+   * The widget's own destination at the right of the title row. Every
+   * overview destination uses the same «Детали →» label and button style.
    */
   action?: ReactNode;
   className?: string;
@@ -36,7 +32,7 @@ export interface WidgetFrameProps {
 }
 
 // WidgetFrame is the one card shell every dashboard widget renders inside —
-// title, optional drill-down link, optional "hide" action, optional stale
+// title, optional drill-down link and optional stale
 // badge (06-ui.md: widgets reuse shared primitives, "никаких 11 самодельных
 // вёрсток"). A widget in the Gated/loading/error state still renders inside
 // this frame (its own body decides what to show), so the title/hide/diag
@@ -51,7 +47,6 @@ export function WidgetFrame({
   title,
   titleTooltip,
   diagDomain,
-  onHide,
   stale,
   badge,
   action,
@@ -78,20 +73,11 @@ export function WidgetFrame({
             <Link
               to="/pulse/diag/$domain"
               params={{ domain: diagDomain }}
-              className="inline-flex min-h-[32px] items-center gap-0.5 rounded-md px-2 text-micro font-semibold text-accent transition-colors hover:bg-accent/12"
+              className={widgetActionClassName}
+              data-testid="widget-action"
             >
-              {s.pulse.diagLink}
-              <IconChevronRight className="h-3.5 w-3.5" />
+              <WidgetActionLabel />
             </Link>
-          )}
-          {onHide && (
-            <IconButton
-              aria-label={s.pulse.hideWidget}
-              onClick={onHide}
-              className="text-[15px]"
-            >
-              <IconClose />
-            </IconButton>
           )}
         </div>
       </div>

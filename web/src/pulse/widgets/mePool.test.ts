@@ -167,7 +167,7 @@ describe("meReasonText", () => {
 
   it("renders every other reason with its number", () => {
     expect(meReasonText({ kind: "coverage", pct: 58.3 }, en)).toBe("Coverage 58 %");
-    expect(meReasonText({ kind: "writersLost", missing: 3 }, en)).toBe("Writers missing: 3");
+    expect(meReasonText({ kind: "writersLost", missing: 3 }, en)).toBe("Routes below writer floor: 3");
     expect(meReasonText({ kind: "draining", count: 2 }, en)).toBe("Writers draining: 2");
     expect(meReasonText({ kind: "degradedWriters", count: 1 }, en)).toBe("Writers degraded: 1");
     expect(meReasonText({ kind: "family", family: "v6", state: "suppressed" }, en)).toBe(

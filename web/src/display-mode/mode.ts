@@ -7,7 +7,7 @@ export type DisplayMode = "critical" | "basic" | "extended";
 const ORDER: Record<DisplayMode, number> = { critical: 0, basic: 1, extended: 2 };
 
 // Versioned so a future change to the mode set (unlikely, but see the
-// dashboard-layout key's own versioning precedent) can invalidate old
+// other panel preferences' versioning precedent) can invalidate old
 // stored values instead of silently misinterpreting them.
 const STORAGE_KEY = "telemt-panel:display-mode:v1";
 const DEFAULT_MODE: DisplayMode = "basic";

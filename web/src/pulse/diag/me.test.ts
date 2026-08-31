@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mePagePayload } from "./me.helpers";
+import { mePagePayload, meRouteMode } from "./me.helpers";
 import {
   gates,
   initialization,
@@ -67,5 +67,28 @@ describe("mePagePayload", () => {
     // runtime halves keep their prefixes while me-writers is spread flat.
     expect(payload?.writers).toBe(meWriters.writers);
     expect(payload?.pool?.writers.total).toBe(mePoolState.writers.total);
+  });
+});
+
+describe("meRouteMode", () => {
+  it("distinguishes configured ME, fallback, and direct-only operation", () => {
+    expect(
+      meRouteMode(
+        { ...gates, use_middle_proxy: true, route_mode: "middle", reroute_active: false },
+        meWriters,
+      ),
+    ).toBe("middle");
+    expect(
+      meRouteMode(
+        { ...gates, use_middle_proxy: true, route_mode: "direct", reroute_active: true },
+        meWriters,
+      ),
+    ).toBe("fallback");
+    expect(
+      meRouteMode(
+        { ...gates, use_middle_proxy: false, route_mode: "direct", reroute_active: false },
+        { ...meWriters, middle_proxy_enabled: false },
+      ),
+    ).toBe("direct");
   });
 });

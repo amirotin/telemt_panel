@@ -20,11 +20,13 @@ export type HistoryMetric =
 // series with statRow.helpers' windowSeries/previousWindowSeries rather than
 // plotting whatever came back, so a wider fetch never widens a caption.
 //
-// refetchInterval 30s per the task brief — independent of the SSE topics'
-// own poll cadence, since history is a plain REST resource, not a hub topic.
-export function useHistorySeries(metric: HistoryMetric) {
+// The default refetch interval is 30s per the task brief — independent of
+// the SSE topics' own poll cadence, since history is a plain REST resource.
+// Callers may shorten it for a compact live state that otherwise spends a
+// full interval saying that its first two points are still being collected.
+export function useHistorySeries(metric: HistoryMetric, refetchInterval = 30_000) {
   return useQuery({
     ...getHistoryOptions({ query: { metric, range: "30m" } }),
-    refetchInterval: 30_000,
+    refetchInterval,
   });
 }

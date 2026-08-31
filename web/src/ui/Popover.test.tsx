@@ -39,7 +39,7 @@ describe("Popover", () => {
   it("declares what the trigger opens and whether it is open", () => {
     const container = renderInto(
       <Popover label="Вид: Стандартный">
-        <button type="button">Настроить сводку…</button>
+        <button type="button">Открыть меню</button>
       </Popover>,
     );
     const btn = trigger(container);
@@ -55,12 +55,12 @@ describe("Popover", () => {
   it("moves focus into the panel and returns it to the trigger on Escape", () => {
     const container = renderInto(
       <Popover label="Вид">
-        <button type="button">Настроить сводку…</button>
+        <button type="button">Открыть меню</button>
       </Popover>,
     );
     const btn = trigger(container);
     act(() => btn.click());
-    expect(document.activeElement?.textContent).toBe("Настроить сводку…");
+    expect(document.activeElement?.textContent).toBe("Открыть меню");
 
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -72,7 +72,7 @@ describe("Popover", () => {
   it("dismisses on an outside click", () => {
     const container = renderInto(
       <Popover label="Вид">
-        <button type="button">Настроить сводку…</button>
+        <button type="button">Открыть меню</button>
       </Popover>,
     );
     act(() => trigger(container).click());

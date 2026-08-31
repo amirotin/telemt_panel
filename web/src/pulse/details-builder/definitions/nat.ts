@@ -10,8 +10,9 @@
 //
 // The two states that page must never blur together:
 //
-//   * `servers.live` empty — STUN answered nobody. The block stays on
-//     screen and says so (§10.3), rather than vanishing;
+//   * `servers.live` empty — the last responder snapshot is empty. Telemt
+//     can clear this list while retaining a usable reflection cache, so the
+//     block stays visible but is not health on its own;
 //   * `reflection.v4` / `.v6` absent — that family has no reflection yet.
 //     Both halves are declared as rows, so an absent one reads «не пришло
 //     в ответе» instead of leaving a blank where a value belongs (§13.1).
@@ -21,11 +22,24 @@ import type { DetailPageDefinition, SummaryTone } from "../model";
 
 export const NAT_PAGE_ID = "pulse.nat";
 
+// pool_nat.rs keeps reflected addresses for ten minutes. The API exposes the
+// cache age but not its TTL, so the UI mirrors that runtime invariant here.
+export const STUN_REFLECTION_TTL_SECONDS = 600;
+
+function probeFailureSignal(nat: RuntimeNatStun): boolean {
+  if (!nat.flags?.nat_probe_enabled || nat.flags?.nat_probe_disabled_runtime) return false;
+  return (nat.flags?.nat_probe_attempts ?? 0) > 0 || (nat.stun_backoff_remaining_ms ?? 0) > 0;
+}
+
+export function probeFailureConfirmed(nat: RuntimeNatStun): boolean {
+  return reflectionAgeSecs(nat) === null && probeFailureSignal(nat);
+}
+
 export function liveTone(nat: RuntimeNatStun): SummaryTone {
   const configured = nat.servers?.configured?.length ?? 0;
   const live = nat.servers?.live_total ?? 0;
-  if (live === 0) return configured === 0 ? "neutral" : "bad";
-  return live < configured ? "warn" : "good";
+  if (live === 0) return configured > 0 && probeFailureConfirmed(nat) ? "bad" : "neutral";
+  return "good";
 }
 
 /**
@@ -38,6 +52,14 @@ export function reflectionAgeSecs(nat: RuntimeNatStun | null | undefined): numbe
     (age): age is number => typeof age === "number",
   );
   return ages.length === 0 ? null : Math.min(...ages);
+}
+
+export function reflectionTone(nat: RuntimeNatStun): SummaryTone {
+  if (!nat.flags?.nat_probe_enabled || nat.flags?.nat_probe_disabled_runtime) return "neutral";
+  const age = reflectionAgeSecs(nat);
+  if (age !== null && age < STUN_REFLECTION_TTL_SECONDS) return "good";
+  if (age !== null) return probeFailureSignal(nat) ? "warn" : "neutral";
+  return probeFailureSignal(nat) ? "bad" : "neutral";
 }
 
 export const natPageDefinition: DetailPageDefinition<RuntimeNatStun, RuntimeNatStun> = {
@@ -73,6 +95,7 @@ export const natPageDefinition: DetailPageDefinition<RuntimeNatStun, RuntimeNatS
       label: (s) => s.details.pages.nat.reflectionAgeTile,
       value: (p) => reflectionAgeSecs(p),
       unit: "seconds",
+      tone: reflectionTone,
     },
   ],
 

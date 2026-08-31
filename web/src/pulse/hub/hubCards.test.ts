@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { en, ru } from "../../i18n";
+import type { HistorySeries } from "../../lib/api/generated/types.gen";
 import type { TopicSnapshot } from "../../realtime/types";
 import type {
   RuntimeTopic,
@@ -13,11 +14,12 @@ import {
   dcIds,
   degradedWriterCount,
   gatedOff,
+  natStunLive0,
+  natStunLive10,
   runtimeSnapshot,
   securitySnapshot,
   statsSnapshot,
   upstreamsSnapshot,
-  writerCount,
   zeroAll,
   capabilityAbsentRuntimeSnapshot,
   edgeOffRuntimeSnapshot,
@@ -56,6 +58,18 @@ function counters(over: Partial<QuerySourceInput> = {}): QuerySourceInput {
 
 const users: UsersTopic = { users: [], quota: null, quota_supported: true };
 
+function history(metric: string, first: number, last: number): HistorySeries {
+  return {
+    metric,
+    range: "30m",
+    retention_secs: 1800,
+    points: [
+      { ts: Math.floor(NOW / 1000) - 15 * 60, v: first },
+      { ts: Math.floor(NOW / 1000), v: last },
+    ],
+  };
+}
+
 function inputs(over: Partial<HubInputs> = {}): HubInputs {
   return {
     stats: topic<StatsSnapshot>(statsSnapshot),
@@ -65,6 +79,10 @@ function inputs(over: Partial<HubInputs> = {}): HubInputs {
     users: topic<UsersTopic>(users),
     web: topic<WebTopic>(webTopicRunning),
     counters: counters(),
+    history: {
+      attempts: history("attempts", 10_000, 11_000),
+      refusals: history("refusals", 100, 110),
+    },
     nowMs: NOW,
     ...over,
   };
@@ -113,7 +131,7 @@ describe("the nine hub cards", () => {
     );
   });
 
-  it("prints the same numbers the Details pages' own summary tiles do", () => {
+  it("previews the operational figures selected for each domain", () => {
     const cards = buildHubCards(inputs(), ru);
     const byDomain = Object.fromEntries(cards.map((c) => [c.domain, c]));
 
@@ -121,16 +139,152 @@ describe("the nine hub cards", () => {
     expect(dc.metrics.map((m) => m.id)).toEqual(["dc_total", "coverage", "rtt_worst"]);
     expect(dc.metrics[0]!.text).toBe(String(dcIds.length));
 
+    const connections = byDomain["connections"]!;
+    expect(connections.metrics.map((m) => m.id)).toEqual([
+      "current_connections",
+      "active_users",
+      "admission",
+    ]);
+
     const me = byDomain["me"]!;
-    expect(me.metrics.map((m) => m.id)).toEqual(["writers", "degraded", "bound_clients"]);
-    expect(me.metrics[0]!.text).toBe(String(writerCount));
+    expect(me.metrics.map((m) => m.id)).toEqual(["healthy_writers", "degraded", "bound_clients"]);
     expect(me.metrics[1]!.text).toBe(String(degradedWriterCount));
 
     const cnt = byDomain["counters"]!;
-    expect(cnt.metrics.map((m) => m.id)).toEqual(["total", "non_zero", "errors"]);
+    expect(cnt.metrics.map((m) => m.id)).toEqual(["quality", "refusals_15m", "attempts_15m"]);
+    expect(cnt.metrics.map((m) => m.text)).toEqual(["99 %", "10", "1 000"]);
+
+    const nat = byDomain["nat"]!;
+    expect(nat.metrics.map((m) => m.id)).toEqual([
+      "reflection_age",
+      "reflection_families",
+      "probe_attempts",
+    ]);
 
     const events = byDomain["events"]!;
-    expect(events.metrics.map((m) => m.id)).toEqual(["count", "types", "dropped_total"]);
+    expect(events.metrics.map((m) => m.id)).toEqual(["last_event", "event_type", "events_24h"]);
+
+    const security = byDomain["security"]!;
+    expect(security.metrics.map((m) => m.id)).toEqual([
+      "whitelist_state",
+      "whitelist_size",
+      "api_mode",
+    ]);
+  });
+
+  it("separates source freshness, current health, and accumulated evidence", () => {
+    const cards = buildHubCards(inputs(), ru);
+    const byDomain = Object.fromEntries(cards.map((card) => [card.domain, card]));
+
+    expect(byDomain["me"]!.health).toBe("warn");
+    expect(byDomain["me"]!.healthLabel).toBe(ru.hub.states.warn);
+    // A fresh reflection is the NAT health signal; responder cardinality is
+    // intentionally absent from the hub.
+    expect(byDomain["nat"]!.metrics.find((metric) => metric.id === "reflection_age")!.tone).toBe("good");
+    expect(byDomain["nat"]!.health).toBe("ok");
+    // The current-window quality is healthy; lifetime zero buckets do not
+    // participate in the state.
+    expect(byDomain["counters"]!.health).toBe("ok");
+    expect(byDomain["events"]!.health).toBe("ok");
+    expect(byDomain["dc"]!.freshnessMs).toBe(1_756_000_000_000);
+  });
+
+  it("keeps an empty responder snapshot healthy while reflection is fresh", () => {
+    const cachedReflection = {
+      ...natStunLive10,
+      flags: { ...natStunLive10.flags, nat_probe_attempts: 0 },
+      servers: { ...natStunLive10.servers, live: [], live_total: 0 },
+      reflection: { v4: { addr: "31.56.179.50:46872", age_secs: 124 } },
+    };
+    const runtimeWithCachedReflection = {
+      ...runtimeSnapshot,
+      nat_stun: { ...runtimeSnapshot.nat_stun!, data: cachedReflection },
+    };
+    const card = buildHubCards(inputs({ runtime: topic<RuntimeTopic>(runtimeWithCachedReflection) }), ru)
+      .find((item) => item.domain === "nat")!;
+    expect(card.metrics.find((metric) => metric.id === "reflection_families")!.text).toBe("IPv4");
+    expect(card.metrics.find((metric) => metric.id === "reflection_age")!.tone).toBe("good");
+    expect(card.health).toBe("ok");
+  });
+
+  it("reports an error only after a probe failure without reflection", () => {
+    const runtimeWithNoStun = {
+      ...runtimeSnapshot,
+      nat_stun: { ...runtimeSnapshot.nat_stun!, data: natStunLive0 },
+    };
+    const card = buildHubCards(inputs({ runtime: topic<RuntimeTopic>(runtimeWithNoStun) }), ru)
+      .find((item) => item.domain === "nat")!;
+    expect(card.metrics.find((metric) => metric.id === "reflection_families")!.text).toBe(ru.hub.values.none);
+    expect(card.metrics.find((metric) => metric.id === "reflection_age")!.tone).toBe("bad");
+    expect(card.health).toBe("error");
+  });
+
+  it("promotes closed client admission to the highest-priority connection error", () => {
+    const closed: StatsSnapshot = {
+      ...statsSnapshot,
+      ready: { ...statsSnapshot.ready!, ready: true, admission_open: false },
+    };
+    const card = buildHubCards(inputs({ stats: topic<StatsSnapshot>(closed) }), ru)
+      .find((item) => item.domain === "connections")!;
+    expect(card.metrics.find((metric) => metric.id === "admission")!.text).toBe(ru.hub.values.closed);
+    expect(card.health).toBe("error");
+  });
+
+  it("warns when API access has no whitelist", () => {
+    const insecure: SecurityTopic = {
+      ...securitySnapshot,
+      posture: { ...securitySnapshot.posture!, api_whitelist_enabled: false },
+      whitelist: { ...securitySnapshot.whitelist!, enabled: false, entries_total: 0 },
+    };
+    const card = buildHubCards(inputs({ security: topic<SecurityTopic>(insecure) }), ru)
+      .find((item) => item.domain === "security")!;
+    expect(card.metrics.find((metric) => metric.id === "whitelist_state")!.text).toBe(
+      ru.hub.values.unrestricted,
+    );
+    expect(card.health).toBe("warn");
+  });
+
+  it("derives counter health from the current 15-minute quality window", () => {
+    const card = buildHubCards(
+      inputs({
+        history: {
+          attempts: history("attempts", 1_000, 2_000),
+          refusals: history("refusals", 100, 150),
+        },
+      }),
+      ru,
+    ).find((item) => item.domain === "counters")!;
+    expect(card.metrics.find((metric) => metric.id === "quality")!.text).toBe("95 %");
+    expect(card.health).toBe("warn");
+  });
+
+  it("shows the latest event while treating ring eviction as non-health evidence", () => {
+    const recent = runtimeSnapshot.recent_events!.data!;
+    const runtime: RuntimeTopic = {
+      ...runtimeSnapshot,
+      recent_events: {
+        ...runtimeSnapshot.recent_events!,
+        data: {
+          ...recent,
+          dropped_total: 9_999,
+          events: [
+            {
+              seq: 999,
+              ts_epoch_secs: Math.floor(NOW / 1000) - 60,
+              event_type: "admission.state",
+              context: "generation=1 accepting_new_connections=true",
+            },
+          ],
+        },
+      },
+    };
+    const card = buildHubCards(inputs({ runtime: topic<RuntimeTopic>(runtime) }), ru)
+      .find((item) => item.domain === "events")!;
+    expect(card.metrics.find((metric) => metric.id === "event_type")!.text).toBe(
+      ru.hub.values.admissionOpen,
+    );
+    expect(card.metrics.map((metric) => metric.id)).not.toContain("dropped_total");
+    expect(card.health).toBe("ok");
   });
 });
 

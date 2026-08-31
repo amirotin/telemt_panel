@@ -1,19 +1,19 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useSnapshot, useTopicWindow } from "../../realtime";
-import type { StatsSnapshot, UpstreamsTopic } from "../../realtime/topics";
+import type { RuntimeTopic, StatsSnapshot, UpstreamsTopic } from "../../realtime/topics";
 import { useCaps } from "../../caps";
-import { useDisplayMode, visibleFor } from "../../display-mode";
 import { CountBadge } from "../../ui/Chip";
-import { IconButton } from "../../ui/IconButton";
 import { Skeleton } from "../../ui/Skeleton";
-import { IconCheck, IconChevronRight, IconClose, IconInfo, IconWarning } from "../../ui/icons";
-import { useStrings } from "../../i18n";
+import { IconCheck, IconChevronRight, IconInfo, IconWarning } from "../../ui/icons";
+import { formatNumber, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
+import { resolveGated } from "./gated";
+import { computeMeCard } from "./mePool.helpers";
 import {
   computeProblems,
-  lifetimeCountersNote,
+  addMeRuntimeProblem,
   problemDomain,
   problemSeverity,
   type ProblemItem,
@@ -32,26 +32,22 @@ const SEVERITY_TEXT: Record<ReturnType<typeof problemSeverity>, string> = {
   muted: "text-text-faint",
 };
 
-// Problems — the adaptive card of concept §6/§17: one line while nothing is
-// wrong, a ranked list of what IS wrong otherwise. Non-hideable in the
-// default layout's spirit but still technically hideable=true per registry.ts
-// (the layout editor lets an operator hide it like any other widget — only
-// health_hero is pinned).
-export function Problems({ onHide }: { onHide?: () => void }) {
+// Problems — one compact line while nothing is wrong, a ranked list of what
+// is wrong otherwise.
+export function Problems() {
   const s = useStrings();
   const stats = useSnapshot<StatsSnapshot>("stats");
-  const runtime = useSnapshot("runtime");
+  const runtime = useSnapshot<RuntimeTopic>("runtime");
   const upstreams = useSnapshot<UpstreamsTopic>("upstreams");
   const security = useSnapshot("security");
   const caps = useCaps();
-  const { mode } = useDisplayMode();
   // The oldest stats snapshot still inside the window is the baseline every
   // cumulative counter is diffed against; null until a second one arrives.
   const statsWindow = useTopicWindow<StatsSnapshot>("stats", COUNTER_WINDOW_MS);
 
   if (!stats.data) {
     return (
-      <WidgetFrame title={s.pulse.widgets.problems} onHide={onHide}>
+      <WidgetFrame title={s.pulse.widgets.problems} className="h-[174px]">
         <Skeleton className="h-16 w-full" />
       </WidgetFrame>
     );
@@ -68,7 +64,7 @@ export function Problems({ onHide }: { onHide?: () => void }) {
     ? (Object.keys(capabilities) as Array<keyof typeof capabilities>).filter((k) => !capabilities[k])
     : [];
 
-  const items = computeProblems(
+  let items = computeProblems(
     stats.data,
     staleTopics,
     missingCapabilities,
@@ -76,58 +72,62 @@ export function Problems({ onHide }: { onHide?: () => void }) {
     s,
     statsWindow.oldest?.data ?? null,
   );
-  // Extended mode only: computeProblems no longer alarms on counters that
-  // are not currently growing, so this is where their lifetime totals get
-  // acknowledged instead of silently vanishing.
-  const lifetimeNote = visibleFor("extended", mode) ? lifetimeCountersNote(stats.data, s) : null;
-  const note = lifetimeNote && (
-    <p className="mt-2 text-micro leading-relaxed text-text-faint">{lifetimeNote}</p>
-  );
-
+  if (runtime.data) {
+    const pool = resolveGated(runtime.data.me_pool_state);
+    const quality = resolveGated(runtime.data.me_quality);
+    if (pool.status === "ok") {
+      const me = computeMeCard(
+        pool.data,
+        quality.status === "ok" ? quality.data : undefined,
+        runtime.data.gates,
+      );
+      items = addMeRuntimeProblem(items, me.reason, s);
+    }
+  }
   if (items.length === 0) {
-    // Concept §17: in the normal state the card takes the minimum space it
-    // can — ONE row, no title over it and no tinted box around it. A large
-    // green panel announcing good news is the loudest thing on a healthy
-    // dashboard, which is exactly backwards.
-    //
-    // py-1 around a 46px row is a 56px card (border-box) — the smallest the
-    // hide button's own 44px touch target allows.
     return (
-      <section className="rounded-xl border border-border bg-surface px-3.5 py-1">
-        <div className="flex min-h-[46px] items-center gap-2.5">
-          {/* The heading stays in the accessibility tree even though the
-              healthy card shows no title: it is what names this section in a
-              screen reader's outline, and what the hide button refers to. */}
-          <h2 className="sr-only">{s.pulse.widgets.problems}</h2>
-          <IconCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-ok" />
-          <span className="min-w-0 flex-1 truncate text-row text-text-muted">
-            {s.pulse.problems.none}
-          </span>
-          {onHide && (
-            <IconButton aria-label={s.pulse.hideWidget} onClick={onHide} className="text-[15px]">
-              <IconClose />
-            </IconButton>
-          )}
-        </div>
-        {note}
-      </section>
+      <WidgetFrame title={s.pulse.widgets.problems} className="h-[174px]">
+        <ul className="flex min-h-0 flex-1 flex-col">
+          <li className="flex min-h-[56px] items-start gap-2.5 border-b border-border px-1 py-2">
+            <IconCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ok" />
+            <div className="min-w-0 flex-1">
+              <p className="text-row text-text">{s.pulse.problems.none}</p>
+              <p className="mt-1 text-micro leading-relaxed text-text-muted">
+                {s.pulse.problems.noneHint}
+              </p>
+            </div>
+          </li>
+          <li aria-hidden="true" className="min-h-[46px] flex-1" />
+        </ul>
+      </WidgetFrame>
     );
   }
 
+  // Two detailed rows always fit the fixed-height frame; the remainder is
+  // summarized instead of being clipped and making the page jump.
+  const visibleItems = items.slice(0, 2);
+  const remaining = items.length - visibleItems.length;
   return (
     <WidgetFrame
       title={s.pulse.widgets.problems}
-      onHide={onHide}
       badge={<CountBadge tone="warn">{items.length}</CountBadge>}
+      className="h-[174px] overflow-hidden"
     >
-      <ul className="flex flex-col">
-        {items.map((item) => (
+      <ul className="flex min-h-0 flex-col overflow-hidden">
+        {visibleItems.map((item) => (
           <li key={item.key} className="border-b border-border last:border-b-0">
             <ProblemRow item={item} />
           </li>
         ))}
+        {Array.from({ length: Math.max(0, 2 - visibleItems.length) }, (_, index) => (
+          <li key={`empty-${index}`} aria-hidden="true" className="min-h-[46px] border-b border-border last:border-b-0" />
+        ))}
       </ul>
-      {note}
+      {remaining > 0 && (
+        <Link to="/pulse" className="mt-auto text-micro font-semibold text-accent hover:underline">
+          +{formatNumber(s, remaining)} {s.pulse.problems.more}
+        </Link>
+      )}
     </WidgetFrame>
   );
 }

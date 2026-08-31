@@ -1,17 +1,15 @@
-import { Link } from "@tanstack/react-router";
 import { useSnapshot } from "../../realtime";
-import type { RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
+import type { UpstreamStatus, UpstreamsTopic } from "../../realtime/topics";
 import { StatePill } from "../../ui/StatePill";
 import { Skeleton } from "../../ui/Skeleton";
 import { EmptyState } from "../../ui/EmptyState";
-import { useDisplayMode, visibleFor } from "../../display-mode";
 import { fill, formatNumber, useStrings } from "../../i18n";
+import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
 import {
   computeUpstreams,
   computeUpstreamsCard,
-  upstreamQualitySuccessRate,
   type UpstreamsCardView,
 } from "./upstreams.helpers";
 
@@ -28,26 +26,19 @@ import {
 // is «● 3 / 3 · Direct · SOCKS5 ×2 · 32 мс в среднем» — the same card, the
 // same payload, no second layout held open for a configuration that may
 // never exist.
-export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
+export function UpstreamsWidget() {
   const s = useStrings();
   const topic = useSnapshot<UpstreamsTopic>("upstreams");
-  const runtime = useSnapshot<RuntimeTopic>("runtime");
-  const { mode } = useDisplayMode();
   const data = topic.data?.upstreams ?? null;
+  const routes = data?.upstreams ?? [];
   const view = computeUpstreams(data);
-  // upstream_quality (mini-task 2c) has no widget of its own — this is its
-  // one natural compact form, shown only in extended mode, only when it has
-  // ever attempted a connect (upstreamQualitySuccessRate's own null guard).
-  const successRate = visibleFor("extended", mode)
-    ? upstreamQualitySuccessRate(runtime.data?.upstream_quality)
-    : null;
   const card =
     view.status === "ok" && data !== null ? computeUpstreamsCard(view, data) : null;
 
   return (
     <WidgetFrame
       title={s.pulse.widgets.upstreams}
-      onHide={onHide}
+      diagDomain="upstreams"
       stale={topic.stale}
       badge={card && card.total > 0 ? <HealthPill card={card} /> : undefined}
     >
@@ -55,14 +46,9 @@ export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
       {view.status === "disabled" && <GatedNote reason={view.reason} />}
       {card && card.total === 0 && <EmptyState title={s.pulse.upstreams.empty} />}
       {card && card.total > 0 && (
-        // The card's body is the way into /pulse/diag/upstreams, where the
-        // per-route table lives; the frame carries no second link to it.
-        <Link
-          to="/pulse/diag/$domain"
-          params={{ domain: "upstreams" }}
-          aria-label={`${s.pulse.widgets.upstreams}: ${s.pulse.diagLink}`}
+        <div
           data-testid="upstreams-card"
-          className="-mx-1 flex flex-col gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="flex flex-col gap-1"
         >
           <p className="truncate text-meta text-text" data-testid="upstreams-kinds">
             {card.kinds
@@ -75,15 +61,38 @@ export function UpstreamsWidget({ onHide }: { onHide?: () => void }) {
               {!card.directOnly && ` ${s.pulse.upstreams.onAverage}`}
             </p>
           )}
-        </Link>
-      )}
-      {successRate !== null && (
-        <div className="flex items-center gap-2 border-t border-border pt-2 text-meta">
-          <span className="min-w-0 flex-1 text-text-muted">{s.pulse.upstreams.successRate}</span>
-          <span className="shrink-0 font-mono tabular-nums text-text">{successRate}%</span>
+          <div className="mt-1 flex flex-col border-t border-border pt-1.5">
+            {routes.slice(0, 3).map((upstream) => (
+              <UpstreamRow key={upstream.upstream_id} upstream={upstream} />
+            ))}
+            {routes.length > 3 && (
+              <span className="pt-1 text-micro text-text-faint">
+                {fill(s.pulse.upstreams.more, { count: formatNumber(s, routes.length - 3) })}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </WidgetFrame>
+  );
+}
+
+function UpstreamRow({ upstream }: { upstream: UpstreamStatus }) {
+  const s = useStrings();
+  const latency =
+    upstream.effective_latency_ms === null
+      ? "—"
+      : `${formatNumber(s, Math.round(upstream.effective_latency_ms))} ${s.pulse.dc.rttUnit}`;
+  return (
+    <span className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 py-1 text-micro">
+      <span className={cn("h-1.5 w-1.5 rounded-full", upstream.healthy ? "bg-ok" : "bg-error")} />
+      <span className="min-w-0 truncate text-text-muted">
+        <span className="font-semibold uppercase text-text">{upstream.route_kind}</span>
+        {upstream.scopes && ` · ${upstream.scopes}`}
+        {` · ${fill(s.pulse.upstreams.checkedAgo, { seconds: formatNumber(s, upstream.last_check_age_secs) })}`}
+      </span>
+      <span className="font-mono tabular-nums text-text">{latency}</span>
+    </span>
   );
 }
 

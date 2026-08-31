@@ -1,6 +1,6 @@
 import type { Locale, LocalePreference } from "./dict";
 
-// Versioned exactly like display-mode's and the dashboard layout's keys so
+// Versioned exactly like the other panel preference keys so
 // a future change to the locale set can invalidate old stored values
 // instead of silently misinterpreting them.
 const STORAGE_KEY = "telemt-panel:locale:v1";

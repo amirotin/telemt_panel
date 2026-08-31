@@ -77,7 +77,7 @@ describe("computeHealthHero states", () => {
 
   // Telemt is not answering at all — the worst state, and the one the old
   // banner rendered as a cheerful green «Работает» off the last snapshot.
-  it("is «Недоступен» when the stats topic reports a source error", () => {
+  it("is «Нет связи» when the stats topic reports a source error", () => {
     const view = computeHealthHero(
       input({
         unreachable: true,
@@ -85,7 +85,7 @@ describe("computeHealthHero states", () => {
       }),
       s,
     );
-    expect(view?.label).toBe("Недоступен");
+    expect(view?.label).toBe("Нет связи");
     expect(view?.tone).toBe("error");
   });
 
@@ -103,7 +103,7 @@ describe("computeHealthHero states", () => {
 
   // Readiness overrides health: a proxy whose /v1/health says "ok" while it
   // refuses every client is not «Работает».
-  it("is «Ограничено» with the translated reason when not ready", () => {
+  it("is «Деградация» with the translated reason when not ready", () => {
     const view = computeHealthHero(
       input({
         stats: stats({
@@ -113,7 +113,7 @@ describe("computeHealthHero states", () => {
       }),
       s,
     );
-    expect(view?.label).toBe("Ограничено");
+    expect(view?.label).toBe("Деградация");
     expect(view?.tone).toBe("error");
     expect(view?.reason).toBe(s.pulse.health.readyReason.noHealthyUpstreams);
   });
@@ -133,13 +133,26 @@ describe("computeHealthHero states", () => {
     expect(view?.reason).toBe(s.pulse.health.readyReason.admissionClosed);
   });
 
-  it("is «Ограничено» for a degraded health with no readiness answer", () => {
+  it("is «Деградация» for a degraded health with no readiness answer", () => {
     const view = computeHealthHero(
       input({ stats: stats({ health: { status: "degraded", read_only: true } }) }),
       s,
     );
-    expect(view?.label).toBe("Ограничено");
+    expect(view?.label).toBe("Деградация");
     expect(view?.tone).toBe("warn");
+  });
+
+  it("aggregates a supporting subsystem degradation without adding banner facts", () => {
+    const view = computeHealthHero(
+      input({
+        degraded: true,
+        stats: stats({ health: { status: "ok", read_only: false }, ready: ready() }),
+      }),
+      s,
+    );
+    expect(view?.label).toBe("Деградация");
+    expect(view?.tone).toBe("warn");
+    expect(view?.reason).toBeUndefined();
   });
 
   it("is «Нет данных» when no health has come back at all", () => {
