@@ -165,3 +165,38 @@ jobs:
 
       - name: Verify release assets against the updater
         run: RELEASE_DIR=$PWD/release go test -run TestReleaseContract ./internal/update/
+
+  # install.sh is POSIX sh and must keep working under dash, bash and
+  # busybox: lint + syntax, then the sourced unit tests, then the
+  # user-namespace e2e (skips itself where the runner forbids userns).
+  install-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Lint installer
+        run: |
+          shellcheck -s sh install.sh scripts/install-test.sh scripts/install-e2e.sh
+          dash -n install.sh
+          bash -n install.sh
+
+      - name: Build panel binary for installer tests
+        run: CGO_ENABLED=0 go build -o telemt-panel ./cmd/panel
+
+      - name: Installer unit tests
+        run: |
+          TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-test.sh
+          TP_TEST_BINARY=$PWD/telemt-panel bash scripts/install-test.sh
+
+      # Ubuntu 24.04 gates unprivileged user namespaces behind AppArmor;
+      # lifting it on the runner lets the e2e create its overlays.
+      - name: Installer e2e (user namespace)
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-e2e.sh
