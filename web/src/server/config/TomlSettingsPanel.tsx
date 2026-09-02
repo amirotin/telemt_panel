@@ -148,7 +148,7 @@ function TomlSettingsSession({
   return (
     <div className="flex flex-col gap-3" data-testid="toml-settings-panel">
       <Notice tone="info" title={s.server.config.toml.projectionTitle}>
-        <p className="text-meta leading-relaxed text-text-muted">{initial.note}</p>
+        <p className="text-meta leading-relaxed text-text-muted">{s.server.config.toml.projectionNote}</p>
         <p className="text-micro text-text-faint">{s.server.config.toml.projectionDetail}</p>
       </Notice>
 
@@ -197,7 +197,7 @@ function TomlSettingsSession({
         />
       )}
 
-      <Card className="sticky bottom-2 z-10 flex flex-col gap-3 border border-border/80 bg-surface/95 shadow-xl backdrop-blur lg:flex-row lg:items-end lg:justify-between">
+      <Card className="relative z-10 flex flex-col gap-3 border border-border/80 bg-surface/95 shadow-xl backdrop-blur lg:sticky lg:bottom-2 lg:flex-row lg:items-end lg:justify-between">
         <ReloadPolicyPicker value={reloadPolicy} onChange={setReloadPolicy} />
         <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="mr-auto text-micro text-text-faint lg:mr-1">

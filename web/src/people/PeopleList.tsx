@@ -239,9 +239,8 @@ export function PeopleList({ selectedUsername = null }: PeopleListProps) {
             </AsyncState>
           </div>
 
-          <footer className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-t border-border px-4 text-micro text-text-faint">
+          <footer className="flex min-h-14 shrink-0 items-center border-t border-border px-4 text-micro text-text-faint">
             <span>{isNarrowed ? `${visibleUsers.length} / ${counts.all}` : pluralTemplate(s, counts.all, s.people.recordsCount)}<span className="hidden sm:inline"> · {s.people.searchWholeSet}</span></span>
-            <span className="hidden items-center gap-1.5 sm:flex"><i className="h-1.5 w-1.5 rounded-full bg-accent" />{s.people.domRowsPrefix} <strong className="text-text-muted">{virtualizer.getVirtualItems().length}</strong> {s.people.domRowsSuffix}</span>
           </footer>
         </section>
 

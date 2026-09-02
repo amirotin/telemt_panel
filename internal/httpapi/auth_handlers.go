@@ -361,7 +361,7 @@ func auditTarget(action, subject string) string {
 		return subject
 	}
 	switch action {
-	case "config.patch":
+	case "config.patch", "config.patch.toml":
 		return "telemt.toml"
 	case "telemt.reload", "telemt.restart":
 		return "telemt"

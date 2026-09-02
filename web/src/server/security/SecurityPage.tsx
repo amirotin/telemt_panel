@@ -145,7 +145,7 @@ function SecurityHero({ posture, whitelist, level, tlsObserved, tlsBad }: {
           </div>
         </div>
 
-        <dl className="grid grid-cols-3 divide-x divide-border border-t border-border/80 bg-bg/15 md:col-span-2 xl:col-span-1 xl:self-stretch xl:border-l xl:border-t-0">
+        <dl className="grid grid-cols-1 divide-y divide-border border-t border-border/80 bg-bg/15 sm:grid-cols-3 sm:divide-x sm:divide-y-0 md:col-span-2 xl:col-span-1 xl:self-stretch xl:border-l xl:border-t-0">
           <HeroFact label={copy.access} value={access.value} note={access.note} />
           <HeroFact label={copy.authorization} value={auth.value} note={auth.note} />
           <HeroFact label={copy.tlsWindow} value={tlsObserved === null ? "—" : formatNumber(s, tlsObserved)} note={tlsBad === null ? copy.awaitingTls : fill(copy.suspicious, { count: formatNumber(s, tlsBad) })} />

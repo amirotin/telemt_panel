@@ -26,6 +26,15 @@ export function presetToExpiration(preset: ExpiryPreset, now: Date): string | nu
   return new Date(now.getTime() + days * DAY_MS).toISOString();
 }
 
+// A date-only control represents a calendar day, not a local-time instant.
+// Keep that day stable in every browser timezone and submit its UTC end.
+export function expirationDateToISO(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T23:59:59.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
+  return date.toISOString();
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }

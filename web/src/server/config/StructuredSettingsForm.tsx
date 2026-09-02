@@ -67,7 +67,9 @@ export function StructuredSettingsForm({
       (field) =>
         (activeQuery !== "" || field.group === group?.id) &&
         (mode === "advanced" || field.tier === "normal") &&
-        isConfigSectionPresent(sections, field),
+        (isConfigSectionPresent(sections, field) ||
+          field.group === "upstreams" ||
+          field.group === "web"),
     );
     return visible.filter((field) =>
       catalogFieldMatches(field, activeQuery, configFieldLabel(field, labels)),
@@ -124,7 +126,7 @@ export function StructuredSettingsForm({
         </div>
       )}
 
-      <main ref={editorRef} className="min-w-0 scroll-mt-3 px-3 pb-20 pt-4 sm:px-5 lg:min-h-[660px] xl:border-r xl:border-border">
+      <section ref={editorRef} className="min-w-0 scroll-mt-3 px-3 pb-20 pt-4 sm:px-5 lg:min-h-[660px] xl:border-r xl:border-border">
         <header className="flex min-h-[64px] items-start justify-between gap-4 border-b border-border pb-3.5">
           <div className="min-w-0">
             <p className="mb-1 text-micro font-bold uppercase tracking-[0.12em] text-accent">
@@ -159,7 +161,7 @@ export function StructuredSettingsForm({
         ) : (
           <GenericFields fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
         )}
-      </main>
+      </section>
 
       <ConfigInspector changedCount={changedCount} />
 

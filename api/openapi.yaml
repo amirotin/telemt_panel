@@ -430,6 +430,7 @@ paths:
         explicit/default distinction are not available through Telemt's Config API.
       responses:
         "200": { description: TOML projection and revision, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOML" } } } }
+        "500": { description: toml_projection_failed — a Config API value cannot be represented as exact TOML, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
         "503": { description: capability_unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     patch:
@@ -968,6 +969,11 @@ components:
             - last_user_forbidden
             - read_only
             - revision_conflict
+            - invalid_toml
+            - invalid_config_path
+            - config_unset_unsupported
+            - no_changes
+            - toml_projection_failed
             - reload_in_progress
             - reload_not_found
             - ambiguous_listeners
@@ -997,7 +1003,9 @@ components:
             session_expired, csrf_rejected, internal_error, not_found,
             telemt_unreachable, capability_absent, capability_unavailable,
             manual_restart_required, update_locked, sublink_unavailable,
-            log_tail_unavailable, log_stream_unavailable, log_source_error.
+            log_tail_unavailable, log_stream_unavailable, log_source_error,
+            invalid_toml, invalid_config_path, config_unset_unsupported,
+            no_changes, toml_projection_failed.
             capability_absent (501) vs capability_unavailable (503) are
             deliberately distinct, not aliases: capability_absent means the
             route itself doesn't exist on this Telemt build (a bare 404/405
@@ -1398,12 +1406,15 @@ components:
 
     TelemtConfigTOML:
       type: object
-      required: [revision, toml_projection, source_sections, note]
+      required: [revision, toml_projection, source_sections, projection_kind]
       properties:
         revision: { type: string }
         toml_projection: { type: string }
         source_sections: { type: array, items: { type: string } }
-        note: { type: string }
+        projection_kind:
+          type: string
+          enum: [normalized_config_api]
+          description: Stable code describing the projection's limitations; localized by the client.
 
     TelemtConfigCatalog:
       type: object

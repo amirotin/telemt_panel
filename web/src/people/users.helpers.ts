@@ -77,6 +77,20 @@ export function quotaUnitToBytes(value: number, unit: QuotaUnit): number {
   return Math.round(value * UNIT_BYTES[unit]);
 }
 
+// Keep the server's exact byte count until the operator actually edits the
+// rounded amount or its unit. Otherwise opening an existing user and saving
+// an unrelated field would silently replace (for example) 1,500,000 bytes
+// with the rounded UI representation converted back to bytes.
+export function quotaBytesForFormSubmit(
+  value: number,
+  unit: QuotaUnit,
+  originalBytes: number | undefined,
+  edited: boolean,
+): number {
+  if (!edited && originalBytes !== undefined) return originalBytes;
+  return quotaUnitToBytes(value, unit);
+}
+
 // bytesToQuotaDisplay picks GB for anything at or above 1 GB, MB otherwise —
 // the inverse of quotaUnitToBytes, rounded to 2 decimal places so re-editing
 // an existing limit doesn't show 17 digits of binary-fraction noise.

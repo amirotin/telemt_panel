@@ -17,13 +17,13 @@ import (
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
 
-const telemtTOMLProjectionNote = "Нормализованное представление API, не исходный telemt.toml; комментарии и расположение include не сохраняются."
+const telemtTOMLProjectionKind = "normalized_config_api"
 
 type telemtConfigTOMLView struct {
 	Revision       string   `json:"revision"`
 	TOMLProjection string   `json:"toml_projection"`
 	SourceSections []string `json:"source_sections"`
-	Note           string   `json:"note"`
+	ProjectionKind string   `json:"projection_kind"`
 }
 
 type telemtConfigTOMLRequest struct {
@@ -65,7 +65,7 @@ func (s *Server) handleGetTelemtConfigTOML(w http.ResponseWriter, r *http.Reques
 		Revision:       revision,
 		TOMLProjection: projection,
 		SourceSections: names,
-		Note:           telemtTOMLProjectionNote,
+		ProjectionKind: telemtTOMLProjectionKind,
 	})
 }
 
@@ -274,6 +274,9 @@ func normalizeJSONNumbers(value any) (any, error) {
 		if integer, err := value.Int64(); err == nil {
 			return integer, nil
 		}
+		if !strings.ContainsAny(value.String(), ".eE") {
+			return nil, fmt.Errorf("integer %q is outside TOML's supported range", value)
+		}
 		decimal, err := value.Float64()
 		if err != nil {
 			return nil, fmt.Errorf("number %q is outside TOML's supported range", value)
@@ -355,18 +358,57 @@ func diffTelemtConfigValue(current, desired any, path string, changed, materiali
 		return patch, len(patch) > 0
 	}
 	if _, ok := desired.([]any); ok {
-		if reflect.DeepEqual(current, desired) {
+		if configValuesEqual(current, desired) {
 			return nil, false
 		}
 		*changed = append(*changed, path)
 		*arrays = append(*arrays, path)
 		return desired, true
 	}
-	if reflect.DeepEqual(current, desired) {
+	if configValuesEqual(current, desired) {
 		return nil, false
 	}
 	*changed = append(*changed, path)
 	return desired, true
+}
+
+func configValuesEqual(current, desired any) bool {
+	const maxExactFloatInteger = int64(1 << 53)
+
+	switch current := current.(type) {
+	case int64:
+		if desired, ok := desired.(float64); ok {
+			return current >= -maxExactFloatInteger && current <= maxExactFloatInteger && float64(current) == desired
+		}
+	case float64:
+		if desired, ok := desired.(int64); ok {
+			return desired >= -maxExactFloatInteger && desired <= maxExactFloatInteger && current == float64(desired)
+		}
+	case []any:
+		desired, ok := desired.([]any)
+		if !ok || len(current) != len(desired) {
+			return false
+		}
+		for index := range current {
+			if !configValuesEqual(current[index], desired[index]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		desired, ok := desired.(map[string]any)
+		if !ok || len(current) != len(desired) {
+			return false
+		}
+		for key, currentChild := range current {
+			desiredChild, exists := desired[key]
+			if !exists || !configValuesEqual(currentChild, desiredChild) {
+				return false
+			}
+		}
+		return true
+	}
+	return reflect.DeepEqual(current, desired)
 }
 
 func appendLeafPaths(paths []string, value any, path string) []string {

@@ -3,8 +3,23 @@ import type { SecurityPosture, SecurityWhitelist } from "../../realtime/topics";
 export type ApiProtectionKind = "local" | "layered" | "whitelist" | "auth" | "read_only" | "exposed" | "unknown";
 
 export function isLoopbackCidr(value: string): boolean {
-  const address = value.trim().toLowerCase().split("/")[0]?.replace(/^\[|\]$/g, "") ?? "";
-  return address === "::1" || address === "localhost" || /^127(?:\.|$)/.test(address);
+  const parts = value.trim().toLowerCase().split("/");
+  if (parts.length > 2) return false;
+  const address = (parts[0] ?? "").replace(/^\[|\]$/g, "");
+  const rawPrefix = parts[1];
+
+  if (address === "localhost") return rawPrefix === undefined;
+  if (address === "::1") {
+    const prefix = rawPrefix === undefined ? 128 : Number(rawPrefix);
+    return Number.isInteger(prefix) && prefix === 128;
+  }
+
+  const octets = address.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+  const prefix = rawPrefix === undefined ? 32 : Number(rawPrefix);
+  return Number.isInteger(prefix) && prefix >= 8 && prefix <= 32 && octets[0] === 127;
 }
 
 // Assess the complete access chain: auth-header=false is not a warning when

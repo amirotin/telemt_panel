@@ -127,7 +127,8 @@ func validateTelemtConfigValue(value any, path string, paths telemtConfigPathSet
 func validateStringMap(value any, path string) error {
 	object, ok := value.(map[string]any)
 	if !ok {
-		return nil // Telemt remains authoritative for value/type errors.
+		// Telemt remains authoritative for value/type errors.
+		return nil
 	}
 	for key, child := range object {
 		if _, ok := child.(string); !ok && child != nil {

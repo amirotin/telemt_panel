@@ -20,10 +20,10 @@ import {
   bytesToQuotaDisplay,
   isValidSecret,
   isValidUsername,
-  quotaUnitToBytes,
+  quotaBytesForFormSubmit,
   type QuotaUnit,
 } from "./users.helpers";
-import { presetToExpiration } from "./expiry";
+import { expirationDateToISO, presetToExpiration } from "./expiry";
 import { generateSecret } from "./secret";
 import { apiErrorMessage } from "./apiError";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
@@ -63,6 +63,7 @@ interface FormState {
   maxUniqueIps: FieldState<number>;
   quotaAmount: FieldState<number>;
   quotaUnit: QuotaUnit;
+  quotaEdited: boolean;
   expiration: FieldState<string>;
   rateLimitUpBps: FieldState<number>;
   rateLimitDownBps: FieldState<number>;
@@ -78,6 +79,7 @@ function initialCreateState(): FormState {
     maxUniqueIps: field(2, "clear"),
     quotaAmount: field(10, "clear"),
     quotaUnit: "GB",
+    quotaEdited: true,
     expiration: field("", "clear"),
     rateLimitUpBps: field(0, "clear"),
     rateLimitDownBps: field(0, "clear"),
@@ -95,6 +97,7 @@ function initialEditState(user: UsersTopicUser): FormState {
     maxUniqueIps: field(user.max_unique_ips || 2, user.max_unique_ips ? "set" : "clear"),
     quotaAmount: field(quota.value, user.data_quota_bytes ? "set" : "clear"),
     quotaUnit: user.data_quota_bytes ? quota.unit : "GB",
+    quotaEdited: false,
     expiration: field(user.expiration_rfc3339 ?? "", user.expiration_rfc3339 ? "set" : "clear"),
     rateLimitUpBps: field(user.rate_limit_up_bps ?? 0, user.rate_limit_up_bps ? "set" : "clear"),
     rateLimitDownBps: field(user.rate_limit_down_bps ?? 0, user.rate_limit_down_bps ? "set" : "clear"),
@@ -174,7 +177,12 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
 
     const quotaBytesField: FieldState<number> = {
       mode: state.quotaAmount.mode,
-      value: quotaUnitToBytes(state.quotaAmount.value, state.quotaUnit),
+      value: quotaBytesForFormSubmit(
+        state.quotaAmount.value,
+        state.quotaUnit,
+        mode === "edit" ? user?.data_quota_bytes : undefined,
+        state.quotaEdited,
+      ),
     };
 
     if (mode === "create") {
@@ -228,6 +236,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
         maxTcpConns: { ...prev.maxTcpConns, mode: "clear" },
         maxUniqueIps: { ...prev.maxUniqueIps, mode: "clear" },
         quotaAmount: { ...prev.quotaAmount, mode: "clear" },
+        quotaEdited: true,
         expiration: { ...prev.expiration, mode: "clear" },
       }));
       return;
@@ -239,6 +248,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
       maxUniqueIps: field(temporary ? 1 : 3, "set"),
       quotaAmount: field(temporary ? 50 : 500, "set"),
       quotaUnit: "GB",
+      quotaEdited: true,
       expiration: temporary
         ? field(presetToExpiration("7d", new Date())!, "set")
         : { ...prev.expiration, mode: "clear" },
@@ -322,11 +332,11 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
               <label className="people-form-field">
                 <span>{s.people.form.quota}</span>
                 <div className="people-form-compound">
-                  <input type="number" inputMode="decimal" min={0} value={quotaValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, quotaAmount: value === "" ? { ...prev.quotaAmount, mode: "clear" } : field(Number(value), "set") })); }} />
-                  <select value={state.quotaUnit} aria-label={s.people.form.quotaUnitLabel} onChange={(event) => { setActivePreset(null); setState((prev) => ({ ...prev, quotaUnit: event.target.value as QuotaUnit })); }}><option value="MB">{s.people.form.quotaUnits.MB}</option><option value="GB">{s.people.form.quotaUnits.GB}</option><option value="TB">{s.people.form.quotaUnits.TB}</option></select>
+                  <input type="number" inputMode="decimal" min={0} value={quotaValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, quotaAmount: value === "" ? { ...prev.quotaAmount, mode: "clear" } : field(Number(value), "set"), quotaEdited: true })); }} />
+                  <select value={state.quotaUnit} aria-label={s.people.form.quotaUnitLabel} onChange={(event) => { setActivePreset(null); setState((prev) => ({ ...prev, quotaUnit: event.target.value as QuotaUnit, quotaEdited: true })); }}><option value="MB">{s.people.form.quotaUnits.MB}</option><option value="GB">{s.people.form.quotaUnits.GB}</option><option value="TB">{s.people.form.quotaUnits.TB}</option></select>
                 </div>
               </label>
-              <label className="people-form-field"><span>{s.people.form.expirationShort}</span><input type="date" value={expirationDate} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, expiration: value === "" ? { ...prev.expiration, mode: "clear" } : field(new Date(`${value}T23:59:59`).toISOString(), "set") })); }} /></label>
+              <label className="people-form-field"><span>{s.people.form.expirationShort}</span><input type="date" value={expirationDate} onChange={(event) => { const value = event.target.value; const iso = expirationDateToISO(value); setActivePreset(null); setState((prev) => ({ ...prev, expiration: iso === null ? { ...prev.expiration, mode: "clear" } : field(iso, "set") })); }} /></label>
               <label className="people-form-field"><span>{s.people.form.maxIps}</span><input type="number" inputMode="numeric" min={1} value={maxIpsValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxUniqueIps: value === "" ? { ...prev.maxUniqueIps, mode: "clear" } : field(Number(value), "set") })); }} /></label>
               <label className="people-form-field"><span>{s.people.form.maxConnections}</span><input type="number" inputMode="numeric" min={1} value={maxConnectionsValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxTcpConns: value === "" ? { ...prev.maxTcpConns, mode: "clear" } : field(Number(value), "set") })); }} /></label>
             </div>

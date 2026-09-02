@@ -46,6 +46,14 @@ describe("StructuredSettingsForm record editors", () => {
     container.remove();
   });
 
+  it("does not introduce a second main landmark inside the page shell", () => {
+    const fields = [field("general.fast_mode", "boolean", "routing", "bool")];
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("routing", fields)} sections={{ general: { fast_mode: false } }} mode="normal" onChange={() => {}} />));
+
+    expect(container.querySelector("main")).toBeNull();
+    expect(container.querySelector("section")).not.toBeNull();
+  });
+
   it("keeps multiple upstreams as bounded collapsible records and duplicates the whole record", () => {
     const fields = [
       field("upstreams[].type", "enum", "upstreams", '"direct" or "socks5"'),
@@ -74,6 +82,24 @@ describe("StructuredSettingsForm record editors", () => {
     expect(next.upstreams).toHaveLength(3);
     expect(next.upstreams[2]).toEqual(sections.upstreams[1]);
     expect(next.upstreams[2]).not.toBe(sections.upstreams[1]);
+  });
+
+  it("can create the first upstream when the optional section is absent", () => {
+    const fields = [
+      field("upstreams[].type", "enum", "upstreams", '"direct" or "socks5"'),
+      field("upstreams[].enabled", "boolean", "upstreams", "bool"),
+    ];
+    const onChange = vi.fn();
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("upstreams", fields)} sections={{}} mode="normal" onChange={onChange} />));
+
+    const s = getStrings().server.config.catalog;
+    const add = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes(s.addUpstream));
+    expect(add).toBeTruthy();
+    act(() => add?.click());
+    expect(onChange.mock.calls[0][0].upstreams).toEqual([
+      { enabled: true, scopes: "", type: "direct", weight: 1 },
+    ]);
   });
 
   it("renders TLS domains and per-SNI masks as separate records instead of JSON", () => {
@@ -275,6 +301,26 @@ describe("StructuredSettingsForm record editors", () => {
       decoy.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(onChange.mock.calls[1][0].web.vhosts[0].decoy).toEqual({ mode: "static_directory", directory: "/var/www/html", index: "index.html" });
+  });
+
+  it("can create the first WEB vhost when the optional section is absent", () => {
+    const fields = [
+      field("web.enabled", "boolean", "web", "bool"),
+      { ...field("web.carrier", "enum", "web"), options: ["https", "https-lanes", "websocket", "websocket-lanes"] },
+      field("web.carriers", "string", "web"),
+      field("web.vhosts", "structure", "web"),
+      field("web.vhosts[].host", "string", "web"),
+      field("web.vhosts[].public_addr", "string", "web"),
+    ];
+    const onChange = vi.fn();
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("web", fields)} sections={{ server: { listeners: [] } }} mode="normal" onChange={onChange} />));
+
+    const s = getStrings().server.config.catalog;
+    const add = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes(s.webAddVhost));
+    expect(add).toBeTruthy();
+    act(() => add?.click());
+    expect(onChange.mock.calls[0][0].web.vhosts).toHaveLength(1);
   });
 
   it("blocks WEB activation until a listener and complete vhost exist", () => {

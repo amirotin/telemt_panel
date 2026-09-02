@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   datetimeLocalValueToISO,
+  expirationDateToISO,
   formatDurationApprox,
   isoToDatetimeLocalValue,
   presetToExpiration,
@@ -53,6 +54,16 @@ describe("datetimeLocalValueToISO", () => {
   });
   it("returns null for a garbage value", () => {
     expect(datetimeLocalValueToISO("not-a-date")).toBeNull();
+  });
+});
+
+describe("expirationDateToISO", () => {
+  it("keeps the selected calendar day in the serialized value", () => {
+    expect(expirationDateToISO("2026-09-02")).toBe("2026-09-02T23:59:59.000Z");
+  });
+  it("rejects empty and invalid calendar dates", () => {
+    expect(expirationDateToISO("")).toBeNull();
+    expect(expirationDateToISO("2026-02-30")).toBeNull();
   });
 });
 

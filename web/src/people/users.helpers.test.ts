@@ -14,6 +14,7 @@ import {
   isValidUsername,
   matchesUserFilter,
   nextSortState,
+  quotaBytesForFormSubmit,
   quotaUnitToBytes,
   sortPresetOf,
   SORT_PRESETS,
@@ -153,6 +154,10 @@ describe("quota unit conversion", () => {
   it("round-trips a whole-GB value", () => {
     const bytes = quotaUnitToBytes(10, "GB");
     expect(bytesToQuotaDisplay(bytes)).toEqual({ value: 10, unit: "GB" });
+  });
+  it("preserves the exact original byte count until the quota is edited", () => {
+    expect(quotaBytesForFormSubmit(1.43, "MB", 1_500_000, false)).toBe(1_500_000);
+    expect(quotaBytesForFormSubmit(1.43, "MB", 1_500_000, true)).toBe(1_499_464);
   });
 });
 

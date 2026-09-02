@@ -42,7 +42,7 @@ func TestHandleGetTelemtConfigTOML_Projection(t *testing.T) {
 			t.Errorf("projection does not contain %q:\n%s", fragment, view.TOMLProjection)
 		}
 	}
-	if view.Revision == "" || len(view.SourceSections) == 0 || view.Note != telemtTOMLProjectionNote {
+	if view.Revision == "" || len(view.SourceSections) == 0 || view.ProjectionKind != telemtTOMLProjectionKind {
 		t.Errorf("incomplete projection metadata: %+v", view)
 	}
 }
@@ -56,6 +56,38 @@ func TestEncodeTelemtConfigTOML_PreservesIntegerBeyondJavaScriptSafeRange(t *tes
 	}
 	if !strings.Contains(projection, "9007199254740993") {
 		t.Fatalf("projection lost integer precision: %s", projection)
+	}
+}
+
+func TestEncodeTelemtConfigTOML_RejectsIntegerBeyondTOMLRange(t *testing.T) {
+	_, err := encodeTelemtConfigTOML(telemt.ConfigSections{
+		"general": json.RawMessage(`{"request_body_limit_bytes":18446744073709551615}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "outside TOML's supported range") {
+		t.Fatalf("encode projection error = %v, want unsupported integer range", err)
+	}
+}
+
+func TestDiffTelemtConfig_TreatsIntegralFloatsAsEqual(t *testing.T) {
+	current := map[string]any{
+		"general": map[string]any{
+			"ratio":  float64(1),
+			"values": []any{float64(1), float64(1.5)},
+		},
+	}
+	desired := map[string]any{
+		"general": map[string]any{
+			"ratio":  int64(1),
+			"values": []any{int64(1), float64(1.5)},
+		},
+	}
+
+	patch, changed, materialized, arrays, missing := diffTelemtConfig(current, desired)
+	if len(patch.(map[string]any)) != 0 || len(changed) != 0 || len(materialized) != 0 || len(arrays) != 0 || len(missing) != 0 {
+		t.Fatalf("equivalent numeric config produced diff: patch=%v changed=%v materialized=%v arrays=%v missing=%v", patch, changed, materialized, arrays, missing)
+	}
+	if configValuesEqual(float64(1.5), int64(1)) {
+		t.Fatal("non-integral float must not compare equal to an integer")
 	}
 }
 
@@ -143,6 +175,9 @@ func TestHandlePatchTelemtConfigTOML_AppliesAndPreserves202(t *testing.T) {
 	found := false
 	for _, entry := range entries {
 		if entry.Action == "config.patch.toml" {
+			if entry.Target != "telemt.toml" {
+				t.Errorf("config.patch.toml target = %q, want telemt.toml", entry.Target)
+			}
 			found = true
 			break
 		}

@@ -29,6 +29,10 @@ describe("server security access assessment", () => {
     expect(isLoopbackCidr("::1/128")).toBe(true);
     expect(isLoopbackCidr("localhost")).toBe(true);
     expect(isLoopbackCidr("10.0.0.0/8")).toBe(false);
+    expect(isLoopbackCidr("127.0.0.1/0")).toBe(false);
+    expect(isLoopbackCidr("127.0.0.1/7")).toBe(false);
+    expect(isLoopbackCidr("::1/0")).toBe(false);
+    expect(isLoopbackCidr("127.0.0.1/33")).toBe(false);
   });
 
   it("treats a loopback whitelist without auth header as protected local access", () => {

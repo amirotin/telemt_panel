@@ -378,7 +378,7 @@ export function ConfigPage() {
         )}
 
         {tab !== "toml" && (
-          <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 flex flex-wrap items-center justify-between gap-2 border-t border-border-strong bg-surface/95 px-3 py-2.5 backdrop-blur-xl lg:bottom-0 lg:items-end lg:gap-3 sm:px-4">
+          <div data-testid="config-save-bar" className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-t border-border-strong bg-surface/95 px-3 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:items-end lg:gap-3 sm:px-4">
             <div className="flex min-h-11 items-center gap-2.5">
               <span className={cn("size-2 rounded-full", hasChanges ? "bg-warn" : "bg-ok")} />
               <span>

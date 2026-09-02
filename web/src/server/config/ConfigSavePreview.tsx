@@ -1,5 +1,5 @@
 import type { TelemtConfigCatalog } from "../../lib/api/generated/types.gen";
-import { useStrings, type Dict } from "../../i18n";
+import { countLabel, useStrings, type Dict } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { Notice } from "../Notice";
 import { Sheet } from "../../ui/Sheet";
@@ -37,7 +37,7 @@ export function ConfigSavePreview({
       onClose={pending ? () => undefined : onClose}
       eyebrow={copy.kicker}
       title={copy.title}
-      subtitle={`${changes.length} ${plural(changes.length, copy.changeOne, copy.changeFew, copy.changeMany)} · ${reloadLabel(reloadPolicy, copy)}`}
+      subtitle={`${countLabel(s, changes.length, [copy.changeOne, copy.changeFew, copy.changeMany])} · ${reloadLabel(reloadPolicy, copy)}`}
       placement="form"
       bodyClassName="flex flex-col gap-3"
     >
@@ -101,12 +101,4 @@ function reloadLabel(
   if (policy.mode === "none") return copy.noReload;
   if (policy.mode === "instant") return copy.instantReload;
   return copy.drainReload;
-}
-
-function plural(count: number, one: string, few: string, many: string): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
 }
