@@ -2,6 +2,10 @@ services:
   telemt-panel:
     build: .
     volumes:
-      - ./config.toml:/etc/telemt-panel/config.toml:ro
+      - ./config.toml:/etc/telemt-panel/config.toml
+      - telemt-panel-data:/var/lib/telemt-panel
     restart: unless-stopped
     network_mode: host
+
+volumes:
+  telemt-panel-data:

@@ -1,0 +1,11 @@
+.git
+.github
+dist
+release
+frontend/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
+*.log
+.env
+.env.*

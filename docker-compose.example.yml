@@ -1,0 +1,31 @@
+services:
+  telemt:
+    image: whn0thacked/telemt-docker:latest   # or build: .
+    container_name: telemt
+    restart: unless-stopped
+    volumes:
+      - ./telemt-config:/etc/telemt:rw
+    network_mode: host
+
+  telemt-panel:
+    image: ghcr.io/amirotin/telemt_panel:latest   # pre-built image, no build needed
+    container_name: telemt-panel
+    restart: unless-stopped
+    volumes:
+      # Panel config — writable: panel saves bot settings and TG bot config here
+      - ./panel-config/config.toml:/etc/telemt-panel/config.toml
+      # Telemt config — writable (no :ro): panel can edit it via Configuration → Advanced Editor.
+      # Using :ro breaks saving: Docker blocks atomic rename on bind-mounted files,
+      # and :ro also blocks the fallback direct write.
+      - ./telemt-config/telemt.toml:/etc/telemt/config.toml
+      # Persistent data: bot DB — survives container recreation
+      - telemt-panel-data:/var/lib/telemt-panel
+      # Docker socket — needed for log streaming from telemt container
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - telemt
+    ports:
+      - "8080:8080"
+
+volumes:
+  telemt-panel-data:
