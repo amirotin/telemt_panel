@@ -58,8 +58,8 @@ func TestSQLiteRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 4 {
-		t.Fatalf("schema version = %d, want 4", info.Schema)
+	if info := reopened.Info(); info.Schema != 5 {
+		t.Fatalf("schema version = %d, want 5", info.Schema)
 	}
 	gotSession, ok, err := reopened.GetSession("hash")
 	if err != nil || !ok || gotSession != session {
@@ -297,8 +297,8 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 4 {
-		t.Fatalf("schema = %d, want 4", got)
+	if got := migrated.Info().Schema; got != 5 {
+		t.Fatalf("schema = %d, want 5", got)
 	}
 	points, err := migrated.MetricRange("connections", 0)
 	if err != nil {

@@ -299,6 +299,22 @@ paths:
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
+  /api/users/{username}/traffic-history:
+    get:
+      tags: [users]
+      operationId: getUserTrafficHistory
+      description: >
+        Optional sparse per-user traffic history. Values are bytes transferred
+        inside each bucket, not cumulative Telemt counters. The recent day uses
+        15-minute buckets and older history uses hourly buckets; zero intervals
+        are omitted.
+      parameters:
+        - { $ref: "#/components/parameters/Username" }
+        - { name: range, in: query, required: true, schema: { type: string, enum: [24h, 7d, 30d] } }
+      responses:
+        "200": { description: User traffic series and collection state, content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/users/{username}/rotate-secret:
     post:
       tags: [users]
@@ -1722,16 +1738,28 @@ components:
 
     HistorySeries:
       type: object
-      required: [metric, range, retention_secs, points]
+      required: [metric, range, state, requested_from_epoch_secs, retention_secs, points]
       properties:
         metric: { type: string }
         range: { type: string }
+        state:
+          type: string
+          enum: [ready, disabled, empty, partial]
+          description: Explicit collection state; source availability is reported independently.
+        requested_from_epoch_secs: { type: integer, format: int64 }
         retention_secs:
           type: integer
           format: int64
           description: >
             Configured retention for this metric's category. The client uses it to
             distinguish an empty window from disabled history. 0 means disabled.
+        available_from_epoch_secs:
+          type: integer
+          format: int64
+          description: Oldest returned point; absent when the series is empty.
+        source_available:
+          type: boolean
+          description: Current Telemt source state; absent until availability has been observed.
         points:
           type: array
           items:
@@ -1740,7 +1768,7 @@ components:
             properties:
               ts: { type: integer, format: int64, description: epoch seconds }
               v: { type: number }
-              tier: { type: string, enum: [1m, 15m], description: Omitted for raw points }
+              tier: { type: string, enum: [1m, 15m, 1h], description: Omitted for raw points }
               max: { type: number, description: Bucket maximum; present for aggregate points }
 
     HistoryEvent:
@@ -1761,13 +1789,22 @@ components:
 
     HistoryEvents:
       type: object
-      required: [range, retention_secs, events]
+      required: [range, state, requested_from_epoch_secs, retention_secs, events]
       properties:
         range: { type: string, enum: [15m, 30m, 1h, 24h, 7d] }
+        state: { type: string, enum: [ready, disabled, empty, partial] }
+        requested_from_epoch_secs: { type: integer, format: int64 }
         retention_secs:
           type: integer
           format: int64
           description: Configured event retention in seconds; 0 means disabled.
+        available_from_epoch_secs:
+          type: integer
+          format: int64
+          description: Oldest returned event; absent when the stream is empty.
+        source_available:
+          type: boolean
+          description: Current Telemt source state; absent until availability has been observed.
         events:
           type: array
           items: { $ref: "#/components/schemas/HistoryEvent" }

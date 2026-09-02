@@ -757,7 +757,17 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 		add(metricRefusals, float64(h.refusals.observe(refusalsTotal(snap.Summary), uptime)))
 		add(metricAttempts, float64(h.attempts.observe(snap.Summary.ConnectionsTotal, uptime)))
 		if hasUsers {
-			add(metricTraffic, float64(h.traffic.observe(users, uptime)))
+			total, byUser := h.traffic.observeDeltas(users, uptime)
+			add(metricTraffic, float64(total))
+			if len(byUser) > 0 {
+				deltas := make([]store.UserTrafficDelta, 0, len(byUser))
+				for username, bytes := range byUser {
+					deltas = append(deltas, store.UserTrafficDelta{Username: username, TS: ts, Bytes: bytes})
+				}
+				if err := h.st.RecordUserTraffic(deltas); err != nil {
+					slog.Warn("hub: record user traffic", "count", len(deltas), "err", err)
+				}
+			}
 		}
 	}
 	if err := h.st.RecordMetrics(batch); err != nil {

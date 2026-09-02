@@ -282,6 +282,13 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if detachedWeb {
 		detail = "web_profiles=removed"
 	}
+	if err := s.st.DeleteUserHistory(username); err != nil {
+		slog.Error("delete-user: remove stored user history", "username", username, "err", err)
+		if detail != "" {
+			detail += ","
+		}
+		detail += "history_cleanup=failed"
+	}
 	s.appendAudit(r, "user.delete", username, detail)
 	s.pokeUsersAfterMutation()
 	w.WriteHeader(http.StatusNoContent)

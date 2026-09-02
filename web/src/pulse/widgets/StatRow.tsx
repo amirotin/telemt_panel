@@ -15,6 +15,7 @@ import { fill, formatNumber, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import { useHistorySeries } from "../useHistorySeries";
+import type { HistorySeries } from "../../lib/api/generated/types.gen";
 import type { DiagDomain } from "../types";
 import {
   computeStatRowValues,
@@ -184,6 +185,13 @@ export function StatRow() {
     peak === null ? undefined : `${s.pulse.stat.peak15m} — ${peak}`;
   const totalCaption = (total: string | null) =>
     total === null ? undefined : fill(s.pulse.stat.totalAllTime, { value: total });
+  const historyCaption = (history: HistorySeries | undefined, fallback?: string) => {
+    if (!history || history.state === "empty") return s.pulse.stat.historyCollecting;
+    if (history.state === "disabled") return s.pulse.stat.historyDisabled;
+    if (history.source_available === false) return s.pulse.stat.sourceUnavailable;
+    if (history.state === "partial") return s.pulse.stat.historyPartial;
+    return fallback;
+  };
 
   const metrics: Metric[] = [
     {
@@ -192,7 +200,7 @@ export function StatRow() {
       tone: "accent",
       label: values.connectionsApprox ? s.pulse.stat.connectionsApprox : s.pulse.stat.connections,
       value: values.connections ?? "—",
-      caption: peakCaption(peakHistoryValue(connectionsWindow)),
+      caption: historyCaption(connectionsHistory.data, peakCaption(peakHistoryValue(connectionsWindow))),
       series: sparklineValues(connectionsWindow),
       domain: "connections",
     },
@@ -202,7 +210,7 @@ export function StatRow() {
       tone: "ok",
       label: values.activeUsersApprox ? s.pulse.stat.activeUsersApprox : s.pulse.stat.activeUsers,
       value: values.activeUsers ?? "—",
-      caption: peakCaption(peakHistoryValue(usersWindow)),
+      caption: historyCaption(usersHistory.data, peakCaption(peakHistoryValue(usersWindow))),
       series: sparklineValues(usersWindow),
       domain: "connections",
     },
@@ -212,7 +220,7 @@ export function StatRow() {
       tone: "accent",
       label: s.pulse.stat.traffic,
       value: traffic !== null ? formatBytes(traffic, s) : "—",
-      caption: totalCaption(trafficTotal === null ? null : formatBytes(trafficTotal, s)),
+      caption: historyCaption(trafficHistory.data, totalCaption(trafficTotal === null ? null : formatBytes(trafficTotal, s))),
       series: deltaSparklineValues(trafficWindow),
       domain: "connections",
     },
@@ -234,7 +242,10 @@ export function StatRow() {
       // this window against the previous one. Until a previous window exists
       // — the first quarter-hour after a panel start — it falls back to
       // naming the refusals rather than claiming a comparison it cannot make.
-      caption: qualityCaption(quality, s),
+      caption: historyCaption(
+        attemptsHistory.data?.state !== "ready" ? attemptsHistory.data : refusalsHistory.data,
+        qualityCaption(quality, s),
+      ),
       series: qualitySparklineValues(windowSeries(attemptsHistory.data), windowSeries(refusalsHistory.data)),
       domain: "counters",
     },

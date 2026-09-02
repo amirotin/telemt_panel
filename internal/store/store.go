@@ -63,6 +63,16 @@ type NamedMetricPoint struct {
 	Point MetricPoint
 }
 
+// UserTrafficDelta is the non-zero traffic observed for one Telemt user
+// since the previous users snapshot. Stores aggregate these deltas directly
+// into sparse 15-minute and hourly buckets; raw per-poll user history is never
+// persisted.
+type UserTrafficDelta struct {
+	Username string
+	TS       int64
+	Bytes    uint64
+}
+
 // HistoryEvent is one safe, structured state transition. Attributes may
 // contain small identifiers or numeric context, but never raw logs, IP
 // addresses, credentials, endpoint addresses or configuration snapshots.
@@ -97,6 +107,7 @@ const (
 	MetricTierRaw     MetricTier = ""
 	MetricTierMinute  MetricTier = "1m"
 	MetricTierQuarter MetricTier = "15m"
+	MetricTierHour    MetricTier = "1h"
 	metricTierRawSQL             = "raw"
 )
 
@@ -147,6 +158,16 @@ type Store interface {
 	// MetricRetention reports the configured retention for a metric. Zero
 	// means that persistence for the metric's category is disabled.
 	MetricRetention(name string) time.Duration
+	// RecordUserTraffic aggregates non-zero per-user deltas into sparse
+	// 15-minute and hourly buckets when user traffic history is enabled.
+	RecordUserTraffic(deltas []UserTrafficDelta) error
+	// UserTrafficRange returns one non-overlapping resolution for a user,
+	// oldest first. The user name is treated as an opaque identity.
+	UserTrafficRange(username string, fromTS int64) ([]MetricPoint, error)
+	// UserTrafficRetention reports the effective reach of per-user history.
+	UserTrafficRetention() time.Duration
+	// DeleteUserHistory removes every optional history row owned by a user.
+	DeleteUserHistory(username string) error
 
 	// AppendHistoryEvent records one structured transition when its category
 	// is enabled.

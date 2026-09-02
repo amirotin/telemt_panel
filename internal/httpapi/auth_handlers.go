@@ -354,6 +354,41 @@ func (s *Server) appendAudit(r *http.Request, action, subject, detail string) {
 	if err != nil {
 		slog.Error("append audit entry", "action", action, "err", err)
 	}
+	if event, ok := administrativeHistoryEvent(now, action, subject); ok {
+		if err := s.st.AppendHistoryEvent(event); err != nil {
+			slog.Error("append administrative history event", "action", action, "err", err)
+		}
+	}
+}
+
+// administrativeHistoryEvent mirrors only safe action metadata into the
+// correlation timeline. Audit detail, IP address and arbitrary metadata are
+// deliberately excluded because they may contain selectors or configuration
+// values that do not belong in observability history.
+func administrativeHistoryEvent(ts time.Time, action, subject string) (store.HistoryEvent, bool) {
+	switch action {
+	case "config.patch", "config.patch.toml", "config.web_access",
+		"quota.reset", "secret.rotate", "storage.history_purge", "storage.policy_change",
+		"sublink.rotate", "telemt.reload", "telemt.restart", "update.apply",
+		"update.auto_change", "user.create", "user.delete", "user.enabled",
+		"user.patch", "web.sessions.close":
+		// Explicit allowlist: a future audit action does not enter long-lived
+		// observability history until its subject semantics have been reviewed.
+	default:
+		return store.HistoryEvent{}, false
+	}
+	severity := "info"
+	if action == "user.delete" || action == "storage.history_purge" || action == "telemt.restart" {
+		severity = "warning"
+	}
+	return store.HistoryEvent{
+		TS:       ts,
+		Category: store.StorageEvents,
+		Kind:     action,
+		Entity:   auditTarget(action, subject),
+		State:    auditOutcome(action),
+		Severity: severity,
+	}, true
 }
 
 func auditTarget(action, subject string) string {

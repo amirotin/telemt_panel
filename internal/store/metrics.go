@@ -6,8 +6,10 @@ import (
 )
 
 const (
-	metricRawRetention    = 2 * time.Hour
-	metricMinuteRetention = 24 * time.Hour
+	metricRawRetention         = 2 * time.Hour
+	metricMinuteRetention      = 24 * time.Hour
+	userTrafficFineRetention   = 24 * time.Hour
+	userTrafficMemoryRetention = 30 * 24 * time.Hour
 )
 
 var metricTierRetention = []struct {
@@ -18,6 +20,7 @@ var metricTierRetention = []struct {
 	{tier: MetricTierRaw, sql: metricTierRawSQL, keep: metricRawRetention},
 	{tier: MetricTierMinute, sql: string(MetricTierMinute), keep: metricMinuteRetention},
 	{tier: MetricTierQuarter, sql: string(MetricTierQuarter)},
+	{tier: MetricTierHour, sql: string(MetricTierHour)},
 }
 
 func metricTierSQL(tier MetricTier) string {
@@ -105,4 +108,55 @@ func selectMetricPoints(points []MetricPoint, fromTS, now int64) []MetricPoint {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].TS < out[j].TS })
 	return out
+}
+
+// selectUserTrafficPoints keeps 15-minute buckets for the most recent day and
+// hourly buckets before it. Missing fine buckets fall back to hourly data,
+// which keeps imports and partially aggregated databases readable without
+// showing two resolutions for the same interval.
+func selectUserTrafficPoints(points []MetricPoint, fromTS, now int64) []MetricPoint {
+	quarterBuckets := make(map[int64]bool)
+	for _, point := range points {
+		if point.Tier == MetricTierQuarter {
+			quarterBuckets[point.TS] = true
+		}
+	}
+
+	out := make([]MetricPoint, 0, len(points))
+	fineFrom := now - int64(userTrafficFineRetention/time.Second)
+	for _, point := range points {
+		if point.TS < fromTS {
+			continue
+		}
+		switch point.Tier {
+		case MetricTierQuarter:
+			if point.TS >= fineFrom {
+				out = append(out, point)
+			}
+		case MetricTierHour:
+			if point.TS < fineFrom {
+				out = append(out, point)
+				continue
+			}
+			// A complete hour is represented by its four 15-minute buckets.
+			// Fall back to the hourly value only while those fine buckets do not
+			// exist (for example immediately after an import).
+			hasFine := false
+			for offset := int64(0); offset < int64(time.Hour/time.Second); offset += int64(15 * time.Minute / time.Second) {
+				if quarterBuckets[point.TS+offset] {
+					hasFine = true
+					break
+				}
+			}
+			if !hasFine {
+				out = append(out, point)
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].TS < out[j].TS })
+	return out
+}
+
+func userTrafficMetricName(username string) string {
+	return "user." + username + ".traffic"
 }

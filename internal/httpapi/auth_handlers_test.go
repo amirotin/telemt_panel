@@ -521,3 +521,24 @@ func TestCSRFAppliesToMutatingAuthRoutes(t *testing.T) {
 		t.Fatalf("error code = %q, want csrf_rejected", body.Code)
 	}
 }
+
+func TestAdministrativeHistoryEventExcludesAuthenticationAndSensitiveDetail(t *testing.T) {
+	now := time.Now().UTC()
+	if _, ok := administrativeHistoryEvent(now, "login", "admin"); ok {
+		t.Fatal("login must not enter the correlation timeline")
+	}
+	if _, ok := administrativeHistoryEvent(now, "future.action", "possibly-sensitive"); ok {
+		t.Fatal("unknown actions must not enter the correlation timeline")
+	}
+	event, ok := administrativeHistoryEvent(now, "config.patch", "")
+	if !ok {
+		t.Fatal("config patch was not mirrored")
+	}
+	if event.Kind != "config.patch" || event.Entity != "telemt.toml" || event.State != "success" || len(event.Attributes) != 0 {
+		t.Fatalf("event = %+v", event)
+	}
+	restart, ok := administrativeHistoryEvent(now, "telemt.restart", "")
+	if !ok || restart.Severity != "warning" || restart.State != "accepted" {
+		t.Fatalf("restart event = %+v, %v", restart, ok)
+	}
+}

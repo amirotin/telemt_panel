@@ -62,6 +62,9 @@ func TestHandleGetHistory_EmptyIsNotAnError(t *testing.T) {
 	if got.Metric != "connections" || got.Range != "15m" {
 		t.Errorf("metric/range = %q/%q, want connections/15m", got.Metric, got.Range)
 	}
+	if got.State != "empty" || got.RequestedFrom == 0 {
+		t.Errorf("history metadata = state %q, from %d", got.State, got.RequestedFrom)
+	}
 	if got.Points == nil {
 		t.Error("points is JSON null, want an empty array")
 	}
@@ -102,6 +105,78 @@ func TestHandleGetHistory_ReturnsRecordedPoints(t *testing.T) {
 	}
 	if got.Points[0].V != 3 || got.Points[1].V != 5 {
 		t.Errorf("points = %+v, want oldest-first [3, 5]", got.Points)
+	}
+	if got.State != "partial" || got.AvailableFrom == nil {
+		t.Errorf("newly collected series metadata = %+v", got)
+	}
+}
+
+func TestHandleGetUserTrafficHistoryReportsPolicyAndSparseBuckets(t *testing.T) {
+	srv := newTestServer(t)
+	now := time.Now().Unix()
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+
+	request := func() historySeriesView {
+		r := httptest.NewRequest("GET", "/api/users/alice/traffic-history?range=24h", nil)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", w.Code, w.Body)
+		}
+		var got historySeriesView
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	if got := request(); got.State != "disabled" || got.RetentionSecs != 0 || len(got.Points) != 0 {
+		t.Fatalf("disabled response = %+v", got)
+	}
+	policies, err := srv.st.ListStoragePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range policies {
+		if policies[i].Category == store.StorageUserTraffic {
+			policies[i].Enabled = true
+		}
+	}
+	if err := srv.st.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.st.RecordUserTraffic([]store.UserTrafficDelta{{Username: "alice", TS: now, Bytes: 2048}}); err != nil {
+		t.Fatal(err)
+	}
+	got := request()
+	if got.Metric != "user.alice.traffic" || got.State != "partial" || len(got.Points) != 1 || got.Points[0].V != 2048 || got.Points[0].Tier != "15m" {
+		t.Fatalf("traffic response = %+v", got)
+	}
+}
+
+func TestMetricHistoryStateDistinguishesDisabledEmptyPartialAndReady(t *testing.T) {
+	now := int64(10_000)
+	from := now - 600
+	for _, tc := range []struct {
+		name      string
+		retention int64
+		points    []store.MetricPoint
+		want      string
+	}{
+		{name: "disabled", want: "disabled"},
+		{name: "empty", retention: 600, want: "empty"},
+		{name: "partial retention", retention: 300, points: []store.MetricPoint{{TS: from, Value: 1}}, want: "partial"},
+		{name: "partial collection", retention: 600, points: []store.MetricPoint{{TS: from + 180, Value: 1}}, want: "partial"},
+		{name: "ready", retention: 600, points: []store.MetricPoint{{TS: from + 30, Value: 1}}, want: "ready"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, _ := metricHistoryState(now, from, tc.retention, tc.points)
+			if got != tc.want {
+				t.Fatalf("state = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

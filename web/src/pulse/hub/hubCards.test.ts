@@ -62,6 +62,7 @@ function history(metric: string, first: number, last: number): HistorySeries {
   return {
     metric,
     range: "30m",
+    state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800,
     points: [
       { ts: Math.floor(NOW / 1000) - 15 * 60, v: first },

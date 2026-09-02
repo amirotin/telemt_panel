@@ -197,6 +197,26 @@ func TestUserTrafficAccumulatorTracksPerUserDeltas(t *testing.T) {
 	}
 }
 
+func TestUserTrafficAccumulatorReturnsSparsePerUserDeltas(t *testing.T) {
+	var accumulator userTrafficAccumulator
+	users := []telemt.UserInfo{
+		{Username: "alice", TotalOctets: 1_000},
+		{Username: "bob", TotalOctets: 2_000},
+	}
+	if total, deltas := accumulator.observeDeltas(users, 100); total != 0 || len(deltas) != 0 {
+		t.Fatalf("baseline = %d, %+v", total, deltas)
+	}
+	users[0].TotalOctets += 120
+	if total, deltas := accumulator.observeDeltas(users, 110); total != 120 || len(deltas) != 1 || deltas["alice"] != 120 {
+		t.Fatalf("delta = %d, %+v", total, deltas)
+	}
+	users[0].TotalOctets = 7
+	users[1].TotalOctets = 11
+	if total, deltas := accumulator.observeDeltas(users, 1); total != 138 || deltas["alice"] != 7 || deltas["bob"] != 11 {
+		t.Fatalf("restart delta = %d, %+v", total, deltas)
+	}
+}
+
 func TestUserTrafficAccumulatorCountsNewUserAfterTelemtRestart(t *testing.T) {
 	var accumulator userTrafficAccumulator
 	accumulator.observe([]telemt.UserInfo{{Username: "alice", TotalOctets: 1_000}}, 100)

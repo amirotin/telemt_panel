@@ -180,6 +180,20 @@ export const ru = {
       usage: "Использование",
       tabs: { overview: "Обзор", access: "Доступ", limits: "Ограничения" },
     },
+    trafficHistory: {
+      title: "История трафика",
+      subtitle: "Реальный объём по интервалам, без накопительного счётчика",
+      ranges: { "24h": "24 часа", "7d": "7 дней", "30d": "30 дней" },
+      disabled: "История для пользователей отключена",
+      disabledHint: "Её можно включить в настройках хранения. Уже накопленный общий трафик задним числом не распределяется.",
+      empty: "За выбранный период трафика пока нет",
+      partial: "История собрана только за часть выбранного периода",
+      sourceUnavailable: "Telemt сейчас недоступен — показаны последние сохранённые данные",
+      total: "За период",
+      peak: "Пиковый интервал",
+      bucket15m: "15 минут",
+      bucketHour: "1 час",
+    },
     webAccess: {
       title: "WEB-доступ",
       unavailable: "Связи WEB сейчас недоступны. Остальные способы доступа работают как обычно.",
@@ -551,6 +565,10 @@ export const ru = {
       // The lifetime figure under a window metric: the tile shows what
       // happened in fifteen minutes, the caption what it adds up to.
       totalAllTime: "всего — {value}",
+      historyCollecting: "история собирается",
+      historyPartial: "доступна часть истории",
+      historyDisabled: "история отключена",
+      sourceUnavailable: "источник временно недоступен",
       uptime: "Аптайм",
     },
     problems: {
@@ -1593,6 +1611,8 @@ export const ru = {
           peak: "Пик",
           chartLabel: "Соединения и активные пользователи за последние 30 минут",
           historyCollecting: "История собирается",
+          correlatedEvents: "Событий на графике: {count}",
+          correlationDisabled: "Корреляция событий отключена в хранении",
           availableMinutes: "доступно {minutes} мин. из 30",
           thirtyMinutesAgo: "30 мин. назад",
           fifteenMinutesAgo: "15 мин.",

@@ -114,6 +114,7 @@ describe("connectionsLabel", () => {
 describe("trafficLabel", () => {
   function series(points: Array<{ ts: number; v: number }>): HistorySeries {
     return { metric: "traffic", range: "15m",
+    state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800, points };
   }
 

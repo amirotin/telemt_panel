@@ -478,6 +478,90 @@ func (m *Memory) MetricRetention(name string) time.Duration {
 	return 30 * time.Minute
 }
 
+// RecordUserTraffic aggregates sparse per-user deltas without writing them to
+// the optional mirror. The memory profile keeps at most one day of 15-minute
+// buckets and thirty days of hourly buckets, regardless of configured policy.
+func (m *Memory) RecordUserTraffic(deltas []UserTrafficDelta) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.policies[StorageUserTraffic].Enabled {
+		return nil
+	}
+	for _, delta := range deltas {
+		if delta.Username == "" || delta.TS <= 0 || delta.Bytes == 0 {
+			continue
+		}
+		name := userTrafficMetricName(delta.Username)
+		points := m.metrics[name]
+		for _, tier := range []struct {
+			name  MetricTier
+			width time.Duration
+		}{
+			{name: MetricTierQuarter, width: 15 * time.Minute},
+			{name: MetricTierHour, width: time.Hour},
+		} {
+			bucket := metricBucket(delta.TS, tier.width)
+			updated := false
+			for i := len(points) - 1; i >= 0; i-- {
+				if points[i].Tier == tier.name && points[i].TS == bucket {
+					value := float64(delta.Bytes)
+					points[i].Value += value
+					if value > points[i].Max {
+						points[i].Max = value
+					}
+					points[i].Samples++
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				value := float64(delta.Bytes)
+				points = append(points, MetricPoint{TS: bucket, Value: value, Max: value, Samples: 1, Tier: tier.name})
+			}
+		}
+		quarterCutoff := delta.TS - int64(userTrafficFineRetention/time.Second)
+		hourCutoff := delta.TS - int64(userTrafficMemoryRetention/time.Second)
+		kept := points[:0]
+		for _, point := range points {
+			if (point.Tier == MetricTierQuarter && point.TS >= quarterCutoff) ||
+				(point.Tier == MetricTierHour && point.TS >= hourCutoff) {
+				kept = append(kept, point)
+			}
+		}
+		m.metrics[name] = kept
+	}
+	return nil
+}
+
+// UserTrafficRange returns a user's sparse traffic history.
+func (m *Memory) UserTrafficRange(username string, fromTS int64) ([]MetricPoint, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.policies[StorageUserTraffic].Enabled {
+		return []MetricPoint{}, nil
+	}
+	points := append([]MetricPoint(nil), m.metrics[userTrafficMetricName(username)]...)
+	return selectUserTrafficPoints(points, fromTS, time.Now().Unix()), nil
+}
+
+// UserTrafficRetention reports the bounded RAM reach when enabled.
+func (m *Memory) UserTrafficRetention() time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.policies[StorageUserTraffic].Enabled {
+		return 0
+	}
+	return userTrafficMemoryRetention
+}
+
+// DeleteUserHistory removes all optional history owned by username.
+func (m *Memory) DeleteUserHistory(username string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.metrics, userTrafficMetricName(username))
+	return nil
+}
+
 // ListStoragePolicies returns every policy in stable UI order.
 func (m *Memory) ListStoragePolicies() ([]StoragePolicy, error) {
 	m.mu.Lock()

@@ -534,7 +534,7 @@ func TestSQLiteHistoryCollectorRunsWithoutSubscribers(t *testing.T) {
 type durableTestStore struct{ store.Store }
 
 func (durableTestStore) Info() store.Info {
-	return store.Info{Driver: "postgres", Durable: true, Remote: true, Schema: 4, SizeHint: -1}
+	return store.Info{Driver: "postgres", Durable: true, Remote: true, Schema: 5, SizeHint: -1}
 }
 
 func TestEveryDurableStoreKeepsStatsAndUsersSourcesAlive(t *testing.T) {

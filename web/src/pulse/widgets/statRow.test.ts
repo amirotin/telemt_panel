@@ -71,6 +71,7 @@ describe("computeStatRowValues", () => {
 
 describe("sparklineValues", () => {
   const series: HistorySeries = { metric: "connections", range: "15m",
+    state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800, points: [{ ts: 1, v: 1 }, { ts: 2, v: 5 }] };
 
   it("extracts the raw value series", () => {
@@ -86,6 +87,7 @@ describe("historyWindowDelta", () => {
   const traffic = (values: number[]): HistorySeries => ({
     metric: "traffic",
     range: "15m",
+    state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800,
     points: values.map((v, i) => ({ ts: i + 1, v })),
   });
@@ -115,6 +117,7 @@ describe("deltaSparklineValues", () => {
   const traffic = (values: number[]): HistorySeries => ({
     metric: "traffic",
     range: "15m",
+    state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800,
     points: values.map((v, i) => ({ ts: i + 1, v })),
   });
@@ -138,6 +141,7 @@ describe("peakHistoryValue", () => {
   const withPoints = (points: HistorySeries["points"]): HistorySeries => ({
     metric: "connections",
     range: "15m",
+    state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800,
     points,
   });
@@ -156,6 +160,7 @@ describe("peakHistoryValue", () => {
 
 function refusalSeries(values: number[]): HistorySeries {
   return { metric: "refusals", range: "15m",
+    state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800, points: values.map((v, i) => ({ ts: i, v })) };
 }
 
@@ -181,7 +186,8 @@ describe("connectionQuality", () => {
     return {
       metric,
       range: "30m",
-      retention_secs: 1800,
+      state: "ready", requested_from_epoch_secs: 0,
+    retention_secs: 1800,
       points: values.map((v, i) => ({ ts: (i - last) * STEP, v })),
     };
   }
@@ -269,7 +275,8 @@ describe("windowSeries / previousWindowSeries", () => {
     return {
       metric: "attempts",
       range: "30m",
-      retention_secs: 1800,
+      state: "ready", requested_from_epoch_secs: 0,
+    retention_secs: 1800,
       points: Array.from({ length: count }, (_, i) => ({ ts: (i - last) * STEP, v: i })),
     };
   }
@@ -294,14 +301,22 @@ describe("windowSeries / previousWindowSeries", () => {
 
   it("passes an empty or absent series through untouched", () => {
     expect(windowSeries(undefined)).toBeUndefined();
-    const empty = { metric: "attempts", range: "30m", retention_secs: 1800, points: [] };
+    const empty: HistorySeries = {
+      metric: "attempts",
+      range: "30m",
+      state: "ready",
+      requested_from_epoch_secs: 0,
+      retention_secs: 1800,
+      points: [],
+    };
     expect(windowSeries(empty)).toBe(empty);
   });
 });
 
 describe("qualitySparklineValues", () => {
   function series(metric: string, values: number[]): HistorySeries {
-    return { metric, range: "30m", retention_secs: 1800, points: values.map((v, i) => ({ ts: i, v })) };
+    return { metric, range: "30m", state: "ready", requested_from_epoch_secs: 0,
+    retention_secs: 1800, points: values.map((v, i) => ({ ts: i, v })) };
   }
 
   it("plots one point per step", () => {

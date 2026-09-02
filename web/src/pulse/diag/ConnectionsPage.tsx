@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { getHistoryEventsOptions } from "../../lib/api/generated/@tanstack/react-query.gen";
+import type { HistoryEvent } from "../../lib/api/generated/types.gen";
 import { fill, formatNumber, localeOf, useStrings, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
@@ -57,6 +60,11 @@ interface ChartReading {
   v: number;
 }
 
+interface ChartEvent {
+  ts: number;
+  severity: HistoryEvent["severity"];
+}
+
 function niceScaleTicks(value: number): number[] {
   if (!Number.isFinite(value) || value <= 0) return [1, 0];
   const rawStep = value / 5;
@@ -102,12 +110,14 @@ function LoadChart({
   activeUsers,
   label,
   emptyLabel,
+  events,
   s,
 }: {
   connections: readonly ChartReading[];
   activeUsers: readonly ChartReading[];
   label: string;
   emptyLabel: string;
+  events: readonly ChartEvent[];
   s: Dict;
 }) {
   const width = 760;
@@ -128,6 +138,13 @@ function LoadChart({
   const userPath = pathOf(userPoints);
   const baseline = height - 18;
   const hasSeries = connectionPoints.length >= 2 || userPoints.length >= 2;
+  const eventMarkers = events
+    .filter((event) => event.ts >= startTs && event.ts <= latestTs)
+    .slice(0, 12)
+    .map((event) => ({
+      ...event,
+      x: ((event.ts - startTs) / THIRTY_MINUTES_SECONDS) * width,
+    }));
 
   return (
     <div className="relative mt-4 h-[190px] w-full sm:h-[222px]" data-testid="connections-chart">
@@ -164,6 +181,27 @@ function LoadChart({
           />
           );
         })}
+        {eventMarkers.map((event, index) => (
+          <g key={`${event.ts}-${index}`} data-testid="connections-event-marker">
+            <line
+              x1={event.x}
+              x2={event.x}
+              y1="18"
+              y2={baseline}
+              stroke={event.severity === "critical" ? "rgb(var(--error))" : event.severity === "warning" ? "rgb(var(--warn))" : "rgb(var(--text-muted))"}
+              strokeOpacity={event.severity === "info" ? "0.28" : "0.48"}
+              strokeDasharray="3 4"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle
+              cx={event.x}
+              cy="18"
+              r="2.75"
+              fill={event.severity === "critical" ? "rgb(var(--error))" : event.severity === "warning" ? "rgb(var(--warn))" : "rgb(var(--text-muted))"}
+            />
+          </g>
+        ))}
         {connectionPoints.length >= 2 && (
           <>
             <path
@@ -343,6 +381,10 @@ export function ConnectionsPage() {
   const activeUsersHistory = useHistorySeries("active_users", 10_000);
   const attemptsHistory = useHistorySeries("attempts", 10_000);
   const refusalsHistory = useHistorySeries("refusals", 10_000);
+  const eventsHistory = useQuery({
+    ...getHistoryEventsOptions({ query: { range: "30m", limit: 50 } }),
+    refetchInterval: 10_000,
+  });
   const [rankingMode, setRankingMode] = useState<RankingMode>("current");
 
   const gated = stats.data ? resolveGated(stats.data.connections_summary) : null;
@@ -362,6 +404,10 @@ export function ConnectionsPage() {
   const connectionReadings = connectionsHistory.data?.points ?? [];
   const activeUserReadings = activeUsersHistory.data?.points ?? [];
   const connectionValues = connectionReadings.map((point) => point.v);
+  const chartEvents = (eventsHistory.data?.events ?? []).map((event) => ({
+    ts: Math.floor(new Date(event.ts).getTime() / 1000),
+    severity: event.severity,
+  })).filter((event) => Number.isFinite(event.ts));
   const chartSpan = historySpanSeconds(connectionReadings, activeUserReadings);
   const chartMinutes = Math.max(1, Math.ceil(chartSpan / 60));
   const currentConnections =
@@ -490,6 +536,7 @@ export function ConnectionsPage() {
                   activeUsers={activeUserReadings}
                   label={s.details.pages.connections.view.chartLabel}
                   emptyLabel={s.details.pages.connections.view.historyCollecting}
+                  events={chartEvents}
                   s={s}
                 />
 
@@ -499,6 +546,19 @@ export function ConnectionsPage() {
                   <span>{s.details.pages.connections.view.now}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-3 text-meta text-text-muted">
+                  {connectionsHistory.data?.source_available === false && (
+                    <span className="text-warn">{s.details.pages.connections.view.sourceUnavailable}</span>
+                  )}
+                  {eventsHistory.data?.state === "disabled" ? (
+                    <span>{s.details.pages.connections.view.correlationDisabled}</span>
+                  ) : chartEvents.length > 0 ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <i className="h-2 w-2 rounded-full bg-text-muted/60" />
+                      {fill(s.details.pages.connections.view.correlatedEvents, {
+                        count: formatNumber(s, chartEvents.length),
+                      })}
+                    </span>
+                  ) : null}
                   {!chartWindowComplete && (
                     <span className="text-accent">
                       {fill(s.details.pages.connections.view.availableMinutes, {

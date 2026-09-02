@@ -22,6 +22,14 @@ var historyRanges = map[string]time.Duration{
 	"7d":  7 * 24 * time.Hour,
 }
 
+var userTrafficRanges = map[string]time.Duration{
+	"24h": 24 * time.Hour,
+	"7d":  7 * 24 * time.Hour,
+	"30d": 30 * 24 * time.Hour,
+}
+
+const historySourceFreshness = 2 * time.Minute
+
 // historyKnownMetrics is the fixed set of store series names the hub records.
 // Entity series are validated separately by isKnownHistoryMetric.
 // A metric outside this set is 400 bad_request, per the brief; "health" is
@@ -76,17 +84,25 @@ type historyPointView struct {
 
 // historySeriesView mirrors api/openapi.yaml HistorySeries.
 type historySeriesView struct {
-	Metric string `json:"metric"`
-	Range  string `json:"range"`
+	Metric        string `json:"metric"`
+	Range         string `json:"range"`
+	State         string `json:"state"`
+	RequestedFrom int64  `json:"requested_from_epoch_secs"`
 	// RetentionSecs is the selected metric category's retention. Zero means
 	// that persistent history for the category is disabled.
 	RetentionSecs int64              `json:"retention_secs"`
+	AvailableFrom *int64             `json:"available_from_epoch_secs,omitempty"`
+	Source        *bool              `json:"source_available,omitempty"`
 	Points        []historyPointView `json:"points"`
 }
 
 type historyEventsView struct {
 	Range         string               `json:"range"`
+	State         string               `json:"state"`
+	RequestedFrom int64                `json:"requested_from_epoch_secs"`
 	RetentionSecs int64                `json:"retention_secs"`
+	AvailableFrom *int64               `json:"available_from_epoch_secs,omitempty"`
+	Source        *bool                `json:"source_available,omitempty"`
 	Events        []store.HistoryEvent `json:"events"`
 }
 
@@ -106,7 +122,8 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fromTS := time.Now().Add(-window).Unix()
+	now := time.Now()
+	fromTS := now.Add(-window).Unix()
 	points, err := s.st.MetricRange(metric, fromTS)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read history")
@@ -114,11 +131,53 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	retentionSecs := int64(s.st.MetricRetention(metric) / time.Second)
+	source := s.historySourceAvailability(now)
+	state, availableFrom := metricHistoryState(now.Unix(), fromTS, retentionSecs, points)
 
 	writeJSON(w, http.StatusOK, historySeriesView{
 		Metric:        metric,
 		Range:         rangeParam,
+		State:         state,
+		RequestedFrom: fromTS,
 		RetentionSecs: retentionSecs,
+		AvailableFrom: availableFrom,
+		Source:        source,
+		Points:        toHistoryPoints(points),
+	})
+}
+
+// handleGetUserTrafficHistory returns sparse per-user traffic buckets. It is
+// separate from the generic metric endpoint so user names never become an
+// open-ended metric-name grammar.
+func (s *Server) handleGetUserTrafficHistory(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	if username == "" {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "username is required")
+		return
+	}
+	rangeParam := r.URL.Query().Get("range")
+	window, ok := userTrafficRanges[rangeParam]
+	if !ok {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown range")
+		return
+	}
+	now := time.Now()
+	fromTS := now.Add(-window).Unix()
+	points, err := s.st.UserTrafficRange(username, fromTS)
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read user traffic history")
+		return
+	}
+	retentionSecs := int64(s.st.UserTrafficRetention() / time.Second)
+	state, availableFrom := metricHistoryState(now.Unix(), fromTS, retentionSecs, points)
+	writeJSON(w, http.StatusOK, historySeriesView{
+		Metric:        userTrafficMetricLabel(username),
+		Range:         rangeParam,
+		State:         state,
+		RequestedFrom: fromTS,
+		RetentionSecs: retentionSecs,
+		AvailableFrom: availableFrom,
+		Source:        s.historySourceAvailability(now),
 		Points:        toHistoryPoints(points),
 	})
 }
@@ -142,8 +201,10 @@ func (s *Server) handleGetHistoryEvents(w http.ResponseWriter, r *http.Request) 
 		}
 		limit = parsed
 	}
+	now := time.Now()
+	from := now.Add(-window)
 	events, err := s.st.ListHistoryEvents(store.HistoryEventFilter{
-		From:     time.Now().Add(-window),
+		From:     from,
 		Limit:    limit,
 		Category: store.StorageEvents,
 		Kind:     r.URL.Query().Get("kind"),
@@ -168,7 +229,56 @@ func (s *Server) handleGetHistoryEvents(w http.ResponseWriter, r *http.Request) 
 			break
 		}
 	}
-	writeJSON(w, http.StatusOK, historyEventsView{Range: rangeParam, RetentionSecs: retentionSecs, Events: events})
+	state := "ready"
+	if retentionSecs == 0 {
+		state = "disabled"
+	} else if len(events) == 0 {
+		state = "empty"
+	} else if retentionSecs < int64(window/time.Second) {
+		state = "partial"
+	}
+	var availableFrom *int64
+	if len(events) > 0 {
+		oldest := events[len(events)-1].TS.Unix()
+		availableFrom = &oldest
+	}
+	writeJSON(w, http.StatusOK, historyEventsView{
+		Range: rangeParam, State: state, RequestedFrom: from.Unix(), RetentionSecs: retentionSecs,
+		AvailableFrom: availableFrom, Source: s.historySourceAvailability(now), Events: events,
+	})
+}
+
+func metricHistoryState(nowTS, fromTS, retentionSecs int64, points []store.MetricPoint) (string, *int64) {
+	if retentionSecs == 0 {
+		return "disabled", nil
+	}
+	if len(points) == 0 {
+		return "empty", nil
+	}
+	oldest := points[0].TS
+	state := "ready"
+	requestedWindow := nowTS - fromTS
+	if retentionSecs < requestedWindow || oldest > fromTS+int64(2*time.Minute/time.Second) {
+		state = "partial"
+	}
+	return state, &oldest
+}
+
+func (s *Server) historySourceAvailability(now time.Time) *bool {
+	points, err := s.st.MetricRange("telemt.available", now.Add(-historySourceFreshness).Unix())
+	if err != nil || len(points) == 0 {
+		return nil
+	}
+	latest := points[len(points)-1]
+	if latest.TS < now.Add(-historySourceFreshness).Unix() {
+		return nil
+	}
+	available := latest.Value >= 0.5
+	return &available
+}
+
+func userTrafficMetricLabel(username string) string {
+	return "user." + username + ".traffic"
 }
 
 func toHistoryPoints(points []store.MetricPoint) []historyPointView {

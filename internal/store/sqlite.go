@@ -669,6 +669,9 @@ func (s *SQLite) prune(category StorageCategory, now time.Time) error {
 		if tier.keep > 0 && now.Add(-tier.keep).After(tierCutoff) {
 			tierCutoff = now.Add(-tier.keep)
 		}
+		if category == StorageUserTraffic && tier.tier == MetricTierQuarter && now.Add(-userTrafficFineRetention).After(tierCutoff) {
+			tierCutoff = now.Add(-userTrafficFineRetention)
+		}
 		if _, err := s.exec(`DELETE FROM metric_points WHERE category = ? AND tier = ? AND ts < ?`, category, tier.sql, tierCutoff.Unix()); err != nil {
 			return fmt.Errorf("prune %s metric history: %w", tier.sql, err)
 		}

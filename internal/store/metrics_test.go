@@ -29,6 +29,23 @@ func TestSelectMetricPointsUsesOneResolutionPerRegion(t *testing.T) {
 	}
 }
 
+func TestSelectUserTrafficPointsUsesFineDayAndHourlyArchive(t *testing.T) {
+	now := time.Date(2026, 9, 2, 18, 0, 0, 0, time.UTC).Unix()
+	points := []MetricPoint{
+		{TS: now - int64(48*time.Hour/time.Second), Value: 400, Tier: MetricTierHour},
+		{TS: now - int64(30*time.Minute/time.Second), Value: 100, Tier: MetricTierHour},
+		{TS: now - int64(30*time.Minute/time.Second), Value: 20, Tier: MetricTierQuarter},
+		{TS: now - int64(15*time.Minute/time.Second), Value: 30, Tier: MetricTierQuarter},
+	}
+	got := selectUserTrafficPoints(points, now-int64(7*24*time.Hour/time.Second), now)
+	if len(got) != 3 {
+		t.Fatalf("points = %+v, want archived hour and two fine buckets", got)
+	}
+	if got[0].Tier != MetricTierHour || got[1].Tier != MetricTierQuarter || got[2].Tier != MetricTierQuarter {
+		t.Fatalf("tiers = %+v", got)
+	}
+}
+
 func TestSelectMetricPointsFallsBackToFinerData(t *testing.T) {
 	now := int64(2_000_000)
 	old := now - int64(2*24*time.Hour/time.Second)

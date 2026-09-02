@@ -182,7 +182,8 @@ type staleMetricKey struct {
 
 // pruneMetricBatch deletes at most limit stale rows. Tier cutoffs keep the
 // write-heavy resolutions bounded independently from the administrator's
-// category retention, while 15-minute aggregates live for the full policy.
+// category retention. Per-user 15-minute buckets keep only the most recent
+// day; their hourly tier follows the configured user-traffic retention.
 func (s *SQLite) pruneMetricBatch(now time.Time, limit int) (int, error) {
 	if limit <= 0 {
 		return 0, nil
@@ -197,6 +198,10 @@ func (s *SQLite) pruneMetricBatch(now time.Time, limit int) (int, error) {
 		policy := s.policies[category]
 		if !policy.Enabled {
 			continue
+		}
+		if category == StorageUserTraffic {
+			conditions = append(conditions, "(category = ? AND tier = ? AND ts < ?)")
+			args = append(args, category, MetricTierQuarter, now.Add(-userTrafficFineRetention).Unix())
 		}
 		conditions = append(conditions, "(category = ? AND ts < ?)")
 		args = append(args, category, now.Add(-retentionDuration(policy)).Unix())

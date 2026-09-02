@@ -20,7 +20,7 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 	})
 	prefix := fmt.Sprintf("contract-%d", time.Now().UnixNano())
-	now := time.Date(2026, 9, 2, 18, 0, 0, 123, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 
 	t.Run("sessions", func(t *testing.T) {
 		first := Session{IDHash: prefix + "-a", Created: now, LastSeen: now, IP: "127.0.0.1", UserAgentLabel: "test", AuthMethod: "password"}
@@ -151,6 +151,42 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 		if points, err := st.MetricRange(metric, 0); err != nil || len(points) != 0 {
 			t.Fatalf("MetricRange after purge = %+v, %v", points, err)
+		}
+	})
+
+	t.Run("sparse_user_traffic", func(t *testing.T) {
+		username := prefix + "-traffic"
+		policies, err := st.ListStoragePolicies()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range policies {
+			if policies[i].Category == StorageUserTraffic {
+				policies[i].Enabled = true
+			}
+		}
+		if err := st.ReplaceStoragePolicies(policies); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.RecordUserTraffic([]UserTrafficDelta{
+			{Username: username, TS: now.Unix(), Bytes: 100},
+			{Username: username, TS: now.Add(time.Minute).Unix(), Bytes: 50},
+			{Username: username, TS: now.Add(2 * time.Minute).Unix(), Bytes: 0},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		points, err := st.UserTrafficRange(username, now.Add(-time.Hour).Unix())
+		if err != nil || len(points) != 1 || points[0].Tier != MetricTierQuarter || points[0].Value != 150 || points[0].Samples != 2 {
+			t.Fatalf("UserTrafficRange = %+v, %v", points, err)
+		}
+		if st.UserTrafficRetention() <= 0 {
+			t.Fatal("enabled user traffic retention is zero")
+		}
+		if err := st.DeleteUserHistory(username); err != nil {
+			t.Fatal(err)
+		}
+		if points, err := st.UserTrafficRange(username, now.Add(-time.Hour).Unix()); err != nil || len(points) != 0 {
+			t.Fatalf("history survived user deletion: %+v, %v", points, err)
 		}
 	})
 

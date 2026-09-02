@@ -13,6 +13,7 @@ import { useNow } from "./useNow";
 import { SublinkPanel } from "./SublinkPanel";
 import { UserActionSheet, type ActionSheetIntent } from "./UserActionSheet";
 import { ExpiryLine, IpCards, PersonLinks, PersonQuotaCard, SectionLabel } from "./PersonSections";
+import { PersonTrafficHistory } from "./PersonTrafficHistory";
 import { computeUserStatus, formatBitsPerSecond, getUserQuota, isOnline } from "./users.helpers";
 import { personAvatarTone } from "./personMeta.helpers";
 import { WebAccessPanel } from "./WebAccessPanel";
@@ -104,7 +105,7 @@ function OverviewTab({ user, now, quotaEntry }: { user: UsersTopicUser; now: num
   const s = useStrings();
   const activeIps = user.active_unique_ips_list ?? [];
   const recentIps = user.recent_unique_ips_list ?? [];
-  return <div className="flex flex-col gap-5"><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, quotaEntry)} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.activeIpsTitle} · {activeIps.length}</SectionLabel><IpCards ips={activeIps} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.recentIpsTitle} · {recentIps.length}</SectionLabel><IpCards ips={recentIps} /></section><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></div>;
+  return <div className="flex flex-col gap-5"><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, quotaEntry)} /></section><PersonTrafficHistory username={user.username} /><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.activeIpsTitle} · {activeIps.length}</SectionLabel><IpCards ips={activeIps} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.recentIpsTitle} · {recentIps.length}</SectionLabel><IpCards ips={recentIps} /></section><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></div>;
 }
 
 function AccessTab({ user, onIntent }: { user: UsersTopicUser; onIntent: (intent: ActionSheetIntent) => void }) {

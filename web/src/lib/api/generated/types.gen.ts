@@ -604,10 +604,23 @@ export type HistorySeries = {
     metric: string;
     range: string;
     /**
+     * Explicit collection state; source availability is reported independently.
+     */
+    state: 'ready' | 'disabled' | 'empty' | 'partial';
+    requested_from_epoch_secs: number;
+    /**
      * Configured retention for this metric's category. The client uses it to distinguish an empty window from disabled history. 0 means disabled.
      *
      */
     retention_secs: number;
+    /**
+     * Oldest returned point; absent when the series is empty.
+     */
+    available_from_epoch_secs?: number;
+    /**
+     * Current Telemt source state; absent until availability has been observed.
+     */
+    source_available?: boolean;
     points: Array<{
         /**
          * epoch seconds
@@ -617,7 +630,7 @@ export type HistorySeries = {
         /**
          * Omitted for raw points
          */
-        tier?: '1m' | '15m';
+        tier?: '1m' | '15m' | '1h';
         /**
          * Bucket maximum; present for aggregate points
          */
@@ -641,10 +654,20 @@ export type HistoryEvent = {
 
 export type HistoryEvents = {
     range: '15m' | '30m' | '1h' | '24h' | '7d';
+    state: 'ready' | 'disabled' | 'empty' | 'partial';
+    requested_from_epoch_secs: number;
     /**
      * Configured event retention in seconds; 0 means disabled.
      */
     retention_secs: number;
+    /**
+     * Oldest returned event; absent when the stream is empty.
+     */
+    available_from_epoch_secs?: number;
+    /**
+     * Current Telemt source state; absent until availability has been observed.
+     */
+    source_available?: boolean;
     events: Array<HistoryEvent>;
 };
 
@@ -1069,6 +1092,35 @@ export type ResetUserQuotaResponses = {
 };
 
 export type ResetUserQuotaResponse = ResetUserQuotaResponses[keyof ResetUserQuotaResponses];
+
+export type GetUserTrafficHistoryData = {
+    body?: never;
+    path: {
+        username: string;
+    };
+    query: {
+        range: '24h' | '7d' | '30d';
+    };
+    url: '/api/users/{username}/traffic-history';
+};
+
+export type GetUserTrafficHistoryErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type GetUserTrafficHistoryError = GetUserTrafficHistoryErrors[keyof GetUserTrafficHistoryErrors];
+
+export type GetUserTrafficHistoryResponses = {
+    /**
+     * User traffic series and collection state
+     */
+    200: HistorySeries;
+};
+
+export type GetUserTrafficHistoryResponse = GetUserTrafficHistoryResponses[keyof GetUserTrafficHistoryResponses];
 
 export type RotateUserSecretData = {
     body?: never;
