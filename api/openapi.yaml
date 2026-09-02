@@ -117,10 +117,8 @@ paths:
         "204": { description: Revoked }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  # TOTP lifecycle (state lives in store, not config) — not yet implemented,
-  # see each path's x-status below.
+  # TOTP lifecycle (state lives in store, not Telemt config).
   /api/auth/totp/setup:
-    x-status: planned
     post:
       tags: [auth]
       operationId: totpSetup
@@ -135,8 +133,10 @@ paths:
                 properties:
                   otpauth_url: { type: string }
                   secret: { type: string }
+        "409":
+          description: totp_already_enabled
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   /api/auth/totp/enable:
-    x-status: planned
     post:
       tags: [auth]
       operationId: totpEnable
@@ -156,8 +156,11 @@ paths:
                 properties:
                   recovery_codes: { type: array, items: { type: string } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: totp_setup_changed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/auth/totp:
-    x-status: planned
     delete:
       tags: [auth]
       operationId: totpDisable
@@ -1046,6 +1049,9 @@ components:
             - log_stream_unavailable
             - log_source_error
             - totp_required
+            - invalid_totp
+            - totp_already_enabled
+            - totp_setup_changed
             - telemt_auth_failed
             - user_exists
             - last_user_forbidden
@@ -1086,6 +1092,8 @@ components:
             telemt_unreachable, capability_absent, capability_unavailable,
             manual_restart_required, update_locked, sublink_unavailable,
             log_tail_unavailable, log_stream_unavailable, log_source_error,
+            totp_required, invalid_totp, totp_already_enabled,
+            totp_setup_changed,
             invalid_toml, invalid_config_path, config_unset_unsupported,
             no_changes, toml_projection_failed.
             capability_absent (501) vs capability_unavailable (503) are
@@ -1101,8 +1109,8 @@ components:
             enabled:false means runtime_edge_enabled is off; read from the
             response rather than probed so an unreachable Telemt still maps
             to 502 telemt_unreachable).
-            Reserved for milestones not yet implemented: totp_required (TOTP login),
-            telemt_auth_failed (superseded on /api/telemt/info by a reachable:false
+            Reserved for milestones not yet implemented: telemt_auth_failed
+            (superseded on /api/telemt/info by a reachable:false
             body, not an error status — kept here for /api/telemt/config, M3).
             A well-formed Telemt *APIError whose status is 4xx and isn't otherwise
             mapped above is passed through verbatim with Telemt's own code — notably
@@ -1686,7 +1694,7 @@ components:
         last_seen: { type: string, format: date-time }
         ip: { type: string }
         user_agent_label: { type: string, description: Parsed, human-readable ("iPhone · Safari") }
-        auth_method: { type: string, enum: [password, passkey] }
+        auth_method: { type: string, enum: [password, password+totp, password+recovery, passkey] }
         current: { type: boolean }
 
     SessionPage:

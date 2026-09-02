@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-const portableFormatVersion = 1
+const portableFormatVersion = 2
 
 // ErrStoreNotEmpty prevents an import from silently merging two independent
 // histories. Operators must point the command at a fresh destination store.
@@ -25,6 +25,8 @@ type PortableData struct {
 	Audit         []AuditEntry                    `json:"audit,omitempty"`
 	Metrics       map[string][]MetricPoint        `json:"metrics,omitempty"`
 	Events        []HistoryEvent                  `json:"events,omitempty"`
+	TOTP          TOTPState                       `json:"totp,omitempty"`
+	RecoveryCodes [][]byte                        `json:"totp_recovery_hashes,omitempty"`
 }
 
 // PortableStore is implemented by every built-in store. It is separate from
@@ -49,6 +51,8 @@ func (m *Memory) ExportData() (PortableData, error) {
 		Audit:         m.audit,
 		Metrics:       m.metrics,
 		Events:        portableEvents(m.events),
+		TOTP:          m.totp,
+		RecoveryCodes: recoveryCodeHashes(m.recoveryCodes),
 	})
 }
 
@@ -69,7 +73,7 @@ func (m *Memory) ImportData(data PortableData) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.sessions)+len(m.subpageNonces)+len(m.settings)+len(m.journal)+len(m.audit)+len(m.metrics)+len(m.events) != 0 {
+	if len(m.sessions)+len(m.subpageNonces)+len(m.settings)+len(m.journal)+len(m.audit)+len(m.metrics)+len(m.events)+len(m.recoveryCodes) != 0 || m.totp.Enabled || m.totp.PendingSecret != "" {
 		return ErrStoreNotEmpty
 	}
 	m.sessions = data.Sessions
@@ -79,6 +83,9 @@ func (m *Memory) ImportData(data PortableData) error {
 	m.audit = data.Audit
 	m.metrics = data.Metrics
 	m.events = data.Events
+	m.totp = data.TOTP
+	m.recoveryCodes = recoveryCodeMap(data.RecoveryCodes)
+	m.totp.RecoveryCodes = len(m.recoveryCodes)
 	for i := range m.events {
 		m.nextEventID++
 		m.events[i].ID = m.nextEventID
@@ -96,12 +103,17 @@ func (m *Memory) ImportData(data PortableData) error {
 		m.events = nil
 		m.nextEventID = 0
 		m.policies = defaultPolicyMap()
+		m.totp = TOTPState{LastTimestep: -1}
+		m.recoveryCodes = make(map[string]struct{})
 		return fmt.Errorf("persist imported memory store: %w", err)
 	}
 	return nil
 }
 
 func normalizePortableData(data PortableData) (PortableData, error) {
+	if data.FormatVersion == 1 {
+		data.FormatVersion = portableFormatVersion
+	}
 	if data.FormatVersion != portableFormatVersion {
 		return PortableData{}, fmt.Errorf("unsupported store export format version %d (supported: %d)", data.FormatVersion, portableFormatVersion)
 	}
@@ -115,6 +127,10 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 			return PortableData{}, fmt.Errorf("invalid storage policies: %w", err)
 		}
 	}
+	if err := validatePortableTOTP(data.TOTP, data.RecoveryCodes); err != nil {
+		return PortableData{}, err
+	}
+	data.TOTP.RecoveryCodes = len(data.RecoveryCodes)
 	for target, entries := range data.Journal {
 		if len(entries) > journalCap {
 			return PortableData{}, fmt.Errorf("update journal %q has %d entries (maximum %d)", target, len(entries), journalCap)

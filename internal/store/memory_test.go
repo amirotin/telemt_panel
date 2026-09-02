@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -509,20 +510,49 @@ func TestMirrorMissingFileStartsEmpty(t *testing.T) {
 	}
 }
 
-func TestMirrorCorruptFileStartsEmpty(t *testing.T) {
+func TestMirrorCorruptFileFailsClosed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mirror.json")
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	m, err := NewMemory(path)
-	if err != nil {
-		t.Fatalf("NewMemory: %v", err)
+	if _, err := NewMemory(path); err == nil {
+		t.Fatal("NewMemory accepted a corrupt persistent mirror")
 	}
-	sessions, err := m.ListSessions()
-	if err != nil || len(sessions) != 0 {
-		t.Fatalf("ListSessions on corrupt mirror = %+v err:%v, want empty nil", sessions, err)
+}
+
+func TestMirrorInvalidTOTPStateFailsClosed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mirror.json")
+	mf := mirrorFile{TOTP: TOTPState{Enabled: true, LastTimestep: -1}}
+	data, err := json.Marshal(mf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewMemory(path); err == nil {
+		t.Fatal("NewMemory accepted enabled TOTP without a secret")
+	}
+}
+
+func TestMirrorDuplicateRecoveryHashFailsClosed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mirror.json")
+	hash := strings.Repeat("ab", 32)
+	mf := mirrorFile{
+		TOTP:          TOTPState{Enabled: true, Secret: "secret", LastTimestep: -1},
+		RecoveryCodes: []string{hash, hash},
+	}
+	data, err := json.Marshal(mf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewMemory(path); err == nil {
+		t.Fatal("NewMemory accepted duplicate TOTP recovery hashes")
 	}
 }
 

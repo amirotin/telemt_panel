@@ -1,7 +1,17 @@
 // Package store defines the panel's durable state and optional history layer.
 package store
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var (
+	ErrTOTPAlreadyEnabled = errors.New("TOTP is already enabled")
+	ErrTOTPSetupInvalid   = errors.New("TOTP setup is missing, expired, or replaced")
+	ErrTOTPReplay         = errors.New("TOTP timestep was already used")
+	ErrRecoveryCode       = errors.New("recovery code is invalid or already used")
+)
 
 // Info describes the active store implementation without exposing secrets.
 type Info struct {
@@ -22,6 +32,17 @@ type Session struct {
 	IP             string
 	UserAgentLabel string
 	AuthMethod     string
+}
+
+// TOTPState is the complete server-side second-factor state. Secret fields
+// never leave the store/auth boundary; HTTP responses expose only Enabled.
+type TOTPState struct {
+	Enabled        bool      `json:"enabled"`
+	Secret         string    `json:"secret,omitempty"`
+	PendingSecret  string    `json:"pending_secret,omitempty"`
+	PendingExpires time.Time `json:"pending_expires,omitempty"`
+	LastTimestep   int64     `json:"last_timestep"`
+	RecoveryCodes  int       `json:"recovery_codes"`
 }
 
 // AuditEntry is one record in the admin-action audit log.
@@ -134,6 +155,21 @@ type Store interface {
 	DeleteOtherSessions(keepIDHash string) error
 	// ListSessions returns all sessions ordered by Created, newest first.
 	ListSessions() ([]Session, error)
+
+	// GetTOTPState returns the enabled factor or a pending setup, if present.
+	GetTOTPState() (TOTPState, error)
+	// BeginTOTPSetup replaces an unconfirmed setup while TOTP is disabled.
+	BeginTOTPSetup(secret string, expires time.Time) error
+	// EnableTOTP atomically promotes the expected, unexpired pending secret,
+	// and installs one-time recovery hashes. Setup confirmation is not a login,
+	// so it does not consume a replay-protected timestep.
+	EnableTOTP(expectedSecret string, now time.Time, recoveryHashes [][]byte) error
+	// DisableTOTP atomically removes the factor, pending setup and recovery codes.
+	DisableTOTP() error
+	// AcceptTOTPTimestep advances the replay watermark exactly once.
+	AcceptTOTPTimestep(timestep int64) error
+	// ConsumeRecoveryCode atomically removes one matching backup-code hash.
+	ConsumeRecoveryCode(hash []byte) error
 
 	// AppendAudit records one audit entry, evicting the oldest if the ring
 	// is full.

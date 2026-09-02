@@ -58,8 +58,8 @@ func TestSQLiteRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 5 {
-		t.Fatalf("schema version = %d, want 5", info.Schema)
+	if info := reopened.Info(); info.Schema != 6 {
+		t.Fatalf("schema version = %d, want 6", info.Schema)
 	}
 	gotSession, ok, err := reopened.GetSession("hash")
 	if err != nil || !ok || gotSession != session {
@@ -275,6 +275,8 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
+		`DROP TABLE auth_recovery_codes`,
+		`DROP TABLE auth_totp`,
 		`DROP INDEX metric_points_category_tier_ts`,
 		`CREATE TABLE metric_points_v2 (name TEXT NOT NULL, category TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY(name, ts)) WITHOUT ROWID, STRICT`,
 		`INSERT INTO metric_points_v2(name, category, ts, value) SELECT name, category, ts, value FROM metric_points WHERE tier = 'raw'`,
@@ -297,8 +299,8 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 5 {
-		t.Fatalf("schema = %d, want 5", got)
+	if got := migrated.Info().Schema; got != 6 {
+		t.Fatalf("schema = %d, want 6", got)
 	}
 	points, err := migrated.MetricRange("connections", 0)
 	if err != nil {

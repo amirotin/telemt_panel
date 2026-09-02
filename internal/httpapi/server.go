@@ -293,6 +293,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/auth/sessions", protect(s.handleListSessions))
 	mux.Handle("DELETE /api/auth/sessions", protect(s.handleRevokeOtherSessions))
 	mux.Handle("DELETE /api/auth/sessions/{sessionId}", protect(s.handleRevokeSession))
+	mux.Handle("POST /api/auth/totp/setup", protect(s.handleTOTPSetup))
+	mux.Handle("POST /api/auth/totp/enable", protect(s.handleTOTPEnable))
+	mux.Handle("DELETE /api/auth/totp", protect(s.handleTOTPDisable))
 
 	mux.Handle("GET /api/telemt/info", protect(s.handleTelemtInfo))
 	mux.Handle("GET /api/telemt/config", protect(s.handleGetTelemtConfig))

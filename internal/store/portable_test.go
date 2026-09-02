@@ -1,7 +1,9 @@
 package store
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -100,15 +102,15 @@ func TestPortableRejectsUnknownFormat(t *testing.T) {
 }
 
 func TestPortableMemoryImportReportsMirrorFailure(t *testing.T) {
-	blocker := filepath.Join(t.TempDir(), "not-a-directory")
-	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	st, err := NewMemory(filepath.Join(blocker, "panel-state.json"))
+	path := filepath.Join(t.TempDir(), "panel-state.json")
+	st, err := NewMemory(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	data := PortableData{
 		FormatVersion: portableFormatVersion,
 		Settings:      map[string]string{"must-persist": "value"},
@@ -173,5 +175,16 @@ func populatePortableStore(t *testing.T, st Store) {
 		if err != nil {
 			t.Fatalf("populate store: %v", err)
 		}
+	}
+	recovery := make([][]byte, 10)
+	for i := range recovery {
+		hash := sha256.Sum256([]byte(fmt.Sprintf("portable-recovery-%d", i)))
+		recovery[i] = append([]byte(nil), hash[:]...)
+	}
+	if err := st.BeginTOTPSetup("portable-secret", now.Add(time.Hour)); err != nil {
+		t.Fatalf("populate TOTP setup: %v", err)
+	}
+	if err := st.EnableTOTP("portable-secret", now, recovery); err != nil {
+		t.Fatalf("populate TOTP state: %v", err)
 	}
 }

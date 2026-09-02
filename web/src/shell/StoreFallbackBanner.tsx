@@ -4,7 +4,7 @@ import { fill, useStrings } from "../i18n";
 import { getHealthOptions } from "../lib/api/generated/@tanstack/react-query.gen";
 import { IconWarning } from "../ui/icons";
 
-export function StoreFallbackBanner() {
+export function StoreFallbackBanner({ showAction = true }: { showAction?: boolean }) {
   const s = useStrings();
   const health = useQuery({
     ...getHealthOptions(),
@@ -29,12 +29,14 @@ export function StoreFallbackBanner() {
           {fill(s.shell.storageFallbackBody, { driver })}
         </span>
       </div>
-      <Link
-        to="/server/settings"
-        className="tap-target -my-2 hidden shrink-0 items-center font-bold text-warning-text hover:underline sm:flex"
-      >
-        {s.shell.storageFallbackAction}
-      </Link>
+      {showAction && (
+        <Link
+          to="/server/settings"
+          className="tap-target -my-2 hidden shrink-0 items-center font-bold text-warning-text hover:underline sm:flex"
+        >
+          {s.shell.storageFallbackAction}
+        </Link>
+      )}
     </aside>
   );
 }

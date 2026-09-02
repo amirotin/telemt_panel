@@ -40,8 +40,8 @@ const touchMirrorDebounce = 30 * time.Second
 // Memory is an in-memory Store for the router profile: no flash writes,
 // bounded by ring buffers. Sessions, subpage nonces, settings and the
 // update journal can optionally be mirrored to a JSON file so they survive
-// a process restart; audit and metric history remain process-lifetime
-// only.
+// a process restart. TOTP state and recovery hashes are part of that mandatory
+// mirrored subset; audit and metric history remain process-lifetime only.
 type Memory struct {
 	mu sync.Mutex
 
@@ -53,6 +53,8 @@ type Memory struct {
 	subpageNonces map[string]string
 	settings      map[string]string
 	policies      map[StorageCategory]StoragePolicy
+	totp          TOTPState
+	recoveryCodes map[string]struct{}
 	nextEventID   int64
 
 	mirrorPath string
@@ -78,21 +80,24 @@ func (m *Memory) Info() Info {
 }
 
 // mirrorFile is the on-disk shape of the mirrored subset of state
-// (sessions, subpage nonces, settings and the update journal).
+// (sessions, auth state, subpage nonces, settings and the update journal).
 type mirrorFile struct {
 	Sessions      map[string]Session              `json:"sessions"`
 	SubpageNonces map[string]string               `json:"subpage_nonces"`
 	Settings      map[string]string               `json:"settings"`
 	Journal       map[string][]UpdateJournalEntry `json:"journal"`
 	Policies      []StoragePolicy                 `json:"storage_policies,omitempty"`
+	TOTP          TOTPState                       `json:"totp,omitempty"`
+	RecoveryCodes []string                        `json:"totp_recovery_codes,omitempty"`
 }
 
 // NewMemory creates an in-memory Store. If mirrorPath is non-empty,
 // sessions, subpage nonces, settings and the update journal are loaded
 // from it now and persisted back to it on every subsequent mutation of
 // those families (touches are debounced, see touchMirrorDebounce). A
-// missing or corrupt mirror file is logged and treated as empty — it
-// never fails startup.
+// missing mirror starts empty. An existing unreadable or corrupt mirror fails
+// startup: otherwise damaged persisted TOTP state could silently disappear and
+// weaken authentication.
 func NewMemory(mirrorPath string) (*Memory, error) {
 	m := &Memory{
 		sessions:       make(map[string]Session),
@@ -101,6 +106,8 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 		subpageNonces:  make(map[string]string),
 		settings:       make(map[string]string),
 		policies:       defaultPolicyMap(),
+		totp:           TOTPState{LastTimestep: -1},
+		recoveryCodes:  make(map[string]struct{}),
 		mirrorPath:     mirrorPath,
 		mirrorDebounce: touchMirrorDebounce,
 		scheduleTimer: func(d time.Duration, f func()) func() {
@@ -115,16 +122,15 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 
 	data, err := os.ReadFile(mirrorPath)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			slog.Warn("store: mirror file unreadable, starting empty", "path", mirrorPath, "error", err)
+		if os.IsNotExist(err) {
+			return m, nil
 		}
-		return m, nil
+		return nil, fmt.Errorf("store: mirror file is unreadable: %w", err)
 	}
 
 	var mf mirrorFile
 	if err := json.Unmarshal(data, &mf); err != nil {
-		slog.Warn("store: mirror file corrupt, starting empty", "path", mirrorPath, "error", err)
-		return m, nil
+		return nil, fmt.Errorf("store: mirror file is corrupt: %w", err)
 	}
 	if mf.Sessions != nil {
 		m.sessions = mf.Sessions
@@ -155,6 +161,20 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 		}
 		m.journal = mf.Journal
 	}
+	m.totp = mf.TOTP
+	for _, hash := range mf.RecoveryCodes {
+		if !validRecoveryCodeKey(hash) {
+			return nil, fmt.Errorf("store: mirror contains an invalid TOTP recovery hash")
+		}
+		if _, duplicate := m.recoveryCodes[hash]; duplicate {
+			return nil, fmt.Errorf("store: mirror contains a duplicate TOTP recovery hash")
+		}
+		m.recoveryCodes[hash] = struct{}{}
+	}
+	if err := validatePortableTOTP(m.totp, recoveryCodeHashes(m.recoveryCodes)); err != nil {
+		return nil, fmt.Errorf("store: mirror contains invalid TOTP state: %w", err)
+	}
+	m.totp.RecoveryCodes = len(m.recoveryCodes)
 	return m, nil
 }
 
@@ -181,6 +201,8 @@ func (m *Memory) writeMirrorLocked() error {
 		Settings:      m.settings,
 		Journal:       m.journal,
 		Policies:      policiesFromMap(m.policies),
+		TOTP:          m.totp,
+		RecoveryCodes: recoveryCodeKeys(m.recoveryCodes),
 	}
 	data, err := json.Marshal(mf)
 	if err != nil {

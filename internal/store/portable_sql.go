@@ -40,6 +40,9 @@ func (s *SQLite) ExportData() (PortableData, error) {
 		if data.Events, err = exportEvents(s, tx); err != nil {
 			return err
 		}
+		if data.TOTP, data.RecoveryCodes, err = exportTOTP(s, tx); err != nil {
+			return err
+		}
 		if data.SubpageNonces, err = exportStringMap(s, tx, `SELECT username, nonce FROM subpage_nonces ORDER BY username`); err != nil {
 			return fmt.Errorf("export subpage nonces: %w", err)
 		}
@@ -71,7 +74,9 @@ func (s *SQLite) ImportData(data PortableData) error {
 			(SELECT count(*) FROM update_journal) +
 			(SELECT count(*) FROM audit_entries) +
 			(SELECT count(*) FROM metric_points) +
-			(SELECT count(*) FROM history_events)`)).Scan(&count); err != nil {
+			(SELECT count(*) FROM history_events) +
+			(SELECT count(*) FROM auth_recovery_codes) +
+			(SELECT count(*) FROM auth_totp WHERE enabled = ? OR pending_secret <> '')`), true).Scan(&count); err != nil {
 			return fmt.Errorf("inspect destination: %w", err)
 		}
 		if count != 0 {
@@ -134,6 +139,18 @@ func (s *SQLite) ImportData(data PortableData) error {
 		for _, policy := range data.Policies {
 			if _, err := tx.Exec(s.bind(`UPDATE storage_policies SET enabled = ?, retention_days = ? WHERE category = ?`), policy.Enabled, policy.RetentionDays, policy.Category); err != nil {
 				return fmt.Errorf("import storage policy: %w", err)
+			}
+		}
+		pendingExpires := int64(0)
+		if !data.TOTP.PendingExpires.IsZero() {
+			pendingExpires = data.TOTP.PendingExpires.Unix()
+		}
+		if _, err := tx.Exec(s.bind(`UPDATE auth_totp SET enabled = ?, secret = ?, pending_secret = ?, pending_expires = ?, last_timestep = ? WHERE singleton = 1`), data.TOTP.Enabled, data.TOTP.Secret, data.TOTP.PendingSecret, pendingExpires, data.TOTP.LastTimestep); err != nil {
+			return fmt.Errorf("import TOTP state: %w", err)
+		}
+		for _, hash := range data.RecoveryCodes {
+			if _, err := tx.Exec(s.bind(`INSERT INTO auth_recovery_codes(code_hash) VALUES(?)`), hash); err != nil {
+				return fmt.Errorf("import TOTP recovery hash: %w", err)
 			}
 		}
 		return nil
@@ -292,6 +309,35 @@ func exportPolicies(s *SQLite, tx *sql.Tx) ([]StoragePolicy, error) {
 		return nil, err
 	}
 	return policiesFromMap(byCategory), nil
+}
+
+func exportTOTP(s *SQLite, tx *sql.Tx) (TOTPState, [][]byte, error) {
+	var state TOTPState
+	var pendingExpires int64
+	if err := tx.QueryRow(s.bind(`SELECT enabled, secret, pending_secret, pending_expires, last_timestep FROM auth_totp WHERE singleton = 1`)).Scan(&state.Enabled, &state.Secret, &state.PendingSecret, &pendingExpires, &state.LastTimestep); err != nil {
+		return TOTPState{}, nil, fmt.Errorf("export TOTP state: %w", err)
+	}
+	if pendingExpires > 0 {
+		state.PendingExpires = time.Unix(pendingExpires, 0).UTC()
+	}
+	rows, err := tx.Query(`SELECT code_hash FROM auth_recovery_codes ORDER BY code_hash`)
+	if err != nil {
+		return TOTPState{}, nil, fmt.Errorf("export TOTP recovery hashes: %w", err)
+	}
+	defer rows.Close()
+	var hashes [][]byte
+	for rows.Next() {
+		var hash []byte
+		if err := rows.Scan(&hash); err != nil {
+			return TOTPState{}, nil, err
+		}
+		hashes = append(hashes, append([]byte(nil), hash...))
+	}
+	if err := rows.Err(); err != nil {
+		return TOTPState{}, nil, err
+	}
+	state.RecoveryCodes = len(hashes)
+	return state, hashes, nil
 }
 
 func sortedKeys[V any](values map[string]V) []string {

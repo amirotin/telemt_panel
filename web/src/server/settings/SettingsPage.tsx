@@ -18,6 +18,7 @@ import {
   listSessionsInfiniteQueryKey,
   listSessionsOptions,
   listSessionsQueryKey,
+  getMeOptions,
   revokeSessionMutation,
   revokeOtherSessionsMutation,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
@@ -26,6 +27,7 @@ import { sessionDeviceLabel } from "./sessions.helpers";
 import { InterfacePreferences } from "./InterfacePreferences";
 import { SessionSheet } from "./SessionSheet";
 import { StorageSettings } from "./StorageSettings";
+import { TwoFactorSettings } from "./TwoFactorSettings";
 
 function SessionGlyph({ session }: { session: SessionInfo }) {
   const mobile = /iphone|ipad|android/i.test(session.user_agent_label ?? "");
@@ -67,6 +69,7 @@ export function SettingsPage() {
   const s = useStrings();
   const queryClient = useQueryClient();
   const sessionsQuery = useQuery(listSessionsOptions({ query: { limit: 4 } }));
+  const meQuery = useQuery(getMeOptions());
   const logout = useLogout();
   const [theme] = useTheme();
   const locale = useLocalePreference();
@@ -312,6 +315,8 @@ export function SettingsPage() {
         </section>
 
         <div className="flex min-w-0 flex-col gap-2.5">
+          <TwoFactorSettings enabled={meQuery.data?.totp_enabled ?? false} />
+
           <InterfacePreferences />
 
           <section className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl bg-surface p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">

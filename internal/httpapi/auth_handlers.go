@@ -37,8 +37,8 @@ func truncateAuditSubject(s string) string {
 	return s[:loginUsernameMaxBytes]
 }
 
-// loginRequest is the /api/auth/login body. TOTP is accepted but unused
-// until the TOTP milestone lands (spec 05-auth.md).
+// loginRequest is the /api/auth/login body. TOTP accepts either the current
+// authenticator code or one one-time recovery code when the factor is enabled.
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -76,6 +76,37 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	authMethod := "password"
+	totpState, err := s.st.GetTOTPState()
+	if err != nil {
+		slog.Error("login: read TOTP state", "err", err)
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not verify second factor")
+		return
+	}
+	if totpState.Enabled {
+		if strings.TrimSpace(req.TOTP) == "" {
+			auth.WriteError(w, http.StatusUnauthorized, "totp_required", "a second-factor code is required")
+			return
+		}
+		if !s.limiter.Allow(totpGlobalLimiterKey) {
+			auth.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many failed second-factor attempts")
+			return
+		}
+		authMethod, err = s.acceptSecondFactor(totpState.Secret, req.TOTP, time.Now())
+		if err != nil {
+			if !isSecondFactorRejection(err) {
+				slog.Error("login: accept second factor", "err", err)
+				auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not verify second factor")
+				return
+			}
+			s.limiter.RecordFailure(ip)
+			s.limiter.RecordFailure(totpGlobalLimiterKey)
+			s.appendAudit(r, "login.failed", truncateAuditSubject(req.Username), "ip="+ip)
+			auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
+			return
+		}
+	}
+
 	token, err := auth.NewToken()
 	if err != nil {
 		slog.Error("login: generate session token", "err", err)
@@ -90,7 +121,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		LastSeen:       now,
 		IP:             ip,
 		UserAgentLabel: userAgentLabel(r),
-		AuthMethod:     "password",
+		AuthMethod:     authMethod,
 	}
 	if err := s.st.PutSession(sess); err != nil {
 		slog.Error("login: store session", "err", err)
@@ -137,9 +168,15 @@ type meResponse struct {
 // handleMe implements GET /api/auth/me.
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	username, _ := auth.UsernameFromContext(r.Context())
+	totp, err := s.st.GetTOTPState()
+	if err != nil {
+		slog.Error("me: read TOTP state", "err", err)
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read authentication methods")
+		return
+	}
 	writeJSON(w, http.StatusOK, meResponse{
 		Username:    username,
-		TOTPEnabled: false,
+		TOTPEnabled: totp.Enabled,
 		Passkeys:    []passkeyInfo{},
 	})
 }
@@ -371,7 +408,7 @@ func administrativeHistoryEvent(ts time.Time, action, subject string) (store.His
 		"quota.reset", "secret.rotate", "storage.history_purge", "storage.policy_change",
 		"sublink.rotate", "telemt.reload", "telemt.restart", "update.apply",
 		"update.auto_change", "user.create", "user.delete", "user.enabled",
-		"user.patch", "web.sessions.close":
+		"user.patch", "web.sessions.close", "totp.enable", "totp.disable":
 		// Explicit allowlist: a future audit action does not enter long-lived
 		// observability history until its subject semantics have been reviewed.
 	default:
@@ -404,6 +441,8 @@ func auditTarget(action, subject string) string {
 		return "auto_update"
 	case "storage.policy_change", "storage.history_purge":
 		return "storage"
+	case "totp.enable", "totp.disable":
+		return "auth"
 	default:
 		return "panel"
 	}

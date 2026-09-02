@@ -159,6 +159,10 @@ export function SessionSheet({
                 s.server.settings.authMethod,
                 selected.auth_method === "passkey"
                   ? s.server.settings.authPasskey
+                  : selected.auth_method === "password+totp"
+                    ? s.server.settings.authPasswordTotp
+                    : selected.auth_method === "password+recovery"
+                      ? s.server.settings.authPasswordRecovery
                   : s.server.settings.authPassword,
               ],
               [s.server.settings.created, formatAuditTimestamp(selected.created, s)],

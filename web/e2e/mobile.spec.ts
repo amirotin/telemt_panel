@@ -1,5 +1,45 @@
 import { expect, test } from "./fixtures";
-import { SEEDED_USER } from "./env";
+import { createHmac } from "node:crypto";
+import type { Page } from "@playwright/test";
+import { ADMIN_PASSWORD, ADMIN_USERNAME, SEEDED_USER } from "./env";
+
+function decodeBase32(value: string): Buffer {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const character of value.toUpperCase().replace(/=+$/, "")) {
+    const index = alphabet.indexOf(character);
+    if (index < 0) throw new Error("invalid base32 secret");
+    bits += index.toString(2).padStart(5, "0");
+  }
+  const bytes: number[] = [];
+  for (let offset = 0; offset + 8 <= bits.length; offset += 8) {
+    bytes.push(Number.parseInt(bits.slice(offset, offset + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function currentTOTP(secret: string): string {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+  const digest = createHmac("sha1", decodeBase32(secret)).update(counter).digest();
+  const offset = digest[digest.length - 1]! & 0x0f;
+  const value = digest.readUInt32BE(offset) & 0x7fffffff;
+  return String(value % 1_000_000).padStart(6, "0");
+}
+
+async function signOutFromSettings(page: Page) {
+  await page.goto("/server/settings");
+  await page.getByRole("button", { name: "Выйти", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Выйти из панели?" });
+  await dialog.getByRole("button", { name: "Выйти", exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+}
+
+async function fillPasswordLogin(page: Page) {
+  await page.getByLabel("Имя пользователя").fill(ADMIN_USERNAME);
+  await page.getByLabel("Пароль").fill(ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "Войти" }).click();
+}
 
 // mobile.spec.ts — 360×640, the plan's primary e2e target
 // (v2/plans/2026-08-25-m3-frontend.md Task 9 / R4): one sequential flow
@@ -192,5 +232,51 @@ test("login → people → create user → share → sub-page → overview → p
     await page.getByRole("dialog", { name: "Ещё" }).getByRole("menuitem", { name: "Сервер" }).click();
     await page.getByRole("link", { name: "Платформа" }).click();
     await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
+  });
+
+  await test.step("TOTP setup, replay-safe login, recovery and disable", async () => {
+    await page.goto("/server/settings");
+    await page.getByRole("button", { name: "Настроить" }).click();
+    let dialog = page.getByRole("dialog", { name: "Подключение аутентификатора" });
+    await expect(dialog).toBeVisible();
+    const secret = (await dialog.locator("code").textContent())?.trim() ?? "";
+    expect(secret).not.toBe("");
+    await dialog.getByLabel("6-значный код").fill(currentTOTP(secret));
+    await dialog.getByRole("button", { name: "Подтвердить и включить" }).click();
+
+    dialog = page.getByRole("dialog", { name: "Сохраните резервные коды" });
+    await expect(dialog).toBeVisible();
+    const recoveryCode = (await dialog.locator("code").first().textContent())?.trim() ?? "";
+    expect(recoveryCode).toMatch(/^[A-Z2-7]{5}-[A-Z2-7]{5}$/);
+    await dialog.getByRole("button", { name: "Закрыть" }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("alert")).toContainText("восстановить их позже нельзя");
+    await dialog.getByLabel("Я сохранил резервные коды в безопасном месте").check();
+    await dialog.getByRole("button", { name: "Готово" }).click();
+    await expect(page.getByText("Включён", { exact: true })).toBeVisible();
+
+    await signOutFromSettings(page);
+    await fillPasswordLogin(page);
+    await expect(page.getByRole("heading", { name: "Подтвердите вход" })).toBeVisible();
+    await page.getByLabel("6-значный код").fill(currentTOTP(secret));
+    await page.getByRole("button", { name: "Войти" }).click();
+    await expect(page).toHaveURL(/\/people$/);
+
+    await signOutFromSettings(page);
+    await fillPasswordLogin(page);
+    await page.getByRole("button", { name: "Использовать резервный код" }).click();
+    await page.getByLabel("Резервный код").fill(recoveryCode);
+    await page.getByRole("button", { name: "Войти" }).click();
+    await expect(page).toHaveURL(/\/people$/);
+
+    await page.goto("/server/settings");
+    await page.getByRole("button", { name: "Отключить" }).click();
+    dialog = page.getByRole("dialog", { name: "Отключить двухэтапный вход?" });
+    await dialog.getByRole("button", { name: "Отключить" }).click();
+    await expect(page.getByText("Не настроен", { exact: true })).toBeVisible();
+
+    await signOutFromSettings(page);
+    await fillPasswordLogin(page);
+    await expect(page).toHaveURL(/\/people$/);
   });
 });

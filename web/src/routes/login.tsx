@@ -8,6 +8,7 @@ import { safeRedirectTarget } from "../auth/safeRedirect";
 import { errorMessage, useStrings, type Dict } from "../i18n";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { StoreFallbackBanner } from "../shell/StoreFallbackBanner";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
@@ -32,6 +33,9 @@ function LoginPage() {
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [secondFactorRequired, setSecondFactorRequired] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [secondFactor, setSecondFactor] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -43,6 +47,16 @@ function LoginPage() {
       await router.navigate({ href: safeRedirectTarget(redirect) });
     },
     onError: (err: LoginError) => {
+      if (err?.code === "totp_required") {
+        setSecondFactorRequired(true);
+        setSecondFactor("");
+        setFormError(null);
+        return;
+      }
+      if (secondFactorRequired && err?.code === "invalid_credentials") {
+        setFormError(s.auth.secondFactorInvalid);
+        return;
+      }
       setFormError(loginErrorMessage(err, s));
     },
   });
@@ -50,10 +64,20 @@ function LoginPage() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    mutation.mutate({ body: { username, password } });
+    mutation.mutate({
+      body: {
+        username,
+        password,
+        ...(secondFactorRequired ? { totp: secondFactor.trim() } : {}),
+      },
+    });
   }
 
-  const canSubmit = username.length > 0 && password.length > 0 && !mutation.isPending;
+  const canSubmit =
+    username.length > 0 &&
+    password.length > 0 &&
+    (!secondFactorRequired || secondFactor.trim().length > 0) &&
+    !mutation.isPending;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-[360px] flex-col justify-center gap-3.5 px-4 py-10">
@@ -68,6 +92,8 @@ function LoginPage() {
         <p className="text-meta text-text-muted">{s.auth.tagline}</p>
       </div>
 
+      <StoreFallbackBanner showAction={false} />
+
       <form
         onSubmit={handleSubmit}
         className="flex flex-col gap-2.5 rounded-2xl bg-surface p-4"
@@ -81,34 +107,98 @@ function LoginPage() {
             {formError}
           </p>
         )}
-        <label className="contents">
-          <span className="sr-only">{s.auth.username}</span>
-          <Input
-            name="username"
-            placeholder={s.auth.username}
-            autoComplete="username"
-            autoCapitalize="off"
-            autoCorrect="off"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-        </label>
-        <label className="contents">
-          <span className="sr-only">{s.auth.password}</span>
-          <Input
-            type="password"
-            name="password"
-            placeholder={s.auth.password}
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
+        {secondFactorRequired ? (
+          <>
+            <div className="pb-1 text-center">
+              <h2 className="text-[16px] font-bold text-text">{s.auth.secondFactorTitle}</h2>
+              <p className="mt-1 text-[12px] leading-relaxed text-text-muted">
+                {recoveryMode ? s.auth.recoveryCodeNote : s.auth.secondFactorNote}
+              </p>
+            </div>
+            <label className="contents">
+              <span className="sr-only">
+                {recoveryMode ? s.auth.recoveryCode : s.auth.authenticatorCode}
+              </span>
+              <Input
+                autoFocus
+                name="totp"
+                placeholder={recoveryMode ? s.auth.recoveryCode : s.auth.authenticatorCode}
+                autoComplete="one-time-code"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                inputMode={recoveryMode ? "text" : "numeric"}
+                maxLength={recoveryMode ? 64 : 6}
+                value={secondFactor}
+                onChange={(e) =>
+                  setSecondFactor(
+                    recoveryMode
+                      ? e.target.value.toUpperCase()
+                      : e.target.value.replace(/\D/g, "").slice(0, 6),
+                  )
+                }
+                required
+              />
+            </label>
+            <button
+              type="button"
+              className="min-h-10 self-center px-2 text-[12px] font-semibold text-accent hover:text-accent-strong"
+              onClick={() => {
+                setRecoveryMode((value) => !value);
+                setSecondFactor("");
+                setFormError(null);
+              }}
+            >
+              {recoveryMode ? s.auth.useAuthenticatorCode : s.auth.useRecoveryCode}
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="contents">
+              <span className="sr-only">{s.auth.username}</span>
+              <Input
+                name="username"
+                placeholder={s.auth.username}
+                autoComplete="username"
+                autoCapitalize="off"
+                autoCorrect="off"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </label>
+            <label className="contents">
+              <span className="sr-only">{s.auth.password}</span>
+              <Input
+                type="password"
+                name="password"
+                placeholder={s.auth.password}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </label>
+          </>
+        )}
         <Button type="submit" disabled={!canSubmit} className="mt-1 w-full">
           {mutation.isPending ? s.auth.signingIn : s.auth.signIn}
         </Button>
+        {secondFactorRequired && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-[12px]"
+            onClick={() => {
+              mutation.reset();
+              setSecondFactorRequired(false);
+              setRecoveryMode(false);
+              setSecondFactor("");
+              setFormError(null);
+            }}
+          >
+            {s.auth.changeAccount}
+          </Button>
+        )}
       </form>
     </main>
   );
