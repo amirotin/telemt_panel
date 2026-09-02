@@ -75,7 +75,7 @@ func runNetworkStoreContract(t *testing.T, driver, environment string) {
 
 func clearSQLStoreForTest(st *SQLite) error {
 	return sqlstore.WithTx(context.Background(), st.db, &sql.TxOptions{}, func(tx *sql.Tx) error {
-		for _, table := range []string{"sessions", "subpage_nonces", "settings", "update_journal", "audit_entries", "metric_points"} {
+		for _, table := range []string{"sessions", "subpage_nonces", "settings", "update_journal", "audit_entries", "metric_points", "history_events"} {
 			if _, err := tx.Exec("DELETE FROM " + table); err != nil {
 				return err
 			}

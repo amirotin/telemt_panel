@@ -15,6 +15,7 @@ import (
 const (
 	auditCap   = 500
 	journalCap = 100
+	eventCap   = 1000
 )
 
 // MetricCap bounds each named metric series (RecordMetric/MetricRange).
@@ -26,11 +27,9 @@ const (
 // before them ("−0,3 % за 15 мин") — with a 15-minute ring there is no
 // previous window to compare against, only two halves of the current one.
 //
-// The cost stays trivial and, more importantly, stays BOUNDED: a MetricPoint
-// is two 8-byte words, the hub records six series (connections, active_users,
-// traffic, refusals, attempts, and whatever a later milestone adds), so the
-// whole history is 6*360*16 B ≈ 35 KB of steady-state memory regardless of
-// uptime. Doubling the cap doubled ~17 KB.
+// The cost stays small and, more importantly, stays BOUNDED. The hub records
+// six global series today; aggregate-only fields remain zero in memory and the
+// ring size stays fixed regardless of uptime.
 const MetricCap = 360
 
 // touchMirrorDebounce caps how often a TouchSession-triggered mirror write
@@ -48,11 +47,13 @@ type Memory struct {
 
 	sessions      map[string]Session
 	audit         []AuditEntry
+	events        []HistoryEvent
 	journal       map[string][]UpdateJournalEntry
 	metrics       map[string][]MetricPoint
 	subpageNonces map[string]string
 	settings      map[string]string
 	policies      map[StorageCategory]StoragePolicy
+	nextEventID   int64
 
 	mirrorPath string
 
@@ -332,6 +333,72 @@ func (m *Memory) ListAudit(limit int) ([]AuditEntry, error) {
 	return newestFirst(m.audit, limit), nil
 }
 
+// AppendHistoryEvent records one bounded, structured transition.
+func (m *Memory) AppendHistoryEvent(event HistoryEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if event.Category == "" {
+		event.Category = StorageEvents
+	}
+	policy, ok := m.policies[event.Category]
+	if !ok {
+		return fmt.Errorf("unknown history event category %q", event.Category)
+	}
+	if !policy.Enabled {
+		return nil
+	}
+	if event.TS.IsZero() {
+		event.TS = time.Now().UTC()
+	}
+	m.nextEventID++
+	event.ID = m.nextEventID
+	event.Attributes = cloneStringMap(event.Attributes)
+	m.events = append(m.events, event)
+	if len(m.events) > eventCap {
+		m.events = m.events[len(m.events)-eventCap:]
+	}
+	return nil
+}
+
+// ListHistoryEvents returns matching events newest first.
+func (m *Memory) ListHistoryEvents(filter HistoryEventFilter) ([]HistoryEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]HistoryEvent, 0)
+	for i := len(m.events) - 1; i >= 0; i-- {
+		event := m.events[i]
+		if !filter.From.IsZero() && event.TS.Before(filter.From) {
+			continue
+		}
+		if filter.Category != "" && event.Category != filter.Category {
+			continue
+		}
+		if filter.Kind != "" && event.Kind != filter.Kind {
+			continue
+		}
+		if filter.Entity != "" && event.Entity != filter.Entity {
+			continue
+		}
+		event.Attributes = cloneStringMap(event.Attributes)
+		out = append(out, event)
+		if filter.Limit > 0 && len(out) >= filter.Limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
 // AppendUpdateJournal records one update-journal entry for e.Target,
 // evicting the oldest for that target if its ring is full. Unlike
 // TouchSession, this writes through to the mirror immediately rather than
@@ -361,16 +428,27 @@ func (m *Memory) ListUpdateJournal(target string, limit int) ([]UpdateJournalEnt
 // RecordMetric appends p to the named metric series, evicting the oldest
 // point if the series ring is full.
 func (m *Memory) RecordMetric(name string, p MetricPoint) error {
+	return m.RecordMetrics([]NamedMetricPoint{{Name: name, Point: p}})
+}
+
+// RecordMetrics appends a poll's samples under one lock.
+func (m *Memory) RecordMetrics(batch []NamedMetricPoint) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !m.policies[metricCategory(name)].Enabled {
-		return nil
+	for _, named := range batch {
+		if !m.policies[metricCategory(named.Name)].Enabled {
+			continue
+		}
+		p := named.Point
+		p.Tier = MetricTierRaw
+		p.Max = 0
+		p.Samples = 0
+		points := append(m.metrics[named.Name], p)
+		if len(points) > MetricCap {
+			points = points[len(points)-MetricCap:]
+		}
+		m.metrics[named.Name] = points
 	}
-	points := append(m.metrics[name], p)
-	if len(points) > MetricCap {
-		points = points[len(points)-MetricCap:]
-	}
-	m.metrics[name] = points
 	return nil
 }
 
@@ -386,7 +464,7 @@ func (m *Memory) MetricRange(name string, fromTS int64) ([]MetricPoint, error) {
 			out = append(out, p)
 		}
 	}
-	return out, nil
+	return selectMetricPoints(out, fromTS, time.Now().Unix()), nil
 }
 
 // MetricRetention reports the RAM ring's maximum history window when the
@@ -429,6 +507,9 @@ func (m *Memory) PurgeHistory(category StorageCategory) error {
 	if category == StorageAudit {
 		m.audit = nil
 	}
+	if category == StorageEvents {
+		m.events = nil
+	}
 	for name := range m.metrics {
 		if metricCategory(name) == category {
 			delete(m.metrics, name)
@@ -443,6 +524,7 @@ func (m *Memory) StorageStats() (StorageStats, error) {
 	defer m.mu.Unlock()
 	counts := make(map[StorageCategory]int64, len(storageCategoryOrder))
 	counts[StorageAudit] = int64(len(m.audit))
+	counts[StorageEvents] = int64(len(m.events))
 	for name, points := range m.metrics {
 		counts[metricCategory(name)] += int64(len(points))
 	}

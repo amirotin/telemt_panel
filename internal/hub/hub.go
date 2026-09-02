@@ -65,9 +65,7 @@ const (
 	// classification of the underlying Telemt error.
 	sourceErrorCode = "telemt_unreachable"
 
-	// History metric names (store.RecordMetric/MetricRange series keys),
-	// matching api/openapi.yaml GetHistory's `metric` enum values that this
-	// milestone actually records (see recordStatsHistory).
+	// History metric names (store.RecordMetric/MetricRange series keys).
 	metricConnections = "connections"
 	metricActiveUsers = "active_users"
 	metricTraffic     = "traffic"
@@ -78,6 +76,10 @@ const (
 	// same way — hence one accumulator type and one recording site.
 	metricRefusals = "refusals"
 	metricAttempts = "attempts"
+
+	metricRouteMode         = "mode.route"
+	metricTelemtAvailable   = "telemt.available"
+	metricTelemtUnavailable = "telemt.unavailable"
 )
 
 // Config configures the hub's poll intervals and lifecycle timings. Zero
@@ -230,8 +232,10 @@ type Hub struct {
 	// refusals/attempts hold the running totals behind those two history
 	// series across polls (counters.go) — their own locks, since
 	// recordStatsHistory runs outside h.mu.
-	refusals counterAccumulator
-	attempts counterAccumulator
+	refusals    counterAccumulator
+	attempts    counterAccumulator
+	traffic     userTrafficAccumulator
+	transitions historyTransitionState
 
 	// historyRecordedHook, if set, runs synchronously in pollWithContext
 	// immediately after every recordStatsHistory call (whether or not that
@@ -271,31 +275,35 @@ func New(cfg Config, tc *telemt.Client, st store.Store) *Hub {
 		},
 	}
 	sysInfo := &statsSysInfoRefresher{tc: tc, interval: cfg.StatsSysInfoRefresh, now: time.Now}
+	durableHistory := st != nil && st.Info().Durable
 	h.topics = map[string]*topicState{
 		"users": {
-			name:     "users",
-			wake:     make(chan struct{}, 1),
-			interval: cfg.UsersInterval,
-			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchUsers(ctx, tc) },
+			name:       "users",
+			wake:       make(chan struct{}, 1),
+			interval:   cfg.UsersInterval,
+			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchUsers(ctx, tc) },
+			persistent: durableHistory,
 		},
 		"stats": {
 			name:       "stats",
 			wake:       make(chan struct{}, 1),
 			interval:   cfg.StatsInterval,
 			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc, sysInfo) },
-			persistent: st != nil && st.Driver() == "sqlite",
+			persistent: durableHistory,
 		},
 		"runtime": {
-			name:     "runtime",
-			wake:     make(chan struct{}, 1),
-			interval: cfg.RuntimeInterval,
-			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchRuntime(ctx, tc) },
+			name:       "runtime",
+			wake:       make(chan struct{}, 1),
+			interval:   cfg.RuntimeInterval,
+			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchRuntime(ctx, tc) },
+			persistent: durableHistory,
 		},
 		"upstreams": {
-			name:     "upstreams",
-			wake:     make(chan struct{}, 1),
-			interval: cfg.UpstreamsInterval,
-			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchUpstreams(ctx, tc) },
+			name:       "upstreams",
+			wake:       make(chan struct{}, 1),
+			interval:   cfg.UpstreamsInterval,
+			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchUpstreams(ctx, tc) },
+			persistent: durableHistory,
 		},
 		"security": {
 			name:     "security",
@@ -697,26 +705,24 @@ func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 }
 
 // recordStatsHistory appends one point to each history metric series
-// (ruling R3: RAM ring only) this milestone tracks from a just-fetched
-// "stats" topic snapshot: connections, active_users and traffic. A metric
+// This records the global technical series derived from a just-fetched
+// "stats" topic snapshot. A metric
 // this tick can't derive — no runtime_edge and the "users" topic hasn't
 // been polled yet — is simply skipped for this tick rather than recording
 // a misleading value; GET /api/history degrades to fewer points, never an
 // error. Documented choice of source field per metric:
 //   - connections/active_users: the runtime-edge ConnectionsSummary's live
-//     Totals when available (accurate concurrent counts); otherwise the
-//     coarser StatsSummary proxies (ConnectionsTotal is a cumulative
-//     counter, not concurrent; ConfiguredUsers is not "active" — both are
-//     the closest fields StatsSummary actually exposes without runtime_edge).
+//     Totals when available; otherwise exact totals derived from the cached
+//     users snapshot. Lifetime ConnectionsTotal and ConfiguredUsers are never
+//     used as live gauges.
 //   - refusals/attempts: the monotonic running totals counterAccumulator
 //     folds out of StatsSummary's cumulative failure and connection counters
 //     (counters.go) — skipped entirely when the summary sub-call failed this
 //     tick, since the accumulator must not mistake a missing sample for a
 //     counter reset.
-//   - traffic: StatsSummary/ConnectionsSummary expose no byte-traffic
-//     aggregate at all, so this sums TotalOctets across the "users" topic's
-//     latest cached snapshot (already polled independently) — skipped
-//     entirely until that topic has been fetched at least once.
+//   - traffic: per-user TotalOctets deltas folded into a monotonic panel
+//     counter. New and removed users do not create spikes, and Telemt/user
+//     counter resets never produce a negative window.
 func (h *Hub) recordStatsHistory(data json.RawMessage) {
 	if h.st == nil {
 		return
@@ -727,72 +733,78 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 		return
 	}
 	ts := time.Now().Unix()
+	batch := make([]store.NamedMetricPoint, 0, 6)
+	add := func(name string, value float64) {
+		batch = append(batch, store.NamedMetricPoint{Name: name, Point: store.MetricPoint{TS: ts, Value: value}})
+	}
+	add(metricTelemtAvailable, 1)
+	add(metricTelemtUnavailable, 0)
 
+	users, hasUsers := h.cachedUsers()
 	switch {
 	case snap.ConnectionsSummary != nil && snap.ConnectionsSummary.Enabled && snap.ConnectionsSummary.Data != nil:
 		totals := snap.ConnectionsSummary.Data.Totals
-		h.recordMetric(metricConnections, ts, float64(totals.CurrentConnections))
-		h.recordMetric(metricActiveUsers, ts, float64(totals.ActiveUsers))
-	case snap.Summary != nil:
-		h.recordMetric(metricConnections, ts, float64(snap.Summary.ConnectionsTotal))
-		h.recordMetric(metricActiveUsers, ts, float64(snap.Summary.ConfiguredUsers))
+		add(metricConnections, float64(totals.CurrentConnections))
+		add(metricActiveUsers, float64(totals.ActiveUsers))
+	case hasUsers:
+		connections, activeUsers := usersLiveTotals(users)
+		add(metricConnections, float64(connections))
+		add(metricActiveUsers, float64(activeUsers))
 	}
 
 	if snap.Summary != nil {
 		uptime := snap.Summary.UptimeSeconds
-		h.recordMetric(metricRefusals, ts, float64(h.refusals.observe(refusalsTotal(snap.Summary), uptime)))
-		h.recordMetric(metricAttempts, ts, float64(h.attempts.observe(snap.Summary.ConnectionsTotal, uptime)))
+		add(metricRefusals, float64(h.refusals.observe(refusalsTotal(snap.Summary), uptime)))
+		add(metricAttempts, float64(h.attempts.observe(snap.Summary.ConnectionsTotal, uptime)))
+		if hasUsers {
+			add(metricTraffic, float64(h.traffic.observe(users, uptime)))
+		}
 	}
-
-	if traffic, ok := h.usersTrafficTotal(); ok {
-		h.recordMetric(metricTraffic, ts, traffic)
+	if err := h.st.RecordMetrics(batch); err != nil {
+		slog.Warn("hub: record metrics", "count", len(batch), "err", err)
 	}
 }
 
-// usersTrafficTotal sums TotalOctets across the "users" topic's latest
-// cached snapshot. ok is false when that topic has never been polled yet
-// (hasData false) or its cached payload fails to decode.
-func (h *Hub) usersTrafficTotal() (total float64, ok bool) {
+// cachedUsers returns the latest users payload. ok is false until the users
+// topic has completed its first successful poll or if the cache is corrupt.
+func (h *Hub) cachedUsers() ([]telemt.UserInfo, bool) {
 	h.mu.Lock()
 	t := h.topics["users"]
 	hasData, data := t.hasData, t.lastData
 	h.mu.Unlock()
 	if !hasData {
-		return 0, false
+		return nil, false
 	}
 	var snap usersSnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
-		return 0, false
+		return nil, false
 	}
-	var sum uint64
-	for _, u := range snap.Users {
-		sum += u.TotalOctets
-	}
-	return float64(sum), true
+	return snap.Users, true
 }
 
-func (h *Hub) recordMetric(name string, ts int64, value float64) {
-	if err := h.st.RecordMetric(name, store.MetricPoint{TS: ts, Value: value}); err != nil {
-		slog.Warn("hub: record metric", "metric", name, "err", err)
+func usersLiveTotals(users []telemt.UserInfo) (connections uint64, activeUsers int) {
+	for _, user := range users {
+		connections += user.CurrentConnections
+		if user.CurrentConnections > 0 {
+			activeUsers++
+		}
 	}
+	return connections, activeUsers
 }
 
-// HistoryRetention returns how far back the metric ring can actually reach:
-// store.MetricCap points recorded one per "stats" poll. GET /api/history
-// publishes it so the browser knows, without guessing from the timestamps it
-// happens to get back, whether two consecutive windows fit in the ring —
-// which is exactly what Сводка's "−0,3 % за 15 мин" caption needs before it
-// can claim a comparison.
+// HistoryRetention returns the active store's actual reach. Durable stores use
+// the category policy; memory uses its bounded raw ring at the configured stats
+// cadence. GET /api/history publishes the same distinction as retention_secs.
 func (h *Hub) HistoryRetention() time.Duration {
-	if h.st != nil && h.st.Driver() == "sqlite" {
+	if h.st != nil && h.st.Info().Durable {
 		return h.st.MetricRetention(metricConnections)
 	}
 	return time.Duration(store.MetricCap) * h.cfg.StatsInterval
 }
 
 // StartPersistentCollectors starts every topic marked for background
-// history collection. It is idempotent and does nothing for the memory
-// store, whose pollers remain subscriber-driven.
+// history collection. Durable SQL stores keep stats and its users source
+// alive; the memory profile remains subscriber-driven.
 func (h *Hub) StartPersistentCollectors() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -993,18 +1005,29 @@ func (h *Hub) poll(t *topicState) bool {
 func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	data, err := t.fetch(ctx)
 	if err != nil {
+		if t.name == "stats" {
+			h.recordTelemtAvailability(false)
+		}
 		h.recordFetchError(t, err)
 		return false
+	}
+	if t.name == "stats" {
+		h.recordTelemtAvailability(true)
 	}
 	// recordStatsHistory reads the "users" topic's cache under h.mu itself
 	// (usersTrafficTotal) — it must run before recordFetchSuccess takes
 	// that same lock below, not while holding it (sync.Mutex isn't
 	// reentrant).
-	if t.name == "stats" {
+	switch t.name {
+	case "stats":
 		h.recordStatsHistory(data)
 		if h.historyRecordedHook != nil {
 			h.historyRecordedHook()
 		}
+	case "runtime":
+		h.recordRuntimeHistory(data)
+	case "upstreams":
+		h.recordUpstreamsHistory(data)
 	}
 	h.recordFetchSuccess(t, data)
 	return true

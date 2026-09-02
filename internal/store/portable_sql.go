@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -34,6 +35,9 @@ func (s *SQLite) ExportData() (PortableData, error) {
 			return err
 		}
 		if data.Metrics, err = exportMetrics(s, tx); err != nil {
+			return err
+		}
+		if data.Events, err = exportEvents(s, tx); err != nil {
 			return err
 		}
 		if data.SubpageNonces, err = exportStringMap(s, tx, `SELECT username, nonce FROM subpage_nonces ORDER BY username`); err != nil {
@@ -66,7 +70,8 @@ func (s *SQLite) ImportData(data PortableData) error {
 			(SELECT count(*) FROM settings) +
 			(SELECT count(*) FROM update_journal) +
 			(SELECT count(*) FROM audit_entries) +
-			(SELECT count(*) FROM metric_points)`)).Scan(&count); err != nil {
+			(SELECT count(*) FROM metric_points) +
+			(SELECT count(*) FROM history_events)`)).Scan(&count); err != nil {
 			return fmt.Errorf("inspect destination: %w", err)
 		}
 		if count != 0 {
@@ -102,9 +107,28 @@ func (s *SQLite) ImportData(data PortableData) error {
 		}
 		for _, name := range sortedKeys(data.Metrics) {
 			for _, point := range data.Metrics[name] {
-				if _, err := tx.Exec(s.bind(`INSERT INTO metric_points(name, category, ts, value) VALUES(?, ?, ?, ?)`), name, metricCategory(name), point.TS, point.Value); err != nil {
+				tier := metricTierSQL(point.Tier)
+				maxValue := point.Max
+				samples := point.Samples
+				if point.Tier == MetricTierRaw {
+					maxValue = point.Value
+					samples = 1
+				}
+				if samples < 1 {
+					samples = 1
+				}
+				if _, err := tx.Exec(s.bind(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`), name, metricCategory(name), tier, point.TS, point.Value, maxValue, samples, point.TS); err != nil {
 					return fmt.Errorf("import metric point: %w", err)
 				}
+			}
+		}
+		for _, event := range data.Events {
+			attributes, err := json.Marshal(event.Attributes)
+			if err != nil {
+				return fmt.Errorf("encode imported history event attributes: %w", err)
+			}
+			if _, err := tx.Exec(s.bind(`INSERT INTO history_events(ts_ns, category, kind, entity, state, previous_state, severity, attributes_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`), event.TS.UnixNano(), event.Category, event.Kind, event.Entity, event.State, event.PreviousState, event.Severity, string(attributes)); err != nil {
+				return fmt.Errorf("import history event: %w", err)
 			}
 		}
 		for _, policy := range data.Policies {
@@ -184,7 +208,7 @@ func exportJournal(s *SQLite, tx *sql.Tx) (map[string][]UpdateJournalEntry, erro
 }
 
 func exportMetrics(s *SQLite, tx *sql.Tx) (map[string][]MetricPoint, error) {
-	rows, err := tx.Query(s.bind(`SELECT name, ts, value FROM metric_points ORDER BY name, ts`))
+	rows, err := tx.Query(s.bind(`SELECT name, tier, ts, value, max, samples FROM metric_points ORDER BY name, tier, ts`))
 	if err != nil {
 		return nil, err
 	}
@@ -192,11 +216,43 @@ func exportMetrics(s *SQLite, tx *sql.Tx) (map[string][]MetricPoint, error) {
 	out := make(map[string][]MetricPoint)
 	for rows.Next() {
 		var name string
+		var tier string
 		var point MetricPoint
-		if err := rows.Scan(&name, &point.TS, &point.Value); err != nil {
+		if err := rows.Scan(&name, &tier, &point.TS, &point.Value, &point.Max, &point.Samples); err != nil {
 			return nil, err
 		}
+		point.Tier = metricTierFromSQL(tier)
+		if point.Tier == MetricTierRaw {
+			point.Max = 0
+			point.Samples = 0
+		}
 		out[name] = append(out[name], point)
+	}
+	return out, rows.Err()
+}
+
+func exportEvents(s *SQLite, tx *sql.Tx) ([]HistoryEvent, error) {
+	rows, err := tx.Query(s.bind(`SELECT seq, ts_ns, category, kind, entity, state, previous_state, severity, attributes_json FROM history_events ORDER BY seq`))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HistoryEvent
+	for rows.Next() {
+		var item HistoryEvent
+		var tsNS int64
+		var attributes string
+		if err := rows.Scan(&item.ID, &tsNS, &item.Category, &item.Kind, &item.Entity, &item.State, &item.PreviousState, &item.Severity, &attributes); err != nil {
+			return nil, err
+		}
+		item.TS = time.Unix(0, tsNS).UTC()
+		item.ID = 0 // sequence numbers are local to a store, not portable state
+		if attributes != "" && attributes != "null" {
+			if err := json.Unmarshal([]byte(attributes), &item.Attributes); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, item)
 	}
 	return out, rows.Err()
 }

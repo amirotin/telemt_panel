@@ -122,7 +122,7 @@ func policyMap(policies []StoragePolicy) map[StorageCategory]StoragePolicy {
 
 func metricCategory(name string) StorageCategory {
 	switch name {
-	case "connections", "active_users", "health":
+	case "connections", "active_users", "health", "telemt.available", "telemt.unavailable":
 		return StorageTechnical
 	case "traffic", "rx_bytes", "tx_bytes":
 		return StorageTraffic

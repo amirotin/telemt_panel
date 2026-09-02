@@ -158,6 +158,68 @@ func TestCounterAccumulatorPairStaysConsistentAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestUserTrafficAccumulatorTracksPerUserDeltas(t *testing.T) {
+	var accumulator userTrafficAccumulator
+	users := []telemt.UserInfo{
+		{Username: "alice", TotalOctets: 1_000},
+		{Username: "bob", TotalOctets: 2_000},
+	}
+	if got := accumulator.observe(users, 100); got != 0 {
+		t.Fatalf("first observation = %d, want baseline 0", got)
+	}
+	users[0].TotalOctets += 100
+	users[1].TotalOctets += 250
+	if got := accumulator.observe(users, 110); got != 350 {
+		t.Fatalf("traffic delta = %d, want 350", got)
+	}
+
+	// Removing bob must not turn the aggregate counter backwards, while a
+	// newly appearing user starts from a baseline rather than importing all
+	// of their lifetime traffic into the current window.
+	users = []telemt.UserInfo{
+		{Username: "alice", TotalOctets: 1_150},
+		{Username: "carol", TotalOctets: 50_000},
+	}
+	if got := accumulator.observe(users, 120); got != 400 {
+		t.Fatalf("after remove/add = %d, want 400", got)
+	}
+
+	// A per-user reset contributes only bytes observed after the reset.
+	users[0].TotalOctets = 12
+	if got := accumulator.observe(users, 130); got != 412 {
+		t.Fatalf("after user counter reset = %d, want 412", got)
+	}
+	// A Telemt restart does the same for every previously observed user.
+	users[0].TotalOctets = 5
+	users[1].TotalOctets = 7
+	if got := accumulator.observe(users, 2); got != 424 {
+		t.Fatalf("after Telemt restart = %d, want 424", got)
+	}
+}
+
+func TestUserTrafficAccumulatorCountsNewUserAfterTelemtRestart(t *testing.T) {
+	var accumulator userTrafficAccumulator
+	accumulator.observe([]telemt.UserInfo{{Username: "alice", TotalOctets: 1_000}}, 100)
+	got := accumulator.observe([]telemt.UserInfo{
+		{Username: "alice", TotalOctets: 20},
+		{Username: "new", TotalOctets: 30},
+	}, 5)
+	if got != 50 {
+		t.Fatalf("traffic after restart = %d, want 50 from both new-run counters", got)
+	}
+}
+
+func TestUsersLiveTotalsUseCurrentConnections(t *testing.T) {
+	connections, active := usersLiveTotals([]telemt.UserInfo{
+		{Username: "idle", CurrentConnections: 0},
+		{Username: "one", CurrentConnections: 3},
+		{Username: "two", CurrentConnections: 9},
+	})
+	if connections != 12 || active != 2 {
+		t.Fatalf("usersLiveTotals = %d connections / %d active, want 12 / 2", connections, active)
+	}
+}
+
 // HistoryRetention is what GET /api/history publishes as `retention_secs`,
 // and what tells the browser its "предыдущие 15 минут" exist at all. It is
 // the ring's point cap times the poll that fills it — a shorter poll (or a

@@ -50,9 +50,55 @@ type UpdateJournalEntry struct {
 
 // MetricPoint is a single timestamped sample in a named metric series.
 type MetricPoint struct {
-	TS    int64
-	Value float64
+	TS      int64
+	Value   float64
+	Tier    MetricTier
+	Max     float64
+	Samples int64
 }
+
+// NamedMetricPoint is one series key and sample for an atomic batch write.
+type NamedMetricPoint struct {
+	Name  string
+	Point MetricPoint
+}
+
+// HistoryEvent is one safe, structured state transition. Attributes may
+// contain small identifiers or numeric context, but never raw logs, IP
+// addresses, credentials, endpoint addresses or configuration snapshots.
+type HistoryEvent struct {
+	ID            int64             `json:"id"`
+	TS            time.Time         `json:"ts"`
+	Category      StorageCategory   `json:"category"`
+	Kind          string            `json:"kind"`
+	Entity        string            `json:"entity"`
+	State         string            `json:"state"`
+	PreviousState string            `json:"previous_state"`
+	Severity      string            `json:"severity"`
+	Attributes    map[string]string `json:"attributes,omitempty"`
+}
+
+// HistoryEventFilter selects stored events. From is inclusive, zero means no
+// lower bound, and Limit <= 0 means no explicit cap.
+type HistoryEventFilter struct {
+	From     time.Time
+	Limit    int
+	Category StorageCategory
+	Kind     string
+	Entity   string
+}
+
+// MetricTier identifies the resolution of a stored history point. Raw is
+// represented by the empty value in the Go/API model for backward-compatible
+// portable exports; SQL stores persist it as the explicit "raw" key.
+type MetricTier string
+
+const (
+	MetricTierRaw     MetricTier = ""
+	MetricTierMinute  MetricTier = "1m"
+	MetricTierQuarter MetricTier = "15m"
+	metricTierRawSQL             = "raw"
+)
 
 // Store is the panel's state backend. All methods are safe for concurrent
 // use. GetSession's bool return reports whether a session with the given
@@ -93,12 +139,20 @@ type Store interface {
 	// RecordMetric appends p to the named metric series, evicting the
 	// oldest point if the series ring is full.
 	RecordMetric(name string, p MetricPoint) error
+	// RecordMetrics writes a poll's related samples as one bounded operation.
+	RecordMetrics(points []NamedMetricPoint) error
 	// MetricRange returns the points of the named series with TS >= fromTS,
 	// oldest first.
 	MetricRange(name string, fromTS int64) ([]MetricPoint, error)
 	// MetricRetention reports the configured retention for a metric. Zero
 	// means that persistence for the metric's category is disabled.
 	MetricRetention(name string) time.Duration
+
+	// AppendHistoryEvent records one structured transition when its category
+	// is enabled.
+	AppendHistoryEvent(event HistoryEvent) error
+	// ListHistoryEvents returns matching events newest first.
+	ListHistoryEvents(filter HistoryEventFilter) ([]HistoryEvent, error)
 
 	// ListStoragePolicies returns every history policy in stable UI order.
 	ListStoragePolicies() ([]StoragePolicy, error)

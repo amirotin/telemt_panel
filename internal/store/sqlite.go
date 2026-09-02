@@ -32,6 +32,11 @@ type SQLite struct {
 	policyMu  sync.RWMutex
 	policies  map[StorageCategory]StoragePolicy
 	lastPrune map[StorageCategory]time.Time
+
+	maintenanceStop chan struct{}
+	maintenanceDone chan struct{}
+	closeOnce       sync.Once
+	closeErr        error
 }
 
 const sqlOperationTimeout = 5 * time.Second
@@ -98,6 +103,7 @@ func NewSQLite(path, mirrorPath string) (*SQLite, error) {
 		db.Close()
 		return nil, fmt.Errorf("secure sqlite store: %w", err)
 	}
+	s.startMetricMaintenance()
 	return s, nil
 }
 
@@ -475,41 +481,6 @@ func (s *SQLite) ListUpdateJournal(target string, limit int) ([]UpdateJournalEnt
 	return out, rows.Err()
 }
 
-// RecordMetric persists a point if its category is enabled.
-func (s *SQLite) RecordMetric(name string, point MetricPoint) error {
-	category := metricCategory(name)
-	if !s.policy(category).Enabled {
-		return nil
-	}
-	query := s.dialect.Upsert("metric_points", []string{"name", "ts"}, []string{"category", "value"})
-	_, err := s.exec(query, name, point.TS, category, point.Value)
-	if err != nil {
-		return fmt.Errorf("record metric: %w", err)
-	}
-	return s.prune(category, time.Now())
-}
-
-// MetricRange returns points oldest first.
-func (s *SQLite) MetricRange(name string, fromTS int64) ([]MetricPoint, error) {
-	if !s.policy(metricCategory(name)).Enabled {
-		return []MetricPoint{}, nil
-	}
-	rows, err := s.query(`SELECT ts, value FROM metric_points WHERE name = ? AND ts >= ? ORDER BY ts`, name, fromTS)
-	if err != nil {
-		return nil, fmt.Errorf("read metric range: %w", err)
-	}
-	defer rows.Close()
-	var out []MetricPoint
-	for rows.Next() {
-		var point MetricPoint
-		if err := rows.Scan(&point.TS, &point.Value); err != nil {
-			return nil, fmt.Errorf("scan metric point: %w", err)
-		}
-		out = append(out, point)
-	}
-	return out, rows.Err()
-}
-
 // MetricRetention reports the configured metric retention.
 func (s *SQLite) MetricRetention(name string) time.Duration {
 	policy := s.policy(metricCategory(name))
@@ -606,6 +577,11 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 				return fmt.Errorf("purge audit history: %w", err)
 			}
 		}
+		if category == StorageEvents {
+			if _, err := tx.Exec(`DELETE FROM history_events`); err != nil {
+				return fmt.Errorf("purge event history: %w", err)
+			}
+		}
 		if _, err := tx.Exec(s.bind(`DELETE FROM metric_points WHERE category = ?`), category); err != nil {
 			return fmt.Errorf("purge metric history: %w", err)
 		}
@@ -637,6 +613,11 @@ func (s *SQLite) StorageStats() (StorageStats, error) {
 		return StorageStats{}, fmt.Errorf("count audit history: %w", err)
 	}
 	counts[StorageAudit] = auditCount
+	var eventCount int64
+	if err := s.queryRow(`SELECT count(*) FROM history_events`).Scan(&eventCount); err != nil {
+		return StorageStats{}, fmt.Errorf("count event history: %w", err)
+	}
+	counts[StorageEvents] = eventCount
 	var databaseBytes int64
 	if !s.remote {
 		for _, path := range []string{s.path, s.path + "-wal", s.path + "-shm"} {
@@ -678,8 +659,19 @@ func (s *SQLite) prune(category StorageCategory, now time.Time) error {
 			return fmt.Errorf("prune audit history: %w", err)
 		}
 	}
-	if _, err := s.exec(`DELETE FROM metric_points WHERE category = ? AND ts < ?`, category, cutoff.Unix()); err != nil {
-		return fmt.Errorf("prune metric history: %w", err)
+	if category == StorageEvents {
+		if _, err := s.exec(`DELETE FROM history_events WHERE category = ? AND ts_ns < ?`, category, cutoff.UnixNano()); err != nil {
+			return fmt.Errorf("prune event history: %w", err)
+		}
+	}
+	for _, tier := range metricTierRetention {
+		tierCutoff := cutoff
+		if tier.keep > 0 && now.Add(-tier.keep).After(tierCutoff) {
+			tierCutoff = now.Add(-tier.keep)
+		}
+		if _, err := s.exec(`DELETE FROM metric_points WHERE category = ? AND tier = ? AND ts < ?`, category, tier.sql, tierCutoff.Unix()); err != nil {
+			return fmt.Errorf("prune %s metric history: %w", tier.sql, err)
+		}
 	}
 	s.policyMu.Lock()
 	s.lastPrune[category] = now
@@ -689,7 +681,18 @@ func (s *SQLite) prune(category StorageCategory, now time.Time) error {
 
 // Close checkpoints the WAL before closing the database.
 func (s *SQLite) Close() error {
+	s.closeOnce.Do(func() { s.closeErr = s.closeStore() })
+	return s.closeErr
+}
+
+func (s *SQLite) closeStore() error {
 	var errs []string
+	if s.maintenanceStop != nil {
+		close(s.maintenanceStop)
+		<-s.maintenanceDone
+		s.maintenanceStop = nil
+		s.maintenanceDone = nil
+	}
 	if !s.remote {
 		if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 			errs = append(errs, err.Error())

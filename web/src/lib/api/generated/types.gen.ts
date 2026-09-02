@@ -614,7 +614,38 @@ export type HistorySeries = {
          */
         ts: number;
         v: number;
+        /**
+         * Omitted for raw points
+         */
+        tier?: '1m' | '15m';
+        /**
+         * Bucket maximum; present for aggregate points
+         */
+        max?: number;
     }>;
+};
+
+export type HistoryEvent = {
+    id: number;
+    ts: string;
+    category: StorageCategory;
+    kind: string;
+    entity: string;
+    state: string;
+    previous_state: string;
+    severity: 'info' | 'warning' | 'critical';
+    attributes?: {
+        [key: string]: string;
+    };
+};
+
+export type HistoryEvents = {
+    range: '15m' | '30m' | '1h' | '24h' | '7d';
+    /**
+     * Configured event retention in seconds; 0 means disabled.
+     */
+    retention_secs: number;
+    events: Array<HistoryEvent>;
 };
 
 export type StorageCategory = 'technical' | 'events' | 'audit' | 'connection_issues' | 'traffic' | 'user_traffic' | 'diagnostics';
@@ -2157,7 +2188,11 @@ export type GetHistoryData = {
     body?: never;
     path?: never;
     query: {
-        metric: 'connections' | 'traffic' | 'health' | 'active_users' | 'refusals' | 'attempts';
+        /**
+         * Global series name or a typed entity series such as `dc.-2.rtt_ms`, `dc.2.coverage_pct`, `upstream.7.healthy`.
+         *
+         */
+        metric: string;
         range: '15m' | '30m' | '1h' | '24h' | '7d';
     };
     url: '/api/history';
@@ -2180,6 +2215,36 @@ export type GetHistoryResponses = {
 };
 
 export type GetHistoryResponse = GetHistoryResponses[keyof GetHistoryResponses];
+
+export type GetHistoryEventsData = {
+    body?: never;
+    path?: never;
+    query: {
+        range: '15m' | '30m' | '1h' | '24h' | '7d';
+        limit?: number;
+        kind?: string;
+        entity?: string;
+    };
+    url: '/api/history/events';
+};
+
+export type GetHistoryEventsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type GetHistoryEventsError = GetHistoryEventsErrors[keyof GetHistoryEventsErrors];
+
+export type GetHistoryEventsResponses = {
+    /**
+     * Structured events (possibly empty)
+     */
+    200: HistoryEvents;
+};
+
+export type GetHistoryEventsResponse = GetHistoryEventsResponses[keyof GetHistoryEventsResponses];
 
 export type GetHealthData = {
     body?: never;

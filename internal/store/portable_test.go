@@ -138,6 +138,25 @@ func TestPortableMemoryImportRefusesVolatileHistory(t *testing.T) {
 	}
 }
 
+func TestPortableEventCountIsLimitedOnlyByMemoryDestination(t *testing.T) {
+	events := make([]HistoryEvent, eventCap+1)
+	for i := range events {
+		events[i] = HistoryEvent{Category: StorageEvents, Kind: "test.changed", Entity: "test", State: "new", PreviousState: "old", Severity: "info"}
+	}
+	data := PortableData{FormatVersion: portableFormatVersion, Policies: DefaultStoragePolicies(), Events: events}
+	if _, err := normalizePortableData(data); err != nil {
+		t.Fatalf("driver-neutral export rejected durable event count: %v", err)
+	}
+	st, err := NewMemory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.ImportData(data); err == nil {
+		t.Fatal("memory import accepted more events than its bounded ring")
+	}
+}
+
 func populatePortableStore(t *testing.T, st Store) {
 	t.Helper()
 	now := time.Unix(1_800_000_000, 123).UTC()
@@ -148,6 +167,7 @@ func populatePortableStore(t *testing.T, st Store) {
 		st.SetSubpageNonce("alice", "nonce-1"),
 		st.SetSetting("theme", "dark"),
 		st.RecordMetric("connections", MetricPoint{TS: now.Unix(), Value: 42}),
+		st.AppendHistoryEvent(HistoryEvent{TS: now, Category: StorageEvents, Kind: "route.mode.changed", Entity: "route", State: "fallback", PreviousState: "me", Severity: "warning"}),
 	}
 	for _, err := range checks {
 		if err != nil {

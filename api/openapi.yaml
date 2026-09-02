@@ -835,16 +835,42 @@ paths:
       tags: [realtime]
       operationId: getHistory
       description: >
-        Metric history from the store's in-memory RAM ring (memory-profile store keeps
-        `retention_secs` of raw points per metric — 30 minutes at the hub's default
-        "stats" poll interval — recorded after each poll). Never errors on
-        empty/partial history — a metric with nothing recorded yet (or a `range` longer
-        than what's retained) is 200 with however many points actually exist, even zero.
+        Metric history from the active store. Memory keeps a bounded 30-minute raw
+        ring; durable stores return raw points for recent ranges and non-overlapping
+        1-minute / 15-minute aggregates for longer ranges. Aggregate points expose
+        both the average or last counter value (`v`) and the bucket peak (`max`).
+        Never errors on empty/partial history — a metric with nothing recorded yet
+        (or a `range` longer than what's retained) is 200 with however many points
+        actually exist, even zero.
       parameters:
-        - { name: metric, in: query, required: true, schema: { type: string, enum: [connections, traffic, health, active_users, refusals, attempts] } }
+        - name: metric
+          in: query
+          required: true
+          description: >
+            Global series name or a typed entity series such as
+            `dc.-2.rtt_ms`, `dc.2.coverage_pct`, `upstream.7.healthy`.
+          schema: { type: string }
         - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d] } }
       responses:
         "200": { description: Series (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/history/events:
+    get:
+      tags: [realtime]
+      operationId: getHistoryEvents
+      description: >
+        Safe structured state transitions recorded by the panel, newest first.
+        The stream deliberately excludes raw logs, IP history, endpoint addresses,
+        secrets and complete configuration snapshots. Empty or disabled event
+        history returns 200 with an empty array and retention_secs=0 when disabled.
+      parameters:
+        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
+        - { name: kind, in: query, schema: { type: string } }
+        - { name: entity, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Structured events (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistoryEvents" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
   # ───────────────────────── misc ─────────────────────────
@@ -1714,6 +1740,37 @@ components:
             properties:
               ts: { type: integer, format: int64, description: epoch seconds }
               v: { type: number }
+              tier: { type: string, enum: [1m, 15m], description: Omitted for raw points }
+              max: { type: number, description: Bucket maximum; present for aggregate points }
+
+    HistoryEvent:
+      type: object
+      required: [id, ts, category, kind, entity, state, previous_state, severity]
+      properties:
+        id: { type: integer, format: int64 }
+        ts: { type: string, format: date-time }
+        category: { $ref: "#/components/schemas/StorageCategory" }
+        kind: { type: string, example: dc.coverage.changed }
+        entity: { type: string, example: "dc:-203" }
+        state: { type: string, example: "66" }
+        previous_state: { type: string, example: "100" }
+        severity: { type: string, enum: [info, warning, critical] }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+
+    HistoryEvents:
+      type: object
+      required: [range, retention_secs, events]
+      properties:
+        range: { type: string, enum: [15m, 30m, 1h, 24h, 7d] }
+        retention_secs:
+          type: integer
+          format: int64
+          description: Configured event retention in seconds; 0 means disabled.
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/HistoryEvent" }
 
     StorageCategory:
       type: string

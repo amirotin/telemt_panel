@@ -105,6 +105,23 @@ func TestHandleGetHistory_ReturnsRecordedPoints(t *testing.T) {
 	}
 }
 
+func TestToHistoryPointsPublishesAggregatePeak(t *testing.T) {
+	points := toHistoryPoints([]store.MetricPoint{
+		{TS: 1, Value: 3},
+		{TS: 60, Value: 4, Tier: store.MetricTierMinute, Max: 9, Samples: 12},
+	})
+	if points[0].Tier != "" || points[0].Max != nil {
+		t.Fatalf("raw point unexpectedly exposes aggregate metadata: %+v", points[0])
+	}
+	if points[1].Tier != "1m" || points[1].Max == nil || *points[1].Max != 9 {
+		t.Fatalf("aggregate point = %+v, want tier=1m max=9", points[1])
+	}
+	zero := toHistoryPoints([]store.MetricPoint{{TS: 120, Tier: store.MetricTierMinute}})
+	if zero[0].Max == nil || *zero[0].Max != 0 {
+		t.Fatalf("zero aggregate max must remain present: %+v", zero[0])
+	}
+}
+
 // TestHandleGetHistory_AcceptsRefusals covers the metric the M5 Отказы tile
 // reads: it is in the openapi enum and in historyKnownMetrics, so it comes
 // back 200 with its recorded points rather than 400 unknown metric.
@@ -137,6 +154,30 @@ func TestHandleGetHistory_AcceptsRefusals(t *testing.T) {
 	// The tile reads newest − oldest: nine refusals across the window.
 	if d := got.Points[2].V - got.Points[0].V; d != 9 {
 		t.Errorf("window delta = %v, want 9", d)
+	}
+}
+
+func TestHandleGetHistory_AcceptsTypedEntityMetric(t *testing.T) {
+	srv := newTestServer(t)
+	now := time.Now().Unix()
+	if err := srv.st.RecordMetric("dc.-2.rtt_ms", store.MetricPoint{TS: now, Value: 87}); err != nil {
+		t.Fatal(err)
+	}
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+	r := httptest.NewRequest("GET", "/api/history?metric=dc.-2.rtt_ms&range=15m", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	var got historySeriesView
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Points) != 1 || got.Points[0].V != 87 {
+		t.Fatalf("points = %+v, want one RTT point", got.Points)
 	}
 }
 
@@ -223,5 +264,56 @@ func TestHandleGetHistory_ReportsRetention(t *testing.T) {
 	// The whole point of the widening: two 15-minute windows fit.
 	if got.RetentionSecs < 2*15*60 {
 		t.Errorf("retention_secs = %d, want at least two 15-minute windows", got.RetentionSecs)
+	}
+}
+
+func TestHandleGetHistoryEventsFiltersAndReportsRetention(t *testing.T) {
+	srv := newTestServer(t)
+	now := time.Now().UTC()
+	for _, event := range []store.HistoryEvent{
+		{TS: now.Add(-time.Minute), Category: store.StorageEvents, Kind: "route.mode.changed", Entity: "route", State: "fallback", PreviousState: "me", Severity: "warning"},
+		{TS: now, Category: store.StorageEvents, Kind: "dc.coverage.changed", Entity: "dc:-203", State: "66", PreviousState: "100", Severity: "warning", Attributes: map[string]string{"route": "media"}},
+	} {
+		if err := srv.st.AppendHistoryEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+	r := httptest.NewRequest("GET", "/api/history/events?range=24h&kind=dc.coverage.changed&entity=dc:-203&limit=1", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body)
+	}
+	var got historyEventsView
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Range != "24h" || got.RetentionSecs != 30*24*60*60 || len(got.Events) != 1 {
+		t.Fatalf("response = %+v", got)
+	}
+	if event := got.Events[0]; event.Entity != "dc:-203" || event.Attributes["route"] != "media" {
+		t.Fatalf("event = %+v", event)
+	}
+}
+
+func TestHandleGetHistoryEventsValidatesRangeAndLimit(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+	for _, path := range []string{
+		"/api/history/events?range=never",
+		"/api/history/events?range=24h&limit=0",
+		"/api/history/events?range=24h&limit=501",
+	} {
+		r := httptest.NewRequest("GET", path, nil)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want 400", path, w.Code)
+		}
 	}
 }

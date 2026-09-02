@@ -5,8 +5,11 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
+
+	sqlitedriver "github.com/ncruces/go-sqlite3/driver"
 )
 
 func newSQLite(t *testing.T) (*SQLite, string) {
@@ -55,8 +58,8 @@ func TestSQLiteRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 2 {
-		t.Fatalf("schema version = %d, want 2", info.Schema)
+	if info := reopened.Info(); info.Schema != 4 {
+		t.Fatalf("schema version = %d, want 4", info.Schema)
 	}
 	gotSession, ok, err := reopened.GetSession("hash")
 	if err != nil || !ok || gotSession != session {
@@ -79,6 +82,143 @@ func TestSQLiteRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSQLiteMetricTiersPreserveGaugeAverageAndPeak(t *testing.T) {
+	store, _ := newSQLite(t)
+	now := time.Now().Truncate(time.Minute).Add(10 * time.Second).Unix()
+	for _, point := range []MetricPoint{
+		{TS: now, Value: 10},
+		{TS: now + 5, Value: 20},
+	} {
+		if err := store.RecordMetric("connections", point); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var value, max float64
+	var samples int64
+	if err := store.queryRow(`SELECT value, max, samples FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`, "connections", "1m", metricBucket(now, time.Minute)).Scan(&value, &max, &samples); err != nil {
+		t.Fatal(err)
+	}
+	if value != 15 || max != 20 || samples != 2 {
+		t.Fatalf("minute bucket = avg %v, max %v, samples %d; want 15, 20, 2", value, max, samples)
+	}
+}
+
+func TestSQLiteMetricTiersPreserveCounterLastValue(t *testing.T) {
+	store, _ := newSQLite(t)
+	now := time.Now().Truncate(time.Minute).Add(10 * time.Second).Unix()
+	for _, point := range []MetricPoint{
+		{TS: now, Value: 100},
+		{TS: now + 5, Value: 160},
+	} {
+		if err := store.RecordMetric("traffic", point); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var value, max float64
+	var samples int64
+	if err := store.queryRow(`SELECT value, max, samples FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`, "traffic", "1m", metricBucket(now, time.Minute)).Scan(&value, &max, &samples); err != nil {
+		t.Fatal(err)
+	}
+	if value != 160 || max != 160 || samples != 2 {
+		t.Fatalf("minute counter = last %v, max %v, samples %d; want 160, 160, 2", value, max, samples)
+	}
+}
+
+func TestSQLiteMetricRangeUsesAggregateForOldData(t *testing.T) {
+	store, _ := newSQLite(t)
+	old := time.Now().Add(-48 * time.Hour).Truncate(15 * time.Minute).Unix()
+	for _, point := range []MetricPoint{
+		{TS: old + 10, Value: 10},
+		{TS: old + 20, Value: 30},
+	} {
+		if err := store.RecordMetric("connections", point); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	points, err := store.MetricRange("connections", old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 || points[0].Tier != MetricTierQuarter || points[0].Value != 20 || points[0].Max != 30 || points[0].Samples != 2 {
+		t.Fatalf("old range = %+v, want one 15m avg=20 max=30 samples=2", points)
+	}
+}
+
+func TestSQLiteMetricRetentionPrunesInBoundedBatches(t *testing.T) {
+	store, _ := newSQLite(t)
+	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
+	for i := int64(0); i < 3; i++ {
+		if _, err := store.exec(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, "connections", StorageTechnical, metricTierRawSQL, old+i, 1, 1, 1, old+i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := store.pruneMetricBatch(time.Now(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 2 {
+		t.Fatalf("removed = %d, want bounded batch of 2", removed)
+	}
+	var remaining int
+	if err := store.queryRow(`SELECT count(*) FROM metric_points WHERE name = ?`, "connections").Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 1 {
+		t.Fatalf("remaining = %d, want 1", remaining)
+	}
+}
+
+func TestSQLiteEventRetentionPrunesInBoundedBatches(t *testing.T) {
+	store, _ := newSQLite(t)
+	old := time.Now().Add(-31 * 24 * time.Hour)
+	for i := 0; i < 3; i++ {
+		if err := store.AppendHistoryEvent(HistoryEvent{TS: old.Add(time.Duration(i) * time.Second), Category: StorageEvents, Kind: "test.changed", Entity: "test", State: "new", PreviousState: "old", Severity: "info"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := store.pruneHistoryEventBatch(time.Now(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 2 {
+		t.Fatalf("removed = %d, want bounded batch of 2", removed)
+	}
+	events, err := store.ListHistoryEvents(HistoryEventFilter{Category: StorageEvents})
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events = %+v, %v; want 1", events, err)
+	}
+}
+
+func TestSQLiteDisabledEventsAreNotPruned(t *testing.T) {
+	store, _ := newSQLite(t)
+	if err := store.AppendHistoryEvent(HistoryEvent{TS: time.Now().Add(-31 * 24 * time.Hour), Category: StorageEvents, Kind: "test.changed", Entity: "test", State: "new", PreviousState: "old", Severity: "info"}); err != nil {
+		t.Fatal(err)
+	}
+	policies, err := store.ListStoragePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range policies {
+		if policies[i].Category == StorageEvents {
+			policies[i].Enabled = false
+		}
+	}
+	if err := store.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := store.pruneHistoryEventBatch(time.Now(), 10)
+	if err != nil || removed != 0 {
+		t.Fatalf("disabled prune = %d, %v", removed, err)
+	}
+	events, err := store.ListHistoryEvents(HistoryEventFilter{Category: StorageEvents})
+	if err != nil || len(events) != 1 {
+		t.Fatalf("disabled history changed: %+v, %v", events, err)
+	}
+}
+
 func TestSQLiteRejectsFutureSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.db")
 	opened, err := NewSQLite(path, "")
@@ -93,6 +233,79 @@ func TestSQLiteRejectsFutureSchema(t *testing.T) {
 	}
 	if _, err := NewSQLite(path, ""); err == nil {
 		t.Fatal("NewSQLite accepted a schema newer than this binary")
+	}
+}
+
+func TestSQLiteCloseIsConcurrentSafe(t *testing.T) {
+	store, _ := newSQLite(t)
+	var wg sync.WaitGroup
+	errs := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- store.Close()
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Close: %v", err)
+		}
+	}
+}
+
+func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.db")
+	store, err := NewSQLite(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	point := MetricPoint{TS: time.Now().Add(-time.Hour).Unix(), Value: 42}
+	if err := store.RecordMetric("connections", point); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sqlitedriver.Open("file:" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`DROP INDEX metric_points_category_tier_ts`,
+		`CREATE TABLE metric_points_v2 (name TEXT NOT NULL, category TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY(name, ts)) WITHOUT ROWID, STRICT`,
+		`INSERT INTO metric_points_v2(name, category, ts, value) SELECT name, category, ts, value FROM metric_points WHERE tier = 'raw'`,
+		`DROP TABLE metric_points`,
+		`DROP TABLE history_events`,
+		`ALTER TABLE metric_points_v2 RENAME TO metric_points`,
+		`PRAGMA user_version = 2`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			db.Close()
+			t.Fatalf("prepare v2 database (%s): %v", statement, err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := NewSQLite(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	if got := migrated.Info().Schema; got != 4 {
+		t.Fatalf("schema = %d, want 4", got)
+	}
+	points, err := migrated.MetricRange("connections", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 || points[0] != point {
+		t.Fatalf("migrated points = %+v, want %+v", points, point)
 	}
 }
 

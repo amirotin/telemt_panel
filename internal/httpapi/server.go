@@ -317,6 +317,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/logs/tail", protect(s.handleLogsTail))
 	mux.Handle("GET /api/audit", protect(s.handleGetAudit))
 	mux.Handle("GET /api/history", protect(s.handleGetHistory))
+	mux.Handle("GET /api/history/events", protect(s.handleGetHistoryEvents))
 	mux.Handle("GET /api/settings/storage", protect(s.handleGetStorageSettings))
 	mux.Handle("PUT /api/settings/storage", protect(s.handlePutStorageSettings))
 	mux.Handle("POST /api/settings/storage/purge", protect(s.handlePurgeStorageHistory))

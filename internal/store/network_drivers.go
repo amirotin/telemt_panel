@@ -61,5 +61,6 @@ func newNetworkStore(sqlDriver, dsn, mirrorPath string, dialect sqlstore.Dialect
 		db.Close()
 		return nil, err
 	}
+	opened.startMetricMaintenance()
 	return opened, nil
 }

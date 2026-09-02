@@ -531,6 +531,32 @@ func TestSQLiteHistoryCollectorRunsWithoutSubscribers(t *testing.T) {
 	}
 }
 
+type durableTestStore struct{ store.Store }
+
+func (durableTestStore) Info() store.Info {
+	return store.Info{Driver: "postgres", Durable: true, Remote: true, Schema: 4, SizeHint: -1}
+}
+
+func TestEveryDurableStoreKeepsStatsAndUsersSourcesAlive(t *testing.T) {
+	memory, err := store.NewMemory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	h := New(Config{}, telemt.New("http://127.0.0.1:1", ""), durableTestStore{Store: memory})
+	defer h.Close()
+	for _, topic := range []string{"stats", "users", "runtime", "upstreams"} {
+		if !h.topics[topic].persistent {
+			t.Errorf("%s is not persistent for a durable network store", topic)
+		}
+	}
+	for _, topic := range []string{"security", "web"} {
+		if h.topics[topic].persistent {
+			t.Errorf("%s became persistent before it has an H2 recorder", topic)
+		}
+	}
+}
+
 // TestHistoryRecordingNilStoreIsNoop covers the nil-store degrade: a Hub
 // built without a store (as most of this package's other tests are) must
 // not panic when a stats poll succeeds.

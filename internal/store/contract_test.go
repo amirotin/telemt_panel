@@ -97,6 +97,25 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 	})
 
+	t.Run("history_events", func(t *testing.T) {
+		entity := "dc:" + prefix
+		event := HistoryEvent{
+			TS: now, Category: StorageEvents, Kind: "dc.coverage.changed",
+			Entity: entity, State: "66", PreviousState: "100", Severity: "warning",
+			Attributes: map[string]string{"route": "media"},
+		}
+		if err := st.AppendHistoryEvent(event); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.ListHistoryEvents(HistoryEventFilter{From: now.Add(-time.Second), Category: StorageEvents, Kind: event.Kind, Entity: entity, Limit: 1})
+		if err != nil || len(got) != 1 {
+			t.Fatalf("ListHistoryEvents = %+v, %v", got, err)
+		}
+		if got[0].ID <= 0 || got[0].State != "66" || got[0].PreviousState != "100" || got[0].Attributes["route"] != "media" {
+			t.Fatalf("history event = %+v", got[0])
+		}
+	})
+
 	t.Run("metrics_policies_and_stats", func(t *testing.T) {
 		metric := "traffic"
 		point := MetricPoint{TS: now.Unix(), Value: 42.5}
@@ -106,6 +125,15 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		points, err := st.MetricRange(metric, now.Add(-time.Minute).Unix())
 		if err != nil || len(points) == 0 || points[len(points)-1] != point {
 			t.Fatalf("MetricRange = %+v, %v", points, err)
+		}
+		if err := st.RecordMetrics([]NamedMetricPoint{
+			{Name: "connections", Point: MetricPoint{TS: now.Unix(), Value: 3}},
+			{Name: "active_users", Point: MetricPoint{TS: now.Unix(), Value: 2}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := st.MetricRange("active_users", now.Add(-time.Minute).Unix()); err != nil || len(got) != 1 || got[0].Value != 2 {
+			t.Fatalf("batched MetricRange = %+v, %v", got, err)
 		}
 		policies, err := st.ListStoragePolicies()
 		if err != nil || len(policies) != len(DefaultStoragePolicies()) {
@@ -140,6 +168,9 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 		if len(data.Journal[prefix+"-panel"]) != 1 {
 			t.Fatalf("portable export journal = %+v", data.Journal[prefix+"-panel"])
+		}
+		if len(data.Events) != 1 || data.Events[0].Entity != "dc:"+prefix {
+			t.Fatalf("portable export events = %+v", data.Events)
 		}
 	})
 	return st
