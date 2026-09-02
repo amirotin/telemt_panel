@@ -99,6 +99,10 @@ export const en: Dict = {
     reconnecting: "Reconnecting…",
     polling: "Polling",
     retryConnection: "Reconnect",
+    storageFallbackTitle: "Persistent database unavailable",
+    storageFallbackBody:
+      "The panel is temporarily writing to memory. Check {driver} and restart the panel; data will not be merged automatically.",
+    storageFallbackAction: "Storage settings",
     placeholderDescription: "This screen arrives in one of the next tasks.",
   },
   people: {
@@ -146,7 +150,8 @@ export const en: Dict = {
     },
     webAccess: {
       title: "WEB access",
-      unavailable: "WEB relationships are unavailable right now. Other access methods continue to work normally.",
+      unavailable:
+        "WEB relationships are unavailable right now. Other access methods continue to work normally.",
       disabled: "WEB disabled",
       noProfiles: "No WEB profiles assigned",
       noProfilesHint: "Add a profile to allow this user to connect through WEB.",
@@ -155,7 +160,8 @@ export const en: Dict = {
       edit: "Configure",
       eyebrow: "User access",
       editorTitle: "WEB profiles",
-      editorHint: "A profile links the user to a specific vhost. One person may have several profiles for different vhosts or secret modes.",
+      editorHint:
+        "A profile links the user to a specific vhost. One person may have several profiles for different vhosts or secret modes.",
       profile: "Profile",
       vhost: "Vhost",
       chooseVhost: "Choose a vhost",
@@ -895,7 +901,8 @@ export const en: Dict = {
         },
         view: {
           breadcrumb: "PULSE / SECURITY",
-          description: "Management API protection, TLS ClientHello signals, and effective network limits.",
+          description:
+            "Management API protection, TLS ClientHello signals, and effective network limits.",
           postureTab: "API protection",
           tlsTab: "TLS ClientHello",
           limitsTab: "Limits",
@@ -908,10 +915,13 @@ export const en: Dict = {
           verdictWeak: "Protection is weakened",
           verdictRestricted: "Access is restricted",
           verdictUnknown: "Waiting for access conditions",
-          verdictOpenDescription: "Neither whitelist nor auth header is enabled while the API accepts writes.",
+          verdictOpenDescription:
+            "Neither whitelist nor auth header is enabled while the API accepts writes.",
           verdictTlsDescription: "{count} observations are malformed or resemble scanning.",
-          verdictRestrictedDescription: "The whitelist limits API access; writes are allowed only after the network filter.",
-          verdictUnknownDescription: "The assessment will be refined when all access conditions arrive.",
+          verdictRestrictedDescription:
+            "The whitelist limits API access; writes are allowed only after the network filter.",
+          verdictUnknownDescription:
+            "The assessment will be refined when all access conditions arrive.",
           conditionsMet: "protective conditions are met",
           attentionRequired: "requires attention",
           apiAccess: "API access",
@@ -937,8 +947,10 @@ export const en: Dict = {
           permissions: "Permissions",
           readOnlyDescription: "Read-only",
           readWriteDescription: "Read-write · changes allowed",
-          openExplanation: "Both barriers are absent while the API accepts mutating requests. The management plane is genuinely open.",
-          barrierExplanation: "One disabled mechanism is not a vulnerability by itself: the assessment considers the complete sequence of conditions.",
+          openExplanation:
+            "Both barriers are absent while the API accepts mutating requests. The management plane is genuinely open.",
+          barrierExplanation:
+            "One disabled mechanism is not a vulnerability by itself: the assessment considers the complete sequence of conditions.",
           extraProperties: "Additional properties",
           transportObservability: "Transport and observability",
           clientAddressHint: "client address from the load balancer",
@@ -952,7 +964,8 @@ export const en: Dict = {
           allowedNetworksTitle: "Allowed networks",
           apiWhitelist: "API whitelist",
           realCidrs: "Active CIDRs from the Telemt configuration.",
-          whitelistDisabledDescription: "The list is disabled and its entries do not filter requests.",
+          whitelistDisabledDescription:
+            "The list is disabled and its entries do not filter requests.",
           noRestriction: "No active restriction",
           clientHelloWindow: "TLS ClientHello window",
           captureState: "Capture state",
@@ -999,7 +1012,8 @@ export const en: Dict = {
           ipPolicyLimit: "IP limit",
           ipPolicyWindow: "IP policy window",
           tcpPolicyLimit: "TCP session limit",
-          limitsExplanation: "These are behavioral parameters, not independent security alerts. They are separated from the access assessment so dozens of numbers do not dilute it.",
+          limitsExplanation:
+            "These are behavioral parameters, not independent security alerts. They are separated from the access assessment so dozens of numbers do not dilute it.",
           technical: "Technical parameters",
           technicalDescription: "API field names and the complete middle-proxy configuration.",
           loading: "Loading security data",
@@ -1233,7 +1247,8 @@ export const en: Dict = {
         handshakeErrorCodes: "The codes the middle proxy rejected handshakes with.",
         view: {
           breadcrumb: "PULSE / COUNTERS",
-          description: "Measured-window changes, failure causes, and cumulative values across five Telemt subsystems.",
+          description:
+            "Measured-window changes, failure causes, and cumulative values across five Telemt subsystems.",
           activityTab: "Now",
           failuresTab: "Failure causes",
           explorerTab: "All counters",
@@ -1244,10 +1259,14 @@ export const en: Dict = {
           collectingBaseline: "Collecting baseline",
           failuresMoving: "Failure counters are moving",
           flowStable: "Flow is stable",
-          baselineDescription: "A second snapshot is needed to separate current movement from process history.",
-          restartDescription: "Telemt restarted: old absolutes were discarded and a new measurement is starting.",
-          failuresMovingDescription: "Failure counters grew during the latest window: {count} new signals.",
-          flowStableDescription: "Traffic crosses the active subsystems without new failure-counter movement.",
+          baselineDescription:
+            "A second snapshot is needed to separate current movement from process history.",
+          restartDescription:
+            "Telemt restarted: old absolutes were discarded and a new measurement is starting.",
+          failuresMovingDescription:
+            "Failure counters grew during the latest window: {count} new signals.",
+          flowStableDescription:
+            "Traffic crosses the active subsystems without new failure-counter movement.",
           newConnections: "New connections",
           perWindow: "during the measured window",
           upstreamSuccess: "Upstream success",
@@ -1261,9 +1280,12 @@ export const en: Dict = {
           twoSnapshots: "Two snapshots · {window}",
           currentTrafficPath: "Current traffic path",
           absolutesInExplorer: "Absolute values are available under “All counters”",
-          baselineWindowNote: "A second snapshot is required after opening. Cumulative absolutes are not presented as current rates.",
-          restartWindowNote: "A second snapshot is required after restart. Reset absolutes are not shown as negative rates.",
-          measuredWindowNote: "Values show growth measured by the panel. Telemt exposes cumulative counters only.",
+          baselineWindowNote:
+            "A second snapshot is required after opening. Cumulative absolutes are not presented as current rates.",
+          restartWindowNote:
+            "A second snapshot is required after restart. Reset absolutes are not shown as negative rates.",
+          measuredWindowNote:
+            "Values show growth measured by the panel. Telemt exposes cumulative counters only.",
           baseline: "baseline",
           active: "active",
           hasFailures: "has failures",
@@ -1297,7 +1319,8 @@ export const en: Dict = {
           middleProxyRejections: "Middle-proxy rejections",
           classesCount: "rows: {count}",
           noCodes: "No codes recorded",
-          emptyArrayHonest: "The array is present and empty. This is neither missing data nor a hidden error.",
+          emptyArrayHonest:
+            "The array is present and empty. This is neither missing data nor a hidden error.",
           accumulatedCause: "cumulative cause",
           sinceStart: "since process start",
           deltaPerWindow: "{delta} · {window}",
@@ -1316,7 +1339,8 @@ export const en: Dict = {
           sinceOpen: "Since open",
           noMatches: "Nothing matches the selected filter.",
           sourceAndMethod: "Source and measurement method",
-          technicalDescription: "Endpoint, comparison interval, and the lifetime boundary of cumulative values.",
+          technicalDescription:
+            "Endpoint, comparison interval, and the lifetime boundary of cumulative values.",
           snapshotNotHistory: "snapshot, not history",
           panelInterval: "Panel interval",
           neighborDifference: "difference between adjacent snapshots",
@@ -1324,9 +1348,11 @@ export const en: Dict = {
           reanchorsBaseline: "a decrease reanchors the baseline",
           sourceTimestamp: "current Telemt response timestamp",
           loading: "Loading Telemt counters",
-          loadingDescription: "The first snapshot becomes the baseline; current movement appears after the next response.",
+          loadingDescription:
+            "The first snapshot becomes the baseline; current movement appears after the next response.",
           sourceError: "Could not load counters",
-          sourceErrorDescription: "The zero/all request failed. Retry it without reloading the page.",
+          sourceErrorDescription:
+            "The zero/all request failed. Retry it without reloading the page.",
           retry: "Retry",
         },
       },
@@ -2893,8 +2919,7 @@ export const en: Dict = {
     gatedDescription:
       "The platform doesn't let the panel read the service journal. Run the command below on the server to read the logs by hand.",
     emptyTitle: "No logs yet",
-    emptyDescription:
-      "The source is connected. New lines will appear here automatically.",
+    emptyDescription: "The source is connected. New lines will appear here automatically.",
     emptyFilterTitle: "Nothing found",
     emptyFilterDescription: "Change the level filter or the search query.",
     autoscrollOn: "Autoscroll enabled",
@@ -3126,7 +3151,8 @@ export const en: Dict = {
         restartRequired: "Restart required",
         routingRestartHint: "Client modes and the primary route change only after Telemt restarts.",
         meDisabledTitle: "ME is currently disabled",
-        meDisabledHint: "These settings can be prepared in advance, but take effect only after ME routing is enabled and Telemt restarts.",
+        meDisabledHint:
+          "These settings can be prepared in advance, but take effect only after ME routing is enabled and Telemt restarts.",
         meNatTitle: "External address discovery",
         meNatHint: "ME uses the external address and port when the server is behind NAT.",
         meNatProbeHint: "Discover the external address through STUN when Telemt starts.",
@@ -3162,7 +3188,8 @@ export const en: Dict = {
         tlsDomain: "TLS domain",
         addTlsDomain: "Add TLS domain",
         exclusiveMasks: "Exclusive masking rules",
-        exclusiveMasksHint: "Each rule maps an SNI domain to a dedicated host:port TCP masking target.",
+        exclusiveMasksHint:
+          "Each rule maps an SNI domain to a dedicated host:port TCP masking target.",
         noExclusiveMasks: "No dedicated masking targets are configured.",
         maskRule: "Rule",
         sniDomain: "SNI domain",
@@ -3179,10 +3206,12 @@ export const en: Dict = {
         lastListenerRequired: "At least one listener is required",
         lastListenerShort: "Required",
         listenerArrayTitle: "Listeners are saved as a complete array.",
-        listenerArrayHint: "Add a replacement before removing the last binding. Changing a binding requires a process restart.",
+        listenerArrayHint:
+          "Add a replacement before removing the last binding. Changing a binding requires a process restart.",
         webVhostCount: "Vhosts: {count}",
         webStateTitle: "WEB mode",
-        webStateHint: "Carries Telegram Desktop traffic inside HTTPS terminated by your reverse proxy.",
+        webStateHint:
+          "Carries Telegram Desktop traffic inside HTTPS terminated by your reverse proxy.",
         webListenerRequirement: "WEB listener",
         webListenerReady: "A private WEB binding is configured.",
         webListenerMissing: "Add a listener with WEB transport in Listeners.",
@@ -3191,15 +3220,18 @@ export const en: Dict = {
         webVhostsMissing: "Add a complete vhost with at least one profile.",
         webEnableBlocked: "Complete both requirements before enabling new WEB sessions.",
         webCarrierTitle: "Connection carrier",
-        webCarrierHint: "Choose one predictable transport or negotiate an ordered set per client capability.",
+        webCarrierHint:
+          "Choose one predictable transport or negotiate an ordered set per client capability.",
         webCarrierModeLabel: "Carrier selection mode",
         webCarrierFixed: "Fixed",
         webCarrierFixedHint: "One carrier for every supported client.",
         webCarrierNegotiated: "Negotiated",
         webCarrierNegotiatedHint: "Try carriers in an explicit order.",
         webCarrierOrderTitle: "Negotiation order",
-        webCarrierOrderHint: "Candidates are tried top to bottom; the primary carrier remains the final fallback.",
-        webCarrierIosHint: "Telegram on iOS always uses the primary carrier and currently requires https.",
+        webCarrierOrderHint:
+          "Candidates are tried top to bottom; the primary carrier remains the final fallback.",
+        webCarrierIosHint:
+          "Telegram on iOS always uses the primary carrier and currently requires https.",
         moveCarrierUp: "Move carrier up",
         moveCarrierDown: "Move carrier down",
         removeCarrier: "Remove carrier",
@@ -3211,7 +3243,8 @@ export const en: Dict = {
         webProfileCount: "profiles: {count}",
         webAddVhost: "Add virtual host",
         webDecoyTitle: "Decoy site",
-        webDecoyHint: "Ordinary web requests are sent to an upstream site or served from a static directory.",
+        webDecoyHint:
+          "Ordinary web requests are sent to an upstream site or served from a static directory.",
         webDecoyMode: "Decoy type",
         webDecoyModeHint: "Only fields for the selected strategy are stored.",
         webDecoyHttp: "HTTP upstream",
@@ -3420,8 +3453,10 @@ export const en: Dict = {
         kicker: "For experienced operators",
         title: "TOML projection of managed settings",
         projectionTitle: "This is not the source telemt.toml",
-        projectionNote: "This is a normalized Config API view; comments and include placement are not preserved.",
-        projectionDetail: "TOML is parsed by the panel backend, so integer literals never pass through JavaScript number.",
+        projectionNote:
+          "This is a normalized Config API view; comments and include placement are not preserved.",
+        projectionDetail:
+          "TOML is parsed by the panel backend, so integer literals never pass through JavaScript number.",
         openEditor: "Open editor",
         mobileNote: "Full-screen editor · changes are not applied until you explicitly save them",
         doneAndValidate: "Done and validate",
@@ -3433,7 +3468,8 @@ export const en: Dict = {
         previewKicker: "Before saving",
         previewTitle: "Exact change plan",
         materializedTitle: "Missing sections will be created",
-        materializedDetail: "Telemt materializes normalized defaults, so the resulting source write can be wider than the sparse patch.",
+        materializedDetail:
+          "Telemt materializes normalized defaults, so the resulting source write can be wider than the sparse patch.",
         arraysTitle: "Arrays are replaced wholesale",
         arraysDetail: "The patch contains every array record, including unchanged records.",
         patchTitle: "Show exact JSON PATCH",
@@ -3508,14 +3544,17 @@ export const en: Dict = {
       showAll: "Show all",
       collapse: "Collapse",
       oneAtATimeTitle: "One operation at a time",
-      oneAtATimeDetail: "The shared lock prevents Telemt and the panel from updating simultaneously.",
+      oneAtATimeDetail:
+        "The shared lock prevents Telemt and the panel from updating simultaneously.",
       rollbackTitle: "Automatic rollback",
       rollbackDetail: "A failed health check restores the previous binary.",
       hostCapabilities: "Host capabilities",
       installUnavailableTitle: "Why installation is unavailable",
-      installUnavailableDetail: "The panel can check available versions, but this installation does not currently have enough privileges to replace binaries and restart services safely.",
+      installUnavailableDetail:
+        "The panel can check available versions, but this installation does not currently have enough privileges to replace binaries and restart services safely.",
       installerPendingTitle: "No command is published yet",
-      installerPendingDetail: "The repair command depends on the host's service manager and privilege mode. This surface will link to verified platform-specific instructions instead of showing a generic shell command.",
+      installerPendingDetail:
+        "The repair command depends on the host's service manager and privilege mode. This surface will link to verified platform-specific instructions instead of showing a generic shell command.",
       dismiss: "Got it",
       autoUpdate: {
         title: "Auto-update",
@@ -3533,7 +3572,8 @@ export const en: Dict = {
         intervalDetail: "One interval for both targets",
         hours: "{count} h",
         unavailableTitle: "Automatic installation unavailable",
-        unavailableDetail: "The panel has neither root access nor permitted sudo commands. Checks and notifications still work.",
+        unavailableDetail:
+          "The panel has neither root access nor permitted sudo commands. Checks and notifications still work.",
         save: "Save",
         savedShort: "Saved",
         saved: "Auto-update settings saved",
@@ -3562,21 +3602,27 @@ export const en: Dict = {
       view: {
         localKicker: "Local perimeter",
         localTitle: "The API is reachable only from this server",
-        localDescription: "The allowlist accepts loopback addresses only. A separate auth header is optional because an external host cannot reach the API.",
+        localDescription:
+          "The allowlist accepts loopback addresses only. A separate auth header is optional because an external host cannot reach the API.",
         remoteKicker: "Remote administration",
         layeredTitle: "Access is restricted by network and secret",
-        layeredDescription: "The API accepts requests only from allowed networks and verifies the auth header as a second layer.",
+        layeredDescription:
+          "The API accepts requests only from allowed networks and verifies the auth header as a second layer.",
         restrictedKicker: "Restricted perimeter",
         whitelistTitle: "The API is reachable only from allowed networks",
-        whitelistDescription: "The allowlist narrows the exposed surface. Management requests are accepted only after the network check.",
+        whitelistDescription:
+          "The allowlist narrows the exposed surface. Management requests are accepted only after the network check.",
         authTitle: "The API is protected by a secret header",
-        authDescription: "There is no network restriction, but every request must pass auth-header verification.",
+        authDescription:
+          "There is no network restriction, but every request must pass auth-header verification.",
         readOnlyKicker: "Read only",
         readOnlyTitle: "API mutations are disabled",
-        readOnlyDescription: "There are no network barriers, but the API refuses mutations. Readable data may still require access restrictions.",
+        readOnlyDescription:
+          "There are no network barriers, but the API refuses mutations. Readable data may still require access restrictions.",
         exposedKicker: "Open perimeter",
         exposedTitle: "The API has no network or secret restriction",
-        exposedDescription: "If the port is externally reachable, any host can read and change the Telemt configuration. Restrict the network or enable an auth header.",
+        exposedDescription:
+          "If the port is externally reachable, any host can read and change the Telemt configuration. Restrict the network or enable an auth header.",
         unknownKicker: "Waiting for data",
         unknownTitle: "Access conditions are not known yet",
         unknownDescription: "The assessment will appear after Telemt provides its posture.",
@@ -3607,9 +3653,11 @@ export const en: Dict = {
         open: "Open",
         restricted: "Restricted",
         dangerousCombination: "Dangerous combination",
-        dangerousCombinationDescription: "The API is open to every address, requires no secret, and accepts mutations.",
+        dangerousCombinationDescription:
+          "The API is open to every address, requires no secret, and accepts mutations.",
         safeCombination: "Protection conditions agree",
-        safeCombinationDescription: "The result combines allowlist, auth header, and write mode instead of alarming on each disabled flag.",
+        safeCombinationDescription:
+          "The result combines allowlist, auth header, and write mode instead of alarming on each disabled flag.",
         configured: "Configured",
         readWrite: "Read and write",
         entries: "{count} entries",
@@ -3619,7 +3667,8 @@ export const en: Dict = {
         active: "Active",
         perIp: "per IP",
         activePerIp: "Up to {count} active clients from one IP",
-        activeWindowDescription: "The activity window is {seconds} seconds. The limit prevents concentrated connections without disrupting ordinary NAT.",
+        activeWindowDescription:
+          "The activity window is {seconds} seconds. The limit prevents concentrated connections without disrupting ordinary NAT.",
         policy: "Policy",
         tcpLimit: "TCP limit",
         unlimited: "Not set",
@@ -3629,10 +3678,12 @@ export const en: Dict = {
         calm: "Quiet",
         review: "Review needed",
         suspiciousHandshakes: "suspicious handshakes",
-        fingerprintDistribution: "Observation distribution across the most frequent TLS fingerprints",
+        fingerprintDistribution:
+          "Observation distribution across the most frequent TLS fingerprints",
         openDiagnostics: "Detailed diagnostics",
         context: "Context",
-        contextDescription: "These settings explain the environment but do not mean safe or unsafe by themselves.",
+        contextDescription:
+          "These settings explain the environment but do not mean safe or unsafe by themselves.",
         effectiveConfig: "Effective configuration",
         timeoutsAndLimits: "Timeouts and protective limits",
         sheetDescription: "Actual Telemt runtime values after defaults are applied.",
@@ -3668,9 +3719,11 @@ export const en: Dict = {
         heroEyebrow: "Control path",
         availableShort: "available",
         automatedTitle: "The host is managed automatically",
-        automatedDescription: "The panel can see system services, has a verified execution path, and can read the journal without manual intervention.",
+        automatedDescription:
+          "The panel can see system services, has a verified execution path, and can read the journal without manual intervention.",
         partialTitle: "Some operations require manual action",
-        partialDescription: "Observability remains available. For operations without a verified path, the panel shows an exact instruction instead of a broken button.",
+        partialDescription:
+          "Observability remains available. For operations without a verified path, the panel shows an exact instruction instead of a broken button.",
         controlSource: "Control",
         controlPanel: "Panel",
         controlTarget: "Services and logs",
@@ -3702,7 +3755,8 @@ export const en: Dict = {
         restartAvailableTitle: "Telemt can be restarted from the panel",
         restartAvailableNote: "The command will use the verified host control path.",
         restartManualTitle: "Restart is performed manually",
-        restartManualNote: "The panel shows an instruction instead of pretending the action is automatic.",
+        restartManualNote:
+          "The panel shows an instruction instead of pretending the action is automatic.",
         showInstruction: "Show instructions",
         routeEyebrow: "Auto-detection",
         routeTitle: "How the path was selected",
@@ -3712,25 +3766,32 @@ export const en: Dict = {
         logsConnected: "Journal",
         logsRouteNote: "History and live output come from the same detected source.",
         manualEyebrow: "Manual actions",
-        manualDescription: "These instructions are only needed for operations the panel cannot perform itself.",
+        manualDescription:
+          "These instructions are only needed for operations the panel cannot perform itself.",
         technicalEyebrow: "Technical data",
+        panelVariant: "Panel variant",
+        storageDrivers: "Storage drivers",
         technicalTrigger: "How the panel sees the host",
         technicalTitle: "How the panel sees the host",
-        technicalDescription: "Raw values for diagnostics, kept separate from the operator summary on the page.",
+        technicalDescription:
+          "Raw values for diagnostics, kept separate from the operator summary on the page.",
         confirmEyebrow: "Confirm action",
         confirmTitle: "Restart Telemt?",
         confirmSubtitle: "The panel will remain available and show the result.",
         manualRestartSubtitle: "A command to run as a system administrator.",
-        manualRestartDescription: "Open an administrator shell and run the command. The panel will not pretend to restart the service without verified privileges.",
+        manualRestartDescription:
+          "Open an administrator shell and run the command. The panel will not pretend to restart the service without verified privileges.",
         command: "Command",
-        noInstruction: "No automatic command is known for this host. Restart the Telemt service using your system's standard method.",
+        noInstruction:
+          "No automatic command is known for this host. Restart the Telemt service using your system's standard method.",
       },
     },
     settings: {
       title: "Panel settings",
       heroEyebrow: "Panel, not Telemt",
       heroTitle: "Access and interface under control",
-      heroNote: "Sessions apply to the entire panel. Language, theme and data detail are stored only in this browser and take effect immediately.",
+      heroNote:
+        "Sessions apply to the entire panel. Language, theme and data detail are stored only in this browser and take effect immediately.",
       thisDevice: "This device",
       localBadge: "Local",
       browserLanguage: "Browser",
@@ -3780,19 +3841,86 @@ export const en: Dict = {
       revokeOthersConfirm: "End every session except this one?",
       confirmation: "Confirmation",
       revokeOthersConfirmTitle: "End the other sessions?",
-      revokeOthersExplanation: "This browser will stay signed in. Another {count} sessions will lose access to the panel.",
+      revokeOthersExplanation:
+        "This browser will stay signed in. Another {count} sessions will lose access to the panel.",
       sessionRevoked: "Session ended",
       sessionsRevoked: "Other sessions ended",
       lastSeen: "Last seen",
       created: "Created",
       displayTitle: "Display",
       interfaceTitle: "Interface",
+      storageEyebrow: "Observability memory",
+      storageTitle: "History and storage",
+      storageNote:
+        "Technical state is always retained. Every other category is optional, so the panel does not impose either history depth or disk usage.",
+      storageMemoryWarning:
+        'The panel is currently using the RAM store. Policy settings survive through the panel mirror, but history is lost on restart. Select driver = "sqlite" for durable history.',
+      storageFallbackWarning:
+        "The configured {driver} database is unavailable. Data is held only in memory until restart and will not be copied into the persistent database automatically.",
+      storageSize: "On disk",
+      storageActive: "Recording",
+      storageRecords: "Records",
+      storageRecordsShort: "records",
+      storageProfile: "Preset",
+      storageProfiles: {
+        minimum: "Minimum",
+        recommended: "Recommended",
+        extended: "Extended",
+        custom: "Custom policy",
+      },
+      storageCategories: {
+        technical: {
+          title: "Technical metrics",
+          note: "Connections, online users, DC RTT and coverage, routing mode, and upstream state.",
+        },
+        events: {
+          title: "Panel events",
+          note: "Restarts, updates, configuration changes, and routing-mode transitions.",
+        },
+        audit: {
+          title: "Action audit",
+          note: "Sign-ins and administrative operations on users, settings, and services.",
+        },
+        connection_issues: {
+          title: "Connection issues",
+          note: "Refusals, attempts, handshake failures, and their change over time.",
+        },
+        traffic: {
+          title: "Aggregate traffic",
+          note: "Total inbound and outbound traffic and its rate over time.",
+        },
+        user_traffic: {
+          title: "Per-user traffic",
+          note: "Consumption history for individual users. This can grow the database substantially.",
+        },
+        diagnostics: {
+          title: "Extended diagnostics",
+          note: "Rare diagnostic events and additional technical aggregates.",
+        },
+      },
+      storageRetention: "Retain for",
+      storageDays: "{count} days",
+      storageTechnicalRequired:
+        "Required for charts and comparisons between current and previous state.",
+      storageKept: "New data is not recorded; existing history is retained.",
+      storageFooter:
+        "Disabling a category stops new writes without deleting existing data. Reducing retention removes expired records during the next cleanup.",
+      storageSave: "Save",
+      storageSaving: "Saving…",
+      storageSaved: "Storage settings saved",
+      storageClear: "Clear",
+      storageClearEyebrow: "Irreversible action",
+      storageClearTitle: "Delete retained history?",
+      storageClearConfirm:
+        "All retained data in “{category}” will be deleted. The future recording policy will not change.",
+      storagePurged: "Category history deleted",
       dangerZoneTitle: "Danger zone",
       signOut: "Sign out",
       signOutThisDevice: "Sign out on this device",
       signOutNote: "Other browsers and devices will stay signed in.",
       signOutConfirmTitle: "Sign out of the panel?",
-      signOutExplanation: "This browser will return to the sign-in screen. Other active sessions will not change.",
+      signOutExplanation:
+        "This browser will return to the sign-in screen. Other active sessions will not change.",
     },
   },
   dev: {
@@ -3814,6 +3942,7 @@ export const en: Dict = {
   errors: {
     // Panel-native codes.
     bad_request: "Malformed request.",
+    confirmation_required: "This action requires explicit confirmation.",
     invalid_credentials: "Wrong username or password.",
     rate_limited: "Too many sign-in attempts. Wait a minute and try again.",
     session_expired: "Your session expired. Sign in again.",
@@ -3838,10 +3967,13 @@ export const en: Dict = {
     read_only: "Telemt is running in read-only mode.",
     revision_conflict: "The configuration changed — reload it and try again.",
     invalid_toml: "The TOML syntax is invalid. Fix the structure and validate again.",
-    invalid_config_path: "The TOML contains a configuration path Telemt cannot change through its API.",
-    config_unset_unsupported: "Telemt's API cannot remove configuration keys. Restore them or edit the source file manually.",
+    invalid_config_path:
+      "The TOML contains a configuration path Telemt cannot change through its API.",
+    config_unset_unsupported:
+      "Telemt's API cannot remove configuration keys. Restore them or edit the source file manually.",
     no_changes: "The configuration has no changes to apply.",
-    toml_projection_failed: "The configuration contains a value that cannot be represented safely as TOML. Use the structured editor or edit the source file.",
+    toml_projection_failed:
+      "The configuration contains a value that cannot be represented safely as TOML. Use the structured editor or edit the source file.",
     reload_in_progress: "A config reload is already running.",
     reload_not_found: "That reload job no longer exists.",
     ambiguous_listeners: "The network listener setup is ambiguous — make the config explicit.",
@@ -3874,10 +4006,8 @@ export const en: Dict = {
       "That WEB session is gone: it closed and its record has already been evicted. Reload the list.",
     web_operation_not_found:
       "That close operation is no longer tracked — Telemt keeps only the last 32. Reload the session list to see the result.",
-    web_vhost_not_found:
-      "The WEB virtual host no longer exists. Refresh the access settings.",
-    web_profile_required:
-      "An enabled WEB virtual host must keep at least one access profile.",
+    web_vhost_not_found: "The WEB virtual host no longer exists. Refresh the access settings.",
+    web_profile_required: "An enabled WEB virtual host must keep at least one access profile.",
     network: "No connection to the server. Check your network and try again.",
     default: "The request failed. Try again.",
   },

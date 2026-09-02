@@ -9,12 +9,9 @@ import (
 )
 
 // historyRanges maps openapi GetHistory's `range` enum to a lookback
-// window. The store's RAM ring holds store.MetricCap points — 30 minutes at
-// the hub's default poll interval (see store/memory.go and hub.go's
-// recordStatsHistory) — so a longer range simply returns whatever shorter
-// history is actually retained rather than erroring: GET /api/history never
-// fails on an empty or partial result, per the task brief. The response's
-// `retention_secs` says which of the two happened.
+// window. A longer requested range simply returns whatever shorter history
+// the active store and category policy retain. GET /api/history never fails
+// on an empty or partial result; `retention_secs` describes the policy.
 var historyRanges = map[string]time.Duration{
 	"15m": 15 * time.Minute,
 	"30m": 30 * time.Minute,
@@ -48,18 +45,15 @@ type historyPointView struct {
 type historySeriesView struct {
 	Metric string `json:"metric"`
 	Range  string `json:"range"`
-	// RetentionSecs is how far back the ring can reach at all, whatever
-	// `range` asked for — the meta a client needs to decide whether the
-	// window it wants to compare against exists. 0 when the hub is absent
-	// (unit tests build a Server without one), which reads as "unknown".
+	// RetentionSecs is the selected metric category's retention. Zero means
+	// that persistent history for the category is disabled.
 	RetentionSecs int64              `json:"retention_secs"`
 	Points        []historyPointView `json:"points"`
 }
 
 // handleGetHistory implements GET /api/history?metric=&range=: a read of
-// the store's in-memory metric ring (ruling R3). Never errors on empty
-// history — an unrecorded or not-yet-populated metric simply comes back
-// with points: [] so the frontend can degrade its sparkline gracefully.
+// the active store. Never errors on empty history — an unrecorded,
+// disabled or not-yet-populated metric comes back with points: [].
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	metric := r.URL.Query().Get("metric")
 	if !historyKnownMetrics[metric] {
@@ -80,10 +74,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var retentionSecs int64
-	if s.hub != nil {
-		retentionSecs = int64(s.hub.HistoryRetention() / time.Second)
-	}
+	retentionSecs := int64(s.st.MetricRetention(metric) / time.Second)
 
 	writeJSON(w, http.StatusOK, historySeriesView{
 		Metric:        metric,

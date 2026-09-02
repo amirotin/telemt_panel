@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ServerShell } from "../ServerShell";
-import {
-  countLabel,
-  errorMessage,
-  useLocalePreference,
-  useStrings,
-} from "../../i18n";
+import { countLabel, errorMessage, useLocalePreference, useStrings } from "../../i18n";
 import { useTheme } from "../../lib/useTheme";
 import { useDisplayMode } from "../../display-mode";
 import { Button } from "../../ui/Button";
@@ -14,12 +9,7 @@ import { ConfirmView } from "../../ui/ConfirmView";
 import { ErrorState } from "../../ui/ErrorState";
 import { Sheet } from "../../ui/Sheet";
 import { Skeleton } from "../../ui/Skeleton";
-import {
-  IconChevronRight,
-  IconDevice,
-  IconDesktop,
-  IconLogout,
-} from "../../ui/icons";
+import { IconChevronRight, IconDevice, IconDesktop, IconLogout } from "../../ui/icons";
 import { pushToast } from "../../ui/Toast";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { useLogout } from "../../auth/useLogout";
@@ -35,6 +25,7 @@ import type { SessionInfo } from "../../lib/api/generated/types.gen";
 import { sessionDeviceLabel } from "./sessions.helpers";
 import { InterfacePreferences } from "./InterfacePreferences";
 import { SessionSheet } from "./SessionSheet";
+import { StorageSettings } from "./StorageSettings";
 
 function SessionGlyph({ session }: { session: SessionInfo }) {
   const mobile = /iphone|ipad|android/i.test(session.user_agent_label ?? "");
@@ -75,9 +66,7 @@ function MiniInterfacePreview() {
 export function SettingsPage() {
   const s = useStrings();
   const queryClient = useQueryClient();
-  const sessionsQuery = useQuery(
-    listSessionsOptions({ query: { limit: 4 } }),
-  );
+  const sessionsQuery = useQuery(listSessionsOptions({ query: { limit: 4 } }));
   const logout = useLogout();
   const [theme] = useTheme();
   const locale = useLocalePreference();
@@ -111,8 +100,7 @@ export function SettingsPage() {
       setConfirmOthers(false);
       invalidateSessions();
     },
-    onError: (err) =>
-      pushToast(errorMessage(s, apiErrorCode(err) ?? "internal_error"), "error"),
+    onError: (err) => pushToast(errorMessage(s, apiErrorCode(err) ?? "internal_error"), "error"),
   });
 
   const page = sessionsQuery.data;
@@ -128,7 +116,10 @@ export function SettingsPage() {
 
   return (
     <ServerShell title={s.server.settings.title}>
-      <section data-testid="settings-hero" className="overflow-hidden rounded-2xl border border-accent/30 bg-surface">
+      <section
+        data-testid="settings-hero"
+        className="overflow-hidden rounded-2xl border border-accent/30 bg-surface"
+      >
         <div className="grid lg:grid-cols-[1fr_0.92fr]">
           <div className="flex min-h-[174px] flex-col justify-center bg-[linear-gradient(135deg,color-mix(in_srgb,var(--accent)_10%,transparent),transparent_58%)] px-5 py-6 sm:px-6">
             <span className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-accent">
@@ -162,9 +153,7 @@ export function SettingsPage() {
             <dt className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-text-faint">
               {s.server.settings.activeSessionsLabel}
             </dt>
-            <dd className="mt-1 font-mono text-[16px] font-bold text-text">
-              {page?.total ?? "—"}
-            </dd>
+            <dd className="mt-1 font-mono text-[16px] font-bold text-text">{page?.total ?? "—"}</dd>
             <small className="mt-0.5 block truncate text-[9px] text-text-faint">
               {otherCount > 0
                 ? s.server.settings.canEnd.replace("{count}", String(otherCount))
@@ -186,9 +175,7 @@ export function SettingsPage() {
             <dt className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-text-faint">
               {s.server.settings.interfaceLabel}
             </dt>
-            <dd className="mt-1 truncate text-[14px] font-bold text-text">
-              {s.theme[theme]}
-            </dd>
+            <dd className="mt-1 truncate text-[14px] font-bold text-text">{s.theme[theme]}</dd>
             <small className="mt-0.5 block truncate text-[9px] text-text-faint">
               {s.server.settings.localOnly}
             </small>
@@ -197,7 +184,11 @@ export function SettingsPage() {
       </section>
 
       <div className="grid items-start gap-2.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(330px,0.65fr)]">
-        <section data-testid="settings-sessions" className="overflow-hidden rounded-xl bg-surface" aria-labelledby="sessions-title">
+        <section
+          data-testid="settings-sessions"
+          className="overflow-hidden rounded-xl bg-surface"
+          aria-labelledby="sessions-title"
+        >
           <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3.5">
             <div>
               <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-text-faint">
@@ -214,11 +205,7 @@ export function SettingsPage() {
                 </span>
               )}
               {otherCount > 0 && (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => setConfirmOthers(true)}
-                >
+                <Button variant="danger" size="sm" onClick={() => setConfirmOthers(true)}>
                   {s.server.settings.revokeOthers}
                 </Button>
               )}
@@ -256,7 +243,8 @@ export function SettingsPage() {
                     </small>
                   </span>
                   <span className="mt-1 block truncate text-[11px] text-text-faint">
-                    {currentSession.ip || s.server.settings.unknownAddress} · {s.server.settings.activeNow}
+                    {currentSession.ip || s.server.settings.unknownAddress} ·{" "}
+                    {s.server.settings.activeNow}
                   </span>
                 </span>
                 <IconChevronRight className="shrink-0 text-accent" aria-hidden="true" />
@@ -289,7 +277,8 @@ export function SettingsPage() {
                         {sessionDeviceLabel(session, s)}
                       </strong>
                       <small className="mt-1 block truncate text-[11px] text-text-faint">
-                        {session.ip || s.server.settings.unknownAddress} · {formatAuditTimestamp(session.last_seen, s)}
+                        {session.ip || s.server.settings.unknownAddress} ·{" "}
+                        {formatAuditTimestamp(session.last_seen, s)}
                       </small>
                     </span>
                     <IconChevronRight className="shrink-0 text-accent" aria-hidden="true" />
@@ -326,7 +315,10 @@ export function SettingsPage() {
           <InterfacePreferences />
 
           <section className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl bg-surface p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-error/10 text-error" aria-hidden="true">
+            <span
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-error/10 text-error"
+              aria-hidden="true"
+            >
               <IconLogout />
             </span>
             <div className="min-w-0">
@@ -352,6 +344,8 @@ export function SettingsPage() {
         </div>
       </div>
 
+      <StorageSettings />
+
       {sessionSheetOpen && (
         <SessionSheet
           open
@@ -361,9 +355,7 @@ export function SettingsPage() {
             setSessionSheetOpen(false);
             setInitialSession(null);
           }}
-          onRevoke={(sessionId) =>
-            revokeMutation.mutate({ path: { sessionId } })
-          }
+          onRevoke={(sessionId) => revokeMutation.mutate({ path: { sessionId } })}
         />
       )}
 

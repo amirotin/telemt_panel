@@ -304,6 +304,32 @@ func TestHealthStaysOpen(t *testing.T) {
 	}
 }
 
+func TestHealthReportsStoreFallbackWithoutCredentials(t *testing.T) {
+	srv := newTestServer(t)
+	srv.cfg.Store.Driver = "postgres"
+	srv.st = store.WithFallback(srv.st, "postgres", "postgres database is unavailable; using temporary memory storage until restart")
+	r := httptest.NewRequest("GET", "/api/health", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var response struct {
+		ConfiguredDriver string `json:"configured_driver"`
+		ActiveDriver     string `json:"active_driver"`
+		StoreError       string `json:"store_error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.ConfiguredDriver != "postgres" || response.ActiveDriver != "memory" || response.StoreError == "" {
+		t.Fatalf("health fallback = %+v", response)
+	}
+	if strings.Contains(response.StoreError, "password") {
+		t.Fatalf("health leaked credentials: %q", response.StoreError)
+	}
+}
+
 func listSessions(t *testing.T, h http.Handler, cookie *http.Cookie) sessionPage {
 	t.Helper()
 	r := httptest.NewRequest("GET", "/api/auth/sessions", nil)

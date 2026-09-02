@@ -20,9 +20,8 @@ listen = "0.0.0.0:8080"
 # trusted (CIDRs or single IPs). Empty (default) = headers ignored.
 # trusted_proxies = ["127.0.0.1/32", "::1/128"]
 
-# Directory the panel mirrors its own state to (sessions, subpage nonces,
-# settings) so it survives a restart with the "memory" store driver. Empty
-# string disables the mirror — state stays in RAM only.
+# Directory used for the memory driver's state mirror and update staging.
+# Empty disables the memory mirror; SQLite uses store.path independently.
 data_dir = "/var/lib/telemt-panel"
 
 [telemt]
@@ -45,10 +44,13 @@ password_hash = "$2a$10$CHANGE_ME"
 # session_ttl = "720h"
 
 [store]
-# "memory" (default) — in-RAM state, zero disk writes; fits routers.
-# "sqlite"           — persistent state + metric history (graphs); fits VPS.
-driver = "memory"
-# path = "/var/lib/telemt-panel/panel.db"
+# "sqlite" — durable panel state and configurable history; recommended for servers.
+# "memory" — in-RAM history with a small state mirror; intended for flash-sensitive routers.
+# Full builds also support "postgres" and "mysql" through dsn; lite builds contain only memory.
+driver = "sqlite"
+path = "/var/lib/telemt-panel/panel.db"
+# dsn = "postgres://user:password@127.0.0.1:5432/telemt_panel?sslmode=disable"
+# dsn = "user:password@tcp(127.0.0.1:3306)/telemt_panel?parseTime=true"
 
 [subpage]
 # Per-user subscription page at /sub/<token> (no login).

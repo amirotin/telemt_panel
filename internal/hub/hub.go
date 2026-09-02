@@ -172,6 +172,10 @@ type topicState struct {
 	name     string
 	interval time.Duration
 	fetch    fetchFunc
+	// persistent keeps a collector alive without subscribers. Durable
+	// stores use this for technical history; volatile stores preserve the
+	// demand-driven router profile.
+	persistent bool
 
 	subCount   int
 	running    bool
@@ -248,12 +252,9 @@ type Hub struct {
 	scheduleTimer func(d time.Duration, f func()) (stop func())
 }
 
-// New creates a Hub polling tc for this package's topic registry (users,
-// stats, runtime, upstreams, security, web). No poller runs until the first
-// Subscribe call for its topic. st records the "stats" topic's history
-// points (recordStatsHistory) into the RAM ring GET /api/history reads;
-// nil is accepted (e.g. tests that don't exercise history) and simply
-// skips recording.
+// New creates a Hub polling tc for this package's topic registry. Call
+// StartPersistentCollectors after construction to start durable history;
+// the memory driver remains demand-driven for the zero-write router profile.
 func New(cfg Config, tc *telemt.Client, st store.Store) *Hub {
 	cfg = cfg.withDefaults()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -278,10 +279,11 @@ func New(cfg Config, tc *telemt.Client, st store.Store) *Hub {
 			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchUsers(ctx, tc) },
 		},
 		"stats": {
-			name:     "stats",
-			wake:     make(chan struct{}, 1),
-			interval: cfg.StatsInterval,
-			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc, sysInfo) },
+			name:       "stats",
+			wake:       make(chan struct{}, 1),
+			interval:   cfg.StatsInterval,
+			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc, sysInfo) },
+			persistent: st != nil && st.Driver() == "sqlite",
 		},
 		"runtime": {
 			name:     "runtime",
@@ -782,7 +784,27 @@ func (h *Hub) recordMetric(name string, ts int64, value float64) {
 // which is exactly what Сводка's "−0,3 % за 15 мин" caption needs before it
 // can claim a comparison.
 func (h *Hub) HistoryRetention() time.Duration {
+	if h.st != nil && h.st.Driver() == "sqlite" {
+		return h.st.MetricRetention(metricConnections)
+	}
 	return time.Duration(store.MetricCap) * h.cfg.StatsInterval
+}
+
+// StartPersistentCollectors starts every topic marked for background
+// history collection. It is idempotent and does nothing for the memory
+// store, whose pollers remain subscriber-driven.
+func (h *Hub) StartPersistentCollectors() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, topic := range h.topics {
+		if !topic.persistent || topic.running || topic.fetch == nil {
+			continue
+		}
+		topic.running = true
+		topic.stop = make(chan struct{})
+		h.wg.Add(1)
+		go h.runPoller(topic)
+	}
 }
 
 // HeartbeatInterval returns the configured SSE heartbeat period.
@@ -874,7 +896,7 @@ func (h *Hub) closeSubscriberLocked(id uint64, sub *subscriber) {
 	for name := range sub.topics {
 		t := h.topics[name]
 		t.subCount--
-		if t.subCount == 0 && t.graceTimer == nil {
+		if t.subCount == 0 && !t.persistent && t.graceTimer == nil {
 			t.graceTimer = time.AfterFunc(h.cfg.Grace, func() { h.stopIfIdle(t) })
 		}
 	}
@@ -883,7 +905,7 @@ func (h *Hub) closeSubscriberLocked(id uint64, sub *subscriber) {
 func (h *Hub) stopIfIdle(t *topicState) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if t.subCount != 0 || !t.running {
+	if t.subCount != 0 || t.persistent || !t.running {
 		return
 	}
 	close(t.stop)

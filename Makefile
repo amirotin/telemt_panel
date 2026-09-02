@@ -1,7 +1,7 @@
 VERSION ?= 0.0.0-dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build test lint release clean mock web dev-frontend dev-backend
+.PHONY: build build-lite test lint release clean mock web dev-frontend dev-backend
 
 # Builds the SPA straight into internal/webui/dist (web/vite.config.ts's
 # outDir) — the package's go:embed directive picks it up with no
@@ -13,6 +13,9 @@ web:
 
 build: web
 	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o telemt-panel ./cmd/panel
+
+build-lite: web
+	CGO_ENABLED=0 go build -tags lite -ldflags="$(LDFLAGS)" -o telemt-panel-lite ./cmd/panel
 
 # Frontend dev server (vite) — proxies /api and /sub to dev-backend below.
 dev-frontend:
@@ -57,25 +60,45 @@ lint:
 	@go vet ./...
 
 # Static binaries for every supported target, router SoCs included, packaged
-# for internal/update's AssetMatcher (telemt-panel-<arch>-linux-<variant>.tar.gz
-# + <asset>.sha256, one file named telemt-panel per tarball). The panel is a
-# pure-Go static binary, so it's variant-independent: gnu and musl tarballs
-# carry identical content — this is what keeps the release installable on
-# both libc families while matching the 0.x-updater-compatible naming from
-# migration spec 08-migration.md.
+# for internal/update's AssetMatcher (+ <asset>.sha256, one file named
+# telemt-panel per tarball). Full contains every store driver; lite contains
+# only memory. Both are pure-Go static binaries, so the transitional 1.0
+# gnu/musl tarballs carry identical content for each build profile while
+# preserving the 0.x-updater-compatible names from migration spec 08.
 # Depends on `web` so the frontend is built exactly once, ahead of every
 # per-arch Go build below (they all embed the same internal/webui/dist).
 release: web
 	@rm -rf release/.stage
-	@mkdir -p release/.stage
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o release/.stage/x86_64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o release/.stage/aarch64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(LDFLAGS)" -o release/.stage/armv7/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="$(LDFLAGS)" -o release/.stage/mipsle/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="$(LDFLAGS)" -o release/.stage/mips/telemt-panel ./cmd/panel
+	@for path in full/x86_64 full/aarch64 full/armv7 lite/x86_64 lite/aarch64 lite/armv7 lite/mipsle lite/mips; do mkdir -p "release/.stage/$$path"; done
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o release/.stage/full/x86_64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o release/.stage/full/aarch64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(LDFLAGS)" -o release/.stage/full/armv7/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/armv7/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/mipsle/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/mips/telemt-panel ./cmd/panel
+	@for file in release/.stage/full/*/telemt-panel; do \
+		bytes=$$(wc -c < "$$file"); \
+		if [ "$$bytes" -gt 33554432 ]; then echo "full binary exceeds 32 MiB: $$file ($$bytes bytes)"; exit 1; fi; \
+	done
+	@for file in release/.stage/lite/*/telemt-panel; do \
+		bytes=$$(wc -c < "$$file"); \
+		if [ "$$bytes" -gt 16777216 ]; then echo "lite binary exceeds 16 MiB: $$file ($$bytes bytes)"; exit 1; fi; \
+	done
+	@for arch in x86_64 aarch64 armv7; do \
+		for variant in gnu musl; do \
+			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-$$arch-linux-$$variant.tar.gz -C release/.stage/full/$$arch telemt-panel; \
+		done; \
+	done
+	@for arch in mipsle mips; do \
+		for variant in gnu musl; do \
+			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-$$arch-linux-$$variant.tar.gz -C release/.stage/lite/$$arch telemt-panel; \
+		done; \
+	done
 	@for arch in x86_64 aarch64 armv7 mipsle mips; do \
 		for variant in gnu musl; do \
-			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-$$arch-linux-$$variant.tar.gz -C release/.stage/$$arch telemt-panel; \
+			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-lite-$$arch-linux-$$variant.tar.gz -C release/.stage/lite/$$arch telemt-panel; \
 		done; \
 	done
 	@rm -rf release/.stage
@@ -83,4 +106,4 @@ release: web
 	@echo "Release assets in ./release/"
 
 clean:
-	rm -rf telemt-panel release/
+	rm -rf telemt-panel telemt-panel-lite release/

@@ -139,9 +139,12 @@ type EngineConfig struct {
 	// minute timeout (release tarballs are small, but a stalled connection
 	// on a slow router link should not hang forever).
 	HTTPClient *http.Client
-	// Arch/Variant select which release asset matches this host; default
+	// Arch/Variant select which Telemt release asset matches this host; default
 	// to DetectArch()/DetectLibc(DefaultProbe()).
 	Arch, Variant string
+	// BuildVariant keeps panel self-updates on the running full/lite profile.
+	// Changing profile is an explicit installer operation.
+	BuildVariant string
 	// MaxNewer/MaxOlder bound how many releases ReleasesView returns in
 	// each direction; default 10/3.
 	MaxNewer, MaxOlder int
@@ -158,20 +161,21 @@ type EngineConfig struct {
 // global lock so a Telemt update and a panel self-update can never race
 // each other (spec 03-update-engine.md).
 type Engine struct {
-	runner      host.Runner
-	st          store.Store
-	targets     map[string]Target
-	stagingDir  string
-	github      *Client
-	githubToken string
-	hub         UpdatePublisher
-	httpClient  *http.Client
-	arch        string
-	variant     string
-	maxNewer    int
-	maxOlder    int
-	now         func() time.Time
-	newRunID    func() string
+	runner       host.Runner
+	st           store.Store
+	targets      map[string]Target
+	stagingDir   string
+	github       *Client
+	githubToken  string
+	hub          UpdatePublisher
+	httpClient   *http.Client
+	arch         string
+	variant      string
+	buildVariant string
+	maxNewer     int
+	maxOlder     int
+	now          func() time.Time
+	newRunID     func() string
 
 	mu           sync.Mutex
 	running      bool
@@ -183,21 +187,22 @@ type Engine struct {
 // every optional field left zero.
 func NewEngine(cfg EngineConfig) *Engine {
 	e := &Engine{
-		runner:      cfg.Runner,
-		st:          cfg.Store,
-		targets:     cfg.Targets,
-		stagingDir:  cfg.StagingDir,
-		github:      cfg.Github,
-		githubToken: cfg.GithubToken,
-		hub:         cfg.Hub,
-		httpClient:  cfg.HTTPClient,
-		arch:        cfg.Arch,
-		variant:     cfg.Variant,
-		maxNewer:    cfg.MaxNewer,
-		maxOlder:    cfg.MaxOlder,
-		now:         cfg.Now,
-		newRunID:    cfg.NewRunID,
-		runs:        make(map[string]RunStatus),
+		runner:       cfg.Runner,
+		st:           cfg.Store,
+		targets:      cfg.Targets,
+		stagingDir:   cfg.StagingDir,
+		github:       cfg.Github,
+		githubToken:  cfg.GithubToken,
+		hub:          cfg.Hub,
+		httpClient:   cfg.HTTPClient,
+		arch:         cfg.Arch,
+		variant:      cfg.Variant,
+		buildVariant: cfg.BuildVariant,
+		maxNewer:     cfg.MaxNewer,
+		maxOlder:     cfg.MaxOlder,
+		now:          cfg.Now,
+		newRunID:     cfg.NewRunID,
+		runs:         make(map[string]RunStatus),
 	}
 	if e.github == nil {
 		e.github = NewClient()
@@ -210,6 +215,9 @@ func NewEngine(cfg EngineConfig) *Engine {
 	}
 	if e.variant == "" {
 		e.variant = DetectLibc(DefaultProbe())
+	}
+	if e.buildVariant == "" {
+		e.buildVariant = "full"
 	}
 	if e.maxNewer == 0 {
 		e.maxNewer = 10
@@ -498,6 +506,13 @@ func assetBaseName(targetName string) string {
 	return "telemt"
 }
 
+func (e *Engine) assetMatcher(targetName string) AssetMatcher {
+	if targetName == TargetPanel {
+		return NewPanelAssetMatcher(e.arch, e.variant, e.buildVariant)
+	}
+	return NewAssetMatcher(assetBaseName(targetName), e.arch, e.variant)
+}
+
 // runPhases drives one run through the full state machine. See engine.go's
 // package doc and v2/specs/03-update-engine.md for the phase diagram.
 func (e *Engine) runPhases(ctx context.Context, targetName string, target Target, version string) error {
@@ -516,7 +531,7 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 	if !ok {
 		return e.fail(rc, PhaseChecking, "release not found: "+version)
 	}
-	matcher := NewAssetMatcher(assetBaseName(targetName), e.arch, e.variant)
+	matcher := e.assetMatcher(targetName)
 	bin, sum := matcher(rel.Assets)
 	if bin == nil {
 		return e.fail(rc, PhaseChecking, "no release asset matches this host's arch/libc")

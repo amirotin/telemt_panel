@@ -9,7 +9,7 @@ export type Error = {
      * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: totp_required (TOTP login), telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
      *
      */
-    code: 'bad_request' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
+    code: 'bad_request' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
     message: string;
 };
 
@@ -470,6 +470,9 @@ export type HostInfo = {
      */
     arch: string;
     os_release?: string;
+    panel_variant: 'full' | 'lite';
+    storage_drivers: Array<'memory' | 'sqlite' | 'postgres' | 'mysql'>;
+    active_store: 'memory' | 'sqlite' | 'postgres' | 'mysql';
     caps: {
         restart_telemt: boolean;
         restart_panel: boolean;
@@ -601,7 +604,7 @@ export type HistorySeries = {
     metric: string;
     range: string;
     /**
-     * How far back the ring can reach at all, regardless of `range` — the client uses it to tell "the window is empty" from "the window is older than the server keeps". 0 means unknown.
+     * Configured retention for this metric's category. The client uses it to distinguish an empty window from disabled history. 0 means disabled.
      *
      */
     retention_secs: number;
@@ -612,6 +615,46 @@ export type HistorySeries = {
         ts: number;
         v: number;
     }>;
+};
+
+export type StorageCategory = 'technical' | 'events' | 'audit' | 'connection_issues' | 'traffic' | 'user_traffic' | 'diagnostics';
+
+export type StoragePolicy = {
+    category: StorageCategory;
+    enabled: boolean;
+    retention_days: number;
+};
+
+export type StorageCategoryStats = {
+    category: StorageCategory;
+    records: number;
+};
+
+export type StorageStats = {
+    driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+    durable: boolean;
+    database_bytes: number;
+    categories: Array<StorageCategoryStats>;
+};
+
+export type StorageSettings = {
+    policies: Array<StoragePolicy>;
+    stats: StorageStats;
+    configured_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+    active_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+    /**
+     * Safe startup fallback reason without connection credentials.
+     */
+    store_error?: string;
+};
+
+export type StorageSettingsUpdate = {
+    policies: Array<StoragePolicy>;
+};
+
+export type StoragePurgeRequest = {
+    category: StorageCategory;
+    confirm: true;
 };
 
 export type GeoInfo = {
@@ -1947,6 +1990,72 @@ export type PutAutoUpdateResponses = {
 
 export type PutAutoUpdateResponse = PutAutoUpdateResponses[keyof PutAutoUpdateResponses];
 
+export type GetStorageSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/storage';
+};
+
+export type GetStorageSettingsResponses = {
+    /**
+     * Storage settings
+     */
+    200: StorageSettings;
+};
+
+export type GetStorageSettingsResponse = GetStorageSettingsResponses[keyof GetStorageSettingsResponses];
+
+export type PutStorageSettingsData = {
+    body: StorageSettingsUpdate;
+    path?: never;
+    query?: never;
+    url: '/api/settings/storage';
+};
+
+export type PutStorageSettingsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type PutStorageSettingsError = PutStorageSettingsErrors[keyof PutStorageSettingsErrors];
+
+export type PutStorageSettingsResponses = {
+    /**
+     * Saved
+     */
+    204: void;
+};
+
+export type PutStorageSettingsResponse = PutStorageSettingsResponses[keyof PutStorageSettingsResponses];
+
+export type PurgeStorageHistoryData = {
+    body: StoragePurgeRequest;
+    path?: never;
+    query?: never;
+    url: '/api/settings/storage/purge';
+};
+
+export type PurgeStorageHistoryErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type PurgeStorageHistoryError = PurgeStorageHistoryErrors[keyof PurgeStorageHistoryErrors];
+
+export type PurgeStorageHistoryResponses = {
+    /**
+     * History deleted
+     */
+    204: void;
+};
+
+export type PurgeStorageHistoryResponse = PurgeStorageHistoryResponses[keyof PurgeStorageHistoryResponses];
+
 export type StreamEventsData = {
     body?: never;
     path?: never;
@@ -2086,6 +2195,14 @@ export type GetHealthResponses = {
     200: {
         status: 'ok';
         version: string;
+        variant: 'full' | 'lite';
+        drivers: Array<'memory' | 'sqlite' | 'postgres' | 'mysql'>;
+        configured_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+        active_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+        /**
+         * Safe connection error without credentials; omitted when the configured store is active.
+         */
+        store_error?: string;
     };
 };
 

@@ -122,6 +122,10 @@ export const ru = {
     reconnecting: "Переподключение…",
     polling: "Опрос",
     retryConnection: "Переподключить",
+    storageFallbackTitle: "Постоянная база недоступна",
+    storageFallbackBody:
+      "Панель временно пишет данные в память. Проверьте {driver} и перезапустите панель — автоматического слияния данных не будет.",
+    storageFallbackAction: "Настройки хранения",
     placeholderDescription: "Экран появится в одной из следующих задач.",
   },
   people: {
@@ -187,7 +191,8 @@ export const ru = {
       edit: "Настроить",
       eyebrow: "Доступ пользователя",
       editorTitle: "WEB-профили",
-      editorHint: "Профиль связывает пользователя с конкретным vhost. Один человек может иметь несколько профилей для разных vhost или режимов секрета.",
+      editorHint:
+        "Профиль связывает пользователя с конкретным vhost. Один человек может иметь несколько профилей для разных vhost или режимов секрета.",
       profile: "Профиль",
       vhost: "Vhost",
       chooseVhost: "Выберите vhost",
@@ -195,7 +200,8 @@ export const ru = {
       modePlain: "Plain",
       modeDd: "DD",
       limits: "Индивидуальные ограничения",
-      limitsHint: "Пустое поле наследует общее ограничение WEB и обычно является правильным выбором.",
+      limitsHint:
+        "Пустое поле наследует общее ограничение WEB и обычно является правильным выбором.",
       maxSessions: "Сессий",
       maxStreams: "Потоков",
       maxStreamsPerSession: "Потоков на сессию",
@@ -1029,7 +1035,8 @@ export const ru = {
         },
         view: {
           breadcrumb: "ПУЛЬС / БЕЗОПАСНОСТЬ",
-          description: "Защита управляющего API, сигналы TLS ClientHello и эффективные сетевые лимиты.",
+          description:
+            "Защита управляющего API, сигналы TLS ClientHello и эффективные сетевые лимиты.",
           postureTab: "Защита API",
           tlsTab: "TLS ClientHello",
           limitsTab: "Лимиты",
@@ -1043,8 +1050,10 @@ export const ru = {
           verdictRestricted: "Доступ ограничен",
           verdictUnknown: "Ожидаем условия доступа",
           verdictOpenDescription: "Нет whitelist и auth header, при этом API разрешает изменения.",
-          verdictTlsDescription: "{count} наблюдений отмечены как некорректные или похожие на сканирование.",
-          verdictRestrictedDescription: "Whitelist ограничивает обращения к API; изменения разрешены после прохождения сетевого фильтра.",
+          verdictTlsDescription:
+            "{count} наблюдений отмечены как некорректные или похожие на сканирование.",
+          verdictRestrictedDescription:
+            "Whitelist ограничивает обращения к API; изменения разрешены после прохождения сетевого фильтра.",
           verdictUnknownDescription: "Оценка уточнится после получения всех условий доступа.",
           conditionsMet: "защитные условия выполняются",
           attentionRequired: "требует внимания",
@@ -1071,8 +1080,10 @@ export const ru = {
           permissions: "Полномочия",
           readOnlyDescription: "Только чтение",
           readWriteDescription: "Read-write · изменения разрешены",
-          openExplanation: "Одновременно отсутствуют оба барьера, а API принимает изменяющие запросы. Контур действительно открыт.",
-          barrierExplanation: "Отдельный выключенный механизм не считается уязвимостью сам по себе: оценка учитывает всю последовательность условий.",
+          openExplanation:
+            "Одновременно отсутствуют оба барьера, а API принимает изменяющие запросы. Контур действительно открыт.",
+          barrierExplanation:
+            "Отдельный выключенный механизм не считается уязвимостью сам по себе: оценка учитывает всю последовательность условий.",
           extraProperties: "Дополнительные свойства",
           transportObservability: "Транспорт и наблюдаемость",
           clientAddressHint: "адрес клиента от балансировщика",
@@ -1086,7 +1097,8 @@ export const ru = {
           allowedNetworksTitle: "Разрешённые сети",
           apiWhitelist: "Whitelist API",
           realCidrs: "Действующие CIDR из конфигурации Telemt.",
-          whitelistDisabledDescription: "Список отключён: записи не участвуют в фильтрации запросов.",
+          whitelistDisabledDescription:
+            "Список отключён: записи не участвуют в фильтрации запросов.",
           noRestriction: "Нет действующего ограничения",
           clientHelloWindow: "Окно TLS ClientHello",
           captureState: "Состояние захвата",
@@ -1133,13 +1145,15 @@ export const ru = {
           ipPolicyLimit: "Лимит IP",
           ipPolicyWindow: "Окно IP-политики",
           tcpPolicyLimit: "Лимит TCP-сессий",
-          limitsExplanation: "Это параметры поведения, а не самостоятельные security-alerts. Они отделены от оценки доступа, чтобы не размывать её десятками чисел.",
+          limitsExplanation:
+            "Это параметры поведения, а не самостоятельные security-alerts. Они отделены от оценки доступа, чтобы не размывать её десятками чисел.",
           technical: "Технические параметры",
           technicalDescription: "Имена полей API и полная конфигурация middle proxy.",
           loading: "Загружаем данные безопасности",
           loadingText: "Ожидаем снимок Telemt.",
           sourceError: "Не удалось обновить данные",
-          sourceErrorText: "Последний запрос завершился ошибкой. Можно повторить его без перезагрузки страницы.",
+          sourceErrorText:
+            "Последний запрос завершился ошибкой. Можно повторить его без перезагрузки страницы.",
           unavailable: "Данные пока недоступны",
           unavailableText: "Telemt не вернул этот раздел в текущем снимке.",
           retry: "Повторить",
@@ -1366,7 +1380,8 @@ export const ru = {
         handshakeErrorCodes: "С какими кодами middle proxy отклонял рукопожатия.",
         view: {
           breadcrumb: "ПУЛЬС / СЧЁТЧИКИ",
-          description: "Изменения за измеренное окно, причины отказов и накопительные значения пяти подсистем Telemt.",
+          description:
+            "Изменения за измеренное окно, причины отказов и накопительные значения пяти подсистем Telemt.",
           activityTab: "Сейчас",
           failuresTab: "Причины отказов",
           explorerTab: "Все счётчики",
@@ -1377,10 +1392,14 @@ export const ru = {
           collectingBaseline: "Собирается baseline",
           failuresMoving: "Растут счётчики отказов",
           flowStable: "Поток стабилен",
-          baselineDescription: "Нужен второй снимок, чтобы отделить текущее движение от истории процесса.",
-          restartDescription: "Telemt перезапустился: предыдущие абсолюты отброшены, начинается новое измерение.",
-          failuresMovingDescription: "За последнее окно выросли failure-счётчики: {count} новых сигналов.",
-          flowStableDescription: "Трафик проходит через активные подсистемы без нового движения failure-счётчиков.",
+          baselineDescription:
+            "Нужен второй снимок, чтобы отделить текущее движение от истории процесса.",
+          restartDescription:
+            "Telemt перезапустился: предыдущие абсолюты отброшены, начинается новое измерение.",
+          failuresMovingDescription:
+            "За последнее окно выросли failure-счётчики: {count} новых сигналов.",
+          flowStableDescription:
+            "Трафик проходит через активные подсистемы без нового движения failure-счётчиков.",
           newConnections: "Новые соединения",
           perWindow: "за измеренное окно",
           upstreamSuccess: "Успех upstream",
@@ -1394,9 +1413,12 @@ export const ru = {
           twoSnapshots: "Два снимка · {window}",
           currentTrafficPath: "Путь текущего трафика",
           absolutesInExplorer: "Абсолюты доступны во вкладке «Все счётчики»",
-          baselineWindowNote: "После открытия нужен второй снимок. Панель не превращает накопительные абсолюты в текущую скорость.",
-          restartWindowNote: "После рестарта нужен второй снимок. Сброшенные абсолюты не отображаются как отрицательная скорость.",
-          measuredWindowNote: "Значения показывают прирост, измеренный панелью. Telemt отдаёт только накопительные счётчики.",
+          baselineWindowNote:
+            "После открытия нужен второй снимок. Панель не превращает накопительные абсолюты в текущую скорость.",
+          restartWindowNote:
+            "После рестарта нужен второй снимок. Сброшенные абсолюты не отображаются как отрицательная скорость.",
+          measuredWindowNote:
+            "Значения показывают прирост, измеренный панелью. Telemt отдаёт только накопительные счётчики.",
           baseline: "baseline",
           active: "активен",
           hasFailures: "есть отказы",
@@ -1430,7 +1452,8 @@ export const ru = {
           middleProxyRejections: "Отклонения со стороны middle proxy",
           classesCount: "строк: {count}",
           noCodes: "Коды не зарегистрированы",
-          emptyArrayHonest: "Массив присутствует в ответе и пуст. Это не отсутствие данных и не скрытая ошибка.",
+          emptyArrayHonest:
+            "Массив присутствует в ответе и пуст. Это не отсутствие данных и не скрытая ошибка.",
           accumulatedCause: "накопленная причина",
           sinceStart: "с запуска",
           deltaPerWindow: "{delta} · {window}",
@@ -1449,7 +1472,8 @@ export const ru = {
           sinceOpen: "С открытия",
           noMatches: "По выбранному фильтру ничего не найдено.",
           sourceAndMethod: "Источник и метод измерения",
-          technicalDescription: "Endpoint, интервал сравнения и граница жизни накопительных значений.",
+          technicalDescription:
+            "Endpoint, интервал сравнения и граница жизни накопительных значений.",
           snapshotNotHistory: "snapshot, не history",
           panelInterval: "Интервал панели",
           neighborDifference: "разность соседних снимков",
@@ -1457,9 +1481,11 @@ export const ru = {
           reanchorsBaseline: "уменьшение переякоривает baseline",
           sourceTimestamp: "метка текущего ответа Telemt",
           loading: "Получаем счётчики Telemt",
-          loadingDescription: "Первый снимок станет baseline; текущее движение появится после следующего ответа.",
+          loadingDescription:
+            "Первый снимок станет baseline; текущее движение появится после следующего ответа.",
           sourceError: "Не удалось получить счётчики",
-          sourceErrorDescription: "Запрос zero/all завершился ошибкой. Его можно повторить без перезагрузки страницы.",
+          sourceErrorDescription:
+            "Запрос zero/all завершился ошибкой. Его можно повторить без перезагрузки страницы.",
           retry: "Повторить",
         },
       },
@@ -3320,7 +3346,8 @@ export const ru = {
         normalCount: "основных",
         fieldCount: "параметров",
         searchResults: "Результаты поиска",
-        searchDescription: "Поиск выполняется по всем разделам, TOML path, типам и названиям параметров.",
+        searchDescription:
+          "Поиск выполняется по всем разделам, TOML path, типам и названиям параметров.",
         searchPlaceholder: "Название, TOML path или тип",
         searchLabel: "Поиск параметров",
         emptyTitle: "Параметры не найдены",
@@ -3336,11 +3363,13 @@ export const ru = {
         applyRestart: "Потребуется перезапуск процесса.",
         applyConditional: "Способ применения зависит от сетевой привязки.",
         applyReload: "Применяется через runtime reload.",
-        webEnabledHint: "Управляет выдачей новых WEB-сессий; существующие соединения не закрываются.",
+        webEnabledHint:
+          "Управляет выдачей новых WEB-сессий; существующие соединения не закрываются.",
         fallbackHint: "Использовать direct только при недоступности ME.",
         middleProxyHint: "Основной маршрут Telegram-трафика через Middle-End.",
         clientModesTitle: "Режимы клиентских подключений",
-        clientModesHint: "Можно включить несколько режимов одновременно. Хотя бы один должен оставаться активным.",
+        clientModesHint:
+          "Можно включить несколько режимов одновременно. Хотя бы один должен оставаться активным.",
         clientModeClassicHint: "Обычные tg-ссылки MTProxy.",
         clientModeSecureHint: "Защищённые dd-ссылки.",
         clientModeTlsHint: "TLS camouflage и ee-ссылки.",
@@ -3355,9 +3384,11 @@ export const ru = {
         fastModeHint: "Использовать оптимизированные пути обработки трафика.",
         technicalRouting: "Дополнительные параметры маршрутизации",
         restartRequired: "Нужен перезапуск",
-        routingRestartHint: "Режимы клиентов и основной маршрут изменятся только после перезапуска Telemt.",
+        routingRestartHint:
+          "Режимы клиентов и основной маршрут изменятся только после перезапуска Telemt.",
         meDisabledTitle: "ME сейчас отключён",
-        meDisabledHint: "Параметры можно подготовить заранее, но они начнут действовать только после включения маршрута ME и перезапуска Telemt.",
+        meDisabledHint:
+          "Параметры можно подготовить заранее, но они начнут действовать только после включения маршрута ME и перезапуска Telemt.",
         meNatTitle: "Определение внешнего адреса",
         meNatHint: "ME использует внешний адрес и порт при работе сервера за NAT.",
         meNatProbeHint: "Определять внешний адрес через STUN при запуске Telemt.",
@@ -3373,7 +3404,8 @@ export const ru = {
         changes: "Изменения",
         draftCount: "Черновик · {count}",
         configSynchronized: "Конфигурация синхронизирована",
-        configSynchronizedHint: "Измените параметр — здесь появится состав черновика перед сохранением.",
+        configSynchronizedHint:
+          "Измените параметр — здесь появится состав черновика перед сохранением.",
         draftChanged: "Черновик изменён",
         draftChangedHint: "Перед отправкой панель покажет точный PATCH и способ применения.",
         active: "Активен",
@@ -3386,14 +3418,16 @@ export const ru = {
         addUpstream: "Добавить upstream",
         noUpstreams: "Upstream-маршруты не настроены.",
         upstreamArrayTitle: "Upstreams сохраняются массивом целиком.",
-        upstreamArrayHint: "В предпросмотре будет показан полный состав записей, даже если изменено одно поле.",
+        upstreamArrayHint:
+          "В предпросмотре будет показан полный состав записей, даже если изменено одно поле.",
         dcRouting: "Маршрутизация дата-центров",
         additionalTlsDomains: "Дополнительные TLS-домены",
         noAdditionalDomains: "Дополнительные домены не заданы.",
         tlsDomain: "TLS-домен",
         addTlsDomain: "Добавить TLS-домен",
         exclusiveMasks: "Эксклюзивные правила маскировки",
-        exclusiveMasksHint: "Каждое правило связывает SNI-домен с отдельной TCP-целью маскировки host:port.",
+        exclusiveMasksHint:
+          "Каждое правило связывает SNI-домен с отдельной TCP-целью маскировки host:port.",
         noExclusiveMasks: "Отдельные цели маскировки не заданы.",
         maskRule: "Правило",
         sniDomain: "SNI-домен",
@@ -3410,10 +3444,12 @@ export const ru = {
         lastListenerRequired: "Нужен хотя бы один слушатель",
         lastListenerShort: "Обязателен",
         listenerArrayTitle: "Слушатели сохраняются массивом целиком.",
-        listenerArrayHint: "Перед удалением последней привязки добавьте замену. Изменение привязки требует перезапуска процесса.",
+        listenerArrayHint:
+          "Перед удалением последней привязки добавьте замену. Изменение привязки требует перезапуска процесса.",
         webVhostCount: "Vhost: {count}",
         webStateTitle: "WEB-режим",
-        webStateHint: "Переносит трафик Telegram Desktop внутри HTTPS, который завершается на reverse proxy.",
+        webStateHint:
+          "Переносит трафик Telegram Desktop внутри HTTPS, который завершается на reverse proxy.",
         webListenerRequirement: "WEB-слушатель",
         webListenerReady: "Приватная WEB-привязка настроена.",
         webListenerMissing: "Добавьте слушатель с транспортом WEB в разделе «Слушатели».",
@@ -3422,36 +3458,43 @@ export const ru = {
         webVhostsMissing: "Добавьте заполненный vhost хотя бы с одним профилем.",
         webEnableBlocked: "Выполните оба условия, прежде чем разрешать новые WEB-сессии.",
         webCarrierTitle: "Carrier соединения",
-        webCarrierHint: "Выберите один предсказуемый транспорт или согласование упорядоченного набора по возможностям клиента.",
+        webCarrierHint:
+          "Выберите один предсказуемый транспорт или согласование упорядоченного набора по возможностям клиента.",
         webCarrierModeLabel: "Режим выбора carrier",
         webCarrierFixed: "Фиксированный",
         webCarrierFixedHint: "Один carrier для всех поддерживаемых клиентов.",
         webCarrierNegotiated: "Согласование",
         webCarrierNegotiatedHint: "Перебор carrier в заданном порядке.",
         webCarrierOrderTitle: "Порядок согласования",
-        webCarrierOrderHint: "Кандидаты проверяются сверху вниз; основной carrier остаётся финальным fallback.",
-        webCarrierIosHint: "Telegram на iOS всегда использует основной carrier и сейчас требует https.",
+        webCarrierOrderHint:
+          "Кандидаты проверяются сверху вниз; основной carrier остаётся финальным fallback.",
+        webCarrierIosHint:
+          "Telegram на iOS всегда использует основной carrier и сейчас требует https.",
         moveCarrierUp: "Переместить carrier выше",
         moveCarrierDown: "Переместить carrier ниже",
         removeCarrier: "Удалить carrier",
         webVhostsTitle: "Виртуальные хосты",
-        webVhostsHint: "Каждый публичный домен связывает decoy-сайт с явными пользователями доступа Telemt.",
+        webVhostsHint:
+          "Каждый публичный домен связывает decoy-сайт с явными пользователями доступа Telemt.",
         webNoVhosts: "Виртуальные хосты WEB не настроены.",
         webNewVhost: "Новый виртуальный хост",
         webPublicAddressMissing: "публичный адрес не задан",
         webProfileCount: "профилей: {count}",
         webAddVhost: "Добавить виртуальный хост",
         webDecoyTitle: "Decoy-сайт",
-        webDecoyHint: "Обычные веб-запросы направляются на upstream-сайт или обслуживаются из статического каталога.",
+        webDecoyHint:
+          "Обычные веб-запросы направляются на upstream-сайт или обслуживаются из статического каталога.",
         webDecoyMode: "Тип decoy",
         webDecoyModeHint: "В конфиге сохраняются только поля выбранной стратегии.",
         webDecoyHttp: "HTTP upstream",
         webDecoyStatic: "Статический каталог",
         webProfilesTitle: "Профили доступа",
         webProfilesHint: "Профили привязаны к пользователям и управляются в разделе «Люди».",
-        webProfilesManagedInPeople: "Назначение и ограничения профилей редактируются в карточке пользователя.",
+        webProfilesManagedInPeople:
+          "Назначение и ограничения профилей редактируются в карточке пользователя.",
         webManageProfiles: "Открыть «Люди»",
-        webNoAccessUsers: "Создайте хотя бы одного пользователя доступа, прежде чем добавлять WEB-профиль.",
+        webNoAccessUsers:
+          "Создайте хотя бы одного пользователя доступа, прежде чем добавлять WEB-профиль.",
         webNoProfiles: "У этого виртуального хоста нет профилей доступа.",
         webNewProfile: "Новый профиль доступа",
         webProfileUser: "Пользователь доступа",
@@ -3462,7 +3505,8 @@ export const ru = {
         webUserNoMatch: "Подходящие пользователи не найдены",
         webUserRefineSearch: "Уточните поиск, чтобы увидеть ещё {count}",
         webLimitsTitle: "Лимиты процесса и протокола",
-        webLimitsHint: "Границы ёмкости и потребления памяти. Изменения требуют перезапуска процесса.",
+        webLimitsHint:
+          "Границы ёмкости и потребления памяти. Изменения требуют перезапуска процесса.",
         webTimeoutsTitle: "Таймауты жизненного цикла WEB",
         webTimeoutsHint: "Дедлайны запросов, сессий, потоков и корректного завершения.",
         webDebugTitle: "Подробность диагностики WEB",
@@ -3653,8 +3697,10 @@ export const ru = {
         kicker: "Для опытных операторов",
         title: "TOML-представление управляемых параметров",
         projectionTitle: "Это не исходный telemt.toml",
-        projectionNote: "Это нормализованное представление Config API; комментарии и расположение include не сохраняются.",
-        projectionDetail: "TOML разбирается на backend панели, поэтому целые числа не проходят через JavaScript number.",
+        projectionNote:
+          "Это нормализованное представление Config API; комментарии и расположение include не сохраняются.",
+        projectionDetail:
+          "TOML разбирается на backend панели, поэтому целые числа не проходят через JavaScript number.",
         openEditor: "Открыть редактор",
         mobileNote: "Полноэкранный редактор · изменения не применяются до отдельного сохранения",
         doneAndValidate: "Готово и проверить",
@@ -3666,7 +3712,8 @@ export const ru = {
         previewKicker: "До сохранения",
         previewTitle: "Точный план изменений",
         materializedTitle: "Будут созданы отсутствующие секции",
-        materializedDetail: "Telemt материализует нормализованные defaults; фактическая запись может быть шире sparse PATCH.",
+        materializedDetail:
+          "Telemt материализует нормализованные defaults; фактическая запись может быть шире sparse PATCH.",
         arraysTitle: "Массивы заменяются целиком",
         arraysDetail: "В PATCH попадут все записи массива, включая неизменённые.",
         patchTitle: "Показать точный JSON PATCH",
@@ -3746,9 +3793,11 @@ export const ru = {
       rollbackDetail: "Неуспешная проверка здоровья возвращает предыдущий бинарник.",
       hostCapabilities: "Возможности хоста",
       installUnavailableTitle: "Почему установка недоступна",
-      installUnavailableDetail: "Панель может проверить доступную версию, но текущей установке не хватает прав для безопасной замены бинарников и перезапуска сервисов.",
+      installUnavailableDetail:
+        "Панель может проверить доступную версию, но текущей установке не хватает прав для безопасной замены бинарников и перезапуска сервисов.",
       installerPendingTitle: "Команда пока не публикуется",
-      installerPendingDetail: "Команда восстановления зависит от менеджера сервисов и режима привилегий хоста. Здесь появится проверенная инструкция для конкретной платформы, а не универсальная shell-команда.",
+      installerPendingDetail:
+        "Команда восстановления зависит от менеджера сервисов и режима привилегий хоста. Здесь появится проверенная инструкция для конкретной платформы, а не универсальная shell-команда.",
       dismiss: "Понятно",
       autoUpdate: {
         title: "Автообновление",
@@ -3766,7 +3815,8 @@ export const ru = {
         intervalDetail: "Единый интервал для обеих целей",
         hours: "{count} ч",
         unavailableTitle: "Автоустановка недоступна",
-        unavailableDetail: "Панель запущена без root-доступа или разрешённого sudo. Проверка и уведомления продолжат работать.",
+        unavailableDetail:
+          "Панель запущена без root-доступа или разрешённого sudo. Проверка и уведомления продолжат работать.",
         save: "Сохранить",
         savedShort: "Сохранено",
         saved: "Настройки автообновления сохранены",
@@ -3795,21 +3845,27 @@ export const ru = {
       view: {
         localKicker: "Локальный контур",
         localTitle: "API доступен только с этого сервера",
-        localDescription: "Whitelist пропускает только loopback-адреса. Отдельный auth-header не обязателен: внешний узел до API не доберётся.",
+        localDescription:
+          "Whitelist пропускает только loopback-адреса. Отдельный auth-header не обязателен: внешний узел до API не доберётся.",
         remoteKicker: "Удалённое управление",
         layeredTitle: "Доступ ограничен сетью и секретом",
-        layeredDescription: "API принимает запросы только из разрешённых сетей и дополнительно проверяет auth-header.",
+        layeredDescription:
+          "API принимает запросы только из разрешённых сетей и дополнительно проверяет auth-header.",
         restrictedKicker: "Ограниченный контур",
         whitelistTitle: "API доступен только разрешённым сетям",
-        whitelistDescription: "Whitelist сужает поверхность доступа. Управляющие запросы принимаются только после сетевой проверки.",
+        whitelistDescription:
+          "Whitelist сужает поверхность доступа. Управляющие запросы принимаются только после сетевой проверки.",
         authTitle: "API защищён секретным заголовком",
-        authDescription: "Сетевого ограничения нет, но каждый запрос должен пройти проверку auth-header.",
+        authDescription:
+          "Сетевого ограничения нет, но каждый запрос должен пройти проверку auth-header.",
         readOnlyKicker: "Только чтение",
         readOnlyTitle: "Изменения через API запрещены",
-        readOnlyDescription: "Сетевых барьеров нет, но API не принимает изменяющие запросы. Читаемые данные всё ещё могут требовать ограничения доступа.",
+        readOnlyDescription:
+          "Сетевых барьеров нет, но API не принимает изменяющие запросы. Читаемые данные всё ещё могут требовать ограничения доступа.",
         exposedKicker: "Открытый контур",
         exposedTitle: "API не ограничен и не проверяет секрет",
-        exposedDescription: "Если порт доступен извне, любой узел сможет читать и изменять конфигурацию Telemt. Ограничьте сеть или включите auth-header.",
+        exposedDescription:
+          "Если порт доступен извне, любой узел сможет читать и изменять конфигурацию Telemt. Ограничьте сеть или включите auth-header.",
         unknownKicker: "Ожидаем данные",
         unknownTitle: "Условия доступа пока неизвестны",
         unknownDescription: "Итоговая оценка появится после получения posture от Telemt.",
@@ -3840,9 +3896,11 @@ export const ru = {
         open: "Открыт",
         restricted: "Ограничен",
         dangerousCombination: "Опасная комбинация",
-        dangerousCombinationDescription: "API открыт для всех адресов, не требует секрета и разрешает изменения.",
+        dangerousCombinationDescription:
+          "API открыт для всех адресов, не требует секрета и разрешает изменения.",
         safeCombination: "Защитные условия согласованы",
-        safeCombinationDescription: "Итог учитывает whitelist, auth-header и режим записи вместе, а не тревожит по каждому выключенному флагу.",
+        safeCombinationDescription:
+          "Итог учитывает whitelist, auth-header и режим записи вместе, а не тревожит по каждому выключенному флагу.",
         configured: "Настроен",
         readWrite: "Чтение и изменение",
         entries: "{count} записей",
@@ -3852,7 +3910,8 @@ export const ru = {
         active: "Активны",
         perIp: "на IP",
         activePerIp: "До {count} активных клиентов с одного IP",
-        activeWindowDescription: "Окно активности — {seconds} секунд. Лимит защищает от концентрации подключений, не мешая обычному NAT.",
+        activeWindowDescription:
+          "Окно активности — {seconds} секунд. Лимит защищает от концентрации подключений, не мешая обычному NAT.",
         policy: "Политика",
         tcpLimit: "TCP-лимит",
         unlimited: "Не задан",
@@ -3865,7 +3924,8 @@ export const ru = {
         fingerprintDistribution: "Распределение наблюдений по наиболее частым TLS-отпечаткам",
         openDiagnostics: "Подробная диагностика",
         context: "Контекст",
-        contextDescription: "Эти параметры объясняют окружение, но сами по себе не означают «безопасно» или «опасно».",
+        contextDescription:
+          "Эти параметры объясняют окружение, но сами по себе не означают «безопасно» или «опасно».",
         effectiveConfig: "Эффективная конфигурация",
         timeoutsAndLimits: "Таймауты и защитные лимиты",
         sheetDescription: "Фактические runtime-значения Telemt после применения defaults.",
@@ -3901,9 +3961,11 @@ export const ru = {
         heroEyebrow: "Контур управления",
         availableShort: "доступно",
         automatedTitle: "Хост управляется автоматически",
-        automatedDescription: "Панель видит системные сервисы, имеет подтверждённый путь выполнения операций и может читать журнал без ручного вмешательства.",
+        automatedDescription:
+          "Панель видит системные сервисы, имеет подтверждённый путь выполнения операций и может читать журнал без ручного вмешательства.",
         partialTitle: "Часть операций выполняется вручную",
-        partialDescription: "Наблюдение остаётся доступным, а для операций без подтверждённого пути панель покажет точную инструкцию вместо неработающей кнопки.",
+        partialDescription:
+          "Наблюдение остаётся доступным, а для операций без подтверждённого пути панель покажет точную инструкцию вместо неработающей кнопки.",
         controlSource: "Управление",
         controlPanel: "Панель",
         controlTarget: "Сервисы и журнал",
@@ -3935,7 +3997,8 @@ export const ru = {
         restartAvailableTitle: "Telemt можно перезапустить из панели",
         restartAvailableNote: "Команда пройдёт через проверенный путь управления хостом.",
         restartManualTitle: "Перезапуск выполняется вручную",
-        restartManualNote: "Панель покажет инструкцию и не будет имитировать автоматическое действие.",
+        restartManualNote:
+          "Панель покажет инструкцию и не будет имитировать автоматическое действие.",
         showInstruction: "Показать инструкцию",
         routeEyebrow: "Автоопределение",
         routeTitle: "Как выбран путь",
@@ -3945,25 +4008,32 @@ export const ru = {
         logsConnected: "Журнал",
         logsRouteNote: "История и поток читаются из одного обнаруженного источника.",
         manualEyebrow: "Ручные действия",
-        manualDescription: "Эти инструкции нужны только для операций, которые панель не может выполнить сама.",
+        manualDescription:
+          "Эти инструкции нужны только для операций, которые панель не может выполнить сама.",
         technicalEyebrow: "Технические данные",
+        panelVariant: "Вариант панели",
+        storageDrivers: "Драйверы хранения",
         technicalTrigger: "Как панель видит хост",
         technicalTitle: "Как панель видит хост",
-        technicalDescription: "Raw-значения для диагностики, не конкурирующие с операторским выводом на странице.",
+        technicalDescription:
+          "Raw-значения для диагностики, не конкурирующие с операторским выводом на странице.",
         confirmEyebrow: "Подтверждение действия",
         confirmTitle: "Перезапустить Telemt?",
         confirmSubtitle: "Панель останется доступна и покажет результат операции.",
         manualRestartSubtitle: "Команда для выполнения от администратора системы.",
-        manualRestartDescription: "Откройте shell от администратора и выполните команду. Панель не будет имитировать перезапуск без подтверждённых прав.",
+        manualRestartDescription:
+          "Откройте shell от администратора и выполните команду. Панель не будет имитировать перезапуск без подтверждённых прав.",
         command: "Команда",
-        noInstruction: "Автоматическая команда для этого хоста не определена. Перезапустите сервис Telemt штатным способом вашей системы.",
+        noInstruction:
+          "Автоматическая команда для этого хоста не определена. Перезапустите сервис Telemt штатным способом вашей системы.",
       },
     },
     settings: {
       title: "Настройки панели",
       heroEyebrow: "Панель, а не Telemt",
       heroTitle: "Доступ и интерфейс под контролем",
-      heroNote: "Сеансы относятся ко всей панели. Язык, тема и детализация сохраняются только в этом браузере и применяются сразу.",
+      heroNote:
+        "Сеансы относятся ко всей панели. Язык, тема и детализация сохраняются только в этом браузере и применяются сразу.",
       thisDevice: "Это устройство",
       localBadge: "Локально",
       browserLanguage: "Браузер",
@@ -4013,19 +4083,86 @@ export const ru = {
       revokeOthersConfirm: "Завершить все остальные сессии, кроме текущей?",
       confirmation: "Подтверждение",
       revokeOthersConfirmTitle: "Завершить остальные сеансы?",
-      revokeOthersExplanation: "Текущий браузер останется авторизован. Ещё {count} сеансов потеряют доступ к панели.",
+      revokeOthersExplanation:
+        "Текущий браузер останется авторизован. Ещё {count} сеансов потеряют доступ к панели.",
       sessionRevoked: "Сессия завершена",
       sessionsRevoked: "Остальные сессии завершены",
       lastSeen: "Последняя активность",
       created: "Создана",
       displayTitle: "Отображение",
       interfaceTitle: "Интерфейс",
+      storageEyebrow: "Память наблюдаемости",
+      storageTitle: "История и хранение",
+      storageNote:
+        "Техническое состояние сохраняется всегда. Остальные категории можно включать независимо — панель не навязывает ни глубину истории, ни расход диска.",
+      storageMemoryWarning:
+        'Сейчас используется RAM-хранилище. Настройки сохранятся в зеркале панели, но сама история пропадёт после перезапуска. Для постоянной истории выберите driver = "sqlite".',
+      storageFallbackWarning:
+        "Настроенная база {driver} недоступна. До перезапуска данные хранятся только в памяти и не будут автоматически перенесены в постоянную базу.",
+      storageSize: "На диске",
+      storageActive: "Записывается",
+      storageRecords: "Записей",
+      storageRecordsShort: "записей",
+      storageProfile: "Готовый профиль",
+      storageProfiles: {
+        minimum: "Минимум",
+        recommended: "Рекомендуемый",
+        extended: "Расширенный",
+        custom: "Собственная настройка",
+      },
+      storageCategories: {
+        technical: {
+          title: "Технические метрики",
+          note: "Соединения, онлайн, RTT и покрытие DC, режим маршрутизации и состояние апстримов.",
+        },
+        events: {
+          title: "События панели",
+          note: "Перезапуски, обновления, изменения конфигурации и переходы между режимами.",
+        },
+        audit: {
+          title: "Аудит действий",
+          note: "Входы и административные операции с пользователями, настройками и сервисами.",
+        },
+        connection_issues: {
+          title: "Проблемы подключений",
+          note: "Отказы, попытки, ошибки handshake и их динамика во времени.",
+        },
+        traffic: {
+          title: "Общий трафик",
+          note: "Суммарный входящий и исходящий трафик и скорость по времени.",
+        },
+        user_traffic: {
+          title: "Трафик пользователей",
+          note: "История потребления по отдельным пользователям. Может заметно увеличить базу.",
+        },
+        diagnostics: {
+          title: "Расширенная диагностика",
+          note: "Редкие диагностические события и дополнительные технические агрегаты.",
+        },
+      },
+      storageRetention: "Хранить",
+      storageDays: "{count} дн.",
+      storageTechnicalRequired:
+        "Обязательная основа графиков и сравнения текущего состояния с прошлым.",
+      storageKept: "Новые данные не записываются; накопленная история сохранена.",
+      storageFooter:
+        "Отключение категории останавливает новые записи, но не удаляет существующие. Уменьшение срока хранения удалит устаревшие записи при ближайшей очистке.",
+      storageSave: "Сохранить",
+      storageSaving: "Сохранение…",
+      storageSaved: "Настройки хранения сохранены",
+      storageClear: "Очистить",
+      storageClearEyebrow: "Необратимое действие",
+      storageClearTitle: "Удалить накопленную историю?",
+      storageClearConfirm:
+        "Все сохранённые данные категории «{category}» будут удалены. Настройка будущей записи не изменится.",
+      storagePurged: "История категории удалена",
       dangerZoneTitle: "Опасная зона",
       signOut: "Выйти",
       signOutThisDevice: "Выйти на этом устройстве",
       signOutNote: "Другие браузеры и устройства останутся авторизованы.",
       signOutConfirmTitle: "Выйти из панели?",
-      signOutExplanation: "Этот браузер вернётся на экран входа. Остальные активные сеансы не изменятся.",
+      signOutExplanation:
+        "Этот браузер вернётся на экран входа. Остальные активные сеансы не изменятся.",
     },
   },
   // errors maps every {code} the panel's JSON error envelope can carry
@@ -4054,6 +4191,7 @@ export const ru = {
   errors: {
     // Panel-native codes.
     bad_request: "Некорректный запрос.",
+    confirmation_required: "Нужно явно подтвердить действие.",
     invalid_credentials: "Неверное имя пользователя или пароль.",
     rate_limited: "Слишком много попыток входа. Подождите минуту и повторите.",
     session_expired: "Сессия истекла. Войдите снова.",
@@ -4079,10 +4217,13 @@ export const ru = {
     read_only: "Telemt работает в режиме только для чтения.",
     revision_conflict: "Конфигурация изменена — обновите её и повторите попытку.",
     invalid_toml: "Синтаксис TOML некорректен. Исправьте структуру и повторите проверку.",
-    invalid_config_path: "В TOML указан путь конфигурации, который нельзя изменить через API Telemt.",
-    config_unset_unsupported: "API Telemt не умеет удалять параметры конфигурации. Верните их или измените исходный файл вручную.",
+    invalid_config_path:
+      "В TOML указан путь конфигурации, который нельзя изменить через API Telemt.",
+    config_unset_unsupported:
+      "API Telemt не умеет удалять параметры конфигурации. Верните их или измените исходный файл вручную.",
     no_changes: "В конфигурации нет изменений для применения.",
-    toml_projection_failed: "Конфигурация содержит значение, которое нельзя безопасно представить в TOML. Используйте структурный редактор или измените исходный файл.",
+    toml_projection_failed:
+      "Конфигурация содержит значение, которое нельзя безопасно представить в TOML. Используйте структурный редактор или измените исходный файл.",
     reload_in_progress: "Перезагрузка конфигурации уже выполняется.",
     reload_not_found: "Задача перезагрузки не найдена.",
     ambiguous_listeners: "Неоднозначная настройка сетевых слушателей — уточните конфигурацию.",
@@ -4115,8 +4256,7 @@ export const ru = {
       "Этой WEB-сессии больше нет: она закрылась, а след о ней уже вытеснен. Обновите список.",
     web_operation_not_found:
       "Операция закрытия больше не отслеживается — Telemt хранит только последние 32. Обновите список сессий, чтобы увидеть результат.",
-    web_vhost_not_found:
-      "Виртуальный хост WEB больше не существует. Обновите настройки доступа.",
+    web_vhost_not_found: "Виртуальный хост WEB больше не существует. Обновите настройки доступа.",
     web_profile_required:
       "У включённого виртуального хоста WEB должен оставаться хотя бы один профиль доступа.",
     // Not an envelope code — synthesized client-side when fetch itself throws

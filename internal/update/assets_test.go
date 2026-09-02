@@ -178,3 +178,28 @@ func TestNewAssetMatcher(t *testing.T) {
 		})
 	}
 }
+
+func TestNewPanelAssetMatcherPreservesBuildVariant(t *testing.T) {
+	assets := []Asset{
+		{Name: "telemt-panel-x86_64-linux-gnu.tar.gz"},
+		{Name: "telemt-panel-lite-x86_64-linux-gnu.tar.gz"},
+		{Name: "telemt-panel-lite-x86_64-linux.tar.gz"},
+		{Name: "telemt-panel-lite-x86_64-linux.tar.gz.sha256"},
+	}
+	bin, sum := NewPanelAssetMatcher("x86_64", "gnu", "lite")(assets)
+	if bin == nil || bin.Name != "telemt-panel-lite-x86_64-linux.tar.gz" {
+		t.Fatalf("canonical lite match = %+v", bin)
+	}
+	if sum == nil || sum.Name != bin.Name+".sha256" {
+		t.Fatalf("canonical lite checksum = %+v", sum)
+	}
+
+	assets = assets[:2]
+	bin, _ = NewPanelAssetMatcher("x86_64", "gnu", "lite")(assets)
+	if bin == nil || bin.Name != "telemt-panel-lite-x86_64-linux-gnu.tar.gz" {
+		t.Fatalf("transitional lite match = %+v", bin)
+	}
+	if bin, _ = NewPanelAssetMatcher("x86_64", "gnu", "full")(assets); bin == nil || bin.Name != "telemt-panel-x86_64-linux-gnu.tar.gz" {
+		t.Fatalf("transitional full match = %+v", bin)
+	}
+}

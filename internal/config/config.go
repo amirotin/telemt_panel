@@ -73,11 +73,12 @@ func (a AuthConfig) SessionTTLDuration() time.Duration {
 	return d
 }
 
-// StoreConfig selects the state backend: in-memory rings (router profile,
-// zero flash writes) or SQLite (vps profile, metric history).
+// StoreConfig selects the state backend. DSN is used only by network stores
+// and must never be included in logs or API responses.
 type StoreConfig struct {
-	Driver string `toml:"driver"` // "memory" (default) | "sqlite"
+	Driver string `toml:"driver"` // memory (default) | sqlite | postgres | mysql
 	Path   string `toml:"path"`
+	DSN    string `toml:"dsn"`
 }
 
 // SubpageConfig controls the per-user subscription page.
@@ -198,8 +199,12 @@ func Load(path string) (*Config, error) {
 		if cfg.Store.Path == "" {
 			return nil, fmt.Errorf("store.path is required for the sqlite driver")
 		}
+	case "postgres", "mysql":
+		if cfg.Store.DSN == "" {
+			return nil, fmt.Errorf("store.dsn is required for the %s driver", cfg.Store.Driver)
+		}
 	default:
-		return nil, fmt.Errorf("store.driver: unknown driver %q (memory | sqlite)", cfg.Store.Driver)
+		return nil, fmt.Errorf("store.driver: unknown driver %q (memory | sqlite | postgres | mysql)", cfg.Store.Driver)
 	}
 
 	if cfg.Subpage.Enabled && cfg.Subpage.Secret == "" {

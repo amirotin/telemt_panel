@@ -42,6 +42,7 @@ NO_START=0
 COLOR=1
 BINARY_FILE=""
 REQ_VERSION=""
+BUILD_VARIANT=""
 
 # ── Detection globals ────────────────────────────────────────────────────────
 ARCH=""
@@ -70,6 +71,8 @@ TELEMT_BIN=""
 TELEMT_SVC="telemt"
 RUN_AS="user"
 INSTALLED_TAG=""
+STORE_DRIVER=""
+STORE_DSN=""
 
 SUDO=""
 TEMP_DIR=""
@@ -128,6 +131,7 @@ t() {
   --lang ru|en     язык (иначе спросим; подсказка из $LANG)
   --version vX.Y.Z конкретный релиз (иначе последний стабильный)
   --binary FILE    поставить готовый бинарь вместо скачивания
+  --variant full|lite вариант бинаря (по умолчанию выбирается по системе)
   --yes            без вопросов: значения из переменных TP_* или умолчания
   --no-start       установить, но не запускать сервис
   --dry-run        показать, что будет сделано, ничего не меняя
@@ -136,7 +140,8 @@ t() {
 Переменные для --yes (в интерактиве задают умолчания):
   TP_LANG, TP_TELEMT_URL, TP_TELEMT_AUTH_HEADER, TP_ADMIN_USER,
   TP_ADMIN_PASSWORD (обязательна), TP_LISTEN, TP_TELEMT_BINARY,
-  TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR
+  TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR,
+  TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|postgres|mysql|memory, TP_STORE_DSN
 
 Пути: бинарь %s, конфиг %s, данные %s
 ' ;;
@@ -154,6 +159,7 @@ Options:
   --lang ru|en     language (otherwise asked; hint taken from $LANG)
   --version vX.Y.Z install a specific release (default: latest stable)
   --binary FILE    install a local binary instead of downloading
+  --variant full|lite binary profile (selected from the platform by default)
   --yes            no questions: values from TP_* variables or defaults
   --no-start       install everything but do not start the service
   --dry-run        show what would be done without changing anything
@@ -162,7 +168,8 @@ Options:
 Variables for --yes (they pre-fill defaults in interactive mode):
   TP_LANG, TP_TELEMT_URL, TP_TELEMT_AUTH_HEADER, TP_ADMIN_USER,
   TP_ADMIN_PASSWORD (required), TP_LISTEN, TP_TELEMT_BINARY,
-  TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR
+  TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR,
+  TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|postgres|mysql|memory, TP_STORE_DSN
 
 Paths: binary %s, config %s, data %s
 ' ;;
@@ -216,6 +223,8 @@ Paths: binary %s, config %s, data %s
     en:d_arch) _f='Architecture' ;;
     ru:d_libc) _f='Библиотека C' ;;
     en:d_libc) _f='C library' ;;
+    ru:d_variant) _f='Вариант панели' ;;
+    en:d_variant) _f='Panel variant' ;;
     ru:d_init) _f='Система запуска' ;;
     en:d_init) _f='Init system' ;;
     ru:d_sudo) _f='sudo' ;;
@@ -316,10 +325,30 @@ Paths: binary %s, config %s, data %s
     en:run_as_forced_procd) _f='On OpenWrt services run as root; no dedicated user is created.' ;;
     ru:run_as_forced_nosudo) _f='На хосте нет sudo или useradd — панель будет работать от root.\nЧтобы запускать её от отдельного пользователя, установите sudo и запустите скрипт снова.' ;;
     en:run_as_forced_nosudo) _f='No sudo or useradd on this host — the panel will run as root.\nInstall sudo and re-run the script to run it as a dedicated user.' ;;
+    ru:q_storage) _f='Где хранить состояние и историю?\n1) SQLite — файл на этом сервере (рекомендуется)\n2) PostgreSQL\n3) MySQL/MariaDB\n4) Память — данные истории пропадут после перезапуска' ;;
+    en:q_storage) _f='Where should panel state and history be stored?\n1) SQLite — a file on this server (recommended)\n2) PostgreSQL\n3) MySQL/MariaDB\n4) Memory — history is lost on restart' ;;
+    ru:x_storage) _f='SQLite подходит одной панели. PostgreSQL/MySQL удобны, если база уже обслуживается отдельно.\nТехнические метрики сохраняются всегда; остальные категории можно отключить в интерфейсе.' ;;
+    en:x_storage) _f='SQLite fits a single panel. PostgreSQL/MySQL are useful when you already operate a database service.\nTechnical metrics are always retained; other history categories can be disabled in the UI.' ;;
+    ru:q_store_dsn) _f='DSN подключения (ввод скрыт)' ;;
+    en:q_store_dsn) _f='Connection DSN (hidden input)' ;;
+    ru:store_lite_only) _f='Lite-вариант хранит состояние только в памяти. Для SQLite/PostgreSQL/MySQL установите full: sh install.sh --variant full' ;;
+    en:store_lite_only) _f='The lite variant stores state in memory only. For SQLite/PostgreSQL/MySQL install full: sh install.sh --variant full' ;;
+    ru:store_lite_existing) _f='Нельзя установить lite поверх конфигурации с хранилищем %s: lite поддерживает только memory. Текущая установка не изменена. Оставьте full или сначала осознанно перенесите состояние и конфиг на memory.' ;;
+    en:store_lite_existing) _f='Cannot install lite over a configuration using the %s store: lite supports memory only. The current installation was not changed. Keep full, or deliberately migrate the state and configuration to memory first.' ;;
+    ru:store_checking) _f='Проверяю подключение к %s…' ;;
+    en:store_checking) _f='Checking the %s connection…' ;;
+    ru:store_check_ok) _f='Подключение к %s работает' ;;
+    en:store_check_ok) _f='%s connection works' ;;
+    ru:store_check_fail) _f='Не удалось подключиться к %s. Конфиг и сервис ещё не изменены.' ;;
+    en:store_check_fail) _f='Could not connect to %s. Config and services have not been changed.' ;;
 
     # ── summary ──
     ru:s_version) _f='Версия панели' ;;
     en:s_version) _f='Panel version' ;;
+    ru:s_variant) _f='Вариант' ;;
+    en:s_variant) _f='Variant' ;;
+    ru:s_storage) _f='Хранилище' ;;
+    en:s_storage) _f='Storage' ;;
     ru:s_latest) _f='последняя стабильная' ;;
     en:s_latest) _f='latest stable' ;;
     ru:s_local_binary) _f='локальный файл %s' ;;
@@ -1045,10 +1074,38 @@ detect_all() {
   detect_tools
   detect_existing
   detect_telemt
+  choose_build_variant
+}
+
+choose_build_variant() {
+  _requested="${BUILD_VARIANT:-${TP_VARIANT:-}}"
+  if [ -z "$_requested" ] && [ -x "$PANEL_BIN" ]; then
+    case $("$PANEL_BIN" version 2>/dev/null || true) in
+      *'(lite:'*) _requested="lite" ;;
+      *'(full:'*) _requested="full" ;;
+    esac
+  fi
+  if [ -z "$_requested" ]; then
+    case "$INIT:$ARCH" in
+      procd:*|*:mips|*:mipsle) _requested="lite" ;;
+      *) _requested="full" ;;
+    esac
+  fi
+  case "$_requested" in
+    full|lite) BUILD_VARIANT="$_requested" ;;
+    *) die "$(t unknown_option "--variant $_requested")" ;;
+  esac
+  case "$BUILD_VARIANT:$ARCH" in
+    full:mips|full:mipsle) die "$(t unsupported_arch "$ARCH (full)")" ;;
+  esac
+  if [ -z "$STORE_DRIVER" ]; then
+    if [ "$BUILD_VARIANT" = "lite" ]; then STORE_DRIVER="memory"; else STORE_DRIVER="sqlite"; fi
+  fi
 }
 
 print_detection() {
   kv "$(t d_arch)" "$ARCH ($LIBC)"
+  kv "$(t d_variant)" "$BUILD_VARIANT"
   kv "$(t d_init)" "$INIT"
   if [ "$HAS_SUDO" = 1 ]; then
     kv "$(t d_sudo)" "$(t d_available)"
@@ -1119,6 +1176,15 @@ gen_config() {
   if [ "$SUBPAGE_ENABLED" = "yes" ]; then
     _sub="true"
   fi
+  _store_driver="${STORE_DRIVER:-sqlite}"
+  if [ "$INIT" = "procd" ]; then
+    _store_driver="memory"
+  fi
+  _store_detail_line=""
+  case "$_store_driver" in
+    sqlite) _store_detail_line="path = \"$(toml_escape "$DATA_DIR/panel.db")\"" ;;
+    postgres|mysql) _store_detail_line="dsn = \"$(toml_escape "$STORE_DSN")\"" ;;
+  esac
   if [ "$L" = "ru" ]; then
     _c_top="# Панель никогда не переписывает этот файл: настройки из UI живут в store."
     _c_listen="# Адрес панели. За reverse proxy на подпути добавьте base_path = \"/panel\"."
@@ -1170,7 +1236,8 @@ EOF
   cat <<EOF
 
 [store]
-driver = "memory"
+driver = "$_store_driver"
+$_store_detail_line
 
 [subpage]
 $_c_sub
@@ -1557,6 +1624,44 @@ ask_run_as() {
   if [ "$_c" = 2 ]; then RUN_AS="root"; else RUN_AS="user"; fi
 }
 
+ask_storage() {
+  blank
+  if [ "$BUILD_VARIANT" = "lite" ]; then
+    STORE_DRIVER="memory"
+    STORE_DSN=""
+    explain store_lite_only
+    return 0
+  fi
+  explain x_storage
+  _default=1
+  case "${TP_STORE_DRIVER:-sqlite}" in
+    sqlite) _default=1 ;;
+    postgres) _default=2 ;;
+    mysql) _default=3 ;;
+    memory) _default=4 ;;
+    *) die "$(t unknown_option "TP_STORE_DRIVER=${TP_STORE_DRIVER:-}")" ;;
+  esac
+  ask_choice _store_choice q_storage "$_default" "1 2 3 4"
+  # shellcheck disable=SC2154  # assigned indirectly by ask_choice
+  case "$_store_choice" in
+    1) STORE_DRIVER="sqlite" ;;
+    2) STORE_DRIVER="postgres" ;;
+    3) STORE_DRIVER="mysql" ;;
+    4) STORE_DRIVER="memory" ;;
+  esac
+  STORE_DSN=""
+  case "$STORE_DRIVER" in
+    postgres|mysql)
+      if [ "$ASSUME_YES" = 1 ]; then
+        STORE_DSN="${TP_STORE_DSN:-}"
+        [ -n "$STORE_DSN" ] || die "$(t missing_env TP_STORE_DSN)"
+      else
+        ask_secret STORE_DSN q_store_dsn
+        [ -n "$STORE_DSN" ] || die "$(t missing_env TP_STORE_DSN)"
+      fi ;;
+  esac
+}
+
 collect_answers() {
   if [ "$ASSUME_YES" = 1 ] && [ -z "${TP_TELEMT_URL:-}" ] && [ -z "$TELEMT_URL_DETECTED" ]; then
     warn "$(t missing_env TP_TELEMT_URL)"
@@ -1565,6 +1670,7 @@ collect_answers() {
   ask_listen
   ask_admin
   ask_subpage
+  ask_storage
   ask_telemt_paths
   ask_run_as
   SUBPAGE_SECRET=$(gen_secret)
@@ -1576,6 +1682,8 @@ print_summary() {
   else
     kv "$(t s_version)" "${REQ_VERSION:-$(t s_latest)}"
   fi
+  kv "$(t s_variant)" "$BUILD_VARIANT"
+  kv "$(t s_storage)" "$STORE_DRIVER"
   kv "$(t s_listen)" "$LISTEN"
   kv "$(t s_admin)" "$ADMIN_USER"
   kv "$(t s_telemt_url)" "$TELEMT_URL"
@@ -1681,6 +1789,14 @@ resolve_tag() {
 }
 
 # fetch_release — puts the panel binary at $STAGED_BIN.
+release_asset_name() {
+  _asset_prefix="$BINARY_NAME"
+  if [ "$BUILD_VARIANT" = "lite" ]; then
+    _asset_prefix="$BINARY_NAME-lite"
+  fi
+  printf '%s-%s-linux-%s.tar.gz' "$_asset_prefix" "$ARCH" "$LIBC"
+}
+
 fetch_release() {
   ensure_temp_dir
   if [ -n "$BINARY_FILE" ]; then
@@ -1692,7 +1808,7 @@ fetch_release() {
     return 0
   fi
   resolve_tag
-  _asset="$BINARY_NAME-$ARCH-linux-$LIBC.tar.gz"
+  _asset=$(release_asset_name)
   _base="https://github.com/$REPO/releases/download/$INSTALLED_TAG"
   _tar="$TEMP_DIR/$_asset"
   say "$(t a_download "$_asset ($INSTALLED_TAG)")"
@@ -1723,6 +1839,18 @@ fetch_release() {
 install_binary() {
   run install -m 0755 "$STAGED_BIN" "$PANEL_BIN"
   ok "$(t a_installed_bin "$PANEL_BIN" "$INSTALLED_TAG")"
+}
+
+check_store_connection() {
+  case "$STORE_DRIVER" in
+    postgres|mysql)
+      say "$(t store_checking "$STORE_DRIVER")"
+      if "$STAGED_BIN" store check --driver "$STORE_DRIVER" --dsn "$STORE_DSN" >/dev/null 2>&1; then
+        ok "$(t store_check_ok "$STORE_DRIVER")"
+      else
+        die "$(t store_check_fail "$STORE_DRIVER")"
+      fi ;;
+  esac
 }
 
 # hash_password — bcrypt via the staged binary (works before it is installed).
@@ -1858,6 +1986,7 @@ load_v1_config() {
   _v=$(toml_value "$CONFIG_FILE" host telemt_service); [ -n "$_v" ] && TELEMT_SVC="$_v"
   _v=$(toml_value "$CONFIG_FILE" updates telemt_binary_path); TELEMT_BIN="${_v:-/bin/telemt}"
   _v=$(toml_value "$CONFIG_FILE" updates panel_binary_path); [ -n "$_v" ] && PANEL_BIN="$_v"
+  _v=$(toml_value "$CONFIG_FILE" store driver); STORE_DRIVER="${_v:-memory}"
   _v=$(toml_value "$CONFIG_FILE" privileges mode)
   case "$_v" in
     direct) RUN_AS="root" ;;
@@ -1867,6 +1996,15 @@ load_v1_config() {
   # A 1.x install that still runs as a service user keeps doing so.
   if [ "$INIT" = "systemd" ] && [ -f "$SERVICE_FILE" ] && grep -q "^User=$SYSTEM_USER" "$SERVICE_FILE"; then
     RUN_AS="user"
+  fi
+}
+
+# validate_existing_store_variant refuses a profile switch that would leave the
+# preserved configuration unreadable by the newly installed binary. It runs
+# before fetch_release and before any users, files or services are changed.
+validate_existing_store_variant() {
+  if [ "$BUILD_VARIANT" = "lite" ] && [ "$STORE_DRIVER" != "memory" ]; then
+    die "$(t store_lite_existing "$STORE_DRIVER")"
   fi
 }
 
@@ -1990,10 +2128,13 @@ apply_layout_from_answers() {
 do_update_existing() {
   step 3 step_update
   load_v1_config
+  validate_existing_store_variant
   apply_layout_from_answers
   explain update_intro "$CONFIG_FILE"
   blank
   kv "$(t s_version)" "${BINARY_FILE:-${REQ_VERSION:-$(t s_latest)}}"
+  kv "$(t s_variant)" "$BUILD_VARIANT"
+  kv "$(t s_storage)" "$STORE_DRIVER"
   kv "$(t s_run_as)" "$([ "$RUN_AS" = user ] && printf '%s' "$SYSTEM_USER" || printf 'root')"
   kv "$(t s_service)" "$INIT: $SERVICE_FILE"
   blank
@@ -2061,9 +2202,10 @@ do_install() {
   confirm apply_q || { say "$(t aborted)"; exit 0; }
 
   step 5 step_apply
+  fetch_release
+  check_store_connection
   create_user
   setup_dirs
-  fetch_release
   hash_password
   install_binary
   write_config
@@ -2177,6 +2319,8 @@ parse_args() {
       --version=*) REQ_VERSION="${1#--version=}" ;;
       --binary) shift; BINARY_FILE="${1:-}" ;;
       --binary=*) BINARY_FILE="${1#--binary=}" ;;
+      --variant) shift; BUILD_VARIANT="${1:-}" ;;
+      --variant=*) BUILD_VARIANT="${1#--variant=}" ;;
       --yes|-y) ASSUME_YES=1 ;;
       --no-start) NO_START=1 ;;
       --dry-run) DRY_RUN=1 ;;

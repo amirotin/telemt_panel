@@ -126,6 +126,7 @@ DATA_DIR="/var/lib/telemt-panel"
 PANEL_BIN="/usr/local/bin/telemt-panel"
 
 # ── gen_config ───────────────────────────────────────────────────────────────
+INIT="systemd"
 gen_config >"$TMP/cfg.toml"
 assert_eq "config listen" "0.0.0.0:8080" "$(toml_value "$TMP/cfg.toml" "" listen)"
 assert_contains "config escaped header" 'auth_header = "he\"ad\\er"' "$TMP/cfg.toml"
@@ -133,6 +134,19 @@ assert_eq "config privileges sudo" "sudo" "$(toml_value "$TMP/cfg.toml" privileg
 assert_eq "config subpage on" "true" "$(toml_value "$TMP/cfg.toml" subpage enabled)"
 assert_eq "config subpage secret" "deadbeef" "$(toml_value "$TMP/cfg.toml" subpage secret)"
 assert_eq "config telemt bin" "/bin/telemt" "$(toml_value "$TMP/cfg.toml" updates telemt_binary_path)"
+assert_eq "config durable store" "sqlite" "$(toml_value "$TMP/cfg.toml" store driver)"
+assert_eq "config sqlite path" "/var/lib/telemt-panel/panel.db" "$(toml_value "$TMP/cfg.toml" store path)"
+STORE_DRIVER="postgres"; STORE_DSN='postgres://user:p"ass@db/panel'
+gen_config >"$TMP/cfg-postgres.toml"
+assert_eq "config postgres driver" "postgres" "$(toml_value "$TMP/cfg-postgres.toml" store driver)"
+assert_contains "config postgres escaped dsn" 'dsn = "postgres://user:p\"ass@db/panel"' "$TMP/cfg-postgres.toml"
+assert_not_contains "config postgres no sqlite path" 'path = "/var/lib/telemt-panel/panel.db"' "$TMP/cfg-postgres.toml"
+STORE_DRIVER="sqlite"; STORE_DSN=""
+INIT="procd"
+gen_config >"$TMP/cfg-procd.toml"
+assert_eq "config procd memory store" "memory" "$(toml_value "$TMP/cfg-procd.toml" store driver)"
+assert_not_contains "config procd no sqlite path" 'path = "/var/lib/telemt-panel/panel.db"' "$TMP/cfg-procd.toml"
+INIT="systemd"
 RUN_AS="root"; SUBPAGE_ENABLED="no"
 gen_config >"$TMP/cfg2.toml"
 assert_eq "config privileges direct" "direct" "$(toml_value "$TMP/cfg2.toml" privileges mode)"
@@ -261,7 +275,10 @@ esac
 # The migrated config must load in the real binary when one is available.
 BIN="${TP_TEST_BINARY:-$HERE/../telemt-panel}"
 if [ -x "$BIN" ]; then
-  sed 's#^data_dir = .*#data_dir = ""#; s#^listen = .*#listen = "127.0.0.1:0"#' "$TMP/v1.toml" >"$TMP/v1-run.toml"
+  sed -e 's#^data_dir = .*#data_dir = ""#' \
+      -e 's#^listen = .*#listen = "127.0.0.1:0"#' \
+      -e "s#^path = .*#path = \"$TMP/panel.db\"#" \
+      "$TMP/v1.toml" >"$TMP/v1-run.toml"
   # The binary needs a port and a reachable-or-not Telemt; both are fine
   # for a load check because the panel starts even with Telemt down.
   ( "$BIN" --config "$TMP/v1-run.toml" >"$TMP/panel.log" 2>&1 & echo $! >"$TMP/pid" )
@@ -279,6 +296,60 @@ detect_arch
 case "$ARCH" in x86_64|aarch64|armv7|mipsle|mips) pass ;; *) fail "detect_arch: $ARCH" ;; esac
 detect_libc
 case "$LIBC" in gnu|musl) pass ;; *) fail "detect_libc: $LIBC" ;; esac
+
+# ── build variant and release asset selection ────────────────────────────────
+INIT="systemd"; ARCH="x86_64"; LIBC="gnu"; PANEL_BIN="$TMP/no-panel"; BUILD_VARIANT=""; TP_VARIANT=""
+choose_build_variant
+assert_eq "server defaults full" "full" "$BUILD_VARIANT"
+assert_eq "full release asset" "telemt-panel-x86_64-linux-gnu.tar.gz" "$(release_asset_name)"
+BUILD_VARIANT=""; TP_VARIANT="lite"
+choose_build_variant
+assert_eq "variant override lite" "lite" "$BUILD_VARIANT"
+assert_eq "lite release asset" "telemt-panel-lite-x86_64-linux-gnu.tar.gz" "$(release_asset_name)"
+TP_VARIANT=""; BUILD_VARIANT=""; INIT="procd"
+choose_build_variant
+assert_eq "procd defaults lite" "lite" "$BUILD_VARIANT"
+
+# An update keeps config.toml intact, so a full -> lite switch must be refused
+# before installing a binary that cannot open the configured SQL store.
+cat >"$TMP/existing-v1.toml" <<'EOF'
+[store]
+driver = "sqlite"
+path = "/var/lib/telemt-panel/panel.db"
+EOF
+CONFIG_FILE="$TMP/existing-v1.toml"
+BUILD_VARIANT="lite"
+load_v1_config
+assert_eq "existing store driver loaded" "sqlite" "$STORE_DRIVER"
+if (validate_existing_store_variant) >/dev/null 2>&1; then
+  fail "lite accepted existing sqlite store"
+else
+  pass
+fi
+
+cat >"$TMP/existing-memory-v1.toml" <<'EOF'
+[store]
+driver = "memory"
+EOF
+CONFIG_FILE="$TMP/existing-memory-v1.toml"
+load_v1_config
+if (validate_existing_store_variant) >/dev/null 2>&1; then
+  pass
+else
+  fail "lite rejected existing memory store"
+fi
+
+# Configs written before the store section existed used the memory backend.
+: >"$TMP/existing-legacy-v1.toml"
+CONFIG_FILE="$TMP/existing-legacy-v1.toml"
+STORE_DRIVER="sqlite"
+load_v1_config
+assert_eq "missing store section means memory" "memory" "$STORE_DRIVER"
+if (validate_existing_store_variant) >/dev/null 2>&1; then
+  pass
+else
+  fail "lite rejected legacy memory config"
+fi
 
 printf '%s passed, %s failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]

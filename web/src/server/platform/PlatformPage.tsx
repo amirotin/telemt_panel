@@ -110,6 +110,8 @@ function TechnicalSheet({
     ["os", info.os],
     ["arch", info.arch],
     ["os_release", info.os_release ?? "—"],
+    [copy.panelVariant, info.panel_variant],
+    [copy.storageDrivers, `${info.active_store} · ${info.storage_drivers.join(", ")}`],
   ];
 
   return (
@@ -245,6 +247,9 @@ export function PlatformPage() {
                 <StatePill state={automated ? "ok" : "warn"}>
                   {summary.available} / {summary.total} {copy.availableShort}
                 </StatePill>
+                <span className="rounded-full border border-border bg-bg/35 px-2 py-1 font-mono text-[9px] font-bold uppercase text-text-muted">
+                  {info.panel_variant}
+                </span>
               </div>
               <h2 className="mt-4 max-w-xl text-[24px] font-bold leading-tight tracking-[-0.025em] text-text sm:text-[28px]">
                 {automated ? copy.automatedTitle : copy.partialTitle}

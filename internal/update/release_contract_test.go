@@ -92,6 +92,28 @@ func TestReleaseContract(t *testing.T) {
 			})
 		}
 	}
+
+	for _, arch := range releaseArches {
+		for _, libc := range releaseVariants {
+			t.Run("lite-"+arch+"-"+libc, func(t *testing.T) {
+				bin, sum := NewPanelAssetMatcher(arch, libc, "lite")(assets)
+				if bin == nil {
+					t.Fatalf("no lite tarball matched for arch=%q libc=%q", arch, libc)
+				}
+				wantBin := AssetName("telemt-panel-lite", arch, libc)
+				if bin.Name != wantBin {
+					t.Fatalf("matched lite binary = %q, want %q", bin.Name, wantBin)
+				}
+				if sum == nil || sum.Name != wantBin+".sha256" {
+					t.Fatalf("matched lite checksum = %+v", sum)
+				}
+				name, content := onlyTarEntry(t, filepath.Join(dir, bin.Name))
+				if name != "telemt-panel" || len(content) == 0 {
+					t.Fatalf("lite tarball %q entry = %q (%d bytes)", bin.Name, name, len(content))
+				}
+			})
+		}
+	}
 }
 
 // onlyTarEntry reads tarGzPath and returns the name and content of its one

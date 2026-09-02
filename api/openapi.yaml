@@ -749,6 +749,36 @@ paths:
         "204": { description: Saved }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /api/settings/storage:
+    get:
+      tags: [misc]
+      operationId: getStorageSettings
+      description: Returns optional history policies and the active store footprint. Mandatory panel state is not configurable here.
+      responses:
+        "200": { description: Storage settings, content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettings" } } } }
+    put:
+      tags: [misc]
+      operationId: putStorageSettings
+      description: Replaces the complete optional-history policy set. Disabling a category stops future writes but does not delete retained data.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettingsUpdate" } } }
+      responses:
+        "204": { description: Saved }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/settings/storage/purge:
+    post:
+      tags: [misc]
+      operationId: purgeStorageHistory
+      description: Permanently deletes retained history for one category without changing its write policy.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StoragePurgeRequest" } } }
+      responses:
+        "204": { description: History deleted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   # ───────────────────────── realtime ─────────────────────────
   /api/events:
     get:
@@ -831,10 +861,19 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, version]
+                required: [status, version, variant, drivers, configured_driver, active_driver]
                 properties:
                   status: { type: string, enum: [ok] }
                   version: { type: string }
+                  variant: { type: string, enum: [full, lite] }
+                  drivers:
+                    type: array
+                    items: { type: string, enum: [memory, sqlite, postgres, mysql] }
+                  configured_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+                  active_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+                  store_error:
+                    type: string
+                    description: Safe connection error without credentials; omitted when the configured store is active.
 
   /api/logs/tail:
     get:
@@ -948,6 +987,7 @@ components:
           type: string
           enum:
             - bad_request
+            - confirmation_required
             - invalid_credentials
             - rate_limited
             - session_expired
@@ -1519,7 +1559,7 @@ components:
 
     HostInfo:
       type: object
-      required: [service_manager, log_source, privileges_mode, os, arch, caps]
+      required: [service_manager, log_source, privileges_mode, os, arch, panel_variant, storage_drivers, active_store, caps]
       properties:
         service_manager: { type: string, enum: [systemd, openrc, procd, sysvinit, docker, none] }
         log_source: { type: string, enum: [journald, logread, syslog, docker, file, none] }
@@ -1527,6 +1567,11 @@ components:
         os: { type: string, description: Go runtime operating system identifier, example: linux }
         arch: { type: string, description: Go runtime architecture identifier, example: amd64 }
         os_release: { type: string }
+        panel_variant: { type: string, enum: [full, lite] }
+        storage_drivers:
+          type: array
+          items: { type: string, enum: [memory, sqlite, postgres, mysql] }
+        active_store: { type: string, enum: [memory, sqlite, postgres, mysql] }
         caps:
           type: object
           required: [restart_telemt, restart_panel, log_tail, log_stream, self_update]
@@ -1659,9 +1704,8 @@ components:
           type: integer
           format: int64
           description: >
-            How far back the ring can reach at all, regardless of `range` — the client
-            uses it to tell "the window is empty" from "the window is older than the
-            server keeps". 0 means unknown.
+            Configured retention for this metric's category. The client uses it to
+            distinguish an empty window from disabled history. 0 means disabled.
         points:
           type: array
           items:
@@ -1670,6 +1714,65 @@ components:
             properties:
               ts: { type: integer, format: int64, description: epoch seconds }
               v: { type: number }
+
+    StorageCategory:
+      type: string
+      enum: [technical, events, audit, connection_issues, traffic, user_traffic, diagnostics]
+
+    StoragePolicy:
+      type: object
+      required: [category, enabled, retention_days]
+      properties:
+        category: { $ref: "#/components/schemas/StorageCategory" }
+        enabled: { type: boolean }
+        retention_days: { type: integer, minimum: 1, maximum: 3650 }
+
+    StorageCategoryStats:
+      type: object
+      required: [category, records]
+      properties:
+        category: { $ref: "#/components/schemas/StorageCategory" }
+        records: { type: integer, format: int64, minimum: 0 }
+
+    StorageStats:
+      type: object
+      required: [driver, durable, database_bytes, categories]
+      properties:
+        driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+        durable: { type: boolean }
+        database_bytes: { type: integer, format: int64, minimum: 0 }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/StorageCategoryStats" }
+
+    StorageSettings:
+      type: object
+      required: [policies, stats, configured_driver, active_driver]
+      properties:
+        policies:
+          type: array
+          items: { $ref: "#/components/schemas/StoragePolicy" }
+        stats: { $ref: "#/components/schemas/StorageStats" }
+        configured_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+        active_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+        store_error:
+          type: string
+          description: Safe startup fallback reason without connection credentials.
+
+    StorageSettingsUpdate:
+      type: object
+      required: [policies]
+      properties:
+        policies:
+          type: array
+          items: { $ref: "#/components/schemas/StoragePolicy" }
+
+    StoragePurgeRequest:
+      type: object
+      required: [category, confirm]
+      properties:
+        category: { $ref: "#/components/schemas/StorageCategory" }
+        confirm: { type: boolean, const: true }
 
     GeoInfo:
       type: object

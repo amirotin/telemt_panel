@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -51,6 +52,7 @@ type Memory struct {
 	metrics       map[string][]MetricPoint
 	subpageNonces map[string]string
 	settings      map[string]string
+	policies      map[StorageCategory]StoragePolicy
 
 	mirrorPath string
 
@@ -66,6 +68,14 @@ type Memory struct {
 	scheduleTimer  func(d time.Duration, f func()) (stop func())
 }
 
+// Driver returns the backend name.
+func (m *Memory) Driver() string { return "memory" }
+
+// Info reports the volatile memory backend capabilities.
+func (m *Memory) Info() Info {
+	return Info{Driver: "memory", Durable: false, Remote: false, Schema: 0, SizeHint: 0}
+}
+
 // mirrorFile is the on-disk shape of the mirrored subset of state
 // (sessions, subpage nonces, settings and the update journal).
 type mirrorFile struct {
@@ -73,6 +83,7 @@ type mirrorFile struct {
 	SubpageNonces map[string]string               `json:"subpage_nonces"`
 	Settings      map[string]string               `json:"settings"`
 	Journal       map[string][]UpdateJournalEntry `json:"journal"`
+	Policies      []StoragePolicy                 `json:"storage_policies,omitempty"`
 }
 
 // NewMemory creates an in-memory Store. If mirrorPath is non-empty,
@@ -88,6 +99,7 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 		metrics:        make(map[string][]MetricPoint),
 		subpageNonces:  make(map[string]string),
 		settings:       make(map[string]string),
+		policies:       defaultPolicyMap(),
 		mirrorPath:     mirrorPath,
 		mirrorDebounce: touchMirrorDebounce,
 		scheduleTimer: func(d time.Duration, f func()) func() {
@@ -122,6 +134,13 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 	if mf.Settings != nil {
 		m.settings = mf.Settings
 	}
+	if len(mf.Policies) > 0 {
+		if err := ValidateStoragePolicies(mf.Policies); err != nil {
+			slog.Warn("store: mirror storage policies invalid, using defaults", "path", mirrorPath, "error", err)
+		} else {
+			m.policies = policyMap(mf.Policies)
+		}
+	}
 	if mf.Journal != nil {
 		// Defensive ring-cap truncation: the mirrored file is trusted
 		// less than an append made through this process, so a
@@ -138,13 +157,21 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 	return m, nil
 }
 
-// saveMirrorLocked writes the mirrored subset of state to mirrorPath as a
-// temp file + rename, 0600. Callers must hold mu. Errors are logged, not
-// returned — the mirror is a best-effort convenience, not the source of
-// truth.
+// saveMirrorLocked writes the mirrored subset of state to mirrorPath. Runtime
+// mutations remain best effort; operator import uses writeMirrorLocked
+// directly so it can report a persistence failure instead of losing data when
+// the short-lived CLI process exits.
 func (m *Memory) saveMirrorLocked() {
+	if err := m.writeMirrorLocked(); err != nil {
+		slog.Warn("store: mirror write failed", "path", m.mirrorPath, "error", err)
+	}
+}
+
+// writeMirrorLocked persists the mirrored subset as temp + fsync + rename,
+// mode 0600. Callers must hold mu.
+func (m *Memory) writeMirrorLocked() error {
 	if m.mirrorPath == "" {
-		return
+		return nil
 	}
 
 	mf := mirrorFile{
@@ -152,38 +179,39 @@ func (m *Memory) saveMirrorLocked() {
 		SubpageNonces: m.subpageNonces,
 		Settings:      m.settings,
 		Journal:       m.journal,
+		Policies:      policiesFromMap(m.policies),
 	}
 	data, err := json.Marshal(mf)
 	if err != nil {
-		slog.Warn("store: mirror encode failed", "path", m.mirrorPath, "error", err)
-		return
+		return fmt.Errorf("encode mirror: %w", err)
 	}
 
 	dir := filepath.Dir(m.mirrorPath)
 	tmp, err := os.CreateTemp(dir, ".store-mirror-*.tmp")
 	if err != nil {
-		slog.Warn("store: mirror temp file failed", "path", m.mirrorPath, "error", err)
-		return
+		return fmt.Errorf("create mirror temp file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op once renamed
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		slog.Warn("store: mirror write failed", "path", m.mirrorPath, "error", err)
-		return
+		_ = tmp.Close()
+		return fmt.Errorf("write mirror: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync mirror: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		slog.Warn("store: mirror close failed", "path", m.mirrorPath, "error", err)
-		return
+		return fmt.Errorf("close mirror: %w", err)
 	}
 	if err := os.Chmod(tmpName, 0o600); err != nil {
-		slog.Warn("store: mirror chmod failed", "path", m.mirrorPath, "error", err)
-		return
+		return fmt.Errorf("secure mirror: %w", err)
 	}
 	if err := os.Rename(tmpName, m.mirrorPath); err != nil {
-		slog.Warn("store: mirror rename failed", "path", m.mirrorPath, "error", err)
+		return fmt.Errorf("replace mirror: %w", err)
 	}
+	return nil
 }
 
 // PutSession creates or replaces the session keyed by s.IDHash.
@@ -287,6 +315,9 @@ func (m *Memory) ListSessions() ([]Session, error) {
 func (m *Memory) AppendAudit(e AuditEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !m.policies[StorageAudit].Enabled {
+		return nil
+	}
 	m.audit = append(m.audit, e)
 	if len(m.audit) > auditCap {
 		m.audit = m.audit[len(m.audit)-auditCap:]
@@ -332,6 +363,9 @@ func (m *Memory) ListUpdateJournal(target string, limit int) ([]UpdateJournalEnt
 func (m *Memory) RecordMetric(name string, p MetricPoint) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !m.policies[metricCategory(name)].Enabled {
+		return nil
+	}
 	points := append(m.metrics[name], p)
 	if len(points) > MetricCap {
 		points = points[len(points)-MetricCap:]
@@ -353,6 +387,70 @@ func (m *Memory) MetricRange(name string, fromTS int64) ([]MetricPoint, error) {
 		}
 	}
 	return out, nil
+}
+
+// MetricRetention reports the RAM ring's maximum history window when the
+// metric category is enabled.
+func (m *Memory) MetricRetention(name string) time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.policies[metricCategory(name)].Enabled {
+		return 0
+	}
+	return 30 * time.Minute
+}
+
+// ListStoragePolicies returns every policy in stable UI order.
+func (m *Memory) ListStoragePolicies() ([]StoragePolicy, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return policiesFromMap(m.policies), nil
+}
+
+// ReplaceStoragePolicies validates and stores the complete policy set.
+func (m *Memory) ReplaceStoragePolicies(policies []StoragePolicy) error {
+	if err := ValidateStoragePolicies(policies); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.policies = policyMap(policies)
+	m.saveMirrorLocked()
+	return nil
+}
+
+// PurgeHistory removes the selected in-memory history family.
+func (m *Memory) PurgeHistory(category StorageCategory) error {
+	if _, ok := defaultPolicyMap()[category]; !ok {
+		return fmt.Errorf("unknown storage category %q", category)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if category == StorageAudit {
+		m.audit = nil
+	}
+	for name := range m.metrics {
+		if metricCategory(name) == category {
+			delete(m.metrics, name)
+		}
+	}
+	return nil
+}
+
+// StorageStats reports volatile record counts. DatabaseBytes is always zero.
+func (m *Memory) StorageStats() (StorageStats, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	counts := make(map[StorageCategory]int64, len(storageCategoryOrder))
+	counts[StorageAudit] = int64(len(m.audit))
+	for name, points := range m.metrics {
+		counts[metricCategory(name)] += int64(len(points))
+	}
+	categories := make([]StorageCategoryStats, 0, len(storageCategoryOrder))
+	for _, category := range storageCategoryOrder {
+		categories = append(categories, StorageCategoryStats{Category: category, Records: counts[category]})
+	}
+	return StorageStats{Driver: "memory", Durable: false, Categories: categories}, nil
 }
 
 // GetSubpageNonce returns the current subpage nonce for username, or "" if

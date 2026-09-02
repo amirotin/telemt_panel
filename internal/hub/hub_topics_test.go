@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -485,6 +486,48 @@ func TestHistoryRecording(t *testing.T) {
 			t.Fatal("timed out waiting for a traffic history point")
 		}
 		awaitRecordedTick(t)
+	}
+}
+
+func TestSQLiteHistoryCollectorRunsWithoutSubscribers(t *testing.T) {
+	if store.Variant == "lite" {
+		t.Skip("SQLite is intentionally omitted from the lite build")
+	}
+	fake := telemttest.New(telemttest.Scenario{})
+	t.Cleanup(fake.Close)
+	st, err := store.Open(store.OpenOptions{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "panel.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	h := New(Config{StatsInterval: 10 * time.Millisecond}, telemt.New(fake.URL, ""), st)
+	t.Cleanup(h.Close)
+	recorded := make(chan struct{}, 1)
+	h.historyRecordedHook = func() {
+		select {
+		case recorded <- struct{}{}:
+		default:
+		}
+	}
+
+	h.StartPersistentCollectors()
+	select {
+	case <-recorded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("persistent stats collector did not record without subscribers")
+	}
+	points, err := st.MetricRange(metricConnections, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) == 0 {
+		t.Fatal("connections history is empty after persistent collection")
+	}
+	h.mu.Lock()
+	subscribers := len(h.subscribers)
+	h.mu.Unlock()
+	if subscribers != 0 {
+		t.Fatalf("collector created %d subscribers", subscribers)
 	}
 }
 

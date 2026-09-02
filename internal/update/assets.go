@@ -66,3 +66,39 @@ func NewAssetMatcher(name, arch, variant string) AssetMatcher {
 		return bin, sum
 	}
 }
+
+// NewPanelAssetMatcher preserves the running panel's full/lite profile.
+// Canonical post-1.0 assets have no libc suffix because both binaries are
+// static; the transitional 1.0 libc names remain a fallback so a 1.0 panel
+// can update itself before those compatibility duplicates are retired.
+func NewPanelAssetMatcher(arch, libc, buildVariant string) AssetMatcher {
+	name := "telemt-panel"
+	if buildVariant == "lite" {
+		name += "-lite"
+	}
+	canonical := name + "-" + arch + "-linux.tar.gz"
+	legacy := AssetName(name, arch, libc)
+	return func(assets []Asset) (*Asset, *Asset) {
+		var bin *Asset
+		for i := range assets {
+			if assets[i].Name == canonical {
+				bin = &assets[i]
+				break
+			}
+			if assets[i].Name == legacy {
+				bin = &assets[i]
+			}
+		}
+		if bin == nil {
+			return nil, nil
+		}
+		var checksum *Asset
+		for i := range assets {
+			if assets[i].Name == bin.Name+".sha256" {
+				checksum = &assets[i]
+				break
+			}
+		}
+		return bin, checksum
+	}
+}

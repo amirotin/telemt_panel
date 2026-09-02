@@ -1,11 +1,16 @@
-// Package store defines the panel's state layer: sessions, audit log,
-// update journal, metric history and subpage nonces. The Memory driver
-// implements Store for the router profile; a SQLite driver (vps profile,
-// metric history) is a later milestone and must slot in behind the same
-// interface without changing callers.
+// Package store defines the panel's durable state and optional history layer.
 package store
 
 import "time"
+
+// Info describes the active store implementation without exposing secrets.
+type Info struct {
+	Driver   string `json:"driver"`
+	Durable  bool   `json:"durable"`
+	Remote   bool   `json:"remote"`
+	Schema   int    `json:"schema"`
+	SizeHint int64  `json:"size_hint"`
+}
 
 // Session is an authenticated browser session, keyed by IDHash — the hex
 // SHA-256 of the opaque session token. Hashing happens in internal/auth,
@@ -53,6 +58,11 @@ type MetricPoint struct {
 // use. GetSession's bool return reports whether a session with the given
 // hash exists; it is false (with a nil error) on a plain miss.
 type Store interface {
+	// Driver returns the configured backend name.
+	Driver() string
+	// Info reports capabilities and schema information for the active backend.
+	Info() Info
+
 	// PutSession creates or replaces the session keyed by s.IDHash.
 	PutSession(s Session) error
 	// GetSession looks up a session by its IDHash. The bool is false when
@@ -86,6 +96,19 @@ type Store interface {
 	// MetricRange returns the points of the named series with TS >= fromTS,
 	// oldest first.
 	MetricRange(name string, fromTS int64) ([]MetricPoint, error)
+	// MetricRetention reports the configured retention for a metric. Zero
+	// means that persistence for the metric's category is disabled.
+	MetricRetention(name string) time.Duration
+
+	// ListStoragePolicies returns every history policy in stable UI order.
+	ListStoragePolicies() ([]StoragePolicy, error)
+	// ReplaceStoragePolicies atomically replaces the complete policy set.
+	ReplaceStoragePolicies(policies []StoragePolicy) error
+	// PurgeHistory permanently deletes stored history for category. It does
+	// not change whether future records are written.
+	PurgeHistory(category StorageCategory) error
+	// StorageStats reports the current backend footprint and record counts.
+	StorageStats() (StorageStats, error)
 
 	// GetSubpageNonce returns the current subpage nonce for username, or
 	// "" if none has been set.

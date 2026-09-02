@@ -1,0 +1,348 @@
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage, fill, useStrings } from "../../i18n";
+import { formatBytes } from "../../lib/format";
+import { apiErrorMessage } from "../../people/apiError";
+import { Button } from "../../ui/Button";
+import { ConfirmView } from "../../ui/ConfirmView";
+import { ErrorState } from "../../ui/ErrorState";
+import { Sheet } from "../../ui/Sheet";
+import { Skeleton } from "../../ui/Skeleton";
+import { Toggle } from "../../ui/Toggle";
+import {
+  IconActivity,
+  IconJournal,
+  IconPeople,
+  IconShield,
+  IconTraffic,
+  IconWarning,
+  IconWrench,
+} from "../../ui/icons";
+import { pushToast } from "../../ui/Toast";
+import {
+  getStorageSettingsOptions,
+  getStorageSettingsQueryKey,
+  purgeStorageHistoryMutation,
+  putStorageSettingsMutation,
+} from "../../lib/api/generated/@tanstack/react-query.gen";
+import type {
+  StorageCategory,
+  StoragePolicy,
+  StorageSettings as StorageSettingsData,
+} from "../../lib/api/generated/types.gen";
+import { applyStorageProfile, detectStorageProfile, sameStoragePolicies } from "./storage.helpers";
+
+const retentionOptions = [1, 3, 7, 14, 30, 90, 180, 365, 730];
+
+const categoryIcons: Record<StorageCategory, typeof IconActivity> = {
+  technical: IconActivity,
+  events: IconJournal,
+  audit: IconShield,
+  connection_issues: IconWarning,
+  traffic: IconTraffic,
+  user_traffic: IconPeople,
+  diagnostics: IconWrench,
+};
+
+export function StorageSettings() {
+  const s = useStrings();
+  const queryClient = useQueryClient();
+  const query = useQuery(getStorageSettingsOptions());
+  const [draft, setDraft] = useState<{
+    source: StorageSettingsData | null;
+    policies: StoragePolicy[];
+  }>({ source: null, policies: [] });
+  const [purgeCategory, setPurgeCategory] = useState<StorageCategory | null>(null);
+  const policies =
+    query.data && draft.source === query.data ? draft.policies : (query.data?.policies ?? []);
+
+  function setPolicies(next: StoragePolicy[] | ((current: StoragePolicy[]) => StoragePolicy[])) {
+    if (!query.data) return;
+    const current = draft.source === query.data ? draft.policies : query.data.policies;
+    setDraft({
+      source: query.data,
+      policies: typeof next === "function" ? next(current) : next,
+    });
+  }
+
+  const saveMutation = useMutation({
+    ...putStorageSettingsMutation(),
+    onSuccess: async () => {
+      pushToast(s.server.settings.storageSaved, "ok");
+      await queryClient.invalidateQueries({ queryKey: getStorageSettingsQueryKey() });
+    },
+    onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
+  });
+  const purgeMutation = useMutation({
+    ...purgeStorageHistoryMutation(),
+    onSuccess: async () => {
+      setPurgeCategory(null);
+      pushToast(s.server.settings.storagePurged, "ok");
+      await queryClient.invalidateQueries({ queryKey: getStorageSettingsQueryKey() });
+    },
+    onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
+  });
+
+  const dirty = query.data ? !sameStoragePolicies(policies, query.data.policies) : false;
+  const profile = detectStorageProfile(policies);
+  const records = useMemo(
+    () =>
+      new Map(query.data?.stats.categories.map((entry) => [entry.category, entry.records]) ?? []),
+    [query.data],
+  );
+  const activeCount = policies.filter((policy) => policy.enabled).length;
+  const totalRecords = [...records.values()].reduce((total, count) => total + count, 0);
+  const selectedCopy = purgeCategory ? s.server.settings.storageCategories[purgeCategory] : null;
+
+  function updatePolicy(category: StorageCategory, patch: Partial<StoragePolicy>) {
+    setPolicies((current) =>
+      current.map((policy) => (policy.category === category ? { ...policy, ...patch } : policy)),
+    );
+  }
+
+  if (query.isPending) {
+    return <Skeleton className="h-[420px] w-full rounded-xl" />;
+  }
+  if (query.isError || !query.data) {
+    return (
+      <section className="rounded-xl bg-surface p-4">
+        <ErrorState message={errorMessage(s, "internal_error")} onRetry={() => query.refetch()} />
+      </section>
+    );
+  }
+
+  return (
+    <section
+      data-testid="settings-storage"
+      className="overflow-hidden rounded-xl bg-surface"
+      aria-labelledby="storage-title"
+    >
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
+        <div className="max-w-2xl">
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-accent">
+            {s.server.settings.storageEyebrow}
+          </span>
+          <h2 id="storage-title" className="mt-1 text-[18px] font-bold text-text">
+            {s.server.settings.storageTitle}
+          </h2>
+          <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">
+            {s.server.settings.storageNote}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className={
+              query.data.stats.durable
+                ? "rounded-full bg-ok/12 px-2.5 py-1.5 text-[10px] font-bold text-ok"
+                : "rounded-full bg-warning/12 px-2.5 py-1.5 text-[10px] font-bold text-warning-text"
+            }
+          >
+            {query.data.stats.driver === "sqlite" ? "SQLite" : "RAM"}
+          </span>
+          <Button
+            size="sm"
+            disabled={!dirty || saveMutation.isPending}
+            onClick={() => saveMutation.mutate({ body: { policies } })}
+          >
+            {saveMutation.isPending
+              ? s.server.settings.storageSaving
+              : s.server.settings.storageSave}
+          </Button>
+        </div>
+      </header>
+
+      {!query.data.stats.durable && (
+        <div className="flex gap-3 border-b border-warning/25 bg-warning/8 px-4 py-3 text-[11px] leading-relaxed text-text-muted sm:px-5">
+          <IconWarning className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
+          <span>
+            {query.data.store_error
+              ? fill(s.server.settings.storageFallbackWarning, {
+                  driver: query.data.configured_driver === "postgres" ? "PostgreSQL" : "MySQL",
+                })
+              : s.server.settings.storageMemoryWarning}
+          </span>
+        </div>
+      )}
+
+      <dl className="grid grid-cols-3 divide-x divide-border border-b border-border">
+        <div className="min-w-0 px-3 py-3 sm:px-5">
+          <dt className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-text-faint">
+            {s.server.settings.storageSize}
+          </dt>
+          <dd className="mt-1 truncate font-mono text-[16px] font-bold text-text">
+            {formatBytes(query.data.stats.database_bytes, s)}
+          </dd>
+        </div>
+        <div className="min-w-0 px-3 py-3 sm:px-5">
+          <dt className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-text-faint">
+            {s.server.settings.storageActive}
+          </dt>
+          <dd className="mt-1 font-mono text-[16px] font-bold text-text">
+            {activeCount}/{policies.length}
+          </dd>
+        </div>
+        <div className="min-w-0 px-3 py-3 sm:px-5">
+          <dt className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-text-faint">
+            {s.server.settings.storageRecords}
+          </dt>
+          <dd className="mt-1 truncate font-mono text-[16px] font-bold text-text">
+            {new Intl.NumberFormat().format(totalRecords)}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="border-b border-border px-4 py-4 sm:px-5">
+        <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-text-faint">
+          {s.server.settings.storageProfile}
+        </span>
+        <div className="mt-2 grid grid-cols-3 gap-1.5" role="radiogroup">
+          {(["minimum", "recommended", "extended"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={profile === value}
+              onClick={() => setPolicies(applyStorageProfile(policies, value))}
+              className={
+                profile === value
+                  ? "tap-target rounded-lg border border-accent/50 bg-accent/10 px-2 text-[11px] font-bold text-text"
+                  : "tap-target rounded-lg border border-border bg-surface-2 px-2 text-[11px] font-bold text-text-muted hover:text-text"
+              }
+            >
+              {s.server.settings.storageProfiles[value]}
+            </button>
+          ))}
+        </div>
+        {profile === "custom" && (
+          <small className="mt-2 block text-[10px] font-bold text-accent">
+            {s.server.settings.storageProfiles.custom}
+          </small>
+        )}
+      </div>
+
+      <div className="grid gap-px bg-border md:grid-cols-2">
+        {policies.map((policy) => {
+          const copy = s.server.settings.storageCategories[policy.category];
+          const Icon = categoryIcons[policy.category];
+          const count = records.get(policy.category) ?? 0;
+          const mandatory = policy.category === "technical";
+          return (
+            <article key={policy.category} className="bg-surface px-4 py-4 sm:px-5">
+              <div className="flex items-start gap-3">
+                <span
+                  className={
+                    policy.enabled
+                      ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent"
+                      : "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text-faint"
+                  }
+                  aria-hidden="true"
+                >
+                  <Icon />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-[13px] font-bold text-text">{copy.title}</h3>
+                      <span className="mt-0.5 block text-[10px] text-text-faint">
+                        {new Intl.NumberFormat().format(count)}{" "}
+                        {s.server.settings.storageRecordsShort}
+                      </span>
+                    </div>
+                    <Toggle
+                      checked={policy.enabled}
+                      disabled={mandatory}
+                      onChange={(enabled) => updatePolicy(policy.category, { enabled })}
+                      aria-label={copy.title}
+                    />
+                  </div>
+                  <p className="mt-2 min-h-[34px] text-[11px] leading-relaxed text-text-muted">
+                    {copy.note}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-end justify-between gap-2 border-t border-border pt-3">
+                <label className="min-w-[150px] flex-1">
+                  <span className="mb-1 block text-[9px] font-extrabold uppercase tracking-[0.08em] text-text-faint">
+                    {s.server.settings.storageRetention}
+                  </span>
+                  <select
+                    value={policy.retention_days}
+                    disabled={!policy.enabled}
+                    onChange={(event) =>
+                      updatePolicy(policy.category, {
+                        retention_days: Number(event.target.value),
+                      })
+                    }
+                    className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-[12px] font-semibold text-text outline-none focus:border-accent disabled:opacity-50"
+                  >
+                    {retentionOptions.map((days) => (
+                      <option key={days} value={days}>
+                        {s.server.settings.storageDays.replace("{count}", String(days))}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={count === 0}
+                  onClick={() => setPurgeCategory(policy.category)}
+                >
+                  {s.server.settings.storageClear}
+                </Button>
+              </div>
+              {mandatory && (
+                <small className="mt-2 block text-[10px] text-text-faint">
+                  {s.server.settings.storageTechnicalRequired}
+                </small>
+              )}
+              {!policy.enabled && count > 0 && (
+                <small className="mt-2 block text-[10px] text-warning-text">
+                  {s.server.settings.storageKept}
+                </small>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface-2/45 px-4 py-3 sm:px-5">
+        <p className="max-w-2xl text-[10px] leading-relaxed text-text-faint">
+          {s.server.settings.storageFooter}
+        </p>
+        <Button
+          size="sm"
+          disabled={!dirty || saveMutation.isPending}
+          onClick={() => saveMutation.mutate({ body: { policies } })}
+        >
+          {saveMutation.isPending ? s.server.settings.storageSaving : s.server.settings.storageSave}
+        </Button>
+      </footer>
+
+      <Sheet
+        open={purgeCategory !== null}
+        onClose={() => setPurgeCategory(null)}
+        eyebrow={s.server.settings.storageClearEyebrow}
+        title={s.server.settings.storageClearTitle}
+        subtitle={selectedCopy?.title}
+      >
+        <ConfirmView
+          description={s.server.settings.storageClearConfirm.replace(
+            "{category}",
+            selectedCopy?.title ?? "",
+          )}
+          confirmLabel={s.server.settings.storageClear}
+          danger
+          pending={purgeMutation.isPending}
+          onCancel={() => setPurgeCategory(null)}
+          onConfirm={() => {
+            if (purgeCategory) {
+              purgeMutation.mutate({ body: { category: purgeCategory, confirm: true } });
+            }
+          }}
+        />
+      </Sheet>
+    </section>
+  );
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
+	"github.com/amirotin/telemt_panel/internal/store"
 )
 
 // selfUpdateHint explains why caps.self_update is false: the panel's
@@ -34,6 +35,9 @@ type hostInfo struct {
 	OS             string            `json:"os"`
 	Arch           string            `json:"arch"`
 	OSRelease      string            `json:"os_release,omitempty"`
+	PanelVariant   string            `json:"panel_variant"`
+	StorageDrivers []string          `json:"storage_drivers"`
+	ActiveStore    string            `json:"active_store"`
 	Caps           hostCaps          `json:"caps"`
 	ManualCommands map[string]string `json:"manual_commands,omitempty"`
 }
@@ -84,6 +88,9 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		OS:             runtime.GOOS,
 		Arch:           runtime.GOARCH,
 		OSRelease:      detectOSRelease(),
+		PanelVariant:   store.Variant,
+		StorageDrivers: store.AvailableDrivers(),
+		ActiveStore:    s.st.Info().Driver,
 		Caps: hostCaps{
 			RestartTelemt: restartAvailable,
 			RestartPanel:  restartAvailable,

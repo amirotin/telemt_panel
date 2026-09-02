@@ -367,6 +367,8 @@ func auditTarget(action, subject string) string {
 		return "telemt"
 	case "update.auto_change":
 		return "auto_update"
+	case "storage.policy_change", "storage.history_purge":
+		return "storage"
 	default:
 		return "panel"
 	}

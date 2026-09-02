@@ -9,6 +9,32 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: telemt_panel
+          POSTGRES_PASSWORD: telemt_panel_test
+          POSTGRES_DB: telemt_panel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U telemt_panel -d telemt_panel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: telemt_panel_test
+          MARIADB_DATABASE: telemt_panel
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -58,7 +84,7 @@ jobs:
       - name: Cross-compile targets
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./cmd/panel
-          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build ./cmd/panel
+          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -tags lite ./cmd/panel
 
       # -race requires cgo — stated explicitly so a future job-level
       # CGO_ENABLED=0 cleanup cannot silently break this step. The Build
@@ -67,6 +93,8 @@ jobs:
         run: make test
         env:
           CGO_ENABLED: "1"
+          TP_TEST_POSTGRES_DSN: postgres://telemt_panel:telemt_panel_test@127.0.0.1:5432/telemt_panel?sslmode=disable
+          TP_TEST_MYSQL_DSN: root:telemt_panel_test@tcp(127.0.0.1:3306)/telemt_panel?parseTime=true
 
   # Playwright e2e (Task 9, R4): chromium only, against the real `make
   # build` panel binary + cmd/telemt-mock — see web/e2e/stack.ts. A

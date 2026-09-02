@@ -149,12 +149,13 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		ServiceName_: panelServiceName,
 	}
 	updateEngine := update.NewEngine(update.EngineConfig{
-		Runner:      runner,
-		Store:       st,
-		Targets:     map[string]update.Target{update.TargetTelemt: telemtTarget, update.TargetPanel: panelTarget},
-		StagingDir:  allow.StagingPrefix,
-		GithubToken: cfg.Updates.GithubToken,
-		Hub:         hb,
+		Runner:       runner,
+		Store:        st,
+		Targets:      map[string]update.Target{update.TargetTelemt: telemtTarget, update.TargetPanel: panelTarget},
+		StagingDir:   allow.StagingPrefix,
+		GithubToken:  cfg.Updates.GithubToken,
+		Hub:          hb,
+		BuildVariant: store.Variant,
 	})
 
 	webUI, err := webui.New(webui.Embedded(), cfg.BasePath)
@@ -263,10 +264,19 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status":  "ok",
-			"version": s.version,
-		})
+		runtime := store.Runtime(s.st, s.cfg.Store.Driver)
+		response := map[string]any{
+			"status":            "ok",
+			"version":           s.version,
+			"variant":           store.Variant,
+			"drivers":           store.AvailableDrivers(),
+			"configured_driver": runtime.ConfiguredDriver,
+			"active_driver":     runtime.ActiveDriver,
+		}
+		if runtime.Error != "" {
+			response["store_error"] = runtime.Error
+		}
+		writeJSON(w, http.StatusOK, response)
 	})
 
 	// protect wraps a handler with the CSRF and session checks shared by
@@ -307,6 +317,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/logs/tail", protect(s.handleLogsTail))
 	mux.Handle("GET /api/audit", protect(s.handleGetAudit))
 	mux.Handle("GET /api/history", protect(s.handleGetHistory))
+	mux.Handle("GET /api/settings/storage", protect(s.handleGetStorageSettings))
+	mux.Handle("PUT /api/settings/storage", protect(s.handlePutStorageSettings))
+	mux.Handle("POST /api/settings/storage/purge", protect(s.handlePurgeStorageHistory))
 
 	mux.Handle("GET /api/updates", protect(s.handleGetUpdates))
 	mux.Handle("POST /api/updates/{target}/apply", protect(s.handleApplyUpdate))

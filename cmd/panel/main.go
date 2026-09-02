@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -28,12 +31,18 @@ var version = "0.0.0-dev"
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "version":
-			fmt.Println("telemt-panel " + version)
+		case "version", "--version":
+			fmt.Printf("telemt-panel %s (%s: %s)\n", version, store.Variant, strings.Join(store.AvailableDrivers(), " "))
 			return
 		case "hash-password":
 			if err := runHashPassword(); err != nil {
 				slog.Error("hash-password", "err", err)
+				os.Exit(1)
+			}
+			return
+		case "store":
+			if err := runStoreCommand(os.Args[2:]); err != nil {
+				slog.Error("store", "err", err)
 				os.Exit(1)
 			}
 			return
@@ -72,6 +81,7 @@ func main() {
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
 	hb := hub.New(hub.Config{}, tc, st)
+	hb.StartPersistentCollectors()
 	srv := httpapi.New(cfg, tc, st, hb, version)
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)
@@ -79,20 +89,214 @@ func main() {
 	}
 }
 
+func runStoreCommand(args []string) error {
+	if len(args) == 0 {
+		return storeCommandUsage()
+	}
+	switch args[0] {
+	case "check":
+		return runStoreCheck(args[1:])
+	case "export":
+		return runStoreExport(args[1:])
+	case "import":
+		return runStoreImport(args[1:])
+	default:
+		return storeCommandUsage()
+	}
+}
+
+func storeCommandUsage() error {
+	return errors.New("usage: telemt-panel store check --driver postgres|mysql --dsn DSN | store export --config config.toml --out dump.json | store import --config config.toml --in dump.json")
+}
+
+func runStoreCheck(args []string) error {
+	flags := flag.NewFlagSet("store check", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	driver := flags.String("driver", "", "database driver")
+	dsn := flags.String("dsn", "", "database DSN")
+	if err := flags.Parse(args); err != nil {
+		return errors.New("usage: telemt-panel store check --driver postgres|mysql --dsn DSN")
+	}
+	if flags.NArg() != 0 || (*driver != "postgres" && *driver != "mysql") || *dsn == "" {
+		return errors.New("usage: telemt-panel store check --driver postgres|mysql --dsn DSN")
+	}
+	if err := store.CheckConnection(*driver, *dsn); err != nil {
+		return err
+	}
+	fmt.Printf("%s connection ok\n", *driver)
+	return nil
+}
+
+func runStoreExport(args []string) error {
+	flags := flag.NewFlagSet("store export", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	configPath := flags.String("config", "config.toml", "panel config path")
+	outPath := flags.String("out", "", "export file")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *outPath == "" {
+		return errors.New("usage: telemt-panel store export --config config.toml --out dump.json")
+	}
+	st, err := openTransferStore(*configPath, false)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	portable, ok := st.(store.PortableStore)
+	if !ok {
+		return fmt.Errorf("store driver %q does not support export", st.Driver())
+	}
+	data, err := portable.ExportData()
+	if err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode store export: %w", err)
+	}
+	raw = append(raw, '\n')
+	if err := writeExclusiveFile(*outPath, raw); err != nil {
+		return fmt.Errorf("write store export: %w", err)
+	}
+	fmt.Printf("%s store exported to %s\n", st.Driver(), *outPath)
+	return nil
+}
+
+func runStoreImport(args []string) error {
+	flags := flag.NewFlagSet("store import", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	configPath := flags.String("config", "config.toml", "panel config path")
+	inPath := flags.String("in", "", "export file")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *inPath == "" {
+		return errors.New("usage: telemt-panel store import --config config.toml --in dump.json")
+	}
+	file, err := os.Open(*inPath)
+	if err != nil {
+		return fmt.Errorf("open store export: %w", err)
+	}
+	defer file.Close()
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+	var data store.PortableData
+	if err := decoder.Decode(&data); err != nil {
+		return fmt.Errorf("decode store export: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("decode store export: trailing JSON value")
+		}
+		return fmt.Errorf("decode store export: %w", err)
+	}
+
+	st, err := openTransferStore(*configPath, true)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	portable, ok := st.(store.PortableStore)
+	if !ok {
+		return fmt.Errorf("store driver %q does not support import", st.Driver())
+	}
+	if err := portable.ImportData(data); err != nil {
+		return err
+	}
+	fmt.Printf("%s store imported from %s\n", st.Driver(), *inPath)
+	return nil
+}
+
+func openTransferStore(configPath string, importing bool) (store.Store, error) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	mirrorPath := ""
+	if cfg.Store.Driver == "memory" && importing && cfg.DataDir == "" {
+		return nil, errors.New("import into the memory store requires data_dir so state can be persisted")
+	}
+	if cfg.Store.Driver == "memory" && cfg.DataDir != "" {
+		if importing {
+			if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+				return nil, fmt.Errorf("create data directory: %w", err)
+			}
+		}
+		mirrorPath = filepath.Join(cfg.DataDir, mirrorStateFile)
+	}
+	st, err := store.Open(store.OpenOptions{
+		Driver:     cfg.Store.Driver,
+		Path:       cfg.Store.Path,
+		DSN:        cfg.Store.DSN,
+		MirrorPath: mirrorPath,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open configured %s store: %w", cfg.Store.Driver, err)
+	}
+	return st, nil
+}
+
+func writeExclusiveFile(path string, data []byte) (err error) {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	keep := false
+	defer func() {
+		_ = file.Close()
+		if !keep {
+			_ = os.Remove(path)
+		}
+	}()
+	if _, err = file.Write(data); err != nil {
+		return err
+	}
+	if err = file.Sync(); err != nil {
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	keep = true
+	return nil
+}
+
 // mirrorStateFile is the mirror's filename within cfg.DataDir.
 const mirrorStateFile = "panel-state.json"
 
-// newStore builds the state backend selected by cfg.Store.Driver. Only
-// "memory" is implemented so far; config.Load already accepts "sqlite" (a
-// later milestone), so main must refuse it explicitly here rather than
-// silently falling back to an in-memory store an operator didn't ask for.
+// newStore builds the state backend selected by cfg.Store.Driver.
 func newStore(cfg *config.Config) (store.Store, error) {
-	switch cfg.Store.Driver {
-	case "sqlite":
-		return nil, fmt.Errorf("store.driver \"sqlite\" is not implemented yet; use \"memory\"")
-	default:
-		return store.NewMemory(resolveMirrorPath(cfg.DataDir))
+	mirrorPath := resolveMirrorPath(cfg.DataDir)
+	if cfg.Store.Driver != "memory" {
+		mirrorPath = existingMirrorPath(cfg.DataDir)
 	}
+	opened, err := store.Open(store.OpenOptions{
+		Driver:     cfg.Store.Driver,
+		Path:       cfg.Store.Path,
+		DSN:        cfg.Store.DSN,
+		MirrorPath: mirrorPath,
+	})
+	if err == nil {
+		return opened, nil
+	}
+	if (cfg.Store.Driver != "postgres" && cfg.Store.Driver != "mysql") || !store.IsConnectionUnavailable(err) {
+		return nil, err
+	}
+
+	// A remote database outage must not take the administration plane down.
+	// The fallback is intentionally process-local: it is never mirrored or
+	// written back to the remote database, so recovery requires a restart and
+	// cannot create split-brain history.
+	temporary, memoryErr := store.Open(store.OpenOptions{Driver: "memory"})
+	if memoryErr != nil {
+		return nil, fmt.Errorf("open temporary memory store: %w", memoryErr)
+	}
+	reason := cfg.Store.Driver + " database is unavailable; using temporary memory storage until restart"
+	slog.Warn("configured database unavailable; using temporary memory store", "driver", cfg.Store.Driver)
+	return store.WithFallback(temporary, cfg.Store.Driver, reason), nil
+}
+
+func existingMirrorPath(dataDir string) string {
+	if dataDir == "" {
+		return ""
+	}
+	return filepath.Join(dataDir, mirrorStateFile)
 }
 
 // resolveMirrorPath turns a data_dir config value into the store mirror's

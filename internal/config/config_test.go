@@ -152,9 +152,15 @@ username = "a"`, "password_hash"},
 		{"sqlite without path", minimal + `
 [store]
 driver = "sqlite"`, "store.path"},
+		{"postgres without dsn", minimal + `
+[store]
+driver = "postgres"`, "store.dsn"},
+		{"mysql without dsn", minimal + `
+[store]
+driver = "mysql"`, "store.dsn"},
 		{"unknown store driver", minimal + `
 [store]
-driver = "postgres"`, "unknown driver"},
+driver = "oracle"`, "unknown driver"},
 		{"subpage without secret", minimal + `
 [subpage]
 enabled = true`, "subpage.secret"},

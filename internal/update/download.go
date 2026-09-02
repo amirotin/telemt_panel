@@ -202,7 +202,7 @@ func (e *Engine) ReleasesView(ctx context.Context, targetName string) (ReleasesV
 	if err != nil {
 		return ReleasesView{CurrentVersion: current}, err
 	}
-	matcher := NewAssetMatcher(assetBaseName(targetName), e.arch, e.variant)
+	matcher := e.assetMatcher(targetName)
 	return BuildReleasesView(current, releases, matcher, e.maxNewer, e.maxOlder), nil
 }
 
