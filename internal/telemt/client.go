@@ -211,20 +211,29 @@ func getRevision[T any](ctx context.Context, c *Client, path string) (T, string,
 // returning the envelope's revision — for mutations whose caller-visible
 // revision matters (Reload, PatchConfig).
 func mutateRevision[T any](ctx context.Context, c *Client, method, path string, body any, revision string) (T, string, error) {
+	out, _, respRevision, err := mutateRevisionStatus[T](ctx, c, method, path, body, revision)
+	return out, respRevision, err
+}
+
+// mutateRevisionStatus is mutateRevision plus the successful upstream HTTP
+// status. Most Telemt mutations only need their payload and revision, but
+// PATCH /v1/config deliberately distinguishes a synchronous 200 response
+// from an inline-reload 202 response.
+func mutateRevisionStatus[T any](ctx context.Context, c *Client, method, path string, body any, revision string) (T, int, string, error) {
 	var out T
-	data, respRevision, err := c.callRevision(ctx, method, path, body, revision)
+	data, status, respRevision, err := c.callStatus(ctx, method, path, body, revision)
 	if err != nil {
-		return out, "", err
+		return out, 0, "", err
 	}
 	if len(data) == 0 {
 		normalizeSlices(&out)
-		return out, respRevision, nil
+		return out, status, respRevision, nil
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, "", fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, 0, "", fmt.Errorf("telemt: decode %s: %w", path, err)
 	}
 	normalizeSlices(&out)
-	return out, respRevision, nil
+	return out, status, respRevision, nil
 }
 
 // userSecret is the wire shape shared by CreateUser and RotateSecret: the

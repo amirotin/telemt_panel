@@ -24,7 +24,7 @@ export { SectionLabel } from "../ui/SectionLabel";
 export function PersonQuotaCard({ quota, className }: { quota: UserQuotaView; className?: string }) {
   const s = useStrings();
   const unlimited = isUnlimitedQuota(quota.limitBytes);
-  const ratio = quotaRatio(quota.usedBytes, quota.limitBytes);
+  const ratio = unlimited ? 0 : quotaRatio(quota.usedBytes, quota.limitBytes);
 
   return (
     <div className={cn("rounded-xl bg-bg px-3.5 py-3", className)}>
@@ -59,9 +59,9 @@ export function IpCards({ ips }: { ips: string[] }) {
     );
   }
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {ips.map((ip) => (
-        <div key={ip} className="rounded-md bg-bg px-3 py-2.5">
+        <div key={ip} className="rounded-lg border border-border-strong bg-bg px-2.5 py-2">
           <span className="font-mono text-meta tabular-nums text-text">{ip}</span>
         </div>
       ))}

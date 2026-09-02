@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useStrings } from "../../i18n";
 import { Button } from "../../ui/Button";
-import { Card, CardTitle } from "../../ui/Card";
 import { CopyField } from "../../ui/CopyField";
 import { ConfirmView } from "../../ui/ConfirmView";
-import { SectionLabel } from "../../ui/SectionLabel";
-import { IconUpgrade } from "../../ui/icons";
+import { Sheet } from "../../ui/Sheet";
+import { StatePill } from "../../ui/StatePill";
+import { IconServer, IconTelegram } from "../../ui/icons";
 import { pushToast } from "../../ui/Toast";
 import { apiErrorMessage } from "../../people/apiError";
 import { applyUpdateMutation } from "../../lib/api/generated/@tanstack/react-query.gen";
@@ -30,21 +30,14 @@ export interface UpdateTargetProps {
   lockHeld: boolean;
   hostCaps: HostInfo["caps"] | undefined;
   manualCommands: Record<string, string> | undefined;
-  /** The shared "update" SSE topic's latest event, already filtered by the caller — or null if it belongs to the other target. */
   sseEvent: UpdateTopicEvent | null;
+  streamFallback: boolean;
   onApplied: () => void;
 }
 
-// UpdateTarget — the one component both Telemt and the panel render
-// through (06-ui.md §Обновления: "один компонент <UpdateTarget>, никаких
-// дублей UI на цель"): current/latest version, live phase stepper (SSE
-// `update` topic, filtered to this target, with the REST snapshot's own
-// `active_run` as a fallback whenever no live event has arrived yet), and
-// the "Обновить" confirm-and-apply flow.
-//
-// Layout follows the prototype's Обновления artboard: the two versions as
-// a pair of small figure cards, then the "доступна версия X" offer as an
-// accent-tiled row with a full-width action under it.
+// One target is a row in the shared version surface. Progress and failures
+// expand under that row, so the admin never has to correlate a status card
+// with a separate progress card elsewhere on the page.
 export function UpdateTarget({
   target,
   data,
@@ -52,10 +45,12 @@ export function UpdateTarget({
   hostCaps,
   manualCommands,
   sseEvent,
+  streamFallback,
   onApplied,
 }: UpdateTargetProps) {
   const s = useStrings();
   const [confirming, setConfirming] = useState(false);
+  const [capabilityOpen, setCapabilityOpen] = useState(false);
 
   const applyMutation = useMutation({
     ...applyUpdateMutation(),
@@ -69,14 +64,12 @@ export function UpdateTarget({
   const latest = pickLatestRelease(data.releases);
   const liveRun = sseEvent && sseEvent.target === target ? sseEvent : null;
   const activeRun = liveRun ?? data.active_run ?? null;
-  const runIsActive =
-    activeRun !== null &&
-    !isTerminalUpdatePhase(activeRun.phase as UpdatePhase);
-
-  const canSelfUpdate = hostCaps?.self_update ?? false;
+  const phase = activeRun?.phase as UpdatePhase | undefined;
+  const runIsActive = Boolean(phase && !isTerminalUpdatePhase(phase));
+  const canApply = hostCaps?.self_update ?? false;
   const otherRunBlocking = lockHeld && !runIsActive;
 
-  const restarting = target === "panel" && activeRun?.phase === "restarting";
+  const restarting = target === "panel" && phase === "restarting";
   const restartWatch = usePanelRestartWatch(
     restarting,
     activeRun?.version_to ?? "",
@@ -85,63 +78,70 @@ export function UpdateTarget({
     if (restartWatch.status === "reload") window.location.reload();
   }, [restartWatch.status]);
 
+  const shownLatest = latest?.version ?? data.current_version;
+  const TargetIcon = target === "telemt" ? IconTelegram : IconServer;
+
   return (
-    <Card className="flex flex-col gap-3">
-      <CardTitle>{s.server.updates.targetNames[target]}</CardTitle>
+    <article className="border-b border-border last:border-b-0">
+      <div className="grid min-h-[92px] grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 sm:min-h-[72px] sm:grid-cols-[40px_minmax(6rem,.55fr)_minmax(13rem,1fr)_auto_auto] sm:gap-x-4">
+        <span className={`grid h-10 w-10 place-items-center rounded-xl ${target === "telemt" ? "bg-ok/10 text-ok" : "bg-accent/10 text-accent"}`} aria-hidden="true">
+          <TargetIcon />
+        </span>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <VersionCard
-          label={s.server.updates.currentVersion}
-          value={data.current_version}
-        />
-        <VersionCard
-          label={s.server.updates.latestVersion}
-          value={latest ? latest.version : s.server.updates.upToDate}
-          muted={!latest}
-        />
-      </div>
-
-      {restarting && restartWatch.status === "wait" && (
-        <p className="text-meta text-warn">
-          {s.server.updates.panelRestarting}
-        </p>
-      )}
-
-      {restarting && restartWatch.status === "timeout" && (
-        <Notice tone="error" title={s.server.updates.panelRestartTimeoutTitle}>
-          <p className="text-meta leading-relaxed text-text-muted">
-            {s.server.updates.panelRestartTimeoutDescription}
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-semibold text-text">
+            {s.server.updates.targetNames[target]}
           </p>
-          {manualCommands?.["restart_panel"] && (
-            <CopyField value={manualCommands["restart_panel"]} />
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={restartWatch.retry}
-            className="self-start"
-          >
-            {s.server.updates.panelRestartRetry}
-          </Button>
-        </Notice>
-      )}
+          <p className="mt-0.5 hidden text-micro text-text-faint sm:block">
+            {target === "telemt"
+              ? s.server.updates.telemtDescription
+              : s.server.updates.panelDescription}
+          </p>
+        </div>
 
-      {activeRun ? (
-        <div className="rounded-md bg-surface-sunken p-3">
-          <UpdateStepper
-            phase={activeRun.phase as UpdatePhase}
-            detail={activeRun.detail}
+        <div className="col-span-2 col-start-2 row-start-2 grid min-w-0 grid-cols-[minmax(0,auto)_28px_minmax(0,1fr)] items-center gap-2 sm:col-auto sm:row-auto sm:grid-cols-[minmax(0,auto)_38px_minmax(0,1fr)]">
+          <Version label={s.server.updates.installedVersion} value={data.current_version} />
+          <span className={`relative h-px bg-border-strong ${latest ? "after:absolute after:right-0 after:top-[-2px] after:h-[5px] after:w-[5px] after:rotate-45 after:border-r after:border-t after:border-text-faint" : "opacity-40"}`} aria-hidden="true" />
+          <Version
+            label={latest ? s.server.updates.availableVersion : s.server.updates.latestInstalledVersion}
+            value={shownLatest}
           />
         </div>
-      ) : (
-        <p className="text-meta text-text-faint">
-          {s.server.updates.noActiveRun}
-        </p>
-      )}
 
-      {!runIsActive &&
-        latest &&
-        (confirming ? (
+        <div className="col-start-3 row-start-1 justify-self-end sm:col-auto sm:row-auto">
+          <TargetState phase={phase} hasUpdate={Boolean(latest)} />
+        </div>
+
+        {latest && !runIsActive && (
+          <div className="col-span-3 row-start-3 sm:col-auto sm:row-auto">
+            {canApply ? (
+              <Button
+                variant={otherRunBlocking ? "secondary" : "primary"}
+                size="sm"
+                disabled={otherRunBlocking || applyMutation.isPending}
+                onClick={() => setConfirming(true)}
+                className="w-full whitespace-nowrap sm:w-auto"
+              >
+                {otherRunBlocking
+                  ? s.server.updates.waiting
+                  : s.server.updates.update}
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setCapabilityOpen(true)}
+                className="w-full whitespace-nowrap sm:w-auto"
+              >
+                {s.server.updates.howToUpdate}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {confirming && latest && (
+        <div className="border-t border-border bg-surface-sunken px-4 py-3 sm:pl-[4.5rem]">
           <ConfirmView
             description={`${s.server.updates.confirmPrefix} ${latest.version}?`}
             confirmLabel={s.server.updates.update}
@@ -154,72 +154,114 @@ export function UpdateTarget({
               })
             }
           />
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center gap-2.5">
-              <span
-                aria-hidden="true"
-                className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-accent/15 text-[16px] text-accent"
-              >
-                <IconUpgrade />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-row font-bold text-text">
-                  {s.server.updates.availablePrefix} {latest.version}
-                </p>
-                <p className="truncate font-mono text-micro text-text-muted">
-                  {s.server.updates.targetNames[target]} ·{" "}
-                  {data.current_version} → {latest.version}
-                </p>
-              </div>
-            </div>
+        </div>
+      )}
+
+      {activeRun && (
+        <div className="border-t border-border bg-surface-sunken px-4 py-3 sm:pl-[4.5rem]">
+          <UpdateStepper
+            phase={activeRun.phase as UpdatePhase}
+            detail={activeRun.detail}
+            streamFallback={streamFallback && runIsActive}
+          />
+        </div>
+      )}
+
+      {restarting && restartWatch.status === "wait" && (
+        <p className="border-t border-border px-4 py-2 text-meta text-warn sm:pl-[4.5rem]">
+          {s.server.updates.panelRestarting}
+        </p>
+      )}
+
+      {restarting && restartWatch.status === "timeout" && (
+        <div className="border-t border-border px-4 py-3 sm:pl-[4.5rem]">
+          <Notice tone="error" title={s.server.updates.panelRestartTimeoutTitle}>
+            <p className="text-meta leading-relaxed text-text-muted">
+              {s.server.updates.panelRestartTimeoutDescription}
+            </p>
+            {manualCommands?.["restart_panel"] && (
+              <CopyField value={manualCommands["restart_panel"]} />
+            )}
             <Button
-              onClick={() => setConfirming(true)}
-              disabled={!canSelfUpdate || otherRunBlocking}
-              className="w-full"
+              variant="secondary"
+              size="sm"
+              onClick={restartWatch.retry}
+              className="self-start"
             >
-              {s.server.updates.update}
+              {s.server.updates.panelRestartRetry}
             </Button>
-            {!canSelfUpdate && manualCommands?.["self_update"] && (
-              <div className="flex flex-col gap-1.5">
-                <SectionLabel>{s.server.updates.manualOnly}</SectionLabel>
-                <CopyField value={manualCommands["self_update"]} />
-              </div>
-            )}
-            {canSelfUpdate && otherRunBlocking && (
-              <p className="text-micro text-text-faint">
-                {s.server.updates.lockHeld}
-              </p>
-            )}
+          </Notice>
+        </div>
+      )}
+
+      <Sheet
+        open={capabilityOpen}
+        onClose={() => setCapabilityOpen(false)}
+        eyebrow={s.server.updates.hostCapabilities}
+        title={s.server.updates.installUnavailableTitle}
+        placement="auto"
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-meta leading-relaxed text-text-muted">
+            {s.server.updates.installUnavailableDetail}
+          </p>
+          <div className="rounded-xl border border-warn/25 bg-warn/[0.06] p-3">
+            <p className="text-meta font-semibold text-warn">
+              {s.server.updates.installerPendingTitle}
+            </p>
+            <p className="mt-1 text-micro leading-relaxed text-text-muted">
+              {s.server.updates.installerPendingDetail}
+            </p>
           </div>
-        ))}
-    </Card>
+          <Button className="self-start" onClick={() => setCapabilityOpen(false)}>
+            {s.server.updates.dismiss}
+          </Button>
+        </div>
+      </Sheet>
+    </article>
   );
 }
 
-// VersionCard — the prototype's small figure card: a muted caption over a
-// monospace version number.
-function VersionCard({
-  label,
-  value,
-  muted,
-}: {
-  label: string;
-  value: string;
-  muted?: boolean;
-}) {
+function Version({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-surface-sunken px-3.5 py-2.5">
-      <p className="text-micro text-text-muted">{label}</p>
-      <p
-        className={`mt-0.5 truncate font-mono tabular-nums ${
-          muted
-            ? "text-meta text-text-muted"
-            : "text-[18px] font-bold text-text"
-        }`}
-      >
+    <span className="min-w-0">
+      <span className="block truncate text-[9px] uppercase tracking-wide text-text-faint">
+        {label}
+      </span>
+      <strong className="mt-0.5 block truncate font-mono text-[14px] tabular-nums text-text">
         {value}
-      </p>
-    </div>
+      </strong>
+    </span>
   );
+}
+
+function TargetState({
+  phase,
+  hasUpdate,
+}: {
+  phase: UpdatePhase | undefined;
+  hasUpdate: boolean;
+}) {
+  const s = useStrings();
+  if (phase === "failed") {
+    return <StatePill state="error">{s.server.updates.phases.failed}</StatePill>;
+  }
+  if (phase === "rolling_back" || phase === "rolled_back") {
+    return <StatePill state="warn">{s.server.updates.phases[phase]}</StatePill>;
+  }
+  if (phase && !isTerminalUpdatePhase(phase)) {
+    return (
+      <StatePill state="muted" className="bg-accent/15 text-accent [&>span]:bg-accent">
+        {s.server.updates.phases[phase]}
+      </StatePill>
+    );
+  }
+  if (hasUpdate) {
+    return (
+      <StatePill state="muted" className="bg-accent/15 text-accent [&>span]:bg-accent">
+        {s.server.updates.available}
+      </StatePill>
+    );
+  }
+  return <StatePill state="ok">{s.server.updates.current}</StatePill>;
 }

@@ -304,7 +304,7 @@ func TestHealthStaysOpen(t *testing.T) {
 	}
 }
 
-func listSessions(t *testing.T, h http.Handler, cookie *http.Cookie) []sessionInfo {
+func listSessions(t *testing.T, h http.Handler, cookie *http.Cookie) sessionPage {
 	t.Helper()
 	r := httptest.NewRequest("GET", "/api/auth/sessions", nil)
 	r.AddCookie(cookie)
@@ -313,7 +313,7 @@ func listSessions(t *testing.T, h http.Handler, cookie *http.Cookie) []sessionIn
 	if w.Code != http.StatusOK {
 		t.Fatalf("list sessions status = %d, want 200", w.Code)
 	}
-	var out []sessionInfo
+	var out sessionPage
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode sessions: %v", err)
 	}
@@ -331,12 +331,12 @@ func TestSessionsListAndRevocation(t *testing.T) {
 		t.Fatal("expected three successful logins")
 	}
 
-	sessions := listSessions(t, h, cookieA)
-	if len(sessions) != 3 {
-		t.Fatalf("len(sessions) = %d, want 3", len(sessions))
+	page := listSessions(t, h, cookieA)
+	if len(page.Items) != 3 || page.Total != 3 {
+		t.Fatalf("session page = %+v, want 3 items and total 3", page)
 	}
 	var current, other string
-	for _, s := range sessions {
+	for _, s := range page.Items {
 		if s.Current {
 			current = s.ID
 		} else if s.ID != auth.HashToken(cookieC.Value) {
@@ -374,9 +374,9 @@ func TestSessionsListAndRevocation(t *testing.T) {
 		t.Fatalf("revoke others status = %d, want 204", w.Code)
 	}
 
-	sessions = listSessions(t, h, cookieA)
-	if len(sessions) != 1 || !sessions[0].Current {
-		t.Fatalf("sessions after revoke-others = %+v, want just the current session", sessions)
+	page = listSessions(t, h, cookieA)
+	if len(page.Items) != 1 || page.Total != 1 || !page.Items[0].Current {
+		t.Fatalf("sessions after revoke-others = %+v, want just the current session", page)
 	}
 }
 
@@ -400,12 +400,70 @@ func TestSessionsListFiltersAndDeletesExpiredSessions(t *testing.T) {
 		t.Fatalf("PutSession: %v", err)
 	}
 
-	sessions := listSessions(t, h, current)
-	if len(sessions) != 1 || !sessions[0].Current {
-		t.Fatalf("sessions = %+v, want just the current one (expired session filtered out)", sessions)
+	page := listSessions(t, h, current)
+	if len(page.Items) != 1 || page.Total != 1 || !page.Items[0].Current {
+		t.Fatalf("sessions = %+v, want just the current one (expired session filtered out)", page)
 	}
 	if _, ok, _ := srv.st.GetSession(expiredIDHash); ok {
 		t.Error("expired session should have been lazily deleted from the store by the list call")
+	}
+}
+
+func TestSessionsListPaginationAndSearch(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+	_, current := login(t, h, "admin", testPassword)
+	if current == nil {
+		t.Fatal("expected a successful login")
+	}
+	now := time.Now()
+	for i, candidate := range []store.Session{
+		{IDHash: "linux-a", Created: now.Add(-3 * time.Minute), LastSeen: now.Add(-3 * time.Minute), IP: "10.0.0.1", UserAgentLabel: "Chrome Linux"},
+		{IDHash: "iphone", Created: now.Add(-2 * time.Minute), LastSeen: now.Add(-2 * time.Minute), IP: "10.0.0.2", UserAgentLabel: "Safari iPhone"},
+		{IDHash: "linux-b", Created: now.Add(-time.Minute), LastSeen: now.Add(-time.Minute), IP: "10.0.0.1", UserAgentLabel: "Chrome Linux"},
+	} {
+		if err := srv.st.PutSession(candidate); err != nil {
+			t.Fatalf("PutSession %d: %v", i, err)
+		}
+	}
+
+	requestPage := func(path string) sessionPage {
+		t.Helper()
+		r := httptest.NewRequest("GET", path, nil)
+		r.AddCookie(current)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want 200: %s", path, w.Code, w.Body.String())
+		}
+		var out sessionPage
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode page: %v", err)
+		}
+		return out
+	}
+
+	first := requestPage("/api/auth/sessions?limit=2")
+	if first.Total != 4 || first.DeviceCount != 3 || len(first.Items) != 2 || !first.Items[0].Current || first.NextCursor == "" {
+		t.Fatalf("first page = %+v", first)
+	}
+	second := requestPage("/api/auth/sessions?limit=2&cursor=" + first.NextCursor)
+	if len(second.Items) != 2 || second.NextCursor != "" {
+		t.Fatalf("second page = %+v", second)
+	}
+	filtered := requestPage("/api/auth/sessions?q=iphone")
+	if filtered.Total != 1 || filtered.DeviceCount != 1 || len(filtered.Items) != 1 || filtered.Items[0].ID != "iphone" {
+		t.Fatalf("filtered page = %+v", filtered)
+	}
+
+	for _, path := range []string{"/api/auth/sessions?limit=0", "/api/auth/sessions?limit=101", "/api/auth/sessions?cursor=not-a-cursor"} {
+		r := httptest.NewRequest("GET", path, nil)
+		r.AddCookie(current)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("GET %s status = %d, want 400", path, w.Code)
+		}
 	}
 }
 

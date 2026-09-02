@@ -22,7 +22,12 @@ type Session struct {
 // AuditEntry is one record in the admin-action audit log.
 type AuditEntry struct {
 	TS      time.Time
+	ID      string
 	Action  string
+	Actor   string
+	Target  string
+	Outcome string
+	IP      string
 	Subject string
 	Detail  string
 }

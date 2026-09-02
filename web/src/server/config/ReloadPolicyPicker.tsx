@@ -18,9 +18,9 @@ export function ReloadPolicyPicker({
 }) {
   const s = useStrings();
   return (
-    <div className="flex flex-col gap-2">
-      <SectionLabel>{s.server.config.reloadPolicy.label}</SectionLabel>
-      <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-col gap-1.5 lg:gap-2">
+      <SectionLabel className="hidden lg:block">{s.server.config.reloadPolicy.label}</SectionLabel>
+      <div className="flex flex-wrap items-center gap-1">
         {MODES.map((mode) => (
           <Chip
             key={mode}

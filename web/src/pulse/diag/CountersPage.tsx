@@ -327,7 +327,7 @@ export function CountersPage() {
   const count = zero.data ? counterLeaves(zero.data).length : null;
   const tabs: Array<[CountersTab, string, string, number | null]> = [["activity", v.activityTab, v.activityTabShort, null], ["failures", v.failuresTab, v.failuresTabShort, failureCount], ["explorer", v.explorerTab, v.explorerTabShort, count]];
   return (
-    <div className="mx-auto w-full max-w-[1160px]" data-testid="counters-detail">
+    <div className="w-full" data-testid="counters-detail">
       <section className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="px-4 py-5 sm:px-5"><DetailHeader title={s.details.pages.counters.title} description={v.description} breadcrumb={v.breadcrumb} status={sources.status} freshnessMs={sources.freshnessMs} nowMs={nowMs} onBack={() => void navigate({ to: "/pulse" })} /></div>
         {zero.data && <CountersHero metrics={metrics} windowSeconds={windowSeconds} restarted={restarted} />}

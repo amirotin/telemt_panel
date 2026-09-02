@@ -111,7 +111,7 @@ type UpdatePublisher interface {
 type EngineConfig struct {
 	// Runner executes every privileged op (install/restore binary, restart
 	// service) — never exec'd directly, per the milestone's Runner-only
-	// invariant. A degraded Runner (host.ErrPrivilegesUnavailable on every
+	// invariant. A manual Runner (host.ErrPrivilegesUnavailable on every
 	// call) is accepted here without error; Apply then simply fails at the
 	// installing phase with a clear rollback/failed journal entry, rather
 	// than the engine refusing to exist.
@@ -522,7 +522,7 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 		return e.fail(rc, PhaseChecking, "no release asset matches this host's arch/libc")
 	}
 
-	runDir := filepath.Join(e.stagingDir, targetName)
+	runDir := StagingRunDir(e.stagingDir, targetName)
 	if err := os.RemoveAll(runDir); err != nil {
 		return e.fail(rc, PhaseChecking, "clean staging dir: "+err.Error())
 	}
@@ -629,4 +629,11 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 
 	e.transition(rc, PhaseDone, "")
 	return nil
+}
+
+// StagingRunDir returns the private working directory for one target's update
+// run. The "runs" segment deliberately leaves staging's root free for the
+// fixed filenames used by the 0.x sudoers migration bridge.
+func StagingRunDir(stagingDir, targetName string) string {
+	return filepath.Join(stagingDir, "runs", targetName)
 }

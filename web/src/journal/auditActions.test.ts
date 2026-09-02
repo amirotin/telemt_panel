@@ -30,10 +30,17 @@ const KNOWN_BACKEND_ACTIONS = [
   "telemt.restart",
   "update.apply",
   "update.auto_change",
+  "web.sessions.close",
 ];
 
 function entry(overrides: Partial<AuditEntry> = {}): AuditEntry {
-  return { ts: "2026-08-25T12:00:00Z", action: "login", ...overrides };
+  return {
+    ts: "2026-08-25T12:00:00Z",
+    id: "audit_test",
+    action: "login",
+    outcome: "success",
+    ...overrides,
+  };
 }
 
 describe("audit action dictionary completeness", () => {
@@ -96,6 +103,7 @@ describe("auditActionFamily", () => {
   it("groups the credential actions as access", () => {
     expect(auditActionFamily("secret.rotate")).toBe("access");
     expect(auditActionFamily("sublink.rotate")).toBe("access");
+    expect(auditActionFamily("web.sessions.close")).toBe("access");
   });
 
   it("groups config and telemt lifecycle actions as config", () => {

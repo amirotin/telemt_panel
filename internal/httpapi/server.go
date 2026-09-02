@@ -102,8 +102,39 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		StagingPrefix: stagingPrefix(cfg.DataDir),
 		Services:      allowedServiceNames(cfg.Host),
 	}
-	runner := host.SelectRunner(cfg.Privileges.Mode, cfg.Privileges.AgentSocket, euid, allow, svcMgr, logSrc)
-	privilegesMode := host.ResolveMode(cfg.Privileges.Mode, cfg.Privileges.AgentSocket, euid)
+
+	// Sudo is another transport for the same host operations, not a second
+	// updater. Its ServiceManager is constructed from the already-resolved
+	// host kind, so Telemt and panel restarts always use the same init-system
+	// implementation and differ only by their allow-listed service name.
+	sudoRun := host.NewSudoCmdRunner(host.OSCmdRunner)
+	sudoSvcMgr := host.NewServiceManager(svcMgr.Kind(), probe, sudoRun)
+	var sudoRunner host.Runner = host.NewSudoRunner(allow, sudoSvcMgr, logSrc, sudoRun)
+	sudoAvailable := false
+	if cfg.Privileges.Mode == host.PrivilegesModeSudo || ((cfg.Privileges.Mode == "" || cfg.Privileges.Mode == host.PrivilegesModeAuto) && euid != 0) {
+		policyRun := host.NewSudoPolicyCmdRunner(host.OSCmdRunner)
+		policySvcMgr := host.NewServiceManager(svcMgr.Kind(), probe, policyRun)
+		policyRunner := host.NewSudoRunner(allow, policySvcMgr, logSrc, policyRun)
+		probeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		probeOps := updatePrivilegeProbeOps(allow.StagingPrefix, cfg.Updates, telemtServiceName, panelServiceName)
+		sudoAvailable = host.ProbeRunner(probeCtx, policyRunner, probeOps)
+		if !sudoAvailable && svcMgr.Kind() == host.KindSystemd {
+			// A 0.x binary can replace itself with 1.x before the new installer
+			// has run. Preserve that release path by recognizing and adapting
+			// the exact legacy sudoers command layout.
+			legacyPolicyRunner := host.NewLegacySudoPolicyRunner(allow, policySvcMgr, logSrc, policyRun)
+			if host.ProbeRunner(probeCtx, legacyPolicyRunner, probeOps) {
+				sudoRunner = host.NewLegacySudoRunner(allow, sudoSvcMgr, logSrc, sudoRun)
+				sudoAvailable = true
+			}
+		}
+		cancel()
+	}
+	runner, privilegesMode := host.SelectRunner(host.RunnerSelectionOptions{
+		Mode: cfg.Privileges.Mode, EUID: euid,
+		Allow: allow, ServiceManager: svcMgr, LogSource: logSrc,
+		SudoRunner: sudoRunner, SudoAvailable: sudoAvailable,
+	})
 
 	telemtTarget := &update.TelemtTarget{
 		Client:       tc,
@@ -154,6 +185,23 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		runner:             runner,
 		telemtServiceName:  telemtServiceName,
 		webUI:              webUI,
+	}
+}
+
+// updatePrivilegeProbeOps is the complete privileged command surface both
+// targets need for apply and rollback. Sudo mode is enabled only when every
+// operation is permitted; checking one target or only the happy path would
+// make the shared updater fail halfway through a real rollback.
+func updatePrivilegeProbeOps(staging string, cfg config.UpdatesConfig, telemtService, panelService string) []host.Op {
+	return []host.Op{
+		{Kind: host.OpInstallBinary, Args: map[string]string{host.ArgStaging: filepath.Join(update.StagingRunDir(staging, update.TargetTelemt), "backup"), host.ArgDest: cfg.TelemtBinaryPath + ".bak"}},
+		{Kind: host.OpInstallBinary, Args: map[string]string{host.ArgStaging: filepath.Join(update.StagingRunDir(staging, update.TargetTelemt), "bin"), host.ArgDest: cfg.TelemtBinaryPath}},
+		{Kind: host.OpRestoreBinary, Args: map[string]string{host.ArgBackup: cfg.TelemtBinaryPath + ".bak", host.ArgDest: cfg.TelemtBinaryPath}},
+		{Kind: host.OpInstallBinary, Args: map[string]string{host.ArgStaging: filepath.Join(update.StagingRunDir(staging, update.TargetPanel), "backup"), host.ArgDest: cfg.PanelBinaryPath + ".bak"}},
+		{Kind: host.OpInstallBinary, Args: map[string]string{host.ArgStaging: filepath.Join(update.StagingRunDir(staging, update.TargetPanel), "bin"), host.ArgDest: cfg.PanelBinaryPath}},
+		{Kind: host.OpRestoreBinary, Args: map[string]string{host.ArgBackup: cfg.PanelBinaryPath + ".bak", host.ArgDest: cfg.PanelBinaryPath}},
+		{Kind: host.OpRestartService, Args: map[string]string{host.ArgService: telemtService}},
+		{Kind: host.OpRestartService, Args: map[string]string{host.ArgService: panelService}},
 	}
 }
 
@@ -238,7 +286,13 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /api/telemt/info", protect(s.handleTelemtInfo))
 	mux.Handle("GET /api/telemt/config", protect(s.handleGetTelemtConfig))
+	mux.Handle("GET /api/telemt/web-access", protect(s.handleGetTelemtWebAccess))
+	mux.Handle("PUT /api/telemt/web-access/users/{username}", protect(s.handlePutTelemtUserWebAccess))
+	mux.Handle("GET /api/telemt/config/catalog", protect(s.handleGetTelemtConfigCatalog))
 	mux.Handle("PATCH /api/telemt/config", protect(s.handlePatchTelemtConfig))
+	mux.Handle("GET /api/telemt/config/toml", protect(s.handleGetTelemtConfigTOML))
+	mux.Handle("POST /api/telemt/config/toml/preview", protect(s.handlePreviewTelemtConfigTOML))
+	mux.Handle("PATCH /api/telemt/config/toml", protect(s.handlePatchTelemtConfigTOML))
 	mux.Handle("POST /api/telemt/reload", protect(s.handleTelemtReload))
 	mux.Handle("GET /api/telemt/reload/{id}", protect(s.handleTelemtReloadStatus))
 	mux.Handle("POST /api/telemt/restart", protect(s.handleTelemtRestart))

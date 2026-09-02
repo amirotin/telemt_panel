@@ -99,7 +99,12 @@ export function Shell({ children }: { children: ReactNode }) {
               : "overflow-y-auto px-4 py-4 pb-[76px] min-[600px]:pb-4",
           )}
         >
-          {children}
+          <div
+            className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col"
+            data-testid="page-frame"
+          >
+            {children}
+          </div>
         </main>
 
         <nav

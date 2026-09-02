@@ -17,15 +17,10 @@ import (
 // hostile value can't turn one op into an unbounded log dump.
 const maxJournalLines = 10000
 
-// AllowLists is the validation policy every op argument is checked
-// against, on both the direct and agent execution paths — the single
-// place service names and filesystem paths are decided to be safe to
-// touch. On the agent, these come from its own --allow-binary-dest/
-// --allow-config-path/--staging-prefix/--allow-service flags (its final
-// authority regardless of what the client sends); in direct mode, the
-// caller wiring SelectRunner constructs the equivalent lists from the
-// panel's own config-derived values (the configured telemt/panel binary
-// paths and service/container names).
+// AllowLists is the validation policy every op argument is checked against on
+// both direct and sudo execution paths. The caller wiring SelectRunner builds
+// it from the configured Telemt/panel binary paths, staging directory and
+// service/container names.
 //
 // The three path fields are deliberately partitioned by purpose rather
 // than one shared list: install-binary/restore-binary and write-config
@@ -45,9 +40,9 @@ type AllowLists struct {
 	// "staging" source must fall under. Unlike BinaryPaths/ConfigPaths
 	// this is a *prefix*, not an exact-match list: the panel's staging
 	// path varies per update run (e.g. a fresh subdirectory per run), so
-	// a fixed allow-list entry doesn't fit. Without this, an authorized
-	// client could point "staging" at any absolute file the agent can
-	// read and have it copied into an allow-listed dest — an
+	// a fixed allow-list entry doesn't fit. Without this, a caller could
+	// point "staging" at any file the privileged Runner can read and have
+	// it copied into an allow-listed dest — an
 	// arbitrary-file-read primitive. Empty means no staging path
 	// validates (install-binary is unusable), never "allow anything".
 	StagingPrefix string
@@ -57,14 +52,11 @@ type AllowLists struct {
 }
 
 // ExecOp validates op's arguments against allow and executes it,
-// delegating restart-service to svcMgr and read-journal to logSrc. This
-// is the one code path both direct.go's in-process Runner and
-// cmd/panel-agent's connection handler call — the shared "op-execution"
-// layer the milestone requires so the two can never drift in what they
-// accept or how they run it. svcMgr/logSrc may be nil; restart-service/
+// delegating restart-service to svcMgr and read-journal to logSrc. Sudo
+// runners reuse the same validation helpers below before constructing their
+// fixed command sequences. svcMgr/logSrc may be nil; restart-service/
 // read-journal report a clear error rather than panicking when the
-// matching one is nil (a caller with no privileged use for that
-// interface, e.g. a config-only agent instance, need not wire it).
+// matching one is nil.
 func ExecOp(ctx context.Context, op Op, allow AllowLists, svcMgr ServiceManager, logSrc LogSource) (Output, error) {
 	switch op.Kind {
 	case OpInstallBinary:
@@ -306,7 +298,7 @@ func atomicWrite(dest string, data []byte, mode os.FileMode) error {
 // therefore its owner, group and permission bits — reimplemented from
 // v0's telemt_config write semantics (file_write.go's writeConfigInPlace)
 // for the same reason: an operator-managed config file's ownership must
-// survive an edit made through this agent/direct path. A path that
+// survive an edit made through this direct path. A path that
 // doesn't exist yet is created fresh (nothing to preserve).
 func writeFileInPlace(path, content string) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)

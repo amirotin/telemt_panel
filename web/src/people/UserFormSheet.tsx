@@ -2,15 +2,10 @@ import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Sheet } from "../ui/Sheet";
 import { Button } from "../ui/Button";
-import { Input } from "../ui/Input";
-import { Select } from "../ui/Select";
-import { Stepper } from "../ui/Stepper";
-import { Chip } from "../ui/Chip";
-import { IconButton } from "../ui/IconButton";
-import { IconCopy, IconEye, IconEyeOff } from "../ui/icons";
+import { CopyField } from "../ui/CopyField";
+import { Toggle } from "../ui/Toggle";
 import { pushToast } from "../ui/Toast";
-import { useStrings, type Dict } from "../i18n";
-import { copyText } from "../lib/copyText";
+import { useStrings } from "../i18n";
 import {
   createUserMutation,
   patchUserMutation,
@@ -18,6 +13,7 @@ import {
 import {
   buildUserCreateBody,
   buildUserPatch,
+  diffLimitField,
   type LimitFieldState,
 } from "./buildUserPatch";
 import {
@@ -27,7 +23,7 @@ import {
   quotaUnitToBytes,
   type QuotaUnit,
 } from "./users.helpers";
-import { datetimeLocalValueToISO, isoToDatetimeLocalValue, presetToExpiration } from "./expiry";
+import { presetToExpiration } from "./expiry";
 import { generateSecret } from "./secret";
 import { apiErrorMessage } from "./apiError";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
@@ -41,13 +37,12 @@ export interface UserFormSheetProps {
   /** Required when mode === "edit". */
   user?: UsersTopicUser | null;
   onSaved?: (username: string) => void;
+  onConfigureWeb?: (username: string) => void;
 }
 
-// FieldMode is the three "не менять / снять / установить" states a limit
-// field's segmented control cycles through. Create mode never shows "keep"
-// (there is nothing to keep before the user exists) — it starts every field
-// at "clear" (omitted -> unlimited) and only offers clear/set.
-type FieldMode = "keep" | "clear" | "set";
+// The form renders set values directly and treats an empty optional input as
+// clear. "keep" is retained as an internal PATCH serialization state only.
+type FieldMode = "clear" | "set";
 
 interface FieldState<T> {
   mode: FieldMode;
@@ -55,14 +50,13 @@ interface FieldState<T> {
   value: T;
 }
 
-function field<T>(value: T, mode: FieldMode = "keep"): FieldState<T> {
+function field<T>(value: T, mode: FieldMode): FieldState<T> {
   return { mode, value };
 }
 
 interface FormState {
   username: string;
   secret: string;
-  secretVisible: boolean;
   enabled: boolean;
   userAdTag: FieldState<string>;
   maxTcpConns: FieldState<number>;
@@ -78,7 +72,6 @@ function initialCreateState(): FormState {
   return {
     username: "",
     secret: generateSecret(),
-    secretVisible: false,
     enabled: true,
     userAdTag: field("", "clear"),
     maxTcpConns: field(4, "clear"),
@@ -96,33 +89,34 @@ function initialEditState(user: UsersTopicUser): FormState {
   return {
     username: user.username,
     secret: "",
-    secretVisible: false,
     enabled: user.enabled,
-    userAdTag: field(user.user_ad_tag ?? ""),
-    maxTcpConns: field(user.max_tcp_conns ?? 4),
-    maxUniqueIps: field(user.max_unique_ips ?? 2),
-    quotaAmount: field(quota.value),
-    quotaUnit: quota.unit,
-    expiration: field(user.expiration_rfc3339 ?? ""),
-    rateLimitUpBps: field(user.rate_limit_up_bps ?? 0),
-    rateLimitDownBps: field(user.rate_limit_down_bps ?? 0),
+    userAdTag: field(user.user_ad_tag ?? "", user.user_ad_tag ? "set" : "clear"),
+    maxTcpConns: field(user.max_tcp_conns || 4, user.max_tcp_conns ? "set" : "clear"),
+    maxUniqueIps: field(user.max_unique_ips || 2, user.max_unique_ips ? "set" : "clear"),
+    quotaAmount: field(quota.value, user.data_quota_bytes ? "set" : "clear"),
+    quotaUnit: user.data_quota_bytes ? quota.unit : "GB",
+    expiration: field(user.expiration_rfc3339 ?? "", user.expiration_rfc3339 ? "set" : "clear"),
+    rateLimitUpBps: field(user.rate_limit_up_bps ?? 0, user.rate_limit_up_bps ? "set" : "clear"),
+    rateLimitDownBps: field(user.rate_limit_down_bps ?? 0, user.rate_limit_down_bps ? "set" : "clear"),
   };
 }
 
 // UserFormSheet — create/edit form (06-ui.md §Люди): name, generated secret
 // (create only — edit rotates via a separate action, per 07-telemt-sdk.md),
 // quota, expiry, connection/IP limits, rate limits, ad tag. Every optional
-// limit is a three-state segmented control in edit mode (не менять / снять
-// / установить); create mode collapses that to two states (omit / set)
-// since there is no prior value to "keep" — buildUserPatch/buildUserCreateBody
-// (buildUserPatch.ts) are the pure serializers this component's Submit
-// handler feeds into.
-export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSheetProps) {
+// limit uses the same direct-value controls in both modes. Empty optional
+// fields mean "unlimited/not set"; the edit serializer compares the resulting
+// state with the original user so untouched values remain omitted from PATCH.
+export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureWeb }: UserFormSheetProps) {
   const s = useStrings();
   const [state, setState] = useState<FormState>(() =>
     mode === "edit" && user ? initialEditState(user) : initialCreateState(),
   );
   const [usernameTouched, setUsernameTouched] = useState(false);
+  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const [activePreset, setActivePreset] = useState<"unlimited" | "personal" | "temporary" | null>(
+    mode === "create" ? "unlimited" : null,
+  );
 
   // Reset local state whenever the sheet is (re)opened for a (possibly
   // different) user/mode — Sheet stays mounted across opens in the parent,
@@ -138,6 +132,8 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
     setLastOpenKey(openKey);
     setState(mode === "edit" && user ? initialEditState(user) : initialCreateState());
     setUsernameTouched(false);
+    setCreatedSecret(null);
+    setActivePreset(mode === "create" ? "unlimited" : null);
   }
 
   const refreshTopic = useRefreshTopic();
@@ -147,7 +143,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
     onSuccess: (data) => {
       pushToast(s.people.toast.created, "ok");
       onSaved?.(data.user.username);
-      onClose();
+      setCreatedSecret(data.secret);
       refreshUsersAfterMutation(refreshTopic);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
@@ -168,10 +164,8 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
   const usernameValid = isValidUsername(state.username);
   const canSubmit = mode === "edit" || (usernameValid && isValidSecret(state.secret));
 
-  function toLimit<T>(f: FieldState<T>): LimitFieldState<T> {
-    if (f.mode === "keep") return { mode: "keep" };
-    if (f.mode === "clear") return { mode: "clear" };
-    return { mode: "set", value: f.value };
+  function changedLimit<T>(f: FieldState<T>, original: T | undefined): LimitFieldState<T> {
+    return diffLimitField(f.mode === "set" ? f.value : undefined, original);
   }
 
   function handleSubmit(e: FormEvent) {
@@ -205,368 +199,153 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved }: UserFormSh
     patchMutation.mutate({
       path: { username: state.username },
       body: buildUserPatch({
-        userAdTag: toLimit(state.userAdTag),
-        maxTcpConns: toLimit(state.maxTcpConns),
-        maxUniqueIps: toLimit(state.maxUniqueIps),
-        dataQuotaBytes: toLimit(quotaBytesField),
-        expirationRfc3339: toLimit(state.expiration),
-        rateLimitUpBps: toLimit(state.rateLimitUpBps),
-        rateLimitDownBps: toLimit(state.rateLimitDownBps),
+        enabled: state.enabled !== user?.enabled ? state.enabled : undefined,
+        userAdTag: changedLimit(state.userAdTag, user?.user_ad_tag || undefined),
+        maxTcpConns: changedLimit(state.maxTcpConns, user?.max_tcp_conns || undefined),
+        maxUniqueIps: changedLimit(state.maxUniqueIps, user?.max_unique_ips || undefined),
+        dataQuotaBytes: changedLimit(
+          quotaBytesField,
+          user?.data_quota_bytes ? user.data_quota_bytes : undefined,
+        ),
+        expirationRfc3339: changedLimit(state.expiration, user?.expiration_rfc3339 || undefined),
+        rateLimitUpBps: changedLimit(
+          state.rateLimitUpBps,
+          user?.rate_limit_up_bps ? user.rate_limit_up_bps : undefined,
+        ),
+        rateLimitDownBps: changedLimit(
+          state.rateLimitDownBps,
+          user?.rate_limit_down_bps ? user.rate_limit_down_bps : undefined,
+        ),
       }),
     });
   }
 
-  return (
-    <Sheet open={open} onClose={onClose} title={mode === "create" ? s.people.form.createTitle : s.people.form.editTitle}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
-        <label className="flex flex-col gap-1 text-sm text-text-muted">
-          {s.people.form.username}
-          <Input
-            data-testid="user-form-username"
-            value={state.username}
-            disabled={mode === "edit"}
-            autoCapitalize="off"
-            autoCorrect="off"
-            onChange={(e) => {
-              setUsernameTouched(true);
-              setState((prev) => ({ ...prev, username: e.target.value }));
-            }}
-          />
-          <span className="text-xs text-text-faint">
-            {usernameTouched && !usernameValid && state.username.length > 0
-              ? s.people.form.usernameInvalid
-              : s.people.form.usernameHint}
-          </span>
-        </label>
+  function applyCreatePreset(preset: "unlimited" | "personal" | "temporary") {
+    setActivePreset(preset);
+    if (preset === "unlimited") {
+      setState((prev) => ({
+        ...prev,
+        maxTcpConns: { ...prev.maxTcpConns, mode: "clear" },
+        maxUniqueIps: { ...prev.maxUniqueIps, mode: "clear" },
+        quotaAmount: { ...prev.quotaAmount, mode: "clear" },
+        expiration: { ...prev.expiration, mode: "clear" },
+      }));
+      return;
+    }
+    const temporary = preset === "temporary";
+    setState((prev) => ({
+      ...prev,
+      maxTcpConns: field(temporary ? 12 : 50, "set"),
+      maxUniqueIps: field(temporary ? 1 : 3, "set"),
+      quotaAmount: field(temporary ? 50 : 500, "set"),
+      quotaUnit: "GB",
+      expiration: temporary
+        ? field(presetToExpiration("7d", new Date())!, "set")
+        : { ...prev.expiration, mode: "clear" },
+    }));
+  }
 
-        {mode === "create" && (
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-text-muted">{s.people.form.secret}</span>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-              {/* type="password"/"text" toggling (not a manually-rendered
-                  mask) so the field stays directly editable/pastable — an
-                  admin can paste a custom hex secret instead of the
-                  generated default. */}
-              <Input
-                type={state.secretVisible ? "text" : "password"}
-                monospace
+  if (createdSecret) {
+    return (
+      <Sheet open={open} onClose={onClose} placement="form" title={s.people.newSecret.title} subtitle={state.username}>
+        <div className="flex flex-col gap-4 py-2">
+          <p className="rounded-xl border border-warn/30 bg-warn/10 p-3 text-sm text-warn">{s.people.newSecret.warning}</p>
+          <CopyField value={createdSecret} label={s.people.form.secret} data-testid="created-user-secret" />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button variant="secondary" onClick={onClose}>{s.people.newSecret.close}</Button>
+            {onConfigureWeb && <Button onClick={() => { onClose(); onConfigureWeb(state.username); }}>{s.people.newSecret.configureWeb}</Button>}
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
+
+  const expirationDate = state.expiration.mode === "set" ? state.expiration.value.slice(0, 10) : "";
+  const quotaValue = state.quotaAmount.mode === "set" ? String(state.quotaAmount.value) : "";
+  const maxIpsValue = state.maxUniqueIps.mode === "set" ? String(state.maxUniqueIps.value) : "";
+  const maxConnectionsValue = state.maxTcpConns.mode === "set" ? String(state.maxTcpConns.value) : "";
+  const rateUpMbps = state.rateLimitUpBps.mode === "set" ? String(state.rateLimitUpBps.value / 1_000_000) : "";
+  const rateDownMbps = state.rateLimitDownBps.mode === "set" ? String(state.rateLimitDownBps.value / 1_000_000) : "";
+  const creating = mode === "create";
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      placement="form"
+      eyebrow={creating ? s.people.form.createEyebrow : s.people.form.editEyebrow}
+      title={creating ? s.people.form.createTitle : s.people.form.editTitle}
+      subtitle={creating ? s.people.form.createSubtitle : user?.username}
+      className="people-form-dialog"
+      headerClassName="people-form-head"
+      bodyClassName="people-form-sheet-body"
+    >
+      <form onSubmit={handleSubmit} className="people-create-form" noValidate>
+        <div className="people-form-body">
+          <section className="people-form-section">
+            <div className="people-form-section-head"><strong>{s.people.form.basics}</strong><span>{s.people.form.requiredParameters}</span></div>
+            <label className="people-form-field people-form-field-wide">
+              <span>{s.people.form.username} <b>*</b></span>
+              <input
+                data-testid="user-form-username"
+                value={state.username}
+                required
+                disabled={!creating}
+                autoComplete="off"
                 autoCapitalize="off"
                 autoCorrect="off"
-                spellCheck={false}
-                value={state.secret}
-                onChange={(e) => setState((prev) => ({ ...prev, secret: e.target.value.trim() }))}
-                className="flex-1"
-              />
-              <IconButton
-                type="button"
-                aria-label={state.secretVisible ? s.people.form.hide : s.people.form.show}
-                onClick={() => setState((prev) => ({ ...prev, secretVisible: !prev.secretVisible }))}
-              >
-                {state.secretVisible ? <IconEyeOff /> : <IconEye />}
-              </IconButton>
-              <IconButton
-                type="button"
-                aria-label={s.common.copy}
-                // Always copies the current secret directly (not via
-                // CopyField, which would need the raw value passed into a
-                // visible span regardless of the show/hide toggle above).
-                onClick={async () => {
-                  const result = await copyText(state.secret);
-                  if (result === "failed") pushToast(s.common.copyManually, "error");
-                  else pushToast(s.common.copied, "ok");
+                placeholder={s.people.form.usernamePlaceholder}
+                onChange={(event) => {
+                  setUsernameTouched(true);
+                  setState((prev) => ({ ...prev, username: event.target.value }));
                 }}
-              >
-                <IconCopy />
-              </IconButton>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="self-start"
-                onClick={() => setState((prev) => ({ ...prev, secret: generateSecret() }))}
-              >
-                {s.people.form.secretRegenerate}
-              </Button>
+              />
+              <small>{usernameTouched && !usernameValid && state.username.length > 0 ? s.people.form.usernameInvalid : s.people.form.usernameHint}</small>
+            </label>
+            <div className="people-form-toggle">
+              <span><strong>{s.people.form.enabled}</strong><small>{creating ? s.people.form.enabledHint : s.people.form.enabledEditHint}</small></span>
+              <Toggle checked={state.enabled} onChange={(enabled) => setState((prev) => ({ ...prev, enabled }))} aria-label={s.people.form.enabled} />
             </div>
-            {state.secret.length > 0 && !isValidSecret(state.secret) && (
-              <span className="text-xs text-error">{s.people.form.secretInvalid}</span>
-            )}
-          </div>
-        )}
+          </section>
 
-        <QuotaField
-          formMode={mode}
-          amount={state.quotaAmount}
-          unit={state.quotaUnit}
-          onChangeAmount={(f) => setState((prev) => ({ ...prev, quotaAmount: f }))}
-          onChangeUnit={(unit) => setState((prev) => ({ ...prev, quotaUnit: unit }))}
-        />
+          <section className="people-form-section">
+            <div className="people-form-section-head"><strong>{s.people.form.profile}</strong><span>{s.people.form.profileHint}</span></div>
+            <div className="people-form-presets" role="group" aria-label={s.people.form.profile}>
+              {(["unlimited", "personal", "temporary"] as const).map((preset) => (
+                <button key={preset} type="button" className={activePreset === preset ? "is-active" : ""} onClick={() => applyCreatePreset(preset)}>
+                  <strong>{preset === "unlimited" ? s.people.form.profileUnlimited : preset === "personal" ? s.people.form.profilePersonal : s.people.form.profileTemporary}</strong>
+                  <span>{preset === "unlimited" ? s.people.form.profileUnlimitedHint : preset === "personal" ? s.people.form.profilePersonalHint : s.people.form.profileTemporaryHint}</span>
+                </button>
+              ))}
+            </div>
+            <div className="people-form-grid">
+              <label className="people-form-field">
+                <span>{s.people.form.quota}</span>
+                <div className="people-form-compound">
+                  <input type="number" inputMode="decimal" min={0} value={quotaValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, quotaAmount: value === "" ? { ...prev.quotaAmount, mode: "clear" } : field(Number(value), "set") })); }} />
+                  <select value={state.quotaUnit} aria-label={s.people.form.quotaUnitLabel} onChange={(event) => { setActivePreset(null); setState((prev) => ({ ...prev, quotaUnit: event.target.value as QuotaUnit })); }}><option value="MB">{s.people.form.quotaUnits.MB}</option><option value="GB">{s.people.form.quotaUnits.GB}</option><option value="TB">{s.people.form.quotaUnits.TB}</option></select>
+                </div>
+              </label>
+              <label className="people-form-field"><span>{s.people.form.expirationShort}</span><input type="date" value={expirationDate} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, expiration: value === "" ? { ...prev.expiration, mode: "clear" } : field(new Date(`${value}T23:59:59`).toISOString(), "set") })); }} /></label>
+              <label className="people-form-field"><span>{s.people.form.maxIps}</span><input type="number" inputMode="numeric" min={1} value={maxIpsValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxUniqueIps: value === "" ? { ...prev.maxUniqueIps, mode: "clear" } : field(Number(value), "set") })); }} /></label>
+              <label className="people-form-field"><span>{s.people.form.maxConnections}</span><input type="number" inputMode="numeric" min={1} value={maxConnectionsValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxTcpConns: value === "" ? { ...prev.maxTcpConns, mode: "clear" } : field(Number(value), "set") })); }} /></label>
+            </div>
+          </section>
 
-        <ExpiryField
-          formMode={mode}
-          field={state.expiration}
-          onChange={(f) => setState((prev) => ({ ...prev, expiration: f }))}
-        />
-
-        <NumericLimitField
-          label={s.people.form.maxConnections}
-          formMode={mode}
-          field={state.maxTcpConns}
-          min={1}
-          max={1000}
-          onChange={(f) => setState((prev) => ({ ...prev, maxTcpConns: f }))}
-        />
-
-        <NumericLimitField
-          label={s.people.form.maxIps}
-          formMode={mode}
-          field={state.maxUniqueIps}
-          min={1}
-          max={1000}
-          onChange={(f) => setState((prev) => ({ ...prev, maxUniqueIps: f }))}
-        />
-
-        <details className="rounded-lg border border-border">
-          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-text">
-            {s.people.form.advanced}
-          </summary>
-          <div className="flex flex-col gap-5 border-t border-border px-3 py-3">
-            <TextLimitField
-              label={s.people.adTag}
-              formMode={mode}
-              field={state.userAdTag}
-              monospace
-              onChange={(f) => setState((prev) => ({ ...prev, userAdTag: f }))}
-            />
-            <NumericLimitField
-              label={s.people.form.rateUpLabel}
-              formMode={mode}
-              field={state.rateLimitUpBps}
-              min={0}
-              max={10_000_000_000}
-              step={1000}
-              onChange={(f) => setState((prev) => ({ ...prev, rateLimitUpBps: f }))}
-            />
-            <NumericLimitField
-              label={s.people.form.rateDownLabel}
-              formMode={mode}
-              field={state.rateLimitDownBps}
-              min={0}
-              max={10_000_000_000}
-              step={1000}
-              onChange={(f) => setState((prev) => ({ ...prev, rateLimitDownBps: f }))}
-            />
-          </div>
-        </details>
-
-        <Button type="submit" data-testid="user-form-submit" disabled={!canSubmit || pending}>
-          {pending
-            ? s.people.form.submitting
-            : mode === "create"
-              ? s.people.form.submitCreate
-              : s.people.form.submitEdit}
-        </Button>
+          <details className="people-form-section">
+            <summary className="people-form-advanced-toggle"><span><strong>{s.people.form.advancedParameters}</strong><small>{s.people.form.advancedHint}</small></span><i>⌄</i></summary>
+            <div className="people-form-grid pt-4">
+              <label className="people-form-field"><span>{s.people.form.rateUpShort}</span><div className="people-form-compound"><input type="number" inputMode="decimal" min={0} value={rateUpMbps} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, rateLimitUpBps: value === "" ? { ...prev.rateLimitUpBps, mode: "clear" } : field(Number(value) * 1_000_000, "set") })); }} /><span>{s.people.form.mbps}</span></div></label>
+              <label className="people-form-field"><span>{s.people.form.rateDownShort}</span><div className="people-form-compound"><input type="number" inputMode="decimal" min={0} value={rateDownMbps} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, rateLimitDownBps: value === "" ? { ...prev.rateLimitDownBps, mode: "clear" } : field(Number(value) * 1_000_000, "set") })); }} /><span>{s.people.form.mbps}</span></div></label>
+              <label className="people-form-field people-form-field-wide"><span>{s.people.adTag}</span><input value={state.userAdTag.mode === "set" ? state.userAdTag.value : ""} autoComplete="off" placeholder={s.people.form.notSet} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, userAdTag: value === "" ? { ...prev.userAdTag, mode: "clear" } : field(value, "set") })); }} /></label>
+            </div>
+          </details>
+        </div>
+        <footer className="people-form-foot">
+          <Button type="button" variant="secondary" onClick={onClose}>{s.common.cancel}</Button>
+          <Button type="submit" data-testid="user-form-submit" disabled={!canSubmit || pending}>{pending ? s.people.form.submitting : creating ? s.people.form.submitCreateFull : s.people.form.submitEdit}</Button>
+        </footer>
       </form>
     </Sheet>
-  );
-}
-
-function modeLabel(m: FieldMode, s: Dict): string {
-  return m === "keep"
-    ? s.people.form.fieldModeKeep
-    : m === "clear"
-      ? s.people.form.fieldModeClear
-      : s.people.form.fieldModeSet;
-}
-
-// FieldModeControl is the explicit three/two-way switch every optional
-// limit field renders (06-ui.md: "не менять / снять / установить"
-// reflected by a UI-переключатель, not a magic 0). Edit mode shows all
-// three; create mode shows only clear/set — see FieldMode's doc comment.
-function FieldModeControl({
-  formMode,
-  mode,
-  label,
-  onChange,
-}: {
-  formMode: "create" | "edit";
-  mode: FieldMode;
-  label: string;
-  onChange: (m: FieldMode) => void;
-}) {
-  const s = useStrings();
-  const options: FieldMode[] = formMode === "edit" ? ["keep", "clear", "set"] : ["clear", "set"];
-  return (
-    <div className="flex gap-1.5" role="group" aria-label={label}>
-      {options.map((m) => (
-        <Chip key={m} active={mode === m} onClick={() => onChange(m)}>
-          {modeLabel(m, s)}
-        </Chip>
-      ))}
-    </div>
-  );
-}
-
-function NumericLimitField({
-  label,
-  formMode,
-  field: f,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  formMode: "create" | "edit";
-  field: FieldState<number>;
-  min?: number;
-  max?: number;
-  step?: number;
-  onChange: (f: FieldState<number>) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <span className="text-sm text-text-muted">{label}</span>
-      <FieldModeControl formMode={formMode} mode={f.mode} label={label} onChange={(mode) => onChange({ ...f, mode })} />
-      {f.mode === "set" && (
-        <Stepper
-          value={f.value}
-          onChange={(value) => onChange({ ...f, value })}
-          min={min}
-          max={max}
-          step={step}
-          label={label}
-        />
-      )}
-    </div>
-  );
-}
-
-function TextLimitField({
-  label,
-  formMode,
-  field: f,
-  monospace,
-  onChange,
-}: {
-  label: string;
-  formMode: "create" | "edit";
-  field: FieldState<string>;
-  monospace?: boolean;
-  onChange: (f: FieldState<string>) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <span className="text-sm text-text-muted">{label}</span>
-      <FieldModeControl formMode={formMode} mode={f.mode} label={label} onChange={(mode) => onChange({ ...f, mode })} />
-      {f.mode === "set" && (
-        <Input
-          value={f.value}
-          monospace={monospace}
-          autoCapitalize="off"
-          onChange={(e) => onChange({ ...f, value: e.target.value })}
-        />
-      )}
-    </div>
-  );
-}
-
-function QuotaField({
-  formMode,
-  amount,
-  unit,
-  onChangeAmount,
-  onChangeUnit,
-}: {
-  formMode: "create" | "edit";
-  amount: FieldState<number>;
-  unit: QuotaUnit;
-  onChangeAmount: (f: FieldState<number>) => void;
-  onChangeUnit: (u: QuotaUnit) => void;
-}) {
-  const s = useStrings();
-  return (
-    <div className="flex flex-col gap-2">
-      <span className="text-sm text-text-muted">{s.people.form.quota}</span>
-      <FieldModeControl
-        formMode={formMode}
-        mode={amount.mode}
-        label={s.people.form.quota}
-        onChange={(mode) => onChangeAmount({ ...amount, mode })}
-      />
-      {amount.mode === "set" && (
-        <div className="flex gap-2">
-          <Input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            value={amount.value}
-            onChange={(e) => onChangeAmount({ ...amount, value: Number(e.target.value) })}
-            className="flex-1"
-          />
-          <Select value={unit} onChange={(e) => onChangeUnit(e.target.value as QuotaUnit)} className="w-24">
-            <option value="MB">{s.people.form.quotaUnits.MB}</option>
-            <option value="GB">{s.people.form.quotaUnits.GB}</option>
-          </Select>
-        </div>
-      )}
-      {amount.mode !== "set" && <span className="text-xs text-text-faint">{s.people.form.quotaUnlimited}</span>}
-    </div>
-  );
-}
-
-function ExpiryField({
-  formMode,
-  field: f,
-  onChange,
-}: {
-  formMode: "create" | "edit";
-  field: FieldState<string>;
-  onChange: (f: FieldState<string>) => void;
-}) {
-  const s = useStrings();
-  return (
-    <div className="flex flex-col gap-2">
-      <span className="text-sm text-text-muted">{s.people.form.expiry}</span>
-      <FieldModeControl
-        formMode={formMode}
-        mode={f.mode}
-        label={s.people.form.expiry}
-        onChange={(mode) => onChange({ ...f, mode })}
-      />
-      {f.mode === "set" && (
-        <div className="flex flex-col gap-2">
-          <Input
-            type="datetime-local"
-            value={isoToDatetimeLocalValue(f.value)}
-            onChange={(e) => {
-              const iso = datetimeLocalValueToISO(e.target.value);
-              if (iso) onChange({ ...f, value: iso });
-            }}
-          />
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="flex-1"
-              onClick={() => onChange({ ...f, value: presetToExpiration("7d", new Date())! })}
-            >
-              {s.people.form.expiryPreset7d}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="flex-1"
-              onClick={() => onChange({ ...f, value: presetToExpiration("30d", new Date())! })}
-            >
-              {s.people.form.expiryPreset30d}
-            </Button>
-          </div>
-        </div>
-      )}
-      {f.mode !== "set" && <span className="text-xs text-text-faint">{s.people.form.expiryPresetNone}</span>}
-    </div>
   );
 }

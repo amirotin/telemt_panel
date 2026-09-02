@@ -31,6 +31,17 @@ describe("buildConfigPatch", () => {
     expect(buildConfigPatch(original, edited)).toEqual({ upstreams: { list: [1, 2, 4] } });
   });
 
+  it("sends a top-level upstream array wholesale when records change", () => {
+    const original = { upstreams: [{ type: "direct", weight: 1 }] };
+    const edited = {
+      upstreams: [
+        { type: "direct", weight: 1 },
+        { type: "socks5", address: "127.0.0.1:1080", weight: 2 },
+      ],
+    };
+    expect(buildConfigPatch(original, edited)).toEqual({ upstreams: edited.upstreams });
+  });
+
   it("omits an unchanged array entirely", () => {
     const original = { upstreams: { list: [1, 2, 3] } };
     const edited = { upstreams: { list: [1, 2, 3] } };

@@ -23,6 +23,7 @@ export function auditActionFamily(action: string): AuditFamily {
       return "person";
     case "secret":
     case "sublink":
+    case "web":
       return "access";
     case "config":
     case "telemt":
@@ -42,15 +43,26 @@ export function auditActionFamily(action: string): AuditFamily {
 // so it gets its own branch rather than a per-action template table.
 export function renderAuditAction(entry: AuditEntry, s: Dict): string {
   const label =
-    auditActionLabel(s, entry.action) ?? `${s.journal.events.unknownAction}: ${entry.action}`;
+    auditActionLabel(s, entry.action) ?? `${s.journal.actions.unknownAction}: ${entry.action}`;
   const parts: string[] = [label];
 
   if (entry.action === "user.enabled") {
     const enabled = entry.detail?.includes("enabled=true") ?? false;
-    parts.push(entry.subject ?? "", enabled ? s.journal.events.enabledTrue : s.journal.events.enabledFalse);
+    parts.push(
+      entry.subject ?? "",
+      enabled ? s.journal.actions.enabledTrue : s.journal.actions.enabledFalse,
+    );
   } else if (entry.subject) {
     parts.push(entry.subject);
   }
 
   return parts.filter((p) => p.length > 0).join(" — ");
+}
+
+export function renderAuditTitle(entry: AuditEntry, s: Dict): string {
+  const label =
+    auditActionLabel(s, entry.action) ?? `${s.journal.actions.unknownAction}: ${entry.action}`;
+  if (entry.action !== "user.enabled") return label;
+  const enabled = entry.detail?.includes("enabled=true") ?? false;
+  return `${label} — ${enabled ? s.journal.actions.enabledTrue : s.journal.actions.enabledFalse}`;
 }

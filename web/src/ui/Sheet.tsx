@@ -13,17 +13,21 @@ import { IconClose } from "./icons";
  * desktop, and landscape-vs-portrait is a decision about available height
  * that a width-only media query cannot make.
  */
-export type SheetPlacement = "auto" | "bottom" | "side" | "modal";
+export type SheetPlacement = "auto" | "bottom" | "side" | "modal" | "form";
 
 export interface SheetProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /** Optional compact label above the title (used by full task forms). */
+  eyebrow?: string;
   /** Secondary line under the title — status, identity context. */
   subtitle?: ReactNode;
   placement?: SheetPlacement;
   children: ReactNode;
   className?: string;
+  headerClassName?: string;
+  bodyClassName?: string;
 }
 
 const CONTAINER_CLASSES: Record<SheetPlacement, string> = {
@@ -31,6 +35,7 @@ const CONTAINER_CLASSES: Record<SheetPlacement, string> = {
   bottom: "flex items-end justify-center",
   side: "flex items-stretch justify-end",
   modal: "flex items-center justify-center",
+  form: "flex items-stretch justify-center lg:items-center",
 };
 
 const PANEL_CLASSES: Record<SheetPlacement, string> = {
@@ -40,6 +45,7 @@ const PANEL_CLASSES: Record<SheetPlacement, string> = {
   // доступную высоту") — the body scrolls inside instead.
   side: "h-dvh max-h-dvh w-full max-w-sm rounded-l-3xl pb-safe",
   modal: "m-4 max-h-[85dvh] w-full max-w-lg rounded-3xl",
+  form: "h-dvh max-h-dvh w-full rounded-none pb-safe lg:h-auto lg:max-h-[90dvh] lg:max-w-[680px] lg:rounded-2xl lg:pb-0",
 };
 
 const FOCUSABLE =
@@ -55,10 +61,13 @@ export function Sheet({
   open,
   onClose,
   title,
+  eyebrow,
   subtitle,
   placement = "auto",
   children,
   className,
+  headerClassName,
+  bodyClassName,
 }: SheetProps) {
   const s = useStrings();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -136,8 +145,9 @@ export function Sheet({
             aria-hidden="true"
           />
         )}
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div className={cn("flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3", headerClassName)}>
           <div className="min-w-0">
+            {eyebrow && <span data-sheet-eyebrow>{eyebrow}</span>}
             <h2 className="break-words text-[15px] font-bold text-text">{title}</h2>
             {subtitle !== undefined && subtitle !== "" && (
               <p className="mt-0.5 break-words text-meta text-text-muted">{subtitle}</p>
@@ -147,7 +157,7 @@ export function Sheet({
             <IconClose />
           </IconButton>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{children}</div>
+        <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-3", bodyClassName)}>{children}</div>
       </div>
     </div>,
     document.body,

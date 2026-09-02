@@ -1,144 +1,220 @@
+import { useRef, useState, type CSSProperties } from "react";
+import { useLongPress, useMove, usePress } from "@react-aria/interactions";
+import { mergeProps } from "@react-aria/utils";
 import { cn } from "../lib/cn";
-import { useStrings } from "../i18n";
+import { formatBytes } from "../lib/format";
+import { useStrings, type Dict } from "../i18n";
 import { Avatar } from "../ui/Avatar";
-import { CountBadge } from "../ui/Chip";
-import { IconButton } from "../ui/IconButton";
-import { IconMore } from "../ui/icons";
-import { isUnlimitedQuota, quotaFillClass, quotaRatio } from "../ui/quota.helpers";
-import { useLongPress } from "./useLongPress";
-import { visibleFor, type DisplayMode } from "../display-mode";
-import { computeUserStatus, formatBitsPerSecond, getUserQuota, isOnline } from "./users.helpers";
-import { personAvatarTone, personBadge, personMeta } from "./personMeta.helpers";
+import { quotaRatio } from "../ui/quota.helpers";
+import { formatDurationApprox } from "./expiry";
+import { computeUserStatus, getUserQuota, isOnline } from "./users.helpers";
+import { personAvatarTone } from "./personMeta.helpers";
 import type { UsersTopicQuotaEntry, UsersTopicUser } from "../realtime/topics";
 
 export interface UserCardProps {
   user: UsersTopicUser;
   quotaEntry: UsersTopicQuotaEntry | undefined;
-  mode: DisplayMode;
   now: number;
-  /** Highlights the row as the one the `lg:` Инспектор is showing. */
   selected?: boolean;
+  gesturesEnabled?: boolean;
+  swipeOpen?: boolean;
   onOpen: () => void;
+  onAccess: () => void;
   onActions: () => void;
+  onSwipeOpen?: () => void;
+  onSwipeClose?: () => void;
 }
 
-const META_TONE = {
-  muted: "text-text-muted",
-  error: "text-error",
-  warn: "text-warn",
-  faint: "text-text-faint",
-} as const;
+const SWIPE_ACTIONS_WIDTH_PX = 142;
+const SWIPE_OPEN_THRESHOLD_PX = 54;
 
-// UserCard — one person in the Люди list. The prototype uses the same row
-// at every width (a table on `lg:` would break the Инспектор's
-// two-column reading), so this is the single list item for both the phone
-// and the desktop list column: avatar + presence dot, name, a one-line
-// summary, an activity/quota hairline and the live connection badge.
-// Density still follows the display mode — `critical` drops the bar and
-// the extended tail, `extended` adds recent IPs / ad tag / rate limits.
+// UserCard is one fixed-density row used by the virtualized list. Desktop
+// exposes four comparable columns; phone portrait rearranges the same facts
+// into a two-row card without adding secondary metrics that Telemt does not
+// provide. Swipe-left and long press accelerate the visible actions button.
 export function UserCard({
   user,
   quotaEntry,
-  mode,
   now,
   selected,
+  gesturesEnabled = true,
+  swipeOpen = false,
   onOpen,
+  onAccess,
   onActions,
+  onSwipeOpen = () => {},
+  onSwipeClose = () => {},
 }: UserCardProps) {
   const s = useStrings();
   const quota = getUserQuota(user, quotaEntry);
   const status = computeUserStatus(user, quota, now);
   const online = isOnline(user);
-  const longPress = useLongPress(onActions);
-  const meta = personMeta({ user, status, quota }, s);
-  const badge = personBadge({ user, status }, s);
+  const moved = useRef(false);
+  const longPressed = useRef(false);
+  const dragOffset = useRef(swipeOpen ? -SWIPE_ACTIONS_WIDTH_PX : 0);
+  const dragTotal = useRef({ x: 0, y: 0 });
+  const dragAxis = useRef<"pending" | "horizontal" | "vertical">("pending");
+  const [visibleDragOffset, setVisibleDragOffset] = useState<number | null>(null);
 
-  // No bar for an uncapped user: a permanently full track says nothing.
-  const hasBar =
-    visibleFor("basic", mode) && !isUnlimitedQuota(quota.limitBytes) && status !== "disabled";
-  const ratio = quotaRatio(quota.usedBytes, quota.limitBytes);
+  function updateDragOffset(value: number) {
+    dragOffset.current = Math.max(-SWIPE_ACTIONS_WIDTH_PX, Math.min(0, value));
+    setVisibleDragOffset(dragOffset.current);
+  }
+
+  function closeSwipe() {
+    dragOffset.current = 0;
+    setVisibleDragOffset(null);
+    onSwipeClose();
+  }
+
+  const { moveProps } = useMove({
+    onMoveStart: () => {
+      moved.current = false;
+      longPressed.current = false;
+      dragTotal.current = { x: 0, y: 0 };
+      dragAxis.current = "pending";
+      dragOffset.current = swipeOpen ? -SWIPE_ACTIONS_WIDTH_PX : 0;
+    },
+    onMove: ({ deltaX, deltaY }) => {
+      if (!gesturesEnabled) return;
+      dragTotal.current.x += deltaX;
+      dragTotal.current.y += deltaY;
+      const { x, y } = dragTotal.current;
+      if (dragAxis.current === "pending" && Math.max(Math.abs(x), Math.abs(y)) > 7) {
+        dragAxis.current = Math.abs(x) > Math.abs(y) ? "horizontal" : "vertical";
+      }
+      if (dragAxis.current !== "horizontal") return;
+      moved.current = true;
+      updateDragOffset((swipeOpen ? -SWIPE_ACTIONS_WIDTH_PX : 0) + x);
+    },
+    onMoveEnd: () => {
+      if (!gesturesEnabled || longPressed.current) return;
+      if (dragAxis.current === "horizontal" && dragOffset.current < -SWIPE_OPEN_THRESHOLD_PX) onSwipeOpen();
+      else onSwipeClose();
+      setVisibleDragOffset(null);
+    },
+  });
+  const { longPressProps } = useLongPress({
+    isDisabled: !gesturesEnabled,
+    threshold: 500,
+    accessibilityDescription: `${s.people.gestureHintTitle} ${s.people.gestureHintBody}`,
+    onLongPressStart: () => {
+      longPressed.current = false;
+    },
+    onLongPress: () => {
+      longPressed.current = true;
+      moved.current = false;
+      closeSwipe();
+      onActions();
+    },
+  });
+  const { pressProps, isPressed } = usePress({
+    onPressStart: (event) => {
+      // A browser may synthesize a virtual click after touch long-press.
+      // Preserve the winning long-press flag for that follow-up event, but
+      // clear stale gesture state for a genuinely new pointer interaction.
+      if (event.pointerType === "virtual") return;
+      moved.current = false;
+      longPressed.current = false;
+    },
+    onPress: () => {
+      if (moved.current || longPressed.current) return;
+      if (swipeOpen) {
+        closeSwipe();
+        return;
+      }
+      onOpen();
+    },
+  });
+  const interactionProps = mergeProps(
+    gesturesEnabled ? moveProps : {},
+    gesturesEnabled ? longPressProps : {},
+    pressProps,
+  );
+
+  const statusText = status === "active"
+    ? online ? s.people.online : s.people.offline
+    : s.people.status[status];
+  const quotaPercent = quota.limitBytes === null
+    ? null
+    : Math.round(quotaRatio(quota.usedBytes, quota.limitBytes) * 100);
+  const access = accessSummary(user, status, now, s);
+  const activity = user.current_connections > 0
+    ? `${user.current_connections} ${s.people.connectionsLower}`
+    : s.people.noConnections;
+  const ipCopy = online
+    ? `${user.active_unique_ips} ${s.people.activeIpsShort}`
+    : s.people.offline;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      data-testid={`user-card-${user.username}`}
-      aria-current={selected ? "true" : undefined}
-      className={cn(
-        "flex cursor-pointer select-none items-center gap-3 px-4 transition-colors",
-        selected ? "bg-surface-2" : "hover:bg-surface/60",
-      )}
-      onClick={() => {
-        if (longPress.consume()) return;
-        onOpen();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onOpen();
-      }}
-      {...longPress.handlers}
-    >
-      <Avatar
-        name={user.username}
-        tone={personAvatarTone(user, status)}
-        online={online}
-        ringOn={selected ? "surface" : "bg"}
-      />
-
-      {/* The divider lives on the text block, not the row, so it starts
-          past the avatar — the prototype's list rhythm. */}
-      <div className="min-w-0 flex-1 border-b border-border py-3">
-        <div className="flex items-baseline gap-2">
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate text-[15px] font-semibold",
-              status === "disabled" ? "text-text-faint" : "text-text",
-            )}
-          >
-            {user.username}
-          </span>
-          {online && (
-            <span className="shrink-0 text-micro text-ok">{s.people.online}</span>
-          )}
-        </div>
-
-        <div className="mt-0.5 flex items-center gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-meta tabular-nums", META_TONE[meta.tone])}>
-            {meta.text}
-          </span>
-          {badge && <CountBadge tone={badge.tone}>{badge.text}</CountBadge>}
-        </div>
-
-        {hasBar && (
-          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-bar-track">
-            <div
-              className={cn("h-full rounded-full", quotaFillClass(ratio, false))}
-              style={{ width: `${ratio * 100}%` }}
-            />
-          </div>
-        )}
-
-        {visibleFor("extended", mode) && (
-          <div className="mt-1.5 truncate text-micro tabular-nums text-text-faint">
-            {s.people.recentIps}: {user.recent_unique_ips}
-            {user.user_ad_tag ? ` · ${s.people.adTag}: ${user.user_ad_tag}` : ""}
-            {user.rate_limit_up_bps || user.rate_limit_down_bps
-              ? ` · ${s.people.rateUp} ${formatBitsPerSecond(user.rate_limit_up_bps ?? 0, s)} / ${s.people.rateDown} ${formatBitsPerSecond(user.rate_limit_down_bps ?? 0, s)}`
-              : ""}
-          </div>
-        )}
+    <div className={cn("people-user-shell", selected && "is-selected", swipeOpen && "is-swiped", visibleDragOffset !== null && "is-dragging")}>
+      <div className="people-swipe-actions" aria-hidden={!swipeOpen}>
+        <button type="button" tabIndex={swipeOpen ? 0 : -1} onClick={() => { closeSwipe(); onAccess(); }}><span>↗</span>{s.people.inspector.tabs.access}</button>
+        <button type="button" tabIndex={swipeOpen ? 0 : -1} onClick={() => { closeSwipe(); onActions(); }}><span>•••</span>{s.people.actions.menu}</button>
       </div>
-
-      <IconButton
-        aria-label={s.people.actions.menu}
-        data-testid={`user-card-actions-${user.username}`}
-        className="h-11 w-9 min-w-9 rounded-md"
-        onClick={(e) => {
-          e.stopPropagation();
+      <div
+        {...interactionProps}
+        role="button"
+        tabIndex={0}
+        data-testid={`user-card-${user.username}`}
+        aria-current={selected ? "true" : undefined}
+        className={cn("people-user-row", isPressed && "is-pressed", visibleDragOffset !== null && "is-dragging")}
+        style={visibleDragOffset === null ? undefined : { "--people-swipe-offset": `${visibleDragOffset}px` } as CSSProperties}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (!gesturesEnabled) return;
+          closeSwipe();
           onActions();
         }}
       >
-        <IconMore />
-      </IconButton>
+        <span className="people-row-identity">
+          <Avatar
+            name={user.username}
+            size="sm"
+            tone={personAvatarTone(user, status)}
+            online={online}
+            ringOn={selected ? "surface" : "bg"}
+            className="people-square-avatar"
+          />
+          <span className="min-w-0">
+            <strong className={cn(status === "disabled" && "text-text-faint")}>{user.username}</strong>
+            <small className={cn(status !== "active" && "text-warn")}>{statusText}</small>
+          </span>
+        </span>
+
+        <span className="people-row-cell people-row-activity">
+          <strong>{activity}</strong>
+          <small>{ipCopy}</small>
+        </span>
+
+        <span className={cn("people-row-cell people-row-traffic", status === "quota_exhausted" && "is-warn")}>
+          <strong>{formatBytes(user.total_octets, s)}</strong>
+          <small>{quotaPercent === null ? s.people.allTime : `${quotaPercent}% ${s.people.quotaShort}`}</small>
+        </span>
+
+        <span className={cn("people-row-cell people-row-access", status !== "active" && "is-warn")}>
+          <strong>{access.primary}</strong>
+          <small>{access.secondary}</small>
+        </span>
+      </div>
+
     </div>
   );
+}
+
+function accessSummary(
+  user: UsersTopicUser,
+  status: ReturnType<typeof computeUserStatus>,
+  now: number,
+  s: Dict,
+): { primary: string; secondary: string } {
+  if (status !== "active") {
+    return { primary: s.people.status[status], secondary: user.enabled ? s.people.runtimeState : "" };
+  }
+  const target = user.expiration_rfc3339 ? Date.parse(user.expiration_rfc3339) : NaN;
+  if (Number.isNaN(target)) return { primary: s.people.detail.noExpiry, secondary: s.people.accessEnabled };
+  return {
+    primary: formatDurationApprox(Math.max(0, target - now), s),
+    secondary: s.people.accessEnabled,
+  };
 }

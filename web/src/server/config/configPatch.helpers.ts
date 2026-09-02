@@ -31,10 +31,20 @@ export function buildConfigPatch(
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   for (const section of Object.keys(edited)) {
-    const originalSection = isPlainObject(original[section]) ? original[section] : {};
-    const sectionPatch = diffObject(originalSection, edited[section]);
-    if (sectionPatch !== undefined) {
-      patch[section] = sectionPatch;
+    const originalSection = original[section];
+    const editedSection = edited[section];
+    if (isPlainObject(editedSection)) {
+      const sectionPatch = diffObject(
+        isPlainObject(originalSection) ? originalSection : {},
+        editedSection,
+      );
+      if (sectionPatch !== undefined) patch[section] = sectionPatch;
+    } else if (!valuesEqual(originalSection, editedSection)) {
+      // Telemt also exposes top-level arrays, most notably [[upstreams]].
+      // They follow the same wholesale replacement rule as nested arrays;
+      // treating every top-level value as a table silently discarded these
+      // edits from the PATCH even though the form showed the updated draft.
+      patch[section] = editedSection;
     }
   }
   return patch;

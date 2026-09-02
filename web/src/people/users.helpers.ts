@@ -65,11 +65,12 @@ export function isOnline(user: Pick<UsersTopicUser, "current_connections">): boo
 
 // --- quota unit conversion (create/edit form's ГБ/МБ selector) ---
 
-export type QuotaUnit = "MB" | "GB";
+export type QuotaUnit = "MB" | "GB" | "TB";
 
 const UNIT_BYTES: Record<QuotaUnit, number> = {
   MB: 1024 ** 2,
   GB: 1024 ** 3,
+  TB: 1024 ** 4,
 };
 
 export function quotaUnitToBytes(value: number, unit: QuotaUnit): number {
@@ -80,7 +81,7 @@ export function quotaUnitToBytes(value: number, unit: QuotaUnit): number {
 // the inverse of quotaUnitToBytes, rounded to 2 decimal places so re-editing
 // an existing limit doesn't show 17 digits of binary-fraction noise.
 export function bytesToQuotaDisplay(bytes: number): { value: number; unit: QuotaUnit } {
-  const unit: QuotaUnit = bytes >= UNIT_BYTES.GB ? "GB" : "MB";
+  const unit: QuotaUnit = bytes >= UNIT_BYTES.TB ? "TB" : bytes >= UNIT_BYTES.GB ? "GB" : "MB";
   const value = Math.round((bytes / UNIT_BYTES[unit]) * 100) / 100;
   return { value, unit };
 }
@@ -99,7 +100,7 @@ export function filterUsersByQuery(users: UsersTopicUser[], query: string): User
 // conditions: anything that isn't "active" is something the admin may need
 // to act on (disabled / expired / quota exhausted / not loaded into the
 // running proxy), which is exactly the prototype's own segment.
-export type UserFilter = "all" | "online" | "issues";
+export type UserFilter = "all" | "online" | "issues" | "web";
 
 export function hasIssues(status: UserStatus): boolean {
   return status !== "active";
@@ -109,6 +110,7 @@ export interface UserFilterCounts {
   all: number;
   online: number;
   issues: number;
+  web: number;
 }
 
 // Generic over the user shape so a caller can pass full topic users (the
@@ -116,6 +118,7 @@ export interface UserFilterCounts {
 export interface UserFilterInput<T extends Pick<UsersTopicUser, "current_connections">> {
   user: T;
   status: UserStatus;
+  webAccess?: boolean;
 }
 
 export function countUserFilters<T extends Pick<UsersTopicUser, "current_connections">>(
@@ -123,11 +126,13 @@ export function countUserFilters<T extends Pick<UsersTopicUser, "current_connect
 ): UserFilterCounts {
   let online = 0;
   let issues = 0;
+  let web = 0;
   for (const entry of entries) {
     if (isOnline(entry.user)) online++;
     if (hasIssues(entry.status)) issues++;
+    if (entry.webAccess) web++;
   }
-  return { all: entries.length, online, issues };
+  return { all: entries.length, online, issues, web };
 }
 
 export function matchesUserFilter<T extends Pick<UsersTopicUser, "current_connections">>(
@@ -136,6 +141,7 @@ export function matchesUserFilter<T extends Pick<UsersTopicUser, "current_connec
 ): boolean {
   if (filter === "online") return isOnline(entry.user);
   if (filter === "issues") return hasIssues(entry.status);
+  if (filter === "web") return entry.webAccess === true;
   return true;
 }
 

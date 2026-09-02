@@ -1099,7 +1099,7 @@ export function WebPage({ backTo = "/pulse" }: { backTo?: "/pulse" | "/server" }
 
   return (
     <>
-      <div className="mx-auto w-full max-w-[1160px]" data-testid="web-detail">
+      <div className="w-full" data-testid="web-detail">
         <section className="overflow-hidden rounded-2xl border border-border bg-surface">
           <div className="px-4 py-5 sm:px-5">
             <DetailHeader

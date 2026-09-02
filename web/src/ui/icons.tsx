@@ -112,6 +112,15 @@ export function IconPlus(props: IconProps) {
   );
 }
 
+export function IconEdit(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 20l4.2-1 10.9-10.9a2.1 2.1 0 0 0-3-3L5.2 16 4 20z" />
+      <path d="M14.5 6.5l3 3" />
+    </Icon>
+  );
+}
+
 export function IconMinus(props: IconProps) {
   return (
     <Icon {...props}>

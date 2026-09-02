@@ -29,6 +29,19 @@ describe("unknownKeysInSection", () => {
   });
 });
 
+it("maps the Telegram connect timeout to general.tg_connect", () => {
+  expect(CONFIG_FIELDS).toContainEqual({
+    section: "general",
+    key: "tg_connect",
+    kind: "int",
+  });
+  expect(CONFIG_FIELDS).not.toContainEqual({
+    section: "timeouts",
+    key: "tg_connect",
+    kind: "int",
+  });
+});
+
 // The `web` section (M4 task 8b): ONE key, and a card that only appears when
 // Telemt actually sends the section.
 describe("the WEB quick setting", () => {

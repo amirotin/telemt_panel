@@ -158,7 +158,7 @@ func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not start update")
 		return
 	}
-	s.appendAudit("update.apply", target, req.Version)
+	s.appendAudit(r, "update.apply", target, req.Version)
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -200,6 +200,6 @@ func (s *Server) handlePutAutoUpdate(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
-	s.appendAudit("update.auto_change", "", req.Telemt+"/"+req.Panel+"/"+req.Interval)
+	s.appendAudit(r, "update.auto_change", "", req.Telemt+"/"+req.Panel+"/"+req.Interval)
 	w.WriteHeader(http.StatusNoContent)
 }

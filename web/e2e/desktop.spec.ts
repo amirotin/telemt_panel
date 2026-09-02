@@ -3,11 +3,9 @@ import { expect, test } from "./fixtures";
 // desktop.spec.ts — 1280×800 smoke (M3 Task 9 brief: "смоук 1280×800 —
 // sidebar, raw-конфиг виден"). Two things the mobile spec structurally
 // cannot cover: the wide sidebar
-// and the Конфигурация raw editor (CodeMirror, `lg:`-only per
-// useIsDesktop.ts / ConfigPage.tsx — the mobile view is read-only with no
-// editor to mount at all). The sidebar also proves the grouped operational
+// and the full TOML editor (CodeMirror). The sidebar also proves the grouped operational
 // and management information architecture at this width.
-test("grouped sidebar navigates, and the raw config editor (CodeMirror) mounts at lg:", async ({ page, login }) => {
+test("grouped sidebar navigates, and the TOML config editor (CodeMirror) mounts", async ({ page, login }) => {
   await login();
 
   const sidebar = page.getByTestId("full-sidebar");
@@ -56,11 +54,10 @@ test("grouped sidebar navigates, and the raw config editor (CodeMirror) mounts a
 
   await sidebar.getByRole("link", { name: "Сервер" }).click();
   await page.getByRole("link", { name: "Конфигурация" }).click();
-  await page.getByRole("tab", { name: "Raw" }).click();
+  await page.getByRole("tab", { name: "TOML" }).click();
 
   await expect(page.locator(".cm-editor")).toBeVisible();
-  // The doc CodeMirror mounted is the same JSON `sections` object the
-  // Quick Settings tab edits — a non-empty JSON object round-tripped
-  // through the editor, not an empty/placeholder shell.
-  await expect(page.locator(".cm-content")).toContainText("{");
+  // The editor receives a non-empty TOML projection of the same config the
+  // structured form edits, rather than an empty or placeholder shell.
+  await expect(page.locator(".cm-content")).toContainText("[general]");
 });

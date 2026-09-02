@@ -23,12 +23,12 @@ export const CONFIG_FIELDS: ConfigFieldDef[] = [
   { section: "general", key: "ad_tag", kind: "string" },
   { section: "general", key: "middle_proxy_nat_ip", kind: "string" },
   { section: "general", key: "middle_proxy_nat_probe", kind: "bool" },
+  { section: "general", key: "tg_connect", kind: "int" },
   { section: "censorship", key: "tls_domain", kind: "string" },
   { section: "censorship", key: "mask", kind: "bool" },
   { section: "censorship", key: "mask_host", kind: "string" },
   { section: "censorship", key: "tls_emulation", kind: "bool" },
   { section: "timeouts", key: "client_handshake", kind: "int" },
-  { section: "timeouts", key: "tg_connect", kind: "int" },
   { section: "timeouts", key: "client_ack", kind: "int" },
   // WEB mode (Telemt >= 3.5.3). ONE key by design: `enabled` is the switch
   // an operator flips, and the rest of `[web]` — vhosts, profiles, carriers,

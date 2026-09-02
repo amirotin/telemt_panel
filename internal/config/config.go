@@ -123,16 +123,14 @@ type UpdatesConfig struct {
 // PrivilegesConfig selects how the panel executes the five privileged
 // host operations (installing/restoring a binary, restarting a service,
 // tailing a journal, rewriting a config file): in-process (the panel
-// already runs as root) or via cmd/panel-agent's unix socket. See
+// already runs as root), narrow non-interactive sudo, or manually. See
 // v2/specs/01-host-matrix.md §Привилегии.
 type PrivilegesConfig struct {
 	// Mode: "auto" (default) picks direct when the panel's effective
-	// UID is 0, otherwise the agent socket if it's reachable, otherwise
-	// a degraded Runner. "agent" and "direct" force that path outright
+	// UID is 0, otherwise a complete sudo policy, otherwise manual mode.
+	// "sudo", "direct" and "manual" force that path outright
 	// (see host.SelectRunner's doc comment for exact fallback behavior).
 	Mode string `toml:"mode"`
-	// AgentSocket is the panel-agent's unix socket path.
-	AgentSocket string `toml:"agent_socket"`
 }
 
 // Load reads, validates and normalizes the config file.
@@ -161,10 +159,7 @@ func Load(path string) (*Config, error) {
 			TelemtBinaryPath: "/bin/telemt",
 			PanelBinaryPath:  "/usr/local/bin/telemt-panel",
 		},
-		Privileges: PrivilegesConfig{
-			Mode:        "auto",
-			AgentSocket: "/run/telemt-panel/agent.sock",
-		},
+		Privileges: PrivilegesConfig{Mode: "auto"},
 	}
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
@@ -230,12 +225,9 @@ func Load(path string) (*Config, error) {
 	switch cfg.Privileges.Mode {
 	case "":
 		cfg.Privileges.Mode = "auto"
-	case "auto", "agent", "direct":
+	case "auto", "sudo", "direct", "manual":
 	default:
-		return nil, fmt.Errorf("privileges.mode: unknown value %q (auto | agent | direct)", cfg.Privileges.Mode)
-	}
-	if cfg.Privileges.AgentSocket == "" {
-		cfg.Privileges.AgentSocket = "/run/telemt-panel/agent.sock"
+		return nil, fmt.Errorf("privileges.mode: unknown value %q (auto | sudo | direct | manual)", cfg.Privileges.Mode)
 	}
 
 	for _, entry := range cfg.TrustedProxies {

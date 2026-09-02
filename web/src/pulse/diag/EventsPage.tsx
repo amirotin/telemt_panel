@@ -548,7 +548,7 @@ export function EventsPage() {
   const status = disabled ? "disabled" : sources.status;
 
   return (
-    <div className="mx-auto w-full max-w-[1160px]" data-testid="events-detail">
+    <div className="w-full" data-testid="events-detail">
       <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
         <div className="border-b border-border px-4 py-4 sm:px-5">
           <DetailHeader

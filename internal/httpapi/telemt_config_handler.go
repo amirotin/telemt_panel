@@ -90,17 +90,52 @@ type telemtConfigPatchRequest struct {
 // §Config) — absent reload means "patch only, no inline reload" (SDK's
 // ReloadQuery zero value).
 func parseTelemtReloadQuery(q url.Values) (telemt.ReloadQuery, error) {
-	mode := q.Get("reload")
-	if mode != "" && mode != telemt.ReloadModeInstant && mode != telemt.ReloadModeDrain {
-		return telemt.ReloadQuery{}, fmt.Errorf("reload must be %q or %q", telemt.ReloadModeInstant, telemt.ReloadModeDrain)
+	if len(q) == 0 {
+		return telemt.ReloadQuery{}, nil
 	}
-	rq := telemt.ReloadQuery{Mode: mode, FailurePolicy: q.Get("failure_policy")}
-	if raw := q.Get("timeout_secs"); raw != "" {
+	for key, values := range q {
+		switch key {
+		case "reload", "timeout_secs", "failure_policy":
+		default:
+			return telemt.ReloadQuery{}, fmt.Errorf("unknown query parameter: %s", key)
+		}
+		if len(values) != 1 {
+			return telemt.ReloadQuery{}, fmt.Errorf("duplicate query parameter: %s", key)
+		}
+	}
+
+	mode, ok := q["reload"]
+	if !ok {
+		return telemt.ReloadQuery{}, errors.New("reload query parameter is required")
+	}
+	if mode[0] != telemt.ReloadModeInstant && mode[0] != telemt.ReloadModeDrain {
+		return telemt.ReloadQuery{}, errors.New("reload must be instant or drain")
+	}
+	rq := telemt.ReloadQuery{Mode: mode[0]}
+	if values, ok := q["failure_policy"]; ok {
+		if values[0] != "keep_new" && values[0] != "rollback" {
+			return telemt.ReloadQuery{}, errors.New("failure_policy must be keep_new or rollback")
+		}
+		rq.FailurePolicy = values[0]
+	}
+	if values, ok := q["timeout_secs"]; ok {
+		raw := values[0]
 		n, err := strconv.ParseUint(raw, 10, 64)
 		if err != nil {
-			return telemt.ReloadQuery{}, errors.New("timeout_secs must be a positive integer")
+			return telemt.ReloadQuery{}, errors.New("timeout_secs must be an integer")
 		}
 		rq.TimeoutSecs = &n
+	}
+	if rq.Mode == telemt.ReloadModeInstant && rq.TimeoutSecs != nil {
+		return telemt.ReloadQuery{}, errors.New("timeout_secs is only valid when mode is drain")
+	}
+	if rq.Mode == telemt.ReloadModeDrain {
+		if rq.TimeoutSecs == nil {
+			return telemt.ReloadQuery{}, errors.New("timeout_secs is required when mode is drain")
+		}
+		if *rq.TimeoutSecs < 1 || *rq.TimeoutSecs > 3600 {
+			return telemt.ReloadQuery{}, errors.New("timeout_secs must be within 1..=3600")
+		}
 	}
 	return rq, nil
 }
@@ -123,19 +158,20 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req telemtConfigPatchRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxTelemtConfigPatchBody)).Decode(&req); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(r.Body, maxTelemtConfigPatchBody))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "request body must contain exactly one JSON object")
 		return
 	}
 	if len(req.Sections) == 0 {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "sections must not be empty")
 		return
 	}
-	patch := make(map[string]any, len(req.Sections))
-	for section, value := range req.Sections {
-		patch[section] = value
-	}
-
 	reload, err := parseTelemtReloadQuery(r.URL.Query())
 	if err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
@@ -145,13 +181,27 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), telemtConfigRequestTimeout)
 	defer cancel()
 
-	result, _, err := s.tc.PatchConfig(ctx, patch, revision, reload)
+	snapshot, _, err := s.tc.GetConfig(ctx)
 	if err != nil {
 		writeTelemtConfigError(w, err)
 		return
 	}
-	s.appendAudit("config.patch", "", strings.Join(result.Changed, ","))
-	writeJSON(w, http.StatusOK, result)
+	if err := validateTelemtConfigPatch(req.Sections, snapshot); err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+
+	patch := make(map[string]any, len(req.Sections))
+	for section, value := range req.Sections {
+		patch[section] = value
+	}
+	result, status, _, err := s.tc.PatchConfig(ctx, patch, revision, reload)
+	if err != nil {
+		writeTelemtConfigError(w, err)
+		return
+	}
+	s.appendAudit(r, "config.patch", "", strings.Join(result.Changed, ","))
+	writeJSON(w, status, result)
 }
 
 // writeTelemtConfigError maps a telemt.APIError from GetConfig/PatchConfig
@@ -193,7 +243,7 @@ func (s *Server) handleTelemtReload(w http.ResponseWriter, r *http.Request) {
 		writeTelemtReloadError(w, err)
 		return
 	}
-	s.appendAudit("telemt.reload", "", accepted.Mode)
+	s.appendAudit(r, "telemt.reload", "", accepted.Mode)
 	writeJSON(w, http.StatusAccepted, accepted)
 }
 
@@ -245,9 +295,13 @@ func writeTelemtReloadError(w http.ResponseWriter, err error) {
 // binary update or a wedged process), not just a config re-read.
 func (s *Server) handleTelemtRestart(w http.ResponseWriter, r *http.Request) {
 	caps := s.svcMgr.Caps()
-	if !caps.CanRestart {
+	if !caps.CanRestart || s.privilegesMode == host.PrivilegesModeManual {
+		hint := caps.ManualRestartHint
+		if caps.CanRestart {
+			hint = manualRestartCommand(s.svcMgr.Kind(), s.telemtServiceName)
+		}
 		auth.WriteError(w, http.StatusServiceUnavailable, "manual_restart_required",
-			fmt.Sprintf("automatic restart is not available on this host: %s", caps.ManualRestartHint))
+			fmt.Sprintf("automatic restart is not available on this host: %s", hint))
 		return
 	}
 
@@ -260,6 +314,6 @@ func (s *Server) handleTelemtRestart(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusBadGateway, "internal_error", "restart failed: "+err.Error())
 		return
 	}
-	s.appendAudit("telemt.restart", "", "")
+	s.appendAudit(r, "telemt.restart", "", "")
 	w.WriteHeader(http.StatusAccepted)
 }

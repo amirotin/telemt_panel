@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { EditorView, lineNumbers } from "@codemirror/view";
 import { json } from "@codemirror/lang-json";
 import { findUnsafeIntegerLiterals } from "./unsafeIntegers";
 
@@ -96,7 +96,6 @@ export function RawConfigEditor({
       extensions: [
         lineNumbers(),
         tokenTheme,
-        keymap.of([{ key: "Tab", run: () => true }]), // swallow Tab instead of moving focus out of the editor
         json(),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {

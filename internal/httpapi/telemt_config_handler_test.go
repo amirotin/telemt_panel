@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"testing"
 
@@ -162,6 +163,90 @@ func TestHandlePatchTelemtConfig_Success(t *testing.T) {
 	}
 }
 
+func TestHandlePatchTelemtConfig_InlineReloadPreservesAcceptedStatus(t *testing.T) {
+	srv, cookie, _ := newTelemttestConfigServer(t, telemttest.Scenario{})
+
+	getW := doRequest(t, srv, cookie, "GET", "/api/telemt/config", nil, nil)
+	var cfg telemtConfigView
+	if err := json.Unmarshal(getW.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode GET: %v", err)
+	}
+	body, _ := json.Marshal(telemtConfigPatchRequest{Sections: map[string]json.RawMessage{
+		"general": json.RawMessage(`{"log_level":"debug"}`),
+	}})
+	w := doRequest(t, srv, cookie, "PATCH", "/api/telemt/config?reload=instant", map[string]string{"If-Match": cfg.Revision}, body)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202: %s", w.Code, w.Body)
+	}
+}
+
+func TestHandlePatchTelemtConfig_RejectsUnknownNestedField(t *testing.T) {
+	srv, cookie, _ := newTelemttestConfigServer(t, telemttest.Scenario{})
+
+	getW := doRequest(t, srv, cookie, "GET", "/api/telemt/config", nil, nil)
+	var cfg telemtConfigView
+	if err := json.Unmarshal(getW.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode GET: %v", err)
+	}
+	body, _ := json.Marshal(telemtConfigPatchRequest{Sections: map[string]json.RawMessage{
+		"timeouts": json.RawMessage(`{"tg_connect":11}`),
+	}})
+	w := doRequest(t, srv, cookie, "PATCH", "/api/telemt/config", map[string]string{"If-Match": cfg.Revision}, body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", w.Code, w.Body)
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("timeouts.tg_connect")) {
+		t.Fatalf("body = %s, want rejected path", w.Body)
+	}
+}
+
+func TestHandlePatchTelemtConfig_AcceptsGeneralTGConnect(t *testing.T) {
+	srv, cookie, _ := newTelemttestConfigServer(t, telemttest.Scenario{})
+
+	getW := doRequest(t, srv, cookie, "GET", "/api/telemt/config", nil, nil)
+	var cfg telemtConfigView
+	if err := json.Unmarshal(getW.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode GET: %v", err)
+	}
+	body, _ := json.Marshal(telemtConfigPatchRequest{Sections: map[string]json.RawMessage{
+		"general": json.RawMessage(`{"tg_connect":11}`),
+	}})
+	w := doRequest(t, srv, cookie, "PATCH", "/api/telemt/config", map[string]string{"If-Match": cfg.Revision}, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+}
+
+func TestParseTelemtReloadQueryMatchesTelemt355(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   url.Values
+		wantErr string
+	}{
+		{name: "none", query: url.Values{}},
+		{name: "instant", query: url.Values{"reload": {"instant"}}},
+		{name: "drain", query: url.Values{"reload": {"drain"}, "timeout_secs": {"30"}, "failure_policy": {"rollback"}}},
+		{name: "unknown", query: url.Values{"reload": {"instant"}, "other": {"1"}}, wantErr: "unknown query parameter: other"},
+		{name: "duplicate", query: url.Values{"reload": {"instant", "drain"}}, wantErr: "duplicate query parameter: reload"},
+		{name: "reload required", query: url.Values{"failure_policy": {"keep_new"}}, wantErr: "reload query parameter is required"},
+		{name: "instant timeout", query: url.Values{"reload": {"instant"}, "timeout_secs": {"1"}}, wantErr: "timeout_secs is only valid when mode is drain"},
+		{name: "drain timeout required", query: url.Values{"reload": {"drain"}}, wantErr: "timeout_secs is required when mode is drain"},
+		{name: "drain timeout range", query: url.Values{"reload": {"drain"}, "timeout_secs": {"3601"}}, wantErr: "timeout_secs must be within 1..=3600"},
+		{name: "failure policy", query: url.Values{"reload": {"instant"}, "failure_policy": {"discard"}}, wantErr: "failure_policy must be keep_new or rollback"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseTelemtReloadQuery(tt.query)
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || err.Error() != tt.wantErr) {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // TestHandlePatchTelemtConfig_RevisionConflict covers the stale-If-Match
 // case: telemttest rejects a mismatched revision with 409 revision_conflict.
 func TestHandlePatchTelemtConfig_RevisionConflict(t *testing.T) {
@@ -314,6 +399,7 @@ func newRestartTestServer(t *testing.T) (*Server, *http.Cookie, *hosttest.Servic
 	srv.svcMgr = svcMgr
 	srv.runner = runner
 	srv.telemtServiceName = "telemt"
+	srv.privilegesMode = host.PrivilegesModeDirect
 
 	h := srv.Handler()
 	_, cookie := login(t, h, "admin", testPassword)
@@ -373,6 +459,30 @@ func TestHandleTelemtRestart_ManualRestartRequired(t *testing.T) {
 	}
 	if len(runner.CallsSnapshot()) != 0 {
 		t.Error("runner was called despite CanRestart=false")
+	}
+}
+
+func TestHandleTelemtRestart_ManualPrivileges(t *testing.T) {
+	srv, cookie, _, runner := newRestartTestServer(t)
+	srv.privilegesMode = host.PrivilegesModeManual
+
+	w := doRequest(t, srv, cookie, "POST", "/api/telemt/restart", nil, nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", w.Code, w.Body)
+	}
+	var got struct {
+		Code    string
+		Message string
+	}
+	json.Unmarshal(w.Body.Bytes(), &got)
+	if got.Code != "manual_restart_required" {
+		t.Errorf("code = %q, want manual_restart_required", got.Code)
+	}
+	if !bytes.Contains([]byte(got.Message), []byte("systemctl restart telemt")) {
+		t.Errorf("message = %q, want systemd manual restart command", got.Message)
+	}
+	if len(runner.CallsSnapshot()) != 0 {
+		t.Error("runner was called despite manual privileges")
 	}
 }
 

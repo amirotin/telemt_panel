@@ -6,7 +6,6 @@ import { IconArrowDown } from "../ui/icons";
 import { isScrolledToBottom } from "./autoscroll.helpers";
 import { windowLogLines } from "./logFilter.helpers";
 import { LogLineRow } from "./LogLineRow";
-import { gridColumnsClass } from "./logColumns";
 import type { RingLine } from "./logRing";
 
 const INITIAL_WINDOW = 500;
@@ -87,9 +86,10 @@ export function LogList({ lines, showUnit }: LogListProps) {
 
   return (
     <>
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
+      <div className="journal-log-frame">
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
         // A fixed viewport-relative height (rather than flex-1/min-h-0)
         // because the only real scroll container in this app's layout is
         // Shell's <main> (overflow-y-auto) — there's no bounded-height flex
@@ -101,12 +101,12 @@ export function LogList({ lines, showUnit }: LogListProps) {
         // reads as a pane cut into the page, not as another card sitting on
         // it, which is what keeps a wall of monospace from competing with
         // the toolbar above it.
-        className={cn(
-          "h-[65dvh] overflow-y-auto rounded-xl border border-border bg-surface-sunken lg:h-[70dvh]",
-          "px-3 py-2.5 lg:px-0 lg:py-0",
-        )}
-        data-testid="log-list-scroll"
-      >
+          className={cn(
+            "journal-log-well overflow-y-auto bg-surface-sunken",
+            "px-3 py-2.5 lg:px-0 lg:py-0",
+          )}
+          data-testid="log-list-scroll"
+        >
         {/*
           The prototype's column header. Sticky inside the scroller (rather
           than sitting above it) so the columns stay labelled while the feed
@@ -114,12 +114,7 @@ export function LogList({ lines, showUnit }: LogListProps) {
           inline meta line and there are no columns to caption.
         */}
         <div
-          className={cn(
-            "sticky top-0 z-10 hidden bg-surface-sunken px-3.5 py-1.5",
-            "border-b border-border text-micro font-semibold uppercase tracking-[0.06em] text-text-faint",
-            "lg:grid lg:gap-x-2.5",
-            gridColumnsClass(showUnit),
-          )}
+          className={`journal-log-columns ${showUnit ? "has-unit" : ""}`}
           aria-hidden="true"
         >
           <span>{s.journal.timeColumn}</span>
@@ -138,11 +133,16 @@ export function LogList({ lines, showUnit }: LogListProps) {
             </Button>
           </div>
         )}
-        <div className="flex flex-col gap-2 lg:gap-0">
-          {visible.map((line) => (
-            <LogLineRow key={line.id} line={line} showUnit={showUnit} />
-          ))}
+          <div className="flex flex-col gap-2 lg:gap-0">
+            {visible.map((line) => (
+              <LogLineRow key={line.id} line={line} showUnit={showUnit} />
+            ))}
+          </div>
         </div>
+        <footer className="journal-log-footer">
+          <span><i aria-hidden="true" />{atBottom ? s.journal.autoscrollOn : s.journal.autoscrollOff}</span>
+          <strong>{s.journal.rowsTemplate.replace("{visible}", String(visible.length)).replace("{total}", String(lines.length))}</strong>
+        </footer>
       </div>
 
       {!atBottom && newSinceScrolledUp > 0 && (

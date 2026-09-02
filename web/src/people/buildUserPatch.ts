@@ -1,15 +1,25 @@
 import type { UserCreate, UserPatch } from "../lib/api/generated/types.gen";
 
-// LimitFieldState is the explicit three-state UI control for every optional
-// limit on the edit form (06-ui.md: "Трёхзначная семантика лимитов (не
-// менять / снять / установить) отражается UI-переключателем, а не магией
-// «0»"). It mirrors JSON Merge Patch exactly:
+// LimitFieldState mirrors JSON Merge Patch exactly. The form itself exposes
+// direct value/empty inputs; diffLimitField derives these wire states by
+// comparing the edited value with the original one:
 //   "keep"  -> the wire key is omitted entirely (Telemt: leave unchanged)
 //   "clear" -> the wire key is present with value null (Telemt: remove the limit)
 //   "set"   -> the wire key is present with the given value (Telemt: set it)
 export type LimitFieldState<T> = { mode: "keep" } | { mode: "clear" } | { mode: "set"; value: T };
 
+export function diffLimitField<T>(
+  current: T | undefined,
+  original: T | undefined,
+): LimitFieldState<T> {
+  if (current === undefined && original === undefined) return { mode: "keep" };
+  if (current === undefined) return { mode: "clear" };
+  if (original !== undefined && Object.is(current, original)) return { mode: "keep" };
+  return { mode: "set", value: current };
+}
+
 export interface UserPatchFormState {
+  enabled?: boolean;
   userAdTag: LimitFieldState<string>;
   maxTcpConns: LimitFieldState<number>;
   maxUniqueIps: LimitFieldState<number>;
@@ -19,9 +29,8 @@ export interface UserPatchFormState {
   rateLimitDownBps: LimitFieldState<number>;
 }
 
-// keepAll is the neutral starting point for an edit form: every field
-// "keep" (patch would be an empty object — nothing changes) until the
-// admin actively switches a field to clear/set.
+// keepAll is a convenient neutral serializer state for tests and callers
+// constructing a patch incrementally.
 export function keepAllPatchFields(): UserPatchFormState {
   return {
     userAdTag: { mode: "keep" },
@@ -51,6 +60,7 @@ function assign(
 // (rotate-secret), not part of this form/patch.
 export function buildUserPatch(form: UserPatchFormState): UserPatch {
   const patch: Record<string, unknown> = {};
+  if (form.enabled !== undefined) patch["enabled"] = form.enabled;
   assign(patch, "user_ad_tag", form.userAdTag);
   assign(patch, "max_tcp_conns", form.maxTcpConns);
   assign(patch, "max_unique_ips", form.maxUniqueIps);

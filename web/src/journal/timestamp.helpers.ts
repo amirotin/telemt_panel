@@ -31,3 +31,24 @@ export function formatAuditTimestamp(ts: string, s: Dict): string {
     hour12: false,
   });
 }
+
+export function formatAuditClock(ts: string, s: Dict): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleTimeString(localeOf(s), {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+export function formatAuditDay(ts: string, s: Dict, now = new Date()): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const difference = Math.round((today - day) / 86_400_000);
+  if (difference === 0) return s.journal.actions.today;
+  if (difference === 1) return s.journal.actions.yesterday;
+  return d.toLocaleDateString(localeOf(s), { day: "2-digit", month: "2-digit" });
+}

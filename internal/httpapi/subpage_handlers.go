@@ -206,7 +206,7 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 		if err := s.subIndex.Refresh(ctx); err != nil {
 			slog.Warn("sublink: index refresh after rotate", "username", username, "err", err)
 		}
-		s.appendAudit("sublink.rotate", username, "")
+		s.appendAudit(r, "sublink.rotate", username, "")
 	}
 
 	path, err := s.subSvc.URL(username, secret)

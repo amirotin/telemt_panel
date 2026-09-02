@@ -38,6 +38,7 @@ export function LogsTab() {
               key={service}
               service={service}
               onServiceChange={setService}
+              sourceName={info.log_source}
             />
           );
         }

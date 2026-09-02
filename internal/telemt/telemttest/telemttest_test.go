@@ -83,7 +83,7 @@ func TestDefaultScenarioCoversEveryNewEndpoint(t *testing.T) {
 	if _, _, err := c.GetConfig(ctx); err != nil {
 		t.Errorf("GetConfig: %v", err)
 	}
-	if _, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{"log_level": "debug"}}, "", telemt.ReloadQuery{}); err != nil {
+	if _, _, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{"log_level": "debug"}}, "", telemt.ReloadQuery{}); err != nil {
 		t.Errorf("PatchConfig: %v", err)
 	}
 
@@ -361,7 +361,7 @@ func TestReadOnlyScenarioRejectsMutations(t *testing.T) {
 	_, err = c.ResetQuota(ctx, "alice")
 	assertReadOnly(t, err)
 
-	_, _, err = c.PatchConfig(ctx, map[string]any{"general": map[string]any{}}, "", telemt.ReloadQuery{})
+	_, _, _, err = c.PatchConfig(ctx, map[string]any{"general": map[string]any{}}, "", telemt.ReloadQuery{})
 	assertReadOnly(t, err)
 
 	_, _, err = c.Reload(ctx, telemt.ReloadRequest{}, "")
@@ -376,7 +376,7 @@ func TestBodyLimitBytesMapsToPayloadTooLarge(t *testing.T) {
 	ctx := context.Background()
 
 	patch := map[string]any{"general": map[string]any{"log_level": "this string alone is well over sixteen bytes"}}
-	_, _, err := c.PatchConfig(ctx, patch, "", telemt.ReloadQuery{})
+	_, _, _, err := c.PatchConfig(ctx, patch, "", telemt.ReloadQuery{})
 	var apiErr *telemt.APIError
 	if !errors.As(err, &apiErr) || apiErr.Code != "payload_too_large" || apiErr.Status != http.StatusRequestEntityTooLarge {
 		t.Fatalf("err = %v, want a 413 payload_too_large *APIError", err)
@@ -392,7 +392,7 @@ func TestPatchWebLimitsIsProcessDeferred(t *testing.T) {
 	ctx := context.Background()
 
 	patch := map[string]any{"web": map[string]any{"limits": map[string]any{"max_sessions_global": 256}}}
-	result, _, err := c.PatchConfig(ctx, patch, "", telemt.ReloadQuery{})
+	result, _, _, err := c.PatchConfig(ctx, patch, "", telemt.ReloadQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestPatchWebLimitsIsProcessDeferred(t *testing.T) {
 	}
 
 	// A patch that stays out of web.limits reloads in place.
-	plain, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{"log_level": "debug"}}, "", telemt.ReloadQuery{})
+	plain, _, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{"log_level": "debug"}}, "", telemt.ReloadQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestPatchConfigRevisionConflictAgainstFake(t *testing.T) {
 	_, c := newTestServer(t, Scenario{})
 	ctx := context.Background()
 
-	_, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{}}, "not-the-real-revision", telemt.ReloadQuery{})
+	_, _, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{}}, "not-the-real-revision", telemt.ReloadQuery{})
 	var apiErr *telemt.APIError
 	if !errors.As(err, &apiErr) || apiErr.Code != "revision_conflict" {
 		t.Fatalf("err = %v, want revision_conflict", err)
@@ -440,7 +440,7 @@ func TestSetScenarioSwapsBehaviorMidTest(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv.SetScenario(Scenario{ReadOnly: true})
-	_, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{}}, "", telemt.ReloadQuery{})
+	_, _, _, err := c.PatchConfig(ctx, map[string]any{"general": map[string]any{}}, "", telemt.ReloadQuery{})
 	var apiErr *telemt.APIError
 	if !errors.As(err, &apiErr) || apiErr.Code != "read_only" {
 		t.Fatalf("err = %v, want read_only after SetScenario", err)

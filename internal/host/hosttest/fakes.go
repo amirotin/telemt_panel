@@ -130,7 +130,7 @@ func (f *LogSource) Caps() host.LogCaps { return f.CapsValue }
 
 // Runner is a fake host.Runner for tests (the update engine, httpapi) that
 // need to script or inspect privileged-op execution without a real direct
-// or agent Runner. Zero value returns Output{}, nil for every call and
+// or sudo Runner. Zero value returns Output{}, nil for every call and
 // records it; set RunFunc (or the plain Result/Err fields it falls back
 // to) to script behavior.
 type Runner struct {

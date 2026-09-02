@@ -1,8 +1,6 @@
 import { cn } from "../lib/cn";
 import { useStrings, type Dict } from "../i18n";
-import { Chip } from "../ui/Chip";
 import { IconButton } from "../ui/IconButton";
-import { Input } from "../ui/Input";
 import { IconPause, IconPlay, IconSearch, IconTrash } from "../ui/icons";
 import type { DisplayMode } from "../display-mode/mode";
 import { visibleLevelChips, type LogLevel } from "./logFilter.helpers";
@@ -37,6 +35,8 @@ export interface LogToolbarProps {
   mode: DisplayMode;
   search: string;
   onSearchChange: (search: string) => void;
+  sourceName?: string;
+  levelCounts?: Partial<Record<LogLevel, number>>;
   /** Omitted entirely for the tail-only fallback — there's no live buffer to pause. */
   paused?: boolean;
   onTogglePause?: () => void;
@@ -58,6 +58,8 @@ export function LogToolbar({
   mode,
   search,
   onSearchChange,
+  sourceName,
+  levelCounts,
   paused,
   onTogglePause,
   onClear,
@@ -71,100 +73,92 @@ export function LogToolbar({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
+    <div className="journal-log-toolbar">
+      <div className="journal-commandbar">
         {/*
           role="radiogroup" (not a tablist): picking a source swaps which
           stream the page follows, it does not switch between two mounted
           panes.
         */}
         <div
-          className="flex min-w-0 flex-wrap items-center gap-1.5"
+          className="journal-service-switch"
           role="radiogroup"
           aria-label={s.journal.sourceLabel}
         >
           {SERVICE_OPTIONS.map((opt) => (
-            <Chip
+            <button
               key={opt}
+              type="button"
               role="radio"
-              aria-pressed={undefined}
               aria-checked={service === opt}
-              active={service === opt}
+              className={service === opt ? "is-active" : undefined}
               onClick={() => onServiceChange(opt)}
             >
+              {opt === "telemt" && <i aria-hidden="true" />}
               {serviceLabel(opt, s)}
-            </Chip>
+            </button>
           ))}
         </div>
 
-        {onTogglePause && (
-          <button
-            type="button"
-            onClick={onTogglePause}
-            className={cn(
-              "ml-auto inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-3.5",
-              "text-xs font-semibold transition-colors",
-              paused
-                ? "bg-accent/15 text-accent hover:bg-accent/25"
-                : "bg-surface-2 text-text hover:bg-surface-3",
-            )}
-          >
-            {paused ? <IconPlay /> : <IconPause />}
-            {paused ? s.journal.resume : s.journal.pause}
-          </button>
+        {sourceName && (
+          <div className="journal-source-note">
+            <span>{sourceName}</span>
+            {onTogglePause && <b>{s.journal.liveTail}</b>}
+          </div>
         )}
-        {onClear && (
-          <IconButton
-            aria-label={s.journal.clear}
-            onClick={onClear}
-            className={cn("shrink-0", !onTogglePause && "ml-auto")}
-          >
-            <IconTrash />
-          </IconButton>
-        )}
-      </div>
 
-      <div
-        className="flex flex-wrap items-center gap-1.5"
-        role="group"
-        aria-label={s.journal.levelLabel}
-      >
-        {visibleLevelChips(mode).map((level) => {
-          const active = levels.has(level);
-          return (
-            <Chip
-              key={level}
-              active={active}
-              onClick={() => toggleLevel(level)}
-              icon={
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
-                    LEVEL_DOT[level],
-                  )}
-                />
-              }
+        <div className="journal-stream-actions">
+          {onTogglePause && (
+            <button
+              type="button"
+              onClick={onTogglePause}
+              className={cn("journal-pause", paused && "is-active")}
             >
-              {levelLabel(level, s)}
-            </Chip>
-          );
-        })}
+              {paused ? <IconPlay /> : <IconPause />}
+              <span>{paused ? s.journal.resume : s.journal.pause}</span>
+            </button>
+          )}
+          {onClear && (
+            <IconButton
+              aria-label={s.journal.clear}
+              onClick={onClear}
+              className="journal-clear"
+            >
+              <IconTrash />
+            </IconButton>
+          )}
+        </div>
       </div>
 
-      <div className="relative">
-        <IconSearch
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-[17px] text-text-faint"
-        />
-        <Input
-          type="search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={s.journal.searchPlaceholder}
-          aria-label={s.journal.searchPlaceholder}
-          className="pl-10"
-        />
+      <div className="journal-filterbar">
+        <label className="journal-search-control">
+          <IconSearch aria-hidden="true" />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={s.journal.searchPlaceholder}
+            aria-label={s.journal.searchPlaceholder}
+          />
+        </label>
+        <div className="journal-levels" role="group" aria-label={s.journal.levelLabel}>
+          {visibleLevelChips(mode).map((level) => {
+            const active = levels.has(level);
+            return (
+              <button
+                key={level}
+                type="button"
+                className={cn(`tone-${level}`, active && "is-active")}
+                aria-pressed={active}
+                onClick={() => toggleLevel(level)}
+              >
+                <i aria-hidden="true" className={LEVEL_DOT[level]} />
+                {levelLabel(level, s)}
+                {levelCounts?.[level] !== undefined && <b>{levelCounts[level]}</b>}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

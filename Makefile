@@ -62,8 +62,7 @@ lint:
 # pure-Go static binary, so it's variant-independent: gnu and musl tarballs
 # carry identical content — this is what keeps the release installable on
 # both libc families while matching the 0.x-updater-compatible naming from
-# migration spec 08-migration.md. panel-agent ships as raw per-arch binaries
-# (not packaged, not matched by the updater) for future host provisioning.
+# migration spec 08-migration.md.
 # Depends on `web` so the frontend is built exactly once, ahead of every
 # per-arch Go build below (they all embed the same internal/webui/dist).
 release: web
@@ -74,11 +73,6 @@ release: web
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(LDFLAGS)" -o release/.stage/armv7/telemt-panel ./cmd/panel
 	CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="$(LDFLAGS)" -o release/.stage/mipsle/telemt-panel ./cmd/panel
 	CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="$(LDFLAGS)" -o release/.stage/mips/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o release/panel-agent-x86_64-linux ./cmd/panel-agent
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o release/panel-agent-aarch64-linux ./cmd/panel-agent
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(LDFLAGS)" -o release/panel-agent-armv7-linux ./cmd/panel-agent
-	CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -ldflags="$(LDFLAGS)" -o release/panel-agent-mipsle-linux ./cmd/panel-agent
-	CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -ldflags="$(LDFLAGS)" -o release/panel-agent-mips-linux ./cmd/panel-agent
 	@for arch in x86_64 aarch64 armv7 mipsle mips; do \
 		for variant in gnu musl; do \
 			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-$$arch-linux-$$variant.tar.gz -C release/.stage/$$arch telemt-panel; \

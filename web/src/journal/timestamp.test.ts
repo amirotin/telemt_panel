@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatAuditTimestamp, formatLogClock } from "./timestamp.helpers";
+import {
+  formatAuditClock,
+  formatAuditDay,
+  formatAuditTimestamp,
+  formatLogClock,
+} from "./timestamp.helpers";
 import { ru as s } from "../i18n";
 
 // Assertions use shape (regex), not an exact string — the formatted value
@@ -13,6 +18,15 @@ describe("formatLogClock", () => {
 
   it("falls back to the raw string for an unparseable ts", () => {
     expect(formatLogClock("not-a-date", s)).toBe("not-a-date");
+  });
+});
+
+describe("audit timeline timestamps", () => {
+  it("separates the compact clock from its relative day", () => {
+    const now = new Date("2026-08-25T18:00:00Z");
+    expect(formatAuditClock("2026-08-25T12:34:56Z", s)).toMatch(/^\d{2}:\d{2}$/);
+    expect(formatAuditDay("2026-08-25T12:34:56Z", s, now)).toBe(s.journal.actions.today);
+    expect(formatAuditDay("2026-08-24T12:34:56Z", s, now)).toBe(s.journal.actions.yesterday);
   });
 });
 

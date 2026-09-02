@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -19,10 +20,16 @@ const (
 
 // auditEntryView mirrors api/openapi.yaml AuditEntry.
 type auditEntryView struct {
-	TS      time.Time `json:"ts"`
-	Action  string    `json:"action"`
-	Subject string    `json:"subject,omitempty"`
-	Detail  string    `json:"detail,omitempty"`
+	TS       time.Time         `json:"ts"`
+	ID       string            `json:"id"`
+	Action   string            `json:"action"`
+	Actor    string            `json:"actor,omitempty"`
+	Target   string            `json:"target,omitempty"`
+	Outcome  string            `json:"outcome"`
+	IP       string            `json:"ip,omitempty"`
+	Subject  string            `json:"subject,omitempty"`
+	Detail   string            `json:"detail,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // handleGetAudit implements GET /api/audit?limit=&before=: the store's
@@ -74,7 +81,7 @@ func (s *Server) handleGetAudit(w http.ResponseWriter, r *http.Request) {
 		if !before.IsZero() && !e.TS.Before(before) {
 			continue
 		}
-		out = append(out, toAuditEntryView(e))
+		out = append(out, s.toAuditEntryView(e))
 		if len(out) == limit {
 			break
 		}
@@ -82,6 +89,58 @@ func (s *Server) handleGetAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func toAuditEntryView(e store.AuditEntry) auditEntryView {
-	return auditEntryView{TS: e.TS, Action: e.Action, Subject: e.Subject, Detail: e.Detail}
+func (s *Server) toAuditEntryView(e store.AuditEntry) auditEntryView {
+	id := e.ID
+	if id == "" {
+		id = auditEntryID(e.TS)
+	}
+	actor := e.Actor
+	if actor == "" {
+		if e.Action == "login" || e.Action == "login.failed" || e.Action == "logout" {
+			actor = e.Subject
+		} else {
+			actor = s.cfg.Auth.Username
+		}
+	}
+	target := e.Target
+	if target == "" {
+		target = auditTarget(e.Action, e.Subject)
+	}
+	outcome := e.Outcome
+	if outcome == "" {
+		outcome = auditOutcome(e.Action)
+	}
+	ip := e.IP
+	if ip == "" && strings.HasPrefix(e.Detail, "ip=") {
+		ip = strings.TrimPrefix(e.Detail, "ip=")
+	}
+	return auditEntryView{
+		TS:       e.TS,
+		ID:       id,
+		Action:   e.Action,
+		Actor:    actor,
+		Target:   target,
+		Outcome:  outcome,
+		IP:       ip,
+		Subject:  e.Subject,
+		Detail:   e.Detail,
+		Metadata: auditMetadata(e.Detail),
+	}
+}
+
+func auditMetadata(detail string) map[string]string {
+	metadata := make(map[string]string)
+	fields := strings.FieldsFunc(detail, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == ',' || r == '·'
+	})
+	for _, field := range fields {
+		key, value, ok := strings.Cut(field, "=")
+		if ok && key != "" && value != "" {
+			metadata[key] = value
+		}
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }

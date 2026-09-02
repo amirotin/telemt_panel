@@ -124,7 +124,7 @@ func TestApply_HappyPath_JournalsAllPhasesInOrder(t *testing.T) {
 		t.Errorf("call[2] = %+v, want restart-service service=telemt", calls[2])
 	}
 
-	if _, err := os.Stat(filepath.Join(e.stagingDir, TargetTelemt)); !os.IsNotExist(err) {
+	if _, err := os.Stat(StagingRunDir(e.stagingDir, TargetTelemt)); !os.IsNotExist(err) {
 		t.Errorf("staging dir not cleaned up: stat err = %v", err)
 	}
 	if len(pub.Published()) == 0 {
@@ -132,6 +132,99 @@ func TestApply_HappyPath_JournalsAllPhasesInOrder(t *testing.T) {
 	}
 	if run, ok := e.ActiveRun(TargetTelemt); ok {
 		t.Errorf("ActiveRun after completion = %+v, ok=true, want ok=false", run)
+	}
+}
+
+type forwardingRunner struct {
+	runner host.Runner
+}
+
+func (r *forwardingRunner) Run(ctx context.Context, op host.Op) (host.Output, error) {
+	if r.runner == nil {
+		return host.Output{}, errors.New("forwarding runner is not initialized")
+	}
+	return r.runner.Run(ctx, op)
+}
+
+func filesystemCmdRunner(restarts *[]string) host.CmdRunner {
+	return func(_ context.Context, name string, args ...string) ([]byte, []byte, error) {
+		switch name {
+		case "cp":
+			data, err := os.ReadFile(args[1])
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, nil, os.WriteFile(args[2], data, 0o755)
+		case "chmod":
+			return nil, nil, os.Chmod(args[1], 0o755)
+		case "mv":
+			return nil, nil, os.Rename(args[1], args[2])
+		case "rm":
+			err := os.Remove(args[1])
+			if os.IsNotExist(err) {
+				err = nil
+			}
+			return nil, nil, err
+		case "systemctl":
+			*restarts = append(*restarts, args[1])
+			return nil, nil, nil
+		default:
+			return nil, nil, errors.New("unexpected command: " + name)
+		}
+	}
+}
+
+func TestApply_LegacySudoersMigrationBridgePreservesRollback(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := filepath.Join(dir, "bin", "telemt")
+	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(binaryPath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	fixture := newFakeReleaseServer(t)
+	setupHappyRelease(fixture, TargetTelemt, buildTarGz(t, "telemt", []byte("new-binary")))
+	target := &fakeTarget{
+		name: TargetTelemt, repo: "owner/repo", binaryPath: binaryPath,
+		serviceName: "telemt", version: "v1.0.0",
+		postRestart: func(context.Context) error { return errors.New("health failed") },
+	}
+	forward := &forwardingRunner{}
+	e, st := newTestEngine(t, fixture, forward, map[string]Target{TargetTelemt: target}, nil)
+	allow := host.AllowLists{
+		BinaryPaths:   []string{binaryPath, binaryPath + ".bak"},
+		StagingPrefix: e.stagingDir,
+		Services:      []string{"telemt"},
+	}
+	var restarts []string
+	cmdRun := filesystemCmdRunner(&restarts)
+	forward.runner = host.NewLegacySudoRunner(allow, host.NewServiceManager(host.KindSystemd, host.Probe{}, cmdRun), nil, cmdRun)
+
+	err := e.Apply(context.Background(), TargetTelemt, "v2.0.0")
+	if err == nil || !strings.Contains(err.Error(), "rolled back") {
+		t.Fatalf("Apply error = %v, want successful rollback", err)
+	}
+	got, readErr := os.ReadFile(binaryPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != "old-binary" {
+		t.Fatalf("binary after rollback = %q, want old-binary", got)
+	}
+	if len(restarts) != 2 || restarts[0] != "telemt" || restarts[1] != "telemt" {
+		t.Fatalf("restarts = %v, want telemt apply and rollback restarts", restarts)
+	}
+	entries, _ := st.ListUpdateJournal(TargetTelemt, 20)
+	if len(entries) == 0 || entries[0].Phase != PhaseRolledBack {
+		t.Fatalf("last phase = %+v, want rolled_back", entries)
+	}
+	if _, statErr := os.Stat(StagingRunDir(e.stagingDir, TargetTelemt)); !os.IsNotExist(statErr) {
+		t.Fatalf("run staging was not cleaned: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(e.stagingDir, "telemt")); !os.IsNotExist(statErr) {
+		t.Fatalf("legacy install source was not cleaned: %v", statErr)
 	}
 }
 
@@ -294,19 +387,19 @@ func TestApply_LateFailures_RollBack(t *testing.T) {
 	}
 }
 
-// degradedRunner mimics host.SelectRunner's fallback when no privileges
+// manualRunner mimics host.SelectRunner's fallback when no privileges
 // are available: every Run reports host.ErrPrivilegesUnavailable.
-type degradedRunner struct{}
+type manualRunner struct{}
 
-func (degradedRunner) Run(context.Context, host.Op) (host.Output, error) {
+func (manualRunner) Run(context.Context, host.Op) (host.Output, error) {
 	return host.Output{}, host.ErrPrivilegesUnavailable
 }
 
-// TestApply_DegradedRunner_FailsCleanlyWithoutPanicking covers the milestone
-// invariant that a degraded Runner (no privileges) must never panic or
+// TestApply_ManualRunner_FailsCleanlyWithoutPanicking covers the milestone
+// invariant that a manual Runner (no privileges) must never panic or
 // block Apply — it fails at the first privileged op (saving the backup,
 // in "staging") with a clear, typed error and a "failed" journal entry.
-func TestApply_DegradedRunner_FailsCleanlyWithoutPanicking(t *testing.T) {
+func TestApply_ManualRunner_FailsCleanlyWithoutPanicking(t *testing.T) {
 	dir := t.TempDir()
 	binaryPath := filepath.Join(dir, "telemt")
 	os.WriteFile(binaryPath, []byte("old-binary"), 0o755)
@@ -316,11 +409,11 @@ func TestApply_DegradedRunner_FailsCleanlyWithoutPanicking(t *testing.T) {
 	setupHappyRelease(fixture, TargetTelemt, tarBytes)
 
 	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", binaryPath: binaryPath, serviceName: "telemt", version: "v1.0.0"}
-	e, st := newTestEngine(t, fixture, degradedRunner{}, map[string]Target{TargetTelemt: target}, nil)
+	e, st := newTestEngine(t, fixture, manualRunner{}, map[string]Target{TargetTelemt: target}, nil)
 
 	err := e.Apply(context.Background(), TargetTelemt, "v2.0.0")
 	if err == nil {
-		t.Fatal("Apply with a degraded Runner: want an error, got nil")
+		t.Fatal("Apply with a manual Runner: want an error, got nil")
 	}
 
 	entries, _ := st.ListUpdateJournal(TargetTelemt, 20)
@@ -331,7 +424,7 @@ func TestApply_DegradedRunner_FailsCleanlyWithoutPanicking(t *testing.T) {
 		t.Errorf("failed journal detail = %q, want it to mention %v", entries[0].Detail, host.ErrPrivilegesUnavailable)
 	}
 	if e.LockHeld() {
-		t.Error("engine still locked after a degraded-Runner failure")
+		t.Error("engine still locked after a manual-Runner failure")
 	}
 }
 

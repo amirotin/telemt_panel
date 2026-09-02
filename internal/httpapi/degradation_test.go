@@ -48,7 +48,7 @@ func TestAPIOnlyDegradation(t *testing.T) {
 			TelemtService:  "telemt",
 			PanelService:   "telemt-panel",
 		},
-		Privileges: config.PrivilegesConfig{Mode: "auto", AgentSocket: "/nonexistent/agent.sock"},
+		Privileges: config.PrivilegesConfig{Mode: "manual"},
 	}
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
@@ -71,7 +71,7 @@ func TestAPIOnlyDegradation(t *testing.T) {
 	t.Cleanup(srv.subLimiter.Stop)
 	srv.svcMgr = host.NewNone()
 	srv.logSrc = host.NewNoneLog()
-	srv.privilegesMode = host.PrivilegesModeDegraded
+	srv.privilegesMode = host.PrivilegesModeManual
 
 	// GET /api/updates would otherwise fall through to update.NewEngine's
 	// default GitHub client (real api.github.com) — the one real-network
@@ -378,7 +378,7 @@ func TestAPIOnlyDegradation_M3Endpoints(t *testing.T) {
 			TelemtService:  "telemt",
 			PanelService:   "telemt-panel",
 		},
-		Privileges: config.PrivilegesConfig{Mode: "auto", AgentSocket: "/nonexistent/agent.sock"},
+		Privileges: config.PrivilegesConfig{Mode: "manual"},
 	}
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
@@ -395,7 +395,7 @@ func TestAPIOnlyDegradation_M3Endpoints(t *testing.T) {
 	t.Cleanup(srv.subLimiter.Stop)
 	srv.svcMgr = host.NewNone()
 	srv.logSrc = host.NewNoneLog()
-	srv.privilegesMode = host.PrivilegesModeDegraded
+	srv.privilegesMode = host.PrivilegesModeManual
 
 	h := srv.Handler()
 	_, cookie := login(t, h, "admin", testPassword)

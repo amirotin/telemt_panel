@@ -134,6 +134,38 @@ func TestHandleGetAudit_EmptyIsNotAnError(t *testing.T) {
 	}
 }
 
+func TestAuditEntryView_EnrichedAndLegacyFields(t *testing.T) {
+	srv := newTestServer(t)
+	ts := time.Date(2026, 9, 1, 12, 0, 0, 123, time.UTC)
+
+	rich := srv.toAuditEntryView(store.AuditEntry{
+		TS:      ts,
+		ID:      "audit_rich",
+		Action:  "user.enabled",
+		Actor:   "admin",
+		Target:  "alice",
+		Outcome: "success",
+		IP:      "198.51.100.4",
+		Subject: "alice",
+		Detail:  "enabled=true",
+	})
+	if rich.ID != "audit_rich" || rich.Actor != "admin" || rich.Target != "alice" || rich.Outcome != "success" || rich.IP != "198.51.100.4" {
+		t.Fatalf("rich view = %+v", rich)
+	}
+	if rich.Metadata["enabled"] != "true" {
+		t.Fatalf("metadata = %v, want enabled=true", rich.Metadata)
+	}
+
+	legacy := srv.toAuditEntryView(store.AuditEntry{
+		TS:      ts,
+		Action:  "user.create",
+		Subject: "bob",
+	})
+	if legacy.ID == "" || legacy.Actor != srv.cfg.Auth.Username || legacy.Target != "bob" || legacy.Outcome != "success" {
+		t.Fatalf("legacy fallback view = %+v", legacy)
+	}
+}
+
 // TestHandleGetAudit_RequiresSession covers auth via the full router (the
 // one case in this file that needs the middleware chain, unlike the
 // content assertions above).

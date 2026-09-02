@@ -270,7 +270,7 @@ func (s *Server) handlePostTelemtWebSessionsClose(w http.ResponseWriter, r *http
 		return
 	}
 
-	s.appendAudit("web.sessions.close", req.Selector.Kind, webCloseAuditDetail(req.Selector, op))
+	s.appendAudit(r, "web.sessions.close", req.Selector.Kind, webCloseAuditDetail(req.Selector, op))
 	writeJSON(w, http.StatusAccepted, op)
 }
 

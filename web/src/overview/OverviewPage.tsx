@@ -9,8 +9,6 @@ import { OnlineNow } from "../pulse/widgets/OnlineNow";
 import { RecentEventsWidget } from "../pulse/widgets/RecentEventsWidget";
 import { QuotasWidget } from "../pulse/widgets/QuotasWidget";
 
-const CONTENT_MAX = "mx-auto w-full max-w-[1440px]";
-
 // Overview is deliberately fixed. An operator console benefits from stable
 // positions and muscle memory; a linear user-defined list could not preserve
 // the pairs and proportions of this twelve-column layout, and allowed critical
@@ -18,7 +16,7 @@ const CONTENT_MAX = "mx-auto w-full max-w-[1440px]";
 export function OverviewPage() {
   const s = useStrings();
   return (
-    <div className={`${CONTENT_MAX} flex flex-col gap-4 lg:gap-5`}>
+    <div className="flex w-full flex-col gap-4 lg:gap-5">
       <h1 className="text-page-title font-bold text-text">{s.overview.title}</h1>
 
       <HealthHero />

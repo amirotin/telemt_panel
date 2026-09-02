@@ -1,12 +1,12 @@
 import { useMemo, useReducer, useState } from "react";
 import { pluralTemplate, useStrings } from "../i18n";
 import { Button } from "../ui/Button";
-import { EmptyState } from "../ui/EmptyState";
 import { StatePill } from "../ui/StatePill";
+import { IconActivity } from "../ui/icons";
 import { useDisplayMode, visibleFor } from "../display-mode";
 import { useDebouncedValue } from "../people/useDebouncedValue";
 import { createJournalState, journalReducer, pendingCount } from "./logRing";
-import { filterLogLines } from "./logFilter.helpers";
+import { filterLogLines, type LogLevel } from "./logFilter.helpers";
 import { useDefaultLevels } from "./useDefaultLevels";
 import { useLogStream } from "./useLogStream";
 import { LogToolbar } from "./LogToolbar";
@@ -16,6 +16,7 @@ import type { LogicalService } from "./types";
 export interface LogStreamViewerProps {
   service: LogicalService;
   onServiceChange: (service: LogicalService) => void;
+  sourceName?: string;
 }
 
 // LogStreamViewer — the live-tail half of the Logs tab (caps.log_stream ===
@@ -27,6 +28,7 @@ export interface LogStreamViewerProps {
 export function LogStreamViewer({
   service,
   onServiceChange,
+  sourceName,
 }: LogStreamViewerProps) {
   const s = useStrings();
   const { mode } = useDisplayMode();
@@ -47,6 +49,13 @@ export function LogStreamViewer({
     () => filterLogLines(state.lines, levels, debouncedSearch),
     [state.lines, levels, debouncedSearch],
   );
+  const levelCounts = useMemo(() => {
+    const counts: Record<LogLevel, number> = { error: 0, warn: 0, info: 0, debug: 0 };
+    for (const line of state.lines) {
+      if (line.level && line.level in counts) counts[line.level as LogLevel] += 1;
+    }
+    return counts;
+  }, [state.lines]);
 
   const pending = pendingCount(state);
   // Only reserve a row for the stream-status pills when there is actually
@@ -58,7 +67,7 @@ export function LogStreamViewer({
     streamState.stale;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="journal-logs-pane">
       <LogToolbar
         service={service}
         onServiceChange={onServiceChange}
@@ -67,6 +76,8 @@ export function LogStreamViewer({
         mode={mode}
         search={search}
         onSearchChange={setSearch}
+        sourceName={sourceName}
+        levelCounts={levelCounts}
         paused={state.paused}
         onTogglePause={() =>
           dispatch({ type: state.paused ? "resume" : "pause" })
@@ -75,7 +86,7 @@ export function LogStreamViewer({
       />
 
       {hasStreamNotice && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="journal-stream-notice">
           {streamState.status === "reconnecting" && (
             <StatePill state="warn">{s.journal.reconnecting}</StatePill>
           )}
@@ -102,18 +113,24 @@ export function LogStreamViewer({
         competing with the stream's own warn/error pills above it.
       */}
       {state.paused && pending > 0 && (
-        <span className="self-center rounded-full bg-surface-2 px-3 py-1 text-micro font-semibold text-text-muted">
-          {pluralTemplate(s, pending, s.journal.newLines)}
-        </span>
+        <div className="journal-paused-note">
+          <span>{s.journal.paused}</span>
+          <strong>{pluralTemplate(s, pending, s.journal.newLines)}</strong>
+        </div>
       )}
 
       {state.lines.length === 0 ? (
-        <EmptyState title={s.journal.emptyTitle} />
+        <div className="journal-empty-state">
+          <IconActivity aria-hidden="true" />
+          <h2>{s.journal.emptyTitle}</h2>
+          <p>{s.journal.emptyDescription}</p>
+        </div>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          title={s.journal.emptyFilterTitle}
-          description={s.journal.emptyFilterDescription}
-        />
+        <div className="journal-empty-state">
+          <IconActivity aria-hidden="true" />
+          <h2>{s.journal.emptyFilterTitle}</h2>
+          <p>{s.journal.emptyFilterDescription}</p>
+        </div>
       ) : (
         <LogList lines={filtered} showUnit={visibleFor("extended", mode)} />
       )}

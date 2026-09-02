@@ -176,7 +176,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeTelemtError(w, err, false)
 		return
 	}
-	s.appendAudit("user.create", u.Username, "")
+	s.appendAudit(r, "user.create", u.Username, "")
 	s.pokeUsersAfterMutation()
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
@@ -230,7 +230,7 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		writeTelemtError(w, err, false)
 		return
 	}
-	s.appendAudit("user.patch", username, "")
+	s.appendAudit(r, "user.patch", username, "")
 	s.pokeUsersAfterMutation()
 
 	if _, secretChanged := patch["secret"]; secretChanged {
@@ -256,11 +256,33 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), subpageRequestTimeout)
 	defer cancel()
 
+	rollbackWeb, detachedWeb, err := s.detachWebAccessForUser(ctx, username)
+	if err != nil {
+		var profileErr *webProfileConstraintError
+		if asWebProfileConstraint(err, &profileErr) {
+			auth.WriteError(w, profileErr.status, profileErr.code, profileErr.Error())
+			return
+		}
+		writeTelemtConfigError(w, err)
+		return
+	}
+
 	if err := s.tc.DeleteUser(ctx, username); err != nil {
+		if detachedWeb {
+			rollbackCtx, rollbackCancel := context.WithTimeout(context.WithoutCancel(r.Context()), telemtConfigRequestTimeout)
+			if rollbackErr := rollbackWeb(rollbackCtx); rollbackErr != nil {
+				slog.Error("delete-user: restoring WEB profiles after rejected deletion", "username", username, "err", rollbackErr)
+			}
+			rollbackCancel()
+		}
 		writeTelemtError(w, err, false)
 		return
 	}
-	s.appendAudit("user.delete", username, "")
+	detail := ""
+	if detachedWeb {
+		detail = "web_profiles=removed"
+	}
+	s.appendAudit(r, "user.delete", username, detail)
 	s.pokeUsersAfterMutation()
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -277,7 +299,7 @@ func (s *Server) handleResetQuota(w http.ResponseWriter, r *http.Request) {
 		writeTelemtError(w, err, false)
 		return
 	}
-	s.appendAudit("quota.reset", username, "")
+	s.appendAudit(r, "quota.reset", username, "")
 	s.pokeUsersAfterMutation()
 
 	writeJSON(w, http.StatusOK, struct {
@@ -302,7 +324,7 @@ func (s *Server) handleRotateSecret(w http.ResponseWriter, r *http.Request) {
 		writeTelemtError(w, err, true)
 		return
 	}
-	s.appendAudit("secret.rotate", username, "")
+	s.appendAudit(r, "secret.rotate", username, "")
 	s.pokeUsersAfterMutation()
 
 	// Force an immediate index rebuild, mirroring sublink rotation's own
@@ -346,7 +368,7 @@ func (s *Server) handleSetEnabled(w http.ResponseWriter, r *http.Request) {
 		writeTelemtError(w, err, true)
 		return
 	}
-	s.appendAudit("user.enabled", username, fmt.Sprintf("enabled=%t", enabled))
+	s.appendAudit(r, "user.enabled", username, fmt.Sprintf("enabled=%t", enabled))
 	s.pokeUsersAfterMutation()
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)

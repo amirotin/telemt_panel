@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchUser, putAutoUpdate, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchUserData, PatchUserError, PatchUserResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
+import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHost, getMe, getSnapshot, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getUpdates, getUser, getUserSublink, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, previewTelemtConfigToml, putAutoUpdate, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse } from '../types.gen';
 
 export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
     const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
@@ -101,7 +101,10 @@ export const revokeOtherSessionsMutation = (options?: Partial<Options<RevokeOthe
 
 export const listSessionsQueryKey = (options?: Options<ListSessionsData>) => createQueryKey('listSessions', options);
 
-export const listSessionsOptions = (options?: Options<ListSessionsData>) => queryOptions<ListSessionsResponse, DefaultError, ListSessionsResponse, ReturnType<typeof listSessionsQueryKey>>({
+/**
+ * Active panel sessions, newest first with the current session pinned. Cursor-paged and searchable by browser/User-Agent or IP address.
+ */
+export const listSessionsOptions = (options?: Options<ListSessionsData>) => queryOptions<ListSessionsResponse, ListSessionsError, ListSessionsResponse, ReturnType<typeof listSessionsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
         const { data } = await listSessions({
             ...options,
@@ -113,6 +116,65 @@ export const listSessionsOptions = (options?: Options<ListSessionsData>) => quer
     },
     queryKey: listSessionsQueryKey(options)
 });
+
+const createInfiniteParams = <K extends Pick<QueryKey<Options>[0], 'body' | 'headers' | 'path' | 'query'>>(queryKey: QueryKey<Options>, page: K) => {
+    const params = { ...queryKey[0] };
+    if (page.body) {
+        params.body = {
+            ...queryKey[0].body as any,
+            ...page.body as any
+        };
+    }
+    if (page.headers) {
+        params.headers = {
+            ...queryKey[0].headers,
+            ...page.headers
+        };
+    }
+    if (page.path) {
+        params.path = {
+            ...queryKey[0].path as any,
+            ...page.path as any
+        };
+    }
+    if (page.query) {
+        params.query = {
+            ...queryKey[0].query as any,
+            ...page.query as any
+        };
+    }
+    return params as unknown as typeof page;
+};
+
+export const listSessionsInfiniteQueryKey = (options?: Options<ListSessionsData>): QueryKey<Options<ListSessionsData>> => createQueryKey('listSessions', options, true);
+
+/**
+ * Active panel sessions, newest first with the current session pinned. Cursor-paged and searchable by browser/User-Agent or IP address.
+ */
+export const listSessionsInfiniteOptions = (options?: Options<ListSessionsData>) => {
+    const opts = infiniteQueryOptions<ListSessionsResponse, ListSessionsError, InfiniteData<ListSessionsResponse>, QueryKey<Options<ListSessionsData>>, string | Pick<QueryKey<Options<ListSessionsData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
+    // @ts-ignore
+    {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+            // @ts-ignore
+            const page: Pick<QueryKey<Options<ListSessionsData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
+                query: {
+                    cursor: pageParam
+                }
+            };
+            const params = createInfiniteParams(queryKey, page);
+            const { data } = await listSessions({
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true
+            });
+            return data;
+        },
+        queryKey: listSessionsInfiniteQueryKey(options)
+    });
+    return opts as Omit<typeof opts, 'initialData'>;
+};
 
 export const revokeSessionMutation = (options?: Partial<Options<RevokeSessionData>>): UseMutationOptions<RevokeSessionResponse, RevokeSessionError, Options<RevokeSessionData>> => {
     const mutationOptions: UseMutationOptions<RevokeSessionResponse, RevokeSessionError, Options<RevokeSessionData>> = {
@@ -337,6 +399,79 @@ export const patchTelemtConfigMutation = (options?: Partial<Options<PatchTelemtC
     return mutationOptions;
 };
 
+export const getTelemtConfigTomlQueryKey = (options?: Options<GetTelemtConfigTomlData>) => createQueryKey('getTelemtConfigToml', options);
+
+/**
+ * Returns a normalized TOML projection of the managed Config API sections. It is not the source telemt.toml: comments, includes, source ownership and the explicit/default distinction are not available through Telemt's Config API.
+ *
+ */
+export const getTelemtConfigTomlOptions = (options?: Options<GetTelemtConfigTomlData>) => queryOptions<GetTelemtConfigTomlResponse, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, ReturnType<typeof getTelemtConfigTomlQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtConfigToml({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtConfigTomlQueryKey(options)
+});
+
+/**
+ * Parses the normalized TOML on the panel backend, validates managed paths, builds a sparse patch against the current revision and forwards it to Telemt. Removing map keys is rejected because the current Config API cannot unset them.
+ *
+ */
+export const patchTelemtConfigTomlMutation = (options?: Partial<Options<PatchTelemtConfigTomlData>>): UseMutationOptions<PatchTelemtConfigTomlResponse, PatchTelemtConfigTomlError, Options<PatchTelemtConfigTomlData>> => {
+    const mutationOptions: UseMutationOptions<PatchTelemtConfigTomlResponse, PatchTelemtConfigTomlError, Options<PatchTelemtConfigTomlData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await patchTelemtConfigToml({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getTelemtConfigCatalogQueryKey = (options?: Options<GetTelemtConfigCatalogData>) => createQueryKey('getTelemtConfigCatalog', options);
+
+/**
+ * Versioned metadata for every Telemt 3.5.5 Config API field used by validation and structured settings forms.
+ */
+export const getTelemtConfigCatalogOptions = (options?: Options<GetTelemtConfigCatalogData>) => queryOptions<GetTelemtConfigCatalogResponse, DefaultError, GetTelemtConfigCatalogResponse, ReturnType<typeof getTelemtConfigCatalogQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtConfigCatalog({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtConfigCatalogQueryKey(options)
+});
+
+/**
+ * Parses and validates a TOML projection without applying it. Returns the exact sparse JSON patch plus materialized sections and wholesale array replacements.
+ *
+ */
+export const previewTelemtConfigTomlMutation = (options?: Partial<Options<PreviewTelemtConfigTomlData>>): UseMutationOptions<PreviewTelemtConfigTomlResponse, PreviewTelemtConfigTomlError, Options<PreviewTelemtConfigTomlData>> => {
+    const mutationOptions: UseMutationOptions<PreviewTelemtConfigTomlResponse, PreviewTelemtConfigTomlError, Options<PreviewTelemtConfigTomlData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await previewTelemtConfigToml({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 /**
  * Passthrough of Telemt's POST /v1/system/reload — config re-read via the reload API (capability `reload_api`), not a service restart. `If-Match`, when sent, is forwarded as the mutation's revision.
  *
@@ -429,6 +564,41 @@ export const getTelemtTlsFingerprintsOptions = (options?: Options<GetTelemtTlsFi
     queryKey: getTelemtTlsFingerprintsQueryKey(options)
 });
 
+export const getTelemtWebAccessQueryKey = (options?: Options<GetTelemtWebAccessData>) => createQueryKey('getTelemtWebAccess', options);
+
+/**
+ * User-oriented projection of WEB vhosts and access profiles, backed directly by Telemt Config API data.
+ */
+export const getTelemtWebAccessOptions = (options?: Options<GetTelemtWebAccessData>) => queryOptions<GetTelemtWebAccessResponse, GetTelemtWebAccessError, GetTelemtWebAccessResponse, ReturnType<typeof getTelemtWebAccessQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtWebAccess({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtWebAccessQueryKey(options)
+});
+
+/**
+ * Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Applied with an instant runtime reload.
+ */
+export const putTelemtUserWebAccessMutation = (options?: Partial<Options<PutTelemtUserWebAccessData>>): UseMutationOptions<PutTelemtUserWebAccessResponse, PutTelemtUserWebAccessError, Options<PutTelemtUserWebAccessData>> => {
+    const mutationOptions: UseMutationOptions<PutTelemtUserWebAccessResponse, PutTelemtUserWebAccessError, Options<PutTelemtUserWebAccessData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await putTelemtUserWebAccess({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const getTelemtWebSessionsQueryKey = (options?: Options<GetTelemtWebSessionsData>) => createQueryKey('getTelemtWebSessions', options);
 
 /**
@@ -447,35 +617,6 @@ export const getTelemtWebSessionsOptions = (options?: Options<GetTelemtWebSessio
     },
     queryKey: getTelemtWebSessionsQueryKey(options)
 });
-
-const createInfiniteParams = <K extends Pick<QueryKey<Options>[0], 'body' | 'headers' | 'path' | 'query'>>(queryKey: QueryKey<Options>, page: K) => {
-    const params = { ...queryKey[0] };
-    if (page.body) {
-        params.body = {
-            ...queryKey[0].body as any,
-            ...page.body as any
-        };
-    }
-    if (page.headers) {
-        params.headers = {
-            ...queryKey[0].headers,
-            ...page.headers
-        };
-    }
-    if (page.path) {
-        params.path = {
-            ...queryKey[0].path as any,
-            ...page.path as any
-        };
-    }
-    if (page.query) {
-        params.query = {
-            ...queryKey[0].query as any,
-            ...page.query as any
-        };
-    }
-    return params as unknown as typeof page;
-};
 
 export const getTelemtWebSessionsInfiniteQueryKey = (options?: Options<GetTelemtWebSessionsData>): QueryKey<Options<GetTelemtWebSessionsData>> => createQueryKey('getTelemtWebSessions', options, true);
 

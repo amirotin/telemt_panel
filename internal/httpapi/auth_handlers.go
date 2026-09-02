@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -60,14 +64,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	if len(req.Username) > loginUsernameMaxBytes {
 		s.limiter.RecordFailure(ip)
-		s.appendAudit("login.failed", truncateAuditSubject(req.Username), "ip="+ip)
+		s.appendAudit(r, "login.failed", truncateAuditSubject(req.Username), "ip="+ip)
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "username too long")
 		return
 	}
 
 	if !auth.VerifyCredentials(s.cfg.Auth.Username, s.cfg.Auth.PasswordHash, req.Username, req.Password) {
 		s.limiter.RecordFailure(ip)
-		s.appendAudit("login.failed", truncateAuditSubject(req.Username), "ip="+ip)
+		s.appendAudit(r, "login.failed", truncateAuditSubject(req.Username), "ip="+ip)
 		auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
 		return
 	}
@@ -95,7 +99,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	auth.SetSessionCookie(w, r, s.cfg, token)
-	s.appendAudit("login", req.Username, "ip="+ip)
+	s.appendAudit(r, "login", req.Username, "ip="+ip)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -109,7 +113,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	username, _ := auth.UsernameFromContext(r.Context())
-	s.appendAudit("logout", username, "")
+	s.appendAudit(r, "logout", username, "")
 
 	auth.ClearSessionCookie(w, r, s.cfg)
 	w.WriteHeader(http.StatusNoContent)
@@ -153,6 +157,35 @@ type sessionInfo struct {
 	Current        bool      `json:"current"`
 }
 
+type sessionPage struct {
+	Items       []sessionInfo `json:"items"`
+	Total       int           `json:"total"`
+	DeviceCount int           `json:"device_count"`
+	NextCursor  string        `json:"next_cursor,omitempty"`
+}
+
+const (
+	defaultSessionPageSize = 30
+	maxSessionPageSize     = 100
+	maxSessionSearchBytes  = 200
+)
+
+func encodeSessionCursor(offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
+}
+
+func decodeSessionCursor(cursor string) (int, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, err
+	}
+	offset, err := strconv.Atoi(string(raw))
+	if err != nil || offset < 0 {
+		return 0, strconv.ErrSyntax
+	}
+	return offset, nil
+}
+
 // handleListSessions implements GET /api/auth/sessions. A session whose
 // LastSeen has aged past the TTL is filtered out and lazily deleted here —
 // the same expiry rule RequireSession enforces on every request
@@ -160,6 +193,29 @@ type sessionInfo struct {
 // expired on use never shows up as a live device in the list.
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	current, _ := auth.SessionIDHashFromContext(r.Context())
+	limit := defaultSessionPageSize
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > maxSessionPageSize {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "limit must be between 1 and 100")
+			return
+		}
+		limit = parsed
+	}
+	offset := 0
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		parsed, err := decodeSessionCursor(raw)
+		if err != nil {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid session cursor")
+			return
+		}
+		offset = parsed
+	}
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	if len(query) > maxSessionSearchBytes {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "session search is too long")
+		return
+	}
 
 	sessions, err := s.st.ListSessions()
 	if err != nil {
@@ -170,7 +226,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	ttl := s.cfg.Auth.SessionTTLDuration()
-	out := make([]sessionInfo, 0, len(sessions))
+	active := make([]store.Session, 0, len(sessions))
 	for _, sess := range sessions {
 		if auth.SessionExpired(now.Sub(sess.LastSeen), ttl) {
 			if err := s.st.DeleteSession(sess.IDHash); err != nil {
@@ -178,7 +234,43 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		out = append(out, sessionInfo{
+		if query != "" && !strings.Contains(strings.ToLower(sess.IP), query) &&
+			!strings.Contains(strings.ToLower(sess.UserAgentLabel), query) {
+			continue
+		}
+		active = append(active, sess)
+	}
+	slices.SortFunc(active, func(a, b store.Session) int {
+		aCurrent := a.IDHash == current
+		bCurrent := b.IDHash == current
+		if aCurrent != bCurrent {
+			if aCurrent {
+				return -1
+			}
+			return 1
+		}
+		if bySeen := b.LastSeen.Compare(a.LastSeen); bySeen != 0 {
+			return bySeen
+		}
+		return strings.Compare(a.IDHash, b.IDHash)
+	})
+
+	deviceKeys := make(map[string]struct{}, len(active))
+	for _, sess := range active {
+		key := strings.ToLower(strings.TrimSpace(sess.UserAgentLabel)) + "\x00" + strings.ToLower(strings.TrimSpace(sess.IP))
+		if key == "\x00" {
+			key = sess.IDHash
+		}
+		deviceKeys[key] = struct{}{}
+	}
+
+	if offset > len(active) {
+		offset = len(active)
+	}
+	end := min(offset+limit, len(active))
+	items := make([]sessionInfo, 0, end-offset)
+	for _, sess := range active[offset:end] {
+		items = append(items, sessionInfo{
 			ID:             sess.IDHash,
 			Created:        sess.Created,
 			LastSeen:       sess.LastSeen,
@@ -188,7 +280,16 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			Current:        sess.IDHash == current,
 		})
 	}
-	writeJSON(w, http.StatusOK, out)
+	nextCursor := ""
+	if end < len(active) {
+		nextCursor = encodeSessionCursor(end)
+	}
+	writeJSON(w, http.StatusOK, sessionPage{
+		Items:       items,
+		Total:       len(active),
+		DeviceCount: len(deviceKeys),
+		NextCursor:  nextCursor,
+	})
 }
 
 // handleRevokeOtherSessions implements DELETE /api/auth/sessions: revoke
@@ -229,16 +330,60 @@ func (s *Server) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
 // appendAudit records an audit entry, logging (not failing the request) on
 // a store error — the audit log is best-effort observability, not the
 // source of truth for whether the action itself succeeded.
-func (s *Server) appendAudit(action, subject, detail string) {
+func (s *Server) appendAudit(r *http.Request, action, subject, detail string) {
+	now := time.Now()
+	actor, _ := auth.UsernameFromContext(r.Context())
+	if actor == "" && (action == "login" || action == "login.failed") {
+		actor = subject
+	}
+	ip := auth.ClientIP(r, s.cfg.TrustedProxyPrefixes)
+	if strings.HasPrefix(detail, "ip=") {
+		ip = strings.TrimPrefix(detail, "ip=")
+	}
 	err := s.st.AppendAudit(store.AuditEntry{
-		TS:      time.Now(),
+		TS:      now,
+		ID:      auditEntryID(now),
 		Action:  action,
+		Actor:   actor,
+		Target:  auditTarget(action, subject),
+		Outcome: auditOutcome(action),
+		IP:      ip,
 		Subject: subject,
 		Detail:  detail,
 	})
 	if err != nil {
 		slog.Error("append audit entry", "action", action, "err", err)
 	}
+}
+
+func auditTarget(action, subject string) string {
+	if subject != "" && action != "login" && action != "login.failed" && action != "logout" {
+		return subject
+	}
+	switch action {
+	case "config.patch":
+		return "telemt.toml"
+	case "telemt.reload", "telemt.restart":
+		return "telemt"
+	case "update.auto_change":
+		return "auto_update"
+	default:
+		return "panel"
+	}
+}
+
+func auditOutcome(action string) string {
+	if action == "login.failed" {
+		return "rejected"
+	}
+	if action == "telemt.reload" || action == "telemt.restart" || action == "update.apply" || action == "web.sessions.close" {
+		return "accepted"
+	}
+	return "success"
+}
+
+func auditEntryID(ts time.Time) string {
+	return "audit_" + strconv.FormatInt(ts.UnixNano(), 36)
 }
 
 // userAgentLabel returns the raw User-Agent header, capped to a sane

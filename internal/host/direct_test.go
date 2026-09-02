@@ -126,7 +126,7 @@ func TestDirectRunner_InstallBinary_RejectsRelativeAndTraversalDest(t *testing.T
 
 // TestDirectRunner_InstallBinary_RejectsStagingOutsidePrefix is FINDING
 // 1's core regression test: without the prefix check, a staging path
-// anywhere on disk (e.g. a secret file the agent process can read) would
+// anywhere on disk (e.g. a secret file the privileged process can read) would
 // be copied verbatim into an allow-listed, world-readable-mode-0755
 // dest — an arbitrary-file-read primitive.
 func TestDirectRunner_InstallBinary_RejectsStagingOutsidePrefix(t *testing.T) {

@@ -4,9 +4,8 @@ import "context"
 
 // directRunner executes privileged ops in-process — the router profile
 // (already root) or an operator's explicit "direct" mode choice. It runs
-// every op through ExecOp, the exact same validation and execution code
-// cmd/panel-agent's connection handler calls, so the two paths can't
-// drift in what they accept or how they run it.
+// every op through ExecOp; sudo runners reuse the same validation helpers
+// before executing their fixed command sequences.
 type directRunner struct {
 	allow  AllowLists
 	svcMgr ServiceManager

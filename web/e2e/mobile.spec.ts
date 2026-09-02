@@ -27,6 +27,8 @@ test("login → people → create user → share → sub-page → overview → p
     await page.getByTestId("user-form-username").fill(newUsername);
     await page.getByTestId("user-form-submit").click();
     await expect(page.getByText("Пользователь создан")).toBeVisible();
+    await page.getByRole("button", { name: "Готово" }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
   });
 
   await test.step("the new user appears in the list without a manual reload", async () => {
@@ -44,8 +46,9 @@ test("login → people → create user → share → sub-page → overview → p
     // CreateUser fixture always returns empty Links — see env.ts's
     // SEEDED_USER comment), so the share/sub-page flow uses "alice", the
     // fixture user telemttest seeds with a real classic link.
-    await page.getByTestId(`user-card-actions-${SEEDED_USER}`).click();
-    await page.getByRole("button", { name: "Поделиться доступом" }).click();
+    await page.getByTestId(`user-card-${SEEDED_USER}`).click();
+    await expect(page).toHaveURL(new RegExp(`/people/${SEEDED_USER}$`));
+    await page.getByRole("tab", { name: "Доступ" }).click();
     const sublinkValue = page.getByTestId("sublink-value");
     await expect(sublinkValue).toBeVisible();
     sublinkUrl = (await sublinkValue.textContent())?.trim() ?? "";
@@ -60,12 +63,11 @@ test("login → people → create user → share → sub-page → overview → p
     await expect(anonPage.locator(".status")).toBeVisible();
     await anonContext.close();
 
-    // Close the still-open action sheet (Sheet.tsx's own "Закрыть" button)
-    // before navigating elsewhere on the main page — its backdrop is
-    // `fixed inset-0` and intercepts clicks on the tab bar underneath it
-    // until dismissed.
-    await page.getByRole("button", { name: "Закрыть" }).click();
-    await expect(page.getByRole("dialog")).toBeHidden();
+    // Phone portrait uses a dedicated person page, rather than layering the
+    // old action sheet over the list. Return to the list before using the
+    // bottom navigation so its controls cannot be confused with user actions.
+    await page.getByRole("link", { name: "Назад" }).click();
+    await expect(page).toHaveURL(/\/people$/);
   });
 
   await test.step("Сводка renders the fixed operational composition across reload", async () => {
@@ -178,10 +180,11 @@ test("login → people → create user → share → sub-page → overview → p
     await expect(page.getByRole("heading", { name: "Пульс", level: 1 })).toBeVisible();
   });
 
-  await test.step("Журнал → События shows the user-creation entry", async () => {
+  await test.step("Журнал → Действия shows the user-creation entry", async () => {
     await page.getByRole("link", { name: "Журнал" }).click();
-    await page.getByRole("tab", { name: "События" }).click();
-    await expect(page.getByText(`Создан пользователь — ${newUsername}`)).toBeVisible();
+    await page.getByRole("tab", { name: "Действия" }).click();
+    const creation = page.locator(".journal-action-card").filter({ hasText: newUsername });
+    await expect(creation.getByRole("heading", { name: "Создан пользователь" })).toBeVisible();
   });
 
   await test.step("Сервер → Платформа shows the capability matrix", async () => {

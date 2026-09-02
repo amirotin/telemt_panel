@@ -139,6 +139,11 @@ describe("quota unit conversion", () => {
   it("converts MB to bytes", () => {
     expect(quotaUnitToBytes(1, "MB")).toBe(1024 ** 2);
   });
+  it("converts and displays TB values", () => {
+    const bytes = quotaUnitToBytes(2.5, "TB");
+    expect(bytes).toBe(2.5 * 1024 ** 4);
+    expect(bytesToQuotaDisplay(bytes)).toEqual({ value: 2.5, unit: "TB" });
+  });
   it("displays bytes at or above 1 GB in GB", () => {
     expect(bytesToQuotaDisplay(1024 ** 3 * 2.5)).toEqual({ value: 2.5, unit: "GB" });
   });
@@ -282,33 +287,34 @@ describe("validation", () => {
 
 describe("filter segments", () => {
   const entries = [
-    { user: user({ username: "online-ok", current_connections: 2 }), status: "active" as const },
+    { user: user({ username: "online-ok", current_connections: 2 }), status: "active" as const, webAccess: true },
     { user: user({ username: "idle-ok", current_connections: 0 }), status: "active" as const },
     { user: user({ username: "off", current_connections: 0 }), status: "disabled" as const },
-    { user: user({ username: "burnt", current_connections: 3 }), status: "quota_exhausted" as const },
+    { user: user({ username: "burnt", current_connections: 3 }), status: "quota_exhausted" as const, webAccess: true },
     { user: user({ username: "gone", current_connections: 0 }), status: "expired" as const },
     { user: user({ username: "unloaded", current_connections: 0 }), status: "not_in_runtime" as const },
   ];
 
   it("counts every segment off one pass", () => {
-    expect(countUserFilters(entries)).toEqual({ all: 6, online: 2, issues: 4 });
+    expect(countUserFilters(entries)).toEqual({ all: 6, online: 2, issues: 4, web: 2 });
   });
 
   it("counts an empty list as all-zero", () => {
-    expect(countUserFilters([])).toEqual({ all: 0, online: 0, issues: 0 });
+    expect(countUserFilters([])).toEqual({ all: 0, online: 0, issues: 0, web: 0 });
   });
 
   it("counts a user who is both online and in trouble in both segments", () => {
     const counts = countUserFilters([entries[3]!]);
-    expect(counts).toEqual({ all: 1, online: 1, issues: 1 });
+    expect(counts).toEqual({ all: 1, online: 1, issues: 1, web: 1 });
   });
 
   it("matches the same users the counts describe", () => {
-    const kept = (filter: "all" | "online" | "issues") =>
+    const kept = (filter: "all" | "online" | "issues" | "web") =>
       entries.filter((e) => matchesUserFilter(e, filter)).map((e) => e.user.username);
     expect(kept("all")).toHaveLength(6);
     expect(kept("online")).toEqual(["online-ok", "burnt"]);
     expect(kept("issues")).toEqual(["off", "burnt", "gone", "unloaded"]);
+    expect(kept("web")).toEqual(["online-ok", "burnt"]);
   });
 });
 

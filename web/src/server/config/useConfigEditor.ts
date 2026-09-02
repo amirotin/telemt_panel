@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 /**
  * A revision plus the sections it describes — GET /api/telemt/config's
@@ -18,8 +18,12 @@ export interface ConfigEditorState {
   /** The working copy the forms read/write. */
   edited: Record<string, unknown> | null;
   setEdited: (next: Record<string, unknown>) => void;
-  /** Re-seeds both baseline and edited to a freshly fetched config, discarding any in-progress edit. */
-  seed: (fresh: ConfigSnapshot) => void;
+  /** Current draft for async mutation callbacks, without relying on a stale render closure. */
+  getEdited: () => Record<string, unknown> | null;
+  /** Re-seeds the baseline and optionally keeps a rebased working copy. */
+  seed: (fresh: ConfigSnapshot, workingCopy?: Record<string, unknown>) => void;
+  /** Changes only on an explicit seed, so uncontrolled editors can remount safely. */
+  documentVersion: number;
 }
 
 // useConfigEditor owns the Конфигурация page's editing session: `baseline`
@@ -39,16 +43,32 @@ export interface ConfigEditorState {
 export function useConfigEditor(queryData: ConfigSnapshot | undefined): ConfigEditorState {
   const [baseline, setBaseline] = useState<ConfigSnapshot | null>(null);
   const [edited, setEditedState] = useState<Record<string, unknown> | null>(null);
+  const editedRef = useRef<Record<string, unknown> | null>(null);
+  const [documentVersion, setDocumentVersion] = useState(0);
 
   if (queryData && !baseline) {
     setBaseline(queryData);
     setEditedState(queryData.sections);
   }
 
-  function seed(fresh: ConfigSnapshot) {
-    setBaseline(fresh);
-    setEditedState(fresh.sections);
+  function setEdited(next: Record<string, unknown>) {
+    editedRef.current = next;
+    setEditedState(next);
   }
 
-  return { baseline, edited, setEdited: setEditedState, seed };
+  function seed(fresh: ConfigSnapshot, workingCopy = fresh.sections) {
+    setBaseline(fresh);
+    editedRef.current = workingCopy;
+    setEditedState(workingCopy);
+    setDocumentVersion((version) => version + 1);
+  }
+
+  return {
+    baseline,
+    edited,
+    setEdited,
+    getEdited: () => editedRef.current,
+    seed,
+    documentVersion,
+  };
 }

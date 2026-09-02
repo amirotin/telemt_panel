@@ -9,7 +9,7 @@ export type Error = {
      * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: totp_required (TOTP login), telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
      *
      */
-    code: 'bad_request' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found';
+    code: 'bad_request' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
     message: string;
 };
 
@@ -181,6 +181,38 @@ export type GatedTlsFingerprints = {
     data?: TlsFingerprints;
 };
 
+export type WebAccessProfile = {
+    user: string;
+    secret_mode: 'plain' | 'dd';
+    max_sessions?: number;
+    max_streams?: number;
+    max_streams_per_session?: number;
+};
+
+export type WebAccessVhost = {
+    host: string;
+    public_addr: string;
+    profiles: Array<WebAccessProfile>;
+};
+
+export type WebAccessView = {
+    revision: string;
+    enabled: boolean;
+    vhosts: Array<WebAccessVhost>;
+};
+
+export type WebUserAccessProfile = {
+    vhost: string;
+    secret_mode: 'plain' | 'dd';
+    max_sessions?: number;
+    max_streams?: number;
+    max_streams_per_session?: number;
+};
+
+export type WebUserAccessUpdate = {
+    profiles: Array<WebUserAccessProfile>;
+};
+
 /**
  * One live WEB session. `session_ref` plus the optional user-agent pair sit at the same level as the 23 WebSessionStatus fields — Telemt flattens the status struct into the row (`#[serde(flatten)]`, src/web/session/status.rs).
  *
@@ -319,6 +351,60 @@ export type TelemtConfigPatch = {
     };
 };
 
+export type TelemtConfigToml = {
+    revision: string;
+    toml_projection: string;
+    source_sections: Array<string>;
+    note: string;
+};
+
+export type TelemtConfigCatalog = {
+    version: string;
+    source_commit: string;
+    documented_fields: number;
+    runtime_additions: Array<string>;
+    groups: Array<TelemtConfigGroup>;
+    fields: Array<TelemtConfigField>;
+};
+
+export type TelemtConfigGroup = {
+    id: string;
+    title: string;
+    short: string;
+};
+
+export type TelemtConfigField = {
+    path: string;
+    data_type: string;
+    kind: 'boolean' | 'integer' | 'decimal' | 'string' | 'enum' | 'string_list' | 'integer_list' | 'map' | 'structure';
+    options?: Array<string>;
+    default_value: string;
+    doc_hot: boolean;
+    apply: string;
+    tier: 'normal' | 'advanced';
+    group: string;
+    secret: boolean;
+    runtime_addition?: boolean;
+};
+
+export type TelemtConfigTomlRequest = {
+    toml_projection: string;
+};
+
+export type TelemtConfigTomlPreview = {
+    revision: string;
+    patch: {
+        [key: string]: unknown;
+    };
+    /**
+     * Exact JSON text of the sparse patch, preserving integer literals for preview.
+     */
+    patch_json: string;
+    changed_paths: Array<string>;
+    materialized_sections: Array<string>;
+    array_replacements: Array<string>;
+};
+
 /**
  * Telemt's PATCH /v1/config response, passed through as-is.
  */
@@ -371,7 +457,15 @@ export type ReloadStatus = {
 export type HostInfo = {
     service_manager: 'systemd' | 'openrc' | 'procd' | 'sysvinit' | 'docker' | 'none';
     log_source: 'journald' | 'logread' | 'syslog' | 'docker' | 'file' | 'none';
-    privileges_mode: 'agent' | 'direct' | 'degraded';
+    privileges_mode: 'sudo' | 'direct' | 'manual';
+    /**
+     * Go runtime operating system identifier
+     */
+    os: string;
+    /**
+     * Go runtime architecture identifier
+     */
+    arch: string;
     os_release?: string;
     caps: {
         restart_telemt: boolean;
@@ -381,7 +475,7 @@ export type HostInfo = {
         self_update: boolean;
     };
     /**
-     * Copyable shell commands for operations with cap=false.
+     * Copyable shell commands or actionable manual instructions for operations with cap=false.
      */
     manual_commands?: {
         [key: string]: string;
@@ -437,6 +531,19 @@ export type SessionInfo = {
     current: boolean;
 };
 
+export type SessionPage = {
+    items: Array<SessionInfo>;
+    total: number;
+    /**
+     * Distinct User-Agent and IP pairs in the filtered result
+     */
+    device_count: number;
+    /**
+     * Opaque cursor for the next page; absent on the last page
+     */
+    next_cursor?: string;
+};
+
 export type PasskeyInfo = {
     id: string;
     name: string;
@@ -454,14 +561,37 @@ export type LogLine = {
 export type AuditEntry = {
     ts: string;
     /**
+     * Stable identifier of this retained audit entry
+     */
+    id: string;
+    /**
      * login | user.create | user.patch | user.delete | quota.reset | config.patch | update.apply | ...
      */
     action: string;
+    /**
+     * Authenticated administrator or attempted login name
+     */
+    actor?: string;
+    /**
+     * User
+     */
+    target?: string;
+    outcome: 'success' | 'accepted' | 'rejected';
+    /**
+     * Trusted client address captured by the panel
+     */
+    ip?: string;
     /**
      * Username / target / section
      */
     subject?: string;
     detail?: string;
+    /**
+     * Structured key/value details when the action supplies them
+     */
+    metadata?: {
+        [key: string]: string;
+    };
 };
 
 export type HistorySeries = {
@@ -595,15 +725,34 @@ export type RevokeOtherSessionsResponse = RevokeOtherSessionsResponses[keyof Rev
 export type ListSessionsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        limit?: number;
+        /**
+         * Opaque cursor returned by the previous page
+         */
+        cursor?: string;
+        /**
+         * Case-insensitive User-Agent or IP substring
+         */
+        q?: string;
+    };
     url: '/api/auth/sessions';
 };
 
+export type ListSessionsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type ListSessionsError = ListSessionsErrors[keyof ListSessionsErrors];
+
 export type ListSessionsResponses = {
     /**
-     * Active sessions (current one flagged)
+     * Page of active sessions (current one flagged)
      */
-    200: Array<SessionInfo>;
+    200: SessionPage;
 };
 
 export type ListSessionsResponse = ListSessionsResponses[keyof ListSessionsResponses];
@@ -1048,6 +1197,9 @@ export type GetTelemtConfigResponse = GetTelemtConfigResponses[keyof GetTelemtCo
 
 export type PatchTelemtConfigData = {
     body: TelemtConfigPatch;
+    headers: {
+        'If-Match': string;
+    };
     path?: never;
     query?: {
         reload?: 'instant' | 'drain';
@@ -1092,9 +1244,146 @@ export type PatchTelemtConfigResponses = {
      * Applied
      */
     200: TelemtConfigPatchResult;
+    /**
+     * Applied and inline reload accepted
+     */
+    202: TelemtConfigPatchResult;
 };
 
 export type PatchTelemtConfigResponse = PatchTelemtConfigResponses[keyof PatchTelemtConfigResponses];
+
+export type GetTelemtConfigTomlData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/config/toml';
+};
+
+export type GetTelemtConfigTomlErrors = {
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable
+     */
+    503: Error;
+};
+
+export type GetTelemtConfigTomlError = GetTelemtConfigTomlErrors[keyof GetTelemtConfigTomlErrors];
+
+export type GetTelemtConfigTomlResponses = {
+    /**
+     * TOML projection and revision
+     */
+    200: TelemtConfigToml;
+};
+
+export type GetTelemtConfigTomlResponse = GetTelemtConfigTomlResponses[keyof GetTelemtConfigTomlResponses];
+
+export type PatchTelemtConfigTomlData = {
+    body: TelemtConfigTomlRequest;
+    headers: {
+        'If-Match': string;
+    };
+    path?: never;
+    query?: {
+        reload?: 'instant' | 'drain';
+        timeout_secs?: number;
+        failure_policy?: 'keep_new' | 'rollback';
+    };
+    url: '/api/telemt/config/toml';
+};
+
+export type PatchTelemtConfigTomlErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Telemt API is in read_only mode
+     */
+    403: Error;
+    /**
+     * revision_conflict
+     */
+    409: Error;
+    /**
+     * Telemt rejected the generated patch
+     */
+    422: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+};
+
+export type PatchTelemtConfigTomlError = PatchTelemtConfigTomlErrors[keyof PatchTelemtConfigTomlErrors];
+
+export type PatchTelemtConfigTomlResponses = {
+    /**
+     * Applied
+     */
+    200: TelemtConfigPatchResult;
+    /**
+     * Applied and inline reload accepted
+     */
+    202: TelemtConfigPatchResult;
+};
+
+export type PatchTelemtConfigTomlResponse = PatchTelemtConfigTomlResponses[keyof PatchTelemtConfigTomlResponses];
+
+export type GetTelemtConfigCatalogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/config/catalog';
+};
+
+export type GetTelemtConfigCatalogResponses = {
+    /**
+     * Config field catalog
+     */
+    200: TelemtConfigCatalog;
+};
+
+export type GetTelemtConfigCatalogResponse = GetTelemtConfigCatalogResponses[keyof GetTelemtConfigCatalogResponses];
+
+export type PreviewTelemtConfigTomlData = {
+    body: TelemtConfigTomlRequest;
+    headers: {
+        'If-Match': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/telemt/config/toml/preview';
+};
+
+export type PreviewTelemtConfigTomlErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * revision_conflict
+     */
+    409: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+};
+
+export type PreviewTelemtConfigTomlError = PreviewTelemtConfigTomlErrors[keyof PreviewTelemtConfigTomlErrors];
+
+export type PreviewTelemtConfigTomlResponses = {
+    /**
+     * Validated preview
+     */
+    200: TelemtConfigTomlPreview;
+};
+
+export type PreviewTelemtConfigTomlResponse = PreviewTelemtConfigTomlResponses[keyof PreviewTelemtConfigTomlResponses];
 
 export type ReloadTelemtData = {
     body?: {
@@ -1274,6 +1563,85 @@ export type GetTelemtTlsFingerprintsResponses = {
 };
 
 export type GetTelemtTlsFingerprintsResponse = GetTelemtTlsFingerprintsResponses[keyof GetTelemtTlsFingerprintsResponses];
+
+export type GetTelemtWebAccessData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/web-access';
+};
+
+export type GetTelemtWebAccessErrors = {
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable — Config API is unavailable
+     */
+    503: Error;
+};
+
+export type GetTelemtWebAccessError = GetTelemtWebAccessErrors[keyof GetTelemtWebAccessErrors];
+
+export type GetTelemtWebAccessResponses = {
+    /**
+     * WEB access relationships and source config revision
+     */
+    200: WebAccessView;
+};
+
+export type GetTelemtWebAccessResponse = GetTelemtWebAccessResponses[keyof GetTelemtWebAccessResponses];
+
+export type PutTelemtUserWebAccessData = {
+    body: WebUserAccessUpdate;
+    headers: {
+        'If-Match': string;
+    };
+    path: {
+        username: string;
+    };
+    query?: never;
+    url: '/api/telemt/web-access/users/{username}';
+};
+
+export type PutTelemtUserWebAccessErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * web_vhost_not_found
+     */
+    404: Error;
+    /**
+     * revision_conflict or web_profile_required
+     */
+    409: Error;
+    /**
+     * telemt_unreachable | telemt_auth_failed
+     */
+    502: Error;
+    /**
+     * capability_unavailable — Config API is unavailable
+     */
+    503: Error;
+};
+
+export type PutTelemtUserWebAccessError = PutTelemtUserWebAccessErrors[keyof PutTelemtUserWebAccessErrors];
+
+export type PutTelemtUserWebAccessResponses = {
+    /**
+     * Configuration updated
+     */
+    200: TelemtConfigPatchResult;
+    /**
+     * Configuration updated and reload accepted
+     */
+    202: TelemtConfigPatchResult;
+};
+
+export type PutTelemtUserWebAccessResponse = PutTelemtUserWebAccessResponses[keyof PutTelemtUserWebAccessResponses];
 
 export type GetTelemtWebSessionsData = {
     body?: never;

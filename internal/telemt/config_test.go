@@ -97,13 +97,16 @@ func TestPatchConfigWithReloadQuery(t *testing.T) {
 
 	timeout := uint64(20)
 	patch := map[string]any{"general": map[string]any{"log_level": "debug"}}
-	result, revision, err := c.PatchConfig(context.Background(), patch, "cfg-1",
+	result, status, revision, err := c.PatchConfig(context.Background(), patch, "cfg-1",
 		ReloadQuery{Mode: ReloadModeDrain, TimeoutSecs: &timeout, FailurePolicy: ReloadFailurePolicyRollback})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if revision != "cfg-2" || result.Revision != "cfg-2" {
 		t.Errorf("revision = %q, result.Revision = %q", revision, result.Revision)
+	}
+	if status != http.StatusAccepted {
+		t.Errorf("status = %d, want 202", status)
 	}
 	if !result.RuntimeReloadRequired || result.Reload == nil || result.Reload.ReloadID != 1 {
 		t.Errorf("result = %+v", result)
@@ -133,7 +136,7 @@ func TestPatchConfigWithoutReloadOmitsQuery(t *testing.T) {
 			"deferred_process_fields":[],"changed":["general"]},"revision":"cfg-2"}`))
 	})
 
-	_, _, err := c.PatchConfig(context.Background(), map[string]any{"general": map[string]any{}}, "", ReloadQuery{})
+	_, _, _, err := c.PatchConfig(context.Background(), map[string]any{"general": map[string]any{}}, "", ReloadQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +151,7 @@ func TestPatchConfigRevisionConflict(t *testing.T) {
 		w.Write([]byte(`{"ok":false,"error":{"code":"revision_conflict","message":"config changed"},"request_id":1}`))
 	})
 
-	_, _, err := c.PatchConfig(context.Background(), map[string]any{"general": map[string]any{}}, "stale", ReloadQuery{})
+	_, _, _, err := c.PatchConfig(context.Background(), map[string]any{"general": map[string]any{}}, "stale", ReloadQuery{})
 	if err == nil {
 		t.Fatal("expected an error")
 	}

@@ -2,9 +2,26 @@ import { describe, expect, it } from "vitest";
 import {
   buildUserCreateBody,
   buildUserPatch,
+  diffLimitField,
   keepAllPatchFields,
   type UserPatchFormState,
 } from "./buildUserPatch";
+
+describe("diffLimitField", () => {
+  it("keeps an unchanged value or two empty values", () => {
+    expect(diffLimitField(12, 12)).toEqual({ mode: "keep" });
+    expect(diffLimitField(undefined, undefined)).toEqual({ mode: "keep" });
+  });
+
+  it("clears an existing value when the input becomes empty", () => {
+    expect(diffLimitField(undefined, 12)).toEqual({ mode: "clear" });
+  });
+
+  it("sets a new or changed value", () => {
+    expect(diffLimitField(12, undefined)).toEqual({ mode: "set", value: 12 });
+    expect(diffLimitField(24, 12)).toEqual({ mode: "set", value: 24 });
+  });
+});
 
 describe("buildUserPatch", () => {
   it("produces an empty object when every field is kept", () => {
@@ -32,6 +49,11 @@ describe("buildUserPatch", () => {
       maxTcpConns: { mode: "set", value: 42 },
     };
     expect(buildUserPatch(form)).toEqual({ max_tcp_conns: 42 });
+  });
+
+  it("sends enabled only when the form changed it", () => {
+    expect(buildUserPatch({ ...keepAllPatchFields(), enabled: false })).toEqual({ enabled: false });
+    expect(buildUserPatch({ ...keepAllPatchFields(), enabled: undefined })).toEqual({});
   });
 
   // Exhaustive per-field matrix: every field independently supports all

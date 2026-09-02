@@ -338,7 +338,7 @@ export function PulseHub() {
       : fill(s.hub.current, { age: formatRelativeAge(oldestFreshness, s, nowMs).text });
 
   return (
-    <div className="mx-auto flex w-full max-w-[1160px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-5">
         <div className="min-w-0">
           <h1 className="text-title font-extrabold tracking-tight text-text">{s.pulse.title}</h1>

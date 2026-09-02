@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CloseTelemtWebSessionsData, CloseTelemtWebSessionsErrors, CloseTelemtWebSessionsResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtWebOperationData, GetTelemtWebOperationErrors, GetTelemtWebOperationResponses, GetTelemtWebSessionData, GetTelemtWebSessionErrors, GetTelemtWebSessionResponses, GetTelemtWebSessionsData, GetTelemtWebSessionsErrors, GetTelemtWebSessionsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, ListSessionsData, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses } from './types.gen';
+import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CloseTelemtWebSessionsData, CloseTelemtWebSessionsErrors, CloseTelemtWebSessionsResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtConfigTomlData, GetTelemtConfigTomlErrors, GetTelemtConfigTomlResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtWebAccessData, GetTelemtWebAccessErrors, GetTelemtWebAccessResponses, GetTelemtWebOperationData, GetTelemtWebOperationErrors, GetTelemtWebOperationResponses, GetTelemtWebSessionData, GetTelemtWebSessionErrors, GetTelemtWebSessionResponses, GetTelemtWebSessionsData, GetTelemtWebSessionsErrors, GetTelemtWebSessionsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchTelemtConfigTomlData, PatchTelemtConfigTomlErrors, PatchTelemtConfigTomlResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlErrors, PreviewTelemtConfigTomlResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, PutTelemtUserWebAccessData, PutTelemtUserWebAccessErrors, PutTelemtUserWebAccessResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -60,7 +60,10 @@ export const revokeOtherSessions = <ThrowOnError extends boolean = false>(option
     ...options
 });
 
-export const listSessions = <ThrowOnError extends boolean = false>(options?: Options<ListSessionsData, ThrowOnError>): RequestResult<ListSessionsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListSessionsResponses, unknown, ThrowOnError>({
+/**
+ * Active panel sessions, newest first with the current session pinned. Cursor-paged and searchable by browser/User-Agent or IP address.
+ */
+export const listSessions = <ThrowOnError extends boolean = false>(options?: Options<ListSessionsData, ThrowOnError>): RequestResult<ListSessionsResponses, ListSessionsErrors, ThrowOnError> => (options?.client ?? client).get<ListSessionsResponses, ListSessionsErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'panel_session',
@@ -249,6 +252,69 @@ export const patchTelemtConfig = <ThrowOnError extends boolean = false>(options:
 });
 
 /**
+ * Returns a normalized TOML projection of the managed Config API sections. It is not the source telemt.toml: comments, includes, source ownership and the explicit/default distinction are not available through Telemt's Config API.
+ *
+ */
+export const getTelemtConfigToml = <ThrowOnError extends boolean = false>(options?: Options<GetTelemtConfigTomlData, ThrowOnError>): RequestResult<GetTelemtConfigTomlResponses, GetTelemtConfigTomlErrors, ThrowOnError> => (options?.client ?? client).get<GetTelemtConfigTomlResponses, GetTelemtConfigTomlErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/config/toml',
+    ...options
+});
+
+/**
+ * Parses the normalized TOML on the panel backend, validates managed paths, builds a sparse patch against the current revision and forwards it to Telemt. Removing map keys is rejected because the current Config API cannot unset them.
+ *
+ */
+export const patchTelemtConfigToml = <ThrowOnError extends boolean = false>(options: Options<PatchTelemtConfigTomlData, ThrowOnError>): RequestResult<PatchTelemtConfigTomlResponses, PatchTelemtConfigTomlErrors, ThrowOnError> => (options.client ?? client).patch<PatchTelemtConfigTomlResponses, PatchTelemtConfigTomlErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/config/toml',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Versioned metadata for every Telemt 3.5.5 Config API field used by validation and structured settings forms.
+ */
+export const getTelemtConfigCatalog = <ThrowOnError extends boolean = false>(options?: Options<GetTelemtConfigCatalogData, ThrowOnError>): RequestResult<GetTelemtConfigCatalogResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetTelemtConfigCatalogResponses, unknown, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/config/catalog',
+    ...options
+});
+
+/**
+ * Parses and validates a TOML projection without applying it. Returns the exact sparse JSON patch plus materialized sections and wholesale array replacements.
+ *
+ */
+export const previewTelemtConfigToml = <ThrowOnError extends boolean = false>(options: Options<PreviewTelemtConfigTomlData, ThrowOnError>): RequestResult<PreviewTelemtConfigTomlResponses, PreviewTelemtConfigTomlErrors, ThrowOnError> => (options.client ?? client).post<PreviewTelemtConfigTomlResponses, PreviewTelemtConfigTomlErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/config/toml/preview',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Passthrough of Telemt's POST /v1/system/reload — config re-read via the reload API (capability `reload_api`), not a service restart. `If-Match`, when sent, is forwarded as the mutation's revision.
  *
  */
@@ -319,6 +385,36 @@ export const getTelemtTlsFingerprints = <ThrowOnError extends boolean = false>(o
         }],
     url: '/api/telemt/tls-fingerprints',
     ...options
+});
+
+/**
+ * User-oriented projection of WEB vhosts and access profiles, backed directly by Telemt Config API data.
+ */
+export const getTelemtWebAccess = <ThrowOnError extends boolean = false>(options?: Options<GetTelemtWebAccessData, ThrowOnError>): RequestResult<GetTelemtWebAccessResponses, GetTelemtWebAccessErrors, ThrowOnError> => (options?.client ?? client).get<GetTelemtWebAccessResponses, GetTelemtWebAccessErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/web-access',
+    ...options
+});
+
+/**
+ * Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Applied with an instant runtime reload.
+ */
+export const putTelemtUserWebAccess = <ThrowOnError extends boolean = false>(options: Options<PutTelemtUserWebAccessData, ThrowOnError>): RequestResult<PutTelemtUserWebAccessResponses, PutTelemtUserWebAccessErrors, ThrowOnError> => (options.client ?? client).put<PutTelemtUserWebAccessResponses, PutTelemtUserWebAccessErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/telemt/web-access/users/{username}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

@@ -90,12 +90,18 @@ paths:
     get:
       tags: [auth]
       operationId: listSessions
+      description: Active panel sessions, newest first with the current session pinned. Cursor-paged and searchable by browser/User-Agent or IP address.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+        - { name: cursor, in: query, schema: { type: string }, description: Opaque cursor returned by the previous page }
+        - { name: q, in: query, schema: { type: string, maxLength: 200 }, description: Case-insensitive User-Agent or IP substring }
       responses:
         "200":
-          description: Active sessions (current one flagged)
+          description: Page of active sessions (current one flagged)
           content:
             application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } }
+              schema: { $ref: "#/components/schemas/SessionPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
     delete:
       tags: [auth]
       operationId: revokeOtherSessions
@@ -390,14 +396,16 @@ paths:
         `reload`/`timeout_secs`/`failure_policy` query (07-telemt-sdk.md §Config);
         omitting `reload` patches without reloading.
       parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
         - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
-        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
         - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatch" } } }
       responses:
         "200": { description: Applied, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
+        "202": { description: Applied and inline reload accepted, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "409":
           description: revision_conflict — re-read and merge
@@ -411,6 +419,68 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
         "503": { description: capability_unavailable — this Telemt build/config does not expose the config API, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/telemt/config/toml:
+    get:
+      tags: [telemt]
+      operationId: getTelemtConfigTOML
+      description: >
+        Returns a normalized TOML projection of the managed Config API sections. It is
+        not the source telemt.toml: comments, includes, source ownership and the
+        explicit/default distinction are not available through Telemt's Config API.
+      responses:
+        "200": { description: TOML projection and revision, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOML" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    patch:
+      tags: [telemt]
+      operationId: patchTelemtConfigTOML
+      description: >
+        Parses the normalized TOML on the panel backend, validates managed paths,
+        builds a sparse patch against the current revision and forwards it to Telemt.
+        Removing map keys is rejected because the current Config API cannot unset them.
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
+        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
+        - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOMLRequest" } } }
+      responses:
+        "200": { description: Applied, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
+        "202": { description: Applied and inline reload accepted, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: revision_conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "422": { description: Telemt rejected the generated patch, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+
+  /api/telemt/config/catalog:
+    get:
+      tags: [telemt]
+      operationId: getTelemtConfigCatalog
+      description: Versioned metadata for every Telemt 3.5.5 Config API field used by validation and structured settings forms.
+      responses:
+        "200": { description: Config field catalog, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigCatalog" } } } }
+
+  /api/telemt/config/toml/preview:
+    post:
+      tags: [telemt]
+      operationId: previewTelemtConfigTOML
+      description: >
+        Parses and validates a TOML projection without applying it. Returns the exact
+        sparse JSON patch plus materialized sections and wholesale array replacements.
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOMLRequest" } } }
+      responses:
+        "200": { description: Validated preview, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOMLPreview" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: revision_conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/telemt/reload:
     post:
@@ -501,6 +571,36 @@ paths:
         "501": { description: capability_absent — this Telemt build predates the runtime edge routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
         "503": { description: capability_unavailable — runtime_edge_enabled is off, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/telemt/web-access:
+    get:
+      tags: [telemt, users]
+      operationId: getTelemtWebAccess
+      description: User-oriented projection of WEB vhosts and access profiles, backed directly by Telemt Config API data.
+      responses:
+        "200": { description: WEB access relationships and source config revision, content: { application/json: { schema: { $ref: "#/components/schemas/WebAccessView" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — Config API is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/telemt/web-access/users/{username}:
+    put:
+      tags: [telemt, users]
+      operationId: putTelemtUserWebAccess
+      description: Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Applied with an instant runtime reload.
+      parameters:
+        - { $ref: "#/components/parameters/Username" }
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/WebUserAccessUpdate" } } }
+      responses:
+        "200": { description: Configuration updated, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
+        "202": { description: Configuration updated and reload accepted, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatchResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: web_vhost_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: revision_conflict or web_profile_required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "503": { description: capability_unavailable — Config API is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/sessions:
     get:
@@ -889,6 +989,8 @@ components:
             - web_operation_in_progress
             - web_session_not_found
             - web_operation_not_found
+            - web_vhost_not_found
+            - web_profile_required
           description: >
             Machine code. Panel codes actually emitted today (grepped from every
             WriteError call site): bad_request, invalid_credentials, rate_limited,
@@ -1103,6 +1205,48 @@ components:
         generated_at_epoch_secs: { type: integer }
         data: { $ref: "#/components/schemas/TlsFingerprints" }
 
+    WebAccessProfile:
+      type: object
+      required: [user, secret_mode]
+      properties:
+        user: { type: string }
+        secret_mode: { type: string, enum: [plain, dd] }
+        max_sessions: { type: integer, format: uint64, minimum: 1 }
+        max_streams: { type: integer, format: uint64, minimum: 1 }
+        max_streams_per_session: { type: integer, format: uint64, minimum: 1 }
+
+    WebAccessVhost:
+      type: object
+      required: [host, public_addr, profiles]
+      properties:
+        host: { type: string }
+        public_addr: { type: string }
+        profiles: { type: array, items: { $ref: "#/components/schemas/WebAccessProfile" } }
+
+    WebAccessView:
+      type: object
+      required: [revision, enabled, vhosts]
+      properties:
+        revision: { type: string }
+        enabled: { type: boolean }
+        vhosts: { type: array, items: { $ref: "#/components/schemas/WebAccessVhost" } }
+
+    WebUserAccessProfile:
+      type: object
+      required: [vhost, secret_mode]
+      properties:
+        vhost: { type: string }
+        secret_mode: { type: string, enum: [plain, dd] }
+        max_sessions: { type: integer, format: uint64, minimum: 1 }
+        max_streams: { type: integer, format: uint64, minimum: 1 }
+        max_streams_per_session: { type: integer, format: uint64, minimum: 1 }
+
+    WebUserAccessUpdate:
+      type: object
+      required: [profiles]
+      properties:
+        profiles: { type: array, items: { $ref: "#/components/schemas/WebUserAccessProfile" } }
+
     WebSessionRow:
       type: object
       description: >
@@ -1252,6 +1396,71 @@ components:
           additionalProperties: true
           description: Sparse map of section name → JSON Merge Patch value for that section.
 
+    TelemtConfigTOML:
+      type: object
+      required: [revision, toml_projection, source_sections, note]
+      properties:
+        revision: { type: string }
+        toml_projection: { type: string }
+        source_sections: { type: array, items: { type: string } }
+        note: { type: string }
+
+    TelemtConfigCatalog:
+      type: object
+      required: [version, source_commit, documented_fields, runtime_additions, groups, fields]
+      properties:
+        version: { type: string }
+        source_commit: { type: string }
+        documented_fields: { type: integer }
+        runtime_additions: { type: array, items: { type: string } }
+        groups: { type: array, items: { $ref: "#/components/schemas/TelemtConfigGroup" } }
+        fields: { type: array, items: { $ref: "#/components/schemas/TelemtConfigField" } }
+
+    TelemtConfigGroup:
+      type: object
+      required: [id, title, short]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        short: { type: string }
+
+    TelemtConfigField:
+      type: object
+      required: [path, data_type, kind, default_value, doc_hot, apply, tier, group, secret]
+      properties:
+        path: { type: string }
+        data_type: { type: string }
+        kind: { type: string, enum: [boolean, integer, decimal, string, enum, string_list, integer_list, map, structure] }
+        options: { type: array, items: { type: string } }
+        default_value: { type: string }
+        doc_hot: { type: boolean }
+        apply: { type: string }
+        tier: { type: string, enum: [normal, advanced] }
+        group: { type: string }
+        secret: { type: boolean }
+        runtime_addition: { type: boolean }
+
+    TelemtConfigTOMLRequest:
+      type: object
+      required: [toml_projection]
+      properties:
+        toml_projection: { type: string }
+
+    TelemtConfigTOMLPreview:
+      type: object
+      required: [revision, patch, patch_json, changed_paths, materialized_sections, array_replacements]
+      properties:
+        revision: { type: string }
+        patch:
+          type: object
+          additionalProperties: true
+        patch_json:
+          type: string
+          description: Exact JSON text of the sparse patch, preserving integer literals for preview.
+        changed_paths: { type: array, items: { type: string } }
+        materialized_sections: { type: array, items: { type: string } }
+        array_replacements: { type: array, items: { type: string } }
+
     TelemtConfigPatchResult:
       type: object
       description: Telemt's PATCH /v1/config response, passed through as-is.
@@ -1299,11 +1508,13 @@ components:
 
     HostInfo:
       type: object
-      required: [service_manager, log_source, privileges_mode, caps]
+      required: [service_manager, log_source, privileges_mode, os, arch, caps]
       properties:
         service_manager: { type: string, enum: [systemd, openrc, procd, sysvinit, docker, none] }
         log_source: { type: string, enum: [journald, logread, syslog, docker, file, none] }
-        privileges_mode: { type: string, enum: [agent, direct, degraded] }
+        privileges_mode: { type: string, enum: [sudo, direct, manual] }
+        os: { type: string, description: Go runtime operating system identifier, example: linux }
+        arch: { type: string, description: Go runtime architecture identifier, example: amd64 }
         os_release: { type: string }
         caps:
           type: object
@@ -1317,7 +1528,7 @@ components:
         manual_commands:
           type: object
           additionalProperties: { type: string }
-          description: Copyable shell commands for operations with cap=false.
+          description: Copyable shell commands or actionable manual instructions for operations with cap=false.
 
     UpdatesStatus:
       type: object
@@ -1380,6 +1591,17 @@ components:
         auth_method: { type: string, enum: [password, passkey] }
         current: { type: boolean }
 
+    SessionPage:
+      type: object
+      required: [items, total, device_count]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SessionInfo" }
+        total: { type: integer, minimum: 0 }
+        device_count: { type: integer, minimum: 0, description: Distinct User-Agent and IP pairs in the filtered result }
+        next_cursor: { type: string, description: Opaque cursor for the next page; absent on the last page }
+
     PasskeyInfo:
       type: object
       required: [id, name, created]
@@ -1400,12 +1622,21 @@ components:
 
     AuditEntry:
       type: object
-      required: [ts, action]
+      required: [ts, id, action, outcome]
       properties:
         ts: { type: string, format: date-time }
+        id: { type: string, description: Stable identifier of this retained audit entry }
         action: { type: string, description: "login | user.create | user.patch | user.delete | quota.reset | config.patch | update.apply | ..." }
+        actor: { type: string, description: Authenticated administrator or attempted login name }
+        target: { type: string, description: User, service, config, or panel resource affected by the action }
+        outcome: { type: string, enum: [success, accepted, rejected] }
+        ip: { type: string, description: Trusted client address captured by the panel }
         subject: { type: string, description: Username / target / section }
         detail: { type: string }
+        metadata:
+          type: object
+          additionalProperties: { type: string }
+          description: Structured key/value details when the action supplies them
 
     HistorySeries:
       type: object
