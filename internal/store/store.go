@@ -7,10 +7,15 @@ import (
 )
 
 var (
-	ErrTOTPAlreadyEnabled = errors.New("TOTP is already enabled")
-	ErrTOTPSetupInvalid   = errors.New("TOTP setup is missing, expired, or replaced")
-	ErrTOTPReplay         = errors.New("TOTP timestep was already used")
-	ErrRecoveryCode       = errors.New("recovery code is invalid or already used")
+	ErrTOTPAlreadyEnabled         = errors.New("TOTP is already enabled")
+	ErrTOTPSetupInvalid           = errors.New("TOTP setup is missing, expired, or replaced")
+	ErrTOTPReplay                 = errors.New("TOTP timestep was already used")
+	ErrRecoveryCode               = errors.New("recovery code is invalid or already used")
+	ErrWebAuthnCredentialExists   = errors.New("WebAuthn credential already exists")
+	ErrWebAuthnCredentialNotFound = errors.New("WebAuthn credential not found")
+	ErrWebAuthnCredentialChanged  = errors.New("WebAuthn credential changed concurrently")
+	ErrWebAuthnChallenge          = errors.New("WebAuthn challenge is missing, expired, or already used")
+	ErrWebAuthnChallengeLimit     = errors.New("too many active WebAuthn challenges")
 )
 
 // Info describes the active store implementation without exposing secrets.
@@ -43,6 +48,30 @@ type TOTPState struct {
 	PendingExpires time.Time `json:"pending_expires,omitempty"`
 	LastTimestep   int64     `json:"last_timestep"`
 	RecoveryCodes  int       `json:"recovery_codes"`
+}
+
+// WebAuthnCredential is the driver-neutral credential record. CredentialData
+// is the JSON-encoded go-webauthn credential; ID and SignCount are duplicated
+// as lookup/CAS columns so authentication never relies on a read-modify-write
+// race. Secret private key material remains in the authenticator.
+type WebAuthnCredential struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	CredentialData []byte    `json:"credential_data"`
+	SignCount      uint32    `json:"sign_count"`
+	Created        time.Time `json:"created"`
+	LastUsed       time.Time `json:"last_used,omitempty"`
+}
+
+// WebAuthnChallenge holds a one-time ceremony between begin and finish. The
+// externally visible flow ID is hashed before it reaches the store.
+type WebAuthnChallenge struct {
+	FlowHash    string    `json:"flow_hash"`
+	Kind        string    `json:"kind"`
+	SessionData []byte    `json:"session_data"`
+	Origin      string    `json:"origin"`
+	RPID        string    `json:"rp_id"`
+	Expires     time.Time `json:"expires"`
 }
 
 // AuditEntry is one record in the admin-action audit log.
@@ -170,6 +199,21 @@ type Store interface {
 	AcceptTOTPTimestep(timestep int64) error
 	// ConsumeRecoveryCode atomically removes one matching backup-code hash.
 	ConsumeRecoveryCode(hash []byte) error
+
+	// GetOrCreateWebAuthnUserHandle returns the stable opaque user handle,
+	// installing candidate atomically when this is the first passkey ceremony.
+	GetOrCreateWebAuthnUserHandle(candidate []byte) ([]byte, error)
+	ListWebAuthnCredentials() ([]WebAuthnCredential, error)
+	GetWebAuthnCredential(id string) (WebAuthnCredential, bool, error)
+	AddWebAuthnCredential(credential WebAuthnCredential) error
+	DeleteWebAuthnCredential(id string) error
+	// UpdateWebAuthnCredential atomically replaces a credential only when its
+	// persisted signature counter still equals oldSignCount.
+	UpdateWebAuthnCredential(credential WebAuthnCredential, oldSignCount uint32) error
+	PutWebAuthnChallenge(challenge WebAuthnChallenge) error
+	// ConsumeWebAuthnChallenge atomically removes and returns one matching,
+	// unexpired challenge. Every finish attempt therefore spends the challenge.
+	ConsumeWebAuthnChallenge(flowHash, kind string, now time.Time) (WebAuthnChallenge, error)
 
 	// AppendAudit records one audit entry, evicting the oldest if the ring
 	// is full.

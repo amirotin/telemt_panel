@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-const portableFormatVersion = 2
+const portableFormatVersion = 3
 
 // ErrStoreNotEmpty prevents an import from silently merging two independent
 // histories. Operators must point the command at a fresh destination store.
@@ -16,17 +16,20 @@ var ErrStoreNotEmpty = errors.New("store import requires an empty destination")
 // import commands. It deliberately contains only values owned by the panel;
 // connection details and other configuration secrets are never exported.
 type PortableData struct {
-	FormatVersion int                             `json:"format_version"`
-	Sessions      map[string]Session              `json:"sessions"`
-	SubpageNonces map[string]string               `json:"subpage_nonces"`
-	Settings      map[string]string               `json:"settings"`
-	Journal       map[string][]UpdateJournalEntry `json:"journal"`
-	Policies      []StoragePolicy                 `json:"storage_policies,omitempty"`
-	Audit         []AuditEntry                    `json:"audit,omitempty"`
-	Metrics       map[string][]MetricPoint        `json:"metrics,omitempty"`
-	Events        []HistoryEvent                  `json:"events,omitempty"`
-	TOTP          TOTPState                       `json:"totp,omitempty"`
-	RecoveryCodes [][]byte                        `json:"totp_recovery_hashes,omitempty"`
+	FormatVersion       int                             `json:"format_version"`
+	Sessions            map[string]Session              `json:"sessions"`
+	SubpageNonces       map[string]string               `json:"subpage_nonces"`
+	Settings            map[string]string               `json:"settings"`
+	Journal             map[string][]UpdateJournalEntry `json:"journal"`
+	Policies            []StoragePolicy                 `json:"storage_policies,omitempty"`
+	Audit               []AuditEntry                    `json:"audit,omitempty"`
+	Metrics             map[string][]MetricPoint        `json:"metrics,omitempty"`
+	Events              []HistoryEvent                  `json:"events,omitempty"`
+	TOTP                TOTPState                       `json:"totp,omitempty"`
+	RecoveryCodes       [][]byte                        `json:"totp_recovery_hashes,omitempty"`
+	WebAuthnUserHandle  []byte                          `json:"webauthn_user_handle,omitempty"`
+	WebAuthnCredentials map[string]WebAuthnCredential   `json:"webauthn_credentials,omitempty"`
+	WebAuthnChallenges  map[string]WebAuthnChallenge    `json:"webauthn_challenges,omitempty"`
 }
 
 // PortableStore is implemented by every built-in store. It is separate from
@@ -42,17 +45,20 @@ func (m *Memory) ExportData() (PortableData, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return clonePortableData(PortableData{
-		FormatVersion: portableFormatVersion,
-		Sessions:      m.sessions,
-		SubpageNonces: m.subpageNonces,
-		Settings:      m.settings,
-		Journal:       m.journal,
-		Policies:      policiesFromMap(m.policies),
-		Audit:         m.audit,
-		Metrics:       m.metrics,
-		Events:        portableEvents(m.events),
-		TOTP:          m.totp,
-		RecoveryCodes: recoveryCodeHashes(m.recoveryCodes),
+		FormatVersion:       portableFormatVersion,
+		Sessions:            m.sessions,
+		SubpageNonces:       m.subpageNonces,
+		Settings:            m.settings,
+		Journal:             m.journal,
+		Policies:            policiesFromMap(m.policies),
+		Audit:               m.audit,
+		Metrics:             m.metrics,
+		Events:              portableEvents(m.events),
+		TOTP:                m.totp,
+		RecoveryCodes:       recoveryCodeHashes(m.recoveryCodes),
+		WebAuthnUserHandle:  append([]byte(nil), m.webauthnUserHandle...),
+		WebAuthnCredentials: m.webauthnCredentials,
+		WebAuthnChallenges:  m.webauthnChallenges,
 	})
 }
 
@@ -73,7 +79,7 @@ func (m *Memory) ImportData(data PortableData) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.sessions)+len(m.subpageNonces)+len(m.settings)+len(m.journal)+len(m.audit)+len(m.metrics)+len(m.events)+len(m.recoveryCodes) != 0 || m.totp.Enabled || m.totp.PendingSecret != "" {
+	if len(m.sessions)+len(m.subpageNonces)+len(m.settings)+len(m.journal)+len(m.audit)+len(m.metrics)+len(m.events)+len(m.recoveryCodes)+len(m.webauthnCredentials)+len(m.webauthnChallenges)+len(m.webauthnUserHandle) != 0 || m.totp.Enabled || m.totp.PendingSecret != "" {
 		return ErrStoreNotEmpty
 	}
 	m.sessions = data.Sessions
@@ -85,6 +91,9 @@ func (m *Memory) ImportData(data PortableData) error {
 	m.events = data.Events
 	m.totp = data.TOTP
 	m.recoveryCodes = recoveryCodeMap(data.RecoveryCodes)
+	m.webauthnUserHandle = append([]byte(nil), data.WebAuthnUserHandle...)
+	m.webauthnCredentials = cloneWebAuthnCredentials(data.WebAuthnCredentials)
+	m.webauthnChallenges = cloneWebAuthnChallenges(data.WebAuthnChallenges)
 	m.totp.RecoveryCodes = len(m.recoveryCodes)
 	for i := range m.events {
 		m.nextEventID++
@@ -105,13 +114,16 @@ func (m *Memory) ImportData(data PortableData) error {
 		m.policies = defaultPolicyMap()
 		m.totp = TOTPState{LastTimestep: -1}
 		m.recoveryCodes = make(map[string]struct{})
+		m.webauthnUserHandle = nil
+		m.webauthnCredentials = make(map[string]WebAuthnCredential)
+		m.webauthnChallenges = make(map[string]WebAuthnChallenge)
 		return fmt.Errorf("persist imported memory store: %w", err)
 	}
 	return nil
 }
 
 func normalizePortableData(data PortableData) (PortableData, error) {
-	if data.FormatVersion == 1 {
+	if data.FormatVersion == 1 || data.FormatVersion == 2 {
 		data.FormatVersion = portableFormatVersion
 	}
 	if data.FormatVersion != portableFormatVersion {
@@ -128,6 +140,9 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 		}
 	}
 	if err := validatePortableTOTP(data.TOTP, data.RecoveryCodes); err != nil {
+		return PortableData{}, err
+	}
+	if err := validatePortableWebAuthn(data.WebAuthnUserHandle, data.WebAuthnCredentials, data.WebAuthnChallenges); err != nil {
 		return PortableData{}, err
 	}
 	data.TOTP.RecoveryCodes = len(data.RecoveryCodes)
@@ -185,6 +200,12 @@ func clonePortableData(data PortableData) (PortableData, error) {
 	}
 	if clone.Metrics == nil {
 		clone.Metrics = make(map[string][]MetricPoint)
+	}
+	if clone.WebAuthnCredentials == nil {
+		clone.WebAuthnCredentials = make(map[string]WebAuthnCredential)
+	}
+	if clone.WebAuthnChallenges == nil {
+		clone.WebAuthnChallenges = make(map[string]WebAuthnChallenge)
 	}
 	return clone, nil
 }

@@ -43,6 +43,9 @@ func (s *SQLite) ExportData() (PortableData, error) {
 		if data.TOTP, data.RecoveryCodes, err = exportTOTP(s, tx); err != nil {
 			return err
 		}
+		if data.WebAuthnUserHandle, data.WebAuthnCredentials, data.WebAuthnChallenges, err = exportWebAuthn(s, tx); err != nil {
+			return err
+		}
 		if data.SubpageNonces, err = exportStringMap(s, tx, `SELECT username, nonce FROM subpage_nonces ORDER BY username`); err != nil {
 			return fmt.Errorf("export subpage nonces: %w", err)
 		}
@@ -76,6 +79,9 @@ func (s *SQLite) ImportData(data PortableData) error {
 			(SELECT count(*) FROM metric_points) +
 			(SELECT count(*) FROM history_events) +
 			(SELECT count(*) FROM auth_recovery_codes) +
+			(SELECT count(*) FROM auth_webauthn_user) +
+			(SELECT count(*) FROM auth_webauthn_credentials) +
+			(SELECT count(*) FROM auth_webauthn_challenges) +
 			(SELECT count(*) FROM auth_totp WHERE enabled = ? OR pending_secret <> '')`), true).Scan(&count); err != nil {
 			return fmt.Errorf("inspect destination: %w", err)
 		}
@@ -151,6 +157,21 @@ func (s *SQLite) ImportData(data PortableData) error {
 		for _, hash := range data.RecoveryCodes {
 			if _, err := tx.Exec(s.bind(`INSERT INTO auth_recovery_codes(code_hash) VALUES(?)`), hash); err != nil {
 				return fmt.Errorf("import TOTP recovery hash: %w", err)
+			}
+		}
+		if len(data.WebAuthnUserHandle) > 0 {
+			if _, err := tx.Exec(s.bind(`INSERT INTO auth_webauthn_user(singleton, user_handle) VALUES(1, ?)`), data.WebAuthnUserHandle); err != nil {
+				return fmt.Errorf("import WebAuthn user handle: %w", err)
+			}
+		}
+		for _, credential := range data.WebAuthnCredentials {
+			if _, err := tx.Exec(s.bind(`INSERT INTO auth_webauthn_credentials(credential_id, name, credential_data, sign_count, created, last_used) VALUES(?, ?, ?, ?, ?, ?)`), credential.ID, credential.Name, credential.CredentialData, int64(credential.SignCount), credential.Created.Unix(), unixOrZero(credential.LastUsed)); err != nil {
+				return fmt.Errorf("import WebAuthn credential: %w", err)
+			}
+		}
+		for _, challenge := range data.WebAuthnChallenges {
+			if _, err := tx.Exec(s.bind(`INSERT INTO auth_webauthn_challenges(flow_hash, kind, session_data, origin, rp_id, expires) VALUES(?, ?, ?, ?, ?, ?)`), challenge.FlowHash, challenge.Kind, challenge.SessionData, challenge.Origin, challenge.RPID, challenge.Expires.Unix()); err != nil {
+				return fmt.Errorf("import WebAuthn challenge: %w", err)
 			}
 		}
 		return nil
@@ -338,6 +359,45 @@ func exportTOTP(s *SQLite, tx *sql.Tx) (TOTPState, [][]byte, error) {
 	}
 	state.RecoveryCodes = len(hashes)
 	return state, hashes, nil
+}
+
+func exportWebAuthn(s *SQLite, tx *sql.Tx) ([]byte, map[string]WebAuthnCredential, map[string]WebAuthnChallenge, error) {
+	var handle []byte
+	if err := tx.QueryRow(s.bind(`SELECT user_handle FROM auth_webauthn_user WHERE singleton = 1`)).Scan(&handle); err != nil && err != sql.ErrNoRows {
+		return nil, nil, nil, fmt.Errorf("export WebAuthn user handle: %w", err)
+	}
+	credentials := make(map[string]WebAuthnCredential)
+	rows, err := tx.Query(s.bind(`SELECT credential_id, name, credential_data, sign_count, created, last_used FROM auth_webauthn_credentials ORDER BY credential_id`))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("export WebAuthn credentials: %w", err)
+	}
+	for rows.Next() {
+		credential, err := scanWebAuthnCredential(rows)
+		if err != nil {
+			rows.Close()
+			return nil, nil, nil, err
+		}
+		credentials[credential.ID] = credential
+	}
+	if err := rows.Close(); err != nil {
+		return nil, nil, nil, err
+	}
+	challenges := make(map[string]WebAuthnChallenge)
+	rows, err = tx.Query(s.bind(`SELECT flow_hash, kind, session_data, origin, rp_id, expires FROM auth_webauthn_challenges ORDER BY flow_hash`))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("export WebAuthn challenges: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var challenge WebAuthnChallenge
+		var expires int64
+		if err := rows.Scan(&challenge.FlowHash, &challenge.Kind, &challenge.SessionData, &challenge.Origin, &challenge.RPID, &expires); err != nil {
+			return nil, nil, nil, err
+		}
+		challenge.Expires = time.Unix(expires, 0).UTC()
+		challenges[challenge.FlowHash] = challenge
+	}
+	return append([]byte(nil), handle...), credentials, challenges, rows.Err()
 }
 
 func sortedKeys[V any](values map[string]V) []string {

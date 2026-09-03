@@ -28,6 +28,7 @@ import { InterfacePreferences } from "./InterfacePreferences";
 import { SessionSheet } from "./SessionSheet";
 import { StorageSettings } from "./StorageSettings";
 import { TwoFactorSettings } from "./TwoFactorSettings";
+import { PasskeySettings } from "./PasskeySettings";
 
 function SessionGlyph({ session }: { session: SessionInfo }) {
   const mobile = /iphone|ipad|android/i.test(session.user_agent_label ?? "");
@@ -315,6 +316,8 @@ export function SettingsPage() {
         </section>
 
         <div className="flex min-w-0 flex-col gap-2.5">
+          <PasskeySettings passkeys={meQuery.data?.passkeys ?? []} />
+
           <TwoFactorSettings enabled={meQuery.data?.totp_enabled ?? false} />
 
           <InterfacePreferences />

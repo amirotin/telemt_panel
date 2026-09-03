@@ -288,6 +288,7 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("GET /api/auth/methods", s.handleAuthMethods)
 	mux.Handle("POST /api/auth/logout", protect(s.handleLogout))
 	mux.Handle("GET /api/auth/me", protect(s.handleMe))
 	mux.Handle("GET /api/auth/sessions", protect(s.handleListSessions))
@@ -296,6 +297,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/auth/totp/setup", protect(s.handleTOTPSetup))
 	mux.Handle("POST /api/auth/totp/enable", protect(s.handleTOTPEnable))
 	mux.Handle("DELETE /api/auth/totp", protect(s.handleTOTPDisable))
+	mux.Handle("POST /api/auth/webauthn/register/begin", protect(s.handleWebAuthnRegisterBegin))
+	mux.Handle("POST /api/auth/webauthn/register/finish", protect(s.handleWebAuthnRegisterFinish))
+	mux.HandleFunc("POST /api/auth/webauthn/login/begin", s.handleWebAuthnLoginBegin)
+	mux.HandleFunc("POST /api/auth/webauthn/login/finish", s.handleWebAuthnLoginFinish)
+	mux.Handle("DELETE /api/auth/webauthn/credentials/{credentialId}", protect(s.handleWebAuthnCredentialDelete))
 
 	mux.Handle("GET /api/telemt/info", protect(s.handleTelemtInfo))
 	mux.Handle("GET /api/telemt/config", protect(s.handleGetTelemtConfig))

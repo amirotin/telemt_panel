@@ -1,14 +1,20 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { loginMutation } from "../lib/api/generated/@tanstack/react-query.gen";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getAuthMethodsOptions, loginMutation } from "../lib/api/generated/@tanstack/react-query.gen";
 import type { LoginError } from "../lib/api/generated/types.gen";
+import { webauthnLoginBegin, webauthnLoginFinish } from "../lib/api/generated/sdk.gen";
 import { getMeQueryKey, redirectIfAuthenticated } from "../auth/guards";
 import { safeRedirectTarget } from "../auth/safeRedirect";
 import { errorMessage, useStrings, type Dict } from "../i18n";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { StoreFallbackBanner } from "../shell/StoreFallbackBanner";
+import {
+  loginCredentialToJSON,
+  passkeysSupported,
+  requestOptionsFromJSON,
+} from "../auth/webauthn";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
@@ -37,6 +43,7 @@ function LoginPage() {
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [secondFactor, setSecondFactor] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const methodsQuery = useQuery({ ...getAuthMethodsOptions(), staleTime: 30_000, retry: false });
 
   const mutation = useMutation({
     ...loginMutation(),
@@ -58,6 +65,34 @@ function LoginPage() {
         return;
       }
       setFormError(loginErrorMessage(err, s));
+    },
+  });
+
+  const passkeyMutation = useMutation({
+    mutationFn: async () => {
+      const { data: begin } = await webauthnLoginBegin({ throwOnError: true });
+      const credential = await navigator.credentials.get({
+        publicKey: requestOptionsFromJSON(begin.public_key),
+      });
+      if (!(credential instanceof PublicKeyCredential)) throw new Error("passkey_cancelled");
+      await webauthnLoginFinish({
+        body: {
+          flow_id: begin.flow_id,
+          credential: loginCredentialToJSON(credential),
+        },
+        throwOnError: true,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: getMeQueryKey() });
+      await router.navigate({ href: safeRedirectTarget(redirect) });
+    },
+    onError: (error) => {
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        setFormError(s.auth.passkeyCancelled);
+        return;
+      }
+      setFormError(s.auth.passkeyFailed);
     },
   });
 
@@ -183,6 +218,29 @@ function LoginPage() {
         <Button type="submit" disabled={!canSubmit} className="mt-1 w-full">
           {mutation.isPending ? s.auth.signingIn : s.auth.signIn}
         </Button>
+        {!secondFactorRequired && methodsQuery.data?.passkey_available && passkeysSupported() && (
+          <>
+            <div className="flex items-center gap-3 py-0.5" aria-hidden="true">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-text-faint">
+                {s.auth.or}
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={passkeyMutation.isPending || mutation.isPending}
+              onClick={() => {
+                setFormError(null);
+                passkeyMutation.mutate();
+              }}
+            >
+              {passkeyMutation.isPending ? s.auth.passkeySigningIn : s.auth.signInWithPasskey}
+            </Button>
+          </>
+        )}
         {secondFactorRequired && (
           <Button
             type="button"

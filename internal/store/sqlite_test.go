@@ -58,8 +58,8 @@ func TestSQLiteRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 6 {
-		t.Fatalf("schema version = %d, want 6", info.Schema)
+	if info := reopened.Info(); info.Schema != 7 {
+		t.Fatalf("schema version = %d, want 7", info.Schema)
 	}
 	gotSession, ok, err := reopened.GetSession("hash")
 	if err != nil || !ok || gotSession != session {
@@ -275,6 +275,9 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
+		`DROP TABLE auth_webauthn_challenges`,
+		`DROP TABLE auth_webauthn_credentials`,
+		`DROP TABLE auth_webauthn_user`,
 		`DROP TABLE auth_recovery_codes`,
 		`DROP TABLE auth_totp`,
 		`DROP INDEX metric_points_category_tier_ts`,
@@ -299,8 +302,8 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 6 {
-		t.Fatalf("schema = %d, want 6", got)
+	if got := migrated.Info().Schema; got != 7 {
+		t.Fatalf("schema = %d, want 7", got)
 	}
 	points, err := migrated.MetricRange("connections", 0)
 	if err != nil {
@@ -345,6 +348,80 @@ func TestSQLitePoliciesControlWritesAndRetention(t *testing.T) {
 	}
 	if got, err := store.MetricRange("traffic", 0); err != nil || len(got) != 0 {
 		t.Fatalf("disabled traffic persisted: %+v, %v", got, err)
+	}
+
+	for i := range policies {
+		if policies[i].Category == StorageAudit || policies[i].Category == StorageTraffic {
+			policies[i].Enabled = true
+		}
+	}
+	if err := store.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendAudit(AuditEntry{TS: time.Now(), ID: "visible"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.ListAudit(10); err != nil || len(got) != 1 || got[0].ID != "visible" {
+		t.Fatalf("re-enabled audit did not persist: %+v, %v", got, err)
+	}
+	if err := store.RecordMetric("traffic", MetricPoint{TS: time.Now().Unix(), Value: 20}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.MetricRange("traffic", 0); err != nil || len(got) != 1 || got[0].Value != 20 {
+		t.Fatalf("re-enabled traffic did not persist: %+v, %v", got, err)
+	}
+}
+
+func TestSQLiteReducingRetentionPrunesOnlyExpiredRows(t *testing.T) {
+	store, _ := newSQLite(t)
+	policies, err := store.ListStoragePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range policies {
+		if policies[i].Category == StorageTechnical {
+			policies[i].RetentionDays = 30
+		}
+	}
+	if err := store.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now()
+	old := now.Add(-10 * 24 * time.Hour).Unix()
+	recent := now.Add(-12 * time.Hour).Unix()
+	for _, ts := range []int64{old, recent} {
+		if _, err := store.exec(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, "connections", StorageTechnical, MetricTierQuarter, ts, 1, 1, 1, ts); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := range policies {
+		if policies[i].Category == StorageTechnical {
+			policies[i].RetentionDays = 7
+		}
+	}
+	if err := store.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	var timestamps []int64
+	rows, err := store.query(`SELECT ts FROM metric_points WHERE name = ? AND tier = ? ORDER BY ts`, "connections", MetricTierQuarter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ts int64
+		if err := rows.Scan(&ts); err != nil {
+			t.Fatal(err)
+		}
+		timestamps = append(timestamps, ts)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(timestamps) != 1 || timestamps[0] != recent {
+		t.Fatalf("timestamps after retention reduction = %v, want [%d]", timestamps, recent)
 	}
 }
 

@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -553,6 +555,51 @@ func TestMirrorDuplicateRecoveryHashFailsClosed(t *testing.T) {
 	}
 	if _, err := NewMemory(path); err == nil {
 		t.Fatal("NewMemory accepted duplicate TOTP recovery hashes")
+	}
+}
+
+func TestMirrorPersistsWebAuthnState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mirror.json")
+	m, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle := make([]byte, webAuthnUserHandleBytes)
+	for i := range handle {
+		handle[i] = byte(i + 1)
+	}
+	if _, err := m.GetOrCreateWebAuthnUserHandle(handle); err != nil {
+		t.Fatal(err)
+	}
+	id := base64.RawURLEncoding.EncodeToString([]byte("mirrored-credential"))
+	created := time.Now().UTC().Truncate(time.Second)
+	if err := m.AddWebAuthnCredential(WebAuthnCredential{ID: id, Name: "Phone", CredentialData: []byte(`{"id":"phone"}`), Created: created}); err != nil {
+		t.Fatal(err)
+	}
+	flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte("mirrored-flow")))
+	if err := m.PutWebAuthnChallenge(WebAuthnChallenge{FlowHash: flowHash, Kind: "login", SessionData: []byte(`{"challenge":"one"}`), Origin: "https://panel.example", RPID: "panel.example", Expires: created.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	gotHandle, err := reopened.GetOrCreateWebAuthnUserHandle(make([]byte, webAuthnUserHandleBytes))
+	if err != nil || string(gotHandle) != string(handle) {
+		t.Fatalf("mirrored handle = %x, %v", gotHandle, err)
+	}
+	credentials, err := reopened.ListWebAuthnCredentials()
+	if err != nil || len(credentials) != 1 || credentials[0].ID != id || credentials[0].Name != "Phone" {
+		t.Fatalf("mirrored credentials = %+v, %v", credentials, err)
+	}
+	challenge, err := reopened.ConsumeWebAuthnChallenge(flowHash, "login", created)
+	if err != nil || challenge.Origin != "https://panel.example" {
+		t.Fatalf("mirrored challenge = %+v, %v", challenge, err)
 	}
 }
 

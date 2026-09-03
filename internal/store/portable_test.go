@@ -2,6 +2,7 @@ package store
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -186,5 +187,26 @@ func populatePortableStore(t *testing.T, st Store) {
 	}
 	if err := st.EnableTOTP("portable-secret", now, recovery); err != nil {
 		t.Fatalf("populate TOTP state: %v", err)
+	}
+	handle := make([]byte, webAuthnUserHandleBytes)
+	for i := range handle {
+		handle[i] = byte(i + 1)
+	}
+	if _, err := st.GetOrCreateWebAuthnUserHandle(handle); err != nil {
+		t.Fatalf("populate WebAuthn user handle: %v", err)
+	}
+	credentialID := base64.RawURLEncoding.EncodeToString([]byte("portable-credential"))
+	if err := st.AddWebAuthnCredential(WebAuthnCredential{
+		ID: credentialID, Name: "Portable key", CredentialData: []byte(`{"id":"portable"}`),
+		SignCount: 7, Created: now, LastUsed: now.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("populate WebAuthn credential: %v", err)
+	}
+	flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte("portable-flow")))
+	if err := st.PutWebAuthnChallenge(WebAuthnChallenge{
+		FlowHash: flowHash, Kind: "register", SessionData: []byte(`{"challenge":"portable"}`),
+		Origin: "https://panel.example", RPID: "panel.example", Expires: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("populate WebAuthn challenge: %v", err)
 	}
 }

@@ -43,6 +43,14 @@ func runNetworkStoreContract(t *testing.T, driver, environment string) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if err := clearSQLStoreForTest(opened.(*SQLite)); err != nil {
+			_ = opened.Close()
+			t.Fatalf("reset %s contract database: %v", driver, err)
+		}
+		if err := opened.(*SQLite).loadPolicies(); err != nil {
+			_ = opened.Close()
+			t.Fatalf("reload %s default policies: %v", driver, err)
+		}
 		return opened
 	})
 
@@ -75,8 +83,19 @@ func runNetworkStoreContract(t *testing.T, driver, environment string) {
 
 func clearSQLStoreForTest(st *SQLite) error {
 	return sqlstore.WithTx(context.Background(), st.db, &sql.TxOptions{}, func(tx *sql.Tx) error {
-		for _, table := range []string{"sessions", "subpage_nonces", "settings", "update_journal", "audit_entries", "metric_points", "history_events"} {
+		for _, table := range []string{
+			"sessions", "subpage_nonces", "settings", "update_journal", "audit_entries", "metric_points", "history_events",
+			"auth_recovery_codes", "auth_webauthn_challenges", "auth_webauthn_credentials", "auth_webauthn_user",
+		} {
 			if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(st.bind(`UPDATE auth_totp SET enabled = ?, secret = '', pending_secret = '', pending_expires = 0, last_timestep = -1 WHERE singleton = 1`), false); err != nil {
+			return err
+		}
+		for _, policy := range DefaultStoragePolicies() {
+			if _, err := tx.Exec(st.bind(`UPDATE storage_policies SET enabled = ?, retention_days = ? WHERE category = ?`), policy.Enabled, policy.RetentionDays, policy.Category); err != nil {
 				return err
 			}
 		}

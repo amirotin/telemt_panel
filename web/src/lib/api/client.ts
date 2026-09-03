@@ -28,7 +28,11 @@ client.setConfig({
 // concurrent requests all failing at once triggering repeat navigations —
 // it clears on the next non-401 response, so a fresh session (re-login)
 // re-arms it.
-const EXCLUDED_PATHS = [withBasePath("/api/auth/login"), withBasePath("/api/auth/me")];
+const EXCLUDED_PATHS = [
+  withBasePath("/api/auth/login"),
+  withBasePath("/api/auth/webauthn/login/finish"),
+  withBasePath("/api/auth/me"),
+];
 let redirecting = false;
 
 client.interceptors.response.use((response, request) => {
@@ -39,6 +43,9 @@ client.interceptors.response.use((response, request) => {
 
   const requestUrl = new URL(request.url);
   if (EXCLUDED_PATHS.some((p) => requestUrl.pathname.endsWith(p))) {
+    return response;
+  }
+  if (window.location.pathname === withBasePath("/login")) {
     return response;
   }
 

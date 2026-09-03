@@ -9,7 +9,10 @@
 // both are assumed to have nothing else bound to them.
 export const PANEL_PORT = 48180;
 export const MOCK_PORT = 48190;
-export const BASE_URL = `http://127.0.0.1:${PANEL_PORT}`;
+// localhost is both loopback and a valid WebAuthn relying-party ID. A raw
+// 127.0.0.1 origin is trustworthy for many browser APIs but is not a valid
+// RP domain, so the passkey contract must exercise the hostname form.
+export const BASE_URL = `http://localhost:${PANEL_PORT}`;
 export const MOCK_URL = `http://127.0.0.1:${MOCK_PORT}`;
 
 // The vite DEV server, for the `details` project only. /dev/details lives

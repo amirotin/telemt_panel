@@ -66,6 +66,23 @@ paths:
       operationId: logout
       responses: { "204": { description: Session revoked server-side; cookie cleared } }
 
+  /api/auth/methods:
+    get:
+      tags: [auth]
+      security: []
+      operationId: getAuthMethods
+      description: Public login-method availability. Does not reveal whether TOTP is enabled.
+      responses:
+        "200":
+          description: Available passwordless methods
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [passkey_available]
+                properties:
+                  passkey_available: { type: boolean }
+
   /api/auth/me:
     get:
       tags: [auth]
@@ -166,45 +183,49 @@ paths:
       operationId: totpDisable
       responses: { "204": { description: Disabled } }
 
-  # WebAuthn: bodies/responses are the standard CredentialCreation/Request JSON
-  # produced by go-webauthn; typed loosely on purpose. Not yet implemented,
-  # see each path's x-status below.
+  # WebAuthn: public_key and credential are the standard WebAuthn JSON shapes.
   /api/auth/webauthn/register/begin:
-    x-status: planned
     post:
       tags: [auth]
       operationId: webauthnRegisterBegin
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/WebAuthnRegisterBeginRequest" } } }
       responses:
-        "200": { description: CredentialCreationOptions, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "200": { description: CredentialCreationOptions and one-time flow ID, content: { application/json: { schema: { $ref: "#/components/schemas/WebAuthnBeginResponse" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/auth/webauthn/register/finish:
-    x-status: planned
     post:
       tags: [auth]
       operationId: webauthnRegisterFinish
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WebAuthnFinishRequest" } } } }
       responses:
-        "200": { description: Registered, content: { application/json: { schema: { $ref: "#/components/schemas/PasskeyInfo" } } } }
+        "201": { description: Registered, content: { application/json: { schema: { $ref: "#/components/schemas/PasskeyInfo" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: Credential already registered, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /api/auth/webauthn/login/begin:
-    x-status: planned
     post:
       tags: [auth]
       security: []
       operationId: webauthnLoginBegin
       responses:
-        "200": { description: CredentialRequestOptions, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-        "404": { description: No passkeys enrolled }
+        "200": { description: CredentialRequestOptions and one-time flow ID, content: { application/json: { schema: { $ref: "#/components/schemas/WebAuthnBeginResponse" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/auth/webauthn/login/finish:
-    x-status: planned
     post:
       tags: [auth]
       security: []
       operationId: webauthnLoginFinish
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WebAuthnFinishRequest" } } } }
       responses:
         "204": { description: Logged in; session cookie set }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /api/auth/webauthn/credentials/{credentialId}:
-    x-status: planned
     delete:
       tags: [auth]
       operationId: webauthnDeleteCredential
@@ -1052,6 +1073,11 @@ components:
             - invalid_totp
             - totp_already_enabled
             - totp_setup_changed
+            - invalid_webauthn_origin
+            - invalid_webauthn_challenge
+            - invalid_webauthn_response
+            - webauthn_credential_exists
+            - passkey_unavailable
             - telemt_auth_failed
             - user_exists
             - last_user_forbidden
@@ -1093,7 +1119,9 @@ components:
             manual_restart_required, update_locked, sublink_unavailable,
             log_tail_unavailable, log_stream_unavailable, log_source_error,
             totp_required, invalid_totp, totp_already_enabled,
-            totp_setup_changed,
+            totp_setup_changed, invalid_webauthn_origin,
+            invalid_webauthn_challenge, invalid_webauthn_response,
+            webauthn_credential_exists, passkey_unavailable,
             invalid_toml, invalid_config_path, config_unset_unsupported,
             no_changes, toml_projection_failed.
             capability_absent (501) vs capability_unavailable (503) are
@@ -1716,6 +1744,26 @@ components:
         name: { type: string }
         created: { type: string, format: date-time }
         last_used: { type: string, format: date-time }
+
+    WebAuthnRegisterBeginRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+
+    WebAuthnBeginResponse:
+      type: object
+      required: [flow_id, public_key]
+      properties:
+        flow_id: { type: string }
+        public_key: { type: object, additionalProperties: true }
+
+    WebAuthnFinishRequest:
+      type: object
+      required: [flow_id, credential]
+      properties:
+        flow_id: { type: string }
+        credential: { type: object, additionalProperties: true }
 
     LogLine:
       type: object

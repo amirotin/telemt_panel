@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAutoUpdate, getHealth, getHistory, getHistoryEvents, getHost, getMe, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getUpdates, getUser, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs, totpDisable, totpEnable, totpSetup } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse, TotpDisableData, TotpDisableResponse, TotpEnableData, TotpEnableError, TotpEnableResponse, TotpSetupData, TotpSetupError, TotpSetupResponse } from '../types.gen';
+import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAuthMethods, getAutoUpdate, getHealth, getHistory, getHistoryEvents, getHost, getMe, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getUpdates, getUser, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetUserQuota, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs, totpDisable, totpEnable, totpSetup, webauthnDeleteCredential, webauthnLoginBegin, webauthnLoginFinish, webauthnRegisterBegin, webauthnRegisterFinish } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAuthMethodsData, GetAuthMethodsResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse, TotpDisableData, TotpDisableResponse, TotpEnableData, TotpEnableError, TotpEnableResponse, TotpSetupData, TotpSetupError, TotpSetupResponse, WebauthnDeleteCredentialData, WebauthnDeleteCredentialError, WebauthnDeleteCredentialResponse, WebauthnLoginBeginData, WebauthnLoginBeginError, WebauthnLoginBeginResponse, WebauthnLoginFinishData, WebauthnLoginFinishError, WebauthnLoginFinishResponse, WebauthnRegisterBeginData, WebauthnRegisterBeginError, WebauthnRegisterBeginResponse, WebauthnRegisterFinishData, WebauthnRegisterFinishError, WebauthnRegisterFinishResponse } from '../types.gen';
 
 export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
     const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
@@ -66,6 +66,24 @@ const createQueryKey = <TOptions extends Options>(id: string, options?: TOptions
     }
     return [params];
 };
+
+export const getAuthMethodsQueryKey = (options?: Options<GetAuthMethodsData>) => createQueryKey('getAuthMethods', options);
+
+/**
+ * Public login-method availability. Does not reveal whether TOTP is enabled.
+ */
+export const getAuthMethodsOptions = (options?: Options<GetAuthMethodsData>) => queryOptions<GetAuthMethodsResponse, DefaultError, GetAuthMethodsResponse, ReturnType<typeof getAuthMethodsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getAuthMethods({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getAuthMethodsQueryKey(options)
+});
 
 export const getMeQueryKey = (options?: Options<GetMeData>) => createQueryKey('getMe', options);
 
@@ -222,6 +240,76 @@ export const totpDisableMutation = (options?: Partial<Options<TotpDisableData>>)
     const mutationOptions: UseMutationOptions<TotpDisableResponse, DefaultError, Options<TotpDisableData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await totpDisable({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const webauthnRegisterBeginMutation = (options?: Partial<Options<WebauthnRegisterBeginData>>): UseMutationOptions<WebauthnRegisterBeginResponse, WebauthnRegisterBeginError, Options<WebauthnRegisterBeginData>> => {
+    const mutationOptions: UseMutationOptions<WebauthnRegisterBeginResponse, WebauthnRegisterBeginError, Options<WebauthnRegisterBeginData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await webauthnRegisterBegin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const webauthnRegisterFinishMutation = (options?: Partial<Options<WebauthnRegisterFinishData>>): UseMutationOptions<WebauthnRegisterFinishResponse, WebauthnRegisterFinishError, Options<WebauthnRegisterFinishData>> => {
+    const mutationOptions: UseMutationOptions<WebauthnRegisterFinishResponse, WebauthnRegisterFinishError, Options<WebauthnRegisterFinishData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await webauthnRegisterFinish({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const webauthnLoginBeginMutation = (options?: Partial<Options<WebauthnLoginBeginData>>): UseMutationOptions<WebauthnLoginBeginResponse, WebauthnLoginBeginError, Options<WebauthnLoginBeginData>> => {
+    const mutationOptions: UseMutationOptions<WebauthnLoginBeginResponse, WebauthnLoginBeginError, Options<WebauthnLoginBeginData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await webauthnLoginBegin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const webauthnLoginFinishMutation = (options?: Partial<Options<WebauthnLoginFinishData>>): UseMutationOptions<WebauthnLoginFinishResponse, WebauthnLoginFinishError, Options<WebauthnLoginFinishData>> => {
+    const mutationOptions: UseMutationOptions<WebauthnLoginFinishResponse, WebauthnLoginFinishError, Options<WebauthnLoginFinishData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await webauthnLoginFinish({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const webauthnDeleteCredentialMutation = (options?: Partial<Options<WebauthnDeleteCredentialData>>): UseMutationOptions<WebauthnDeleteCredentialResponse, WebauthnDeleteCredentialError, Options<WebauthnDeleteCredentialData>> => {
+    const mutationOptions: UseMutationOptions<WebauthnDeleteCredentialResponse, WebauthnDeleteCredentialError, Options<WebauthnDeleteCredentialData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await webauthnDeleteCredential({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

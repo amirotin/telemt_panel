@@ -38,7 +38,7 @@ async function signOutFromSettings(page: Page) {
 async function fillPasswordLogin(page: Page) {
   await page.getByLabel("Имя пользователя").fill(ADMIN_USERNAME);
   await page.getByLabel("Пароль").fill(ADMIN_PASSWORD);
-  await page.getByRole("button", { name: "Войти" }).click();
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
 }
 
 // mobile.spec.ts — 360×640, the plan's primary e2e target
@@ -234,6 +234,38 @@ test("login → people → create user → share → sub-page → overview → p
     await expect(page.getByRole("heading", { name: "Возможности" })).toBeVisible();
   });
 
+  await test.step("passkey registration and passwordless login", async () => {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "internal",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+
+    await page.goto("/server/settings");
+    await page.getByRole("button", { name: "Добавить passkey" }).click();
+    const dialog = page.getByRole("dialog", { name: "Добавить passkey" });
+    await dialog.getByLabel("Название passkey").fill("E2E phone");
+    await dialog.getByRole("button", { name: "Продолжить" }).click();
+    await expect(page.getByText("Passkey добавлен")).toBeVisible();
+    await expect(page.getByText("E2E phone", { exact: true })).toBeVisible();
+
+    await signOutFromSettings(page);
+    await expect(page.getByRole("button", { name: "Войти по passkey" })).toBeVisible();
+    await page.getByRole("button", { name: "Войти по passkey" }).click();
+    await expect(page).toHaveURL(/\/people$/);
+    await page.goto("/server/settings");
+    await page.getByTestId("settings-sessions").locator("button").first().click();
+    await expect(page.getByRole("dialog").getByText("Ключ доступа", { exact: true })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Закрыть" }).click();
+  });
+
   await test.step("TOTP setup, replay-safe login, recovery and disable", async () => {
     await page.goto("/server/settings");
     await page.getByRole("button", { name: "Настроить" }).click();
@@ -278,5 +310,12 @@ test("login → people → create user → share → sub-page → overview → p
     await signOutFromSettings(page);
     await fillPasswordLogin(page);
     await expect(page).toHaveURL(/\/people$/);
+
+    await page.goto("/server/settings");
+    const passkeyRow = page.locator("section").filter({ hasText: "E2E phone" });
+    await passkeyRow.getByRole("button", { name: "Удалить" }).click();
+    dialog = page.getByRole("dialog", { name: "Удалить этот passkey?" });
+    await dialog.getByRole("button", { name: "Удалить" }).click();
+    await expect(page.getByText("Passkey удалён")).toBeVisible();
   });
 });

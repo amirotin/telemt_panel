@@ -2,8 +2,10 @@ package store
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -133,6 +135,171 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 	})
 
+	t.Run("webauthn_atomic_state", func(t *testing.T) {
+		handleCandidate := make([]byte, webAuthnUserHandleBytes)
+		for i := range handleCandidate {
+			handleCandidate[i] = byte(i + 1)
+		}
+		otherCandidate := make([]byte, webAuthnUserHandleBytes)
+		for i := range otherCandidate {
+			otherCandidate[i] = 0xff
+		}
+		type handleResult struct {
+			handle []byte
+			err    error
+		}
+		handles := make(chan handleResult, 2)
+		var handleWG sync.WaitGroup
+		for _, candidate := range [][]byte{handleCandidate, otherCandidate} {
+			handleWG.Add(1)
+			go func() {
+				defer handleWG.Done()
+				handle, err := st.GetOrCreateWebAuthnUserHandle(candidate)
+				handles <- handleResult{handle: handle, err: err}
+			}()
+		}
+		handleWG.Wait()
+		close(handles)
+		var installed []byte
+		for result := range handles {
+			if result.err != nil {
+				t.Fatal(result.err)
+			}
+			if installed == nil {
+				installed = result.handle
+			} else if string(installed) != string(result.handle) {
+				t.Fatalf("concurrent WebAuthn handles differ: %x / %x", installed, result.handle)
+			}
+		}
+		handle, err := st.GetOrCreateWebAuthnUserHandle(handleCandidate)
+		if err != nil || string(handle) != string(installed) {
+			t.Fatalf("stable WebAuthn user handle = %x, %v", handle, err)
+		}
+
+		credentialID := base64.RawURLEncoding.EncodeToString([]byte(prefix + "-credential"))
+		credential := WebAuthnCredential{
+			ID: credentialID, Name: "Laptop", CredentialData: []byte(`{"id":"credential"}`),
+			SignCount: 4, Created: now,
+		}
+		if err := st.AddWebAuthnCredential(credential); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.AddWebAuthnCredential(credential); !errors.Is(err, ErrWebAuthnCredentialExists) {
+			t.Fatalf("duplicate credential error = %v", err)
+		}
+		got, ok, err := st.GetWebAuthnCredential(credential.ID)
+		if err != nil || !ok || got.Name != "Laptop" || got.SignCount != 4 {
+			t.Fatalf("GetWebAuthnCredential = %+v, %v, %v", got, ok, err)
+		}
+		got.Name = "Security key"
+		got.SignCount = 5
+		got.LastUsed = now.Add(time.Minute)
+		var updates atomic.Int32
+		errs := make(chan error, 2)
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := st.UpdateWebAuthnCredential(got, 4); err == nil {
+					updates.Add(1)
+				} else if !errors.Is(err, ErrWebAuthnCredentialChanged) {
+					errs <- err
+				}
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Fatal(err)
+		}
+		if updates.Load() != 1 {
+			t.Fatalf("concurrent WebAuthn credential updates = %d, want 1", updates.Load())
+		}
+
+		counterless := WebAuthnCredential{
+			ID:   base64.RawURLEncoding.EncodeToString([]byte(prefix + "-counterless")),
+			Name: "Synced passkey", CredentialData: []byte(`{"id":"counterless"}`),
+			Created: now, LastUsed: now.Add(2 * time.Minute),
+		}
+		if err := st.AddWebAuthnCredential(counterless); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.UpdateWebAuthnCredential(counterless, 0); err != nil {
+			t.Fatalf("idempotent counter-less credential update = %v", err)
+		}
+
+		flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte(prefix+"-flow")))
+		challenge := WebAuthnChallenge{
+			FlowHash: flowHash, Kind: "login", SessionData: []byte(`{"challenge":"value"}`),
+			Origin: "https://panel.example", RPID: "panel.example", Expires: now.Add(time.Minute),
+		}
+		if err := st.PutWebAuthnChallenge(challenge); err != nil {
+			t.Fatal(err)
+		}
+		var consumes atomic.Int32
+		errs = make(chan error, 2)
+		for range 2 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, err := st.ConsumeWebAuthnChallenge(challenge.FlowHash, challenge.Kind, now); err == nil {
+					consumes.Add(1)
+				} else if !errors.Is(err, ErrWebAuthnChallenge) {
+					errs <- err
+				}
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Fatal(err)
+		}
+		if consumes.Load() != 1 {
+			t.Fatalf("concurrent WebAuthn challenge consumes = %d, want 1", consumes.Load())
+		}
+		expiredHash := fmt.Sprintf("%x", sha256.Sum256([]byte(prefix+"-expired")))
+		if err := st.PutWebAuthnChallenge(WebAuthnChallenge{FlowHash: expiredHash, Kind: "login", SessionData: []byte("{}"), Origin: "https://panel.example", RPID: "panel.example", Expires: now.Add(-time.Second)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.ConsumeWebAuthnChallenge(expiredHash, "login", now); !errors.Is(err, ErrWebAuthnChallenge) {
+			t.Fatalf("expired challenge error = %v", err)
+		}
+		var firstCapacityChallenge WebAuthnChallenge
+		for i := range webAuthnChallengeLimit {
+			flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte(prefix+"-capacity-"+strconv.Itoa(i))))
+			item := WebAuthnChallenge{
+				FlowHash: flowHash, Kind: "login", SessionData: []byte(`{}`),
+				Origin: "https://panel.example", RPID: "panel.example", Expires: now.Add(time.Hour),
+			}
+			if i == 0 {
+				firstCapacityChallenge = item
+			}
+			if err := st.PutWebAuthnChallenge(item); err != nil {
+				t.Fatalf("fill WebAuthn challenge capacity at %d: %v", i, err)
+			}
+		}
+		overflowHash := fmt.Sprintf("%x", sha256.Sum256([]byte(prefix+"-capacity-overflow")))
+		if err := st.PutWebAuthnChallenge(WebAuthnChallenge{
+			FlowHash: overflowHash, Kind: "login", SessionData: []byte(`{}`),
+			Origin: "https://panel.example", RPID: "panel.example", Expires: now.Add(time.Hour),
+		}); !errors.Is(err, ErrWebAuthnChallengeLimit) {
+			t.Fatalf("challenge capacity error = %v", err)
+		}
+		if err := st.PutWebAuthnChallenge(firstCapacityChallenge); err != nil {
+			t.Fatalf("replace challenge at capacity: %v", err)
+		}
+		if err := st.DeleteWebAuthnCredential(credential.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.DeleteWebAuthnCredential(counterless.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.DeleteWebAuthnCredential(credential.ID); !errors.Is(err, ErrWebAuthnCredentialNotFound) {
+			t.Fatalf("missing credential delete error = %v", err)
+		}
+	})
+
 	t.Run("settings_and_nonce", func(t *testing.T) {
 		if err := st.SetSetting(prefix, "one"); err != nil {
 			t.Fatal(err)
@@ -235,6 +402,35 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 		if points, err := st.MetricRange(metric, 0); err != nil || len(points) != 0 {
 			t.Fatalf("MetricRange after purge = %+v, %v", points, err)
+		}
+		for i := range policies {
+			if policies[i].Category == StorageTraffic {
+				policies[i].Enabled = false
+			}
+		}
+		if err := st.ReplaceStoragePolicies(policies); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.RecordMetric(metric, MetricPoint{TS: now.Add(time.Second).Unix(), Value: 50}); err != nil {
+			t.Fatal(err)
+		}
+		if points, err := st.MetricRange(metric, 0); err != nil || len(points) != 0 {
+			t.Fatalf("disabled traffic persisted = %+v, %v", points, err)
+		}
+		for i := range policies {
+			if policies[i].Category == StorageTraffic {
+				policies[i].Enabled = true
+			}
+		}
+		if err := st.ReplaceStoragePolicies(policies); err != nil {
+			t.Fatal(err)
+		}
+		visible := MetricPoint{TS: now.Add(2 * time.Second).Unix(), Value: 60}
+		if err := st.RecordMetric(metric, visible); err != nil {
+			t.Fatal(err)
+		}
+		if points, err := st.MetricRange(metric, 0); err != nil || len(points) == 0 || points[len(points)-1] != visible {
+			t.Fatalf("re-enabled traffic did not persist = %+v, %v", points, err)
 		}
 	})
 

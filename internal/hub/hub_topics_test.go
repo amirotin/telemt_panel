@@ -531,6 +531,58 @@ func TestSQLiteHistoryCollectorRunsWithoutSubscribers(t *testing.T) {
 	}
 }
 
+func TestCloseStopsPersistentCollectors(t *testing.T) {
+	if store.Variant == "lite" {
+		t.Skip("SQLite is intentionally omitted from the lite build")
+	}
+	fake := telemttest.New(telemttest.Scenario{})
+	t.Cleanup(fake.Close)
+	st, err := store.Open(store.OpenOptions{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "panel.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	h := New(Config{StatsInterval: 10 * time.Millisecond}, telemt.New(fake.URL, ""), st)
+	closed := false
+	t.Cleanup(func() {
+		if !closed {
+			h.Close()
+		}
+	})
+	recorded := make(chan struct{}, 16)
+	h.historyRecordedHook = func() {
+		select {
+		case recorded <- struct{}{}:
+		default:
+		}
+	}
+
+	h.StartPersistentCollectors()
+	select {
+	case <-recorded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("persistent stats collector did not start")
+	}
+	h.Close()
+	closed = true
+	for len(recorded) > 0 {
+		<-recorded
+	}
+	select {
+	case <-recorded:
+		t.Fatal("persistent stats collector recorded after Hub.Close returned")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for name, topic := range h.topics {
+		if topic.running {
+			t.Errorf("topic %q is still running after Hub.Close", name)
+		}
+	}
+}
+
 type durableTestStore struct{ store.Store }
 
 func (durableTestStore) Info() store.Info {

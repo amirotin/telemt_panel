@@ -150,12 +150,12 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// passkeyInfo mirrors api/openapi.yaml schema PasskeyInfo. Always empty
-// until the passkey milestone lands.
+// passkeyInfo mirrors api/openapi.yaml schema PasskeyInfo.
 type passkeyInfo struct {
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Created time.Time `json:"created"`
+	ID       string     `json:"id"`
+	Name     string     `json:"name"`
+	Created  time.Time  `json:"created"`
+	LastUsed *time.Time `json:"last_used,omitempty"`
 }
 
 // meResponse mirrors the /api/auth/me 200 response.
@@ -174,10 +174,25 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read authentication methods")
 		return
 	}
+	credentials, err := s.st.ListWebAuthnCredentials()
+	if err != nil {
+		slog.Error("me: list WebAuthn credentials", "err", err)
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read authentication methods")
+		return
+	}
+	passkeys := make([]passkeyInfo, 0, len(credentials))
+	for _, credential := range credentials {
+		var lastUsed *time.Time
+		if !credential.LastUsed.IsZero() {
+			value := credential.LastUsed
+			lastUsed = &value
+		}
+		passkeys = append(passkeys, passkeyInfo{ID: credential.ID, Name: credential.Name, Created: credential.Created, LastUsed: lastUsed})
+	}
 	writeJSON(w, http.StatusOK, meResponse{
 		Username:    username,
 		TOTPEnabled: totp.Enabled,
-		Passkeys:    []passkeyInfo{},
+		Passkeys:    passkeys,
 	})
 }
 
@@ -408,7 +423,8 @@ func administrativeHistoryEvent(ts time.Time, action, subject string) (store.His
 		"quota.reset", "secret.rotate", "storage.history_purge", "storage.policy_change",
 		"sublink.rotate", "telemt.reload", "telemt.restart", "update.apply",
 		"update.auto_change", "user.create", "user.delete", "user.enabled",
-		"user.patch", "web.sessions.close", "totp.enable", "totp.disable":
+		"user.patch", "web.sessions.close", "totp.enable", "totp.disable",
+		"passkey.register", "passkey.delete":
 		// Explicit allowlist: a future audit action does not enter long-lived
 		// observability history until its subject semantics have been reviewed.
 	default:
@@ -429,8 +445,11 @@ func administrativeHistoryEvent(ts time.Time, action, subject string) (store.His
 }
 
 func auditTarget(action, subject string) string {
-	if subject != "" && action != "login" && action != "login.failed" && action != "logout" {
+	if subject != "" && action != "login" && action != "login.failed" && action != "logout" && !strings.HasPrefix(action, "passkey.") {
 		return subject
+	}
+	if strings.HasPrefix(action, "passkey.") {
+		return "auth"
 	}
 	switch action {
 	case "config.patch", "config.patch.toml":

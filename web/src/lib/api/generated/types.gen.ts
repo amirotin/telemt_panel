@@ -6,10 +6,10 @@ export type ClientOptions = {
 
 export type Error = {
     /**
-     * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, totp_required, invalid_totp, totp_already_enabled, totp_setup_changed, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
+     * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, totp_required, invalid_totp, totp_already_enabled, totp_setup_changed, invalid_webauthn_origin, invalid_webauthn_challenge, invalid_webauthn_response, webauthn_credential_exists, passkey_unavailable, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
      *
      */
-    code: 'bad_request' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'invalid_totp' | 'totp_already_enabled' | 'totp_setup_changed' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
+    code: 'bad_request' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'invalid_totp' | 'totp_already_enabled' | 'totp_setup_changed' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
     message: string;
 };
 
@@ -557,6 +557,24 @@ export type PasskeyInfo = {
     last_used?: string;
 };
 
+export type WebAuthnRegisterBeginRequest = {
+    name: string;
+};
+
+export type WebAuthnBeginResponse = {
+    flow_id: string;
+    public_key: {
+        [key: string]: unknown;
+    };
+};
+
+export type WebAuthnFinishRequest = {
+    flow_id: string;
+    credential: {
+        [key: string]: unknown;
+    };
+};
+
 export type LogLine = {
     ts: string;
     level?: 'debug' | 'info' | 'warn' | 'error' | 'unknown';
@@ -777,6 +795,24 @@ export type LogoutResponses = {
 
 export type LogoutResponse = LogoutResponses[keyof LogoutResponses];
 
+export type GetAuthMethodsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/auth/methods';
+};
+
+export type GetAuthMethodsResponses = {
+    /**
+     * Available passwordless methods
+     */
+    200: {
+        passkey_available: boolean;
+    };
+};
+
+export type GetAuthMethodsResponse = GetAuthMethodsResponses[keyof GetAuthMethodsResponses];
+
 export type GetMeData = {
     body?: never;
     path?: never;
@@ -964,6 +1000,157 @@ export type TotpDisableResponses = {
 };
 
 export type TotpDisableResponse = TotpDisableResponses[keyof TotpDisableResponses];
+
+export type WebauthnRegisterBeginData = {
+    body: WebAuthnRegisterBeginRequest;
+    path?: never;
+    query?: never;
+    url: '/api/auth/webauthn/register/begin';
+};
+
+export type WebauthnRegisterBeginErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Too many requests
+     */
+    429: Error;
+};
+
+export type WebauthnRegisterBeginError = WebauthnRegisterBeginErrors[keyof WebauthnRegisterBeginErrors];
+
+export type WebauthnRegisterBeginResponses = {
+    /**
+     * CredentialCreationOptions and one-time flow ID
+     */
+    200: WebAuthnBeginResponse;
+};
+
+export type WebauthnRegisterBeginResponse = WebauthnRegisterBeginResponses[keyof WebauthnRegisterBeginResponses];
+
+export type WebauthnRegisterFinishData = {
+    body: WebAuthnFinishRequest;
+    path?: never;
+    query?: never;
+    url: '/api/auth/webauthn/register/finish';
+};
+
+export type WebauthnRegisterFinishErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Credential already registered
+     */
+    409: Error;
+};
+
+export type WebauthnRegisterFinishError = WebauthnRegisterFinishErrors[keyof WebauthnRegisterFinishErrors];
+
+export type WebauthnRegisterFinishResponses = {
+    /**
+     * Registered
+     */
+    201: PasskeyInfo;
+};
+
+export type WebauthnRegisterFinishResponse = WebauthnRegisterFinishResponses[keyof WebauthnRegisterFinishResponses];
+
+export type WebauthnLoginBeginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/auth/webauthn/login/begin';
+};
+
+export type WebauthnLoginBeginErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Not found
+     */
+    404: Error;
+    /**
+     * Too many requests
+     */
+    429: Error;
+};
+
+export type WebauthnLoginBeginError = WebauthnLoginBeginErrors[keyof WebauthnLoginBeginErrors];
+
+export type WebauthnLoginBeginResponses = {
+    /**
+     * CredentialRequestOptions and one-time flow ID
+     */
+    200: WebAuthnBeginResponse;
+};
+
+export type WebauthnLoginBeginResponse = WebauthnLoginBeginResponses[keyof WebauthnLoginBeginResponses];
+
+export type WebauthnLoginFinishData = {
+    body: WebAuthnFinishRequest;
+    path?: never;
+    query?: never;
+    url: '/api/auth/webauthn/login/finish';
+};
+
+export type WebauthnLoginFinishErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * No valid session
+     */
+    401: Error;
+    /**
+     * Too many requests
+     */
+    429: Error;
+};
+
+export type WebauthnLoginFinishError = WebauthnLoginFinishErrors[keyof WebauthnLoginFinishErrors];
+
+export type WebauthnLoginFinishResponses = {
+    /**
+     * Logged in; session cookie set
+     */
+    204: void;
+};
+
+export type WebauthnLoginFinishResponse = WebauthnLoginFinishResponses[keyof WebauthnLoginFinishResponses];
+
+export type WebauthnDeleteCredentialData = {
+    body?: never;
+    path: {
+        credentialId: string;
+    };
+    query?: never;
+    url: '/api/auth/webauthn/credentials/{credentialId}';
+};
+
+export type WebauthnDeleteCredentialErrors = {
+    /**
+     * Not found
+     */
+    404: Error;
+};
+
+export type WebauthnDeleteCredentialError = WebauthnDeleteCredentialErrors[keyof WebauthnDeleteCredentialErrors];
+
+export type WebauthnDeleteCredentialResponses = {
+    /**
+     * Deleted
+     */
+    204: void;
+};
+
+export type WebauthnDeleteCredentialResponse = WebauthnDeleteCredentialResponses[keyof WebauthnDeleteCredentialResponses];
 
 export type ListUsersData = {
     body?: never;

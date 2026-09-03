@@ -45,17 +45,20 @@ const touchMirrorDebounce = 30 * time.Second
 type Memory struct {
 	mu sync.Mutex
 
-	sessions      map[string]Session
-	audit         []AuditEntry
-	events        []HistoryEvent
-	journal       map[string][]UpdateJournalEntry
-	metrics       map[string][]MetricPoint
-	subpageNonces map[string]string
-	settings      map[string]string
-	policies      map[StorageCategory]StoragePolicy
-	totp          TOTPState
-	recoveryCodes map[string]struct{}
-	nextEventID   int64
+	sessions            map[string]Session
+	audit               []AuditEntry
+	events              []HistoryEvent
+	journal             map[string][]UpdateJournalEntry
+	metrics             map[string][]MetricPoint
+	subpageNonces       map[string]string
+	settings            map[string]string
+	policies            map[StorageCategory]StoragePolicy
+	totp                TOTPState
+	recoveryCodes       map[string]struct{}
+	webauthnUserHandle  []byte
+	webauthnCredentials map[string]WebAuthnCredential
+	webauthnChallenges  map[string]WebAuthnChallenge
+	nextEventID         int64
 
 	mirrorPath string
 
@@ -82,13 +85,16 @@ func (m *Memory) Info() Info {
 // mirrorFile is the on-disk shape of the mirrored subset of state
 // (sessions, auth state, subpage nonces, settings and the update journal).
 type mirrorFile struct {
-	Sessions      map[string]Session              `json:"sessions"`
-	SubpageNonces map[string]string               `json:"subpage_nonces"`
-	Settings      map[string]string               `json:"settings"`
-	Journal       map[string][]UpdateJournalEntry `json:"journal"`
-	Policies      []StoragePolicy                 `json:"storage_policies,omitempty"`
-	TOTP          TOTPState                       `json:"totp,omitempty"`
-	RecoveryCodes []string                        `json:"totp_recovery_codes,omitempty"`
+	Sessions            map[string]Session              `json:"sessions"`
+	SubpageNonces       map[string]string               `json:"subpage_nonces"`
+	Settings            map[string]string               `json:"settings"`
+	Journal             map[string][]UpdateJournalEntry `json:"journal"`
+	Policies            []StoragePolicy                 `json:"storage_policies,omitempty"`
+	TOTP                TOTPState                       `json:"totp,omitempty"`
+	RecoveryCodes       []string                        `json:"totp_recovery_codes,omitempty"`
+	WebAuthnUserHandle  []byte                          `json:"webauthn_user_handle,omitempty"`
+	WebAuthnCredentials map[string]WebAuthnCredential   `json:"webauthn_credentials,omitempty"`
+	WebAuthnChallenges  map[string]WebAuthnChallenge    `json:"webauthn_challenges,omitempty"`
 }
 
 // NewMemory creates an in-memory Store. If mirrorPath is non-empty,
@@ -100,16 +106,18 @@ type mirrorFile struct {
 // weaken authentication.
 func NewMemory(mirrorPath string) (*Memory, error) {
 	m := &Memory{
-		sessions:       make(map[string]Session),
-		journal:        make(map[string][]UpdateJournalEntry),
-		metrics:        make(map[string][]MetricPoint),
-		subpageNonces:  make(map[string]string),
-		settings:       make(map[string]string),
-		policies:       defaultPolicyMap(),
-		totp:           TOTPState{LastTimestep: -1},
-		recoveryCodes:  make(map[string]struct{}),
-		mirrorPath:     mirrorPath,
-		mirrorDebounce: touchMirrorDebounce,
+		sessions:            make(map[string]Session),
+		journal:             make(map[string][]UpdateJournalEntry),
+		metrics:             make(map[string][]MetricPoint),
+		subpageNonces:       make(map[string]string),
+		settings:            make(map[string]string),
+		policies:            defaultPolicyMap(),
+		totp:                TOTPState{LastTimestep: -1},
+		recoveryCodes:       make(map[string]struct{}),
+		webauthnCredentials: make(map[string]WebAuthnCredential),
+		webauthnChallenges:  make(map[string]WebAuthnChallenge),
+		mirrorPath:          mirrorPath,
+		mirrorDebounce:      touchMirrorDebounce,
 		scheduleTimer: func(d time.Duration, f func()) func() {
 			t := time.AfterFunc(d, f)
 			return func() { t.Stop() }
@@ -175,6 +183,16 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 		return nil, fmt.Errorf("store: mirror contains invalid TOTP state: %w", err)
 	}
 	m.totp.RecoveryCodes = len(m.recoveryCodes)
+	m.webauthnUserHandle = append([]byte(nil), mf.WebAuthnUserHandle...)
+	if mf.WebAuthnCredentials != nil {
+		m.webauthnCredentials = cloneWebAuthnCredentials(mf.WebAuthnCredentials)
+	}
+	if mf.WebAuthnChallenges != nil {
+		m.webauthnChallenges = cloneWebAuthnChallenges(mf.WebAuthnChallenges)
+	}
+	if err := validatePortableWebAuthn(m.webauthnUserHandle, m.webauthnCredentials, m.webauthnChallenges); err != nil {
+		return nil, fmt.Errorf("store: mirror contains invalid WebAuthn state: %w", err)
+	}
 	return m, nil
 }
 
@@ -196,13 +214,16 @@ func (m *Memory) writeMirrorLocked() error {
 	}
 
 	mf := mirrorFile{
-		Sessions:      m.sessions,
-		SubpageNonces: m.subpageNonces,
-		Settings:      m.settings,
-		Journal:       m.journal,
-		Policies:      policiesFromMap(m.policies),
-		TOTP:          m.totp,
-		RecoveryCodes: recoveryCodeKeys(m.recoveryCodes),
+		Sessions:            m.sessions,
+		SubpageNonces:       m.subpageNonces,
+		Settings:            m.settings,
+		Journal:             m.journal,
+		Policies:            policiesFromMap(m.policies),
+		TOTP:                m.totp,
+		RecoveryCodes:       recoveryCodeKeys(m.recoveryCodes),
+		WebAuthnUserHandle:  append([]byte(nil), m.webauthnUserHandle...),
+		WebAuthnCredentials: m.webauthnCredentials,
+		WebAuthnChallenges:  m.webauthnChallenges,
 	}
 	data, err := json.Marshal(mf)
 	if err != nil {

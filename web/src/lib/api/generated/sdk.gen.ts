@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CloseTelemtWebSessionsData, CloseTelemtWebSessionsErrors, CloseTelemtWebSessionsResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryEventsData, GetHistoryEventsErrors, GetHistoryEventsResponses, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetStorageSettingsData, GetStorageSettingsResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtConfigTomlData, GetTelemtConfigTomlErrors, GetTelemtConfigTomlResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtWebAccessData, GetTelemtWebAccessErrors, GetTelemtWebAccessResponses, GetTelemtWebOperationData, GetTelemtWebOperationErrors, GetTelemtWebOperationResponses, GetTelemtWebSessionData, GetTelemtWebSessionErrors, GetTelemtWebSessionResponses, GetTelemtWebSessionsData, GetTelemtWebSessionsErrors, GetTelemtWebSessionsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, GetUserTrafficHistoryData, GetUserTrafficHistoryErrors, GetUserTrafficHistoryResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchTelemtConfigTomlData, PatchTelemtConfigTomlErrors, PatchTelemtConfigTomlResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlErrors, PreviewTelemtConfigTomlResponses, PurgeStorageHistoryData, PurgeStorageHistoryErrors, PurgeStorageHistoryResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, PutStorageSettingsData, PutStorageSettingsErrors, PutStorageSettingsResponses, PutTelemtUserWebAccessData, PutTelemtUserWebAccessErrors, PutTelemtUserWebAccessResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses, TotpDisableData, TotpDisableResponses, TotpEnableData, TotpEnableErrors, TotpEnableResponses, TotpSetupData, TotpSetupErrors, TotpSetupResponses } from './types.gen';
+import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CloseTelemtWebSessionsData, CloseTelemtWebSessionsErrors, CloseTelemtWebSessionsResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAuthMethodsData, GetAuthMethodsResponses, GetAutoUpdateData, GetAutoUpdateResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryEventsData, GetHistoryEventsErrors, GetHistoryEventsResponses, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetStorageSettingsData, GetStorageSettingsResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtConfigTomlData, GetTelemtConfigTomlErrors, GetTelemtConfigTomlResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtWebAccessData, GetTelemtWebAccessErrors, GetTelemtWebAccessResponses, GetTelemtWebOperationData, GetTelemtWebOperationErrors, GetTelemtWebOperationResponses, GetTelemtWebSessionData, GetTelemtWebSessionErrors, GetTelemtWebSessionResponses, GetTelemtWebSessionsData, GetTelemtWebSessionsErrors, GetTelemtWebSessionsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, GetUserTrafficHistoryData, GetUserTrafficHistoryErrors, GetUserTrafficHistoryResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchTelemtConfigTomlData, PatchTelemtConfigTomlErrors, PatchTelemtConfigTomlResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlErrors, PreviewTelemtConfigTomlResponses, PurgeStorageHistoryData, PurgeStorageHistoryErrors, PurgeStorageHistoryResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, PutStorageSettingsData, PutStorageSettingsErrors, PutStorageSettingsResponses, PutTelemtUserWebAccessData, PutTelemtUserWebAccessErrors, PutTelemtUserWebAccessResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses, TotpDisableData, TotpDisableResponses, TotpEnableData, TotpEnableErrors, TotpEnableResponses, TotpSetupData, TotpSetupErrors, TotpSetupResponses, WebauthnDeleteCredentialData, WebauthnDeleteCredentialErrors, WebauthnDeleteCredentialResponses, WebauthnLoginBeginData, WebauthnLoginBeginErrors, WebauthnLoginBeginResponses, WebauthnLoginFinishData, WebauthnLoginFinishErrors, WebauthnLoginFinishResponses, WebauthnRegisterBeginData, WebauthnRegisterBeginErrors, WebauthnRegisterBeginResponses, WebauthnRegisterFinishData, WebauthnRegisterFinishErrors, WebauthnRegisterFinishResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -36,6 +36,11 @@ export const logout = <ThrowOnError extends boolean = false>(options?: Options<L
     url: '/api/auth/logout',
     ...options
 });
+
+/**
+ * Public login-method availability. Does not reveal whether TOTP is enabled.
+ */
+export const getAuthMethods = <ThrowOnError extends boolean = false>(options?: Options<GetAuthMethodsData, ThrowOnError>): RequestResult<GetAuthMethodsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetAuthMethodsResponses, unknown, ThrowOnError>({ url: '/api/auth/methods', ...options });
 
 export const getMe = <ThrowOnError extends boolean = false>(options?: Options<GetMeData, ThrowOnError>): RequestResult<GetMeResponses, GetMeErrors, ThrowOnError> => (options?.client ?? client).get<GetMeResponses, GetMeErrors, ThrowOnError>({
     security: [{
@@ -114,6 +119,55 @@ export const totpDisable = <ThrowOnError extends boolean = false>(options?: Opti
             type: 'apiKey'
         }],
     url: '/api/auth/totp',
+    ...options
+});
+
+export const webauthnRegisterBegin = <ThrowOnError extends boolean = false>(options: Options<WebauthnRegisterBeginData, ThrowOnError>): RequestResult<WebauthnRegisterBeginResponses, WebauthnRegisterBeginErrors, ThrowOnError> => (options.client ?? client).post<WebauthnRegisterBeginResponses, WebauthnRegisterBeginErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/auth/webauthn/register/begin',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const webauthnRegisterFinish = <ThrowOnError extends boolean = false>(options: Options<WebauthnRegisterFinishData, ThrowOnError>): RequestResult<WebauthnRegisterFinishResponses, WebauthnRegisterFinishErrors, ThrowOnError> => (options.client ?? client).post<WebauthnRegisterFinishResponses, WebauthnRegisterFinishErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/auth/webauthn/register/finish',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const webauthnLoginBegin = <ThrowOnError extends boolean = false>(options?: Options<WebauthnLoginBeginData, ThrowOnError>): RequestResult<WebauthnLoginBeginResponses, WebauthnLoginBeginErrors, ThrowOnError> => (options?.client ?? client).post<WebauthnLoginBeginResponses, WebauthnLoginBeginErrors, ThrowOnError>({ url: '/api/auth/webauthn/login/begin', ...options });
+
+export const webauthnLoginFinish = <ThrowOnError extends boolean = false>(options: Options<WebauthnLoginFinishData, ThrowOnError>): RequestResult<WebauthnLoginFinishResponses, WebauthnLoginFinishErrors, ThrowOnError> => (options.client ?? client).post<WebauthnLoginFinishResponses, WebauthnLoginFinishErrors, ThrowOnError>({
+    url: '/api/auth/webauthn/login/finish',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const webauthnDeleteCredential = <ThrowOnError extends boolean = false>(options: Options<WebauthnDeleteCredentialData, ThrowOnError>): RequestResult<WebauthnDeleteCredentialResponses, WebauthnDeleteCredentialErrors, ThrowOnError> => (options.client ?? client).delete<WebauthnDeleteCredentialResponses, WebauthnDeleteCredentialErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/auth/webauthn/credentials/{credentialId}',
     ...options
 });
 
