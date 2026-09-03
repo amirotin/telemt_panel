@@ -715,6 +715,10 @@ export type StorageSettings = {
     configured_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
     active_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
     /**
+     * Whether panel-state.json is enabled and control-plane state survives a restart.
+     */
+    state_durable: boolean;
+    /**
      * Safe startup fallback reason without connection credentials.
      */
     store_error?: string;
@@ -2585,7 +2589,11 @@ export type GetHealthResponses = {
         configured_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
         active_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
         /**
-         * Safe connection error without credentials; omitted when the configured store is active.
+         * Whether local panel state survives a restart.
+         */
+        state_durable: boolean;
+        /**
+         * Safe history-backend connection error without credentials; omitted when the configured backend is active.
          */
         store_error?: string;
     };

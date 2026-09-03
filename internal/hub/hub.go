@@ -216,7 +216,7 @@ type subscriber struct {
 // subscribers. Call Close when done to stop every poller.
 type Hub struct {
 	cfg Config
-	st  store.Store
+	st  store.HistoryStore
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -259,7 +259,7 @@ type Hub struct {
 // New creates a Hub polling tc for this package's topic registry. Call
 // StartPersistentCollectors after construction to start durable history;
 // the memory driver remains demand-driven for the zero-write router profile.
-func New(cfg Config, tc *telemt.Client, st store.Store) *Hub {
+func New(cfg Config, tc *telemt.Client, st store.HistoryStore) *Hub {
 	cfg = cfg.withDefaults()
 	ctx, cancel := context.WithCancel(context.Background())
 	h := &Hub{

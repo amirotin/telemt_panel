@@ -11,14 +11,13 @@ import (
 // OpenOptions contains driver-neutral connection settings. Constructors use
 // only the fields relevant to their backend.
 type OpenOptions struct {
-	Driver     string
-	Path       string
-	DSN        string
-	MirrorPath string
+	Driver string
+	Path   string
+	DSN    string
 }
 
 // Constructor opens one configured store backend.
-type Constructor func(OpenOptions) (Store, error)
+type Constructor func(OpenOptions) (HistoryStore, error)
 
 type driverRegistration struct {
 	constructor Constructor
@@ -88,7 +87,7 @@ func register(name string, registration driverRegistration) {
 }
 
 // Open opens the requested registered backend.
-func Open(options OpenOptions) (Store, error) {
+func Open(options OpenOptions) (HistoryStore, error) {
 	name := strings.TrimSpace(strings.ToLower(options.Driver))
 	if name == "" {
 		name = "memory"
@@ -151,7 +150,7 @@ func AvailableDrivers() []string {
 }
 
 func init() {
-	Register("memory", func(options OpenOptions) (Store, error) {
-		return NewMemory(options.MirrorPath)
+	Register("memory", func(OpenOptions) (HistoryStore, error) {
+		return NewMemoryHistory()
 	})
 }

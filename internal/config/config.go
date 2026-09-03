@@ -24,9 +24,8 @@ type Config struct {
 	TrustedProxies       []string       `toml:"trusted_proxies"`
 	TrustedProxyPrefixes []netip.Prefix `toml:"-"`
 
-	// DataDir holds the panel's on-disk state mirror (sessions, subpage
-	// nonces, settings). Empty disables the mirror — state stays in RAM
-	// only.
+	// DataDir holds panel-state.json and update staging. Empty makes the
+	// control-plane state process-local without changing the history driver.
 	DataDir string `toml:"data_dir"`
 
 	Telemt     TelemtConfig     `toml:"telemt"`

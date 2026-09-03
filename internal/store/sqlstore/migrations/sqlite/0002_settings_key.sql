@@ -1,1 +1,1 @@
-ALTER TABLE settings RENAME COLUMN key TO setting_key;
+SELECT 1;

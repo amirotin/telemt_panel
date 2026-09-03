@@ -927,7 +927,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, version, variant, drivers, configured_driver, active_driver]
+                required: [status, version, variant, drivers, configured_driver, active_driver, state_durable]
                 properties:
                   status: { type: string, enum: [ok] }
                   version: { type: string }
@@ -937,9 +937,10 @@ paths:
                     items: { type: string, enum: [memory, sqlite, postgres, mysql] }
                   configured_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
                   active_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+                  state_durable: { type: boolean, description: Whether local panel state survives a restart. }
                   store_error:
                     type: string
-                    description: Safe connection error without credentials; omitted when the configured store is active.
+                    description: Safe history-backend connection error without credentials; omitted when the configured backend is active.
 
   /api/logs/tail:
     get:
@@ -1897,7 +1898,7 @@ components:
 
     StorageSettings:
       type: object
-      required: [policies, stats, configured_driver, active_driver]
+      required: [policies, stats, configured_driver, active_driver, state_durable]
       properties:
         policies:
           type: array
@@ -1905,6 +1906,9 @@ components:
         stats: { $ref: "#/components/schemas/StorageStats" }
         configured_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
         active_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+        state_durable:
+          type: boolean
+          description: Whether panel-state.json is enabled and control-plane state survives a restart.
         store_error:
           type: string
           description: Safe startup fallback reason without connection credentials.

@@ -151,15 +151,23 @@ export function StorageSettings() {
         </div>
       </header>
 
-      {!query.data.stats.durable && (
+      {(!query.data.stats.durable || !query.data.state_durable) && (
         <div className="flex gap-3 border-b border-warning/25 bg-warning/8 px-4 py-3 text-[11px] leading-relaxed text-text-muted sm:px-5">
           <IconWarning className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
-          <span>
-            {query.data.store_error
-              ? fill(s.server.settings.storageFallbackWarning, {
-                  driver: query.data.configured_driver === "postgres" ? "PostgreSQL" : "MySQL",
-                })
-              : s.server.settings.storageMemoryWarning}
+          <span className="space-y-1">
+            {!query.data.stats.durable && (
+              <span className="block">
+                {query.data.store_error
+                  ? fill(s.server.settings.storageFallbackWarning, {
+                      driver:
+                        query.data.configured_driver === "postgres" ? "PostgreSQL" : "MySQL",
+                    })
+                  : s.server.settings.storageMemoryWarning}
+              </span>
+            )}
+            {!query.data.state_durable && (
+              <span className="block">{s.server.settings.storageStateVolatileWarning}</span>
+            )}
           </span>
         </div>
       )}

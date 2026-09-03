@@ -9,7 +9,7 @@ import (
 )
 
 func TestPortableSQLImportRollsBackCompletely(t *testing.T) {
-	st, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"), "")
+	st, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,10 +17,6 @@ func TestPortableSQLImportRollsBackCompletely(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	data := PortableData{
 		FormatVersion: portableFormatVersion,
-		Sessions: map[string]Session{
-			"session": {IDHash: "session", Created: now, LastSeen: now},
-		},
-		Policies: DefaultStoragePolicies(),
 		Metrics: map[string][]MetricPoint{
 			"connections": {
 				{TS: now.Unix(), Value: 1},
@@ -36,8 +32,8 @@ func TestPortableSQLImportRollsBackCompletely(t *testing.T) {
 	if err := st.ImportData(data); err != nil {
 		t.Fatalf("valid import after rollback: %v", err)
 	}
-	if _, ok, err := st.GetSession("session"); err != nil || !ok {
-		t.Fatalf("session after import: ok=%v err=%v", ok, err)
+	if points, err := st.MetricRange("connections", 0); err != nil || len(points) != 1 || points[0].Value != 1 {
+		t.Fatalf("metrics after import = %+v, %v", points, err)
 	}
 }
 

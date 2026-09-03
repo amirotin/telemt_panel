@@ -39,6 +39,9 @@ func TestHandleGetStorageSettings(t *testing.T) {
 	if response.ConfiguredDriver != "memory" || response.ActiveDriver != "memory" || response.StoreError != "" {
 		t.Fatalf("runtime = configured %q active %q error %q", response.ConfiguredDriver, response.ActiveDriver, response.StoreError)
 	}
+	if response.StateDurable {
+		t.Fatal("RAM-only test state was reported as durable")
+	}
 	if len(response.Policies) != len(store.DefaultStoragePolicies()) {
 		t.Fatalf("policies = %d", len(response.Policies))
 	}

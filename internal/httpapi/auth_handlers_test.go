@@ -317,6 +317,7 @@ func TestHealthReportsStoreFallbackWithoutCredentials(t *testing.T) {
 	var response struct {
 		ConfiguredDriver string `json:"configured_driver"`
 		ActiveDriver     string `json:"active_driver"`
+		StateDurable     bool   `json:"state_durable"`
 		StoreError       string `json:"store_error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
@@ -324,6 +325,9 @@ func TestHealthReportsStoreFallbackWithoutCredentials(t *testing.T) {
 	}
 	if response.ConfiguredDriver != "postgres" || response.ActiveDriver != "memory" || response.StoreError == "" {
 		t.Fatalf("health fallback = %+v", response)
+	}
+	if response.StateDurable {
+		t.Fatal("RAM-only test state was reported as durable")
 	}
 	if strings.Contains(response.StoreError, "password") {
 		t.Fatalf("health leaked credentials: %q", response.StoreError)

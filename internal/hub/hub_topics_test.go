@@ -22,8 +22,8 @@ import (
 // scenario, with every interval fast enough for tests but no real sleeps
 // beyond the poller's own timer — following hub_test.go's existing
 // millisecond-interval convention. st may be nil (history tests pass a real
-// store.Store; every other test doesn't care).
-func newTelemttestHub(t *testing.T, scenario telemttest.Scenario, st store.Store) (*telemttest.Server, *Hub) {
+// store.HistoryStore; every other test doesn't care).
+func newTelemttestHub(t *testing.T, scenario telemttest.Scenario, st store.HistoryStore) (*telemttest.Server, *Hub) {
 	t.Helper()
 	fake := telemttest.New(scenario)
 	t.Cleanup(fake.Close)
@@ -583,7 +583,7 @@ func TestCloseStopsPersistentCollectors(t *testing.T) {
 	}
 }
 
-type durableTestStore struct{ store.Store }
+type durableTestStore struct{ store.HistoryStore }
 
 func (durableTestStore) Info() store.Info {
 	return store.Info{Driver: "postgres", Durable: true, Remote: true, Schema: 6, SizeHint: -1}
@@ -595,7 +595,7 @@ func TestEveryDurableStoreKeepsStatsAndUsersSourcesAlive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	h := New(Config{}, telemt.New("http://127.0.0.1:1", ""), durableTestStore{Store: memory})
+	h := New(Config{}, telemt.New("http://127.0.0.1:1", ""), durableTestStore{HistoryStore: memory})
 	defer h.Close()
 	for _, topic := range []string{"stats", "users", "runtime", "upstreams"} {
 		if !h.topics[topic].persistent {

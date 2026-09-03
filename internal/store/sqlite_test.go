@@ -5,6 +5,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 func newSQLite(t *testing.T) (*SQLite, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "panel.db")
-	store, err := NewSQLite(path, "")
+	store, err := NewSQLite(path)
 	if err != nil {
 		t.Fatalf("NewSQLite: %v", err)
 	}
@@ -25,60 +26,34 @@ func newSQLite(t *testing.T) (*SQLite, string) {
 
 func TestSQLiteRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.db")
-	store, err := NewSQLite(path, "")
+	store, err := NewSQLite(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 2, 12, 0, 0, 123, time.UTC)
-	session := Session{IDHash: "hash", Created: now, LastSeen: now.Add(time.Minute), IP: "127.0.0.1", UserAgentLabel: "browser", AuthMethod: "password"}
-	if err := store.PutSession(session); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.AppendAudit(AuditEntry{TS: now, ID: "audit-1", Action: "config.patch", Actor: "admin", Target: "telemt", Outcome: "ok"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.AppendUpdateJournal(UpdateJournalEntry{Target: "panel", RunID: "run-1", Phase: "ready", TS: now}); err != nil {
-		t.Fatal(err)
-	}
 	if err := store.RecordMetric("connections", MetricPoint{TS: now.Unix(), Value: 42}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetSubpageNonce("alice", "nonce"); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SetSetting("example", "value"); err != nil {
+	if err := store.AppendHistoryEvent(HistoryEvent{TS: now, Category: StorageEvents, Kind: "route.changed", Entity: "route", State: "direct", PreviousState: "me", Severity: "warning"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	reopened, err := NewSQLite(path, "")
+	reopened, err := NewSQLite(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 7 {
-		t.Fatalf("schema version = %d, want 7", info.Schema)
-	}
-	gotSession, ok, err := reopened.GetSession("hash")
-	if err != nil || !ok || gotSession != session {
-		t.Fatalf("GetSession = %+v, %v, %v", gotSession, ok, err)
-	}
-	if got, err := reopened.ListAudit(10); err != nil || len(got) != 1 || got[0].ID != "audit-1" {
-		t.Fatalf("ListAudit = %+v, %v", got, err)
-	}
-	if got, err := reopened.ListUpdateJournal("panel", 10); err != nil || len(got) != 1 || got[0].RunID != "run-1" {
-		t.Fatalf("ListUpdateJournal = %+v, %v", got, err)
+	if info := reopened.Info(); info.Schema != 8 {
+		t.Fatalf("schema version = %d, want 8", info.Schema)
 	}
 	if got, err := reopened.MetricRange("connections", 0); err != nil || len(got) != 1 || got[0].Value != 42 {
 		t.Fatalf("MetricRange = %+v, %v", got, err)
 	}
-	if got, err := reopened.GetSubpageNonce("alice"); err != nil || got != "nonce" {
-		t.Fatalf("GetSubpageNonce = %q, %v", got, err)
-	}
-	if got, ok, err := reopened.GetSetting("example"); err != nil || !ok || got != "value" {
-		t.Fatalf("GetSetting = %q, %v, %v", got, ok, err)
+	if got, err := reopened.ListHistoryEvents(HistoryEventFilter{Category: StorageEvents}); err != nil || len(got) != 1 || got[0].Kind != "route.changed" {
+		t.Fatalf("ListHistoryEvents = %+v, %v", got, err)
 	}
 }
 
@@ -206,7 +181,7 @@ func TestSQLiteDisabledEventsAreNotPruned(t *testing.T) {
 			policies[i].Enabled = false
 		}
 	}
-	if err := store.ReplaceStoragePolicies(policies); err != nil {
+	if err := store.ApplyStoragePolicies(policies); err != nil {
 		t.Fatal(err)
 	}
 	removed, err := store.pruneHistoryEventBatch(time.Now(), 10)
@@ -221,7 +196,7 @@ func TestSQLiteDisabledEventsAreNotPruned(t *testing.T) {
 
 func TestSQLiteRejectsFutureSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.db")
-	opened, err := NewSQLite(path, "")
+	opened, err := NewSQLite(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +206,7 @@ func TestSQLiteRejectsFutureSchema(t *testing.T) {
 	if err := opened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewSQLite(path, ""); err == nil {
+	if _, err := NewSQLite(path); err == nil {
 		t.Fatal("NewSQLite accepted a schema newer than this binary")
 	}
 }
@@ -258,7 +233,7 @@ func TestSQLiteCloseIsConcurrentSafe(t *testing.T) {
 
 func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.db")
-	store, err := NewSQLite(path, "")
+	store, err := NewSQLite(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,11 +250,6 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
-		`DROP TABLE auth_webauthn_challenges`,
-		`DROP TABLE auth_webauthn_credentials`,
-		`DROP TABLE auth_webauthn_user`,
-		`DROP TABLE auth_recovery_codes`,
-		`DROP TABLE auth_totp`,
 		`DROP INDEX metric_points_category_tier_ts`,
 		`CREATE TABLE metric_points_v2 (name TEXT NOT NULL, category TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY(name, ts)) WITHOUT ROWID, STRICT`,
 		`INSERT INTO metric_points_v2(name, category, ts, value) SELECT name, category, ts, value FROM metric_points WHERE tier = 'raw'`,
@@ -297,13 +267,13 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	migrated, err := NewSQLite(path, "")
+	migrated, err := NewSQLite(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 7 {
-		t.Fatalf("schema = %d, want 7", got)
+	if got := migrated.Info().Schema; got != 8 {
+		t.Fatalf("schema = %d, want 8", got)
 	}
 	points, err := migrated.MetricRange("connections", 0)
 	if err != nil {
@@ -311,6 +281,53 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 	}
 	if len(points) != 1 || points[0] != point {
 		t.Fatalf("migrated points = %+v, want %+v", points, point)
+	}
+}
+
+func TestSQLiteMigrationEightDropsDevelopmentStateTables(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.db")
+	store, err := NewSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordMetric("connections", MetricPoint{TS: time.Now().Unix(), Value: 42}); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{
+		"sessions", "audit_entries", "update_journal", "subpage_nonces",
+		"settings", "storage_policies", "auth_totp", "auth_recovery_codes",
+		"auth_webauthn_user", "auth_webauthn_credentials", "auth_webauthn_challenges",
+	} {
+		if _, err := store.db.Exec(`CREATE TABLE ` + table + ` (id INTEGER)`); err != nil {
+			t.Fatalf("create development table %s: %v", table, err)
+		}
+	}
+	if _, err := store.db.Exec(`PRAGMA user_version = 7`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := NewSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	if got := migrated.Info().Schema; got != 8 {
+		t.Fatalf("schema = %d, want 8", got)
+	}
+	var stateTables int
+	if err := migrated.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN (` +
+		`'sessions','audit_entries','update_journal','subpage_nonces','settings','storage_policies',` +
+		`'auth_totp','auth_recovery_codes','auth_webauthn_user','auth_webauthn_credentials','auth_webauthn_challenges')`).Scan(&stateTables); err != nil {
+		t.Fatal(err)
+	}
+	if stateTables != 0 {
+		t.Fatalf("schema migration retained %d control-plane tables", stateTables)
+	}
+	if points, err := migrated.MetricRange("connections", 0); err != nil || len(points) != 1 {
+		t.Fatalf("history was not preserved: %+v, %v", points, err)
 	}
 }
 
@@ -324,11 +341,11 @@ func TestSQLitePoliciesControlWritesAndRetention(t *testing.T) {
 		switch policies[i].Category {
 		case StorageTechnical:
 			policies[i].RetentionDays = 14
-		case StorageAudit, StorageTraffic:
+		case StorageTraffic:
 			policies[i].Enabled = false
 		}
 	}
-	if err := store.ReplaceStoragePolicies(policies); err != nil {
+	if err := store.ApplyStoragePolicies(policies); err != nil {
 		t.Fatal(err)
 	}
 	if got := store.MetricRetention("connections"); got != 14*24*time.Hour {
@@ -336,12 +353,6 @@ func TestSQLitePoliciesControlWritesAndRetention(t *testing.T) {
 	}
 	if got := store.MetricRetention("traffic"); got != 0 {
 		t.Fatalf("disabled traffic retention = %v", got)
-	}
-	if err := store.AppendAudit(AuditEntry{TS: time.Now(), ID: "hidden"}); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := store.ListAudit(10); err != nil || len(got) != 0 {
-		t.Fatalf("disabled audit persisted: %+v, %v", got, err)
 	}
 	if err := store.RecordMetric("traffic", MetricPoint{TS: time.Now().Unix(), Value: 10}); err != nil {
 		t.Fatal(err)
@@ -351,18 +362,12 @@ func TestSQLitePoliciesControlWritesAndRetention(t *testing.T) {
 	}
 
 	for i := range policies {
-		if policies[i].Category == StorageAudit || policies[i].Category == StorageTraffic {
+		if policies[i].Category == StorageTraffic {
 			policies[i].Enabled = true
 		}
 	}
-	if err := store.ReplaceStoragePolicies(policies); err != nil {
+	if err := store.ApplyStoragePolicies(policies); err != nil {
 		t.Fatal(err)
-	}
-	if err := store.AppendAudit(AuditEntry{TS: time.Now(), ID: "visible"}); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := store.ListAudit(10); err != nil || len(got) != 1 || got[0].ID != "visible" {
-		t.Fatalf("re-enabled audit did not persist: %+v, %v", got, err)
 	}
 	if err := store.RecordMetric("traffic", MetricPoint{TS: time.Now().Unix(), Value: 20}); err != nil {
 		t.Fatal(err)
@@ -383,7 +388,7 @@ func TestSQLiteReducingRetentionPrunesOnlyExpiredRows(t *testing.T) {
 			policies[i].RetentionDays = 30
 		}
 	}
-	if err := store.ReplaceStoragePolicies(policies); err != nil {
+	if err := store.ApplyStoragePolicies(policies); err != nil {
 		t.Fatal(err)
 	}
 
@@ -401,8 +406,15 @@ func TestSQLiteReducingRetentionPrunesOnlyExpiredRows(t *testing.T) {
 			policies[i].RetentionDays = 7
 		}
 	}
-	if err := store.ReplaceStoragePolicies(policies); err != nil {
+	if err := store.ApplyStoragePolicies(policies); err != nil {
 		t.Fatal(err)
+	}
+	removed, err := store.pruneMetricBatch(now, metricPruneBatchSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed metric rows = %d, want 1", removed)
 	}
 	var timestamps []int64
 	rows, err := store.query(`SELECT ts FROM metric_points WHERE name = ? AND tier = ? ORDER BY ts`, "connections", MetricTierQuarter)
@@ -433,7 +445,7 @@ func TestSQLiteRejectsDisabledTechnicalHistory(t *testing.T) {
 			policies[i].Enabled = false
 		}
 	}
-	if err := store.ReplaceStoragePolicies(policies); err == nil {
+	if err := store.ApplyStoragePolicies(policies); err == nil {
 		t.Fatal("ReplaceStoragePolicies accepted disabled technical history")
 	}
 }
@@ -461,56 +473,64 @@ func TestSQLitePurgeIsIndependentFromPolicy(t *testing.T) {
 	}
 }
 
-func TestSQLiteImportsMemoryMirrorOnce(t *testing.T) {
+func TestStateFileRemainsSeparateFromSQLiteHistory(t *testing.T) {
 	dir := t.TempDir()
-	mirrorPath := filepath.Join(dir, "panel-state.json")
-	memory, err := NewMemory(mirrorPath)
+	statePath := filepath.Join(dir, "panel-state.json")
+	state, err := NewState(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
-	if err := memory.PutSession(Session{IDHash: "from-memory", Created: now, LastSeen: now}); err != nil {
+	if err := state.PutSession(Session{IDHash: "local-state", Created: now, LastSeen: now}); err != nil {
 		t.Fatal(err)
 	}
-	if err := memory.SetSetting("migrated", "yes"); err != nil {
+	if err := state.SetSetting("location", "state-file"); err != nil {
 		t.Fatal(err)
 	}
-	if err := memory.Close(); err != nil {
+	if err := state.Close(); err != nil {
 		t.Fatal(err)
 	}
 
 	dbPath := filepath.Join(dir, "panel.db")
-	store, err := NewSQLite(dbPath, mirrorPath)
+	history, err := NewSQLite(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := store.GetSession("from-memory"); err != nil || !ok {
-		t.Fatalf("migrated session missing: ok=%v err=%v", ok, err)
-	}
-	if got, ok, err := store.GetSetting("migrated"); err != nil || !ok || got != "yes" {
-		t.Fatalf("migrated setting = %q, %v, %v", got, ok, err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	memory, err = NewMemory(mirrorPath)
+	reopenedState, err := NewState(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := memory.PutSession(Session{IDHash: "late", Created: now, LastSeen: now}); err != nil {
-		t.Fatal(err)
-	}
-	if err := memory.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := NewSQLite(dbPath, mirrorPath)
+	combined, err := NewComposite(reopenedState, history)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
-	if _, ok, err := reopened.GetSession("late"); err != nil || ok {
-		t.Fatalf("mirror imported twice: ok=%v err=%v", ok, err)
+	defer combined.Close()
+	if _, ok, err := combined.GetSession("local-state"); err != nil || !ok {
+		t.Fatalf("state-file session missing: ok=%v err=%v", ok, err)
+	}
+	if got, ok, err := combined.GetSetting("location"); err != nil || !ok || got != "state-file" {
+		t.Fatalf("state-file setting = %q, %v, %v", got, ok, err)
+	}
+	rows, err := history.query(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		tables = append(tables, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"sessions", "settings", "auth_totp", "auth_webauthn_credentials", "storage_policies", "audit_entries"} {
+		if slices.Contains(tables, forbidden) {
+			t.Fatalf("control-plane table %q leaked into history database: %v", forbidden, tables)
+		}
 	}
 }
 
@@ -519,7 +539,7 @@ func TestSQLiteRejectsCorruptDatabase(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not a sqlite database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewSQLite(path, ""); err == nil {
+	if _, err := NewSQLite(path); err == nil {
 		t.Fatal("NewSQLite accepted a corrupt database")
 	}
 }
@@ -532,7 +552,7 @@ func TestSQLitePreservesExistingDirectoryPermissions(t *testing.T) {
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewSQLite(filepath.Join(dir, "panel.db"), "")
+	store, err := NewSQLite(filepath.Join(dir, "panel.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,22 +563,5 @@ func TestSQLitePreservesExistingDirectoryPermissions(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o755 {
 		t.Fatalf("existing directory permissions changed to %o", got)
-	}
-}
-
-func TestSQLiteRejectsUnknownStoredPolicy(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "panel.db")
-	store, err := NewSQLite(path, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.db.Exec(`INSERT INTO storage_policies(category, enabled, retention_days) VALUES ('future', 1, 7)`); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewSQLite(path, ""); err == nil {
-		t.Fatal("NewSQLite accepted an unknown stored policy")
 	}
 }

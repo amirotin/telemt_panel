@@ -35,11 +35,22 @@ func TestPortableRoundTrip(t *testing.T) {
 		}{
 			name: "sqlite",
 			open: func(t *testing.T) Store {
-				st, err := Open(OpenOptions{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "panel.db")})
+				history, err := Open(OpenOptions{Driver: "sqlite", Path: filepath.Join(t.TempDir(), "panel.db")})
 				if err != nil {
 					t.Fatal(err)
 				}
-				return st
+				state, err := NewState(filepath.Join(t.TempDir(), "panel-state.json"))
+				if err != nil {
+					_ = history.Close()
+					t.Fatal(err)
+				}
+				combined, err := NewComposite(state, history)
+				if err != nil {
+					_ = history.Close()
+					_ = state.Close()
+					t.Fatal(err)
+				}
+				return combined
 			},
 		})
 	}
@@ -52,6 +63,9 @@ func TestPortableRoundTrip(t *testing.T) {
 			exported, err := source.(PortableStore).ExportData()
 			if err != nil {
 				t.Fatalf("ExportData: %v", err)
+			}
+			if len(exported.WebAuthnChallenges) != 0 {
+				t.Fatalf("export contains %d process-local WebAuthn challenges", len(exported.WebAuthnChallenges))
 			}
 
 			destination := test.open(t)
@@ -102,7 +116,7 @@ func TestPortableRejectsUnknownFormat(t *testing.T) {
 	}
 }
 
-func TestPortableMemoryImportReportsMirrorFailure(t *testing.T) {
+func TestPortableStateImportReportsFileFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel-state.json")
 	st, err := NewMemory(path)
 	if err != nil {
@@ -118,7 +132,7 @@ func TestPortableMemoryImportReportsMirrorFailure(t *testing.T) {
 		Policies:      DefaultStoragePolicies(),
 	}
 	if err := st.ImportData(data); err == nil {
-		t.Fatal("ImportData hid a mirror write failure")
+		t.Fatal("ImportData hid a state-file write failure")
 	}
 	if _, ok, err := st.GetSetting("must-persist"); err != nil || ok {
 		t.Fatalf("failed import mutated memory state: ok=%v err=%v", ok, err)
@@ -126,7 +140,7 @@ func TestPortableMemoryImportReportsMirrorFailure(t *testing.T) {
 }
 
 func TestPortableMemoryImportRefusesVolatileHistory(t *testing.T) {
-	st, err := NewMemory(filepath.Join(t.TempDir(), "panel-state.json"))
+	st, err := NewState(filepath.Join(t.TempDir(), "panel-state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,10 +148,10 @@ func TestPortableMemoryImportRefusesVolatileHistory(t *testing.T) {
 	data := PortableData{
 		FormatVersion: portableFormatVersion,
 		Policies:      DefaultStoragePolicies(),
-		Audit:         []AuditEntry{{ID: "would-be-lost"}},
+		Events:        []HistoryEvent{{Category: StorageEvents, Kind: "would-be-lost"}},
 	}
 	if err := st.ImportData(data); err == nil {
-		t.Fatal("ImportData accepted history that the memory mirror cannot persist")
+		t.Fatal("ImportData accepted history that the state file cannot persist")
 	}
 }
 

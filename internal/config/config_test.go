@@ -69,13 +69,13 @@ func TestLoadMinimal(t *testing.T) {
 	}
 }
 
-func TestLoadDataDirEmptyDisablesMirror(t *testing.T) {
+func TestLoadDataDirEmptyMakesStateProcessLocal(t *testing.T) {
 	cfg, err := load(t, `data_dir = ""`+"\n"+minimal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.DataDir != "" {
-		t.Errorf("data_dir = %q, want empty (mirror disabled)", cfg.DataDir)
+		t.Errorf("data_dir = %q, want empty (process-local state)", cfg.DataDir)
 	}
 }
 

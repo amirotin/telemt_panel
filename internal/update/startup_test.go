@@ -248,12 +248,12 @@ func TestReconcileStartup_ContinuesPastAPerTargetError(t *testing.T) {
 
 // TestReconcileStartupAcrossProcessRestart is the process-boundary
 // regression the audit called out (finding P1.1): a journal entry written
-// by one *Memory instance backed by a mirror file must still be there,
+// by one *Memory instance backed by a state file must still be there,
 // intact, for ReconcileStartup running against a brand new *Memory opened
 // on the same path — the exact sequence a real self-update restart goes
 // through (old process journals + Close()s, new process NewMemory()s the
 // same data_dir and calls ReconcileStartup before anything else). Without
-// the mirror covering the journal, every one of these subtests would see
+// the state file covering the journal, every one of these subtests would see
 // an empty journal and silently no-op.
 func TestReconcileStartupAcrossProcessRestart(t *testing.T) {
 	t.Run("panel restarting + matching running version reconciles to done", func(t *testing.T) {

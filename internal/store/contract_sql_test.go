@@ -16,11 +16,22 @@ import (
 
 func TestSQLiteStoreContract(t *testing.T) {
 	runStoreContract(t, func(t *testing.T) Store {
-		opened, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"), "")
+		history, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		return opened
+		state, err := NewState(filepath.Join(t.TempDir(), "panel-state.json"))
+		if err != nil {
+			_ = history.Close()
+			t.Fatal(err)
+		}
+		combined, err := NewComposite(state, history)
+		if err != nil {
+			_ = history.Close()
+			_ = state.Close()
+			t.Fatal(err)
+		}
+		return combined
 	})
 }
 
@@ -38,20 +49,30 @@ func runNetworkStoreContract(t *testing.T, driver, environment string) {
 	if dsn == "" {
 		t.Skipf("%s is not set; use a disposable test database", environment)
 	}
+	var sqlBackend *SQLite
 	st := runStoreContract(t, func(t *testing.T) Store {
 		opened, err := Open(OpenOptions{Driver: driver, DSN: dsn})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := clearSQLStoreForTest(opened.(*SQLite)); err != nil {
+		sqlBackend = opened.(*SQLite)
+		assertHistoryOnlyNetworkSchema(t, sqlBackend, driver)
+		if err := clearSQLStoreForTest(sqlBackend); err != nil {
 			_ = opened.Close()
 			t.Fatalf("reset %s contract database: %v", driver, err)
 		}
-		if err := opened.(*SQLite).loadPolicies(); err != nil {
+		state, err := NewState("")
+		if err != nil {
 			_ = opened.Close()
-			t.Fatalf("reload %s default policies: %v", driver, err)
+			t.Fatal(err)
 		}
-		return opened
+		combined, err := NewComposite(state, opened)
+		if err != nil {
+			_ = opened.Close()
+			_ = state.Close()
+			t.Fatal(err)
+		}
+		return combined
 	})
 
 	t.Run("portable_import", func(t *testing.T) {
@@ -64,14 +85,21 @@ func runNetworkStoreContract(t *testing.T, driver, environment string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sqlBackend := st.(*SQLite)
 		if err := clearSQLStoreForTest(sqlBackend); err != nil {
 			t.Fatal(err)
 		}
-		if err := portable.ImportData(before); err != nil {
+		freshState, err := NewState("")
+		if err != nil {
 			t.Fatal(err)
 		}
-		after, err := portable.ExportData()
+		fresh, err := NewComposite(freshState, sqlBackend)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fresh.ImportData(before); err != nil {
+			t.Fatal(err)
+		}
+		after, err := fresh.ExportData()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,21 +109,47 @@ func runNetworkStoreContract(t *testing.T, driver, environment string) {
 	})
 }
 
+func assertHistoryOnlyNetworkSchema(t *testing.T, st *SQLite, driver string) {
+	t.Helper()
+	query := `SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()`
+	if driver == "mysql" {
+		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = database()`
+	}
+	rows, err := st.db.Query(query)
+	if err != nil {
+		t.Fatalf("inspect %s schema: %v", driver, err)
+	}
+	defer rows.Close()
+	allowed := map[string]bool{
+		"schema_version": true,
+		"metric_points":  true,
+		"history_events": true,
+	}
+	seen := make(map[string]bool, len(allowed))
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			t.Fatal(err)
+		}
+		if !allowed[table] {
+			t.Fatalf("non-history table %q leaked into %s database", table, driver)
+		}
+		seen[table] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for table := range allowed {
+		if !seen[table] {
+			t.Fatalf("history table %q missing from %s database", table, driver)
+		}
+	}
+}
+
 func clearSQLStoreForTest(st *SQLite) error {
 	return sqlstore.WithTx(context.Background(), st.db, &sql.TxOptions{}, func(tx *sql.Tx) error {
-		for _, table := range []string{
-			"sessions", "subpage_nonces", "settings", "update_journal", "audit_entries", "metric_points", "history_events",
-			"auth_recovery_codes", "auth_webauthn_challenges", "auth_webauthn_credentials", "auth_webauthn_user",
-		} {
+		for _, table := range []string{"metric_points", "history_events"} {
 			if _, err := tx.Exec("DELETE FROM " + table); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.Exec(st.bind(`UPDATE auth_totp SET enabled = ?, secret = '', pending_secret = '', pending_expires = 0, last_timestep = -1 WHERE singleton = 1`), false); err != nil {
-			return err
-		}
-		for _, policy := range DefaultStoragePolicies() {
-			if _, err := tx.Exec(st.bind(`UPDATE storage_policies SET enabled = ?, retention_days = ? WHERE category = ?`), policy.Enabled, policy.RetentionDays, policy.Category); err != nil {
 				return err
 			}
 		}

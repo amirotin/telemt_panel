@@ -17,15 +17,15 @@ import (
 const networkStoreConnectTimeout = 10 * time.Second
 
 func init() {
-	Register("postgres", func(options OpenOptions) (Store, error) {
-		return newNetworkStore("pgx", options.DSN, options.MirrorPath, sqlstore.PostgresDialect{})
+	Register("postgres", func(options OpenOptions) (HistoryStore, error) {
+		return newNetworkStore("pgx", options.DSN, sqlstore.PostgresDialect{})
 	})
-	Register("mysql", func(options OpenOptions) (Store, error) {
-		return newNetworkStore("mysql", options.DSN, options.MirrorPath, sqlstore.MySQLDialect{})
+	Register("mysql", func(options OpenOptions) (HistoryStore, error) {
+		return newNetworkStore("mysql", options.DSN, sqlstore.MySQLDialect{})
 	})
 }
 
-func newNetworkStore(sqlDriver, dsn, mirrorPath string, dialect sqlstore.Dialect) (*SQLite, error) {
+func newNetworkStore(sqlDriver, dsn string, dialect sqlstore.Dialect) (*SQLite, error) {
 	if dsn == "" {
 		return nil, errors.New("database DSN is empty")
 	}
@@ -52,14 +52,6 @@ func newNetworkStore(sqlDriver, dsn, mirrorPath string, dialect sqlstore.Dialect
 	if err := opened.initializeSQL(migrationCtx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("initialize database: %w", err)
-	}
-	if err := opened.importMirror(mirrorPath); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("import memory mirror: %w", err)
-	}
-	if err := opened.loadPolicies(); err != nil {
-		db.Close()
-		return nil, err
 	}
 	opened.startMetricMaintenance()
 	return opened, nil

@@ -208,28 +208,38 @@ func openTransferStore(configPath string, importing bool) (store.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-	mirrorPath := ""
-	if cfg.Store.Driver == "memory" && importing && cfg.DataDir == "" {
-		return nil, errors.New("import into the memory store requires data_dir so state can be persisted")
+	if importing && cfg.DataDir == "" {
+		return nil, errors.New("store import requires data_dir so panel state can be persisted")
 	}
-	if cfg.Store.Driver == "memory" && cfg.DataDir != "" {
+	statePath := ""
+	if cfg.DataDir != "" {
 		if importing {
 			if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 				return nil, fmt.Errorf("create data directory: %w", err)
 			}
 		}
-		mirrorPath = filepath.Join(cfg.DataDir, mirrorStateFile)
+		statePath = filepath.Join(cfg.DataDir, panelStateFile)
 	}
-	st, err := store.Open(store.OpenOptions{
-		Driver:     cfg.Store.Driver,
-		Path:       cfg.Store.Path,
-		DSN:        cfg.Store.DSN,
-		MirrorPath: mirrorPath,
+	state, err := store.NewState(statePath)
+	if err != nil {
+		return nil, fmt.Errorf("open panel state: %w", err)
+	}
+	history, err := store.Open(store.OpenOptions{
+		Driver: cfg.Store.Driver,
+		Path:   cfg.Store.Path,
+		DSN:    cfg.Store.DSN,
 	})
 	if err != nil {
+		_ = state.Close()
 		return nil, fmt.Errorf("open configured %s store: %w", cfg.Store.Driver, err)
 	}
-	return st, nil
+	combined, err := store.NewComposite(state, history)
+	if err != nil {
+		_ = history.Close()
+		_ = state.Close()
+		return nil, fmt.Errorf("combine panel state and history: %w", err)
+	}
+	return combined, nil
 }
 
 func writeExclusiveFile(path string, data []byte) (err error) {
@@ -257,79 +267,88 @@ func writeExclusiveFile(path string, data []byte) (err error) {
 	return nil
 }
 
-// mirrorStateFile is the mirror's filename within cfg.DataDir.
-const mirrorStateFile = "panel-state.json"
+// panelStateFile is the control-plane state filename within cfg.DataDir.
+const panelStateFile = "panel-state.json"
 
-// newStore builds the state backend selected by cfg.Store.Driver.
+// newStore keeps mandatory panel state in panel-state.json and uses the
+// configured driver only for observability history.
 func newStore(cfg *config.Config) (store.Store, error) {
-	mirrorPath := resolveMirrorPath(cfg.DataDir)
-	if cfg.Store.Driver != "memory" {
-		mirrorPath = existingMirrorPath(cfg.DataDir)
+	statePath, err := resolveStatePath(cfg.DataDir)
+	if err != nil {
+		return nil, err
 	}
-	opened, err := store.Open(store.OpenOptions{
-		Driver:     cfg.Store.Driver,
-		Path:       cfg.Store.Path,
-		DSN:        cfg.Store.DSN,
-		MirrorPath: mirrorPath,
+	state, err := store.NewState(statePath)
+	if err != nil {
+		return nil, fmt.Errorf("open panel state: %w", err)
+	}
+	history, err := store.Open(store.OpenOptions{
+		Driver: cfg.Store.Driver,
+		Path:   cfg.Store.Path,
+		DSN:    cfg.Store.DSN,
 	})
 	if err == nil {
-		return opened, nil
+		combined, combineErr := store.NewComposite(state, history)
+		if combineErr != nil {
+			_ = history.Close()
+			_ = state.Close()
+			return nil, fmt.Errorf("configure history store: %w", combineErr)
+		}
+		return combined, nil
 	}
 	if (cfg.Store.Driver != "postgres" && cfg.Store.Driver != "mysql") || !store.IsConnectionUnavailable(err) {
+		_ = state.Close()
 		return nil, err
 	}
 
-	// A remote database outage must not take the administration plane down.
-	// The fallback is intentionally process-local: it is never mirrored or
-	// written back to the remote database, so recovery requires a restart and
-	// cannot create split-brain history.
-	temporary, memoryErr := store.Open(store.OpenOptions{Driver: "memory"})
+	// A remote database outage degrades history only. Authentication, settings
+	// and update recovery continue using the local state file.
+	temporaryHistory, memoryErr := store.Open(store.OpenOptions{Driver: "memory"})
 	if memoryErr != nil {
+		_ = state.Close()
 		return nil, fmt.Errorf("open temporary memory store: %w", memoryErr)
 	}
-	reason := cfg.Store.Driver + " database is unavailable; using temporary memory storage until restart"
-	slog.Warn("configured database unavailable; using temporary memory store", "driver", cfg.Store.Driver)
-	return store.WithFallback(temporary, cfg.Store.Driver, reason), nil
-}
-
-func existingMirrorPath(dataDir string) string {
-	if dataDir == "" {
-		return ""
+	combined, combineErr := store.NewComposite(state, temporaryHistory)
+	if combineErr != nil {
+		_ = temporaryHistory.Close()
+		_ = state.Close()
+		return nil, fmt.Errorf("configure temporary history store: %w", combineErr)
 	}
-	return filepath.Join(dataDir, mirrorStateFile)
+	reason := cfg.Store.Driver + " history database is unavailable; history is held in memory until restart while panel state remains local"
+	slog.Warn("configured history database unavailable; using temporary memory history", "driver", cfg.Store.Driver)
+	return store.WithFallback(combined, cfg.Store.Driver, reason), nil
 }
 
-// resolveMirrorPath turns a data_dir config value into the store mirror's
-// file path, creating the directory if it doesn't exist yet. An empty
-// dataDir means the mirror is disabled by config and returns "". A
-// directory that can't be created (read-only filesystem, e.g. a router) is
-// not fatal — it disables the mirror the same way, after a warning, so the
-// store doesn't then also warn on every single write for the rest of the
-// process's life. Either way, a "" result also gets the one-time
-// self-update caveat warning below — without a mirror, ReconcileStartup
-// has nothing to reconcile after a self-update restart (see its doc
-// comment).
-func resolveMirrorPath(dataDir string) string {
+// resolveStatePath creates the directory for the local control-plane state.
+// A configured but unwritable data_dir is fatal: silently losing auth or
+// update-recovery state would be less safe than refusing to start.
+func resolveStatePath(dataDir string) (string, error) {
 	if dataDir == "" {
-		warnMirrorDisabled()
-		return ""
+		warnStatePersistenceDisabled()
+		return "", nil
 	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		slog.Warn("state mirror disabled: cannot create data_dir", "path", dataDir, "error", err)
-		warnMirrorDisabled()
-		return ""
+		return "", fmt.Errorf("create panel state directory %s: %w", dataDir, err)
 	}
-	return filepath.Join(dataDir, mirrorStateFile)
+	probe, err := os.CreateTemp(dataDir, ".panel-state-probe-*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("verify panel state directory %s: %w", dataDir, err)
+	}
+	probePath := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(probePath)
+		return "", fmt.Errorf("verify panel state directory %s: %w", dataDir, err)
+	}
+	if err := os.Remove(probePath); err != nil {
+		return "", fmt.Errorf("clean panel state directory probe %s: %w", dataDir, err)
+	}
+	return filepath.Join(dataDir, panelStateFile), nil
 }
 
-// warnMirrorDisabled logs the one-time boot caveat that follows from
-// running with no store mirror: a panel self-update can still be applied,
-// but ReconcileStartup in the process that comes back after the restart
-// will find an empty journal and silently treat it as "nothing to
-// reconcile" (see update.ReconcileStartup's doc comment), so the
-// confirm/roll-back step of self-update is effectively skipped.
-func warnMirrorDisabled() {
-	slog.Warn("self-update confirmation will not survive a restart without data_dir")
+// warnStatePersistenceDisabled reports that an explicitly omitted data_dir
+// makes all control-plane state process-local, including authentication and
+// self-update recovery.
+func warnStatePersistenceDisabled() {
+	slog.Warn("panel state will not survive a restart without data_dir")
 }
 
 // runHashPassword implements the `panel hash-password` CLI subcommand:

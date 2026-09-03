@@ -34,8 +34,16 @@ func TestFallbackRuntimeStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer memory.Close()
-	fallback := WithFallback(memory, "postgres", "postgres database is unavailable")
+	state, err := NewState("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined, err := NewComposite(state, memory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer combined.Close()
+	fallback := WithFallback(combined, "postgres", "postgres database is unavailable")
 	status := Runtime(fallback, "postgres")
 	if status.ConfiguredDriver != "postgres" || status.ActiveDriver != "memory" || status.Error == "" {
 		t.Fatalf("Runtime fallback = %+v", status)

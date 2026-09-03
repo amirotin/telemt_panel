@@ -113,9 +113,9 @@ export const en: Dict = {
     reconnecting: "Reconnecting…",
     polling: "Polling",
     retryConnection: "Reconnect",
-    storageFallbackTitle: "Persistent database unavailable",
+    storageFallbackTitle: "History database unavailable",
     storageFallbackBody:
-      "The panel is temporarily writing to memory; database sessions and two-step sign-in are unavailable. Check {driver} and restart the panel; data will not be merged automatically.",
+      "New history is temporarily written to memory; sessions, two-step sign-in and panel settings do not depend on this database. Check {driver} and restart the panel; history will not be merged automatically.",
     storageFallbackAction: "Storage settings",
     placeholderDescription: "This screen arrives in one of the next tasks.",
   },
@@ -3946,9 +3946,11 @@ export const en: Dict = {
       storageNote:
         "Technical state is always retained. Every other category is optional, so the panel does not impose either history depth or disk usage.",
       storageMemoryWarning:
-        'The panel is currently using the RAM store. Policy settings survive through the panel mirror, but history is lost on restart. Select driver = "sqlite" for durable history.',
+        'History is currently held in RAM and is lost on restart. Select driver = "sqlite" for durable history.',
       storageFallbackWarning:
-        "The configured {driver} database is unavailable. Data is held only in memory until restart and will not be copied into the persistent database automatically.",
+        "The configured {driver} history database is unavailable. New history is held in memory until restart and is not copied back automatically.",
+      storageStateVolatileWarning:
+        "Panel state is process-local because data_dir is not configured. Sessions, security settings and update recovery will be lost on restart.",
       storageSize: "On disk",
       storageActive: "Recording",
       storageRecords: "Records",

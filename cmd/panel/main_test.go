@@ -42,7 +42,8 @@ func TestNewStoreFallsBackWhenPostgresIsUnavailable(t *testing.T) {
 	if store.Variant == "lite" {
 		t.Skip("network drivers are intentionally omitted from the lite build")
 	}
-	cfg := &config.Config{Store: config.StoreConfig{
+	dataDir := t.TempDir()
+	cfg := &config.Config{DataDir: dataDir, Store: config.StoreConfig{
 		Driver: "postgres",
 		DSN:    "postgres://127.0.0.1:1/telemt_panel?connect_timeout=1",
 	}}
@@ -50,16 +51,30 @@ func TestNewStoreFallsBackWhenPostgresIsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newStore: %v", err)
 	}
-	defer st.Close()
 	status := store.Runtime(st, cfg.Store.Driver)
 	if status.ConfiguredDriver != "postgres" || status.ActiveDriver != "memory" || status.Error == "" {
 		t.Fatalf("fallback status = %+v", status)
 	}
+	if err := st.SetSetting("fallback-state", "durable"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.NewState(filepath.Join(dataDir, panelStateFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if value, ok, err := reopened.GetSetting("fallback-state"); err != nil || !ok || value != "durable" {
+		t.Fatalf("state during history fallback = %q, %v, %v", value, ok, err)
+	}
 }
 
-func TestResolveMirrorPathEmptyDisablesMirror(t *testing.T) {
-	if got := resolveMirrorPath(""); got != "" {
-		t.Fatalf("resolveMirrorPath(\"\") = %q, want \"\"", got)
+func TestResolveStatePathEmptyUsesVolatileState(t *testing.T) {
+	got, err := resolveStatePath("")
+	if err != nil || got != "" {
+		t.Fatalf("resolveStatePath(\"\") = %q, %v; want empty path", got, err)
 	}
 }
 
@@ -81,7 +96,11 @@ func TestRunStoreExportImport(t *testing.T) {
 	sourceConfig := writeStoreCommandConfig(t, dir, "source.toml", sourceDB)
 	destinationConfig := writeStoreCommandConfig(t, dir, "destination.toml", destinationDB)
 
-	source, err := store.Open(store.OpenOptions{Driver: "sqlite", Path: sourceDB})
+	sourceSettings, err := config.Load(sourceConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := newStore(sourceSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +132,11 @@ func TestRunStoreExportImport(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 
-	destination, err := store.Open(store.OpenOptions{Driver: "sqlite", Path: destinationDB})
+	destinationSettings, err := config.Load(destinationConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination, err := newStore(destinationSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +158,7 @@ func TestRunStoreExportImportMemory(t *testing.T) {
 	if err := os.MkdirAll(sourceData, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	source, err := store.NewMemory(filepath.Join(sourceData, mirrorStateFile))
+	source, err := store.NewState(filepath.Join(sourceData, panelStateFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +177,7 @@ func TestRunStoreExportImportMemory(t *testing.T) {
 	if err := runStoreCommand([]string{"import", "--config", destinationConfig, "--in", dump}); err != nil {
 		t.Fatalf("import memory: %v", err)
 	}
-	destination, err := store.NewMemory(filepath.Join(destinationData, mirrorStateFile))
+	destination, err := store.NewState(filepath.Join(destinationData, panelStateFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +213,7 @@ password_hash = "hash"
 [store]
 driver = "sqlite"
 path = %q
-`, filepath.Join(dir, "data"), databasePath)
+`, filepath.Join(dir, name+"-data"), databasePath)
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -219,16 +242,19 @@ driver = "memory"
 	return path
 }
 
-func TestResolveMirrorPathCreatesDataDir(t *testing.T) {
+func TestResolveStatePathCreatesDataDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "does", "not", "exist", "yet")
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("precondition: %q already exists", dir)
 	}
 
-	got := resolveMirrorPath(dir)
-	want := filepath.Join(dir, mirrorStateFile)
+	got, err := resolveStatePath(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, panelStateFile)
 	if got != want {
-		t.Fatalf("resolveMirrorPath(%q) = %q, want %q", dir, got, want)
+		t.Fatalf("resolveStatePath(%q) = %q, want %q", dir, got, want)
 	}
 
 	info, err := os.Stat(dir)
@@ -238,9 +264,16 @@ func TestResolveMirrorPathCreatesDataDir(t *testing.T) {
 	if !info.IsDir() {
 		t.Fatalf("%q was created but is not a directory", dir)
 	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("state path probe left files behind: %v", entries)
+	}
 }
 
-func TestResolveMirrorPathUnwritableParentDisablesMirror(t *testing.T) {
+func TestResolveStatePathUnwritableParentFails(t *testing.T) {
 	// A regular file in place of a would-be parent directory makes
 	// MkdirAll fail regardless of the test's own user/permissions (e.g.
 	// running as root), unlike a plain permission-bit test would.
@@ -250,8 +283,7 @@ func TestResolveMirrorPathUnwritableParentDisablesMirror(t *testing.T) {
 	}
 	dataDir := filepath.Join(blocker, "sub")
 
-	got := resolveMirrorPath(dataDir)
-	if got != "" {
-		t.Fatalf("resolveMirrorPath(%q) = %q, want \"\" (mkdir must fail, not panic or error out)", dataDir, got)
+	if got, err := resolveStatePath(dataDir); err == nil || got != "" {
+		t.Fatalf("resolveStatePath(%q) = %q, %v; want a fatal directory error", dataDir, got, err)
 	}
 }

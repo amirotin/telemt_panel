@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -370,9 +371,9 @@ func TestRingTruncation(t *testing.T) {
 	})
 }
 
-func TestMirrorRoundTrip(t *testing.T) {
+func TestStateFileRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 
 	m1, err := NewMemory(path)
 	if err != nil {
@@ -391,17 +392,17 @@ func TestMirrorRoundTrip(t *testing.T) {
 	if err := m1.AppendUpdateJournal(UpdateJournalEntry{Target: "panel", RunID: "r1", Phase: "restarting", VersionFrom: "v1.0.0", VersionTo: "v2.0.0"}); err != nil {
 		t.Fatalf("AppendUpdateJournal: %v", err)
 	}
-	// Metrics are explicitly excluded from the mirror.
+	// Metrics are explicitly excluded from the state file.
 	if err := m1.RecordMetric("rx_bytes", MetricPoint{TS: 1, Value: 1}); err != nil {
 		t.Fatalf("RecordMetric: %v", err)
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		t.Fatalf("stat mirror file: %v", err)
+		t.Fatalf("stat state file: %v", err)
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("mirror file perm = %o, want 0600", perm)
+		t.Fatalf("state file perm = %o, want 0600", perm)
 	}
 
 	m2, err := NewMemory(path)
@@ -440,24 +441,24 @@ func TestMirrorRoundTrip(t *testing.T) {
 		t.Fatalf("MetricRange after reopen: %v", err)
 	}
 	if len(points) != 0 {
-		t.Fatalf("MetricRange after reopen = %+v, want empty (metrics not mirrored)", points)
+		t.Fatalf("MetricRange after reopen = %+v, want empty (metrics not persisted)", points)
 	}
 }
 
-// TestMirrorJournalRingCapTruncationOnLoad checks that NewMemory defensively
-// truncates a mirrored journal that holds more than journalCap entries for a
+// TestStateFileJournalRingCapTruncationOnLoad checks that NewMemory defensively
+// truncates a state-file journal that holds more than journalCap entries for a
 // target — e.g. a file written by a future version with a larger cap, or
-// hand-edited — rather than trusting the mirror's own bound.
-func TestMirrorJournalRingCapTruncationOnLoad(t *testing.T) {
+// hand-edited — rather than trusting the state file's own bound.
+func TestStateFileJournalRingCapTruncationOnLoad(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 
 	total := journalCap + 10
 	entries := make([]UpdateJournalEntry, total)
 	for i := range entries {
 		entries[i] = UpdateJournalEntry{Target: "telemt", Phase: fmt.Sprintf("%d", i)}
 	}
-	mf := mirrorFile{Journal: map[string][]UpdateJournalEntry{"telemt": entries}}
+	mf := stateFile{Journal: map[string][]UpdateJournalEntry{"telemt": entries}}
 	data, err := json.Marshal(mf)
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -475,7 +476,7 @@ func TestMirrorJournalRingCapTruncationOnLoad(t *testing.T) {
 		t.Fatalf("ListUpdateJournal: %v", err)
 	}
 	if len(got) != journalCap {
-		t.Fatalf("len(ListUpdateJournal) = %d, want %d (oversized mirrored journal must be truncated on load)", len(got), journalCap)
+		t.Fatalf("len(ListUpdateJournal) = %d, want %d (oversized state-file journal must be truncated on load)", len(got), journalCap)
 	}
 	if got[0].Phase != fmt.Sprintf("%d", total-1) {
 		t.Fatalf("newest entry Phase = %q, want %q", got[0].Phase, fmt.Sprintf("%d", total-1))
@@ -486,7 +487,7 @@ func TestMirrorJournalRingCapTruncationOnLoad(t *testing.T) {
 	}
 }
 
-func TestMirrorDisabled(t *testing.T) {
+func TestStateFileDisabled(t *testing.T) {
 	m, err := NewMemory("")
 	if err != nil {
 		t.Fatalf("NewMemory(\"\"): %v", err)
@@ -494,11 +495,11 @@ func TestMirrorDisabled(t *testing.T) {
 	if err := m.PutSession(Session{IDHash: "a"}); err != nil {
 		t.Fatalf("PutSession: %v", err)
 	}
-	// No mirror path was given, so there's nothing further to assert here
+	// No state-file path was given, so there's nothing further to assert here
 	// beyond PutSession not erroring or panicking while trying to persist.
 }
 
-func TestMirrorMissingFileStartsEmpty(t *testing.T) {
+func TestStateFileMissingFileStartsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "does-not-exist.json")
 
@@ -508,25 +509,69 @@ func TestMirrorMissingFileStartsEmpty(t *testing.T) {
 	}
 	sessions, err := m.ListSessions()
 	if err != nil || len(sessions) != 0 {
-		t.Fatalf("ListSessions on missing mirror = %+v err:%v, want empty nil", sessions, err)
+		t.Fatalf("ListSessions on missing state file = %+v err:%v, want empty nil", sessions, err)
 	}
 }
 
-func TestMirrorCorruptFileFailsClosed(t *testing.T) {
+func TestStateFileCorruptFileFailsClosed(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
 	if _, err := NewMemory(path); err == nil {
-		t.Fatal("NewMemory accepted a corrupt persistent mirror")
+		t.Fatal("NewMemory accepted a corrupt persistent state file")
 	}
 }
 
-func TestMirrorInvalidTOTPStateFailsClosed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mirror.json")
-	mf := mirrorFile{TOTP: TOTPState{Enabled: true, LastTimestep: -1}}
+func TestStateMutationsRollbackWhenPersistenceFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
+	state, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetSetting("theme", "dark"); err == nil {
+		t.Fatal("SetSetting hid a state-file write failure")
+	}
+	if _, ok, err := state.GetSetting("theme"); err != nil || ok {
+		t.Fatalf("failed setting mutation survived: ok=%v err=%v", ok, err)
+	}
+	if err := state.AppendAudit(AuditEntry{ID: "failed"}); err == nil {
+		t.Fatal("AppendAudit hid a state-file write failure")
+	}
+	if entries, err := state.ListAudit(0); err != nil || len(entries) != 0 {
+		t.Fatalf("failed audit mutation survived: %+v, %v", entries, err)
+	}
+	policies, err := state.ListStoragePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range policies {
+		if policies[i].Category == StorageTraffic {
+			policies[i].Enabled = false
+		}
+	}
+	if err := state.ReplaceStoragePolicies(policies); err == nil {
+		t.Fatal("ReplaceStoragePolicies hid a state-file write failure")
+	}
+	current, err := state.ListStoragePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, policy := range current {
+		if policy.Category == StorageTraffic && !policy.Enabled {
+			t.Fatal("failed policy mutation survived")
+		}
+	}
+}
+
+func TestStateFileInvalidTOTPStateFailsClosed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
+	mf := stateFile{TOTP: TOTPState{Enabled: true, LastTimestep: -1}}
 	data, err := json.Marshal(mf)
 	if err != nil {
 		t.Fatal(err)
@@ -539,10 +584,10 @@ func TestMirrorInvalidTOTPStateFailsClosed(t *testing.T) {
 	}
 }
 
-func TestMirrorDuplicateRecoveryHashFailsClosed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mirror.json")
+func TestStateFileDuplicateRecoveryHashFailsClosed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
 	hash := strings.Repeat("ab", 32)
-	mf := mirrorFile{
+	mf := stateFile{
 		TOTP:          TOTPState{Enabled: true, Secret: "secret", LastTimestep: -1},
 		RecoveryCodes: []string{hash, hash},
 	}
@@ -558,8 +603,8 @@ func TestMirrorDuplicateRecoveryHashFailsClosed(t *testing.T) {
 	}
 }
 
-func TestMirrorPersistsWebAuthnState(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mirror.json")
+func TestStateFilePersistsCredentialsButNotWebAuthnChallenges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
 	m, err := NewMemory(path)
 	if err != nil {
 		t.Fatal(err)
@@ -571,12 +616,12 @@ func TestMirrorPersistsWebAuthnState(t *testing.T) {
 	if _, err := m.GetOrCreateWebAuthnUserHandle(handle); err != nil {
 		t.Fatal(err)
 	}
-	id := base64.RawURLEncoding.EncodeToString([]byte("mirrored-credential"))
+	id := base64.RawURLEncoding.EncodeToString([]byte("state-credential"))
 	created := time.Now().UTC().Truncate(time.Second)
 	if err := m.AddWebAuthnCredential(WebAuthnCredential{ID: id, Name: "Phone", CredentialData: []byte(`{"id":"phone"}`), Created: created}); err != nil {
 		t.Fatal(err)
 	}
-	flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte("mirrored-flow")))
+	flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte("state-flow")))
 	if err := m.PutWebAuthnChallenge(WebAuthnChallenge{FlowHash: flowHash, Kind: "login", SessionData: []byte(`{"challenge":"one"}`), Origin: "https://panel.example", RPID: "panel.example", Expires: created.Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
@@ -591,15 +636,56 @@ func TestMirrorPersistsWebAuthnState(t *testing.T) {
 	defer reopened.Close()
 	gotHandle, err := reopened.GetOrCreateWebAuthnUserHandle(make([]byte, webAuthnUserHandleBytes))
 	if err != nil || string(gotHandle) != string(handle) {
-		t.Fatalf("mirrored handle = %x, %v", gotHandle, err)
+		t.Fatalf("state-file handle = %x, %v", gotHandle, err)
 	}
 	credentials, err := reopened.ListWebAuthnCredentials()
 	if err != nil || len(credentials) != 1 || credentials[0].ID != id || credentials[0].Name != "Phone" {
-		t.Fatalf("mirrored credentials = %+v, %v", credentials, err)
+		t.Fatalf("state-file credentials = %+v, %v", credentials, err)
 	}
 	challenge, err := reopened.ConsumeWebAuthnChallenge(flowHash, "login", created)
-	if err != nil || challenge.Origin != "https://panel.example" {
-		t.Fatalf("mirrored challenge = %+v, %v", challenge, err)
+	if !errors.Is(err, ErrWebAuthnChallenge) || challenge.FlowHash != "" {
+		t.Fatalf("process-local challenge survived restart = %+v, %v", challenge, err)
+	}
+}
+
+func TestStateFilePersistsBoundedAudit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
+	state, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < auditCap+1; i++ {
+		if err := state.AppendAudit(AuditEntry{ID: fmt.Sprintf("audit-%d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := reopened.ListAudit(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != auditCap || entries[0].ID != fmt.Sprintf("audit-%d", auditCap) || entries[len(entries)-1].ID != "audit-1" {
+		t.Fatalf("persisted audit ring = first %q last %q len %d", entries[0].ID, entries[len(entries)-1].ID, len(entries))
+	}
+	if err := reopened.PurgeAudit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	afterPurge, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer afterPurge.Close()
+	if entries, err := afterPurge.ListAudit(0); err != nil || len(entries) != 0 {
+		t.Fatalf("persisted audit after purge = %+v, %v", entries, err)
 	}
 }
 
@@ -625,32 +711,32 @@ func (f *fakeTimer) fire() {
 	}
 }
 
-// readMirrorLastSeen reads path off disk and returns idHash's LastSeen, for
-// asserting exactly when a touch became visible in the mirror.
-func readMirrorLastSeen(t *testing.T, path, idHash string) time.Time {
+// readStateLastSeen reads path off disk and returns idHash's LastSeen, for
+// asserting exactly when a touch became visible in the state file.
+func readStateLastSeen(t *testing.T, path, idHash string) time.Time {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-	var mf mirrorFile
+	var mf stateFile
 	if err := json.Unmarshal(data, &mf); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	s, ok := mf.Sessions[idHash]
 	if !ok {
-		t.Fatalf("session %q not in mirror", idHash)
+		t.Fatalf("session %q not in state file", idHash)
 	}
 	return s.LastSeen
 }
 
 // TestTouchDebounce drives a touch storm through an injected fake timer and
 // checks that it coalesces into exactly one scheduled flush, that the
-// mirror is untouched until that flush fires, and that firing it writes the
+// state file is untouched until that flush fires, and that firing it writes the
 // latest state.
 func TestTouchDebounce(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 	m, err := NewMemory(path)
 	if err != nil {
 		t.Fatalf("NewMemory: %v", err)
@@ -660,8 +746,8 @@ func TestTouchDebounce(t *testing.T) {
 	if err := m.PutSession(Session{IDHash: "a", Created: base, LastSeen: base}); err != nil {
 		t.Fatalf("PutSession: %v", err)
 	}
-	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(base) {
-		t.Fatalf("initial mirror LastSeen = %v, want %v", got, base)
+	if got := readStateLastSeen(t, path, "a"); !got.Equal(base) {
+		t.Fatalf("initial state-file LastSeen = %v, want %v", got, base)
 	}
 
 	ft := &fakeTimer{}
@@ -678,15 +764,15 @@ func TestTouchDebounce(t *testing.T) {
 	if ft.scheduled != 1 {
 		t.Fatalf("scheduleTimer called %d times, want 1 (storm should coalesce)", ft.scheduled)
 	}
-	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(base) {
-		t.Fatalf("mirror LastSeen before flush = %v, want unchanged %v", got, base)
+	if got := readStateLastSeen(t, path, "a"); !got.Equal(base) {
+		t.Fatalf("state-file LastSeen before flush = %v, want unchanged %v", got, base)
 	}
 
 	// Firing the debounce timer flushes the latest state once.
 	ft.fire()
 	wantLatest := base.Add(5 * time.Second)
-	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(wantLatest) {
-		t.Fatalf("mirror LastSeen after flush = %v, want %v", got, wantLatest)
+	if got := readStateLastSeen(t, path, "a"); !got.Equal(wantLatest) {
+		t.Fatalf("state-file LastSeen after flush = %v, want %v", got, wantLatest)
 	}
 
 	// A touch after the window flushed arms a new window.
@@ -703,7 +789,7 @@ func TestTouchDebounce(t *testing.T) {
 // pending, rather than waiting on the debounce window.
 func TestTouchDebounceImmediateFamiliesUnaffected(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 	m, err := NewMemory(path)
 	if err != nil {
 		t.Fatalf("NewMemory: %v", err)
@@ -729,7 +815,7 @@ func TestTouchDebounceImmediateFamiliesUnaffected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-	var mf mirrorFile
+	var mf stateFile
 	if err := json.Unmarshal(data, &mf); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
@@ -744,12 +830,12 @@ func TestTouchDebounceImmediateFamiliesUnaffected(t *testing.T) {
 
 // TestAppendUpdateJournalWritesThroughImmediately checks that, unlike
 // TouchSession, AppendUpdateJournal is not subject to the touch debounce:
-// it must be visible in the mirror file as soon as it returns, even while a
+// it must be visible in the state file as soon as it returns, even while a
 // touch flush is pending (update runs are rare — no flash-wear concern, so
 // there is no reason to defer them).
 func TestAppendUpdateJournalWritesThroughImmediately(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 	m, err := NewMemory(path)
 	if err != nil {
 		t.Fatalf("NewMemory: %v", err)
@@ -774,12 +860,12 @@ func TestAppendUpdateJournalWritesThroughImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-	var mf mirrorFile
+	var mf stateFile
 	if err := json.Unmarshal(data, &mf); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if len(mf.Journal["panel"]) != 1 || mf.Journal["panel"][0].RunID != "r1" {
-		t.Fatalf("mirror Journal[panel] = %+v, want one entry for r1 (AppendUpdateJournal must write through immediately)", mf.Journal["panel"])
+		t.Fatalf("state-file Journal[panel] = %+v, want one entry for r1 (AppendUpdateJournal must write through immediately)", mf.Journal["panel"])
 	}
 	// The pending touch flush must be untouched by the immediate write.
 	if ft.scheduled != 1 {
@@ -791,7 +877,7 @@ func TestAppendUpdateJournalWritesThroughImmediately(t *testing.T) {
 // written synchronously by Close, without waiting for the timer to fire.
 func TestTouchDebounceFlushedOnClose(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 	m, err := NewMemory(path)
 	if err != nil {
 		t.Fatalf("NewMemory: %v", err)
@@ -808,15 +894,15 @@ func TestTouchDebounceFlushedOnClose(t *testing.T) {
 	if err := m.TouchSession("a", touched); err != nil {
 		t.Fatalf("TouchSession: %v", err)
 	}
-	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(base) {
-		t.Fatalf("mirror LastSeen before Close = %v, want unchanged %v", got, base)
+	if got := readStateLastSeen(t, path, "a"); !got.Equal(base) {
+		t.Fatalf("state-file LastSeen before Close = %v, want unchanged %v", got, base)
 	}
 
 	if err := m.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if got := readMirrorLastSeen(t, path, "a"); !got.Equal(touched) {
-		t.Fatalf("mirror LastSeen after Close = %v, want %v", got, touched)
+	if got := readStateLastSeen(t, path, "a"); !got.Equal(touched) {
+		t.Fatalf("state-file LastSeen after Close = %v, want %v", got, touched)
 	}
 	if ft.pending != nil {
 		t.Fatalf("Close left a pending timer callback armed, want stopped")
@@ -829,15 +915,15 @@ func TestTouchDebounceFlushedOnClose(t *testing.T) {
 // debounce so the real timer fires naturally within the test's own bounded
 // wait rather than via an arbitrary sleep. It asserts Close's
 // flush-on-close guarantee holds even mid-storm: the session is present in
-// the mirror once everything has quiesced.
+// the state file once everything has quiesced.
 func TestTouchDebounceConcurrentRace(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mirror.json")
+	path := filepath.Join(dir, "panel-state.json")
 	m, err := NewMemory(path)
 	if err != nil {
 		t.Fatalf("NewMemory: %v", err)
 	}
-	m.mirrorDebounce = time.Millisecond // real scheduleTimer (time.AfterFunc), just fast
+	m.stateDebounce = time.Millisecond // real scheduleTimer (time.AfterFunc), just fast
 
 	if err := m.PutSession(Session{IDHash: "a", Created: time.Now()}); err != nil {
 		t.Fatalf("PutSession: %v", err)
@@ -890,8 +976,8 @@ func TestTouchDebounceConcurrentRace(t *testing.T) {
 		t.Fatalf("Close (final): %v", err)
 	}
 
-	if got := readMirrorLastSeen(t, path, "a"); got.IsZero() {
-		t.Fatalf("mirror LastSeen after storm+Close = zero, want the flush-on-close guarantee to hold")
+	if got := readStateLastSeen(t, path, "a"); got.IsZero() {
+		t.Fatalf("state-file LastSeen after storm+Close = zero, want the flush-on-close guarantee to hold")
 	}
 }
 

@@ -102,7 +102,7 @@ func (m *Memory) GetOrCreateWebAuthnUserHandle(candidate []byte) ([]byte, error)
 		return append([]byte(nil), m.webauthnUserHandle...), nil
 	}
 	m.webauthnUserHandle = append([]byte(nil), candidate...)
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.webauthnUserHandle = nil
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (m *Memory) AddWebAuthnCredential(credential WebAuthnCredential) error {
 		return ErrWebAuthnCredentialExists
 	}
 	m.webauthnCredentials[credential.ID] = cloneWebAuthnCredential(credential)
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		delete(m.webauthnCredentials, credential.ID)
 		return err
 	}
@@ -155,7 +155,7 @@ func (m *Memory) DeleteWebAuthnCredential(id string) error {
 		return ErrWebAuthnCredentialNotFound
 	}
 	delete(m.webauthnCredentials, id)
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.webauthnCredentials[id] = credential
 		return err
 	}
@@ -176,7 +176,7 @@ func (m *Memory) UpdateWebAuthnCredential(credential WebAuthnCredential, oldSign
 		return ErrWebAuthnCredentialChanged
 	}
 	m.webauthnCredentials[credential.ID] = cloneWebAuthnCredential(credential)
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.webauthnCredentials[credential.ID] = previous
 		return err
 	}
@@ -189,21 +189,16 @@ func (m *Memory) PutWebAuthnChallenge(challenge WebAuthnChallenge) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	previousChallenges := cloneWebAuthnChallenges(m.webauthnChallenges)
 	for hash, existing := range m.webauthnChallenges {
 		if !existing.Expires.After(time.Now()) {
 			delete(m.webauthnChallenges, hash)
 		}
 	}
 	if _, replacing := m.webauthnChallenges[challenge.FlowHash]; !replacing && len(m.webauthnChallenges) >= webAuthnChallengeLimit {
-		m.webauthnChallenges = previousChallenges
 		return ErrWebAuthnChallengeLimit
 	}
+	challenge.SessionData = append([]byte(nil), challenge.SessionData...)
 	m.webauthnChallenges[challenge.FlowHash] = challenge
-	if err := m.writeMirrorLocked(); err != nil {
-		m.webauthnChallenges = previousChallenges
-		return err
-	}
 	return nil
 }
 
@@ -215,10 +210,6 @@ func (m *Memory) ConsumeWebAuthnChallenge(flowHash, kind string, now time.Time) 
 		return WebAuthnChallenge{}, ErrWebAuthnChallenge
 	}
 	delete(m.webauthnChallenges, flowHash)
-	if err := m.writeMirrorLocked(); err != nil {
-		m.webauthnChallenges[flowHash] = challenge
-		return WebAuthnChallenge{}, err
-	}
 	if challenge.Kind != kind || !challenge.Expires.After(now) {
 		return WebAuthnChallenge{}, ErrWebAuthnChallenge
 	}

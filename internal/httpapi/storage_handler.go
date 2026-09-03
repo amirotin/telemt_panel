@@ -17,6 +17,7 @@ type storageSettingsView struct {
 	Stats            store.StorageStats    `json:"stats"`
 	ConfiguredDriver string                `json:"configured_driver"`
 	ActiveDriver     string                `json:"active_driver"`
+	StateDurable     bool                  `json:"state_durable"`
 	StoreError       string                `json:"store_error,omitempty"`
 }
 
@@ -45,6 +46,7 @@ func (s *Server) handleGetStorageSettings(w http.ResponseWriter, _ *http.Request
 		Stats:            stats,
 		ConfiguredDriver: runtime.ConfiguredDriver,
 		ActiveDriver:     runtime.ActiveDriver,
+		StateDurable:     s.st.StateDurable(),
 		StoreError:       runtime.Error,
 	})
 }

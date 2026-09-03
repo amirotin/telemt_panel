@@ -35,7 +35,7 @@ func SessionExpired(age, ttl time.Duration) bool {
 // login regardless of how active the admin was — and makes the admin's
 // username and the session's store key available via UsernameFromContext /
 // SessionIDHashFromContext.
-func RequireSession(st store.Store, cfg *config.Config) func(http.Handler) http.Handler {
+func RequireSession(st store.StateStore, cfg *config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(CookieName)

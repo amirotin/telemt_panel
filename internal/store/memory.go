@@ -32,16 +32,16 @@ const (
 // ring size stays fixed regardless of uptime.
 const MetricCap = 360
 
-// touchMirrorDebounce caps how often a TouchSession-triggered mirror write
+// touchStateDebounce caps how often a TouchSession-triggered state-file write
 // happens: at most once per this interval, however many touches land in
 // between.
-const touchMirrorDebounce = 30 * time.Second
+const touchStateDebounce = 30 * time.Second
 
-// Memory is an in-memory Store for the router profile: no flash writes,
-// bounded by ring buffers. Sessions, subpage nonces, settings and the
-// update journal can optionally be mirrored to a JSON file so they survive
-// a process restart. TOTP state and recovery hashes are part of that mandatory
-// mirrored subset; audit and metric history remain process-lifetime only.
+// Memory is the local control-plane state implementation and the bounded
+// history implementation used by the memory profile. Separate instances are
+// composed at runtime: the state instance persists sessions, settings, auth,
+// policies, audit and update recovery to JSON, while the history instance
+// keeps metrics/events for this process only.
 type Memory struct {
 	mu sync.Mutex
 
@@ -60,15 +60,15 @@ type Memory struct {
 	webauthnChallenges  map[string]WebAuthnChallenge
 	nextEventID         int64
 
-	mirrorPath string
+	statePath string
 
-	// Touch debounce: TouchSession marks the mirror dirty and defers the
-	// write to a timer that fires at most once per mirrorDebounce, instead
+	// Touch debounce: TouchSession marks the state file dirty and defers the
+	// write to a timer that fires at most once per stateDebounce, instead
 	// of writing on every touch. All other mutations still write through
-	// saveMirrorLocked immediately. scheduleTimer is the injection point
+	// saveStateLocked immediately. scheduleTimer is the injection point
 	// tests use to control the timer deterministically, without real
 	// waits; it returns a stop func, mirroring time.Timer.Stop.
-	mirrorDebounce time.Duration
+	stateDebounce  time.Duration
 	touchDirty     bool
 	stopTouchTimer func()
 	scheduleTimer  func(d time.Duration, f func()) (stop func())
@@ -82,29 +82,43 @@ func (m *Memory) Info() Info {
 	return Info{Driver: "memory", Durable: false, Remote: false, Schema: 0, SizeHint: 0}
 }
 
-// mirrorFile is the on-disk shape of the mirrored subset of state
-// (sessions, auth state, subpage nonces, settings and the update journal).
-type mirrorFile struct {
+// StateDurable reports whether this state instance writes panel-state.json.
+func (m *Memory) StateDurable() bool { return m.statePath != "" }
+
+// stateFile is the on-disk shape of the local control-plane state.
+type stateFile struct {
 	Sessions            map[string]Session              `json:"sessions"`
 	SubpageNonces       map[string]string               `json:"subpage_nonces"`
 	Settings            map[string]string               `json:"settings"`
 	Journal             map[string][]UpdateJournalEntry `json:"journal"`
 	Policies            []StoragePolicy                 `json:"storage_policies,omitempty"`
+	Audit               []AuditEntry                    `json:"audit,omitempty"`
 	TOTP                TOTPState                       `json:"totp,omitempty"`
 	RecoveryCodes       []string                        `json:"totp_recovery_codes,omitempty"`
 	WebAuthnUserHandle  []byte                          `json:"webauthn_user_handle,omitempty"`
 	WebAuthnCredentials map[string]WebAuthnCredential   `json:"webauthn_credentials,omitempty"`
-	WebAuthnChallenges  map[string]WebAuthnChallenge    `json:"webauthn_challenges,omitempty"`
+	// Kept only so state files written by the pre-split development build can
+	// be decoded. In-flight ceremonies are deliberately discarded on startup.
+	WebAuthnChallenges map[string]WebAuthnChallenge `json:"webauthn_challenges,omitempty"`
 }
 
-// NewMemory creates an in-memory Store. If mirrorPath is non-empty,
-// sessions, subpage nonces, settings and the update journal are loaded
-// from it now and persisted back to it on every subsequent mutation of
-// those families (touches are debounced, see touchMirrorDebounce). A
-// missing mirror starts empty. An existing unreadable or corrupt mirror fails
+// NewState opens the mandatory local control-plane state file.
+func NewState(path string) (*Memory, error) {
+	return NewMemory(path)
+}
+
+// NewMemoryHistory creates a bounded, process-local history store.
+func NewMemoryHistory() (*Memory, error) {
+	return NewMemory("")
+}
+
+// NewMemory creates a memory-backed Store. If statePath is non-empty,
+// control-plane state is loaded from it now and persisted back on every
+// subsequent mutation (session touches are debounced). A
+// missing state file starts empty. An existing unreadable or corrupt file fails
 // startup: otherwise damaged persisted TOTP state could silently disappear and
 // weaken authentication.
-func NewMemory(mirrorPath string) (*Memory, error) {
+func NewMemory(statePath string) (*Memory, error) {
 	m := &Memory{
 		sessions:            make(map[string]Session),
 		journal:             make(map[string][]UpdateJournalEntry),
@@ -116,29 +130,29 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 		recoveryCodes:       make(map[string]struct{}),
 		webauthnCredentials: make(map[string]WebAuthnCredential),
 		webauthnChallenges:  make(map[string]WebAuthnChallenge),
-		mirrorPath:          mirrorPath,
-		mirrorDebounce:      touchMirrorDebounce,
+		statePath:           statePath,
+		stateDebounce:       touchStateDebounce,
 		scheduleTimer: func(d time.Duration, f func()) func() {
 			t := time.AfterFunc(d, f)
 			return func() { t.Stop() }
 		},
 	}
 
-	if mirrorPath == "" {
+	if statePath == "" {
 		return m, nil
 	}
 
-	data, err := os.ReadFile(mirrorPath)
+	data, err := os.ReadFile(statePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return m, nil
 		}
-		return nil, fmt.Errorf("store: mirror file is unreadable: %w", err)
+		return nil, fmt.Errorf("store: state file is unreadable: %w", err)
 	}
 
-	var mf mirrorFile
+	var mf stateFile
 	if err := json.Unmarshal(data, &mf); err != nil {
-		return nil, fmt.Errorf("store: mirror file is corrupt: %w", err)
+		return nil, fmt.Errorf("store: state file is corrupt: %w", err)
 	}
 	if mf.Sessions != nil {
 		m.sessions = mf.Sessions
@@ -151,13 +165,18 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 	}
 	if len(mf.Policies) > 0 {
 		if err := ValidateStoragePolicies(mf.Policies); err != nil {
-			slog.Warn("store: mirror storage policies invalid, using defaults", "path", mirrorPath, "error", err)
+			slog.Warn("store: state-file storage policies invalid, using defaults", "path", statePath, "error", err)
 		} else {
 			m.policies = policyMap(mf.Policies)
 		}
 	}
+	if len(mf.Audit) > auditCap {
+		mf.Audit = mf.Audit[len(mf.Audit)-auditCap:]
+	}
+	m.audit = append([]AuditEntry(nil), mf.Audit...)
+	m.pruneAuditLocked(time.Now())
 	if mf.Journal != nil {
-		// Defensive ring-cap truncation: the mirrored file is trusted
+		// Defensive ring-cap truncation: the persisted file is trusted
 		// less than an append made through this process, so a
 		// hand-edited or foreign-written file holding more than
 		// journalCap entries for a target must not defeat the ring
@@ -172,88 +191,97 @@ func NewMemory(mirrorPath string) (*Memory, error) {
 	m.totp = mf.TOTP
 	for _, hash := range mf.RecoveryCodes {
 		if !validRecoveryCodeKey(hash) {
-			return nil, fmt.Errorf("store: mirror contains an invalid TOTP recovery hash")
+			return nil, fmt.Errorf("store: state file contains an invalid TOTP recovery hash")
 		}
 		if _, duplicate := m.recoveryCodes[hash]; duplicate {
-			return nil, fmt.Errorf("store: mirror contains a duplicate TOTP recovery hash")
+			return nil, fmt.Errorf("store: state file contains a duplicate TOTP recovery hash")
 		}
 		m.recoveryCodes[hash] = struct{}{}
 	}
 	if err := validatePortableTOTP(m.totp, recoveryCodeHashes(m.recoveryCodes)); err != nil {
-		return nil, fmt.Errorf("store: mirror contains invalid TOTP state: %w", err)
+		return nil, fmt.Errorf("store: state file contains invalid TOTP state: %w", err)
 	}
 	m.totp.RecoveryCodes = len(m.recoveryCodes)
 	m.webauthnUserHandle = append([]byte(nil), mf.WebAuthnUserHandle...)
 	if mf.WebAuthnCredentials != nil {
 		m.webauthnCredentials = cloneWebAuthnCredentials(mf.WebAuthnCredentials)
 	}
-	if mf.WebAuthnChallenges != nil {
-		m.webauthnChallenges = cloneWebAuthnChallenges(mf.WebAuthnChallenges)
-	}
-	if err := validatePortableWebAuthn(m.webauthnUserHandle, m.webauthnCredentials, m.webauthnChallenges); err != nil {
-		return nil, fmt.Errorf("store: mirror contains invalid WebAuthn state: %w", err)
+	if err := validatePortableWebAuthn(m.webauthnUserHandle, m.webauthnCredentials, nil); err != nil {
+		return nil, fmt.Errorf("store: state file contains invalid WebAuthn state: %w", err)
 	}
 	return m, nil
 }
 
-// saveMirrorLocked writes the mirrored subset of state to mirrorPath. Runtime
-// mutations remain best effort; operator import uses writeMirrorLocked
-// directly so it can report a persistence failure instead of losing data when
-// the short-lived CLI process exits.
-func (m *Memory) saveMirrorLocked() {
-	if err := m.writeMirrorLocked(); err != nil {
-		slog.Warn("store: mirror write failed", "path", m.mirrorPath, "error", err)
+// saveStateLocked is the best-effort path used only for debounced LastSeen
+// updates. Security-sensitive and administrative mutations call
+// writeStateLocked directly and return persistence failures to the caller.
+func (m *Memory) saveStateLocked() {
+	if err := m.writeStateLocked(); err != nil {
+		slog.Warn("store: state-file write failed", "path", m.statePath, "error", err)
 	}
 }
 
-// writeMirrorLocked persists the mirrored subset as temp + fsync + rename,
+// writeStateLocked persists control-plane state as temp + fsync + rename,
 // mode 0600. Callers must hold mu.
-func (m *Memory) writeMirrorLocked() error {
-	if m.mirrorPath == "" {
+func (m *Memory) writeStateLocked() error {
+	if m.statePath == "" {
 		return nil
 	}
 
-	mf := mirrorFile{
+	mf := stateFile{
 		Sessions:            m.sessions,
 		SubpageNonces:       m.subpageNonces,
 		Settings:            m.settings,
 		Journal:             m.journal,
 		Policies:            policiesFromMap(m.policies),
+		Audit:               m.audit,
 		TOTP:                m.totp,
 		RecoveryCodes:       recoveryCodeKeys(m.recoveryCodes),
 		WebAuthnUserHandle:  append([]byte(nil), m.webauthnUserHandle...),
 		WebAuthnCredentials: m.webauthnCredentials,
-		WebAuthnChallenges:  m.webauthnChallenges,
 	}
 	data, err := json.Marshal(mf)
 	if err != nil {
-		return fmt.Errorf("encode mirror: %w", err)
+		return fmt.Errorf("encode state file: %w", err)
 	}
 
-	dir := filepath.Dir(m.mirrorPath)
-	tmp, err := os.CreateTemp(dir, ".store-mirror-*.tmp")
+	dir := filepath.Dir(m.statePath)
+	tmp, err := os.CreateTemp(dir, ".panel-state-*.tmp")
 	if err != nil {
-		return fmt.Errorf("create mirror temp file: %w", err)
+		return fmt.Errorf("create state temp file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op once renamed
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("write mirror: %w", err)
+		return fmt.Errorf("write state file: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("sync mirror: %w", err)
+		return fmt.Errorf("sync state file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close mirror: %w", err)
+		return fmt.Errorf("close state file: %w", err)
 	}
 	if err := os.Chmod(tmpName, 0o600); err != nil {
-		return fmt.Errorf("secure mirror: %w", err)
+		return fmt.Errorf("secure state file: %w", err)
 	}
-	if err := os.Rename(tmpName, m.mirrorPath); err != nil {
-		return fmt.Errorf("replace mirror: %w", err)
+	if err := os.Rename(tmpName, m.statePath); err != nil {
+		return fmt.Errorf("replace state file: %w", err)
+	}
+	directory, err := os.Open(dir)
+	if err != nil {
+		slog.Warn("store: state directory sync skipped", "path", dir, "error", err)
+		return nil
+	}
+	if err := directory.Sync(); err != nil {
+		_ = directory.Close()
+		slog.Warn("store: state directory sync failed", "path", dir, "error", err)
+		return nil
+	}
+	if err := directory.Close(); err != nil {
+		slog.Warn("store: state directory close failed", "path", dir, "error", err)
 	}
 	return nil
 }
@@ -262,8 +290,16 @@ func (m *Memory) writeMirrorLocked() error {
 func (m *Memory) PutSession(s Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	previous, existed := m.sessions[s.IDHash]
 	m.sessions[s.IDHash] = s
-	m.saveMirrorLocked()
+	if err := m.writeStateLocked(); err != nil {
+		if existed {
+			m.sessions[s.IDHash] = previous
+		} else {
+			delete(m.sessions, s.IDHash)
+		}
+		return err
+	}
 	return nil
 }
 
@@ -276,8 +312,8 @@ func (m *Memory) GetSession(idHash string) (Session, bool, error) {
 }
 
 // TouchSession updates LastSeen for the given session. Touching a session
-// that does not exist is not an error. The mirror write is debounced (see
-// mirrorDebounce) rather than immediate, since touches happen far more
+// that does not exist is not an error. The state-file write is debounced (see
+// stateDebounce) rather than immediate, since touches happen far more
 // often than the other mutation families.
 func (m *Memory) TouchSession(idHash string, at time.Time) error {
 	m.mu.Lock()
@@ -288,25 +324,25 @@ func (m *Memory) TouchSession(idHash string, at time.Time) error {
 	}
 	s.LastSeen = at
 	m.sessions[idHash] = s
-	m.scheduleMirrorLocked()
+	m.scheduleStateLocked()
 	return nil
 }
 
-// scheduleMirrorLocked marks the mirror dirty and, if no flush is already
-// scheduled, arms a timer to flush it after mirrorDebounce. Callers must
+// scheduleStateLocked marks the state file dirty and, if no flush is already
+// scheduled, arms a timer to flush it after stateDebounce. Callers must
 // hold mu.
-func (m *Memory) scheduleMirrorLocked() {
-	if m.mirrorPath == "" {
+func (m *Memory) scheduleStateLocked() {
+	if m.statePath == "" {
 		return
 	}
 	m.touchDirty = true
 	if m.stopTouchTimer != nil {
 		return // a flush is already scheduled for this window
 	}
-	m.stopTouchTimer = m.scheduleTimer(m.mirrorDebounce, m.flushTouch)
+	m.stopTouchTimer = m.scheduleTimer(m.stateDebounce, m.flushTouch)
 }
 
-// flushTouch is the debounce timer callback: it writes the mirror if state
+// flushTouch is the debounce timer callback: it writes the state file if state
 // is still dirty and clears the schedule so a later touch can arm a new
 // window. Runs on the timer's own goroutine in production.
 func (m *Memory) flushTouch() {
@@ -317,15 +353,21 @@ func (m *Memory) flushTouch() {
 		return
 	}
 	m.touchDirty = false
-	m.saveMirrorLocked()
+	m.saveStateLocked()
 }
 
 // DeleteSession removes one session.
 func (m *Memory) DeleteSession(idHash string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	previous, existed := m.sessions[idHash]
 	delete(m.sessions, idHash)
-	m.saveMirrorLocked()
+	if err := m.writeStateLocked(); err != nil {
+		if existed {
+			m.sessions[idHash] = previous
+		}
+		return err
+	}
 	return nil
 }
 
@@ -333,12 +375,19 @@ func (m *Memory) DeleteSession(idHash string) error {
 func (m *Memory) DeleteOtherSessions(keepIDHash string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	previous := make(map[string]Session, len(m.sessions))
+	for hash, session := range m.sessions {
+		previous[hash] = session
+	}
 	for hash := range m.sessions {
 		if hash != keepIDHash {
 			delete(m.sessions, hash)
 		}
 	}
-	m.saveMirrorLocked()
+	if err := m.writeStateLocked(); err != nil {
+		m.sessions = previous
+		return err
+	}
 	return nil
 }
 
@@ -362,11 +411,35 @@ func (m *Memory) AppendAudit(e AuditEntry) error {
 	if !m.policies[StorageAudit].Enabled {
 		return nil
 	}
+	if e.TS.IsZero() {
+		e.TS = time.Now().UTC()
+	}
+	previous := append([]AuditEntry(nil), m.audit...)
 	m.audit = append(m.audit, e)
+	m.pruneAuditLocked(time.Now())
 	if len(m.audit) > auditCap {
 		m.audit = m.audit[len(m.audit)-auditCap:]
 	}
+	if err := m.writeStateLocked(); err != nil {
+		m.audit = previous
+		return err
+	}
 	return nil
+}
+
+func (m *Memory) pruneAuditLocked(now time.Time) {
+	policy := m.policies[StorageAudit]
+	if !policy.Enabled || len(m.audit) == 0 {
+		return
+	}
+	cutoff := now.Add(-retentionDuration(policy))
+	kept := m.audit[:0]
+	for _, entry := range m.audit {
+		if entry.TS.IsZero() || !entry.TS.Before(cutoff) {
+			kept = append(kept, entry)
+		}
+	}
+	m.audit = kept
 }
 
 // ListAudit returns up to limit audit entries, newest first.
@@ -444,7 +517,7 @@ func cloneStringMap(src map[string]string) map[string]string {
 
 // AppendUpdateJournal records one update-journal entry for e.Target,
 // evicting the oldest for that target if its ring is full. Unlike
-// TouchSession, this writes through to the mirror immediately rather than
+// TouchSession, this writes through to the state file immediately rather than
 // via the debounce timer: update runs are rare events (not a hot path like
 // session touches), so there is no flash-wear concern, and durability
 // matters more here — this is the exact state ReconcileStartup depends on
@@ -452,12 +525,20 @@ func cloneStringMap(src map[string]string) map[string]string {
 func (m *Memory) AppendUpdateJournal(e UpdateJournalEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	entries := append(m.journal[e.Target], e)
+	previous := append([]UpdateJournalEntry(nil), m.journal[e.Target]...)
+	entries := append(append([]UpdateJournalEntry(nil), previous...), e)
 	if len(entries) > journalCap {
 		entries = entries[len(entries)-journalCap:]
 	}
 	m.journal[e.Target] = entries
-	m.saveMirrorLocked()
+	if err := m.writeStateLocked(); err != nil {
+		if previous == nil {
+			delete(m.journal, e.Target)
+		} else {
+			m.journal[e.Target] = previous
+		}
+		return err
+	}
 	return nil
 }
 
@@ -522,7 +603,7 @@ func (m *Memory) MetricRetention(name string) time.Duration {
 }
 
 // RecordUserTraffic aggregates sparse per-user deltas without writing them to
-// the optional mirror. The memory profile keeps at most one day of 15-minute
+// durable history. The memory profile keeps at most one day of 15-minute
 // buckets and thirty days of hourly buckets, regardless of configured policy.
 func (m *Memory) RecordUserTraffic(deltas []UserTrafficDelta) error {
 	m.mu.Lock()
@@ -619,8 +700,50 @@ func (m *Memory) ReplaceStoragePolicies(policies []StoragePolicy) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	previous := m.policies
+	previousAudit := append([]AuditEntry(nil), m.audit...)
 	m.policies = policyMap(policies)
-	m.saveMirrorLocked()
+	m.pruneAuditLocked(time.Now())
+	if err := m.writeStateLocked(); err != nil {
+		m.policies = previous
+		m.audit = previousAudit
+		return err
+	}
+	return nil
+}
+
+// ApplyStoragePolicies configures this instance as a history backend without
+// persisting the policy copy. The authoritative policy set belongs to the
+// state store.
+func (m *Memory) ApplyStoragePolicies(policies []StoragePolicy) error {
+	if err := ValidateStoragePolicies(policies); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.policies = policyMap(policies)
+	return nil
+}
+
+func (m *Memory) rollbackImportedHistory() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.metrics = make(map[string][]MetricPoint)
+	m.events = nil
+	m.nextEventID = 0
+	return nil
+}
+
+// PurgeAudit removes the bounded administrative audit from local state.
+func (m *Memory) PurgeAudit() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	previous := m.audit
+	m.audit = nil
+	if err := m.writeStateLocked(); err != nil {
+		m.audit = previous
+		return err
+	}
 	return nil
 }
 
@@ -629,11 +752,11 @@ func (m *Memory) PurgeHistory(category StorageCategory) error {
 	if _, ok := defaultPolicyMap()[category]; !ok {
 		return fmt.Errorf("unknown storage category %q", category)
 	}
+	if category == StorageAudit {
+		return m.PurgeAudit()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if category == StorageAudit {
-		m.audit = nil
-	}
 	if category == StorageEvents {
 		m.events = nil
 	}
@@ -674,8 +797,16 @@ func (m *Memory) GetSubpageNonce(username string) (string, error) {
 func (m *Memory) SetSubpageNonce(username, nonce string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	previous, existed := m.subpageNonces[username]
 	m.subpageNonces[username] = nonce
-	m.saveMirrorLocked()
+	if err := m.writeStateLocked(); err != nil {
+		if existed {
+			m.subpageNonces[username] = previous
+		} else {
+			delete(m.subpageNonces, username)
+		}
+		return err
+	}
 	return nil
 }
 
@@ -691,14 +822,21 @@ func (m *Memory) GetSetting(key string) (string, bool, error) {
 func (m *Memory) SetSetting(key, value string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	previous, existed := m.settings[key]
 	m.settings[key] = value
-	m.saveMirrorLocked()
+	if err := m.writeStateLocked(); err != nil {
+		if existed {
+			m.settings[key] = previous
+		} else {
+			delete(m.settings, key)
+		}
+		return err
+	}
 	return nil
 }
 
-// Close stops any pending touch-debounce timer and, if a touch flush was
-// still owed, flushes it synchronously before returning. Beyond the
-// mirror, state is process-lifetime only.
+// Close stops any pending touch-debounce timer and flushes an owed LastSeen
+// update synchronously before returning.
 func (m *Memory) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -708,7 +846,7 @@ func (m *Memory) Close() error {
 	}
 	if m.touchDirty {
 		m.touchDirty = false
-		m.saveMirrorLocked()
+		return m.writeStateLocked()
 	}
 	return nil
 }

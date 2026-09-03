@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-const portableFormatVersion = 3
+const portableFormatVersion = 4
 
 // ErrStoreNotEmpty prevents an import from silently merging two independent
 // histories. Operators must point the command at a fresh destination store.
@@ -29,7 +29,9 @@ type PortableData struct {
 	RecoveryCodes       [][]byte                        `json:"totp_recovery_hashes,omitempty"`
 	WebAuthnUserHandle  []byte                          `json:"webauthn_user_handle,omitempty"`
 	WebAuthnCredentials map[string]WebAuthnCredential   `json:"webauthn_credentials,omitempty"`
-	WebAuthnChallenges  map[string]WebAuthnChallenge    `json:"webauthn_challenges,omitempty"`
+	// WebAuthnChallenges is accepted from format v3 backups only. In-flight
+	// ceremonies are process-local and are never exported or restored.
+	WebAuthnChallenges map[string]WebAuthnChallenge `json:"webauthn_challenges,omitempty"`
 }
 
 // PortableStore is implemented by every built-in store. It is separate from
@@ -58,7 +60,6 @@ func (m *Memory) ExportData() (PortableData, error) {
 		RecoveryCodes:       recoveryCodeHashes(m.recoveryCodes),
 		WebAuthnUserHandle:  append([]byte(nil), m.webauthnUserHandle...),
 		WebAuthnCredentials: m.webauthnCredentials,
-		WebAuthnChallenges:  m.webauthnChallenges,
 	})
 }
 
@@ -68,8 +69,8 @@ func (m *Memory) ImportData(data PortableData) error {
 	if err != nil {
 		return err
 	}
-	if m.mirrorPath != "" && (len(data.Audit) > 0 || len(data.Metrics) > 0 || len(data.Events) > 0) {
-		return errors.New("memory store cannot persist imported audit, event or metric history; use a SQL destination")
+	if m.statePath != "" && (len(data.Metrics) > 0 || len(data.Events) > 0) {
+		return errors.New("state file cannot persist imported metric or event history; use a history destination")
 	}
 	if len(data.Events) > eventCap {
 		return fmt.Errorf("memory event history has %d entries (maximum %d)", len(data.Events), eventCap)
@@ -93,7 +94,7 @@ func (m *Memory) ImportData(data PortableData) error {
 	m.recoveryCodes = recoveryCodeMap(data.RecoveryCodes)
 	m.webauthnUserHandle = append([]byte(nil), data.WebAuthnUserHandle...)
 	m.webauthnCredentials = cloneWebAuthnCredentials(data.WebAuthnCredentials)
-	m.webauthnChallenges = cloneWebAuthnChallenges(data.WebAuthnChallenges)
+	m.webauthnChallenges = make(map[string]WebAuthnChallenge)
 	m.totp.RecoveryCodes = len(m.recoveryCodes)
 	for i := range m.events {
 		m.nextEventID++
@@ -102,7 +103,7 @@ func (m *Memory) ImportData(data PortableData) error {
 	if len(data.Policies) > 0 {
 		m.policies = policyMap(data.Policies)
 	}
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.sessions = make(map[string]Session)
 		m.subpageNonces = make(map[string]string)
 		m.settings = make(map[string]string)
@@ -123,7 +124,7 @@ func (m *Memory) ImportData(data PortableData) error {
 }
 
 func normalizePortableData(data PortableData) (PortableData, error) {
-	if data.FormatVersion == 1 || data.FormatVersion == 2 {
+	if data.FormatVersion >= 1 && data.FormatVersion < portableFormatVersion {
 		data.FormatVersion = portableFormatVersion
 	}
 	if data.FormatVersion != portableFormatVersion {
@@ -145,6 +146,7 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 	if err := validatePortableWebAuthn(data.WebAuthnUserHandle, data.WebAuthnCredentials, data.WebAuthnChallenges); err != nil {
 		return PortableData{}, err
 	}
+	data.WebAuthnChallenges = nil
 	data.TOTP.RecoveryCodes = len(data.RecoveryCodes)
 	for target, entries := range data.Journal {
 		if len(entries) > journalCap {

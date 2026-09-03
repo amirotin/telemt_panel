@@ -18,6 +18,7 @@ let container: HTMLDivElement | null = null;
 async function renderHealth(health: {
   configured_driver: "memory" | "sqlite" | "postgres" | "mysql";
   active_driver: "memory" | "sqlite" | "postgres" | "mysql";
+  state_durable: boolean;
   store_error?: string;
 }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -61,7 +62,11 @@ afterEach(() => {
 
 describe("StoreFallbackBanner", () => {
   it("stays hidden while the configured database is active", async () => {
-    const element = await renderHealth({ configured_driver: "postgres", active_driver: "postgres" });
+    const element = await renderHealth({
+      configured_driver: "postgres",
+      active_driver: "postgres",
+      state_durable: true,
+    });
     expect(element.querySelector("[data-testid='store-fallback-banner']")).toBeNull();
   });
 
@@ -69,10 +74,12 @@ describe("StoreFallbackBanner", () => {
     const element = await renderHealth({
       configured_driver: "postgres",
       active_driver: "memory",
+      state_durable: true,
       store_error: "postgres database is unavailable",
     });
     const banner = element.querySelector("[data-testid='store-fallback-banner']");
     expect(banner?.textContent).toContain("PostgreSQL");
-    expect(banner?.textContent).toContain("автоматического слияния данных не будет");
+    expect(banner?.textContent).toContain("сессии, двухэтапный вход и настройки панели");
+    expect(banner?.textContent).toContain("автоматического слияния истории не будет");
   });
 });

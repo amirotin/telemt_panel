@@ -13,56 +13,26 @@ import (
 	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
 )
 
-// ExportData returns a consistent, driver-neutral snapshot of a SQL store.
+// ExportData returns only observability history. Control-plane state is
+// exported by Composite from panel-state.json.
 func (s *SQLite) ExportData() (PortableData, error) {
-	data := PortableData{
-		FormatVersion: portableFormatVersion,
-		Sessions:      make(map[string]Session),
-		SubpageNonces: make(map[string]string),
-		Settings:      make(map[string]string),
-		Journal:       make(map[string][]UpdateJournalEntry),
-		Metrics:       make(map[string][]MetricPoint),
-	}
+	data := PortableData{FormatVersion: portableFormatVersion, Metrics: make(map[string][]MetricPoint)}
 	err := sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
 		var err error
-		if data.Sessions, err = exportSessions(s, tx); err != nil {
-			return err
-		}
-		if data.Audit, err = exportAudit(s, tx); err != nil {
-			return err
-		}
-		if data.Journal, err = exportJournal(s, tx); err != nil {
-			return err
-		}
 		if data.Metrics, err = exportMetrics(s, tx); err != nil {
 			return err
 		}
-		if data.Events, err = exportEvents(s, tx); err != nil {
-			return err
-		}
-		if data.TOTP, data.RecoveryCodes, err = exportTOTP(s, tx); err != nil {
-			return err
-		}
-		if data.WebAuthnUserHandle, data.WebAuthnCredentials, data.WebAuthnChallenges, err = exportWebAuthn(s, tx); err != nil {
-			return err
-		}
-		if data.SubpageNonces, err = exportStringMap(s, tx, `SELECT username, nonce FROM subpage_nonces ORDER BY username`); err != nil {
-			return fmt.Errorf("export subpage nonces: %w", err)
-		}
-		if data.Settings, err = exportStringMap(s, tx, `SELECT setting_key, value FROM settings WHERE setting_key <> 'migration.memory_mirror_imported' ORDER BY setting_key`); err != nil {
-			return fmt.Errorf("export settings: %w", err)
-		}
-		data.Policies, err = exportPolicies(s, tx)
+		data.Events, err = exportEvents(s, tx)
 		return err
 	})
 	if err != nil {
-		return PortableData{}, fmt.Errorf("export %s store: %w", s.driver, err)
+		return PortableData{}, fmt.Errorf("export %s history: %w", s.driver, err)
 	}
 	return data, nil
 }
 
-// ImportData fills a fresh SQL store in one transaction. Existing application
-// state is never merged or overwritten.
+// ImportData fills a fresh history database. State fields in a combined
+// backup are deliberately ignored here and restored by Composite instead.
 func (s *SQLite) ImportData(data PortableData) error {
 	data, err := normalizePortableData(data)
 	if err != nil {
@@ -71,51 +41,14 @@ func (s *SQLite) ImportData(data PortableData) error {
 	err = sqlstore.WithTx(context.Background(), s.db, nil, func(tx *sql.Tx) error {
 		var count int
 		if err := tx.QueryRow(s.bind(`SELECT
-			(SELECT count(*) FROM sessions) +
-			(SELECT count(*) FROM subpage_nonces) +
-			(SELECT count(*) FROM settings) +
-			(SELECT count(*) FROM update_journal) +
-			(SELECT count(*) FROM audit_entries) +
 			(SELECT count(*) FROM metric_points) +
-			(SELECT count(*) FROM history_events) +
-			(SELECT count(*) FROM auth_recovery_codes) +
-			(SELECT count(*) FROM auth_webauthn_user) +
-			(SELECT count(*) FROM auth_webauthn_credentials) +
-			(SELECT count(*) FROM auth_webauthn_challenges) +
-			(SELECT count(*) FROM auth_totp WHERE enabled = ? OR pending_secret <> '')`), true).Scan(&count); err != nil {
-			return fmt.Errorf("inspect destination: %w", err)
+			(SELECT count(*) FROM history_events)`)).Scan(&count); err != nil {
+			return fmt.Errorf("inspect history destination: %w", err)
 		}
 		if count != 0 {
 			return ErrStoreNotEmpty
 		}
 
-		for _, session := range data.Sessions {
-			if _, err := tx.Exec(s.bind(`INSERT INTO sessions(id_hash, created_ns, last_seen_ns, ip, user_agent_label, auth_method) VALUES(?, ?, ?, ?, ?, ?)`), session.IDHash, session.Created.UnixNano(), session.LastSeen.UnixNano(), session.IP, session.UserAgentLabel, session.AuthMethod); err != nil {
-				return fmt.Errorf("import session: %w", err)
-			}
-		}
-		for _, entry := range data.Audit {
-			if _, err := tx.Exec(s.bind(`INSERT INTO audit_entries(ts_ns, id, action, actor, target, outcome, ip, subject, detail) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`), entry.TS.UnixNano(), entry.ID, entry.Action, entry.Actor, entry.Target, entry.Outcome, entry.IP, entry.Subject, entry.Detail); err != nil {
-				return fmt.Errorf("import audit entry: %w", err)
-			}
-		}
-		for _, target := range sortedKeys(data.Journal) {
-			for _, entry := range data.Journal[target] {
-				if _, err := tx.Exec(s.bind(`INSERT INTO update_journal(target, run_id, phase, version_from, version_to, ts_ns, detail) VALUES(?, ?, ?, ?, ?, ?, ?)`), entry.Target, entry.RunID, entry.Phase, entry.VersionFrom, entry.VersionTo, entry.TS.UnixNano(), entry.Detail); err != nil {
-					return fmt.Errorf("import update journal: %w", err)
-				}
-			}
-		}
-		for username, nonce := range data.SubpageNonces {
-			if _, err := tx.Exec(s.bind(`INSERT INTO subpage_nonces(username, nonce) VALUES(?, ?)`), username, nonce); err != nil {
-				return fmt.Errorf("import subpage nonce: %w", err)
-			}
-		}
-		for key, value := range data.Settings {
-			if _, err := tx.Exec(s.bind(`INSERT INTO settings(setting_key, value) VALUES(?, ?)`), key, value); err != nil {
-				return fmt.Errorf("import setting: %w", err)
-			}
-		}
 		for _, name := range sortedKeys(data.Metrics) {
 			for _, point := range data.Metrics[name] {
 				tier := metricTierSQL(point.Tier)
@@ -142,107 +75,22 @@ func (s *SQLite) ImportData(data PortableData) error {
 				return fmt.Errorf("import history event: %w", err)
 			}
 		}
-		for _, policy := range data.Policies {
-			if _, err := tx.Exec(s.bind(`UPDATE storage_policies SET enabled = ?, retention_days = ? WHERE category = ?`), policy.Enabled, policy.RetentionDays, policy.Category); err != nil {
-				return fmt.Errorf("import storage policy: %w", err)
-			}
-		}
-		pendingExpires := int64(0)
-		if !data.TOTP.PendingExpires.IsZero() {
-			pendingExpires = data.TOTP.PendingExpires.Unix()
-		}
-		if _, err := tx.Exec(s.bind(`UPDATE auth_totp SET enabled = ?, secret = ?, pending_secret = ?, pending_expires = ?, last_timestep = ? WHERE singleton = 1`), data.TOTP.Enabled, data.TOTP.Secret, data.TOTP.PendingSecret, pendingExpires, data.TOTP.LastTimestep); err != nil {
-			return fmt.Errorf("import TOTP state: %w", err)
-		}
-		for _, hash := range data.RecoveryCodes {
-			if _, err := tx.Exec(s.bind(`INSERT INTO auth_recovery_codes(code_hash) VALUES(?)`), hash); err != nil {
-				return fmt.Errorf("import TOTP recovery hash: %w", err)
-			}
-		}
-		if len(data.WebAuthnUserHandle) > 0 {
-			if _, err := tx.Exec(s.bind(`INSERT INTO auth_webauthn_user(singleton, user_handle) VALUES(1, ?)`), data.WebAuthnUserHandle); err != nil {
-				return fmt.Errorf("import WebAuthn user handle: %w", err)
-			}
-		}
-		for _, credential := range data.WebAuthnCredentials {
-			if _, err := tx.Exec(s.bind(`INSERT INTO auth_webauthn_credentials(credential_id, name, credential_data, sign_count, created, last_used) VALUES(?, ?, ?, ?, ?, ?)`), credential.ID, credential.Name, credential.CredentialData, int64(credential.SignCount), credential.Created.Unix(), unixOrZero(credential.LastUsed)); err != nil {
-				return fmt.Errorf("import WebAuthn credential: %w", err)
-			}
-		}
-		for _, challenge := range data.WebAuthnChallenges {
-			if _, err := tx.Exec(s.bind(`INSERT INTO auth_webauthn_challenges(flow_hash, kind, session_data, origin, rp_id, expires) VALUES(?, ?, ?, ?, ?, ?)`), challenge.FlowHash, challenge.Kind, challenge.SessionData, challenge.Origin, challenge.RPID, challenge.Expires.Unix()); err != nil {
-				return fmt.Errorf("import WebAuthn challenge: %w", err)
-			}
-		}
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("import %s store: %w", s.driver, err)
-	}
-	if len(data.Policies) > 0 {
-		s.policyMu.Lock()
-		s.policies = policyMap(data.Policies)
-		s.policyMu.Unlock()
+		return fmt.Errorf("import %s history: %w", s.driver, err)
 	}
 	return nil
 }
 
-func exportSessions(s *SQLite, tx *sql.Tx) (map[string]Session, error) {
-	rows, err := tx.Query(s.bind(`SELECT id_hash, created_ns, last_seen_ns, ip, user_agent_label, auth_method FROM sessions ORDER BY id_hash`))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[string]Session)
-	for rows.Next() {
-		var item Session
-		var createdNS, lastSeenNS int64
-		if err := rows.Scan(&item.IDHash, &createdNS, &lastSeenNS, &item.IP, &item.UserAgentLabel, &item.AuthMethod); err != nil {
-			return nil, err
+func (s *SQLite) rollbackImportedHistory() error {
+	return sqlstore.WithTx(context.Background(), s.db, nil, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM history_events`); err != nil {
+			return err
 		}
-		item.Created = time.Unix(0, createdNS).UTC()
-		item.LastSeen = time.Unix(0, lastSeenNS).UTC()
-		out[item.IDHash] = item
-	}
-	return out, rows.Err()
-}
-
-func exportAudit(s *SQLite, tx *sql.Tx) ([]AuditEntry, error) {
-	rows, err := tx.Query(s.bind(`SELECT ts_ns, id, action, actor, target, outcome, ip, subject, detail FROM audit_entries ORDER BY seq`))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []AuditEntry
-	for rows.Next() {
-		var item AuditEntry
-		var tsNS int64
-		if err := rows.Scan(&tsNS, &item.ID, &item.Action, &item.Actor, &item.Target, &item.Outcome, &item.IP, &item.Subject, &item.Detail); err != nil {
-			return nil, err
-		}
-		item.TS = time.Unix(0, tsNS).UTC()
-		out = append(out, item)
-	}
-	return out, rows.Err()
-}
-
-func exportJournal(s *SQLite, tx *sql.Tx) (map[string][]UpdateJournalEntry, error) {
-	rows, err := tx.Query(s.bind(`SELECT target, run_id, phase, version_from, version_to, ts_ns, detail FROM update_journal ORDER BY seq`))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[string][]UpdateJournalEntry)
-	for rows.Next() {
-		var item UpdateJournalEntry
-		var tsNS int64
-		if err := rows.Scan(&item.Target, &item.RunID, &item.Phase, &item.VersionFrom, &item.VersionTo, &tsNS, &item.Detail); err != nil {
-			return nil, err
-		}
-		item.TS = time.Unix(0, tsNS).UTC()
-		out[item.Target] = append(out[item.Target], item)
-	}
-	return out, rows.Err()
+		_, err := tx.Exec(`DELETE FROM metric_points`)
+		return err
+	})
 }
 
 func exportMetrics(s *SQLite, tx *sql.Tx) (map[string][]MetricPoint, error) {
@@ -284,7 +132,7 @@ func exportEvents(s *SQLite, tx *sql.Tx) ([]HistoryEvent, error) {
 			return nil, err
 		}
 		item.TS = time.Unix(0, tsNS).UTC()
-		item.ID = 0 // sequence numbers are local to a store, not portable state
+		item.ID = 0
 		if attributes != "" && attributes != "null" {
 			if err := json.Unmarshal([]byte(attributes), &item.Attributes); err != nil {
 				return nil, err
@@ -293,111 +141,6 @@ func exportEvents(s *SQLite, tx *sql.Tx) ([]HistoryEvent, error) {
 		out = append(out, item)
 	}
 	return out, rows.Err()
-}
-
-func exportStringMap(s *SQLite, tx *sql.Tx, query string) (map[string]string, error) {
-	rows, err := tx.Query(s.bind(query))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[string]string)
-	for rows.Next() {
-		var key, value string
-		if err := rows.Scan(&key, &value); err != nil {
-			return nil, err
-		}
-		out[key] = value
-	}
-	return out, rows.Err()
-}
-
-func exportPolicies(s *SQLite, tx *sql.Tx) ([]StoragePolicy, error) {
-	rows, err := tx.Query(s.bind(`SELECT category, enabled, retention_days FROM storage_policies ORDER BY category`))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	byCategory := make(map[StorageCategory]StoragePolicy)
-	for rows.Next() {
-		var policy StoragePolicy
-		if err := rows.Scan(&policy.Category, &policy.Enabled, &policy.RetentionDays); err != nil {
-			return nil, err
-		}
-		byCategory[policy.Category] = policy
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return policiesFromMap(byCategory), nil
-}
-
-func exportTOTP(s *SQLite, tx *sql.Tx) (TOTPState, [][]byte, error) {
-	var state TOTPState
-	var pendingExpires int64
-	if err := tx.QueryRow(s.bind(`SELECT enabled, secret, pending_secret, pending_expires, last_timestep FROM auth_totp WHERE singleton = 1`)).Scan(&state.Enabled, &state.Secret, &state.PendingSecret, &pendingExpires, &state.LastTimestep); err != nil {
-		return TOTPState{}, nil, fmt.Errorf("export TOTP state: %w", err)
-	}
-	if pendingExpires > 0 {
-		state.PendingExpires = time.Unix(pendingExpires, 0).UTC()
-	}
-	rows, err := tx.Query(`SELECT code_hash FROM auth_recovery_codes ORDER BY code_hash`)
-	if err != nil {
-		return TOTPState{}, nil, fmt.Errorf("export TOTP recovery hashes: %w", err)
-	}
-	defer rows.Close()
-	var hashes [][]byte
-	for rows.Next() {
-		var hash []byte
-		if err := rows.Scan(&hash); err != nil {
-			return TOTPState{}, nil, err
-		}
-		hashes = append(hashes, append([]byte(nil), hash...))
-	}
-	if err := rows.Err(); err != nil {
-		return TOTPState{}, nil, err
-	}
-	state.RecoveryCodes = len(hashes)
-	return state, hashes, nil
-}
-
-func exportWebAuthn(s *SQLite, tx *sql.Tx) ([]byte, map[string]WebAuthnCredential, map[string]WebAuthnChallenge, error) {
-	var handle []byte
-	if err := tx.QueryRow(s.bind(`SELECT user_handle FROM auth_webauthn_user WHERE singleton = 1`)).Scan(&handle); err != nil && err != sql.ErrNoRows {
-		return nil, nil, nil, fmt.Errorf("export WebAuthn user handle: %w", err)
-	}
-	credentials := make(map[string]WebAuthnCredential)
-	rows, err := tx.Query(s.bind(`SELECT credential_id, name, credential_data, sign_count, created, last_used FROM auth_webauthn_credentials ORDER BY credential_id`))
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("export WebAuthn credentials: %w", err)
-	}
-	for rows.Next() {
-		credential, err := scanWebAuthnCredential(rows)
-		if err != nil {
-			rows.Close()
-			return nil, nil, nil, err
-		}
-		credentials[credential.ID] = credential
-	}
-	if err := rows.Close(); err != nil {
-		return nil, nil, nil, err
-	}
-	challenges := make(map[string]WebAuthnChallenge)
-	rows, err = tx.Query(s.bind(`SELECT flow_hash, kind, session_data, origin, rp_id, expires FROM auth_webauthn_challenges ORDER BY flow_hash`))
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("export WebAuthn challenges: %w", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var challenge WebAuthnChallenge
-		var expires int64
-		if err := rows.Scan(&challenge.FlowHash, &challenge.Kind, &challenge.SessionData, &challenge.Origin, &challenge.RPID, &expires); err != nil {
-			return nil, nil, nil, err
-		}
-		challenge.Expires = time.Unix(expires, 0).UTC()
-		challenges[challenge.FlowHash] = challenge
-	}
-	return append([]byte(nil), handle...), credentials, challenges, rows.Err()
 }
 
 func sortedKeys[V any](values map[string]V) []string {

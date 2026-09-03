@@ -20,8 +20,8 @@ listen = "0.0.0.0:8080"
 # trusted (CIDRs or single IPs). Empty (default) = headers ignored.
 # trusted_proxies = ["127.0.0.1/32", "::1/128"]
 
-# Directory used for the memory driver's state mirror and update staging.
-# Empty disables the memory mirror; SQLite uses store.path independently.
+# Directory for mandatory panel-state.json and update staging.
+# Empty makes authentication/settings process-local; history still follows [store].
 data_dir = "/var/lib/telemt-panel"
 
 [telemt]
@@ -44,8 +44,10 @@ password_hash = "$2a$10$CHANGE_ME"
 # session_ttl = "720h"
 
 [store]
-# "sqlite" — durable panel state and configurable history; recommended for servers.
-# "memory" — in-RAM history with a small state mirror; intended for flash-sensitive routers.
+# This selects only the observability-history backend. Panel state is stored
+# separately in data_dir/panel-state.json.
+# "sqlite" — durable configurable history; recommended for servers.
+# "memory" — in-RAM history; intended for flash-sensitive routers.
 # Full builds also support "postgres" and "mysql" through dsn; lite builds contain only memory.
 driver = "sqlite"
 path = "/var/lib/telemt-panel/panel.db"

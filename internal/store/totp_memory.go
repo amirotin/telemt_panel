@@ -101,7 +101,7 @@ func (m *Memory) BeginTOTPSetup(secret string, expires time.Time) error {
 	previous := m.totp
 	m.totp.PendingSecret = secret
 	m.totp.PendingExpires = expires
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.totp = previous
 		return err
 	}
@@ -133,7 +133,7 @@ func (m *Memory) EnableTOTP(expectedSecret string, now time.Time, recoveryHashes
 	previousCodes := m.recoveryCodes
 	m.totp = TOTPState{Enabled: true, Secret: expectedSecret, LastTimestep: -1, RecoveryCodes: len(codes)}
 	m.recoveryCodes = codes
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.totp = previousState
 		m.recoveryCodes = previousCodes
 		return err
@@ -148,7 +148,7 @@ func (m *Memory) DisableTOTP() error {
 	previousCodes := cloneRecoveryCodes(m.recoveryCodes)
 	m.totp = TOTPState{LastTimestep: -1}
 	m.recoveryCodes = make(map[string]struct{})
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.totp = previousState
 		m.recoveryCodes = previousCodes
 		return err
@@ -164,7 +164,7 @@ func (m *Memory) AcceptTOTPTimestep(timestep int64) error {
 	}
 	previous := m.totp.LastTimestep
 	m.totp.LastTimestep = timestep
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.totp.LastTimestep = previous
 		return err
 	}
@@ -186,7 +186,7 @@ func (m *Memory) ConsumeRecoveryCode(hash []byte) error {
 	}
 	delete(m.recoveryCodes, key)
 	m.totp.RecoveryCodes = len(m.recoveryCodes)
-	if err := m.writeMirrorLocked(); err != nil {
+	if err := m.writeStateLocked(); err != nil {
 		m.recoveryCodes[key] = struct{}{}
 		m.totp.RecoveryCodes = len(m.recoveryCodes)
 		return err

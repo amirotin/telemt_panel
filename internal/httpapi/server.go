@@ -272,6 +272,7 @@ func (s *Server) Handler() http.Handler {
 			"drivers":           store.AvailableDrivers(),
 			"configured_driver": runtime.ConfiguredDriver,
 			"active_driver":     runtime.ActiveDriver,
+			"state_durable":     s.st.StateDurable(),
 		}
 		if runtime.Error != "" {
 			response["store_error"] = runtime.Error
