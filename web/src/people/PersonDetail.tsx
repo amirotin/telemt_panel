@@ -15,7 +15,8 @@ import { useNow } from "./useNow";
 import { UserActionSheet } from "./UserActionSheet";
 import { UserFormSheet } from "./UserFormSheet";
 import { SublinkPanel } from "./SublinkPanel";
-import { ExpiryLine, IpCards, PersonLinks, PersonQuotaCard, SectionLabel } from "./PersonSections";
+import { ExpiryLine, PersonLinks, PersonQuotaCard, SectionLabel } from "./PersonSections";
+import { PersonIPHistoryEntry } from "./PersonIPHistory";
 import { PersonTrafficHistory } from "./PersonTrafficHistory";
 import { computeUserStatus, formatBitsPerSecond, getUserQuota, isOnline } from "./users.helpers";
 import { personAvatarTone } from "./personMeta.helpers";
@@ -102,9 +103,7 @@ function MobileVitals({ user }: { user: UsersTopicUser }) {
 function MobileOverview({ user, now }: { user: UsersTopicUser; now: number }) {
   const s = useStrings();
   const topic = useUsersTopic();
-  const activeIps = user.active_unique_ips_list ?? [];
-  const recentIps = user.recent_unique_ips_list ?? [];
-  return <><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, findQuotaEntry(topic.quota, user.username))} /></section><PersonTrafficHistory username={user.username} traffic={user.traffic} /><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.activeIpsTitle} · {activeIps.length}</SectionLabel><IpCards ips={activeIps} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.recentIpsTitle} · {recentIps.length}</SectionLabel><IpCards ips={recentIps} /></section><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></>;
+  return <><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, findQuotaEntry(topic.quota, user.username))} /></section><PersonTrafficHistory username={user.username} traffic={user.traffic} /><PersonIPHistoryEntry key={user.username} username={user.username} /><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></>;
 }
 
 function MobileAccess({ user }: { user: UsersTopicUser }) {

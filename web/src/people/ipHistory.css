@@ -1,0 +1,58 @@
+.person-ip-entry { display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; text-align:left; padding:16px; border:1px solid rgb(var(--border)); border-radius:12px; background:linear-gradient(120deg, rgb(var(--accent) / .09), transparent); }
+.person-ip-entry strong { display:block; font-size:15px; font-weight:600; }
+.person-ip-entry small { display:block; margin-top:5px; color:rgb(var(--text-muted)); font-size:13px; line-height:1.5; }
+.person-ip-entry:hover { border-color:rgb(var(--accent) / .5); }
+.person-ip-heading h2 { font-size:24px; letter-spacing:-.025em; }
+.person-ip-heading [data-sheet-eyebrow] { overflow-wrap:anywhere; }
+.person-ip-body.person-ip-body { padding:0; }
+.person-ip-overview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; padding:26px 28px 20px; background:linear-gradient(130deg,rgb(var(--accent) / .10),transparent 70%); }
+.person-ip-overview>div { display:flex; align-items:baseline; gap:12px; }
+.person-ip-overview strong { font-size:34px; line-height:1.1; font-weight:600; font-variant-numeric:tabular-nums; }
+.person-ip-overview>div:first-child strong { color:rgb(var(--accent)); }
+.person-ip-overview span { font-size:14px; color:rgb(var(--text-muted)); max-width:130px; }
+.person-ip-collection { font-size:13px; line-height:1.7; color:rgb(var(--text-muted)); padding:0 28px 20px; }
+.person-ip-collection[data-tone="warning"] { color:rgb(var(--warn)); }
+.person-ip-tools { display:flex; align-items:end; gap:12px; padding:18px 28px; border-top:1px solid rgb(var(--border)); }
+.person-ip-tools label { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.person-ip-tools label>span { color:rgb(var(--text-muted)); font-size:13px; }
+.person-ip-tools select,.person-ip-tools input { font:inherit; font-size:14px; border:1px solid rgb(var(--border-strong)); background:rgb(var(--bg)); color:rgb(var(--text)); border-radius:9px; min-height:44px; padding:9px 12px; max-width:100%; width:100%; }
+.person-ip-search { flex:1; }
+.person-ip-history :focus-visible,.person-ip-entry:focus-visible { outline:2px solid rgb(var(--accent)); outline-offset:3px; }
+.person-ip-columns,.person-ip-row { display:grid; grid-template-columns:1.35fr 1fr 1fr; gap:20px; padding:18px 28px; }
+.person-ip-columns { font-size:13px; color:rgb(var(--text-muted)); padding-top:4px; padding-bottom:10px; }
+.person-ip-row { border-top:1px solid rgb(var(--border) / .7); align-items:center; }
+.person-ip-address { min-width:0; display:grid; gap:7px; }
+.person-ip-address strong { font:500 15px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+.person-ip-address-meta { display:flex; flex-wrap:wrap; gap:9px; font-size:13px; color:rgb(var(--text-muted)); }
+.person-ip-address [data-ip-state="active"] { color:rgb(var(--ok)); }
+.person-ip-address [data-ip-state="active"]::before { content:""; display:inline-block; width:6px; height:6px; background:currentColor; border-radius:50%; margin-right:6px; }
+.person-ip-date { font-size:15px; font-variant-numeric:tabular-nums; line-height:1.6; }
+.person-ip-date small { display:block; color:rgb(var(--text-muted)); font-size:13px; }
+.person-ip-mobile-label { display:none; }
+.person-ip-pagination { display:flex; justify-content:space-between; align-items:center; padding:16px 28px; border-top:1px solid rgb(var(--border)); font-size:13px; color:rgb(var(--text-muted)); gap:12px; }
+.person-ip-pagination>div { display:flex; gap:8px; }
+.person-ip-empty { text-align:center; padding:48px 24px; color:rgb(var(--text-muted)); line-height:1.7; }
+.person-ip-empty strong { display:block; font-size:18px; font-weight:550; color:rgb(var(--text)); margin-bottom:6px; }
+.person-ip-explanation { padding:18px 28px 24px; border-top:1px solid rgb(var(--border)); color:rgb(var(--text-muted)); font-size:13px; line-height:1.75; }
+.person-ip-explanation p+p { margin-top:10px; }
+@media(min-width:1024px) { .person-ip-sheet[role="dialog"] { max-width:min(1080px,calc(100vw - 48px)); } }
+@media(max-width:720px) {
+  .person-ip-heading h2 { font-size:22px; }
+  .person-ip-overview { gap:14px; padding:22px 16px 16px; }
+  .person-ip-overview>div { display:block; }
+  .person-ip-overview strong { display:block; font-size:29px; margin-bottom:8px; }
+  .person-ip-overview span { font-size:13px; line-height:1.4; display:block; }
+  .person-ip-collection { padding:0 16px 18px; }
+  .person-ip-tools { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:16px; gap:12px; }
+  .person-ip-search,.person-ip-tools>button { grid-column:1/-1; }
+  .person-ip-tools input,.person-ip-tools select { font-size:16px; }
+  .person-ip-columns { display:none; }
+  .person-ip-row { padding:18px 16px; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  .person-ip-address { grid-column:1/-1; gap:6px; }
+  .person-ip-address strong { font-size:16px; }
+  .person-ip-mobile-label { display:block; font-size:13px; color:rgb(var(--text-muted)); margin-bottom:3px; }
+  .person-ip-pagination { flex-wrap:wrap; padding:14px 16px; gap:14px; }
+  .person-ip-pagination>div { width:100%; }
+  .person-ip-pagination button { flex:1; }
+  .person-ip-explanation { padding:18px 16px 24px; }
+}
