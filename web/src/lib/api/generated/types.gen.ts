@@ -9,7 +9,7 @@ export type Error = {
      * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, totp_required, invalid_totp, totp_already_enabled, totp_setup_changed, invalid_webauthn_origin, invalid_webauthn_challenge, invalid_webauthn_response, webauthn_credential_exists, passkey_unavailable, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
      *
      */
-    code: 'bad_request' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'invalid_totp' | 'totp_already_enabled' | 'totp_setup_changed' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
+    code: 'bad_request' | 'conflict' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'totp_required' | 'invalid_totp' | 'totp_already_enabled' | 'totp_setup_changed' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
     message: string;
 };
 
@@ -713,7 +713,7 @@ export type HistorySeries = {
     state: 'ready' | 'disabled' | 'empty' | 'partial';
     requested_from_epoch_secs: number;
     /**
-     * Configured retention for this metric's category. The client uses it to distinguish an empty window from disabled history. 0 means disabled.
+     * Maximum available retention for this metric. Disk-disabled and memory stores still provide a two-hour live window; point capacity and gaps may shorten actual coverage. 0 means no history is available.
      *
      */
     retention_secs: number;
@@ -732,13 +732,41 @@ export type HistorySeries = {
         ts: number;
         v: number;
         /**
-         * Omitted for raw points
+         * Omitted for raw points; new disk history uses 5m and 1h
          */
-        tier?: '1m' | '15m' | '1h' | '1d';
+        tier?: '1m' | '5m' | '15m' | '1h' | '1d';
         /**
          * Bucket maximum; present for aggregate points
          */
         max?: number;
+        /**
+         * Bucket minimum; absent for legacy aggregates without observed minima
+         */
+        min?: number;
+        /**
+         * Number of observed samples in the aggregate
+         */
+        samples?: number;
+        /**
+         * First actual observation; absent for legacy aggregates
+         */
+        first_observed_epoch_secs?: number;
+        /**
+         * Last actual observation; absent for legacy aggregates
+         */
+        last_observed_epoch_secs?: number;
+        /**
+         * Counter movement between observed samples only; excludes resets and unobserved gaps. Not an exact total for the nominal bucket. Absent for gauges or unknown continuity.
+         */
+        observed_delta?: number;
+        /**
+         * Observed duration excluding gaps and resets; absent when legacy metadata is unknown
+         */
+        observed_seconds?: number;
+        /**
+         * Detected gaps or counter resets inside the aggregate; absent for legacy aggregates
+         */
+        gaps?: number;
     }>;
 };
 
@@ -757,7 +785,7 @@ export type HistoryEvent = {
 };
 
 export type HistoryEvents = {
-    range: '15m' | '30m' | '1h' | '24h' | '7d';
+    range: '15m' | '30m' | '1h' | '24h' | '7d' | '30d' | '90d';
     state: 'ready' | 'disabled' | 'empty' | 'partial';
     requested_from_epoch_secs: number;
     /**
@@ -808,6 +836,10 @@ export type UserIpHistoryItem = {
      * Null if the active source is missing
      */
     active_now: boolean | null;
+    /**
+     * Null when no verified GeoIP database set is active.
+     */
+    geo: GeoIpResult | null;
 };
 
 export type UserIpCollection = {
@@ -858,6 +890,7 @@ export type UserIpHistory = {
     durable: boolean;
     collection: UserIpCollection;
     source: UserIpSourceStatus;
+    geoip: GeoIpStatus;
 };
 
 export type StorageCategory = 'technical' | 'events' | 'audit' | 'connection_issues' | 'traffic' | 'user_traffic' | 'user_ip_history' | 'diagnostics';
@@ -902,6 +935,10 @@ export type StorageSettings = {
 };
 
 export type StorageSettingsUpdate = {
+    /**
+     * Explicitly acknowledges deletion of data outside a shorter retention.
+     */
+    confirm_retention_reduction?: boolean;
     policies: Array<StoragePolicy>;
 };
 
@@ -914,12 +951,51 @@ export type DestructiveConfirmationRequest = {
     confirm: true;
 };
 
-export type GeoInfo = {
-    ip: string;
-    country?: string;
-    city?: string;
-    asn?: number;
-    as_org?: string;
+export type GeoIpConfig = {
+    enabled: boolean;
+    source: 'community' | 'urls' | 'files';
+    schedule: 'weekly' | 'daily' | 'manual';
+    country: GeoIpDatabaseConfig;
+    asn: GeoIpDatabaseConfig;
+    city: GeoIpDatabaseConfig;
+};
+
+export type GeoIpDatabaseConfig = {
+    enabled: boolean;
+    location: string;
+};
+
+export type GeoIpDatabaseStatus = {
+    kind: 'country' | 'asn' | 'city';
+    build_epoch_secs: number;
+    loaded_epoch_secs: number;
+};
+
+export type GeoIpStatus = {
+    state: 'disabled' | 'empty' | 'ready' | 'updating' | 'error';
+    available: boolean;
+    active_source: 'community' | 'urls' | 'files' | null;
+    databases: Array<GeoIpDatabaseStatus>;
+    /**
+     * Stable safe GeoIP error code; never a URL, filesystem path, query, or exception text.
+     */
+    last_error: string | null;
+};
+
+export type GeoIpSettings = {
+    config: GeoIpConfig;
+    status: GeoIpStatus;
+};
+
+export type GeoIpResult = {
+    state: 'found' | 'private' | 'not_found';
+    country_code: string;
+    country_name: string;
+    country_name_ru: string;
+    city: string;
+    city_ru: string;
+    asn: number;
+    organization: string;
 };
 
 export type Username = string;
@@ -2777,6 +2853,97 @@ export type PurgeStorageHistoryResponses = {
 
 export type PurgeStorageHistoryResponse = PurgeStorageHistoryResponses[keyof PurgeStorageHistoryResponses];
 
+export type GetGeoIpSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/geoip';
+};
+
+export type GetGeoIpSettingsErrors = {
+    /**
+     * Internal panel error
+     */
+    500: Error;
+};
+
+export type GetGeoIpSettingsError = GetGeoIpSettingsErrors[keyof GetGeoIpSettingsErrors];
+
+export type GetGeoIpSettingsResponses = {
+    /**
+     * Saved GeoIP configuration and active database status.
+     */
+    200: GeoIpSettings;
+};
+
+export type GetGeoIpSettingsResponse = GetGeoIpSettingsResponses[keyof GetGeoIpSettingsResponses];
+
+export type PutGeoIpSettingsData = {
+    body: GeoIpConfig;
+    path?: never;
+    query?: never;
+    url: '/api/settings/geoip';
+};
+
+export type PutGeoIpSettingsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * conflict
+     */
+    409: Error;
+    /**
+     * Internal panel error
+     */
+    500: Error;
+};
+
+export type PutGeoIpSettingsError = PutGeoIpSettingsErrors[keyof PutGeoIpSettingsErrors];
+
+export type PutGeoIpSettingsResponses = {
+    /**
+     * Configuration saved; application started, or GeoIP disabled.
+     */
+    202: GeoIpSettings;
+};
+
+export type PutGeoIpSettingsResponse = PutGeoIpSettingsResponses[keyof PutGeoIpSettingsResponses];
+
+export type UpdateGeoIpData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/geoip/update';
+};
+
+export type UpdateGeoIpErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * conflict
+     */
+    409: Error;
+    /**
+     * Internal panel error
+     */
+    500: Error;
+};
+
+export type UpdateGeoIpError = UpdateGeoIpErrors[keyof UpdateGeoIpErrors];
+
+export type UpdateGeoIpResponses = {
+    /**
+     * Update started.
+     */
+    202: GeoIpSettings;
+};
+
+export type UpdateGeoIpResponse = UpdateGeoIpResponses[keyof UpdateGeoIpResponses];
+
 export type StreamEventsData = {
     body?: never;
     path?: never;
@@ -2883,7 +3050,7 @@ export type GetHistoryData = {
          *
          */
         metric: string;
-        range: '15m' | '30m' | '1h' | '24h' | '7d';
+        range: '15m' | '30m' | '1h' | '24h' | '7d' | '30d' | '90d';
     };
     url: '/api/history';
 };
@@ -2910,7 +3077,7 @@ export type GetHistoryEventsData = {
     body?: never;
     path?: never;
     query: {
-        range: '15m' | '30m' | '1h' | '24h' | '7d';
+        range: '15m' | '30m' | '1h' | '24h' | '7d' | '30d' | '90d';
         limit?: number;
         kind?: string;
         entity?: string;

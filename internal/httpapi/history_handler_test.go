@@ -10,6 +10,70 @@ import (
 	"github.com/amirotin/telemt_panel/internal/store"
 )
 
+func TestHistoryAggregateMetadata(t *testing.T) {
+	minimum, delta := 2.0, 5.0
+	points := toHistoryPoints([]store.MetricPoint{
+		{TS: 300, Value: 7, Tier: store.MetricTierFive, Min: &minimum, Max: 9, Samples: 3, FirstTS: 305, LastTS: 315, Delta: &delta, ObservedSeconds: 10},
+		{TS: 600, Value: 4, Tier: store.MetricTierQuarter, Max: 8, Samples: 6},
+		{TS: 1500, Value: 1},
+	})
+	p := points[0]
+	if p.Min == nil || *p.Min != 2 || p.Max == nil || *p.Max != 9 || p.Samples != 3 ||
+		p.FirstTS == nil || *p.FirstTS != 305 || p.LastTS == nil || *p.LastTS != 315 ||
+		p.Delta == nil || *p.Delta != 5 || p.ObservedSeconds == nil || *p.ObservedSeconds != 10 || p.Gaps == nil || *p.Gaps != 0 {
+		t.Fatalf("aggregate metadata lost: %+v", p)
+	}
+	if points[1].Min != nil || points[1].FirstTS != nil || points[1].Delta != nil || points[1].ObservedSeconds != nil || points[2].Max != nil {
+		t.Fatalf("fabricated raw or legacy metadata: %+v", points)
+	}
+}
+
+func TestHistoryStateUsesAggregateResolutionAndGaps(t *testing.T) {
+	minimum := 1.0
+	points := []store.MetricPoint{{TS: 3600, Tier: store.MetricTierHour, Min: &minimum, FirstTS: 3605, LastTS: 7000}}
+	if state, from := metricHistoryState(7200, 1800, 86400, points); state != "ready" || from == nil || *from != 3605 {
+		t.Fatalf("hourly history falsely partial: %s, %v", state, from)
+	}
+	points[0].Gaps = 1
+	if state, _ := metricHistoryState(7200, 1800, 86400, points); state != "partial" {
+		t.Fatalf("observation gap concealed: %s", state)
+	}
+}
+
+func TestHistoryLongRanges(t *testing.T) {
+	srv := newTestServer(t)
+	for _, duration := range []string{"30d", "90d"} {
+		w := httptest.NewRecorder()
+		srv.handleGetHistory(w, httptest.NewRequest(http.MethodGet, "/api/history?metric=connections&range="+duration, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", duration, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestHistoryStateReportsUnobservedTail(t *testing.T) {
+	points := []store.MetricPoint{{TS: 1000, Value: 1}, {TS: 1010, Value: 2}}
+	if state, _ := metricHistoryState(1800, 1000, 7200, points); state != "partial" {
+		t.Fatalf("stale series presented as complete: %s", state)
+	}
+}
+
+func TestHandleGetHistoryDoesNotExtendIdleRAMRetention(t *testing.T) {
+	srv := newTestServer(t)
+	if err := srv.st.RecordMetric("connections", store.MetricPoint{TS: time.Now().Add(-3 * time.Hour).Unix(), Value: 12}); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	srv.handleGetHistory(w, httptest.NewRequest(http.MethodGet, "/api/history?metric=connections&range=24h", nil))
+	var got historySeriesView
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusOK || got.State != "empty" || len(got.Points) != 0 || got.RetentionSecs != 7200 {
+		t.Fatalf("expired live history = %+v, status=%d", got, w.Code)
+	}
+}
+
 // TestHandleGetHistory_UnknownMetric covers the 400 bad_request case for an
 // unrecognized metric name.
 func TestHandleGetHistory_UnknownMetric(t *testing.T) {
@@ -246,6 +310,10 @@ func TestTrafficSummaryAndRanking(t *testing.T) {
 func TestMetricHistoryStateDistinguishesDisabledEmptyPartialAndReady(t *testing.T) {
 	now := int64(10_000)
 	from := now - 600
+	var continuous []store.MetricPoint
+	for ts := from + 30; ts <= now; ts += 60 {
+		continuous = append(continuous, store.MetricPoint{TS: ts, Value: 1})
+	}
 	for _, tc := range []struct {
 		name      string
 		retention int64
@@ -256,7 +324,7 @@ func TestMetricHistoryStateDistinguishesDisabledEmptyPartialAndReady(t *testing.
 		{name: "empty", retention: 600, want: "empty"},
 		{name: "partial retention", retention: 300, points: []store.MetricPoint{{TS: from, Value: 1}}, want: "partial"},
 		{name: "partial collection", retention: 600, points: []store.MetricPoint{{TS: from + 180, Value: 1}}, want: "partial"},
-		{name: "ready", retention: 600, points: []store.MetricPoint{{TS: from + 30, Value: 1}}, want: "ready"},
+		{name: "ready", retention: 600, points: continuous, want: "ready"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, _ := metricHistoryState(now, from, tc.retention, tc.points)

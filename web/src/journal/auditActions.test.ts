@@ -15,6 +15,8 @@ import { isKnownAuditAction, ru as s } from "../i18n";
 // the way ru.test.ts walks openapi.yaml for error codes — this hardcoded,
 // commented list is the deliberately simpler alternative (Task 7 brief D).
 const KNOWN_BACKEND_ACTIONS = [
+  "geoip.settings_change",
+  "geoip.update",
   "login",
   "login.failed",
   "logout",

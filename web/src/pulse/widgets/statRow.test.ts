@@ -138,6 +138,14 @@ describe("deltaSparklineValues", () => {
 });
 
 describe("peakHistoryValue", () => {
+  it("keeps the observed peak when a restarted panel serves aggregates", () => {
+    const series: HistorySeries = {
+      metric: "connections", range: "30m", state: "ready",
+      requested_from_epoch_secs: 0, retention_secs: 86400,
+      points: [{ ts: 300, v: 4, tier: "5m", min: 1, max: 20, samples: 30 }, { ts: 605, v: 7 }],
+    };
+    expect(peakHistoryValue(series)).toBe(20);
+  });
   const withPoints = (points: HistorySeries["points"]): HistorySeries => ({
     metric: "connections",
     range: "15m",

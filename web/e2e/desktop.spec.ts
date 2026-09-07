@@ -1,5 +1,82 @@
 import { expect, test } from "./fixtures";
 
+for (const width of [1440, 768, 390]) {
+  test(`independent history settings confirm retention without changing other categories at ${width}px`, async ({ page, login }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await login();
+    await page.goto("/server/settings");
+    const storage = page.getByTestId("settings-storage");
+    const duration = storage.getByLabel("Хранить: Технические метрики", { exact: true });
+    await expect(duration).toHaveValue("30");
+    await expect(storage).not.toContainText("Метрики и события на диске");
+    await expect(storage).not.toContainText("Размер недоступен");
+    await expect(storage.getByRole("article")).toHaveCount(8);
+    await expect(storage.getByRole("combobox")).toHaveCount(8);
+    for (const title of ["Технические метрики", "События панели", "Аудит действий", "Проблемы подключений", "Общий трафик", "Трафик пользователей", "История IP-адресов", "Расширенная диагностика"]) {
+      await expect(storage.getByRole("article", { name: title, exact: true })).toBeAttached();
+    }
+    await duration.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("storage.png") });
+    const before = await (await page.request.get("/api/settings/storage")).json();
+    await duration.selectOption("7");
+    await storage.getByRole("button", { name: "Сохранить", exact: true }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Сократить срок хранения?");
+    await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
+    const canceled = await (await page.request.get("/api/settings/storage")).json();
+    expect(canceled.policies).toEqual(before.policies);
+    await storage.getByRole("button", { name: "Сохранить", exact: true }).first().click();
+    const saved = page.waitForResponse((r) => r.url().endsWith("/api/settings/storage") && r.request().method() === "PUT");
+    await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
+    expect((await saved).status()).toBe(204);
+    await expect(dialog).not.toBeVisible();
+    await page.reload();
+    await expect(duration).toHaveValue("7");
+    const after = await (await page.request.get("/api/settings/storage")).json();
+    for (const category of ["events", "connection_issues", "traffic", "diagnostics", "audit", "user_traffic", "user_ip_history"]) {
+      expect(after.policies.find((p: { category: string }) => p.category === category))
+        .toEqual(before.policies.find((p: { category: string }) => p.category === category));
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+    await duration.selectOption("30");
+    const restored = page.waitForResponse((r) => r.url().endsWith("/api/settings/storage") && r.request().method() === "PUT");
+    await storage.getByRole("button", { name: "Сохранить", exact: true }).first().click();
+    expect((await restored).status()).toBe(204);
+    await expect(dialog).not.toBeVisible();
+  });
+}
+
+for (const width of [1440, 768, 390]) {
+  test(`panel settings keep a single scroll owner and reachable footer at ${width}px`, async ({ page, login }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await login();
+    await page.goto("/server/settings");
+    const geoip = page.locator("#geoip");
+    await expect(geoip.locator("input").first()).toBeAttached();
+    await expect(geoip.locator(".geoip-form-fields")).toHaveAccessibleName("География IP");
+    await expect(geoip.locator(".geoip-sources")).toHaveAccessibleName("Источник баз");
+
+    // Visually hidden legends must not escape the page scroll container.
+    expect.soft(await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight)).toBeLessThanOrEqual(1);
+    const main = page.locator("main");
+    await main.evaluate(element => element.scrollTo(0, element.scrollHeight));
+    expect(await main.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await page.evaluate(() => window.scrollTo(0, 10000));
+    expect.soft(await page.evaluate(() => document.scrollingElement?.scrollTop)).toBe(0);
+
+    const footer = await geoip.locator(".geoip-attribution").boundingBox();
+    const mainBox = await main.boundingBox();
+    expect(footer).not.toBeNull();
+    expect(mainBox).not.toBeNull();
+    const bottomNav = page.getByTestId("mobile-bottom-nav");
+    const visibleBottom = await bottomNav.isVisible()
+      ? (await bottomNav.boundingBox())!.y
+      : mainBox!.y + mainBox!.height;
+    // The last lines must stay above the fixed mobile navigation.
+    expect(footer!.y + footer!.height).toBeLessThanOrEqual(visibleBottom + 1);
+  });
+}
+
 // desktop.spec.ts — 1280×800 smoke (M3 Task 9 brief: "смоук 1280×800 —
 // sidebar, raw-конфиг виден"). Two things the mobile spec structurally
 // cannot cover: the wide sidebar

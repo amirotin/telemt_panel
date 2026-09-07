@@ -4,9 +4,53 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
+
+func TestCompositeReopensLegacyPolicyChoicesWithoutUnifying(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
+	state, err := NewState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policies := DefaultStoragePolicies()
+	for i := range policies {
+		switch policies[i].Category {
+		case StorageTechnical:
+			policies[i].RetentionDays = 7
+		case StorageTraffic, StorageDiagnostics:
+			policies[i].Enabled = false
+			policies[i].RetentionDays = 14
+		case StorageUserTraffic:
+			policies[i].RetentionDays = 180
+		}
+	}
+	if err := state.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := NewMemory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined, err := NewComposite(reopened, history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer combined.Close()
+	got, err := history.ListStoragePolicies()
+	if err != nil || !reflect.DeepEqual(got, policies) {
+		t.Fatalf("legacy choices changed on restart: %+v %v", got, err)
+	}
+}
 
 func TestCompositeRoutesStateAndHistory(t *testing.T) {
 	state, err := NewState("")
@@ -150,6 +194,38 @@ func TestCompositeReloadsPersistedPoliciesIntoHistory(t *testing.T) {
 type rejectingPolicyHistory struct {
 	HistoryStore
 	failNext bool
+}
+
+type rejectingPolicyState struct{ StateStore }
+
+func (s *rejectingPolicyState) ReplaceStoragePolicies([]StoragePolicy) error {
+	return errors.New("state write failed")
+}
+
+func TestCompositeStateFailureDoesNotChangeHistoryRetention(t *testing.T) {
+	state, err := NewState("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := NewMemory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined, err := NewComposite(&rejectingPolicyState{state}, history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer combined.Close()
+	policies, _ := combined.ListStoragePolicies()
+	policies[0].RetentionDays = 7
+	policies[0].Enabled = false
+	if err := combined.ReplaceStoragePolicies(policies); err == nil {
+		t.Fatal("failed state write accepted")
+	}
+	got, _ := history.ListStoragePolicies()
+	if !got[0].Enabled || got[0].RetentionDays != 30 {
+		t.Fatalf("failed save changed history policy: %+v", got[0])
+	}
 }
 
 func (s *rejectingPolicyHistory) ApplyStoragePolicies(policies []StoragePolicy) error {

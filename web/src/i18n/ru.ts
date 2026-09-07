@@ -9,7 +9,10 @@
 // Countable strings are 3-slot [one, few, many] tuples fed to
 // i18n/plural.ts's plural()/countLabel()/pluralTemplate(); Russian uses all
 // three slots, English repeats the plural in the last two.
+import { geoipRu } from "./geoip.ru";
+
 export const ru = {
+  geoip: geoipRu,
   // The dictionary carries its own BCP-47 tag so a helper only ever needs
   // ONE parameter (`s: Dict`) to both look a string up and pick the right
   // plural form / Intl formatter — see i18n/plural.ts's localeOf.
@@ -4225,9 +4228,11 @@ export const ru = {
       displayTitle: "Отображение",
       interfaceTitle: "Интерфейс",
       storageEyebrow: "Память наблюдаемости",
+      storageReduceTitle: "Сократить срок хранения?",
+      storageReduceNote: "После сохранения данные старше выбранного срока будут удаляться. Вернуть их увеличением срока нельзя. Изменения (дней):",
       storageTitle: "История и хранение",
       storageNote:
-        "Техническое состояние сохраняется всегда. Остальные категории можно включать независимо — панель не навязывает ни глубину истории, ни расход диска.",
+        "Состояние и настройки панели сохраняются отдельно от истории. Выберите, какую историю собирать и как долго её хранить; живые графики работают и без записи на диск.",
       storageMemoryWarning:
         'Сейчас история хранится в RAM и пропадёт после перезапуска. Для постоянной истории выберите driver = "sqlite".',
       storageStateVolatileWarning:
@@ -4332,6 +4337,7 @@ export const ru = {
       "Клик копирует через Clipboard API (HTTPS/localhost), иначе через execCommand, иначе выделяет значение и показывает тост «{manual}» — см. src/lib/copyText.ts.",
   },
   errors: {
+    conflict: "Другая операция ещё выполняется. Дождитесь её завершения и повторите попытку.",
     // Panel-native codes.
     bad_request: "Некорректный запрос.",
     confirmation_required: "Нужно явно подтвердить действие.",
@@ -4424,6 +4430,8 @@ export const ru = {
   // errors table's completeness test walks Error.code — see
   // journal/auditActions.test.ts's own list of backend call sites).
   auditActions: {
+    "geoip.settings_change": "Изменены настройки географии IP",
+    "geoip.update": "Запрошено обновление баз GeoIP",
     login: "Вход",
     "login.failed": "Неудачный вход",
     logout: "Выход",

@@ -58,7 +58,7 @@ func TestPortableSQLRoundTripsUserTraffic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.FormatVersion != 6 || len(data.UserTraffic) != 1 || len(data.UserTrafficBuckets) != 3 || data.UserTrafficCollector == nil {
+	if data.FormatVersion != portableFormatVersion || len(data.UserTraffic) != 1 || len(data.UserTrafficBuckets) != 3 || data.UserTrafficCollector == nil {
 		t.Fatalf("exported traffic = %+v / %+v / %+v", data.UserTraffic, data.UserTrafficBuckets, data.UserTrafficCollector)
 	}
 

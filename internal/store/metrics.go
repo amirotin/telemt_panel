@@ -2,11 +2,20 @@ package store
 
 import (
 	"sort"
+	"strings"
 	"time"
 )
 
+func persistentMetricHistory(name string) bool {
+	switch name {
+	case "health", "telemt.available", "telemt.unavailable", "mode.route", "dc.coverage_pct", "upstream.healthy_total", "upstream.unhealthy_total":
+		return false
+	}
+	return !strings.HasPrefix(name, "upstream.") || (!strings.HasSuffix(name, ".healthy") && !strings.HasSuffix(name, ".unhealthy"))
+}
+
 const (
-	metricRawRetention       = 2 * time.Hour
+	metricRawRetention       = LiveMetricRetention
 	metricMinuteRetention    = 24 * time.Hour
 	userTrafficFineRetention = 24 * time.Hour
 )
@@ -18,6 +27,7 @@ var metricTierRetention = []struct {
 }{
 	{tier: MetricTierRaw, sql: metricTierRawSQL, keep: metricRawRetention},
 	{tier: MetricTierMinute, sql: string(MetricTierMinute), keep: metricMinuteRetention},
+	{tier: MetricTierFive, sql: string(MetricTierFive), keep: 7 * 24 * time.Hour},
 	{tier: MetricTierQuarter, sql: string(MetricTierQuarter)},
 	{tier: MetricTierHour, sql: string(MetricTierHour)},
 }
@@ -70,43 +80,7 @@ func desiredMetricTier(ts, now int64) MetricTier {
 // aggregates. That makes the schema migration lossless without duplicating
 // buckets in charts.
 func selectMetricPoints(points []MetricPoint, fromTS, now int64) []MetricPoint {
-	minuteBuckets := make(map[int64]bool)
-	quarterBuckets := make(map[int64]bool)
-	for _, point := range points {
-		switch point.Tier {
-		case MetricTierMinute:
-			minuteBuckets[point.TS] = true
-		case MetricTierQuarter:
-			quarterBuckets[point.TS] = true
-		}
-	}
-
-	out := make([]MetricPoint, 0, len(points))
-	for _, point := range points {
-		if point.TS < fromTS {
-			continue
-		}
-		desired := desiredMetricTier(point.TS, now)
-		include := point.Tier == desired
-		switch point.Tier {
-		case MetricTierRaw:
-			if desired == MetricTierMinute {
-				include = !minuteBuckets[metricBucket(point.TS, time.Minute)]
-			} else if desired == MetricTierQuarter {
-				include = !quarterBuckets[metricBucket(point.TS, 15*time.Minute)] &&
-					!minuteBuckets[metricBucket(point.TS, time.Minute)]
-			}
-		case MetricTierMinute:
-			if desired == MetricTierQuarter {
-				include = !quarterBuckets[metricBucket(point.TS, 15*time.Minute)]
-			}
-		}
-		if include {
-			out = append(out, point)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].TS < out[j].TS })
-	return out
+	return selectMetricResolution(points, fromTS, now)
 }
 
 // selectUserTrafficPoints keeps 15-minute buckets for the most recent day and

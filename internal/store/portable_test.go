@@ -131,7 +131,7 @@ func TestPortableFormatFourMigratesUserTrafficWithoutDoubleCounting(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.FormatVersion != 6 || len(data.UserTraffic) != 1 || data.UserTraffic[0].Summary.ObservedTotalBytes != 100 {
+	if data.FormatVersion != portableFormatVersion || len(data.UserTraffic) != 1 || data.UserTraffic[0].Summary.ObservedTotalBytes != 100 {
 		t.Fatalf("migrated summaries = %+v", data.UserTraffic)
 	}
 	if _, exists := data.Metrics["user.alice.traffic"]; exists {

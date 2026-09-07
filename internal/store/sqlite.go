@@ -29,6 +29,11 @@ type SQLite struct {
 	policyMu sync.RWMutex
 	policies map[StorageCategory]StoragePolicy
 
+	liveMu         sync.RWMutex
+	liveMetrics    map[string][]MetricPoint
+	pendingMetrics map[string][]MetricPoint
+	metricsClosed  bool
+
 	maintenanceStop chan struct{}
 	maintenanceDone chan struct{}
 	closeOnce       sync.Once
@@ -199,8 +204,8 @@ func (s *SQLite) initializeSQL(ctx context.Context) error {
 
 func (s *SQLite) MetricRetention(name string) time.Duration {
 	policy := s.policy(metricCategory(name))
-	if !policy.Enabled {
-		return 0
+	if !persistentMetricHistory(name) || !policy.Enabled {
+		return metricRawRetention
 	}
 	return retentionDuration(policy)
 }
@@ -218,9 +223,16 @@ func (s *SQLite) ApplyStoragePolicies(policies []StoragePolicy) error {
 	if err := ValidateStoragePolicies(policies); err != nil {
 		return err
 	}
+	s.liveMu.Lock()
+	defer s.liveMu.Unlock()
 	s.policyMu.Lock()
 	s.policies = policyMap(policies)
 	s.policyMu.Unlock()
+	for name := range s.pendingMetrics {
+		if !s.policy(metricCategory(name)).Enabled {
+			delete(s.pendingMetrics, name)
+		}
+	}
 	return nil
 }
 
@@ -234,7 +246,9 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 	if category == StorageAudit {
 		return nil
 	}
-	return s.withOperationTx(func(tx *sql.Tx) error {
+	s.liveMu.Lock()
+	defer s.liveMu.Unlock()
+	err := s.withOperationTx(func(tx *sql.Tx) error {
 		if category == StorageEvents {
 			if _, err := tx.Exec(`DELETE FROM history_events`); err != nil {
 				return fmt.Errorf("purge event history: %w", err)
@@ -250,6 +264,15 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 		}
 		return nil
 	})
+	if err == nil {
+		for name := range s.liveMetrics {
+			if metricCategory(name) == category {
+				delete(s.liveMetrics, name)
+				delete(s.pendingMetrics, name)
+			}
+		}
+	}
+	return err
 }
 
 func (s *SQLite) StorageStats() (StorageStats, error) {
@@ -333,6 +356,12 @@ func (s *SQLite) closeStore() error {
 		<-s.maintenanceDone
 		s.maintenanceStop = nil
 		s.maintenanceDone = nil
+	}
+	s.liveMu.Lock()
+	s.metricsClosed = true
+	s.liveMu.Unlock()
+	if err := s.flushMetrics(); err != nil {
+		errs = append(errs, err.Error())
 	}
 	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 		errs = append(errs, err.Error())

@@ -24,6 +24,8 @@ var historyRanges = map[string]time.Duration{
 	"1h":  time.Hour,
 	"24h": 24 * time.Hour,
 	"7d":  7 * 24 * time.Hour,
+	"30d": 30 * 24 * time.Hour,
+	"90d": 90 * 24 * time.Hour,
 }
 
 var userTrafficRanges = map[string]time.Duration{
@@ -88,10 +90,17 @@ func isKnownHistoryMetric(metric string) bool {
 
 // historyPointView mirrors one entry of HistorySeries.points.
 type historyPointView struct {
-	TS   int64    `json:"ts"`
-	V    float64  `json:"v"`
-	Tier string   `json:"tier,omitempty"`
-	Max  *float64 `json:"max,omitempty"`
+	TS              int64    `json:"ts"`
+	V               float64  `json:"v"`
+	Tier            string   `json:"tier,omitempty"`
+	Max             *float64 `json:"max,omitempty"`
+	Min             *float64 `json:"min,omitempty"`
+	Samples         int64    `json:"samples,omitempty"`
+	FirstTS         *int64   `json:"first_observed_epoch_secs,omitempty"`
+	LastTS          *int64   `json:"last_observed_epoch_secs,omitempty"`
+	Delta           *float64 `json:"observed_delta,omitempty"`
+	ObservedSeconds *int64   `json:"observed_seconds,omitempty"`
+	Gaps            *int64   `json:"gaps,omitempty"`
 }
 
 type userTrafficPointView struct {
@@ -106,8 +115,8 @@ type historySeriesView struct {
 	Range         string `json:"range"`
 	State         string `json:"state"`
 	RequestedFrom int64  `json:"requested_from_epoch_secs"`
-	// RetentionSecs is the selected metric category's retention. Zero means
-	// that persistent history for the category is disabled.
+	// RetentionSecs includes the live RAM window when disk history is disabled.
+	// Gaps and the sample cap may shorten the actual returned coverage.
 	RetentionSecs int64              `json:"retention_secs"`
 	AvailableFrom *int64             `json:"available_from_epoch_secs,omitempty"`
 	Source        *bool              `json:"source_available,omitempty"`
@@ -168,8 +177,8 @@ type historyEventsView struct {
 }
 
 // handleGetHistory implements GET /api/history?metric=&range=: a read of
-// the active store. Never errors on empty history — an unrecorded,
-// disabled or not-yet-populated metric comes back with points: [].
+// the active store. Optional disk persistence does not disable live samples.
+// An unrecorded or expired metric comes back with points: [].
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	metric := r.URL.Query().Get("metric")
 	if !isKnownHistoryMetric(metric) {
@@ -185,13 +194,14 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	fromTS := now.Add(-window).Unix()
-	points, err := s.st.MetricRange(metric, fromTS)
+	retentionSecs := int64(s.st.MetricRetention(metric) / time.Second)
+	readFrom := max(fromTS, now.Unix()-retentionSecs)
+	points, err := s.st.MetricRange(metric, readFrom)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read history")
 		return
 	}
 
-	retentionSecs := int64(s.st.MetricRetention(metric) / time.Second)
 	source := s.historySourceAvailability(now)
 	state, availableFrom := metricHistoryState(now.Unix(), fromTS, retentionSecs, points)
 
@@ -523,12 +533,47 @@ func metricHistoryState(nowTS, fromTS, retentionSecs int64, points []store.Metri
 		return "empty", nil
 	}
 	oldest := points[0].TS
+	if points[0].Min != nil {
+		oldest = points[0].FirstTS
+	}
 	state := "ready"
 	requestedWindow := nowTS - fromTS
-	if retentionSecs < requestedWindow || oldest > fromTS+int64(2*time.Minute/time.Second) {
+	if retentionSecs < requestedWindow || oldest > fromTS+historyPointTolerance(points[0]) {
+		state = "partial"
+	}
+	for i, point := range points {
+		if point.Gaps > 0 {
+			state = "partial"
+		}
+		if i > 0 {
+			previous := points[i-1]
+			end := previous.TS
+			if previous.LastTS > end {
+				end = previous.LastTS
+			}
+			if point.TS-end > max(historyPointTolerance(previous), historyPointTolerance(point)) {
+				state = "partial"
+			}
+		}
+	}
+	last := points[len(points)-1]
+	if nowTS-max(last.TS, last.LastTS) > historyPointTolerance(last) {
 		state = "partial"
 	}
 	return state, &oldest
+}
+
+func historyPointTolerance(point store.MetricPoint) int64 {
+	switch point.Tier {
+	case store.MetricTierFive:
+		return 300
+	case store.MetricTierQuarter:
+		return 900
+	case store.MetricTierHour:
+		return 3600
+	default:
+		return 120
+	}
 }
 
 func userTrafficHistoryState(nowTS, fromTS, retentionSecs, observedSince int64, points []store.UserTrafficPoint) (string, *int64) {
@@ -571,6 +616,14 @@ func toHistoryPoints(points []store.MetricPoint) []historyPointView {
 			out[i].Tier = string(p.Tier)
 			maxValue := p.Max
 			out[i].Max = &maxValue
+			out[i].Samples = p.Samples
+			out[i].Min = p.Min
+			if p.Min != nil {
+				first, last, observed, gaps := p.FirstTS, p.LastTS, p.ObservedSeconds, p.Gaps
+				out[i].FirstTS, out[i].LastTS = &first, &last
+				out[i].ObservedSeconds, out[i].Gaps = &observed, &gaps
+				out[i].Delta = p.Delta
+			}
 		}
 	}
 	return out

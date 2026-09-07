@@ -1,4 +1,5 @@
 import type { Dict } from "./dict";
+import { geoipEn } from "./geoip.en";
 
 // The English dictionary. Typed as `Dict` — the shape comes from ru.ts, so
 // a key added there is a compile error here until it is translated, and a
@@ -10,6 +11,7 @@ import type { Dict } from "./dict";
 // Reissue, Белый список → Allowlist. Telemt's own identifiers (config keys,
 // ME, DC, Fake-TLS, hardswap, PROXY protocol) are never translated.
 export const en: Dict = {
+  geoip: geoipEn,
   locale: "en",
   app: {
     title: "Telemt Panel",
@@ -3983,9 +3985,11 @@ export const en: Dict = {
       displayTitle: "Display",
       interfaceTitle: "Interface",
       storageEyebrow: "Observability memory",
+      storageReduceTitle: "Shorten retention?",
+      storageReduceNote: "After saving, data older than the selected retention will be removed. Increasing retention cannot recover it. Changes (days):",
       storageTitle: "History and storage",
       storageNote:
-        "Technical state is always retained. Every other category is optional, so the panel does not impose either history depth or disk usage.",
+        "Panel state and settings are stored separately from history. Choose what to collect and for how long; live graphs work without disk recording.",
       storageMemoryWarning:
         'History is currently held in RAM and is lost on restart. Select driver = "sqlite" for durable history.',
       storageStateVolatileWarning:
@@ -4083,6 +4087,7 @@ export const en: Dict = {
       "A click copies through the Clipboard API (HTTPS/localhost), else execCommand, else it selects the value and shows the “{manual}” toast — see src/lib/copyText.ts.",
   },
   errors: {
+    conflict: "Another operation is still running. Wait for it to finish and try again.",
     // Panel-native codes.
     bad_request: "Malformed request.",
     confirmation_required: "This action requires explicit confirmation.",
@@ -4163,6 +4168,8 @@ export const en: Dict = {
     default: "The request failed. Try again.",
   },
   auditActions: {
+    "geoip.settings_change": "IP geography settings changed",
+    "geoip.update": "GeoIP database update requested",
     login: "Signed in",
     "login.failed": "Failed sign-in",
     logout: "Signed out",

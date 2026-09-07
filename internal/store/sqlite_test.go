@@ -47,8 +47,8 @@ func TestSQLiteRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 10 {
-		t.Fatalf("schema version = %d, want 10", info.Schema)
+	if info := reopened.Info(); info.Schema != 11 {
+		t.Fatalf("schema version = %d, want 11", info.Schema)
 	}
 	if got, err := reopened.MetricRange("connections", 0); err != nil || len(got) != 1 || got[0].Value != 42 {
 		t.Fatalf("MetricRange = %+v, %v", got, err)
@@ -70,13 +70,16 @@ func TestSQLiteMetricTiersPreserveGaugeAverageAndPeak(t *testing.T) {
 		}
 	}
 
+	if err := store.flushMetrics(); err != nil {
+		t.Fatal(err)
+	}
 	var value, max float64
 	var samples int64
-	if err := store.queryRow(`SELECT value, max, samples FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`, "connections", "1m", metricBucket(now, time.Minute)).Scan(&value, &max, &samples); err != nil {
+	if err := store.queryRow(`SELECT value, max, samples FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`, "connections", "5m", metricBucket(now, 5*time.Minute)).Scan(&value, &max, &samples); err != nil {
 		t.Fatal(err)
 	}
 	if value != 15 || max != 20 || samples != 2 {
-		t.Fatalf("minute bucket = avg %v, max %v, samples %d; want 15, 20, 2", value, max, samples)
+		t.Fatalf("five-minute bucket = avg %v, max %v, samples %d; want 15, 20, 2", value, max, samples)
 	}
 }
 
@@ -94,11 +97,14 @@ func TestSQLiteMetricTiersPreserveCounterLastValue(t *testing.T) {
 
 	var value, max float64
 	var samples int64
-	if err := store.queryRow(`SELECT value, max, samples FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`, "traffic", "1m", metricBucket(now, time.Minute)).Scan(&value, &max, &samples); err != nil {
+	if err := store.flushMetrics(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.queryRow(`SELECT value, max, samples FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`, "traffic", "5m", metricBucket(now, 5*time.Minute)).Scan(&value, &max, &samples); err != nil {
 		t.Fatal(err)
 	}
 	if value != 160 || max != 160 || samples != 2 {
-		t.Fatalf("minute counter = last %v, max %v, samples %d; want 160, 160, 2", value, max, samples)
+		t.Fatalf("five-minute counter = last %v, max %v, samples %d; want 160, 160, 2", value, max, samples)
 	}
 }
 
@@ -114,12 +120,15 @@ func TestSQLiteMetricRangeUsesAggregateForOldData(t *testing.T) {
 		}
 	}
 
+	if err := store.flushMetrics(); err != nil {
+		t.Fatal(err)
+	}
 	points, err := store.MetricRange("connections", old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(points) != 1 || points[0].Tier != MetricTierQuarter || points[0].Value != 20 || points[0].Max != 30 || points[0].Samples != 2 {
-		t.Fatalf("old range = %+v, want one 15m avg=20 max=30 samples=2", points)
+	if len(points) != 1 || points[0].Tier != MetricTierFive || points[0].Value != 20 || points[0].Max != 30 || points[0].Samples != 2 {
+		t.Fatalf("old range = %+v, want one 5m avg=20 max=30 samples=2", points)
 	}
 }
 
@@ -258,7 +267,7 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		`DROP TABLE user_ip_history_collection`,
 		`DROP INDEX metric_points_category_tier_ts`,
 		`CREATE TABLE metric_points_v2 (name TEXT NOT NULL, category TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY(name, ts)) WITHOUT ROWID, STRICT`,
-		`INSERT INTO metric_points_v2(name, category, ts, value) SELECT name, category, ts, value FROM metric_points WHERE tier = 'raw'`,
+		fmt.Sprintf(`INSERT INTO metric_points_v2(name, category, ts, value) VALUES('connections', 'technical', %d, %g)`, point.TS, point.Value),
 		`DROP TABLE metric_points`,
 		`DROP TABLE history_events`,
 		`ALTER TABLE metric_points_v2 RENAME TO metric_points`,
@@ -278,8 +287,8 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 10 {
-		t.Fatalf("schema = %d, want 10", got)
+	if got := migrated.Info().Schema; got != 11 {
+		t.Fatalf("schema = %d, want 11", got)
 	}
 	points, err := migrated.MetricRange("connections", 0)
 	if err != nil {
@@ -325,8 +334,8 @@ func TestSQLiteMigrationEightDropsDevelopmentStateTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 10 {
-		t.Fatalf("schema = %d, want 10", got)
+	if got := migrated.Info().Schema; got != 11 {
+		t.Fatalf("schema = %d, want 11", got)
 	}
 	var stateTables int
 	if err := migrated.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN (` +
@@ -743,14 +752,18 @@ func TestSQLitePoliciesControlWritesAndRetention(t *testing.T) {
 	if got := store.MetricRetention("connections"); got != 14*24*time.Hour {
 		t.Fatalf("technical retention = %v", got)
 	}
-	if got := store.MetricRetention("traffic"); got != 0 {
+	if got := store.MetricRetention("traffic"); got != LiveMetricRetention {
 		t.Fatalf("disabled traffic retention = %v", got)
 	}
 	if err := store.RecordMetric("traffic", MetricPoint{TS: time.Now().Unix(), Value: 10}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := store.MetricRange("traffic", 0); err != nil || len(got) != 0 {
-		t.Fatalf("disabled traffic persisted: %+v, %v", got, err)
+	if got, err := store.MetricRange("traffic", 0); err != nil || len(got) != 1 {
+		t.Fatalf("live traffic unavailable: %+v, %v", got, err)
+	}
+	var persisted int
+	if err := store.db.QueryRow("SELECT count(*) FROM metric_points WHERE name = 'traffic'").Scan(&persisted); err != nil || persisted != 0 {
+		t.Fatalf("disabled disk history: count=%d, err=%v", persisted, err)
 	}
 
 	for i := range policies {
@@ -829,7 +842,7 @@ func TestSQLiteReducingRetentionPrunesOnlyExpiredRows(t *testing.T) {
 	}
 }
 
-func TestSQLiteRejectsDisabledTechnicalHistory(t *testing.T) {
+func TestSQLiteAllowsDisabledTechnicalHistory(t *testing.T) {
 	store, _ := newSQLite(t)
 	policies, _ := store.ListStoragePolicies()
 	for i := range policies {
@@ -837,8 +850,21 @@ func TestSQLiteRejectsDisabledTechnicalHistory(t *testing.T) {
 			policies[i].Enabled = false
 		}
 	}
-	if err := store.ApplyStoragePolicies(policies); err == nil {
-		t.Fatal("ReplaceStoragePolicies accepted disabled technical history")
+	if err := store.ApplyStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordMetric("connections", MetricPoint{TS: time.Now().Unix(), Value: 12}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.flushMetrics(); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := store.db.QueryRow("SELECT count(*) FROM metric_points").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("disabled history persisted: %d %v", count, err)
+	}
+	if live, err := store.MetricRange("connections", 0); err != nil || len(live) != 1 {
+		t.Fatalf("disabled history lost live graph: %v %v", live, err)
 	}
 }
 

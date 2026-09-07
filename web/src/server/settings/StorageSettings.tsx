@@ -31,7 +31,7 @@ import type {
   StoragePolicy,
   StorageSettings as StorageSettingsData,
 } from "../../lib/api/generated/types.gen";
-import { applyStorageProfile, detectStorageProfile, sameStoragePolicies } from "./storage.helpers";
+import { retentionReductions, sameStoragePolicies } from "./storage.helpers";
 
 const retentionOptions = [1, 3, 7, 14, 30, 90, 180, 365, 730];
 
@@ -56,12 +56,13 @@ export function StorageSettings() {
   }>({ source: null, policies: [] });
   const [purgeCategory, setPurgeCategory] = useState<StorageCategory | null>(null);
   const [resetTrafficOpen, setResetTrafficOpen] = useState(false);
+  const [pendingPolicies, setPendingPolicies] = useState<StoragePolicy[] | null>(null);
   const policies =
-    query.data && draft.source === query.data ? draft.policies : (query.data?.policies ?? []);
+    draft.source ? draft.policies : (query.data?.policies ?? []);
 
   function setPolicies(next: StoragePolicy[] | ((current: StoragePolicy[]) => StoragePolicy[])) {
     if (!query.data) return;
-    const current = draft.source === query.data ? draft.policies : query.data.policies;
+    const current = draft.source ? draft.policies : query.data.policies;
     setDraft({
       source: query.data,
       policies: typeof next === "function" ? next(current) : next,
@@ -71,8 +72,10 @@ export function StorageSettings() {
   const saveMutation = useMutation({
     ...putStorageSettingsMutation(),
     onSuccess: async () => {
+      setPendingPolicies(null);
       pushToast(s.server.settings.storageSaved, "ok");
       await queryClient.invalidateQueries({ queryKey: getStorageSettingsQueryKey() });
+      setDraft({ source: null, policies: [] });
     },
     onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
   });
@@ -96,7 +99,6 @@ export function StorageSettings() {
   });
 
   const dirty = query.data ? !sameStoragePolicies(policies, query.data.policies) : false;
-  const profile = detectStorageProfile(policies);
   const records = useMemo(
     () =>
       new Map(query.data?.stats.categories.map((entry) => [entry.category, entry.records]) ?? []),
@@ -111,6 +113,14 @@ export function StorageSettings() {
     setPolicies((current) =>
       current.map((policy) => (policy.category === category ? { ...policy, ...patch } : policy)),
     );
+  }
+
+  function save() {
+    if (retentionReductions(query.data?.policies ?? [], policies).length > 0) {
+      setPendingPolicies(policies.map((p) => ({ ...p })));
+    } else {
+      saveMutation.mutate({ body: { policies } });
+    }
   }
 
   if (query.isPending) {
@@ -155,7 +165,7 @@ export function StorageSettings() {
           <Button
             size="sm"
             disabled={!dirty || saveMutation.isPending}
-            onClick={() => saveMutation.mutate({ body: { policies } })}
+            onClick={save}
           >
             {saveMutation.isPending
               ? s.server.settings.storageSaving
@@ -205,43 +215,14 @@ export function StorageSettings() {
         </div>
       </dl>
 
-      <div className="border-b border-border px-4 py-4 sm:px-5">
-        <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-text-faint">
-          {s.server.settings.storageProfile}
-        </span>
-        <div className="mt-2 grid grid-cols-3 gap-1.5" role="radiogroup">
-          {(["minimum", "recommended", "extended"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={profile === value}
-              onClick={() => setPolicies(applyStorageProfile(policies, value))}
-              className={
-                profile === value
-                  ? "tap-target rounded-lg border border-accent/50 bg-accent/10 px-2 text-[11px] font-bold text-text"
-                  : "tap-target rounded-lg border border-border bg-surface-2 px-2 text-[11px] font-bold text-text-muted hover:text-text"
-              }
-            >
-              {s.server.settings.storageProfiles[value]}
-            </button>
-          ))}
-        </div>
-        {profile === "custom" && (
-          <small className="mt-2 block text-[10px] font-bold text-accent">
-            {s.server.settings.storageProfiles.custom}
-          </small>
-        )}
-      </div>
-
       <div className="grid gap-px bg-border md:grid-cols-2">
         {policies.map((policy) => {
           const copy = s.server.settings.storageCategories[policy.category];
           const Icon = categoryIcons[policy.category];
           const count = records.get(policy.category) ?? 0;
-          const mandatory = policy.category === "technical" || policy.category === "user_ip_history";
+          const mandatory = policy.category === "user_ip_history";
           return (
-            <article key={policy.category} className="bg-surface px-4 py-4 sm:px-5">
+            <article key={policy.category} aria-labelledby={`storage-${policy.category}-title`} className="bg-surface px-4 py-4 sm:px-5">
               <div className="flex items-start gap-3">
                 <span
                   className={
@@ -256,7 +237,7 @@ export function StorageSettings() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-[13px] font-bold text-text">{copy.title}</h3>
+                      <h3 id={`storage-${policy.category}-title`} className="text-[13px] font-bold text-text">{copy.title}</h3>
                       <span className="mt-0.5 block text-[10px] text-text-faint">
                         {new Intl.NumberFormat().format(count)}{" "}
                         {s.server.settings.storageRecordsShort}
@@ -281,6 +262,7 @@ export function StorageSettings() {
                     {s.server.settings.storageRetention}
                   </span>
                   <select
+                    aria-label={`${s.server.settings.storageRetention}: ${copy.title}`}
                     value={policy.retention_days}
                     disabled={!policy.enabled}
                     onChange={(event) =>
@@ -290,7 +272,7 @@ export function StorageSettings() {
                     }
                     className="h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-[12px] font-semibold text-text outline-none focus:border-accent disabled:opacity-50"
                   >
-                    {retentionOptions.map((days) => (
+                    {[...new Set([...retentionOptions, policy.retention_days])].sort((a, b) => a - b).map((days) => (
                       <option key={days} value={days}>
                         {s.server.settings.storageDays.replace("{count}", String(days))}
                       </option>
@@ -320,7 +302,7 @@ export function StorageSettings() {
               </div>
               {mandatory && (
                 <small className="mt-2 block text-[10px] text-text-faint">
-                  {policy.category === "user_ip_history" ? s.server.settings.storageIPRequired : s.server.settings.storageTechnicalRequired}
+                  {s.server.settings.storageIPRequired}
                 </small>
               )}
               {!policy.enabled && count > 0 && (
@@ -340,12 +322,24 @@ export function StorageSettings() {
         <Button
           size="sm"
           disabled={!dirty || saveMutation.isPending}
-          onClick={() => saveMutation.mutate({ body: { policies } })}
+          onClick={save}
         >
           {saveMutation.isPending ? s.server.settings.storageSaving : s.server.settings.storageSave}
         </Button>
       </footer>
 
+      <Sheet
+        open={pendingPolicies !== null}
+        onClose={() => { if (!saveMutation.isPending) setPendingPolicies(null); }}
+        title={s.server.settings.storageReduceTitle}
+      >
+        <ConfirmView description={s.server.settings.storageReduceNote + " " + retentionReductions(query.data.policies, pendingPolicies ?? []).map((p) =>
+          s.server.settings.storageCategories[p.category].title + ": " + query.data.policies.find((old) => old.category === p.category)?.retention_days + " → " + p.retention_days
+        ).join("; ")}
+          confirmLabel={s.server.settings.storageSave} danger pending={saveMutation.isPending}
+          onCancel={() => setPendingPolicies(null)}
+          onConfirm={() => { if (pendingPolicies) saveMutation.mutate({ body: { policies: pendingPolicies, confirm_retention_reduction: true } }); }} />
+      </Sheet>
       <Sheet
         open={purgeCategory !== null}
         onClose={() => setPurgeCategory(null)}

@@ -29,7 +29,7 @@ const (
 )
 
 // StoragePolicy controls persistence and retention for one history family.
-// Technical history is mandatory and therefore cannot be disabled.
+// Disabling service history does not disable the live RAM buffer.
 type StoragePolicy struct {
 	Category      StorageCategory `json:"category"`
 	Enabled       bool            `json:"enabled"`
@@ -66,14 +66,14 @@ var storageCategoryOrder = []StorageCategory{
 // DefaultStoragePolicies returns a fresh copy of the recommended policy set.
 func DefaultStoragePolicies() []StoragePolicy {
 	return []StoragePolicy{
-		{Category: StorageTechnical, Enabled: true, RetentionDays: 7},
+		{Category: StorageTechnical, Enabled: true, RetentionDays: 30},
 		{Category: StorageEvents, Enabled: true, RetentionDays: 30},
 		{Category: StorageAudit, Enabled: true, RetentionDays: 90},
-		{Category: StorageConnectionIssues, Enabled: true, RetentionDays: 14},
-		{Category: StorageTraffic, Enabled: true, RetentionDays: 7},
+		{Category: StorageConnectionIssues, Enabled: true, RetentionDays: 30},
+		{Category: StorageTraffic, Enabled: true, RetentionDays: 30},
 		{Category: StorageUserTraffic, Enabled: true, RetentionDays: 365},
 		{Category: StorageUserIPHistory, Enabled: true, RetentionDays: 30},
-		{Category: StorageDiagnostics, Enabled: false, RetentionDays: 7},
+		{Category: StorageDiagnostics, Enabled: true, RetentionDays: 30},
 	}
 }
 
@@ -115,7 +115,7 @@ func ValidateStoragePolicies(policies []StoragePolicy) error {
 		if policy.RetentionDays < MinRetentionDays || policy.RetentionDays > MaxRetentionDays {
 			return fmt.Errorf("storage policies: retention_days for %q must be between %d and %d", policy.Category, MinRetentionDays, MaxRetentionDays)
 		}
-		if (policy.Category == StorageTechnical || policy.Category == StorageUserIPHistory) && !policy.Enabled {
+		if policy.Category == StorageUserIPHistory && !policy.Enabled {
 			return fmt.Errorf("storage policies: %s history cannot be disabled", policy.Category)
 		}
 	}

@@ -99,11 +99,18 @@ type UpdateJournalEntry struct {
 
 // MetricPoint is a single timestamped sample in a named metric series.
 type MetricPoint struct {
-	TS      int64
-	Value   float64
-	Tier    MetricTier
-	Max     float64
-	Samples int64
+	TS              int64
+	Value           float64
+	Tier            MetricTier
+	Max             float64
+	Samples         int64
+	Min             *float64 `json:",omitempty"`
+	FirstTS         int64    `json:",omitempty"`
+	LastTS          int64    `json:",omitempty"`
+	FirstValue      float64  `json:",omitempty"`
+	Delta           *float64 `json:",omitempty"`
+	ObservedSeconds int64    `json:",omitempty"`
+	Gaps            int64    `json:",omitempty"`
 }
 
 // NamedMetricPoint is one series key and sample for an atomic batch write.
@@ -226,6 +233,7 @@ type MetricTier string
 const (
 	MetricTierRaw     MetricTier = ""
 	MetricTierMinute  MetricTier = "1m"
+	MetricTierFive    MetricTier = "5m"
 	MetricTierQuarter MetricTier = "15m"
 	MetricTierHour    MetricTier = "1h"
 	MetricTierDay     MetricTier = "1d"

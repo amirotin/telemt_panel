@@ -99,8 +99,8 @@ func TestRefusalsSeriesIsBoundedByTheRingAndTheWindow(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	// 400 ticks, one per simulated second, more than the ring holds.
-	const ticks = 400
+	// More ticks than the ring holds, independent of its configured capacity.
+	const ticks = store.MetricCap + 40
 	var a counterAccumulator
 	for i := 0; i < ticks; i++ {
 		total := a.observe(uint64(i), float64(i))
@@ -116,7 +116,7 @@ func TestRefusalsSeriesIsBoundedByTheRingAndTheWindow(t *testing.T) {
 	if len(all) == 0 || len(all) >= ticks {
 		t.Fatalf("ring kept %d points, want a bounded slice of %d", len(all), ticks)
 	}
-	if last := all[len(all)-1]; last.TS != ticks-1 {
+	if last := all[len(all)-1]; last.TS != int64(ticks-1) {
 		t.Errorf("newest point ts = %d, want %d — the ring must evict the OLDEST", last.TS, ticks-1)
 	}
 
@@ -171,8 +171,7 @@ func TestUsersLiveTotalsUseCurrentConnections(t *testing.T) {
 
 // HistoryRetention is what GET /api/history publishes as `retention_secs`,
 // and what tells the browser its "предыдущие 15 минут" exist at all. It is
-// the ring's point cap times the poll that fills it — a shorter poll (or a
-// smaller cap) shortens the reach, and both halves have to be in the answer.
+// bounded observation span; faster polls may fill the point cap earlier.
 func TestHistoryRetentionSpansTwoWindows(t *testing.T) {
 	st, err := store.NewMemory("")
 	if err != nil {
@@ -183,7 +182,7 @@ func TestHistoryRetentionSpansTwoWindows(t *testing.T) {
 	h := New(Config{}, telemt.New("http://127.0.0.1:1", ""), st)
 	t.Cleanup(h.Close)
 
-	want := time.Duration(store.MetricCap) * defaultStatsInterval
+	want := store.LiveMetricRetention
 	if got := h.HistoryRetention(); got != want {
 		t.Fatalf("HistoryRetention() = %s, want %s", got, want)
 	}
@@ -195,7 +194,7 @@ func TestHistoryRetentionSpansTwoWindows(t *testing.T) {
 	// rather than reporting the default.
 	fast := New(Config{StatsInterval: time.Second}, telemt.New("http://127.0.0.1:1", ""), st)
 	t.Cleanup(fast.Close)
-	if got := fast.HistoryRetention(); got != time.Duration(store.MetricCap)*time.Second {
-		t.Errorf("fast hub HistoryRetention() = %s, want %s", got, time.Duration(store.MetricCap)*time.Second)
+	if got := fast.HistoryRetention(); got != time.Duration(store.MetricCap-1)*time.Second {
+		t.Errorf("fast hub HistoryRetention() = %s, want %s", got, time.Duration(store.MetricCap-1)*time.Second)
 	}
 }

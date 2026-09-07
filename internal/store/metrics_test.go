@@ -5,6 +5,46 @@ import (
 	"time"
 )
 
+func TestSelectMetricPointsFallsBackToRecentFiveMinuteBucket(t *testing.T) {
+	now := int64(2_000_000)
+	ts := metricBucket(now-60, 5*time.Minute)
+	minimum := float64(10)
+	aggregate := MetricPoint{TS: ts, Tier: MetricTierFive, FirstTS: ts + 5, LastTS: ts + 30, Value: 20, Min: &minimum, Max: 30, Samples: 3}
+	got := selectMetricPoints([]MetricPoint{aggregate}, now-3600, now)
+	if len(got) != 1 || got[0].Tier != MetricTierFive {
+		t.Fatalf("recent durable fallback lost after restart: %+v", got)
+	}
+	points := []MetricPoint{aggregate, {TS: ts + 35, Value: 40}}
+	got = selectMetricPoints(points, now-3600, now)
+	if len(got) != 2 || got[0].Tier != MetricTierFive || got[1].Tier != MetricTierRaw {
+		t.Fatalf("coarse history and new live tail overlap or disappeared: %+v", got)
+	}
+	points = append(points, MetricPoint{TS: ts + 30, Value: 30})
+	got = selectMetricPoints(points, now-3600, now)
+	if len(got) != 2 || got[0].Tier != MetricTierFive {
+		t.Fatalf("one replayed raw point replaced an entire historical bucket: %+v", got)
+	}
+}
+
+func TestSelectMetricPointsPrefersCompleteLiveObservations(t *testing.T) {
+	now := int64(2_000_000)
+	ts := metricBucket(now-60, 5*time.Minute)
+	minimum := float64(10)
+	points := []MetricPoint{
+		{TS: ts, Tier: MetricTierFive, FirstTS: ts + 5, LastTS: ts + 15, Min: &minimum, Samples: 3},
+		{TS: ts + 5, Value: 10}, {TS: ts + 10, Value: 20}, {TS: ts + 15, Value: 30},
+	}
+	got := selectMetricPoints(points, now-3600, now)
+	if len(got) != 3 {
+		t.Fatalf("live detail replaced by aggregate: %+v", got)
+	}
+	for _, p := range got {
+		if p.Tier != MetricTierRaw {
+			t.Fatalf("duplicate aggregate in live range: %+v", got)
+		}
+	}
+}
+
 func TestSelectMetricPointsUsesOneResolutionPerRegion(t *testing.T) {
 	now := int64(2_000_000)
 	recent := now - 60

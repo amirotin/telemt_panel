@@ -24,6 +24,8 @@ github.com/ncruces/go-sqlite3-wasm/v5 v5.0.35304 h1:Ck3GB9h+0n3hJqdhAeehOef3k5V+
 github.com/ncruces/go-sqlite3-wasm/v5 v5.0.35304/go.mod h1:gJyN6U50iis7mDt+rzRv8u9vUNr08NTD2p4fVonKn/Q=
 github.com/ncruces/julianday v1.0.0 h1:fH0OKwa7NWvniGQtxdJRxAgkBMolni2BjDHaWTxqt7M=
 github.com/ncruces/julianday v1.0.0/go.mod h1:Dusn2KvZrrovOMJuOt0TNXL6tB7U2E8kvza5fFc9G7g=
+github.com/oschwald/maxminddb-golang/v2 v2.5.0 h1:WvEHCE8HwFS5pKWhW8nvvRxNzczuRUOGBLn2L03VlEQ=
+github.com/oschwald/maxminddb-golang/v2 v2.5.0/go.mod h1:EBnvLGgY+aSckqcgyfB5LPDviqaWdMZPBDwu8c2jJbs=
 github.com/philhofer/fwd v1.2.0 h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM=
 github.com/philhofer/fwd v1.2.0/go.mod h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

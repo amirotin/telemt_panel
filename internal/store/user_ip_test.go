@@ -179,7 +179,7 @@ func TestUserIPPortableAndStateIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, err := source.ExportData()
-	if err != nil || data.FormatVersion != 6 || len(data.UserIPs) != 1 {
+	if err != nil || data.FormatVersion != portableFormatVersion || len(data.UserIPs) != 1 {
 		t.Fatalf("export: %+v %v", data, err)
 	}
 	dest, _ := NewMemoryHistory()

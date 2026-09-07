@@ -7,6 +7,8 @@ import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
 import { useNow } from "./useNow";
+import { withBasePath } from "../lib/base-path";
+import { IPGeography } from "./IPGeography";
 import "./ipHistory.css";
 
 const PAGE_SIZE = 10;
@@ -49,6 +51,7 @@ function HistoryContent({ username }: { username: string }) {
     staleTime: 10_000,
   });
   const data = query.data;
+  const hasGeo = data?.geoip?.available === true;
   // Server-relative age avoids requiring synchronized browser/server clocks.
   const age = data?.source.age_secs == null ? Infinity
     : data.source.age_secs + Math.max(0, now - query.dataUpdatedAt) / 1000;
@@ -83,13 +86,14 @@ function HistoryContent({ username }: { username: string }) {
     if (data.source.history_limited || data.collection.history_limited) notes.push(s.limited);
     if (data.source.collection_gap || data.collection.collection_gap) notes.push(s.gap);
   }
-  return <section className="person-ip-history" aria-label={s.title}>
+  return <section className={`person-ip-history${hasGeo ? " person-ip-has-geo" : ""}`} aria-label={s.title}>
     <div className="person-ip-overview">
       <div><strong>{number(data?.total)}</strong><span>{s.total}</span></div>
       <div><strong data-active-count>{number(active)}</strong><span>{s.active}</span></div>
       <div><strong>{number(filters.range === "all" ? null : data?.new)}</strong><span>{s.new}</span></div>
     </div>
     <p className="person-ip-collection" data-tone={data && !live ? "warning" : undefined}>{notes.join(" · ") || (query.isError ? s.error : s.loading)}</p>
+    {data && <p className="person-ip-geo-note">{hasGeo ? strings.geoip.activeNote : <>{strings.geoip.noDatabase} <a data-geoip-configure href={withBasePath("/server/settings#geoip")}>{strings.geoip.configure} →</a></>}</p>}
     <div className="person-ip-tools">
       <label className="person-ip-search"><span className="sr-only">{s.search}</span>
         <input type="search" value={filters.q} maxLength={64} placeholder={s.search} autoComplete="off" spellCheck={false}
@@ -103,7 +107,7 @@ function HistoryContent({ username }: { username: string }) {
       </select></label>
       <Button type="button" variant="secondary" disabled={query.isFetching} onClick={refresh}>{s.refresh}</Button>
     </div>
-    <div className="person-ip-columns" aria-hidden="true"><span>{s.address}</span><span>{s.first}</span><span>{s.last}</span></div>
+    <div className="person-ip-columns" aria-hidden="true"><span>{s.address}</span>{hasGeo && <span>{strings.geoip.geography}</span>}<span>{s.first}</span><span>{s.last}</span></div>
     <div role="list" aria-label={s.addresses} aria-busy={query.isFetching}>
       {query.isPending ? <div className="person-ip-empty"><Skeleton className="h-36 w-full rounded-lg" /></div>
         : !data ? <div className="person-ip-empty" role="alert"><strong>{s.error}</strong><p>{s.retry}</p></div>
@@ -113,7 +117,7 @@ function HistoryContent({ username }: { username: string }) {
                 <span>IPv{item.family}</span><span data-ip-state={live && item.active_now ? "active" : "history"}>
                   {!live || item.active_now == null ? s.unknown : item.active_now ? s.connected : s.observed}
                 </span>
-              </div></div>{date(item.first_observed_at, s.first)}{date(item.last_observed_at, s.last)}
+              </div></div>{hasGeo && <IPGeography geo={item.geo} />}{date(item.first_observed_at, s.first)}{date(item.last_observed_at, s.last)}
             </div>)}
     </div>
     <footer className="person-ip-pagination">

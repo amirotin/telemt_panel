@@ -22,20 +22,6 @@ const (
 	eventCap   = 1000
 )
 
-// MetricCap bounds each named metric series (RecordMetric/MetricRange).
-//
-// At the hub's default 5s "stats" poll interval (internal/hub,
-// recordStatsHistory) 360 points are 30 minutes of raw history. Thirty, not
-// the original fifteen of ruling R3 (v2/specs/02-hub-sse.md, M3 task-2),
-// because Сводка's KPI captions compare the last 15 minutes against the 15
-// before them ("−0,3 % за 15 мин") — with a 15-minute ring there is no
-// previous window to compare against, only two halves of the current one.
-//
-// The cost stays small and, more importantly, stays BOUNDED. The hub records
-// six global series today; aggregate-only fields remain zero in memory and the
-// ring size stays fixed regardless of uptime.
-const MetricCap = 360
-
 // touchStateDebounce caps how often a TouchSession-triggered state-file write
 // happens: at most once per this interval, however many touches land in
 // between.
@@ -573,18 +559,10 @@ func (m *Memory) RecordMetrics(batch []NamedMetricPoint) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, named := range batch {
-		if !m.policies[metricCategory(named.Name)].Enabled {
+		if named.Name == "" {
 			continue
 		}
-		p := named.Point
-		p.Tier = MetricTierRaw
-		p.Max = 0
-		p.Samples = 0
-		points := append(m.metrics[named.Name], p)
-		if len(points) > MetricCap {
-			points = points[len(points)-MetricCap:]
-		}
-		m.metrics[named.Name] = points
+		m.metrics[named.Name] = appendLiveMetric(m.metrics[named.Name], named.Point)
 	}
 	return nil
 }
@@ -604,15 +582,10 @@ func (m *Memory) MetricRange(name string, fromTS int64) ([]MetricPoint, error) {
 	return selectMetricPoints(out, fromTS, time.Now().Unix()), nil
 }
 
-// MetricRetention reports the RAM ring's maximum history window when the
-// metric category is enabled.
+// MetricRetention reports the live observation window. Disk persistence
+// policies do not turn off the process-local live graphs.
 func (m *Memory) MetricRetention(name string) time.Duration {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.policies[metricCategory(name)].Enabled {
-		return 0
-	}
-	return 30 * time.Minute
+	return metricRawRetention
 }
 
 type memoryUserTraffic struct {

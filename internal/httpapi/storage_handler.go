@@ -51,13 +51,33 @@ func (s *Server) handleGetStorageSettings(w http.ResponseWriter, _ *http.Request
 // handlePutStorageSettings implements PUT /api/settings/storage.
 func (s *Server) handlePutStorageSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Policies []store.StoragePolicy `json:"policies"`
+		Policies                  []store.StoragePolicy `json:"policies"`
+		ConfirmRetentionReduction bool                  `json:"confirm_retention_reduction"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxStorageSettingsBody))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
+	}
+	if err := store.ValidateStoragePolicies(req.Policies); err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	previous, err := s.st.ListStoragePolicies()
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read storage settings")
+		return
+	}
+	if !req.ConfirmRetentionReduction {
+		for _, next := range req.Policies {
+			for _, old := range previous {
+				if next.Category == old.Category && next.RetentionDays < old.RetentionDays {
+					auth.WriteError(w, http.StatusBadRequest, "confirmation_required", "shorter retention requires explicit confirmation")
+					return
+				}
+			}
+		}
 	}
 	if err := s.st.ReplaceStoragePolicies(req.Policies); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())

@@ -899,7 +899,7 @@ paths:
     put:
       tags: [misc]
       operationId: putStorageSettings
-      description: Replaces the complete optional-history policy set. Disabling a category stops future writes but does not delete retained data.
+      description: Replaces the complete optional-history policy set. Reducing any retention requires confirm_retention_reduction. Disabling a category stops future writes but does not delete retained data or disable live RAM graphs. Existing mixed policies remain unchanged until explicitly saved.
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettingsUpdate" } } }
@@ -918,6 +918,49 @@ paths:
       responses:
         "204": { description: History deleted }
         "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/settings/geoip:
+    get:
+      tags: [misc]
+      operationId: getGeoIpSettings
+      responses:
+        "200":
+          description: Saved GeoIP configuration and active database status.
+          headers:
+            Cache-Control: { schema: { type: string }, description: Always `no-store`. }
+          content: { application/json: { schema: { $ref: "#/components/schemas/GeoIpSettings" } } }
+        "500": { $ref: "#/components/responses/InternalError" }
+    put:
+      tags: [misc]
+      operationId: putGeoIpSettings
+      description: Persists the complete desired configuration and starts asynchronous atomic application.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/GeoIpConfig" } } }
+      responses:
+        "202":
+          description: Configuration saved; application started, or GeoIP disabled.
+          headers:
+            Cache-Control: { schema: { type: string }, description: Always `no-store`. }
+          content: { application/json: { schema: { $ref: "#/components/schemas/GeoIpSettings" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/settings/geoip/update:
+    post:
+      tags: [misc]
+      operationId: updateGeoIp
+      description: Downloads or rereads the saved enabled configuration and atomically replaces the complete active set after validation.
+      responses:
+        "202":
+          description: Update started.
+          headers:
+            Cache-Control: { schema: { type: string }, description: Always `no-store`. }
+          content: { application/json: { schema: { $ref: "#/components/schemas/GeoIpSettings" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   # ───────────────────────── realtime ─────────────────────────
   /api/events:
@@ -975,10 +1018,14 @@ paths:
       tags: [realtime]
       operationId: getHistory
       description: >
-        Metric history from the active store. Memory keeps a bounded 30-minute raw
-        ring; durable stores return raw points for recent ranges and non-overlapping
-        1-minute / 15-minute aggregates for longer ranges. Aggregate points expose
-        both the average or last counter value (`v`) and the bucket peak (`max`).
+        Metric history from the active store. Live samples use a bounded two-hour
+        RAM buffer even when disk persistence is disabled. Durable stores also return non-overlapping
+        5-minute aggregates for seven days and hourly aggregates for older history.
+        Existing 1-minute / 15-minute rows remain readable during migration.
+        Responses exceeding 4096 points are combined into hourly aggregates,
+        preserving extrema and sample weights rather than discarding points.
+        Aggregate points expose the average or last counter value (`v`),
+        minimum and maximum, observation bounds, sample counts and detected gaps.
         Never errors on empty/partial history — a metric with nothing recorded yet
         (or a `range` longer than what's retained) is 200 with however many points
         actually exist, even zero.
@@ -990,7 +1037,7 @@ paths:
             Global series name or a typed entity series such as
             `dc.-2.rtt_ms`, `dc.2.coverage_pct`, `upstream.7.healthy`.
           schema: { type: string }
-        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d] } }
+        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d, 30d, 90d] } }
       responses:
         "200": { description: Series (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -1005,7 +1052,7 @@ paths:
         secrets and complete configuration snapshots. Empty or disabled event
         history returns 200 with an empty array and retention_secs=0 when disabled.
       parameters:
-        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d] } }
+        - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d, 30d, 90d] } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
         - { name: kind, in: query, schema: { type: string } }
         - { name: entity, in: query, schema: { type: string } }
@@ -1079,17 +1126,6 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
-  /api/geoip:
-    x-status: planned
-    get:
-      tags: [misc]
-      operationId: lookupGeo
-      parameters:
-        - { name: ip, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Geo info, content: { application/json: { schema: { $ref: "#/components/schemas/GeoInfo" } } } }
-        "501": { description: GeoIP databases not configured }
-
   # ───────────────────────── subpage ─────────────────────────
   /sub/{token}:
     get:
@@ -1152,6 +1188,7 @@ components:
           type: string
           enum:
             - bad_request
+            - conflict
             - confirmation_required
             - invalid_credentials
             - rate_limited
@@ -2001,8 +2038,9 @@ components:
           type: integer
           format: int64
           description: >
-            Configured retention for this metric's category. The client uses it to
-            distinguish an empty window from disabled history. 0 means disabled.
+            Maximum available retention for this metric. Disk-disabled and memory
+            stores still provide a two-hour live window; point capacity and gaps
+            may shorten actual coverage. 0 means no history is available.
         available_from_epoch_secs:
           type: integer
           format: int64
@@ -2018,8 +2056,15 @@ components:
             properties:
               ts: { type: integer, format: int64, description: epoch seconds }
               v: { type: number }
-              tier: { type: string, enum: [1m, 15m, 1h, 1d], description: Omitted for raw points }
+              tier: { type: string, enum: [1m, 5m, 15m, 1h, 1d], description: Omitted for raw points; new disk history uses 5m and 1h }
               max: { type: number, description: Bucket maximum; present for aggregate points }
+              min: { type: number, description: Bucket minimum; absent for legacy aggregates without observed minima }
+              samples: { type: integer, format: int64, minimum: 1, description: Number of observed samples in the aggregate }
+              first_observed_epoch_secs: { type: integer, format: int64, description: First actual observation; absent for legacy aggregates }
+              last_observed_epoch_secs: { type: integer, format: int64, description: Last actual observation; absent for legacy aggregates }
+              observed_delta: { type: number, minimum: 0, description: Counter movement between observed samples only; excludes resets and unobserved gaps. Not an exact total for the nominal bucket. Absent for gauges or unknown continuity. }
+              observed_seconds: { type: integer, format: int64, minimum: 0, description: Observed duration excluding gaps and resets; absent when legacy metadata is unknown }
+              gaps: { type: integer, format: int64, minimum: 0, description: Detected gaps or counter resets inside the aggregate; absent for legacy aggregates }
 
     HistoryEvent:
       type: object
@@ -2041,7 +2086,7 @@ components:
       type: object
       required: [range, state, requested_from_epoch_secs, retention_secs, events]
       properties:
-        range: { type: string, enum: [15m, 30m, 1h, 24h, 7d] }
+        range: { type: string, enum: [15m, 30m, 1h, 24h, 7d, 30d, 90d] }
         state: { type: string, enum: [ready, disabled, empty, partial] }
         requested_from_epoch_secs: { type: integer, format: int64 }
         retention_secs:
@@ -2071,7 +2116,7 @@ components:
 
     UserIPHistoryItem:
       type: object
-      required: [username, ip, family, first_observed_at, last_observed_at, observations, last_source_mask, active_now]
+      required: [username, ip, family, first_observed_at, last_observed_at, observations, last_source_mask, active_now, geo]
       properties:
         username: { type: string }
         ip: { type: string, description: Canonical individual address; mapped IPv4 is unmapped. }
@@ -2082,6 +2127,11 @@ components:
         last_active_observed_at: { type: integer, format: int64 }
         last_source_mask: { type: integer, enum: [1, 2, 3], description: Active list (1), recent list (2), both (3). }
         active_now: { type: [boolean, "null"], description: Null if the active source is missing, invalid or older than 30 seconds. }
+        geo:
+          description: Null when no verified GeoIP database set is active.
+          anyOf:
+            - $ref: "#/components/schemas/GeoIpResult"
+            - type: "null"
 
     UserIPCollection:
       type: object
@@ -2110,7 +2160,7 @@ components:
 
     UserIPHistory:
       type: object
-      required: [items, total, matched, new, next_cursor, range, retention_days, durable, collection, source, active_now_count]
+      required: [items, total, matched, new, next_cursor, range, retention_days, durable, collection, source, active_now_count, geoip]
       properties:
         active_now_count: { type: [integer, "null"], minimum: 0, description: All distinct active addresses for this user, independent of history pagination. Null if the active source is unavailable or stale. }
         items: { type: array, items: { $ref: "#/components/schemas/UserIPHistoryItem" } }
@@ -2123,6 +2173,7 @@ components:
         durable: { type: boolean }
         collection: { $ref: "#/components/schemas/UserIPCollection" }
         source: { $ref: "#/components/schemas/UserIPSourceStatus" }
+        geoip: { $ref: "#/components/schemas/GeoIpStatus" }
 
     StorageCategory:
       type: string
@@ -2181,6 +2232,7 @@ components:
       type: object
       required: [policies]
       properties:
+        confirm_retention_reduction: { type: boolean, default: false, description: Explicitly acknowledges deletion of data outside a shorter retention. }
         policies:
           type: array
           items: { $ref: "#/components/schemas/StoragePolicy" }
@@ -2199,12 +2251,62 @@ components:
       properties:
         confirm: { type: boolean, const: true }
 
-    GeoInfo:
+    GeoIpConfig:
       type: object
-      required: [ip]
+      additionalProperties: false
+      required: [enabled, source, schedule, country, asn, city]
       properties:
-        ip: { type: string }
-        country: { type: string }
+        enabled: { type: boolean, default: false }
+        source: { type: string, enum: [community, urls, files], default: community }
+        schedule: { type: string, enum: [weekly, daily, manual], default: weekly }
+        country: { $ref: "#/components/schemas/GeoIpDatabaseConfig" }
+        asn: { $ref: "#/components/schemas/GeoIpDatabaseConfig" }
+        city: { $ref: "#/components/schemas/GeoIpDatabaseConfig" }
+
+    GeoIpDatabaseConfig:
+      type: object
+      additionalProperties: false
+      required: [enabled, location]
+      properties:
+        enabled: { type: boolean }
+        location: { type: string }
+
+    GeoIpDatabaseStatus:
+      type: object
+      required: [kind, build_epoch_secs, loaded_epoch_secs]
+      properties:
+        kind: { type: string, enum: [country, asn, city] }
+        build_epoch_secs: { type: integer, format: int64 }
+        loaded_epoch_secs: { type: integer, format: int64 }
+
+    GeoIpStatus:
+      type: object
+      required: [state, available, active_source, databases, last_error]
+      properties:
+        state: { type: string, enum: [disabled, empty, ready, updating, error] }
+        available: { type: boolean }
+        active_source: { type: [string, "null"], enum: [community, urls, files, null] }
+        databases: { type: array, items: { $ref: "#/components/schemas/GeoIpDatabaseStatus" } }
+        last_error:
+          type: [string, "null"]
+          description: Stable safe GeoIP error code; never a URL, filesystem path, query, or exception text.
+
+    GeoIpSettings:
+      type: object
+      required: [config, status]
+      properties:
+        config: { $ref: "#/components/schemas/GeoIpConfig" }
+        status: { $ref: "#/components/schemas/GeoIpStatus" }
+
+    GeoIpResult:
+      type: object
+      required: [state, country_code, country_name, country_name_ru, city, city_ru, asn, organization]
+      properties:
+        state: { type: string, enum: [found, private, not_found] }
+        country_code: { type: string }
+        country_name: { type: string }
+        country_name_ru: { type: string }
         city: { type: string }
-        asn: { type: integer }
-        as_org: { type: string }
+        city_ru: { type: string }
+        asn: { type: integer, format: int64, minimum: 0 }
+        organization: { type: string }

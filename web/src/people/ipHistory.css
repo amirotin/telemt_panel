@@ -35,8 +35,20 @@
 .person-ip-empty strong { display:block; font-size:18px; font-weight:550; color:rgb(var(--text)); margin-bottom:6px; }
 .person-ip-explanation { padding:18px 28px 24px; border-top:1px solid rgb(var(--border)); color:rgb(var(--text-muted)); font-size:13px; line-height:1.75; }
 .person-ip-explanation p+p { margin-top:10px; }
+.person-ip-geo-note { font-size:13px; line-height:1.7; color:rgb(var(--text-muted)); padding:0 28px 18px; }
+.person-ip-geo-note a { color:rgb(var(--accent)); text-decoration:underline; text-underline-offset:3px; }
+.person-ip-has-geo .person-ip-row,.person-ip-has-geo .person-ip-columns { grid-template-columns:minmax(0,1.3fr) minmax(0,1.15fr) minmax(0,.85fr) minmax(0,.85fr); gap:18px; }
+.person-ip-geo { min-width:0; font-size:14px; line-height:1.6; color:rgb(var(--text-muted)); overflow-wrap:anywhere; }
+.person-ip-geo small { display:block; font-size:13px; line-height:1.65; margin-top:5px; }
+.person-ip-geo-place { display:flex; align-items:center; gap:8px; }
+.person-ip-geo-place strong { font-size:14px; color:rgb(var(--text)); font-weight:550; }
+.person-ip-country-code { flex-shrink:0; font-size:11px; font-weight:600; letter-spacing:.04em; line-height:1.5; padding:3px 5px; background:rgb(var(--accent) / .10); border-radius:4px; color:rgb(var(--accent)); }
 @media(min-width:1024px) { .person-ip-sheet[role="dialog"] { max-width:min(1080px,calc(100vw - 48px)); } }
 @media(max-width:720px) {
+  .person-ip-has-geo .person-ip-row { grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  .person-ip-geo { grid-column:1/-1; border-left:2px solid rgb(var(--accent) / .25); padding-left:10px; }
+  .person-ip-geo-place strong { font-size:15px; }
+  .person-ip-geo-note { padding:0 16px 18px; }
   .person-ip-heading h2 { font-size:22px; }
   .person-ip-overview { gap:14px; padding:22px 16px 16px; }
   .person-ip-overview>div { display:block; }

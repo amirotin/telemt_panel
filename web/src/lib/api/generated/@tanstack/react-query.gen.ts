@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAuthMethods, getAutoUpdate, getHealth, getHistory, getHistoryEvents, getHost, getMe, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getTrafficSummary, getTrafficUsers, getUpdates, getUser, getUserIpHistory, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetAllUserTraffic, resetUserIpHistory, resetUserQuota, resetUserTraffic, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs, totpDisable, totpEnable, totpSetup, webauthnDeleteCredential, webauthnLoginBegin, webauthnLoginFinish, webauthnRegisterBegin, webauthnRegisterFinish } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAuthMethodsData, GetAuthMethodsResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetTrafficSummaryData, GetTrafficSummaryError, GetTrafficSummaryResponse, GetTrafficUsersData, GetTrafficUsersError, GetTrafficUsersResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserIpHistoryData, GetUserIpHistoryError, GetUserIpHistoryResponse, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetAllUserTrafficData, ResetAllUserTrafficError, ResetAllUserTrafficResponse, ResetUserIpHistoryData, ResetUserIpHistoryError, ResetUserIpHistoryResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, ResetUserTrafficData, ResetUserTrafficError, ResetUserTrafficResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse, TotpDisableData, TotpDisableResponse, TotpEnableData, TotpEnableError, TotpEnableResponse, TotpSetupData, TotpSetupError, TotpSetupResponse, WebauthnDeleteCredentialData, WebauthnDeleteCredentialError, WebauthnDeleteCredentialResponse, WebauthnLoginBeginData, WebauthnLoginBeginError, WebauthnLoginBeginResponse, WebauthnLoginFinishData, WebauthnLoginFinishError, WebauthnLoginFinishResponse, WebauthnRegisterBeginData, WebauthnRegisterBeginError, WebauthnRegisterBeginResponse, WebauthnRegisterFinishData, WebauthnRegisterFinishError, WebauthnRegisterFinishResponse } from '../types.gen';
+import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAuthMethods, getAutoUpdate, getGeoIpSettings, getHealth, getHistory, getHistoryEvents, getHost, getMe, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getTrafficSummary, getTrafficUsers, getUpdates, getUser, getUserIpHistory, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putGeoIpSettings, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetAllUserTraffic, resetUserIpHistory, resetUserQuota, resetUserTraffic, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs, totpDisable, totpEnable, totpSetup, updateGeoIp, webauthnDeleteCredential, webauthnLoginBegin, webauthnLoginFinish, webauthnRegisterBegin, webauthnRegisterFinish } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAuthMethodsData, GetAuthMethodsResponse, GetAutoUpdateData, GetAutoUpdateResponse, GetGeoIpSettingsData, GetGeoIpSettingsError, GetGeoIpSettingsResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetTrafficSummaryData, GetTrafficSummaryError, GetTrafficSummaryResponse, GetTrafficUsersData, GetTrafficUsersError, GetTrafficUsersResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserIpHistoryData, GetUserIpHistoryError, GetUserIpHistoryResponse, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutGeoIpSettingsData, PutGeoIpSettingsError, PutGeoIpSettingsResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetAllUserTrafficData, ResetAllUserTrafficError, ResetAllUserTrafficResponse, ResetUserIpHistoryData, ResetUserIpHistoryError, ResetUserIpHistoryResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, ResetUserTrafficData, ResetUserTrafficError, ResetUserTrafficResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse, TotpDisableData, TotpDisableResponse, TotpEnableData, TotpEnableError, TotpEnableResponse, TotpSetupData, TotpSetupError, TotpSetupResponse, UpdateGeoIpData, UpdateGeoIpError, UpdateGeoIpResponse, WebauthnDeleteCredentialData, WebauthnDeleteCredentialError, WebauthnDeleteCredentialResponse, WebauthnLoginBeginData, WebauthnLoginBeginError, WebauthnLoginBeginResponse, WebauthnLoginFinishData, WebauthnLoginFinishError, WebauthnLoginFinishResponse, WebauthnRegisterBeginData, WebauthnRegisterBeginError, WebauthnRegisterBeginResponse, WebauthnRegisterFinishData, WebauthnRegisterFinishError, WebauthnRegisterFinishResponse } from '../types.gen';
 
 export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
     const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
@@ -1109,7 +1109,7 @@ export const getStorageSettingsOptions = (options?: Options<GetStorageSettingsDa
 });
 
 /**
- * Replaces the complete optional-history policy set. Disabling a category stops future writes but does not delete retained data.
+ * Replaces the complete optional-history policy set. Reducing any retention requires confirm_retention_reduction. Disabling a category stops future writes but does not delete retained data or disable live RAM graphs. Existing mixed policies remain unchanged until explicitly saved.
  */
 export const putStorageSettingsMutation = (options?: Partial<Options<PutStorageSettingsData>>): UseMutationOptions<PutStorageSettingsResponse, PutStorageSettingsError, Options<PutStorageSettingsData>> => {
     const mutationOptions: UseMutationOptions<PutStorageSettingsResponse, PutStorageSettingsError, Options<PutStorageSettingsData>> = {
@@ -1142,6 +1142,55 @@ export const purgeStorageHistoryMutation = (options?: Partial<Options<PurgeStora
     return mutationOptions;
 };
 
+export const getGeoIpSettingsQueryKey = (options?: Options<GetGeoIpSettingsData>) => createQueryKey('getGeoIpSettings', options);
+
+export const getGeoIpSettingsOptions = (options?: Options<GetGeoIpSettingsData>) => queryOptions<GetGeoIpSettingsResponse, GetGeoIpSettingsError, GetGeoIpSettingsResponse, ReturnType<typeof getGeoIpSettingsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getGeoIpSettings({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getGeoIpSettingsQueryKey(options)
+});
+
+/**
+ * Persists the complete desired configuration and starts asynchronous atomic application.
+ */
+export const putGeoIpSettingsMutation = (options?: Partial<Options<PutGeoIpSettingsData>>): UseMutationOptions<PutGeoIpSettingsResponse, PutGeoIpSettingsError, Options<PutGeoIpSettingsData>> => {
+    const mutationOptions: UseMutationOptions<PutGeoIpSettingsResponse, PutGeoIpSettingsError, Options<PutGeoIpSettingsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await putGeoIpSettings({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Downloads or rereads the saved enabled configuration and atomically replaces the complete active set after validation.
+ */
+export const updateGeoIpMutation = (options?: Partial<Options<UpdateGeoIpData>>): UseMutationOptions<UpdateGeoIpResponse, UpdateGeoIpError, Options<UpdateGeoIpData>> => {
+    const mutationOptions: UseMutationOptions<UpdateGeoIpResponse, UpdateGeoIpError, Options<UpdateGeoIpData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateGeoIp({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const getSnapshotQueryKey = (options: Options<GetSnapshotData>) => createQueryKey('getSnapshot', options);
 
 /**
@@ -1164,7 +1213,7 @@ export const getSnapshotOptions = (options: Options<GetSnapshotData>) => queryOp
 export const getHistoryQueryKey = (options: Options<GetHistoryData>) => createQueryKey('getHistory', options);
 
 /**
- * Metric history from the active store. Memory keeps a bounded 30-minute raw ring; durable stores return raw points for recent ranges and non-overlapping 1-minute / 15-minute aggregates for longer ranges. Aggregate points expose both the average or last counter value (`v`) and the bucket peak (`max`). Never errors on empty/partial history — a metric with nothing recorded yet (or a `range` longer than what's retained) is 200 with however many points actually exist, even zero.
+ * Metric history from the active store. Live samples use a bounded two-hour RAM buffer even when disk persistence is disabled. Durable stores also return non-overlapping 5-minute aggregates for seven days and hourly aggregates for older history. Existing 1-minute / 15-minute rows remain readable during migration. Responses exceeding 4096 points are combined into hourly aggregates, preserving extrema and sample weights rather than discarding points. Aggregate points expose the average or last counter value (`v`), minimum and maximum, observation bounds, sample counts and detected gaps. Never errors on empty/partial history — a metric with nothing recorded yet (or a `range` longer than what's retained) is 200 with however many points actually exist, even zero.
  *
  */
 export const getHistoryOptions = (options: Options<GetHistoryData>) => queryOptions<GetHistoryResponse, GetHistoryError, GetHistoryResponse, ReturnType<typeof getHistoryQueryKey>>({

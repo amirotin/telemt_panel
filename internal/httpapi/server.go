@@ -16,6 +16,7 @@ import (
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/geoip"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
@@ -62,6 +63,7 @@ type Server struct {
 
 	updateEngine *update.Engine
 	autoUpdater  *update.AutoUpdater
+	geoip        *geoip.Manager
 
 	// webUI serves the embedded SPA (internal/webui) — registered as the
 	// mux's catch-all "/" pattern in Handler(), after every /api/ and
@@ -183,6 +185,7 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		logStreamHeartbeat: logStreamHeartbeatInterval,
 		updateEngine:       updateEngine,
 		autoUpdater:        update.NewAutoUpdater(st, updateEngine),
+		geoip:              geoip.NewManager(cfg.DataDir, st),
 		runner:             runner,
 		telemtServiceName:  telemtServiceName,
 		webUI:              webUI,
@@ -332,6 +335,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/settings/storage", protect(s.handleGetStorageSettings))
 	mux.Handle("PUT /api/settings/storage", protect(s.handlePutStorageSettings))
 	mux.Handle("POST /api/settings/storage/purge", protect(s.handlePurgeStorageHistory))
+	mux.Handle("GET /api/settings/geoip", protect(s.handleGetGeoIPSettings))
+	mux.Handle("PUT /api/settings/geoip", protect(s.handlePutGeoIPSettings))
+	mux.Handle("POST /api/settings/geoip/update", protect(s.handleUpdateGeoIP))
 
 	mux.Handle("GET /api/updates", protect(s.handleGetUpdates))
 	mux.Handle("POST /api/updates/{target}/apply", protect(s.handleApplyUpdate))
@@ -476,19 +482,28 @@ func apiJSONFallback(mux *http.ServeMux) http.Handler {
 
 // Run serves until ctx is canceled, then drains connections.
 func (s *Server) Run(ctx context.Context) error {
-	// The auto-updater is the one goroutine this method owns directly
-	// (everything else lives behind s.hub/s.logStreams' own Close). It
-	// already selects on ctx.Done() every loop iteration, so canceling ctx
-	// stops it immediately rather than after its next tick interval; wg.Wait
-	// (deferred first, so it runs last — defers are LIFO) blocks Run's
-	// return until that goroutine has actually exited.
+	// Cancel owned workers on every return path, including listen failures.
+	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
+	defer func() {
+		cancel()
+		if s.geoip != nil {
+			s.geoip.Close()
+		}
+		wg.Wait()
+	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		s.autoUpdater.Run(ctx)
 	}()
-	defer wg.Wait()
+	if s.geoip != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.geoip.Run(ctx)
+		}()
+	}
 
 	defer s.limiter.Stop()
 	defer s.subLimiter.Stop()

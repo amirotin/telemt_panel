@@ -27,6 +27,7 @@ import { sessionDeviceLabel } from "./sessions.helpers";
 import { InterfacePreferences } from "./InterfacePreferences";
 import { SessionSheet } from "./SessionSheet";
 import { StorageSettings } from "./StorageSettings";
+import { GeoIPSettings } from "./GeoIPSettings";
 import { TwoFactorSettings } from "./TwoFactorSettings";
 import { PasskeySettings } from "./PasskeySettings";
 
@@ -353,6 +354,7 @@ export function SettingsPage() {
       </div>
 
       <StorageSettings />
+      <GeoIPSettings />
 
       {sessionSheetOpen && (
         <SessionSheet

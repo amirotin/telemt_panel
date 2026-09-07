@@ -415,8 +415,8 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		if err := st.RecordMetric(metric, MetricPoint{TS: now.Add(time.Second).Unix(), Value: 50}); err != nil {
 			t.Fatal(err)
 		}
-		if points, err := st.MetricRange(metric, 0); err != nil || len(points) != 0 {
-			t.Fatalf("disabled traffic persisted = %+v, %v", points, err)
+		if points, err := st.MetricRange(metric, 0); err != nil || len(points) != 1 || points[0].Value != 50 {
+			t.Fatalf("disabled disk history lost live traffic = %+v, %v", points, err)
 		}
 		for i := range policies {
 			if policies[i].Category == StorageTraffic {

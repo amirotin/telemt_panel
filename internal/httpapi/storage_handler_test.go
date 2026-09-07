@@ -58,7 +58,7 @@ func TestHandlePutStorageSettings(t *testing.T) {
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if got := st.MetricRetention("traffic"); got != 0 {
+	if got := st.MetricRetention("traffic"); got != store.LiveMetricRetention {
 		t.Fatalf("traffic retention = %v", got)
 	}
 
@@ -66,8 +66,26 @@ func TestHandlePutStorageSettings(t *testing.T) {
 	body, _ = json.Marshal(map[string]any{"policies": policies})
 	recorder = httptest.NewRecorder()
 	srv.handlePutStorageSettings(recorder, httptest.NewRequest(http.MethodPut, "/api/settings/storage", bytes.NewReader(body)))
-	if recorder.Code != http.StatusBadRequest {
+	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("disabled technical status = %d", recorder.Code)
+	}
+}
+
+func TestStorageRetentionReductionRequiresConfirmation(t *testing.T) {
+	srv, st := newStorageTestServer(t)
+	policies := store.DefaultStoragePolicies()
+	policies[0].RetentionDays = 7
+	for _, confirm := range []bool{false, true} {
+		body, _ := json.Marshal(map[string]any{"policies": policies, "confirm_retention_reduction": confirm})
+		w := httptest.NewRecorder()
+		srv.handlePutStorageSettings(w, httptest.NewRequest(http.MethodPut, "/api/settings/storage", bytes.NewReader(body)))
+		stored, _ := st.ListStoragePolicies()
+		if !confirm && (w.Code != http.StatusBadRequest || stored[0].RetentionDays != 30) {
+			t.Fatalf("unconfirmed reduction changed state: %d %+v", w.Code, stored[0])
+		}
+		if confirm && (w.Code != http.StatusNoContent || stored[0].RetentionDays != 7) {
+			t.Fatalf("confirmed reduction failed: %d %+v", w.Code, stored[0])
+		}
 	}
 }
 

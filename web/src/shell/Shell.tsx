@@ -100,7 +100,12 @@ export function Shell({ children }: { children: ReactNode }) {
           )}
         >
           <div
-            className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col"
+            className={cn(
+              "mx-auto flex w-full max-w-[1440px] flex-1 flex-col",
+              // Only pages with their own scrollers may shrink below content height.
+              // Ordinary pages must retain main's bottom padding after their content.
+              ownsLayout && "min-h-0",
+            )}
             data-testid="page-frame"
           >
             {children}

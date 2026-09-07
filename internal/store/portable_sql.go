@@ -17,6 +17,9 @@ import (
 // ExportData returns only observability history. Control-plane state is
 // exported by Composite from panel-state.json.
 func (s *SQLite) ExportData() (PortableData, error) {
+	if err := s.flushMetrics(); err != nil {
+		return PortableData{}, err
+	}
 	data := PortableData{FormatVersion: portableFormatVersion, Metrics: make(map[string][]MetricPoint)}
 	err := sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
 		var err error
@@ -75,7 +78,11 @@ func (s *SQLite) ImportData(data PortableData) error {
 				if samples < 1 {
 					samples = 1
 				}
-				if _, err := tx.Exec(s.bind(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`), name, metricCategory(name), tier, point.TS, point.Value, maxValue, samples, point.TS); err != nil {
+				lastTS := point.LastTS
+				if lastTS == 0 {
+					lastTS = point.TS
+				}
+				if _, err := tx.Exec(s.bind(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts, min_value, first_ts, first_value, delta, observed_seconds, gaps) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), name, metricCategory(name), tier, point.TS, point.Value, maxValue, samples, lastTS, point.Min, point.FirstTS, point.FirstValue, point.Delta, point.ObservedSeconds, point.Gaps); err != nil {
 					return fmt.Errorf("import metric point: %w", err)
 				}
 			}
@@ -254,7 +261,7 @@ func portableUserTrafficTier(tier MetricTier) int {
 }
 
 func exportMetrics(s *SQLite, tx *sql.Tx) (map[string][]MetricPoint, error) {
-	rows, err := tx.Query(s.bind(`SELECT name, tier, ts, value, max, samples FROM metric_points ORDER BY name, tier, ts`))
+	rows, err := tx.Query(s.bind("SELECT name, " + metricPointColumns + " FROM metric_points ORDER BY name, tier, ts"))
 	if err != nil {
 		return nil, err
 	}
@@ -264,13 +271,13 @@ func exportMetrics(s *SQLite, tx *sql.Tx) (map[string][]MetricPoint, error) {
 		var name string
 		var tier string
 		var point MetricPoint
-		if err := rows.Scan(&name, &tier, &point.TS, &point.Value, &point.Max, &point.Samples); err != nil {
+		if err := rows.Scan(&name, &tier, &point.TS, &point.Value, &point.Max, &point.Samples, &point.LastTS,
+			&point.Min, &point.FirstTS, &point.FirstValue, &point.Delta, &point.ObservedSeconds, &point.Gaps); err != nil {
 			return nil, err
 		}
 		point.Tier = metricTierFromSQL(tier)
 		if point.Tier == MetricTierRaw {
-			point.Max = 0
-			point.Samples = 0
+			point = MetricPoint{TS: point.TS, Value: point.Value}
 		}
 		out[name] = append(out[name], point)
 	}

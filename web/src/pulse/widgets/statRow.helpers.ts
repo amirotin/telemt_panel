@@ -34,8 +34,8 @@ export function sparklineValues(series: HistorySeries | undefined): number[] {
 /** The window every «за 15 мин» figure on Сводка is measured over. */
 export const HISTORY_WINDOW_SECS = 15 * 60;
 
-// The hub's ring now holds THIRTY minutes (store.MetricCap), and
-// useHistorySeries asks for all of it, because a caption like «−0,3 % за 15
+// useHistorySeries requests thirty minutes of the two-hour live buffer,
+// because a caption like «−0,3 % за 15
 // мин» is a comparison and needs two windows. Everything the tiles actually
 // display is still the last fifteen: these two functions cut the fetched
 // series into "the window" and "the one before it", and every existing
@@ -125,7 +125,7 @@ export function deltaSparklineValues(series: HistorySeries | undefined): number[
 export function peakHistoryValue(series: HistorySeries | undefined): number | null {
   const points = series?.points;
   if (!points || points.length === 0) return null;
-  return points.reduce((max, p) => (p.v > max ? p.v : max), points[0].v);
+  return points.reduce((peak, p) => Math.max(peak, p.max ?? p.v), points[0].max ?? points[0].v);
 }
 
 // lastHistoryValue — the newest point of a series, i.e. the lifetime figure
@@ -155,7 +155,7 @@ export interface ConnectionQuality {
 //
 // `changePoints` is the real «−0,3 % за 15 мин» of the concept (§5): this
 // window's quality minus the PREVIOUS window's, in percentage points. The
-// ring holds thirty minutes (store.MetricCap), so the previous fifteen
+// request covers thirty minutes, so the previous fifteen
 // exist — until they do not, in the first quarter-hour after a panel start,
 // where changePoints is null and the tile falls back to naming the refusals
 // instead of inventing a comparison.

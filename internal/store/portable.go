@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const portableFormatVersion = 6
+const portableFormatVersion = 7
 
 // ErrStoreNotEmpty prevents an import from silently merging two independent
 // histories. Operators must point the command at a fresh destination store.
@@ -193,6 +193,9 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 		}
 	}
 	data.FormatVersion = portableFormatVersion
+	if err := validatePortableMetrics(data.Metrics); err != nil {
+		return PortableData{}, err
+	}
 	if originalVersion < 6 {
 		data.Policies = upgradeUserIPPolicies(data.Policies)
 	}

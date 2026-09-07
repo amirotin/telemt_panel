@@ -36,6 +36,12 @@ func TestUserIPHistoryEndpoint(t *testing.T) {
 	if page.Total != 2 || len(page.Items) != 1 || page.NextCursor == "" || page.Items[0].ActiveNow != nil {
 		t.Fatalf("page: %+v", page)
 	}
+	if page.GeoIP.State != "disabled" || page.GeoIP.Available || page.Items[0].Geo != nil {
+		t.Fatalf("unconfigured GeoIP changed history: %+v", page)
+	}
+	if !strings.Contains(w.Body.String(), `"geo":null`) || !strings.Contains(w.Body.String(), `"databases":[]`) {
+		t.Fatalf("GeoIP JSON null/array contract: %s", w.Body.String())
+	}
 	w = get("?limit=1&cursor=" + page.NextCursor)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())

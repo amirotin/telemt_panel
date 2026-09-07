@@ -856,7 +856,7 @@ func (h *Hub) HistoryRetention() time.Duration {
 	if h.st != nil && h.st.Info().Durable {
 		return h.st.MetricRetention(metricConnections)
 	}
-	return time.Duration(store.MetricCap) * h.cfg.StatsInterval
+	return min(store.LiveMetricRetention, time.Duration(store.MetricCap-1)*h.cfg.StatsInterval)
 }
 
 // StartPersistentCollectors starts every topic marked for background history

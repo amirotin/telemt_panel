@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -77,8 +78,9 @@ type HistoryStore interface {
 // Composite keeps the control plane and observability history behind the
 // existing Store contract while enforcing their separate persistence paths.
 type Composite struct {
-	state   StateStore
-	history HistoryStore
+	policyMu sync.Mutex
+	state    StateStore
+	history  HistoryStore
 }
 
 func NewComposite(state StateStore, history HistoryStore) (*Composite, error) {
@@ -213,16 +215,22 @@ func (s *Composite) ListStoragePolicies() ([]StoragePolicy, error) {
 }
 
 func (s *Composite) ReplaceStoragePolicies(policies []StoragePolicy) error {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+	if err := ValidateStoragePolicies(policies); err != nil {
+		return err
+	}
 	previous, err := s.state.ListStoragePolicies()
 	if err != nil {
 		return err
 	}
-	if err := s.history.ApplyStoragePolicies(policies); err != nil {
-		return errors.Join(err, s.history.ApplyStoragePolicies(previous))
-	}
+	// Persist the administrator's choice before exposing shorter retention
+	// to maintenance or dropping pending observations on disable.
 	if err := s.state.ReplaceStoragePolicies(policies); err != nil {
-		_ = s.history.ApplyStoragePolicies(previous)
 		return err
+	}
+	if err := s.history.ApplyStoragePolicies(policies); err != nil {
+		return errors.Join(err, s.history.ApplyStoragePolicies(previous), s.state.ReplaceStoragePolicies(previous))
 	}
 	return nil
 }

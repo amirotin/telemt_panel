@@ -11,8 +11,7 @@ export type HistoryMetric =
 
 // useHistorySeries wraps GET /api/history for the stat-row widget's
 // sparklines (06-ui.md: "спарклайны из /api/history"). It requests the 30m
-// range — the whole of what the RAM ring retains (store.MetricCap, and the
-// response's own `retention_secs`) — because Сводка shows fifteen minutes
+// range within the two-hour live buffer because Сводка shows fifteen minutes
 // and compares them against the fifteen before: «−0,3 % за 15 мин» is a
 // comparison, and one window cannot make it.
 //

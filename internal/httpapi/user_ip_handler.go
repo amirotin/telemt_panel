@@ -10,13 +10,15 @@ import (
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
+	"github.com/amirotin/telemt_panel/internal/geoip"
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
 )
 
 type userIPHistoryItem struct {
 	store.UserIPRecord
-	ActiveNow *bool `json:"active_now"`
+	ActiveNow *bool         `json:"active_now"`
+	Geo       *geoip.Result `json:"geo"`
 }
 type userIPHistoryView struct {
 	ActiveNowCount *int                   `json:"active_now_count"`
@@ -30,6 +32,7 @@ type userIPHistoryView struct {
 	Durable        bool                   `json:"durable"`
 	Collection     store.UserIPCollection `json:"collection"`
 	Source         hub.UserIPSourceStatus `json:"source"`
+	GeoIP          geoip.Status           `json:"geoip"`
 }
 type userIPCursor struct {
 	User   string `json:"u"`
@@ -121,12 +124,24 @@ func (s *Server) handleGetUserIPHistory(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	result := userIPHistoryView{Items: make([]userIPHistoryItem, 0, len(page.Items)), Total: page.Total, Matched: page.Matched, New: page.New, Range: span, RetentionDays: int(s.st.UserIPRetention() / (24 * time.Hour)), Durable: s.st.Info().Durable, Collection: collection, Source: hub.UserIPSourceStatus{State: "unavailable"}}
+	result.GeoIP = geoip.DisabledStatus()
+	var geography []*geoip.Result
+	if s.geoip != nil {
+		ips := make([]string, len(page.Items))
+		for i, item := range page.Items {
+			ips[i] = item.IP
+		}
+		result.GeoIP, geography = s.geoip.LookupPage(ips)
+	}
 	if s.hub != nil {
 		result.Source = s.hub.UserIPSourceStatus()
 		result.ActiveNowCount = s.hub.UserIPActiveCount(q.Username)
 	}
-	for _, r := range page.Items {
+	for i, r := range page.Items {
 		item := userIPHistoryItem{UserIPRecord: r}
+		if i < len(geography) {
+			item.Geo = geography[i]
+		}
 		if s.hub != nil {
 			item.ActiveNow = s.hub.UserIPLive(q.Username, r.IP)
 		}
