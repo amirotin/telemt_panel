@@ -20,6 +20,7 @@ export function auditActionFamily(action: string): AuditFamily {
   switch (domain) {
     case "user":
     case "quota":
+    case "traffic":
       return "person";
     case "secret":
     case "sublink":

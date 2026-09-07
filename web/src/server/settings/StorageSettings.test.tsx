@@ -48,8 +48,6 @@ describe("StorageSettings record counts", () => {
     const largeCount = 2_500_000;
     const view = await renderStorage({
       policies,
-      configured_driver: "sqlite",
-      active_driver: "sqlite",
       state_durable: true,
       stats: {
         driver: "sqlite",
@@ -84,8 +82,6 @@ describe("StorageSettings record counts", () => {
     ];
     const view = await renderStorage({
       policies,
-      configured_driver: "sqlite",
-      active_driver: "sqlite",
       state_durable: false,
       stats: {
         driver: "sqlite",

@@ -3,13 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { getUserTrafficHistoryOptions } from "../lib/api/generated/@tanstack/react-query.gen";
 import { formatBytes } from "../lib/format";
 import { useStrings } from "../i18n";
+import { fill, localeOf } from "../i18n/plural";
 import { cn } from "../lib/cn";
 import { Skeleton } from "../ui/Skeleton";
 import { trafficBarHeights, trafficHistorySummary } from "./trafficHistory.helpers";
+import type { UsersTopicUser } from "../realtime/topics";
 
-type TrafficRange = "24h" | "7d" | "30d";
+type TrafficRange = "24h" | "7d" | "30d" | "1y";
 
-export function PersonTrafficHistory({ username }: { username: string }) {
+export function PersonTrafficHistory({ username, traffic }: { username: string; traffic?: UsersTopicUser["traffic"] }) {
   const s = useStrings();
   const [range, setRange] = useState<TrafficRange>("24h");
   const query = useQuery({
@@ -18,6 +20,21 @@ export function PersonTrafficHistory({ username }: { username: string }) {
   });
   const data = query.data;
   const summary = trafficHistorySummary(data?.points ?? []);
+  const observedThrough = data?.observed_through_epoch_secs;
+  const observedDate = observedThrough ? new Date(observedThrough * 1000) : null;
+  const utcTodayStart = observedDate
+    ? Date.UTC(observedDate.getUTCFullYear(), observedDate.getUTCMonth(), observedDate.getUTCDate()) / 1000
+    : null;
+  const todayBytes = data && data.state !== "disabled" && utcTodayStart !== null
+    ? data.points.reduce((total, point) => point.ts >= utcTodayStart ? total + point.v : total, 0)
+    : undefined;
+  const observedSince = traffic?.observed_since_epoch_secs
+    ? fill(s.people.trafficHistory.observedSince, {
+        date: new Intl.DateTimeFormat(localeOf(s), { dateStyle: "medium" }).format(
+          new Date(traffic.observed_since_epoch_secs * 1000),
+        ),
+      })
+    : null;
 
   return (
     <section className="rounded-xl bg-bg px-3.5 py-3" data-testid="person-traffic-history">
@@ -29,7 +46,7 @@ export function PersonTrafficHistory({ username }: { username: string }) {
           </p>
         </div>
         <div className="flex rounded-lg bg-surface p-0.5" role="group" aria-label={s.people.trafficHistory.title}>
-          {(["24h", "7d", "30d"] as const).map((value) => (
+		  {(["24h", "7d", "30d", "1y"] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -46,6 +63,15 @@ export function PersonTrafficHistory({ username }: { username: string }) {
         </div>
       </div>
 
+      {traffic && (
+        <div className="mt-3 grid grid-cols-3 gap-1.5 rounded-lg bg-surface p-2.5">
+          <HistoryValue label={s.people.trafficHistory.today} value={todayBytes === undefined ? "—" : formatBytes(todayBytes, s)} />
+          <HistoryValue label={s.people.trafficHistory.currentMonth} value={formatBytes(traffic.current_month_bytes, s)} />
+          <HistoryValue label={s.people.trafficHistory.allTime} value={formatBytes(traffic.observed_total_bytes, s)} />
+          {observedSince && <p className="col-span-3 text-[10px] text-text-muted">{observedSince}</p>}
+        </div>
+      )}
+
       {query.isPending ? (
         <Skeleton className="mt-3 h-28 w-full rounded-lg" />
       ) : query.isError || !data ? (
@@ -61,9 +87,11 @@ export function PersonTrafficHistory({ username }: { username: string }) {
         <HistoryNote tone="muted" text={s.people.trafficHistory.empty} />
       ) : (
         <>
-          {data.source_available === false && (
+          {(data.source_state === "unavailable" || data.source_available === false) && (
             <HistoryNote tone="warn" text={s.people.trafficHistory.sourceUnavailable} />
           )}
+		  {data.source_state === "paused" && <HistoryNote tone="warn" text={s.people.trafficHistory.sourcePaused} />}
+		  {data.durability === "volatile" && <HistoryNote tone="muted" text={s.people.trafficHistory.volatile} />}
           <TrafficBars points={data.points} label={s.people.trafficHistory.title} />
           <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3">
             <HistoryValue label={s.people.trafficHistory.total} value={formatBytes(summary.total, s)} />
@@ -71,11 +99,13 @@ export function PersonTrafficHistory({ username }: { username: string }) {
           </div>
           <div className="mt-2 flex flex-wrap justify-between gap-2 text-[10px] text-text-muted">
             <span>
-              {data.points.some((point) => point.tier === "1h")
-                ? s.people.trafficHistory.bucketHour
-                : s.people.trafficHistory.bucket15m}
+			  {data.points.some((point) => point.tier === "1d")
+				? s.people.trafficHistory.bucketDay
+				: data.points.some((point) => point.tier === "1h")
+				  ? s.people.trafficHistory.bucketHour
+				  : s.people.trafficHistory.bucket15m}
             </span>
-            {data.state === "partial" && <span className="text-accent">{s.people.trafficHistory.partial}</span>}
+			{(data.state === "partial" || data.continuity === "partial") && <span className="text-accent">{s.people.trafficHistory.partial}</span>}
           </div>
         </>
       )}

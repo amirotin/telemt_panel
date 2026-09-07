@@ -323,6 +323,48 @@ paths:
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
+  /api/users/{username}/ip-history:
+    get:
+      tags: [users]
+      operationId: getUserIPHistory
+      description: >
+        Panel-observed address history, not a connection log. Ranges end now
+        and filter last observation. Live pagination may move updated rows;
+        clients should deduplicate by IP and offer refresh. No-store response.
+      parameters:
+        - { $ref: "#/components/parameters/Username" }
+        - { name: range, in: query, schema: { type: string, enum: [24h, 7d, 30d, all], default: 30d } }
+        - { name: family, in: query, schema: { type: string, enum: [all, "4", "6"], default: all } }
+        - { name: q, in: query, schema: { type: string, maxLength: 64 }, description: Literal IP substring; full addresses are canonicalized. }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 2048 }, description: Opaque cursor bound to user and filters. }
+      responses:
+        "200": { description: Observed addresses and collection limitations, content: { application/json: { schema: { $ref: "#/components/schemas/UserIPHistory" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/users/{username}/ip-history/reset:
+    post:
+      tags: [users]
+      operationId: resetUserIPHistory
+      description: Clears only address history, including pending writes. Later observations may create new history. Does not reset traffic or Telemt IP limits.
+      parameters:
+        - { $ref: "#/components/parameters/Username" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirm]
+              properties:
+                confirm: { type: boolean, const: true }
+      responses:
+        "204": { description: IP history cleared }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/users/{username}/traffic-history:
     get:
       tags: [users]
@@ -334,9 +376,67 @@ paths:
         are omitted.
       parameters:
         - { $ref: "#/components/parameters/Username" }
-        - { name: range, in: query, required: true, schema: { type: string, enum: [24h, 7d, 30d] } }
+        - { name: range, in: query, required: true, schema: { type: string, enum: [24h, 7d, 30d, 1y] } }
       responses:
-        "200": { description: User traffic series and collection state, content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
+        "200": { description: User traffic series and collection state, content: { application/json: { schema: { $ref: "#/components/schemas/UserTrafficHistorySeries" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/users/{username}/traffic/reset:
+    post:
+      tags: [users]
+      operationId: resetUserTraffic
+      description: >
+        Irreversibly removes the panel-observed total, current baseline and
+        graph history for one account. The next coherent collector snapshot
+        establishes a new baseline.
+      parameters: [ { $ref: "#/components/parameters/Username" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DestructiveConfirmationRequest" }
+      responses:
+        "204": { description: User traffic reset }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/traffic/summary:
+    get:
+      tags: [users]
+      operationId: getTrafficSummary
+      parameters:
+        - { name: range, in: query, required: true, schema: { $ref: "#/components/schemas/TrafficRange" } }
+      responses:
+        "200": { description: Aggregate user traffic report, content: { application/json: { schema: { $ref: "#/components/schemas/TrafficSummary" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/traffic/users:
+    get:
+      tags: [users]
+      operationId: getTrafficUsers
+      parameters:
+        - { name: range, in: query, required: true, schema: { $ref: "#/components/schemas/TrafficRange" } }
+        - { name: include_deleted, in: query, schema: { type: boolean, default: false } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Ranked user traffic page, content: { application/json: { schema: { $ref: "#/components/schemas/TrafficUsersPage" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/traffic/reset:
+    post:
+      tags: [users]
+      operationId: resetAllUserTraffic
+      description: >
+        Irreversibly removes every panel-observed user traffic total, baseline
+        and graph bucket. The next coherent collector snapshot establishes new
+        baselines.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DestructiveConfirmationRequest" }
+      responses:
+        "204": { description: All user traffic reset }
         "400": { $ref: "#/components/responses/BadRequest" }
 
   /api/users/{username}/rotate-secret:
@@ -927,20 +1027,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, version, variant, drivers, configured_driver, active_driver, state_durable]
+                required: [status, version, variant, drivers, state_durable]
                 properties:
                   status: { type: string, enum: [ok] }
                   version: { type: string }
                   variant: { type: string, enum: [full, lite] }
                   drivers:
                     type: array
-                    items: { type: string, enum: [memory, sqlite, postgres, mysql] }
-                  configured_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
-                  active_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+                    items: { type: string, enum: [memory, sqlite] }
                   state_durable: { type: boolean, description: Whether local panel state survives a restart. }
-                  store_error:
-                    type: string
-                    description: Safe history-backend connection error without credentials; omitted when the configured backend is active.
 
   /api/logs/tail:
     get:
@@ -1026,6 +1121,9 @@ components:
       schema: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
 
   responses:
+    InternalError:
+      description: Internal panel error
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     Unauthorized:
       description: No valid session
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -1183,7 +1281,7 @@ components:
         active_unique_ips_list: { type: array, items: { type: string } }
         recent_unique_ips: { type: integer }
         recent_unique_ips_list: { type: array, items: { type: string } }
-        total_octets: { type: integer, format: int64 }
+        total_octets: { type: integer, format: int64, deprecated: true, description: Raw Telemt process counter retained for compatibility. }
         links: { $ref: "#/components/schemas/UserLinks" }
         quota:
           type: object
@@ -1192,7 +1290,20 @@ components:
           properties:
             used_bytes: { type: integer, format: int64 }
             last_reset_epoch_secs: { type: integer, format: int64 }
+        traffic: { $ref: "#/components/schemas/UserTraffic" }
+        ip_history: { $ref: "#/components/schemas/UserIPSummary" }
         sub_url: { type: string, description: Absolute subscription page URL }
+
+    UserTraffic:
+      type: object
+      required: [observed_total_bytes, current_month_bytes, month_key, observed_since_epoch_secs, last_activity_epoch_secs, continuity]
+      properties:
+        observed_total_bytes: { type: integer, format: int64, minimum: 0 }
+        current_month_bytes: { type: integer, format: int64, minimum: 0 }
+        month_key: { type: integer, description: UTC month in YYYYMM form }
+        observed_since_epoch_secs: { type: integer, format: int64 }
+        last_activity_epoch_secs: { type: integer, format: int64 }
+        continuity: { $ref: "#/components/schemas/TrafficContinuity" }
 
     UserLinks:
       type: object
@@ -1649,8 +1760,8 @@ components:
         panel_variant: { type: string, enum: [full, lite] }
         storage_drivers:
           type: array
-          items: { type: string, enum: [memory, sqlite, postgres, mysql] }
-        active_store: { type: string, enum: [memory, sqlite, postgres, mysql] }
+          items: { type: string, enum: [memory, sqlite] }
+        active_store: { type: string, enum: [memory, sqlite] }
         caps:
           type: object
           required: [restart_telemt, restart_panel, log_tail, log_stream, self_update]
@@ -1793,6 +1904,88 @@ components:
           additionalProperties: { type: string }
           description: Structured key/value details when the action supplies them
 
+    TrafficRange:
+      type: string
+      enum: [24h, 7d, 30d, month, 1y]
+
+    TrafficSourceState:
+      type: string
+      enum: [collecting, paused, unavailable]
+
+    TrafficContinuity:
+      type: string
+      enum: [normal, partial]
+
+    TrafficCollection:
+      type: object
+      required: [source_state, continuity, durability, retention_secs]
+      properties:
+        source_state: { $ref: "#/components/schemas/TrafficSourceState" }
+        continuity: { $ref: "#/components/schemas/TrafficContinuity" }
+        durability: { type: string, enum: [durable, volatile] }
+        retention_secs: { type: integer, format: int64, minimum: 0 }
+        observed_since_epoch_secs: { type: integer, format: int64 }
+        observed_through_epoch_secs: { type: integer, format: int64 }
+
+    UserTrafficPoint:
+      type: object
+      required: [ts, v, tier]
+      properties:
+        ts: { type: integer, format: int64 }
+        v: { type: integer, format: int64, minimum: 0 }
+        tier: { type: string, enum: [15m, 1h, 1d] }
+
+    UserTrafficRank:
+      type: object
+      required: [username, bytes, observed_total_bytes, current_month_bytes, continuity]
+      properties:
+        username: { type: string }
+        bytes: { type: integer, format: int64, minimum: 0 }
+        observed_total_bytes: { type: integer, format: int64, minimum: 0 }
+        current_month_bytes: { type: integer, format: int64, minimum: 0 }
+        deleted_epoch_secs: { type: integer, format: int64 }
+        continuity: { $ref: "#/components/schemas/TrafficContinuity" }
+
+    UserTrafficHistorySeries:
+      type: object
+      required: [metric, range, state, requested_from_epoch_secs, retention_secs, source_state, continuity, durability, points]
+      properties:
+        metric: { type: string }
+        range: { type: string, enum: [24h, 7d, 30d, 1y] }
+        state: { type: string, enum: [ready, disabled, empty, partial] }
+        requested_from_epoch_secs: { type: integer, format: int64 }
+        retention_secs: { type: integer, format: int64, minimum: 0 }
+        available_from_epoch_secs: { type: integer, format: int64 }
+        source_available: { type: boolean, deprecated: true }
+        source_state: { $ref: "#/components/schemas/TrafficSourceState" }
+        continuity: { $ref: "#/components/schemas/TrafficContinuity" }
+        durability: { type: string, enum: [durable, volatile] }
+        observed_since_epoch_secs: { type: integer, format: int64 }
+        observed_through_epoch_secs: { type: integer, format: int64 }
+        points: { type: array, items: { $ref: "#/components/schemas/UserTrafficPoint" } }
+
+    TrafficSummary:
+      type: object
+      required: [range, state, requested_from_epoch_secs, total_bytes, points, top_users, collection]
+      properties:
+        range: { $ref: "#/components/schemas/TrafficRange" }
+        state: { type: string, enum: [ready, disabled, empty, partial] }
+        requested_from_epoch_secs: { type: integer, format: int64 }
+        total_bytes: { type: integer, format: int64, minimum: 0 }
+        previous_total_bytes: { type: integer, format: int64, minimum: 0 }
+        points: { type: array, items: { $ref: "#/components/schemas/UserTrafficPoint" } }
+        top_users: { type: array, maxItems: 5, items: { $ref: "#/components/schemas/UserTrafficRank" } }
+        collection: { $ref: "#/components/schemas/TrafficCollection" }
+
+    TrafficUsersPage:
+      type: object
+      required: [range, users, collection]
+      properties:
+        range: { $ref: "#/components/schemas/TrafficRange" }
+        users: { type: array, items: { $ref: "#/components/schemas/UserTrafficRank" } }
+        next_cursor: { type: string }
+        collection: { $ref: "#/components/schemas/TrafficCollection" }
+
     HistorySeries:
       type: object
       required: [metric, range, state, requested_from_epoch_secs, retention_secs, points]
@@ -1825,7 +2018,7 @@ components:
             properties:
               ts: { type: integer, format: int64, description: epoch seconds }
               v: { type: number }
-              tier: { type: string, enum: [1m, 15m, 1h], description: Omitted for raw points }
+              tier: { type: string, enum: [1m, 15m, 1h, 1d], description: Omitted for raw points }
               max: { type: number, description: Bucket maximum; present for aggregate points }
 
     HistoryEvent:
@@ -1866,9 +2059,74 @@ components:
           type: array
           items: { $ref: "#/components/schemas/HistoryEvent" }
 
+    UserIPSummary:
+      type: object
+      required: [unique, from, collected_through, history_limited, collection_gap]
+      properties:
+        unique: { type: integer, format: int64, minimum: 0 }
+        from: { type: integer, format: int64, description: Last 30 days, clipped by effective retention. }
+        collected_through: { type: integer, format: int64 }
+        history_limited: { type: boolean }
+        collection_gap: { type: boolean }
+
+    UserIPHistoryItem:
+      type: object
+      required: [username, ip, family, first_observed_at, last_observed_at, observations, last_source_mask, active_now]
+      properties:
+        username: { type: string }
+        ip: { type: string, description: Canonical individual address; mapped IPv4 is unmapped. }
+        family: { type: integer, enum: [4, 6] }
+        first_observed_at: { type: integer, format: int64 }
+        last_observed_at: { type: integer, format: int64 }
+        observations: { type: integer, format: int64, minimum: 1, description: Periodic observations, not number of connections. }
+        last_active_observed_at: { type: integer, format: int64 }
+        last_source_mask: { type: integer, enum: [1, 2, 3], description: Active list (1), recent list (2), both (3). }
+        active_now: { type: [boolean, "null"], description: Null if the active source is missing, invalid or older than 30 seconds. }
+
+    UserIPCollection:
+      type: object
+      required: [observed_since, collected_through, history_limited, collection_gap]
+      properties:
+        batch_id: { type: string }
+        observed_since: { type: integer, format: int64 }
+        collected_through: { type: integer, format: int64 }
+        history_limited: { type: boolean }
+        collection_gap: { type: boolean }
+
+    UserIPSourceStatus:
+      type: object
+      required: [state, last_success_at, age_secs, recent_window_secs, pending, history_limited, collection_gap]
+      properties:
+        state: { type: string, enum: [collecting, unavailable] }
+        last_success_at: { type: integer, format: int64 }
+        age_secs:
+          type: [integer, 'null']
+          minimum: 0
+          description: Age of the last successful observation at response time, measured on the panel server; null before collection or if the server clock moved backwards.
+        recent_window_secs: { type: [integer, "null"], format: int64, minimum: 1 }
+        pending: { type: boolean }
+        history_limited: { type: boolean }
+        collection_gap: { type: boolean }
+
+    UserIPHistory:
+      type: object
+      required: [items, total, matched, new, next_cursor, range, retention_days, durable, collection, source, active_now_count]
+      properties:
+        active_now_count: { type: [integer, "null"], minimum: 0, description: All distinct active addresses for this user, independent of history pagination. Null if the active source is unavailable or stale. }
+        items: { type: array, items: { $ref: "#/components/schemas/UserIPHistoryItem" } }
+        total: { type: integer, format: int64, description: Addresses in the range before family/search filters. }
+        matched: { type: integer, format: int64, description: Addresses matching all filters before pagination. }
+        new: { type: integer, format: int64, description: Retained addresses first observed in the range, not a daily time series. }
+        next_cursor: { type: string, description: Empty when there is no next page. }
+        range: { type: string, enum: [24h, 7d, 30d, all] }
+        retention_days: { type: integer, minimum: 1 }
+        durable: { type: boolean }
+        collection: { $ref: "#/components/schemas/UserIPCollection" }
+        source: { $ref: "#/components/schemas/UserIPSourceStatus" }
+
     StorageCategory:
       type: string
-      enum: [technical, events, audit, connection_issues, traffic, user_traffic, diagnostics]
+      enum: [technical, events, audit, connection_issues, traffic, user_traffic, user_ip_history, diagnostics]
 
     StoragePolicy:
       type: object
@@ -1884,12 +2142,23 @@ components:
       properties:
         category: { $ref: "#/components/schemas/StorageCategory" }
         records: { type: integer, format: int64, minimum: 0 }
+        entities: { type: integer, format: int64, minimum: 0, description: Retained user totals for user_traffic. }
+        collector: { $ref: "#/components/schemas/TrafficCollectorState" }
+
+    TrafficCollectorState:
+      type: object
+      required: [last_success_ts, source_started_at, source_state, continuity]
+      properties:
+        last_success_ts: { type: integer, format: int64 }
+        source_started_at: { type: integer, format: int64 }
+        source_state: { $ref: "#/components/schemas/TrafficSourceState" }
+        continuity: { $ref: "#/components/schemas/TrafficContinuity" }
 
     StorageStats:
       type: object
       required: [driver, durable, database_bytes, categories]
       properties:
-        driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
+        driver: { type: string, enum: [memory, sqlite] }
         durable: { type: boolean }
         database_bytes: { type: integer, format: int64, minimum: 0 }
         categories:
@@ -1898,20 +2167,15 @@ components:
 
     StorageSettings:
       type: object
-      required: [policies, stats, configured_driver, active_driver, state_durable]
+      required: [policies, stats, state_durable]
       properties:
         policies:
           type: array
           items: { $ref: "#/components/schemas/StoragePolicy" }
         stats: { $ref: "#/components/schemas/StorageStats" }
-        configured_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
-        active_driver: { type: string, enum: [memory, sqlite, postgres, mysql] }
         state_durable:
           type: boolean
           description: Whether panel-state.json is enabled and control-plane state survives a restart.
-        store_error:
-          type: string
-          description: Safe startup fallback reason without connection credentials.
 
     StorageSettingsUpdate:
       type: object
@@ -1926,6 +2190,13 @@ components:
       required: [category, confirm]
       properties:
         category: { $ref: "#/components/schemas/StorageCategory" }
+        confirm: { type: boolean, const: true }
+
+    DestructiveConfirmationRequest:
+      type: object
+      additionalProperties: false
+      required: [confirm]
+      properties:
         confirm: { type: boolean, const: true }
 
     GeoInfo:

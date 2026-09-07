@@ -1,6 +1,10 @@
 package httpapi
 
 import (
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,6 +30,14 @@ var userTrafficRanges = map[string]time.Duration{
 	"24h": 24 * time.Hour,
 	"7d":  7 * 24 * time.Hour,
 	"30d": 30 * 24 * time.Hour,
+	"1y":  365 * 24 * time.Hour,
+}
+
+var trafficReportRanges = map[string]time.Duration{
+	"24h": 24 * time.Hour,
+	"7d":  7 * 24 * time.Hour,
+	"30d": 30 * 24 * time.Hour,
+	"1y":  365 * 24 * time.Hour,
 }
 
 const historySourceFreshness = 2 * time.Minute
@@ -82,6 +94,12 @@ type historyPointView struct {
 	Max  *float64 `json:"max,omitempty"`
 }
 
+type userTrafficPointView struct {
+	TS   int64  `json:"ts"`
+	V    int64  `json:"v"`
+	Tier string `json:"tier"`
+}
+
 // historySeriesView mirrors api/openapi.yaml HistorySeries.
 type historySeriesView struct {
 	Metric        string `json:"metric"`
@@ -94,6 +112,49 @@ type historySeriesView struct {
 	AvailableFrom *int64             `json:"available_from_epoch_secs,omitempty"`
 	Source        *bool              `json:"source_available,omitempty"`
 	Points        []historyPointView `json:"points"`
+}
+
+type userTrafficHistorySeriesView struct {
+	Metric          string                       `json:"metric"`
+	Range           string                       `json:"range"`
+	State           string                       `json:"state"`
+	RequestedFrom   int64                        `json:"requested_from_epoch_secs"`
+	RetentionSecs   int64                        `json:"retention_secs"`
+	AvailableFrom   *int64                       `json:"available_from_epoch_secs,omitempty"`
+	Source          *bool                        `json:"source_available,omitempty"`
+	SourceState     store.UserTrafficSourceState `json:"source_state"`
+	Continuity      store.UserTrafficContinuity  `json:"continuity"`
+	Durability      string                       `json:"durability"`
+	ObservedSince   int64                        `json:"observed_since_epoch_secs,omitempty"`
+	ObservedThrough int64                        `json:"observed_through_epoch_secs,omitempty"`
+	Points          []userTrafficPointView       `json:"points"`
+}
+
+type trafficCollectionView struct {
+	SourceState     store.UserTrafficSourceState `json:"source_state"`
+	Continuity      store.UserTrafficContinuity  `json:"continuity"`
+	Durability      string                       `json:"durability"`
+	RetentionSecs   int64                        `json:"retention_secs"`
+	ObservedSince   int64                        `json:"observed_since_epoch_secs,omitempty"`
+	ObservedThrough int64                        `json:"observed_through_epoch_secs,omitempty"`
+}
+
+type trafficSummaryView struct {
+	Range              string                  `json:"range"`
+	State              string                  `json:"state"`
+	RequestedFrom      int64                   `json:"requested_from_epoch_secs"`
+	TotalBytes         int64                   `json:"total_bytes"`
+	PreviousTotalBytes *int64                  `json:"previous_total_bytes,omitempty"`
+	Points             []userTrafficPointView  `json:"points"`
+	TopUsers           []store.UserTrafficRank `json:"top_users"`
+	Collection         trafficCollectionView   `json:"collection"`
+}
+
+type trafficUsersView struct {
+	Range      string                  `json:"range"`
+	Users      []store.UserTrafficRank `json:"users"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
+	Collection trafficCollectionView   `json:"collection"`
 }
 
 type historyEventsView struct {
@@ -169,17 +230,223 @@ func (s *Server) handleGetUserTrafficHistory(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	retentionSecs := int64(s.st.UserTrafficRetention() / time.Second)
-	state, availableFrom := metricHistoryState(now.Unix(), fromTS, retentionSecs, points)
-	writeJSON(w, http.StatusOK, historySeriesView{
-		Metric:        userTrafficMetricLabel(username),
-		Range:         rangeParam,
-		State:         state,
-		RequestedFrom: fromTS,
-		RetentionSecs: retentionSecs,
-		AvailableFrom: availableFrom,
-		Source:        s.historySourceAvailability(now),
-		Points:        toHistoryPoints(points),
+	collector, err := s.st.UserTrafficCollectorState()
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read traffic collector state")
+		return
+	}
+	summaries, err := s.st.UserTrafficSummaries()
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read user traffic summary")
+		return
+	}
+	summary := summaries[username]
+	state, availableFrom := userTrafficHistoryState(now.Unix(), fromTS, retentionSecs, summary.ObservedSinceEpochSecs, points)
+	sourceState := collector.SourceState
+	if collector.LastSuccessTS == 0 || now.Unix()-collector.LastSuccessTS > int64(historySourceFreshness/time.Second) {
+		sourceState = store.UserTrafficUnavailable
+	}
+	continuity := collector.Continuity
+	if summary.Continuity == store.UserTrafficPartial {
+		continuity = store.UserTrafficPartial
+	}
+	durability := "volatile"
+	if s.st.Info().Durable {
+		durability = "durable"
+	}
+	writeJSON(w, http.StatusOK, userTrafficHistorySeriesView{
+		Metric:          userTrafficMetricLabel(username),
+		Range:           rangeParam,
+		State:           state,
+		RequestedFrom:   fromTS,
+		RetentionSecs:   retentionSecs,
+		AvailableFrom:   availableFrom,
+		Source:          s.historySourceAvailability(now),
+		SourceState:     sourceState,
+		Continuity:      continuity,
+		Durability:      durability,
+		ObservedSince:   summary.ObservedSinceEpochSecs,
+		ObservedThrough: collector.LastSuccessTS,
+		Points:          toUserTrafficHistoryPoints(points),
 	})
+}
+
+func (s *Server) handleGetTrafficSummary(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
+	rangeParam := r.URL.Query().Get("range")
+	from, to, ok := trafficReportBounds(rangeParam, now)
+	if !ok {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown range")
+		return
+	}
+	total, points, err := s.st.UserTrafficAggregate(from, to)
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not aggregate user traffic")
+		return
+	}
+	if rangeParam == "month" {
+		summaries, summaryErr := s.st.UserTrafficSummaries()
+		if summaryErr != nil {
+			auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read user traffic totals")
+			return
+		}
+		total = 0
+		for _, summary := range summaries {
+			if summary.CurrentMonthBytes > math.MaxInt64-total {
+				auth.WriteError(w, http.StatusInternalServerError, "internal_error", "user traffic total exceeds supported range")
+				return
+			}
+			total += summary.CurrentMonthBytes
+		}
+	}
+	window := to - from
+	previousTotal, _, err := s.st.UserTrafficAggregate(from-window, from)
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not aggregate previous user traffic")
+		return
+	}
+	ranks, err := s.st.UserTrafficRanking(from, to, false, 5, nil)
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not rank user traffic")
+		return
+	}
+	collection, err := s.trafficCollection(now)
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read traffic collection state")
+		return
+	}
+	state, _ := userTrafficHistoryState(to, from, collection.RetentionSecs, collection.ObservedSince, points)
+	var previous *int64
+	if collection.ObservedSince != 0 && collection.ObservedSince <= from-window && collection.RetentionSecs >= 2*window {
+		previous = &previousTotal
+	}
+	writeJSON(w, http.StatusOK, trafficSummaryView{
+		Range: rangeParam, State: state, RequestedFrom: from, TotalBytes: total,
+		PreviousTotalBytes: previous, Points: toUserTrafficHistoryPoints(points),
+		TopUsers: ranks, Collection: collection,
+	})
+}
+
+func (s *Server) handleGetTrafficUsers(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
+	rangeParam := r.URL.Query().Get("range")
+	from, to, ok := trafficReportBounds(rangeParam, now)
+	if !ok {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown range")
+		return
+	}
+	includeDeleted := false
+	if raw := r.URL.Query().Get("include_deleted"); raw != "" {
+		var err error
+		includeDeleted, err = strconv.ParseBool(raw)
+		if err != nil {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "include_deleted must be a boolean")
+			return
+		}
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "limit must be between 1 and 200")
+			return
+		}
+		limit = parsed
+	}
+	cursor, err := decodeUserTrafficCursor(r.URL.Query().Get("cursor"))
+	if err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid cursor")
+		return
+	}
+	ranks, err := s.st.UserTrafficRanking(from, to, includeDeleted, limit+1, cursor)
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not rank user traffic")
+		return
+	}
+	nextCursor := ""
+	if len(ranks) > limit {
+		last := ranks[limit-1]
+		nextCursor = encodeUserTrafficCursor(last.Bytes, last.Username)
+		ranks = ranks[:limit]
+	}
+	collection, err := s.trafficCollection(now)
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read traffic collection state")
+		return
+	}
+	writeJSON(w, http.StatusOK, trafficUsersView{
+		Range: rangeParam, Users: ranks, NextCursor: nextCursor, Collection: collection,
+	})
+}
+
+func trafficReportBounds(rangeParam string, now time.Time) (int64, int64, bool) {
+	to := now.Unix()
+	if rangeParam == "month" {
+		from := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Unix()
+		return from, to, true
+	}
+	window, ok := trafficReportRanges[rangeParam]
+	if !ok {
+		return 0, 0, false
+	}
+	return now.Add(-window).Unix(), to, true
+}
+
+func (s *Server) trafficCollection(now time.Time) (trafficCollectionView, error) {
+	collector, err := s.st.UserTrafficCollectorState()
+	if err != nil {
+		return trafficCollectionView{}, err
+	}
+	summaries, err := s.st.UserTrafficSummaries()
+	if err != nil {
+		return trafficCollectionView{}, err
+	}
+	sourceState := collector.SourceState
+	if collector.LastSuccessTS == 0 || now.Unix()-collector.LastSuccessTS > int64(historySourceFreshness/time.Second) {
+		sourceState = store.UserTrafficUnavailable
+	}
+	continuity := collector.Continuity
+	observedSince := int64(0)
+	for _, summary := range summaries {
+		if observedSince == 0 || summary.ObservedSinceEpochSecs < observedSince {
+			observedSince = summary.ObservedSinceEpochSecs
+		}
+		if summary.Continuity == store.UserTrafficPartial {
+			continuity = store.UserTrafficPartial
+		}
+	}
+	durability := "volatile"
+	if s.st.Info().Durable {
+		durability = "durable"
+	}
+	return trafficCollectionView{
+		SourceState: sourceState, Continuity: continuity, Durability: durability,
+		RetentionSecs: int64(s.st.UserTrafficRetention() / time.Second),
+		ObservedSince: observedSince, ObservedThrough: collector.LastSuccessTS,
+	}, nil
+}
+
+func encodeUserTrafficCursor(bytes int64, username string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d\n%s", bytes, username)))
+}
+
+func decodeUserTrafficCursor(value string) (*store.UserTrafficRankCursor, error) {
+	if value == "" {
+		return nil, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.SplitN(string(raw), "\n", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return nil, errors.New("invalid cursor payload")
+	}
+	bytes, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || bytes < 0 {
+		return nil, errors.New("invalid cursor bytes")
+	}
+	return &store.UserTrafficRankCursor{Bytes: bytes, Username: parts[1]}, nil
 }
 
 // handleGetHistoryEvents returns safe, structured transition events from the
@@ -264,6 +531,21 @@ func metricHistoryState(nowTS, fromTS, retentionSecs int64, points []store.Metri
 	return state, &oldest
 }
 
+func userTrafficHistoryState(nowTS, fromTS, retentionSecs, observedSince int64, points []store.UserTrafficPoint) (string, *int64) {
+	if retentionSecs == 0 {
+		return "disabled", nil
+	}
+	if len(points) == 0 {
+		return "empty", nil
+	}
+	oldest := points[0].TS
+	state := "ready"
+	if retentionSecs < nowTS-fromTS || observedSince == 0 || observedSince > fromTS {
+		state = "partial"
+	}
+	return state, &oldest
+}
+
 func (s *Server) historySourceAvailability(now time.Time) *bool {
 	points, err := s.st.MetricRange("telemt.available", now.Add(-historySourceFreshness).Unix())
 	if err != nil || len(points) == 0 {
@@ -290,6 +572,14 @@ func toHistoryPoints(points []store.MetricPoint) []historyPointView {
 			maxValue := p.Max
 			out[i].Max = &maxValue
 		}
+	}
+	return out
+}
+
+func toUserTrafficHistoryPoints(points []store.UserTrafficPoint) []userTrafficPointView {
+	out := make([]userTrafficPointView, len(points))
+	for i, point := range points {
+		out[i] = userTrafficPointView{TS: point.TS, V: point.Bytes, Tier: string(point.Tier)}
 	}
 	return out
 }

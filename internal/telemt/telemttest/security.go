@@ -9,7 +9,8 @@ import (
 func (s *Server) handlePosture(w http.ResponseWriter) {
 	writeOK(w, http.StatusOK, telemt.SecurityPostureData{
 		APIReadOnly: s.scenario.ReadOnly, APIWhitelistEnabled: true, APIWhitelistEntries: 1,
-		APIAuthHeaderEnabled: true, LogLevel: "info", TelemetryCoreEnabled: true, TelemetryMeLevel: "basic",
+		APIAuthHeaderEnabled: true, LogLevel: "info", TelemetryCoreEnabled: true,
+		TelemetryUserEnabled: true, TelemetryMeLevel: "basic",
 	}, s.revision())
 }
 

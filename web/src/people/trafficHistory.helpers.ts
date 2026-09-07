@@ -1,7 +1,7 @@
 export interface TrafficHistoryPoint {
   ts: number;
   v: number;
-  tier?: "1m" | "15m" | "1h";
+  tier?: "1m" | "15m" | "1h" | "1d";
   max?: number;
 }
 

@@ -132,12 +132,20 @@ func TestHandleGetUserTrafficHistoryReportsPolicyAndSparseBuckets(t *testing.T) 
 		return got
 	}
 
-	if got := request(); got.State != "disabled" || got.RetentionSecs != 0 || len(got.Points) != 0 {
-		t.Fatalf("disabled response = %+v", got)
-	}
 	policies, err := srv.st.ListStoragePolicies()
 	if err != nil {
 		t.Fatal(err)
+	}
+	for i := range policies {
+		if policies[i].Category == store.StorageUserTraffic {
+			policies[i].Enabled = false
+		}
+	}
+	if err := srv.st.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	if got := request(); got.State != "disabled" || got.RetentionSecs != 0 || len(got.Points) != 0 {
+		t.Fatalf("disabled response = %+v", got)
 	}
 	for i := range policies {
 		if policies[i].Category == store.StorageUserTraffic {
@@ -147,12 +155,91 @@ func TestHandleGetUserTrafficHistoryReportsPolicyAndSparseBuckets(t *testing.T) 
 	if err := srv.st.ReplaceStoragePolicies(policies); err != nil {
 		t.Fatal(err)
 	}
-	if err := srv.st.RecordUserTraffic([]store.UserTrafficDelta{{Username: "alice", TS: now, Bytes: 2048}}); err != nil {
+	if _, err := srv.st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+		ObservedAt: now - 1, SourceStartedAt: now - 3600, TelemetryEnabled: true,
+		Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 100}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+		ObservedAt: now, SourceStartedAt: now - 3600, TelemetryEnabled: true,
+		Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 2148}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	got := request()
 	if got.Metric != "user.alice.traffic" || got.State != "partial" || len(got.Points) != 1 || got.Points[0].V != 2048 || got.Points[0].Tier != "15m" {
 		t.Fatalf("traffic response = %+v", got)
+	}
+}
+
+func TestTrafficSummaryAndRanking(t *testing.T) {
+	srv := newTestServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	source := now.Add(-time.Hour).Unix()
+	for _, snapshot := range []store.UserTrafficSnapshot{
+		{ObservedAt: now.Add(-2 * time.Minute).Unix(), SourceStartedAt: source, TelemetryEnabled: true,
+			Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 10}, {Username: "bob", RawOctets: 20}}},
+		{ObservedAt: now.Add(-time.Minute).Unix(), SourceStartedAt: source, TelemetryEnabled: true,
+			Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 110}, {Username: "bob", RawOctets: 70}}},
+	} {
+		if _, err := srv.st.ApplyUserTrafficSnapshot(snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := srv.Handler()
+	_, cookie := login(t, h, "admin", testPassword)
+
+	get := func(path string, target any) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d: %s", path, w.Code, w.Body.String())
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), target); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var summary trafficSummaryView
+	get("/api/traffic/summary?range=24h", &summary)
+	if summary.TotalBytes != 150 || len(summary.Points) != 1 || summary.Points[0].V != 150 || len(summary.TopUsers) != 2 || summary.TopUsers[0].Username != "alice" {
+		t.Fatalf("summary = %+v", summary)
+	}
+	if summary.Collection.SourceState != store.UserTrafficCollecting || summary.Collection.Durability != "volatile" {
+		t.Fatalf("collection = %+v", summary.Collection)
+	}
+
+	var first trafficUsersView
+	get("/api/traffic/users?range=24h&limit=1", &first)
+	if len(first.Users) != 1 || first.Users[0].Username != "alice" || first.NextCursor == "" {
+		t.Fatalf("first page = %+v", first)
+	}
+	var second trafficUsersView
+	get("/api/traffic/users?range=24h&limit=1&cursor="+first.NextCursor, &second)
+	if len(second.Users) != 1 || second.Users[0].Username != "bob" || second.NextCursor != "" {
+		t.Fatalf("second page = %+v", second)
+	}
+
+	policies, err := srv.st.ListStoragePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range policies {
+		if policies[index].Category == store.StorageUserTraffic {
+			policies[index].Enabled = false
+		}
+	}
+	if err := srv.st.ReplaceStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	var month trafficSummaryView
+	get("/api/traffic/summary?range=month", &month)
+	if month.TotalBytes != 150 || month.State != "disabled" || len(month.Points) != 0 {
+		t.Fatalf("disabled month summary = %+v", month)
 	}
 }
 

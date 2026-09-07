@@ -24,6 +24,7 @@ import (
 const (
 	defaultUsersInterval     = 10 * time.Second
 	defaultStatsInterval     = 5 * time.Second
+	defaultTrafficInterval   = 30 * time.Second
 	defaultRuntimeInterval   = 10 * time.Second
 	defaultUpstreamsInterval = 15 * time.Second
 	defaultSecurityInterval  = 30 * time.Second
@@ -87,6 +88,7 @@ const (
 type Config struct {
 	UsersInterval     time.Duration
 	StatsInterval     time.Duration
+	TrafficInterval   time.Duration
 	RuntimeInterval   time.Duration
 	UpstreamsInterval time.Duration
 	SecurityInterval  time.Duration
@@ -110,6 +112,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.StatsInterval <= 0 {
 		c.StatsInterval = defaultStatsInterval
+	}
+	if c.TrafficInterval <= 0 {
+		c.TrafficInterval = defaultTrafficInterval
 	}
 	if c.RuntimeInterval <= 0 {
 		c.RuntimeInterval = defaultRuntimeInterval
@@ -215,8 +220,10 @@ type subscriber struct {
 // Hub polls Telemt for the registered topics and fans out changes to
 // subscribers. Call Close when done to stop every poller.
 type Hub struct {
+	ips userIPCollector
 	cfg Config
 	st  store.HistoryStore
+	tc  *telemt.Client
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -232,10 +239,10 @@ type Hub struct {
 	// refusals/attempts hold the running totals behind those two history
 	// series across polls (counters.go) — their own locks, since
 	// recordStatsHistory runs outside h.mu.
-	refusals    counterAccumulator
-	attempts    counterAccumulator
-	traffic     userTrafficAccumulator
-	transitions historyTransitionState
+	refusals       counterAccumulator
+	attempts       counterAccumulator
+	transitions    historyTransitionState
+	trafficStarted bool
 
 	// historyRecordedHook, if set, runs synchronously in pollWithContext
 	// immediately after every recordStatsHistory call (whether or not that
@@ -257,14 +264,16 @@ type Hub struct {
 }
 
 // New creates a Hub polling tc for this package's topic registry. Call
-// StartPersistentCollectors after construction to start durable history;
-// the memory driver remains demand-driven for the zero-write router profile.
+// StartPersistentCollectors after construction to start background history.
+// Topic polling remains demand-driven for memory stores; the bounded traffic
+// collector is the intentional exception because its baseline must stay warm.
 func New(cfg Config, tc *telemt.Client, st store.HistoryStore) *Hub {
 	cfg = cfg.withDefaults()
 	ctx, cancel := context.WithCancel(context.Background())
 	h := &Hub{
 		cfg:         cfg,
 		st:          st,
+		tc:          tc,
 		ctx:         ctx,
 		cancel:      cancel,
 		subscribers: make(map[uint64]*subscriber),
@@ -281,7 +290,7 @@ func New(cfg Config, tc *telemt.Client, st store.HistoryStore) *Hub {
 			name:       "users",
 			wake:       make(chan struct{}, 1),
 			interval:   cfg.UsersInterval,
-			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchUsers(ctx, tc) },
+			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchUsers(ctx, tc, st) },
 			persistent: durableHistory,
 		},
 		"stats": {
@@ -336,15 +345,33 @@ func New(cfg Config, tc *telemt.Client, st store.HistoryStore) *Hub {
 // quota data. Quota is an explicit JSON null (Go's nil-map default), not an
 // omitted key, when the capability is unsupported or the probe failed.
 type usersSnapshot struct {
-	Users          []telemt.UserInfo            `json:"users"`
+	Users          []userSnapshotItem           `json:"users"`
 	Quota          map[string]telemt.QuotaEntry `json:"quota"`
 	QuotaSupported bool                         `json:"quota_supported"`
 }
 
-func fetchUsers(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+type userSnapshotItem struct {
+	telemt.UserInfo
+	IPHistory *store.UserIPSummary `json:"ip_history,omitempty"`
+	Traffic   *userTrafficSnapshot `json:"traffic,omitempty"`
+}
+
+type userTrafficSnapshot struct {
+	ObservedTotalBytes     int64                       `json:"observed_total_bytes"`
+	CurrentMonthBytes      int64                       `json:"current_month_bytes"`
+	MonthKey               int                         `json:"month_key"`
+	ObservedSinceEpochSecs int64                       `json:"observed_since_epoch_secs"`
+	LastActivityEpochSecs  int64                       `json:"last_activity_epoch_secs"`
+	Continuity             store.UserTrafficContinuity `json:"continuity"`
+}
+
+func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (json.RawMessage, error) {
 	users, err := tc.Users(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if observe, ok := ctx.Value(ipObserverKey{}).(func([]telemt.UserInfo)); ok {
+		observe(users)
 	}
 	// Both calls run under the poll's own context/timeout — a quota hiccup
 	// must not cost the users topic its own budget twice.
@@ -353,7 +380,36 @@ func fetchUsers(ctx context.Context, tc *telemt.Client) (json.RawMessage, error)
 		slog.Warn("hub: users topic: quota list", "err", err)
 		quota, hasQuota = nil, false
 	}
-	return json.Marshal(usersSnapshot{Users: users, Quota: quota, QuotaSupported: hasQuota})
+	var traffic map[string]store.UserTrafficSummary
+	if st != nil {
+		traffic, err = st.UserTrafficSummaries()
+		if err != nil {
+			slog.Warn("hub: users topic: traffic summaries", "err", err)
+			traffic = nil
+		}
+	}
+	var ips map[string]store.UserIPSummary
+	if st != nil {
+		ips, err = store.UserIPSummaryMap(st, time.Now().Unix())
+		if err != nil {
+			slog.Warn("hub: IP summaries unavailable")
+		}
+	}
+	items := make([]userSnapshotItem, len(users))
+	for i, user := range users {
+		items[i].UserInfo = user
+		if summary, ok := ips[user.Username]; ok {
+			items[i].IPHistory = &summary
+		}
+		if summary, ok := traffic[user.Username]; ok {
+			items[i].Traffic = &userTrafficSnapshot{
+				ObservedTotalBytes: summary.ObservedTotalBytes, CurrentMonthBytes: summary.CurrentMonthBytes,
+				MonthKey: summary.MonthKey, ObservedSinceEpochSecs: summary.ObservedSinceEpochSecs,
+				LastActivityEpochSecs: summary.LastActivityEpochSecs, Continuity: summary.Continuity,
+			}
+		}
+	}
+	return json.Marshal(usersSnapshot{Users: items, Quota: quota, QuotaSupported: hasQuota})
 }
 
 // statsSnapshot is the "stats" topic's composite payload (spec
@@ -720,9 +776,9 @@ func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 //     (counters.go) — skipped entirely when the summary sub-call failed this
 //     tick, since the accumulator must not mistake a missing sample for a
 //     counter reset.
-//   - traffic: per-user TotalOctets deltas folded into a monotonic panel
-//     counter. New and removed users do not create spikes, and Telemt/user
-//     counter resets never produce a negative window.
+//
+// User traffic has its own coherent collector. It must not combine this
+// topic's cached users with a separately sampled uptime.
 func (h *Hub) recordStatsHistory(data json.RawMessage) {
 	if h.st == nil {
 		return
@@ -756,19 +812,6 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 		uptime := snap.Summary.UptimeSeconds
 		add(metricRefusals, float64(h.refusals.observe(refusalsTotal(snap.Summary), uptime)))
 		add(metricAttempts, float64(h.attempts.observe(snap.Summary.ConnectionsTotal, uptime)))
-		if hasUsers {
-			total, byUser := h.traffic.observeDeltas(users, uptime)
-			add(metricTraffic, float64(total))
-			if len(byUser) > 0 {
-				deltas := make([]store.UserTrafficDelta, 0, len(byUser))
-				for username, bytes := range byUser {
-					deltas = append(deltas, store.UserTrafficDelta{Username: username, TS: ts, Bytes: bytes})
-				}
-				if err := h.st.RecordUserTraffic(deltas); err != nil {
-					slog.Warn("hub: record user traffic", "count", len(deltas), "err", err)
-				}
-			}
-		}
 	}
 	if err := h.st.RecordMetrics(batch); err != nil {
 		slog.Warn("hub: record metrics", "count", len(batch), "err", err)
@@ -789,7 +832,11 @@ func (h *Hub) cachedUsers() ([]telemt.UserInfo, bool) {
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return nil, false
 	}
-	return snap.Users, true
+	users := make([]telemt.UserInfo, len(snap.Users))
+	for i := range snap.Users {
+		users[i] = snap.Users[i].UserInfo
+	}
+	return users, true
 }
 
 func usersLiveTotals(users []telemt.UserInfo) (connections uint64, activeUsers int) {
@@ -812,12 +859,21 @@ func (h *Hub) HistoryRetention() time.Duration {
 	return time.Duration(store.MetricCap) * h.cfg.StatsInterval
 }
 
-// StartPersistentCollectors starts every topic marked for background
-// history collection. Durable SQL stores keep stats and its users source
-// alive; the memory profile remains subscriber-driven.
+// StartPersistentCollectors starts every topic marked for background history
+// collection and the independent traffic collector. Traffic totals remain
+// useful in the bounded memory profile, so that collector is not conditional
+// on durable storage.
 func (h *Hub) StartPersistentCollectors() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.tc != nil && h.st != nil {
+		h.topics["users"].persistent = true
+	}
+	if !h.trafficStarted && h.tc != nil && h.st != nil {
+		h.trafficStarted = true
+		h.wg.Add(1)
+		go h.runTrafficCollector()
+	}
 	for _, topic := range h.topics {
 		if !topic.persistent || topic.running || topic.fetch == nil {
 			continue
@@ -827,6 +883,71 @@ func (h *Hub) StartPersistentCollectors() {
 		h.wg.Add(1)
 		go h.runPoller(topic)
 	}
+}
+
+func (h *Hub) runTrafficCollector() {
+	defer h.wg.Done()
+	backoff := h.cfg.TrafficInterval
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for {
+		select {
+		case <-h.ctx.Done():
+			return
+		case <-timer.C:
+			if h.collectUserTraffic(h.ctx) {
+				backoff = h.cfg.TrafficInterval
+			} else {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			timer.Reset(backoff)
+		}
+	}
+}
+
+func (h *Hub) collectUserTraffic(ctx context.Context) bool {
+	snapshot, err := h.tc.TrafficSnapshot(ctx)
+	if err != nil {
+		slog.Warn("hub: collect user traffic snapshot", "err", err)
+		return false
+	}
+	users := make([]store.UserTrafficObservation, len(snapshot.Users))
+	for i, user := range snapshot.Users {
+		users[i] = store.UserTrafficObservation{Username: user.Username, RawOctets: user.TotalOctets}
+	}
+	_, err = h.st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+		ObservedAt:       snapshot.ObservedAt,
+		SourceStartedAt:  snapshot.SourceStartedAt,
+		TelemetryEnabled: snapshot.TelemetryEnabled,
+		Users:            users,
+	})
+	if err != nil {
+		slog.Warn("hub: apply user traffic snapshot", "users", len(users), "err", err)
+		return false
+	}
+
+	// Keep the existing aggregate chart compatible while exact per-user
+	// accounting remains integer-only in the dedicated store tables.
+	summaries, err := h.st.UserTrafficSummaries()
+	if err != nil {
+		slog.Warn("hub: read user traffic totals", "err", err)
+		return true
+	}
+	var total int64
+	for _, summary := range summaries {
+		if summary.ObservedTotalBytes > 0 && total > int64(^uint64(0)>>1)-summary.ObservedTotalBytes {
+			slog.Warn("hub: aggregate user traffic exceeds int64")
+			return true
+		}
+		total += summary.ObservedTotalBytes
+	}
+	if err := h.st.RecordMetric(metricTraffic, store.MetricPoint{TS: snapshot.ObservedAt, Value: float64(total)}); err != nil {
+		slog.Warn("hub: record aggregate user traffic", "err", err)
+	}
+	return true
 }
 
 // HeartbeatInterval returns the configured SSE heartbeat period.
@@ -971,7 +1092,7 @@ func (h *Hub) runPoller(t *topicState) {
 		case <-stop:
 			return
 		case <-timer.C:
-			if h.poll(t) {
+			if h.pollPeriodic(t) {
 				backoff = t.interval
 			} else {
 				backoff *= 2
@@ -997,7 +1118,10 @@ func (h *Hub) runPoller(t *topicState) {
 					backoff = maxBackoff
 				}
 			}
-			resetTimer(backoff)
+			// Keep the scheduled users observation independent of manual refreshes.
+			if t.name != "users" {
+				resetTimer(backoff)
+			}
 		}
 	}
 }
@@ -1421,4 +1545,5 @@ func (h *Hub) Close() {
 	h.mu.Unlock()
 
 	h.wg.Wait()
+	h.flushUserIPs()
 }

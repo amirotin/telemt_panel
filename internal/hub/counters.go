@@ -29,65 +29,6 @@ func refusalsTotal(s *telemt.SummaryData) uint64 {
 	return total
 }
 
-// userTrafficAccumulator folds per-user lifetime octet counters into one
-// monotonic panel counter. Treating their simple sum as a single counter is
-// incorrect: deleting a user makes the sum fall, while adding an old user can
-// make it jump. Tracking baselines per username avoids both distortions.
-type userTrafficAccumulator struct {
-	mu         sync.Mutex
-	seen       bool
-	prevUptime float64
-	previous   map[string]uint64
-	total      uint64
-}
-
-func (a *userTrafficAccumulator) observe(users []telemt.UserInfo, uptimeSeconds float64) uint64 {
-	total, _ := a.observeDeltas(users, uptimeSeconds)
-	return total
-}
-
-// observeDeltas returns the monotonic aggregate and only the bytes observed
-// since the previous snapshot for each user. First observations are baselines;
-// counter resets contribute their new value, exactly like the aggregate.
-func (a *userTrafficAccumulator) observeDeltas(users []telemt.UserInfo, uptimeSeconds float64) (uint64, map[string]uint64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	restarted := a.seen && uptimeSeconds < a.prevUptime
-	next := make(map[string]uint64, len(users))
-	deltas := make(map[string]uint64)
-	for _, user := range users {
-		raw := user.TotalOctets
-		previous, existed := a.previous[user.Username]
-		var delta uint64
-		switch {
-		case !a.seen:
-			// First observation for this user is a baseline.
-		case restarted:
-			// Every counter belongs to the new Telemt run, including users that
-			// were added since the last observation of the old run.
-			delta = raw
-		case !existed:
-			// A user appearing during the same run starts with a baseline: its
-			// old lifetime total is not traffic from this panel window.
-		case raw < previous:
-			// Telemt or the user's quota counter restarted. The new raw value
-			// is exactly the traffic accumulated since that reset.
-			delta = raw
-		default:
-			delta = raw - previous
-		}
-		if delta > 0 {
-			a.total += delta
-			deltas[user.Username] += delta
-		}
-		next[user.Username] = raw
-	}
-	a.seen = true
-	a.prevUptime = uptimeSeconds
-	a.previous = next
-	return a.total, deltas
-}
-
 // counterAccumulator turns one of Telemt's cumulative counters into the
 // monotonic series the history ring stores, so that a dashboard tile can
 // read it the same way it reads traffic: newest − oldest over the window.

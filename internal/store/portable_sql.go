@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -23,10 +24,18 @@ func (s *SQLite) ExportData() (PortableData, error) {
 			return err
 		}
 		data.Events, err = exportEvents(s, tx)
+		if err != nil {
+			return err
+		}
+		data.UserTraffic, data.UserTrafficBuckets, data.UserTrafficCollector, err = exportUserTraffic(s, tx)
+		if err != nil {
+			return err
+		}
+		data.UserIPs, data.UserIPCollection, err = exportUserIPs(tx, time.Now().Unix()-int64(s.UserIPRetention()/time.Second))
 		return err
 	})
 	if err != nil {
-		return PortableData{}, fmt.Errorf("export %s history: %w", s.driver, err)
+		return PortableData{}, fmt.Errorf("export sqlite history: %w", err)
 	}
 	return data, nil
 }
@@ -42,7 +51,12 @@ func (s *SQLite) ImportData(data PortableData) error {
 		var count int
 		if err := tx.QueryRow(s.bind(`SELECT
 			(SELECT count(*) FROM metric_points) +
-			(SELECT count(*) FROM history_events)`)).Scan(&count); err != nil {
+			(SELECT count(*) FROM user_ip_history) +
+			(SELECT count(*) FROM user_ip_history_collection) +
+			(SELECT count(*) FROM history_events) +
+			(SELECT count(*) FROM user_traffic_users) +
+			(SELECT count(*) FROM user_traffic_buckets) +
+			(SELECT count(*) FROM user_traffic_collector)`)).Scan(&count); err != nil {
 			return fmt.Errorf("inspect history destination: %w", err)
 		}
 		if count != 0 {
@@ -75,22 +89,168 @@ func (s *SQLite) ImportData(data PortableData) error {
 				return fmt.Errorf("import history event: %w", err)
 			}
 		}
+		userIDs := make(map[string]int64, len(data.UserTraffic))
+		for _, r := range data.UserIPs {
+			if _, err := tx.Exec("INSERT INTO user_ip_history(username,ip,family,first_ts,last_ts,observations,last_active_ts,source) VALUES(?,?,?,?,?,?,?,?)", r.Username, r.IP, r.Family, r.First, r.Last, r.Observations, r.LastActive, r.Source); err != nil {
+				return err
+			}
+		}
+		if data.UserIPCollection != nil {
+			if err := writeUserIPCollection(tx, *data.UserIPCollection); err != nil {
+				return err
+			}
+		}
+		for _, item := range data.UserTraffic {
+			summary := item.Summary
+			result, err := tx.Exec(s.bind(`INSERT INTO user_traffic_users
+				(username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
+				 last_raw_octets, last_source_started_at, deleted_ts, continuity)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+				summary.Username, summary.ObservedTotalBytes, summary.ObservedSinceEpochSecs,
+				summary.LastActivityEpochSecs, summary.MonthKey, summary.CurrentMonthBytes,
+				item.LastRawOctets, item.LastSourceStartedAt, nullablePortableTimestamp(summary.DeletedEpochSecs), summary.Continuity)
+			if err != nil {
+				return fmt.Errorf("import user traffic summary: %w", err)
+			}
+			id, err := result.LastInsertId()
+			if err != nil {
+				return fmt.Errorf("read imported user traffic id: %w", err)
+			}
+			userIDs[summary.Username] = id
+		}
+		for _, bucket := range data.UserTrafficBuckets {
+			if _, err := tx.Exec(s.bind(`INSERT INTO user_traffic_buckets(user_id, tier, ts, bytes) VALUES(?, ?, ?, ?)`),
+				userIDs[bucket.Username], portableUserTrafficTier(bucket.Tier), bucket.TS, bucket.Bytes); err != nil {
+				return fmt.Errorf("import user traffic bucket: %w", err)
+			}
+		}
+		if state := data.UserTrafficCollector; state != nil {
+			if _, err := tx.Exec(s.bind(`INSERT INTO user_traffic_collector(singleton, last_success_ts, source_started_at, source_state, continuity)
+				VALUES (1, ?, ?, ?, ?)`), state.LastSuccessTS, state.SourceStartedAt, state.SourceState, state.Continuity); err != nil {
+				return fmt.Errorf("import user traffic collector: %w", err)
+			}
+		}
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("import %s history: %w", s.driver, err)
+		return fmt.Errorf("import sqlite history: %w", err)
 	}
 	return nil
 }
 
 func (s *SQLite) rollbackImportedHistory() error {
 	return sqlstore.WithTx(context.Background(), s.db, nil, func(tx *sql.Tx) error {
+		if _, err := tx.Exec("DELETE FROM user_ip_history"); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM user_ip_history_collection"); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM user_traffic_collector`); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM user_traffic_buckets`); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM user_traffic_users`); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`DELETE FROM history_events`); err != nil {
 			return err
 		}
 		_, err := tx.Exec(`DELETE FROM metric_points`)
 		return err
 	})
+}
+
+func exportUserTraffic(s *SQLite, tx *sql.Tx) ([]PortableUserTrafficUser, []PortableUserTrafficBucket, *UserTrafficCollectorState, error) {
+	rows, err := tx.Query(s.bind(`SELECT username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
+		last_raw_octets, last_source_started_at, deleted_ts, continuity FROM user_traffic_users ORDER BY username`))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var users []PortableUserTrafficUser
+	for rows.Next() {
+		var item PortableUserTrafficUser
+		var raw, source, deleted sql.NullInt64
+		if err := rows.Scan(&item.Summary.Username, &item.Summary.ObservedTotalBytes,
+			&item.Summary.ObservedSinceEpochSecs, &item.Summary.LastActivityEpochSecs,
+			&item.Summary.MonthKey, &item.Summary.CurrentMonthBytes, &raw, &source,
+			&deleted, &item.Summary.Continuity); err != nil {
+			rows.Close()
+			return nil, nil, nil, err
+		}
+		if raw.Valid {
+			rawValue, sourceValue := raw.Int64, source.Int64
+			item.LastRawOctets, item.LastSourceStartedAt = &rawValue, &sourceValue
+		}
+		if deleted.Valid {
+			item.Summary.DeletedEpochSecs = deleted.Int64
+		}
+		users = append(users, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, nil, nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	rows, err = tx.Query(s.bind(`SELECT users.username, buckets.tier, buckets.ts, buckets.bytes
+		FROM user_traffic_buckets AS buckets JOIN user_traffic_users AS users ON users.id = buckets.user_id
+		ORDER BY users.username, buckets.tier, buckets.ts`))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var buckets []PortableUserTrafficBucket
+	for rows.Next() {
+		var item PortableUserTrafficBucket
+		var tier int
+		if err := rows.Scan(&item.Username, &tier, &item.TS, &item.Bytes); err != nil {
+			rows.Close()
+			return nil, nil, nil, err
+		}
+		item.Tier = userTrafficMetricTier(tier)
+		buckets = append(buckets, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, nil, nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	var state UserTrafficCollectorState
+	err = tx.QueryRow(s.bind(`SELECT last_success_ts, source_started_at, source_state, continuity
+		FROM user_traffic_collector WHERE singleton = 1`)).Scan(
+		&state.LastSuccessTS, &state.SourceStartedAt, &state.SourceState, &state.Continuity)
+	if errors.Is(err, sql.ErrNoRows) {
+		return users, buckets, nil, nil
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return users, buckets, &state, nil
+}
+
+func nullablePortableTimestamp(value int64) any {
+	if value == 0 {
+		return nil
+	}
+	return value
+}
+
+func portableUserTrafficTier(tier MetricTier) int {
+	switch tier {
+	case MetricTierQuarter:
+		return 0
+	case MetricTierHour:
+		return 1
+	default:
+		return 2
+	}
 }
 
 func exportMetrics(s *SQLite, tx *sql.Tx) (map[string][]MetricPoint, error) {

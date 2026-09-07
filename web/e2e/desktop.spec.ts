@@ -6,6 +6,7 @@ import { expect, test } from "./fixtures";
 // and the full TOML editor (CodeMirror). The sidebar also proves the grouped operational
 // and management information architecture at this width.
 test("grouped sidebar navigates, and the TOML config editor (CodeMirror) mounts", async ({ page, login }) => {
+  test.slow();
   await login();
 
   const sidebar = page.getByTestId("full-sidebar");
@@ -18,7 +19,11 @@ test("grouped sidebar navigates, and the TOML config editor (CodeMirror) mounts"
   const traffic = sidebar.locator('[aria-label^="Трафик за 15 минут"]');
   await expect(traffic).toBeVisible();
   // A real formatted figure, not the «н/д» placeholder and not an empty node.
-  await expect(traffic).toHaveText(/\d/, { timeout: 30_000 });
+  // A clean store needs two cumulative observations before it can report an
+  // honest window delta: the first one is only the baseline and the traffic
+  // collector's production cadence is 30 seconds. Keep a little scheduling
+  // margin instead of racing the second observation at exactly 30 seconds.
+  await expect(traffic).toHaveText(/\d/, { timeout: 45_000 });
   // Four operational sections followed by two management sections.
   for (const section of ["Сводка", "Люди", "Пульс", "Журнал", "Сервер", "WEB"]) {
     await expect(sidebar.getByRole("link", { name: section })).toBeVisible();

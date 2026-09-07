@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getMeQueryKey } from "../../auth/guards";
 import {
   creationOptionsFromJSON,
@@ -10,10 +10,7 @@ import {
   webauthnRegisterBegin,
   webauthnRegisterFinish,
 } from "../../lib/api/generated/sdk.gen";
-import {
-  getHealthOptions,
-  webauthnDeleteCredentialMutation,
-} from "../../lib/api/generated/@tanstack/react-query.gen";
+import { webauthnDeleteCredentialMutation } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { PasskeyInfo } from "../../lib/api/generated/types.gen";
 import { useStrings } from "../../i18n";
 import { apiErrorMessage } from "../../people/apiError";
@@ -41,13 +38,6 @@ export function PasskeySettings({ passkeys }: PasskeySettingsProps) {
   const [name, setName] = useState("");
   const [remove, setRemove] = useState<PasskeyInfo | null>(null);
   const supported = passkeysSupported();
-  const healthQuery = useQuery({ ...getHealthOptions(), staleTime: 30_000, retry: false });
-  const health = healthQuery.data;
-  const unavailable =
-    health?.active_driver === "memory" &&
-    (health.configured_driver === "postgres" || health.configured_driver === "mysql") &&
-    Boolean(health.store_error);
-
   const registerMutation = useMutation({
     mutationFn: async (credentialName: string) => {
       const { data: begin } = await webauthnRegisterBegin({
@@ -106,18 +96,14 @@ export function PasskeySettings({ passkeys }: PasskeySettingsProps) {
               </small>
             </span>
             <p className="mt-1 text-[10px] leading-snug text-text-faint">
-              {unavailable
-                ? s.server.settings.passkeyUnavailableNote
-                : supported
-                  ? s.server.settings.passkeyNote
-                  : s.server.settings.passkeyUnsupportedNote}
+              {supported ? s.server.settings.passkeyNote : s.server.settings.passkeyUnsupportedNote}
             </p>
           </div>
           <Button
             variant="secondary"
             size="sm"
             className="col-span-2 sm:col-span-1"
-            disabled={unavailable || !supported}
+            disabled={!supported}
             onClick={() => {
               setName("");
               registerMutation.reset();
@@ -146,7 +132,6 @@ export function PasskeySettings({ passkeys }: PasskeySettingsProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={unavailable}
                   onClick={() => setRemove(passkey)}
                 >
                   {s.server.settings.passkeyRemove}

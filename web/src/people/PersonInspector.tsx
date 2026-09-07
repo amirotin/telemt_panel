@@ -53,7 +53,7 @@ export function PersonInspector({ username, onClose, onEdit }: PersonInspectorPr
             <IconButton aria-label={s.people.actions.menu} onClick={() => setIntent("menu")}><IconMore /></IconButton>
           </header>
 
-          <InspectorVitals user={user} quotaEntry={findQuotaEntry(topic.quota, user.username)} />
+          <InspectorVitals user={user} />
           <nav className="person-tab-list shrink-0" role="tablist" aria-label={s.people.inspector.title}>
             {(["overview", "access", "limits"] as const).map((key) => <button key={key} type="button" role="tab" aria-selected={tab === key} className="person-tab-button flex-1" onClick={() => setTab(key)}>{s.people.inspector.tabs[key]}</button>)}
           </nav>
@@ -89,14 +89,14 @@ function InspectorStatus({ user, now }: { user: UsersTopicUser; now: number }) {
   return <span className={cn("mt-1 flex items-center gap-1.5 text-micro font-semibold", status === "active" ? isOnline(user) ? "text-ok" : "text-text-muted" : "text-warn")}><i className="h-1.5 w-1.5 rounded-full bg-current" />{text}</span>;
 }
 
-function InspectorVitals({ user, quotaEntry }: { user: UsersTopicUser; quotaEntry: ReturnType<typeof findQuotaEntry> }) {
+function InspectorVitals({ user }: { user: UsersTopicUser }) {
   const s = useStrings();
-  const quota = getUserQuota(user, quotaEntry);
-  const quotaCopy = quota.limitBytes === null ? s.people.allTime : `${Math.min(100, Math.round((quota.usedBytes / Math.max(1, quota.limitBytes)) * 100))}% ${s.people.quotaShort}`;
+	const trafficValue = user.traffic ? formatBytes(user.traffic.current_month_bytes, s) : "—";
+	const trafficCopy = user.traffic ? `${formatBytes(user.traffic.observed_total_bytes, s)} ${s.people.allTime}` : s.people.trafficHistory.empty;
   const values = [
     [s.people.connections, String(user.current_connections), user.current_connections > 0 ? s.people.now : s.people.noConnections],
     [s.people.activeIps, String(user.active_unique_ips), user.max_unique_ips ? `${s.people.meta.of} ${user.max_unique_ips}` : s.people.form.quotaUnlimited],
-    [s.shell.traffic, formatBytes(user.total_octets, s), quotaCopy],
+		[s.shell.traffic, trafficValue, trafficCopy],
   ];
   return <div className="person-vitals-grid shrink-0">{values.map(([label, value, note]) => <div key={label} className="person-vital-cell"><span>{label}</span><strong>{value}</strong><small>{note}</small></div>)}</div>;
 }
@@ -105,7 +105,7 @@ function OverviewTab({ user, now, quotaEntry }: { user: UsersTopicUser; now: num
   const s = useStrings();
   const activeIps = user.active_unique_ips_list ?? [];
   const recentIps = user.recent_unique_ips_list ?? [];
-  return <div className="flex flex-col gap-5"><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, quotaEntry)} /></section><PersonTrafficHistory username={user.username} /><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.activeIpsTitle} · {activeIps.length}</SectionLabel><IpCards ips={activeIps} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.recentIpsTitle} · {recentIps.length}</SectionLabel><IpCards ips={recentIps} /></section><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></div>;
+  return <div className="flex flex-col gap-5"><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, quotaEntry)} /></section><PersonTrafficHistory username={user.username} traffic={user.traffic} /><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.activeIpsTitle} · {activeIps.length}</SectionLabel><IpCards ips={activeIps} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.recentIpsTitle} · {recentIps.length}</SectionLabel><IpCards ips={recentIps} /></section><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></div>;
 }
 
 function AccessTab({ user, onIntent }: { user: UsersTopicUser; onIntent: (intent: ActionSheetIntent) => void }) {

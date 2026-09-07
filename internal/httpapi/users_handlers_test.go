@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
@@ -470,6 +471,19 @@ func TestHandleListUsersMergesQuotaAndSubURL(t *testing.T) {
 		"alice": {DataQuotaBytes: 5000, UsedBytes: 1234, LastResetEpochSecs: 111},
 	}
 	srv, cookie := newUsersTestServer(t, fake, true)
+	now := time.Now().Unix()
+	if _, err := srv.st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+		ObservedAt: now - 1, SourceStartedAt: now - 3600, TelemetryEnabled: true,
+		Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 100}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+		ObservedAt: now, SourceStartedAt: now - 3600, TelemetryEnabled: true,
+		Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 350}},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	h := srv.Handler()
 
 	r := httptest.NewRequest("GET", "/api/users", nil)
@@ -498,6 +512,9 @@ func TestHandleListUsersMergesQuotaAndSubURL(t *testing.T) {
 	}
 	if !strings.Contains(alice.SubURL, "/sub/") {
 		t.Errorf("alice.SubURL = %q, want a /sub/ link", alice.SubURL)
+	}
+	if alice.Traffic == nil || alice.Traffic.ObservedTotalBytes != 250 || alice.Traffic.CurrentMonthBytes != 250 {
+		t.Errorf("alice.Traffic = %+v", alice.Traffic)
 	}
 
 	bob := byName["bob"]
@@ -797,6 +814,15 @@ func TestHandleCreateUserUnmappedServerErrorStaysUnreachable(t *testing.T) {
 func TestHandleDeleteUser(t *testing.T) {
 	fake := newFakeTelemt(aliceFixture())
 	srv, cookie := newUsersTestServer(t, fake, true)
+	now := time.Now().Unix()
+	for _, snapshot := range []store.UserTrafficSnapshot{
+		{ObservedAt: now - 1, SourceStartedAt: now - 3600, TelemetryEnabled: true, Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 10}}},
+		{ObservedAt: now, SourceStartedAt: now - 3600, TelemetryEnabled: true, Users: []store.UserTrafficObservation{{Username: "alice", RawOctets: 110}}},
+	} {
+		if _, err := srv.st.ApplyUserTrafficSnapshot(snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
 	h := srv.Handler()
 
 	w := httptest.NewRecorder()
@@ -811,6 +837,10 @@ func TestHandleDeleteUser(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Action != "user.delete" || entries[0].Subject != "alice" {
 		t.Fatalf("audit = %+v", entries)
+	}
+	summaries, err := srv.st.UserTrafficSummaries()
+	if err != nil || summaries["alice"].ObservedTotalBytes != 100 {
+		t.Fatalf("traffic history was removed with user: %+v, %v", summaries, err)
 	}
 }
 

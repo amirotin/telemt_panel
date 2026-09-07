@@ -72,7 +72,6 @@ TELEMT_SVC="telemt"
 RUN_AS="user"
 INSTALLED_TAG=""
 STORE_DRIVER=""
-STORE_DSN=""
 
 SUDO=""
 TEMP_DIR=""
@@ -141,7 +140,7 @@ t() {
   TP_LANG, TP_TELEMT_URL, TP_TELEMT_AUTH_HEADER, TP_ADMIN_USER,
   TP_ADMIN_PASSWORD (обязательна), TP_LISTEN, TP_TELEMT_BINARY,
   TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR,
-  TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|postgres|mysql|memory, TP_STORE_DSN
+  TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|memory
 
 Пути: бинарь %s, конфиг %s, данные %s
 ' ;;
@@ -169,7 +168,7 @@ Variables for --yes (they pre-fill defaults in interactive mode):
   TP_LANG, TP_TELEMT_URL, TP_TELEMT_AUTH_HEADER, TP_ADMIN_USER,
   TP_ADMIN_PASSWORD (required), TP_LISTEN, TP_TELEMT_BINARY,
   TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR,
-  TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|postgres|mysql|memory, TP_STORE_DSN
+  TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|memory
 
 Paths: binary %s, config %s, data %s
 ' ;;
@@ -325,22 +324,14 @@ Paths: binary %s, config %s, data %s
     en:run_as_forced_procd) _f='On OpenWrt services run as root; no dedicated user is created.' ;;
     ru:run_as_forced_nosudo) _f='На хосте нет sudo или useradd — панель будет работать от root.\nЧтобы запускать её от отдельного пользователя, установите sudo и запустите скрипт снова.' ;;
     en:run_as_forced_nosudo) _f='No sudo or useradd on this host — the panel will run as root.\nInstall sudo and re-run the script to run it as a dedicated user.' ;;
-    ru:q_storage) _f='Где хранить состояние и историю?\n1) SQLite — файл на этом сервере (рекомендуется)\n2) PostgreSQL\n3) MySQL/MariaDB\n4) Память — данные истории пропадут после перезапуска' ;;
-    en:q_storage) _f='Where should panel state and history be stored?\n1) SQLite — a file on this server (recommended)\n2) PostgreSQL\n3) MySQL/MariaDB\n4) Memory — history is lost on restart' ;;
-    ru:x_storage) _f='SQLite подходит одной панели. PostgreSQL/MySQL удобны, если база уже обслуживается отдельно.\nТехнические метрики сохраняются всегда; остальные категории можно отключить в интерфейсе.' ;;
-    en:x_storage) _f='SQLite fits a single panel. PostgreSQL/MySQL are useful when you already operate a database service.\nTechnical metrics are always retained; other history categories can be disabled in the UI.' ;;
-    ru:q_store_dsn) _f='DSN подключения (ввод скрыт)' ;;
-    en:q_store_dsn) _f='Connection DSN (hidden input)' ;;
-    ru:store_lite_only) _f='Lite-вариант хранит состояние только в памяти. Для SQLite/PostgreSQL/MySQL установите full: sh install.sh --variant full' ;;
-    en:store_lite_only) _f='The lite variant stores state in memory only. For SQLite/PostgreSQL/MySQL install full: sh install.sh --variant full' ;;
+    ru:q_storage) _f='Где хранить историю наблюдаемости?\n1) SQLite — файл на этом сервере (рекомендуется)\n2) Память — история пропадёт после перезапуска' ;;
+    en:q_storage) _f='Where should observability history be stored?\n1) SQLite — a file on this server (recommended)\n2) Memory — history is lost on restart' ;;
+    ru:x_storage) _f='SQLite подходит для постоянной истории одной панели.\nТехнические метрики сохраняются всегда; остальные категории можно отключить в интерфейсе.' ;;
+    en:x_storage) _f='SQLite provides durable history for one panel.\nTechnical metrics are always retained; other history categories can be disabled in the UI.' ;;
+    ru:store_lite_only) _f='Lite-вариант хранит историю только в памяти. Для SQLite установите full: sh install.sh --variant full' ;;
+    en:store_lite_only) _f='The lite variant stores history in memory only. For SQLite install full: sh install.sh --variant full' ;;
     ru:store_lite_existing) _f='Нельзя установить lite поверх конфигурации с хранилищем %s: lite поддерживает только memory. Текущая установка не изменена. Оставьте full или сначала осознанно перенесите состояние и конфиг на memory.' ;;
     en:store_lite_existing) _f='Cannot install lite over a configuration using the %s store: lite supports memory only. The current installation was not changed. Keep full, or deliberately migrate the state and configuration to memory first.' ;;
-    ru:store_checking) _f='Проверяю подключение к %s…' ;;
-    en:store_checking) _f='Checking the %s connection…' ;;
-    ru:store_check_ok) _f='Подключение к %s работает' ;;
-    en:store_check_ok) _f='%s connection works' ;;
-    ru:store_check_fail) _f='Не удалось подключиться к %s. Конфиг и сервис ещё не изменены.' ;;
-    en:store_check_fail) _f='Could not connect to %s. Config and services have not been changed.' ;;
 
     # ── summary ──
     ru:s_version) _f='Версия панели' ;;
@@ -1183,7 +1174,6 @@ gen_config() {
   _store_detail_line=""
   case "$_store_driver" in
     sqlite) _store_detail_line="path = \"$(toml_escape "$DATA_DIR/panel.db")\"" ;;
-    postgres|mysql) _store_detail_line="dsn = \"$(toml_escape "$STORE_DSN")\"" ;;
   esac
   if [ "$L" = "ru" ]; then
     _c_top="# Панель никогда не переписывает этот файл: настройки из UI живут в store."
@@ -1628,7 +1618,6 @@ ask_storage() {
   blank
   if [ "$BUILD_VARIANT" = "lite" ]; then
     STORE_DRIVER="memory"
-    STORE_DSN=""
     explain store_lite_only
     return 0
   fi
@@ -1636,29 +1625,14 @@ ask_storage() {
   _default=1
   case "${TP_STORE_DRIVER:-sqlite}" in
     sqlite) _default=1 ;;
-    postgres) _default=2 ;;
-    mysql) _default=3 ;;
-    memory) _default=4 ;;
+    memory) _default=2 ;;
     *) die "$(t unknown_option "TP_STORE_DRIVER=${TP_STORE_DRIVER:-}")" ;;
   esac
-  ask_choice _store_choice q_storage "$_default" "1 2 3 4"
+  ask_choice _store_choice q_storage "$_default" "1 2"
   # shellcheck disable=SC2154  # assigned indirectly by ask_choice
   case "$_store_choice" in
     1) STORE_DRIVER="sqlite" ;;
-    2) STORE_DRIVER="postgres" ;;
-    3) STORE_DRIVER="mysql" ;;
-    4) STORE_DRIVER="memory" ;;
-  esac
-  STORE_DSN=""
-  case "$STORE_DRIVER" in
-    postgres|mysql)
-      if [ "$ASSUME_YES" = 1 ]; then
-        STORE_DSN="${TP_STORE_DSN:-}"
-        [ -n "$STORE_DSN" ] || die "$(t missing_env TP_STORE_DSN)"
-      else
-        ask_secret STORE_DSN q_store_dsn
-        [ -n "$STORE_DSN" ] || die "$(t missing_env TP_STORE_DSN)"
-      fi ;;
+    2) STORE_DRIVER="memory" ;;
   esac
 }
 
@@ -1839,18 +1813,6 @@ fetch_release() {
 install_binary() {
   run install -m 0755 "$STAGED_BIN" "$PANEL_BIN"
   ok "$(t a_installed_bin "$PANEL_BIN" "$INSTALLED_TAG")"
-}
-
-check_store_connection() {
-  case "$STORE_DRIVER" in
-    postgres|mysql)
-      say "$(t store_checking "$STORE_DRIVER")"
-      if "$STAGED_BIN" store check --driver "$STORE_DRIVER" --dsn "$STORE_DSN" >/dev/null 2>&1; then
-        ok "$(t store_check_ok "$STORE_DRIVER")"
-      else
-        die "$(t store_check_fail "$STORE_DRIVER")"
-      fi ;;
-  esac
 }
 
 # hash_password — bcrypt via the staged binary (works before it is installed).
@@ -2203,7 +2165,6 @@ do_install() {
 
   step 5 step_apply
   fetch_release
-  check_store_connection
   create_user
   setup_dirs
   hash_password

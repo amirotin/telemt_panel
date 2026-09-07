@@ -264,18 +264,12 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		runtime := store.Runtime(s.st, s.cfg.Store.Driver)
 		response := map[string]any{
-			"status":            "ok",
-			"version":           s.version,
-			"variant":           store.Variant,
-			"drivers":           store.AvailableDrivers(),
-			"configured_driver": runtime.ConfiguredDriver,
-			"active_driver":     runtime.ActiveDriver,
-			"state_durable":     s.st.StateDurable(),
-		}
-		if runtime.Error != "" {
-			response["store_error"] = runtime.Error
+			"status":        "ok",
+			"version":       s.version,
+			"variant":       store.Variant,
+			"drivers":       store.AvailableDrivers(),
+			"state_durable": s.st.StateDurable(),
 		}
 		writeJSON(w, http.StatusOK, response)
 	})
@@ -329,6 +323,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/history", protect(s.handleGetHistory))
 	mux.Handle("GET /api/history/events", protect(s.handleGetHistoryEvents))
 	mux.Handle("GET /api/users/{username}/traffic-history", protect(s.handleGetUserTrafficHistory))
+	mux.Handle("GET /api/users/{username}/ip-history", protect(s.handleGetUserIPHistory))
+	mux.Handle("POST /api/users/{username}/ip-history/reset", protect(s.handleResetUserIPHistory))
+	mux.Handle("POST /api/users/{username}/traffic/reset", protect(s.handleResetUserTraffic))
+	mux.Handle("GET /api/traffic/summary", protect(s.handleGetTrafficSummary))
+	mux.Handle("GET /api/traffic/users", protect(s.handleGetTrafficUsers))
+	mux.Handle("POST /api/traffic/reset", protect(s.handleResetAllUserTraffic))
 	mux.Handle("GET /api/settings/storage", protect(s.handleGetStorageSettings))
 	mux.Handle("PUT /api/settings/storage", protect(s.handlePutStorageSettings))
 	mux.Handle("POST /api/settings/storage/purge", protect(s.handlePurgeStorageHistory))

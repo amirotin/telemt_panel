@@ -48,11 +48,9 @@ password_hash = "$2a$10$CHANGE_ME"
 # separately in data_dir/panel-state.json.
 # "sqlite" — durable configurable history; recommended for servers.
 # "memory" — in-RAM history; intended for flash-sensitive routers.
-# Full builds also support "postgres" and "mysql" through dsn; lite builds contain only memory.
+# Lite builds contain only memory.
 driver = "sqlite"
 path = "/var/lib/telemt-panel/panel.db"
-# dsn = "postgres://user:password@127.0.0.1:5432/telemt_panel?sslmode=disable"
-# dsn = "user:password@tcp(127.0.0.1:3306)/telemt_panel?parseTime=true"
 
 [subpage]
 # Per-user subscription page at /sub/<token> (no login).

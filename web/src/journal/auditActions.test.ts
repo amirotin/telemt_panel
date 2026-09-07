@@ -21,6 +21,8 @@ const KNOWN_BACKEND_ACTIONS = [
   "user.create",
   "user.patch",
   "user.delete",
+  "user.traffic_reset",
+  "traffic.reset",
   "quota.reset",
   "secret.rotate",
   "user.enabled",

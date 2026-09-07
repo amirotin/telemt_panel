@@ -264,7 +264,12 @@ func drainUntilClosed(t *testing.T, ch <-chan Event, timeout time.Duration) {
 // just its user list, for tests that only care about that part.
 func decodeUsers(t *testing.T, data json.RawMessage) []telemt.UserInfo {
 	t.Helper()
-	return decodeUsersSnapshot(t, data).Users
+	snapshot := decodeUsersSnapshot(t, data)
+	users := make([]telemt.UserInfo, len(snapshot.Users))
+	for i := range snapshot.Users {
+		users[i] = snapshot.Users[i].UserInfo
+	}
+	return users
 }
 
 func decodeUsersSnapshot(t *testing.T, data json.RawMessage) usersSnapshot {

@@ -34,6 +34,7 @@ import type { SummaryTone } from "../details-builder/model";
 import type { DiagDomain } from "../types";
 import { useHistorySeries } from "../useHistorySeries";
 import { buildHubCards, type HubCard, type HubCardMetric } from "./hubCards";
+import { TrafficAnalytics } from "./TrafficAnalytics";
 
 const DOMAIN_ICONS: Record<DiagDomain, ComponentType<IconProps>> = {
   dc: IconGlobe,
@@ -351,6 +352,7 @@ export function PulseHub() {
 
       <AttentionBanner cards={cards} />
       <HubGroup title={s.hub.groups.traffic} note={s.hub.groups.trafficNote} cards={traffic} nowMs={nowMs} />
+      <TrafficAnalytics />
       <HubGroup title={s.hub.groups.evidence} note={s.hub.groups.evidenceNote} cards={evidence} nowMs={nowMs} />
 
       {webCard && (

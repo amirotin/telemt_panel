@@ -22,6 +22,7 @@ export type ActionSheetView =
   | { kind: "qr" }
   | { kind: "confirm-delete" }
   | { kind: "confirm-reset-quota" }
+  | { kind: "confirm-reset-traffic" }
   // nextEnabled is FROZEN at the moment the admin asked for the toggle,
   // never re-derived from the live user: the "users" topic pushes a new
   // snapshot every few seconds, and re-reading `user.enabled` during the

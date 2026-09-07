@@ -3,6 +3,7 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -46,8 +47,8 @@ func TestSQLiteRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 8 {
-		t.Fatalf("schema version = %d, want 8", info.Schema)
+	if info := reopened.Info(); info.Schema != 10 {
+		t.Fatalf("schema version = %d, want 10", info.Schema)
 	}
 	if got, err := reopened.MetricRange("connections", 0); err != nil || len(got) != 1 || got[0].Value != 42 {
 		t.Fatalf("MetricRange = %+v, %v", got, err)
@@ -250,6 +251,11 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
+		`DROP TABLE user_traffic_buckets`,
+		`DROP TABLE user_traffic_collector`,
+		`DROP TABLE user_traffic_users`,
+		`DROP TABLE user_ip_history`,
+		`DROP TABLE user_ip_history_collection`,
 		`DROP INDEX metric_points_category_tier_ts`,
 		`CREATE TABLE metric_points_v2 (name TEXT NOT NULL, category TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY(name, ts)) WITHOUT ROWID, STRICT`,
 		`INSERT INTO metric_points_v2(name, category, ts, value) SELECT name, category, ts, value FROM metric_points WHERE tier = 'raw'`,
@@ -272,8 +278,8 @@ func TestSQLiteMigratesVersionTwoMetricHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 8 {
-		t.Fatalf("schema = %d, want 8", got)
+	if got := migrated.Info().Schema; got != 10 {
+		t.Fatalf("schema = %d, want 10", got)
 	}
 	points, err := migrated.MetricRange("connections", 0)
 	if err != nil {
@@ -305,6 +311,11 @@ func TestSQLiteMigrationEightDropsDevelopmentStateTables(t *testing.T) {
 	if _, err := store.db.Exec(`PRAGMA user_version = 7`); err != nil {
 		t.Fatal(err)
 	}
+	for _, table := range []string{"user_traffic_buckets", "user_traffic_collector", "user_traffic_users", "user_ip_history", "user_ip_history_collection"} {
+		if _, err := store.db.Exec(`DROP TABLE ` + table); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -314,8 +325,8 @@ func TestSQLiteMigrationEightDropsDevelopmentStateTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer migrated.Close()
-	if got := migrated.Info().Schema; got != 8 {
-		t.Fatalf("schema = %d, want 8", got)
+	if got := migrated.Info().Schema; got != 10 {
+		t.Fatalf("schema = %d, want 10", got)
 	}
 	var stateTables int
 	if err := migrated.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN (` +
@@ -328,6 +339,387 @@ func TestSQLiteMigrationEightDropsDevelopmentStateTables(t *testing.T) {
 	}
 	if points, err := migrated.MetricRange("connections", 0); err != nil || len(points) != 1 {
 		t.Fatalf("history was not preserved: %+v, %v", points, err)
+	}
+}
+
+func TestSQLiteMigrationNineDoesNotDoubleCountTrafficTiers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.db")
+	opened, err := NewSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Hour).Unix()
+	for _, statement := range []string{
+		`DROP TABLE user_traffic_buckets`,
+		`DROP TABLE user_traffic_collector`,
+		`DROP TABLE user_traffic_users`,
+		`DROP TABLE user_ip_history`,
+		`DROP TABLE user_ip_history_collection`,
+		`PRAGMA user_version = 8`,
+	} {
+		if _, err := opened.db.Exec(statement); err != nil {
+			opened.Close()
+			t.Fatal(err)
+		}
+	}
+	for _, row := range []struct {
+		tier  string
+		ts    int64
+		value int64
+	}{{"15m", now, 40}, {"15m", now + 900, 60}, {"1h", now, 100}} {
+		if _, err := opened.db.Exec(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts)
+			VALUES('user.alice.traffic', 'user_traffic', ?, ?, ?, ?, 1, ?)`, row.tier, row.ts, row.value, row.value, row.ts); err != nil {
+			opened.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := opened.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := NewSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	summaries, err := migrated.UserTrafficSummaries()
+	if err != nil || summaries["alice"].ObservedTotalBytes != 100 {
+		t.Fatalf("migrated summaries = %+v, %v", summaries, err)
+	}
+	var legacyRows int
+	if err := migrated.db.QueryRow(`SELECT count(*) FROM metric_points WHERE category = 'user_traffic'`).Scan(&legacyRows); err != nil || legacyRows != 0 {
+		t.Fatalf("legacy rows = %d, %v", legacyRows, err)
+	}
+	if _, err := migrated.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+		ObservedAt: now + 3600, SourceStartedAt: now - 3600, TelemetryEnabled: true,
+		Users: []UserTrafficObservation{{Username: "alice", RawOctets: 500}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := migrated.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+		ObservedAt: now + 3660, SourceStartedAt: now - 3600, TelemetryEnabled: true,
+		Users: []UserTrafficObservation{{Username: "alice", RawOctets: 550}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	summaries, err = migrated.UserTrafficSummaries()
+	if err != nil || summaries["alice"].ObservedTotalBytes != 150 {
+		t.Fatalf("summary after baseline = %+v, %v", summaries["alice"], err)
+	}
+}
+
+func TestSQLiteMigrationNineUsesTheBestAvailableTrafficTier(t *testing.T) {
+	testCases := []struct {
+		name string
+		rows []struct {
+			tier  string
+			value int64
+		}
+		wantBucket int
+	}{
+		{name: "quarter_only", rows: []struct {
+			tier  string
+			value int64
+		}{{"15m", 40}, {"15m", 60}}, wantBucket: 0},
+		{name: "hour_only", rows: []struct {
+			tier  string
+			value int64
+		}{{"1h", 100}}, wantBucket: 1},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "panel.db")
+			opened, err := NewSQLite(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, statement := range []string{
+				`DROP TABLE user_traffic_buckets`,
+				`DROP TABLE user_traffic_collector`,
+				`DROP TABLE user_traffic_users`,
+				`DROP TABLE user_ip_history`,
+				`DROP TABLE user_ip_history_collection`,
+				`PRAGMA user_version = 8`,
+			} {
+				if _, err := opened.db.Exec(statement); err != nil {
+					opened.Close()
+					t.Fatal(err)
+				}
+			}
+			now := time.Now().UTC().Truncate(time.Hour).Unix()
+			for index, row := range testCase.rows {
+				ts := now + int64(index*900)
+				if _, err := opened.db.Exec(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts)
+					VALUES('user.alice.traffic', 'user_traffic', ?, ?, ?, ?, 1, ?)`, row.tier, ts, row.value, row.value, ts); err != nil {
+					opened.Close()
+					t.Fatal(err)
+				}
+			}
+			if err := opened.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			migrated, err := NewSQLite(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer migrated.Close()
+			summaries, err := migrated.UserTrafficSummaries()
+			if err != nil || summaries["alice"].ObservedTotalBytes != 100 {
+				t.Fatalf("migrated summaries = %+v, %v", summaries, err)
+			}
+			var buckets int
+			if err := migrated.db.QueryRow(`SELECT count(*) FROM user_traffic_buckets WHERE tier = ?`, testCase.wantBucket).Scan(&buckets); err != nil {
+				t.Fatal(err)
+			}
+			if buckets != len(testCase.rows) {
+				t.Fatalf("selected tier buckets = %d, want %d", buckets, len(testCase.rows))
+			}
+		})
+	}
+}
+
+func TestSQLiteMigrationNineRollsBackUnrepresentableTraffic(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.db")
+	opened, err := NewSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`DROP TABLE user_traffic_buckets`,
+		`DROP TABLE user_traffic_collector`,
+		`DROP TABLE user_traffic_users`,
+		`DROP TABLE user_ip_history`,
+		`DROP TABLE user_ip_history_collection`,
+		`PRAGMA user_version = 8`,
+	} {
+		if _, err := opened.db.Exec(statement); err != nil {
+			opened.Close()
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().Unix()
+	if _, err := opened.db.Exec(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts)
+		VALUES('user.alice.traffic', 'user_traffic', '1h', ?, 1.5, 1.5, 1, ?)`, now, now); err != nil {
+		opened.Close()
+		t.Fatal(err)
+	}
+	if err := opened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if migrated, err := NewSQLite(path); err == nil {
+		migrated.Close()
+		t.Fatal("migration accepted a fractional byte value")
+	}
+	db, err := sqlitedriver.Open("file:" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 8 {
+		t.Fatalf("failed migration advanced schema to %d", version)
+	}
+	var created int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'user_traffic_users'`).Scan(&created); err != nil {
+		t.Fatal(err)
+	}
+	if created != 0 {
+		t.Fatal("failed migration left user traffic tables behind")
+	}
+}
+
+func TestSQLiteUserTrafficAggregateSelectsNonOverlappingTiers(t *testing.T) {
+	st, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Now().UTC().Truncate(time.Minute)
+	started := now.Add(-60 * 24 * time.Hour).Unix()
+	raw := uint64(100)
+	snapshots := []struct {
+		at    time.Time
+		delta uint64
+	}{
+		{now.Add(-32 * 24 * time.Hour), 0},
+		{now.Add(-31 * 24 * time.Hour), 11},
+		{now.Add(-29 * 24 * time.Hour), 22},
+		{now.Add(-23 * time.Hour), 33},
+		{now.Add(-time.Minute), 44},
+	}
+	for _, item := range snapshots {
+		raw += item.delta
+		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt: item.at.Unix(), SourceStartedAt: started, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: "alice", RawOctets: raw}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	total, points, err := st.UserTrafficAggregate(now.Add(-365*24*time.Hour).Unix(), now.Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 110 {
+		t.Fatalf("aggregate total = %d, want 110; points=%+v", total, points)
+	}
+}
+
+func TestSQLiteUserTrafficSnapshotHandlesTwoThousandUsers(t *testing.T) {
+	st, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Now().UTC().Truncate(time.Second)
+	users := make([]UserTrafficObservation, 2000)
+	for i := range users {
+		users[i] = UserTrafficObservation{Username: fmt.Sprintf("user-%04d", i), RawOctets: 100}
+	}
+	if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+		ObservedAt: now.Add(-time.Minute).Unix(), SourceStartedAt: now.Add(-time.Hour).Unix(),
+		TelemetryEnabled: true, Users: users,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var want int64
+	for i := range users {
+		users[i].RawOctets += uint64(100 + i)
+		want += int64(100 + i)
+	}
+	started := time.Now()
+	result, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+		ObservedAt: now.Unix(), SourceStartedAt: now.Add(-time.Hour).Unix(),
+		TelemetryEnabled: true, Users: users,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > 10*time.Second {
+		t.Fatalf("2000-user snapshot took %v", elapsed)
+	}
+	if result.DeltaBytes != want {
+		t.Fatalf("delta = %d, want %d", result.DeltaBytes, want)
+	}
+	summaries, err := st.UserTrafficSummaries()
+	if err != nil || len(summaries) != 2000 {
+		t.Fatalf("summaries = %d, %v", len(summaries), err)
+	}
+}
+
+func TestSQLiteUserTrafficFullDayLoad(t *testing.T) {
+	if os.Getenv("TELEMT_PANEL_TRAFFIC_LOAD_TEST") != "1" {
+		t.Skip("set TELEMT_PANEL_TRAFFIC_LOAD_TEST=1 to run the 24-hour traffic simulation")
+	}
+	st, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	const userCount = 2000
+	const activeCount = 200
+	const ticks = 24 * 60 * 2
+	users := make([]UserTrafficObservation, userCount)
+	for index := range users {
+		users[index] = UserTrafficObservation{Username: fmt.Sprintf("user-%04d", index), RawOctets: 100}
+	}
+	start := time.Now().UTC().Truncate(15 * time.Minute).Add(-24 * time.Hour)
+	source := start.Add(-time.Hour).Unix()
+	if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+		ObservedAt: start.Unix(), SourceStartedAt: source, TelemetryEnabled: true, Users: users,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var slowest time.Duration
+	for tick := 1; tick <= ticks; tick++ {
+		for index := 0; index < activeCount; index++ {
+			users[index].RawOctets += uint64(100 + index%17)
+		}
+		started := time.Now()
+		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt:      start.Add(time.Duration(tick) * 30 * time.Second).Unix(),
+			SourceStartedAt: source, TelemetryEnabled: true, Users: users,
+		}); err != nil {
+			t.Fatalf("tick %d: %v", tick, err)
+		}
+		if elapsed := time.Since(started); elapsed > slowest {
+			slowest = elapsed
+		}
+	}
+	if slowest > 2*time.Second {
+		t.Fatalf("slowest collector transaction = %v", slowest)
+	}
+	var bucketCount int
+	if err := st.db.QueryRow(`SELECT count(*) FROM user_traffic_buckets`).Scan(&bucketCount); err != nil {
+		t.Fatal(err)
+	}
+	if bucketCount > activeCount*(97+25+2) {
+		t.Fatalf("bucket rows = %d; zero intervals appear to create rows", bucketCount)
+	}
+	started := time.Now()
+	if _, err := st.UserTrafficRanking(start.Unix(), start.Add(24*time.Hour).Unix(), false, 50, nil); err != nil {
+		t.Fatal(err)
+	}
+	rankingElapsed := time.Since(started)
+	if rankingElapsed > 2*time.Second {
+		t.Fatalf("ranking query took %v", rankingElapsed)
+	}
+	size := st.Info().SizeHint
+	if size > 128<<20 {
+		t.Fatalf("database and WAL use %d bytes", size)
+	}
+	t.Logf("slowest collector=%v, ranking=%v, buckets=%d, db+wal=%d bytes", slowest, rankingElapsed, bucketCount, size)
+}
+
+func TestSQLiteUserTrafficRetentionPrunesEachTierIndependently(t *testing.T) {
+	st, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Now().UTC().Truncate(time.Hour)
+	if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+		ObservedAt: now.Unix(), SourceStartedAt: now.Add(-time.Hour).Unix(), TelemetryEnabled: true,
+		Users: []UserTrafficObservation{{Username: "alice", RawOctets: 100}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var userID int64
+	if err := st.db.QueryRow(`SELECT id FROM user_traffic_users WHERE username = 'alice'`).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	rows := []struct {
+		tier int
+		ts   int64
+	}{
+		{0, now.Add(-25 * time.Hour).Unix()}, {0, now.Add(-23 * time.Hour).Unix()},
+		{1, now.Add(-31 * 24 * time.Hour).Unix()}, {1, now.Add(-29 * 24 * time.Hour).Unix()},
+		{2, now.Add(-366 * 24 * time.Hour).Unix()}, {2, now.Add(-364 * 24 * time.Hour).Unix()},
+	}
+	for _, row := range rows {
+		if _, err := st.db.Exec(`INSERT INTO user_traffic_buckets(user_id, tier, ts, bytes) VALUES(?, ?, ?, 1)`, userID, row.tier, row.ts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := st.pruneUserTrafficBatch(now, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 3 {
+		t.Fatalf("removed rows = %d, want 3", removed)
+	}
+	for tier := range 3 {
+		var count int
+		if err := st.db.QueryRow(`SELECT count(*) FROM user_traffic_buckets WHERE user_id = ? AND tier = ?`, userID, tier).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("tier %d rows = %d, want 1", tier, count)
+		}
 	}
 }
 

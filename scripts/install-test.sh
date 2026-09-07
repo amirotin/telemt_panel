@@ -136,12 +136,7 @@ assert_eq "config subpage secret" "deadbeef" "$(toml_value "$TMP/cfg.toml" subpa
 assert_eq "config telemt bin" "/bin/telemt" "$(toml_value "$TMP/cfg.toml" updates telemt_binary_path)"
 assert_eq "config durable store" "sqlite" "$(toml_value "$TMP/cfg.toml" store driver)"
 assert_eq "config sqlite path" "/var/lib/telemt-panel/panel.db" "$(toml_value "$TMP/cfg.toml" store path)"
-STORE_DRIVER="postgres"; STORE_DSN='postgres://user:p"ass@db/panel'
-gen_config >"$TMP/cfg-postgres.toml"
-assert_eq "config postgres driver" "postgres" "$(toml_value "$TMP/cfg-postgres.toml" store driver)"
-assert_contains "config postgres escaped dsn" 'dsn = "postgres://user:p\"ass@db/panel"' "$TMP/cfg-postgres.toml"
-assert_not_contains "config postgres no sqlite path" 'path = "/var/lib/telemt-panel/panel.db"' "$TMP/cfg-postgres.toml"
-STORE_DRIVER="sqlite"; STORE_DSN=""
+STORE_DRIVER="sqlite"
 INIT="procd"
 gen_config >"$TMP/cfg-procd.toml"
 assert_eq "config procd memory store" "memory" "$(toml_value "$TMP/cfg-procd.toml" store driver)"

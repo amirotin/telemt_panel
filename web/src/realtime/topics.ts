@@ -103,9 +103,8 @@ export interface UserLinksWire {
 }
 
 // UsersTopicUser mirrors internal/telemt.UserInfo's json tags exactly (the
-// "users" topic publishes the raw Telemt list, task-2-report.md /
-// hub.go's usersSnapshot) — NOT httpapi's composite `User` REST schema,
-// which additionally merges a per-user `quota` object and `sub_url` in.
+// "users" topic publishes Telemt users enriched with the panel's persisted
+// traffic summary. Quota remains a topic-level map.
 // Optional fields here are Go's `omitempty` string/pointer fields; the two
 // *_list fields have no omitempty on the Go side (always present) but are
 // typed nullable defensively since a nil Go slice marshals to `null`.
@@ -126,6 +125,14 @@ export interface UsersTopicUser {
   recent_unique_ips: number;
   recent_unique_ips_list: string[] | null;
   total_octets: number;
+  traffic?: {
+    observed_total_bytes: number;
+    current_month_bytes: number;
+    month_key: number;
+    observed_since_epoch_secs: number;
+    last_activity_epoch_secs: number;
+    continuity: "normal" | "partial";
+  };
   links: UserLinksWire;
 }
 

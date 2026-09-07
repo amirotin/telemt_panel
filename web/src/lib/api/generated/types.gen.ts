@@ -32,6 +32,11 @@ export type User = {
     active_unique_ips_list?: Array<string>;
     recent_unique_ips?: number;
     recent_unique_ips_list?: Array<string>;
+    /**
+     * Raw Telemt process counter retained for compatibility.
+     *
+     * @deprecated
+     */
     total_octets: number;
     links: UserLinks;
     /**
@@ -41,10 +46,24 @@ export type User = {
         used_bytes: number;
         last_reset_epoch_secs: number;
     };
+    traffic?: UserTraffic;
+    ip_history?: UserIpSummary;
     /**
      * Absolute subscription page URL
      */
     sub_url?: string;
+};
+
+export type UserTraffic = {
+    observed_total_bytes: number;
+    current_month_bytes: number;
+    /**
+     * UTC month in YYYYMM form
+     */
+    month_key: number;
+    observed_since_epoch_secs: number;
+    last_activity_epoch_secs: number;
+    continuity: TrafficContinuity;
 };
 
 export type UserLinks = {
@@ -471,8 +490,8 @@ export type HostInfo = {
     arch: string;
     os_release?: string;
     panel_variant: 'full' | 'lite';
-    storage_drivers: Array<'memory' | 'sqlite' | 'postgres' | 'mysql'>;
-    active_store: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+    storage_drivers: Array<'memory' | 'sqlite'>;
+    active_store: 'memory' | 'sqlite';
     caps: {
         restart_telemt: boolean;
         restart_panel: boolean;
@@ -618,6 +637,73 @@ export type AuditEntry = {
     };
 };
 
+export type TrafficRange = '24h' | '7d' | '30d' | 'month' | '1y';
+
+export type TrafficSourceState = 'collecting' | 'paused' | 'unavailable';
+
+export type TrafficContinuity = 'normal' | 'partial';
+
+export type TrafficCollection = {
+    source_state: TrafficSourceState;
+    continuity: TrafficContinuity;
+    durability: 'durable' | 'volatile';
+    retention_secs: number;
+    observed_since_epoch_secs?: number;
+    observed_through_epoch_secs?: number;
+};
+
+export type UserTrafficPoint = {
+    ts: number;
+    v: number;
+    tier: '15m' | '1h' | '1d';
+};
+
+export type UserTrafficRank = {
+    username: string;
+    bytes: number;
+    observed_total_bytes: number;
+    current_month_bytes: number;
+    deleted_epoch_secs?: number;
+    continuity: TrafficContinuity;
+};
+
+export type UserTrafficHistorySeries = {
+    metric: string;
+    range: '24h' | '7d' | '30d' | '1y';
+    state: 'ready' | 'disabled' | 'empty' | 'partial';
+    requested_from_epoch_secs: number;
+    retention_secs: number;
+    available_from_epoch_secs?: number;
+    /**
+     * @deprecated
+     */
+    source_available?: boolean;
+    source_state: TrafficSourceState;
+    continuity: TrafficContinuity;
+    durability: 'durable' | 'volatile';
+    observed_since_epoch_secs?: number;
+    observed_through_epoch_secs?: number;
+    points: Array<UserTrafficPoint>;
+};
+
+export type TrafficSummary = {
+    range: TrafficRange;
+    state: 'ready' | 'disabled' | 'empty' | 'partial';
+    requested_from_epoch_secs: number;
+    total_bytes: number;
+    previous_total_bytes?: number;
+    points: Array<UserTrafficPoint>;
+    top_users: Array<UserTrafficRank>;
+    collection: TrafficCollection;
+};
+
+export type TrafficUsersPage = {
+    range: TrafficRange;
+    users: Array<UserTrafficRank>;
+    next_cursor?: string;
+    collection: TrafficCollection;
+};
+
 export type HistorySeries = {
     metric: string;
     range: string;
@@ -648,7 +734,7 @@ export type HistorySeries = {
         /**
          * Omitted for raw points
          */
-        tier?: '1m' | '15m' | '1h';
+        tier?: '1m' | '15m' | '1h' | '1d';
         /**
          * Bucket maximum; present for aggregate points
          */
@@ -689,7 +775,92 @@ export type HistoryEvents = {
     events: Array<HistoryEvent>;
 };
 
-export type StorageCategory = 'technical' | 'events' | 'audit' | 'connection_issues' | 'traffic' | 'user_traffic' | 'diagnostics';
+export type UserIpSummary = {
+    unique: number;
+    /**
+     * Last 30 days
+     */
+    from: number;
+    collected_through: number;
+    history_limited: boolean;
+    collection_gap: boolean;
+};
+
+export type UserIpHistoryItem = {
+    username: string;
+    /**
+     * Canonical individual address; mapped IPv4 is unmapped.
+     */
+    ip: string;
+    family: 4 | 6;
+    first_observed_at: number;
+    last_observed_at: number;
+    /**
+     * Periodic observations
+     */
+    observations: number;
+    last_active_observed_at?: number;
+    /**
+     * Active list (1)
+     */
+    last_source_mask: 1 | 2 | 3;
+    /**
+     * Null if the active source is missing
+     */
+    active_now: boolean | null;
+};
+
+export type UserIpCollection = {
+    batch_id?: string;
+    observed_since: number;
+    collected_through: number;
+    history_limited: boolean;
+    collection_gap: boolean;
+};
+
+export type UserIpSourceStatus = {
+    state: 'collecting' | 'unavailable';
+    last_success_at: number;
+    /**
+     * Age of the last successful observation at response time, measured on the panel server; null before collection or if the server clock moved backwards.
+     */
+    age_secs: number | null;
+    recent_window_secs: number | null;
+    pending: boolean;
+    history_limited: boolean;
+    collection_gap: boolean;
+};
+
+export type UserIpHistory = {
+    /**
+     * All distinct active addresses for this user
+     */
+    active_now_count: number | null;
+    items: Array<UserIpHistoryItem>;
+    /**
+     * Addresses in the range before family/search filters.
+     */
+    total: number;
+    /**
+     * Addresses matching all filters before pagination.
+     */
+    matched: number;
+    /**
+     * Retained addresses first observed in the range
+     */
+    new: number;
+    /**
+     * Empty when there is no next page.
+     */
+    next_cursor: string;
+    range: '24h' | '7d' | '30d' | 'all';
+    retention_days: number;
+    durable: boolean;
+    collection: UserIpCollection;
+    source: UserIpSourceStatus;
+};
+
+export type StorageCategory = 'technical' | 'events' | 'audit' | 'connection_issues' | 'traffic' | 'user_traffic' | 'user_ip_history' | 'diagnostics';
 
 export type StoragePolicy = {
     category: StorageCategory;
@@ -700,10 +871,22 @@ export type StoragePolicy = {
 export type StorageCategoryStats = {
     category: StorageCategory;
     records: number;
+    /**
+     * Retained user totals for user_traffic.
+     */
+    entities?: number;
+    collector?: TrafficCollectorState;
+};
+
+export type TrafficCollectorState = {
+    last_success_ts: number;
+    source_started_at: number;
+    source_state: TrafficSourceState;
+    continuity: TrafficContinuity;
 };
 
 export type StorageStats = {
-    driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+    driver: 'memory' | 'sqlite';
     durable: boolean;
     database_bytes: number;
     categories: Array<StorageCategoryStats>;
@@ -712,16 +895,10 @@ export type StorageStats = {
 export type StorageSettings = {
     policies: Array<StoragePolicy>;
     stats: StorageStats;
-    configured_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
-    active_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
     /**
      * Whether panel-state.json is enabled and control-plane state survives a restart.
      */
     state_durable: boolean;
-    /**
-     * Safe startup fallback reason without connection credentials.
-     */
-    store_error?: string;
 };
 
 export type StorageSettingsUpdate = {
@@ -730,6 +907,10 @@ export type StorageSettingsUpdate = {
 
 export type StoragePurgeRequest = {
     category: StorageCategory;
+    confirm: true;
+};
+
+export type DestructiveConfirmationRequest = {
     confirm: true;
 };
 
@@ -1365,13 +1546,89 @@ export type ResetUserQuotaResponses = {
 
 export type ResetUserQuotaResponse = ResetUserQuotaResponses[keyof ResetUserQuotaResponses];
 
+export type GetUserIpHistoryData = {
+    body?: never;
+    path: {
+        username: string;
+    };
+    query?: {
+        range?: '24h' | '7d' | '30d' | 'all';
+        family?: 'all' | '4' | '6';
+        /**
+         * Literal IP substring; full addresses are canonicalized.
+         */
+        q?: string;
+        limit?: number;
+        /**
+         * Opaque cursor bound to user and filters.
+         */
+        cursor?: string;
+    };
+    url: '/api/users/{username}/ip-history';
+};
+
+export type GetUserIpHistoryErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Internal panel error
+     */
+    500: Error;
+};
+
+export type GetUserIpHistoryError = GetUserIpHistoryErrors[keyof GetUserIpHistoryErrors];
+
+export type GetUserIpHistoryResponses = {
+    /**
+     * Observed addresses and collection limitations
+     */
+    200: UserIpHistory;
+};
+
+export type GetUserIpHistoryResponse = GetUserIpHistoryResponses[keyof GetUserIpHistoryResponses];
+
+export type ResetUserIpHistoryData = {
+    body: {
+        confirm: true;
+    };
+    path: {
+        username: string;
+    };
+    query?: never;
+    url: '/api/users/{username}/ip-history/reset';
+};
+
+export type ResetUserIpHistoryErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Internal panel error
+     */
+    500: Error;
+};
+
+export type ResetUserIpHistoryError = ResetUserIpHistoryErrors[keyof ResetUserIpHistoryErrors];
+
+export type ResetUserIpHistoryResponses = {
+    /**
+     * IP history cleared
+     */
+    204: void;
+};
+
+export type ResetUserIpHistoryResponse = ResetUserIpHistoryResponses[keyof ResetUserIpHistoryResponses];
+
 export type GetUserTrafficHistoryData = {
     body?: never;
     path: {
         username: string;
     };
     query: {
-        range: '24h' | '7d' | '30d';
+        range: '24h' | '7d' | '30d' | '1y';
     };
     url: '/api/users/{username}/traffic-history';
 };
@@ -1389,10 +1646,119 @@ export type GetUserTrafficHistoryResponses = {
     /**
      * User traffic series and collection state
      */
-    200: HistorySeries;
+    200: UserTrafficHistorySeries;
 };
 
 export type GetUserTrafficHistoryResponse = GetUserTrafficHistoryResponses[keyof GetUserTrafficHistoryResponses];
+
+export type ResetUserTrafficData = {
+    body: DestructiveConfirmationRequest;
+    path: {
+        username: string;
+    };
+    query?: never;
+    url: '/api/users/{username}/traffic/reset';
+};
+
+export type ResetUserTrafficErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type ResetUserTrafficError = ResetUserTrafficErrors[keyof ResetUserTrafficErrors];
+
+export type ResetUserTrafficResponses = {
+    /**
+     * User traffic reset
+     */
+    204: void;
+};
+
+export type ResetUserTrafficResponse = ResetUserTrafficResponses[keyof ResetUserTrafficResponses];
+
+export type GetTrafficSummaryData = {
+    body?: never;
+    path?: never;
+    query: {
+        range: TrafficRange;
+    };
+    url: '/api/traffic/summary';
+};
+
+export type GetTrafficSummaryErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type GetTrafficSummaryError = GetTrafficSummaryErrors[keyof GetTrafficSummaryErrors];
+
+export type GetTrafficSummaryResponses = {
+    /**
+     * Aggregate user traffic report
+     */
+    200: TrafficSummary;
+};
+
+export type GetTrafficSummaryResponse = GetTrafficSummaryResponses[keyof GetTrafficSummaryResponses];
+
+export type GetTrafficUsersData = {
+    body?: never;
+    path?: never;
+    query: {
+        range: TrafficRange;
+        include_deleted?: boolean;
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/traffic/users';
+};
+
+export type GetTrafficUsersErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type GetTrafficUsersError = GetTrafficUsersErrors[keyof GetTrafficUsersErrors];
+
+export type GetTrafficUsersResponses = {
+    /**
+     * Ranked user traffic page
+     */
+    200: TrafficUsersPage;
+};
+
+export type GetTrafficUsersResponse = GetTrafficUsersResponses[keyof GetTrafficUsersResponses];
+
+export type ResetAllUserTrafficData = {
+    body: DestructiveConfirmationRequest;
+    path?: never;
+    query?: never;
+    url: '/api/traffic/reset';
+};
+
+export type ResetAllUserTrafficErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+};
+
+export type ResetAllUserTrafficError = ResetAllUserTrafficErrors[keyof ResetAllUserTrafficErrors];
+
+export type ResetAllUserTrafficResponses = {
+    /**
+     * All user traffic reset
+     */
+    204: void;
+};
+
+export type ResetAllUserTrafficResponse = ResetAllUserTrafficResponses[keyof ResetAllUserTrafficResponses];
 
 export type RotateUserSecretData = {
     body?: never;
@@ -2585,17 +2951,11 @@ export type GetHealthResponses = {
         status: 'ok';
         version: string;
         variant: 'full' | 'lite';
-        drivers: Array<'memory' | 'sqlite' | 'postgres' | 'mysql'>;
-        configured_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
-        active_driver: 'memory' | 'sqlite' | 'postgres' | 'mysql';
+        drivers: Array<'memory' | 'sqlite'>;
         /**
          * Whether local panel state survives a restart.
          */
         state_durable: boolean;
-        /**
-         * Safe history-backend connection error without credentials; omitted when the configured backend is active.
-         */
-        store_error?: string;
     };
 };
 

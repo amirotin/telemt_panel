@@ -22,7 +22,6 @@ var (
 type Info struct {
 	Driver   string `json:"driver"`
 	Durable  bool   `json:"durable"`
-	Remote   bool   `json:"remote"`
 	Schema   int    `json:"schema"`
 	SizeHint int64  `json:"size_hint"`
 }
@@ -113,14 +112,85 @@ type NamedMetricPoint struct {
 	Point MetricPoint
 }
 
-// UserTrafficDelta is the non-zero traffic observed for one Telemt user
-// since the previous users snapshot. Stores aggregate these deltas directly
-// into sparse 15-minute and hourly buckets; raw per-poll user history is never
-// persisted.
-type UserTrafficDelta struct {
+// UserTrafficSourceState describes whether Telemt can currently provide user
+// counters. It deliberately does not encode history-backend health.
+type UserTrafficSourceState string
+
+const (
+	UserTrafficCollecting  UserTrafficSourceState = "collecting"
+	UserTrafficPaused      UserTrafficSourceState = "paused"
+	UserTrafficUnavailable UserTrafficSourceState = "unavailable"
+)
+
+// UserTrafficContinuity records whether the accumulated value has a known
+// observation gap larger than the normal collector tolerance.
+type UserTrafficContinuity string
+
+const (
+	UserTrafficNormal  UserTrafficContinuity = "normal"
+	UserTrafficPartial UserTrafficContinuity = "partial"
+)
+
+// UserTrafficObservation is one raw Telemt counter in a coherent snapshot.
+type UserTrafficObservation struct {
+	Username  string
+	RawOctets uint64
+}
+
+// UserTrafficSnapshot is accepted only after the Telemt client verifies that
+// system, security and users responses belong to one process and revision.
+type UserTrafficSnapshot struct {
+	ObservedAt       int64
+	SourceStartedAt  int64
+	TelemetryEnabled bool
+	Users            []UserTrafficObservation
+}
+
+// UserTrafficSummary is the panel-owned accumulated view of one Telemt
+// account. Values describe traffic observed by the panel, not a billing total.
+type UserTrafficSummary struct {
+	Username               string                `json:"username"`
+	ObservedTotalBytes     int64                 `json:"observed_total_bytes"`
+	CurrentMonthBytes      int64                 `json:"current_month_bytes"`
+	MonthKey               int                   `json:"month_key"`
+	ObservedSinceEpochSecs int64                 `json:"observed_since_epoch_secs"`
+	LastActivityEpochSecs  int64                 `json:"last_activity_epoch_secs"`
+	DeletedEpochSecs       int64                 `json:"deleted_epoch_secs,omitempty"`
+	Continuity             UserTrafficContinuity `json:"continuity"`
+}
+
+// UserTrafficPoint is one exact, non-cumulative traffic bucket.
+type UserTrafficPoint struct {
+	TS    int64      `json:"ts"`
+	Bytes int64      `json:"bytes"`
+	Tier  MetricTier `json:"tier"`
+}
+
+type UserTrafficRank struct {
+	Username         string                `json:"username"`
+	Bytes            int64                 `json:"bytes"`
+	ObservedTotal    int64                 `json:"observed_total_bytes"`
+	CurrentMonth     int64                 `json:"current_month_bytes"`
+	DeletedEpochSecs int64                 `json:"deleted_epoch_secs,omitempty"`
+	Continuity       UserTrafficContinuity `json:"continuity"`
+}
+
+type UserTrafficRankCursor struct {
+	Bytes    int64
 	Username string
-	TS       int64
-	Bytes    uint64
+}
+
+// UserTrafficCollectorState describes the last coherent source observation.
+type UserTrafficCollectorState struct {
+	LastSuccessTS   int64                  `json:"last_success_epoch_secs"`
+	SourceStartedAt int64                  `json:"source_started_at_epoch_secs"`
+	SourceState     UserTrafficSourceState `json:"source_state"`
+	Continuity      UserTrafficContinuity  `json:"continuity"`
+}
+
+// UserTrafficApplyResult reports the aggregate delta committed for a snapshot.
+type UserTrafficApplyResult struct {
+	DeltaBytes int64
 }
 
 // HistoryEvent is one safe, structured state transition. Attributes may
@@ -158,6 +228,7 @@ const (
 	MetricTierMinute  MetricTier = "1m"
 	MetricTierQuarter MetricTier = "15m"
 	MetricTierHour    MetricTier = "1h"
+	MetricTierDay     MetricTier = "1d"
 	metricTierRawSQL             = "raw"
 )
 

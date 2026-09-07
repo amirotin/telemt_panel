@@ -13,7 +13,7 @@ func TestOpenMemoryAndInfo(t *testing.T) {
 	}
 	defer opened.Close()
 	info := opened.Info()
-	if info.Driver != "memory" || info.Durable || info.Remote || info.SizeHint != 0 {
+	if info.Driver != "memory" || info.Durable || info.SizeHint != 0 {
 		t.Fatalf("unexpected memory info: %+v", info)
 	}
 }
@@ -29,41 +29,10 @@ func TestOpenRejectsUnknownDriver(t *testing.T) {
 	}
 }
 
-func TestFallbackRuntimeStatus(t *testing.T) {
-	memory, err := Open(OpenOptions{Driver: "memory"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	state, err := NewState("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	combined, err := NewComposite(state, memory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer combined.Close()
-	fallback := WithFallback(combined, "postgres", "postgres database is unavailable")
-	status := Runtime(fallback, "postgres")
-	if status.ConfiguredDriver != "postgres" || status.ActiveDriver != "memory" || status.Error == "" {
-		t.Fatalf("Runtime fallback = %+v", status)
-	}
-}
-
-func TestConnectionUnavailableClassification(t *testing.T) {
-	err := &OpenError{Driver: "postgres", Err: &ConnectionUnavailableError{Driver: "postgres"}}
-	if !IsRuntimeOpenError(err) || !IsConnectionUnavailable(err) {
-		t.Fatalf("connection error was not classified: %v", err)
-	}
-	if IsConnectionUnavailable(&OpenError{Driver: "postgres", Err: errors.New("migration failed")}) {
-		t.Fatal("migration failure was classified as connection unavailability")
-	}
-}
-
 func TestDriverListsAreSorted(t *testing.T) {
 	all := Drivers()
 	available := AvailableDrivers()
-	if len(all) != 4 {
+	if len(all) != 2 {
 		t.Fatalf("Drivers() = %v", all)
 	}
 	if len(available) == 0 || available[0] != "memory" {

@@ -383,10 +383,9 @@ func TestStatsSysInfoRefresherCaches(t *testing.T) {
 }
 
 // TestHistoryRecording covers deliverable B: after each successful "stats"
-// poll, the hub records connections/active_users/refusals/traffic points
-// into the store's RAM ring — traffic only once the "users" topic has been polled
-// at least once (its TotalOctets sum is the source), the other two on every
-// stats poll.
+// poll, the hub records connections/active_users/refusals points into the
+// store's RAM ring. The independent coherent traffic collector records the
+// aggregate traffic point.
 func TestHistoryRecording(t *testing.T) {
 	fake := telemttest.New(telemttest.Scenario{})
 	t.Cleanup(fake.Close)
@@ -398,9 +397,10 @@ func TestHistoryRecording(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 
 	h := New(Config{
-		UsersInterval: 10 * time.Millisecond,
-		StatsInterval: 10 * time.Millisecond,
-		Grace:         time.Second,
+		UsersInterval:   10 * time.Millisecond,
+		StatsInterval:   10 * time.Millisecond,
+		TrafficInterval: 10 * time.Millisecond,
+		Grace:           time.Second,
 	}, tc, st)
 	t.Cleanup(h.Close)
 
@@ -418,6 +418,7 @@ func TestHistoryRecording(t *testing.T) {
 		default:
 		}
 	}
+	h.StartPersistentCollectors()
 	awaitRecordedTick := func(t *testing.T) {
 		t.Helper()
 		select {
@@ -469,10 +470,7 @@ func TestHistoryRecording(t *testing.T) {
 		}
 	}
 
-	// traffic depends on the "users" topic's cache being populated, which
-	// races the stats poller's first tick — wait for recording ticks
-	// (each one hook-signaled, no sleeps) until it shows up rather than
-	// assuming the first tick already has it.
+	// The traffic collector runs independently from the users/stats topics.
 	deadline = time.Now().Add(2 * time.Second)
 	for {
 		points, err := st.MetricRange(metricTraffic, 0)
@@ -511,17 +509,23 @@ func TestSQLiteHistoryCollectorRunsWithoutSubscribers(t *testing.T) {
 	}
 
 	h.StartPersistentCollectors()
-	select {
-	case <-recorded:
-	case <-time.After(2 * time.Second):
-		t.Fatal("persistent stats collector did not record without subscribers")
-	}
-	points, err := st.MetricRange(metricConnections, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(points) == 0 {
-		t.Fatal("connections history is empty after persistent collection")
+	// Stats may arrive before the users cache that supplies connection totals.
+	// Wait for a recorded value, not merely the first independent stats tick.
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case <-recorded:
+		case <-deadline.C:
+			t.Fatal("persistent collector did not record connections without subscribers")
+		}
+		points, err := st.MetricRange(metricConnections, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(points) > 0 {
+			break
+		}
 	}
 	h.mu.Lock()
 	subscribers := len(h.subscribers)
@@ -586,7 +590,7 @@ func TestCloseStopsPersistentCollectors(t *testing.T) {
 type durableTestStore struct{ store.HistoryStore }
 
 func (durableTestStore) Info() store.Info {
-	return store.Info{Driver: "postgres", Durable: true, Remote: true, Schema: 6, SizeHint: -1}
+	return store.Info{Driver: "sqlite", Durable: true, Schema: 6, SizeHint: 1024}
 }
 
 func TestEveryDurableStoreKeepsStatsAndUsersSourcesAlive(t *testing.T) {
@@ -599,7 +603,7 @@ func TestEveryDurableStoreKeepsStatsAndUsersSourcesAlive(t *testing.T) {
 	defer h.Close()
 	for _, topic := range []string{"stats", "users", "runtime", "upstreams"} {
 		if !h.topics[topic].persistent {
-			t.Errorf("%s is not persistent for a durable network store", topic)
+			t.Errorf("%s is not persistent for a durable store", topic)
 		}
 	}
 	for _, topic := range []string{"security", "web"} {

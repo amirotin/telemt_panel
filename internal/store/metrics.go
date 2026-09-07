@@ -6,10 +6,9 @@ import (
 )
 
 const (
-	metricRawRetention         = 2 * time.Hour
-	metricMinuteRetention      = 24 * time.Hour
-	userTrafficFineRetention   = 24 * time.Hour
-	userTrafficMemoryRetention = 30 * 24 * time.Hour
+	metricRawRetention       = 2 * time.Hour
+	metricMinuteRetention    = 24 * time.Hour
+	userTrafficFineRetention = 24 * time.Hour
 )
 
 var metricTierRetention = []struct {

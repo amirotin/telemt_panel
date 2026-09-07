@@ -5,13 +5,13 @@ import type { UsersTopic } from "../../realtime/topics";
 
 const users = {
   users: [
-    { username: "a", total_octets: 10 },
-    { username: "b", total_octets: 32 },
+    { username: "a", total_octets: 999, traffic: { observed_total_bytes: 10 } },
+    { username: "b", total_octets: 999, traffic: { observed_total_bytes: 32 } },
   ],
 } as unknown as UsersTopic;
 
 describe("usersTrafficTotal", () => {
-  it("sums every user's lifetime octets", () => {
+  it("sums panel-observed totals instead of reset-prone Telemt counters", () => {
     expect(usersTrafficTotal(users)).toBe(42);
   });
 
@@ -19,6 +19,7 @@ describe("usersTrafficTotal", () => {
     // A cumulative total rendered as "0 B" would be a claim the panel
     // cannot make yet (§13.1).
     expect(usersTrafficTotal(null)).toBeNull();
+    expect(usersTrafficTotal({ users: [{ username: "a", total_octets: 42 }] } as unknown as UsersTopic)).toBeNull();
   });
 });
 

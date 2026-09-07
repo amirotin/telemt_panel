@@ -1,5 +1,4 @@
-// Package sqlstore contains the database/sql implementation shared by the
-// SQLite, PostgreSQL and MySQL store drivers.
+// Package sqlstore contains the database/sql implementation used by SQLite.
 package sqlstore
 
 import (
@@ -23,24 +22,6 @@ type Dialect interface {
 	SchemaVersion(context.Context, *sql.Tx) (int, error)
 	SetMigrationDirty(context.Context, *sql.Tx, bool) error
 	SetSchemaVersion(context.Context, *sql.Tx, int) error
-}
-
-// Bind converts the driver's neutral ? placeholders to the dialect form.
-// Store queries do not contain question marks in quoted strings, so this
-// deliberately small binder is sufficient and keeps the shared SQL readable.
-func bindQuestionMarks(query string, placeholder func(int) string) string {
-	var out strings.Builder
-	out.Grow(len(query) + 8)
-	index := 1
-	for _, char := range query {
-		if char == '?' {
-			out.WriteString(placeholder(index))
-			index++
-			continue
-		}
-		out.WriteRune(char)
-	}
-	return out.String()
 }
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

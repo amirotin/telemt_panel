@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -448,15 +449,27 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		if err := st.ReplaceStoragePolicies(policies); err != nil {
 			t.Fatal(err)
 		}
-		if err := st.RecordUserTraffic([]UserTrafficDelta{
-			{Username: username, TS: now.Unix(), Bytes: 100},
-			{Username: username, TS: now.Add(time.Minute).Unix(), Bytes: 50},
-			{Username: username, TS: now.Add(2 * time.Minute).Unix(), Bytes: 0},
+		sourceStartedAt := now.Add(-time.Hour).Unix()
+		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt: now.Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: username, RawOctets: 100}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt: now.Add(time.Minute).Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: username, RawOctets: 250}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt: now.Add(2 * time.Minute).Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: username, RawOctets: 250}},
 		}); err != nil {
 			t.Fatal(err)
 		}
 		points, err := st.UserTrafficRange(username, now.Add(-time.Hour).Unix())
-		if err != nil || len(points) != 1 || points[0].Tier != MetricTierQuarter || points[0].Value != 150 || points[0].Samples != 2 {
+		if err != nil || len(points) != 1 || points[0].Tier != MetricTierQuarter || points[0].Bytes != 150 {
 			t.Fatalf("UserTrafficRange = %+v, %v", points, err)
 		}
 		if st.UserTrafficRetention() <= 0 {
@@ -467,6 +480,186 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 		if points, err := st.UserTrafficRange(username, now.Add(-time.Hour).Unix()); err != nil || len(points) != 0 {
 			t.Fatalf("history survived user deletion: %+v, %v", points, err)
+		}
+	})
+
+	t.Run("user_traffic_snapshot_is_atomic", func(t *testing.T) {
+		alice := prefix + "-atomic-alice"
+		bob := prefix + "-atomic-bob"
+		base := now.Add(5 * time.Minute).Unix()
+		first := UserTrafficSnapshot{
+			ObservedAt: base, SourceStartedAt: base - 3600, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: alice, RawOctets: 0}, {Username: bob, RawOctets: math.MaxInt64}},
+		}
+		if _, err := st.ApplyUserTrafficSnapshot(first); err != nil {
+			t.Fatal(err)
+		}
+		failed := UserTrafficSnapshot{
+			ObservedAt: base + 60, SourceStartedAt: base - 1800, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: alice, RawOctets: 100}, {Username: bob, RawOctets: math.MaxInt64}},
+		}
+		if _, err := st.ApplyUserTrafficSnapshot(failed); err == nil {
+			t.Fatal("overflowing snapshot succeeded")
+		}
+		state, err := st.UserTrafficCollectorState()
+		if err != nil || state.LastSuccessTS != base {
+			t.Fatalf("collector advanced after failed snapshot: %+v, %v", state, err)
+		}
+		retry := UserTrafficSnapshot{
+			ObservedAt: base + 120, SourceStartedAt: base - 3600, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: alice, RawOctets: 200}, {Username: bob, RawOctets: math.MaxInt64}},
+		}
+		result, err := st.ApplyUserTrafficSnapshot(retry)
+		if err != nil || result.DeltaBytes != 200 {
+			t.Fatalf("retry = %+v, %v, want delta 200", result, err)
+		}
+		summaries, err := st.UserTrafficSummaries()
+		if err != nil || summaries[alice].ObservedTotalBytes != 200 || summaries[bob].ObservedTotalBytes != 0 {
+			t.Fatalf("summaries after retry = %+v, %v", summaries, err)
+		}
+	})
+
+	t.Run("paused_source_does_not_create_a_baseline", func(t *testing.T) {
+		username := prefix + "-paused-baseline"
+		base := now.Add(10 * time.Minute).Unix()
+		source := base - 3600
+		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt: base, SourceStartedAt: source, TelemetryEnabled: false,
+			Users: []UserTrafficObservation{{Username: username, RawOctets: 0}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if summaries, err := st.UserTrafficSummaries(); err != nil {
+			t.Fatal(err)
+		} else if _, exists := summaries[username]; exists {
+			t.Fatalf("paused first snapshot created a user baseline: %+v", summaries[username])
+		}
+		result, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt: base + 60, SourceStartedAt: source, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: username, RawOctets: 500}},
+		})
+		if err != nil || result.DeltaBytes != 0 {
+			t.Fatalf("first enabled snapshot = %+v, %v", result, err)
+		}
+	})
+
+	t.Run("user_traffic_lifecycle", func(t *testing.T) {
+		username := prefix + "-lifecycle"
+		base := now.Add(15 * time.Minute).Unix()
+		source := base - 3600
+		apply := func(at int64, enabled bool, users ...UserTrafficObservation) UserTrafficApplyResult {
+			t.Helper()
+			result, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+				ObservedAt: at, SourceStartedAt: source, TelemetryEnabled: enabled, Users: users,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result
+		}
+		apply(base, true, UserTrafficObservation{Username: username, RawOctets: 100})
+		if got := apply(base+60, true, UserTrafficObservation{Username: username, RawOctets: 150}).DeltaBytes; got != 50 {
+			t.Fatalf("normal delta = %d, want 50", got)
+		}
+		apply(base+120, false, UserTrafficObservation{Username: username, RawOctets: 150})
+		if got := apply(base+180, true, UserTrafficObservation{Username: username, RawOctets: 170}).DeltaBytes; got != 20 {
+			t.Fatalf("resumed delta = %d, want 20", got)
+		}
+		if got := apply(base+240, true, UserTrafficObservation{Username: username, RawOctets: 5}).DeltaBytes; got != 5 {
+			t.Fatalf("counter reset delta = %d, want 5", got)
+		}
+		source = base + 250
+		if got := apply(base+270, true, UserTrafficObservation{Username: username, RawOctets: 7}).DeltaBytes; got != 7 {
+			t.Fatalf("process restart delta = %d, want 7", got)
+		}
+		apply(base+300, true)
+		summaries, err := st.UserTrafficSummaries()
+		if err != nil || summaries[username].DeletedEpochSecs != base+300 {
+			t.Fatalf("deleted summary = %+v, %v", summaries[username], err)
+		}
+		if got := apply(base+360, true, UserTrafficObservation{Username: username, RawOctets: 8}).DeltaBytes; got != 1 {
+			t.Fatalf("reappeared delta = %d, want 1", got)
+		}
+		if got := apply(base+360+int64(25*time.Hour/time.Second), true, UserTrafficObservation{Username: username, RawOctets: 18}).DeltaBytes; got != 10 {
+			t.Fatalf("post-gap delta = %d, want 10", got)
+		}
+		summaries, err = st.UserTrafficSummaries()
+		if err != nil || summaries[username].ObservedTotalBytes != 93 || summaries[username].DeletedEpochSecs != 0 || summaries[username].Continuity != UserTrafficPartial {
+			t.Fatalf("lifecycle summary = %+v, %v", summaries[username], err)
+		}
+	})
+
+	t.Run("user_traffic_totals_outlive_disabled_buckets", func(t *testing.T) {
+		username := prefix + "-totals-only"
+		policies, err := st.ListStoragePolicies()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range policies {
+			if policies[i].Category == StorageUserTraffic {
+				policies[i].Enabled = false
+			}
+		}
+		if err := st.ReplaceStoragePolicies(policies); err != nil {
+			t.Fatal(err)
+		}
+		base := now.Add(27 * time.Hour).Unix()
+		source := base - 3600
+		for _, observation := range []struct {
+			at  int64
+			raw uint64
+		}{{base, 10}, {base + 60, 110}} {
+			if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+				ObservedAt: observation.at, SourceStartedAt: source, TelemetryEnabled: true,
+				Users: []UserTrafficObservation{{Username: username, RawOctets: observation.raw}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		summaries, err := st.UserTrafficSummaries()
+		if err != nil || summaries[username].ObservedTotalBytes != 100 {
+			t.Fatalf("totals while disabled = %+v, %v", summaries[username], err)
+		}
+		if points, err := st.UserTrafficRange(username, 0); err != nil || len(points) != 0 {
+			t.Fatalf("disabled bucket history = %+v, %v", points, err)
+		}
+		for i := range policies {
+			if policies[i].Category == StorageUserTraffic {
+				policies[i].Enabled = true
+			}
+		}
+		if err := st.ReplaceStoragePolicies(policies); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("reset_all_user_traffic", func(t *testing.T) {
+		username := prefix + "-reset-all"
+		base := now.Add(28 * time.Hour).Unix()
+		source := base - 3600
+		for _, raw := range []uint64{10, 110} {
+			if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+				ObservedAt: base + int64(raw), SourceStartedAt: source, TelemetryEnabled: true,
+				Users: []UserTrafficObservation{{Username: username, RawOctets: raw}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := st.ResetUserTraffic(); err != nil {
+			t.Fatal(err)
+		}
+		if summaries, err := st.UserTrafficSummaries(); err != nil || len(summaries) != 0 {
+			t.Fatalf("summaries survived reset: %+v, %v", summaries, err)
+		}
+		if state, err := st.UserTrafficCollectorState(); err != nil || state.LastSuccessTS != 0 {
+			t.Fatalf("collector survived reset: %+v, %v", state, err)
+		}
+		result, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
+			ObservedAt: base + 300, SourceStartedAt: source, TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: username, RawOctets: 210}},
+		})
+		if err != nil || result.DeltaBytes != 0 {
+			t.Fatalf("first snapshot after reset = %+v, %v", result, err)
 		}
 	})
 

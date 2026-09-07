@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage, fill, useStrings } from "../../i18n";
+import { errorMessage, useStrings } from "../../i18n";
 import { formatBytes } from "../../lib/format";
 import { apiErrorMessage } from "../../people/apiError";
 import { Button } from "../../ui/Button";
@@ -24,6 +24,7 @@ import {
   getStorageSettingsQueryKey,
   purgeStorageHistoryMutation,
   putStorageSettingsMutation,
+  resetAllUserTrafficMutation,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type {
   StorageCategory,
@@ -41,6 +42,7 @@ const categoryIcons: Record<StorageCategory, typeof IconActivity> = {
   connection_issues: IconWarning,
   traffic: IconTraffic,
   user_traffic: IconPeople,
+  user_ip_history: IconPeople,
   diagnostics: IconWrench,
 };
 
@@ -53,6 +55,7 @@ export function StorageSettings() {
     policies: StoragePolicy[];
   }>({ source: null, policies: [] });
   const [purgeCategory, setPurgeCategory] = useState<StorageCategory | null>(null);
+  const [resetTrafficOpen, setResetTrafficOpen] = useState(false);
   const policies =
     query.data && draft.source === query.data ? draft.policies : (query.data?.policies ?? []);
 
@@ -82,6 +85,15 @@ export function StorageSettings() {
     },
     onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
   });
+  const resetTrafficMutation = useMutation({
+    ...resetAllUserTrafficMutation(),
+    onSuccess: async () => {
+      setResetTrafficOpen(false);
+      pushToast(s.server.settings.storageTrafficResetDone, "ok");
+      await queryClient.invalidateQueries();
+    },
+    onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
+  });
 
   const dirty = query.data ? !sameStoragePolicies(policies, query.data.policies) : false;
   const profile = detectStorageProfile(policies);
@@ -93,6 +105,7 @@ export function StorageSettings() {
   const activeCount = policies.filter((policy) => policy.enabled).length;
   const totalRecords = [...records.values()].reduce((total, count) => total + count, 0);
   const selectedCopy = purgeCategory ? s.server.settings.storageCategories[purgeCategory] : null;
+  const trafficEntities = query.data?.stats.categories.find((entry) => entry.category === "user_traffic")?.entities ?? 0;
 
   function updatePolicy(category: StorageCategory, patch: Partial<StoragePolicy>) {
     setPolicies((current) =>
@@ -156,14 +169,7 @@ export function StorageSettings() {
           <IconWarning className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
           <span className="space-y-1">
             {!query.data.stats.durable && (
-              <span className="block">
-                {query.data.store_error
-                  ? fill(s.server.settings.storageFallbackWarning, {
-                      driver:
-                        query.data.configured_driver === "postgres" ? "PostgreSQL" : "MySQL",
-                    })
-                  : s.server.settings.storageMemoryWarning}
-              </span>
+              <span className="block">{s.server.settings.storageMemoryWarning}</span>
             )}
             {!query.data.state_durable && (
               <span className="block">{s.server.settings.storageStateVolatileWarning}</span>
@@ -233,7 +239,7 @@ export function StorageSettings() {
           const copy = s.server.settings.storageCategories[policy.category];
           const Icon = categoryIcons[policy.category];
           const count = records.get(policy.category) ?? 0;
-          const mandatory = policy.category === "technical";
+          const mandatory = policy.category === "technical" || policy.category === "user_ip_history";
           return (
             <article key={policy.category} className="bg-surface px-4 py-4 sm:px-5">
               <div className="flex items-start gap-3">
@@ -291,18 +297,30 @@ export function StorageSettings() {
                     ))}
                   </select>
                 </label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={count === 0}
-                  onClick={() => setPurgeCategory(policy.category)}
-                >
-                  {s.server.settings.storageClear}
-                </Button>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={count === 0}
+                    onClick={() => setPurgeCategory(policy.category)}
+                  >
+                    {s.server.settings.storageClear}
+                  </Button>
+                  {policy.category === "user_traffic" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={trafficEntities === 0}
+                      onClick={() => setResetTrafficOpen(true)}
+                    >
+                      {s.server.settings.storageTrafficReset}
+                    </Button>
+                  )}
+                </div>
               </div>
               {mandatory && (
                 <small className="mt-2 block text-[10px] text-text-faint">
-                  {s.server.settings.storageTechnicalRequired}
+                  {policy.category === "user_ip_history" ? s.server.settings.storageIPRequired : s.server.settings.storageTechnicalRequired}
                 </small>
               )}
               {!policy.enabled && count > 0 && (
@@ -349,6 +367,21 @@ export function StorageSettings() {
               purgeMutation.mutate({ body: { category: purgeCategory, confirm: true } });
             }
           }}
+        />
+      </Sheet>
+      <Sheet
+        open={resetTrafficOpen}
+        onClose={() => setResetTrafficOpen(false)}
+        eyebrow={s.server.settings.storageClearEyebrow}
+        title={s.server.settings.storageTrafficResetTitle}
+      >
+        <ConfirmView
+          description={s.server.settings.storageTrafficResetConfirm}
+          confirmLabel={s.server.settings.storageTrafficReset}
+          danger
+          pending={resetTrafficMutation.isPending}
+          onCancel={() => setResetTrafficOpen(false)}
+          onConfirm={() => resetTrafficMutation.mutate({ body: { confirm: true } })}
         />
       </Sheet>
     </section>

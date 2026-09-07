@@ -152,12 +152,12 @@ username = "a"`, "password_hash"},
 		{"sqlite without path", minimal + `
 [store]
 driver = "sqlite"`, "store.path"},
-		{"postgres without dsn", minimal + `
+		{"removed postgres driver", minimal + `
 [store]
-driver = "postgres"`, "store.dsn"},
-		{"mysql without dsn", minimal + `
+driver = "postgres"`, "unknown driver"},
+		{"removed mysql driver", minimal + `
 [store]
-driver = "mysql"`, "store.dsn"},
+driver = "mysql"`, "unknown driver"},
 		{"unknown store driver", minimal + `
 [store]
 driver = "oracle"`, "unknown driver"},

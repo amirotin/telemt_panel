@@ -37,16 +37,45 @@ func TestPortableSQLImportRollsBackCompletely(t *testing.T) {
 	}
 }
 
-func TestRemoteStoreOperationContextHasDeadline(t *testing.T) {
-	st := &SQLite{remote: true}
-	ctx, cancel := st.operationContext()
-	defer cancel()
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		t.Fatal("remote store operation has no deadline")
+func TestPortableSQLRoundTripsUserTraffic(t *testing.T) {
+	source, err := NewSQLite(filepath.Join(t.TempDir(), "source.db"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	remaining := time.Until(deadline)
-	if remaining <= 0 || remaining > sqlOperationTimeout {
-		t.Fatalf("remote store deadline in %v, want (0, %v]", remaining, sqlOperationTimeout)
+	defer source.Close()
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, snapshot := range []UserTrafficSnapshot{
+		{ObservedAt: now.Add(-time.Minute).Unix(), SourceStartedAt: now.Add(-time.Hour).Unix(), TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: "alice", RawOctets: 100}}},
+		{ObservedAt: now.Unix(), SourceStartedAt: now.Add(-time.Hour).Unix(), TelemetryEnabled: true,
+			Users: []UserTrafficObservation{{Username: "alice", RawOctets: 350}}},
+	} {
+		if _, err := source.ApplyUserTrafficSnapshot(snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := source.ExportData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.FormatVersion != 6 || len(data.UserTraffic) != 1 || len(data.UserTrafficBuckets) != 3 || data.UserTrafficCollector == nil {
+		t.Fatalf("exported traffic = %+v / %+v / %+v", data.UserTraffic, data.UserTrafficBuckets, data.UserTrafficCollector)
+	}
+
+	destination, err := NewSQLite(filepath.Join(t.TempDir(), "destination.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer destination.Close()
+	if err := destination.ImportData(data); err != nil {
+		t.Fatal(err)
+	}
+	summaries, err := destination.UserTrafficSummaries()
+	if err != nil || summaries["alice"].ObservedTotalBytes != 250 {
+		t.Fatalf("imported summaries = %+v, %v", summaries, err)
+	}
+	points, err := destination.UserTrafficRange("alice", now.Add(-24*time.Hour).Unix())
+	if err != nil || len(points) != 1 || points[0].Bytes != 250 {
+		t.Fatalf("imported points = %+v, %v", points, err)
 	}
 }

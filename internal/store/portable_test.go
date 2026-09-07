@@ -116,6 +116,32 @@ func TestPortableRejectsUnknownFormat(t *testing.T) {
 	}
 }
 
+func TestPortableFormatFourMigratesUserTrafficWithoutDoubleCounting(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Hour).Unix()
+	data, err := normalizePortableData(PortableData{
+		FormatVersion: 4,
+		Metrics: map[string][]MetricPoint{
+			"user.alice.traffic": {
+				{TS: now, Tier: MetricTierQuarter, Value: 40},
+				{TS: now + 900, Tier: MetricTierQuarter, Value: 60},
+				{TS: now, Tier: MetricTierHour, Value: 100},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.FormatVersion != 6 || len(data.UserTraffic) != 1 || data.UserTraffic[0].Summary.ObservedTotalBytes != 100 {
+		t.Fatalf("migrated summaries = %+v", data.UserTraffic)
+	}
+	if _, exists := data.Metrics["user.alice.traffic"]; exists {
+		t.Fatal("legacy traffic metric survived migration")
+	}
+	if len(data.UserTrafficBuckets) != 4 {
+		t.Fatalf("migrated buckets = %+v", data.UserTrafficBuckets)
+	}
+}
+
 func TestPortableStateImportReportsFileFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel-state.json")
 	st, err := NewMemory(path)

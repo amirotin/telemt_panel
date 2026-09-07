@@ -71,7 +71,7 @@ export function PersonDetail({ username }: { username: string }) {
                 <IconButton aria-label={s.people.actions.menu} onClick={() => setActionsOpen(true)}><IconMore /></IconButton>
               </header>
 
-              <MobileVitals user={user} quotaEntry={quotaEntry} />
+              <MobileVitals user={user} />
               <nav className="person-tab-list bg-surface" role="tablist">
                 {(["overview", "access", "limits"] as const).map((key) => <button key={key} type="button" role="tab" aria-selected={tab === key} className="person-tab-button" onClick={() => setTab(key)}>{s.people.inspector.tabs[key]}</button>)}
               </nav>
@@ -92,11 +92,11 @@ export function PersonDetail({ username }: { username: string }) {
   );
 }
 
-function MobileVitals({ user, quotaEntry }: { user: UsersTopicUser; quotaEntry: ReturnType<typeof findQuotaEntry> }) {
+function MobileVitals({ user }: { user: UsersTopicUser }) {
   const s = useStrings();
-  const quota = getUserQuota(user, quotaEntry);
-  const note = quota.limitBytes === null ? s.people.allTime : `${Math.min(100, Math.round((quota.usedBytes / Math.max(1, quota.limitBytes)) * 100))}% ${s.people.quotaShort}`;
-  return <div className="person-vitals-grid bg-surface">{[[s.people.connections, String(user.current_connections), s.people.now], [s.people.activeIps, String(user.active_unique_ips), user.max_unique_ips ? `${s.people.meta.of} ${user.max_unique_ips}` : "∞"], [s.shell.traffic, formatBytes(user.total_octets, s), note]].map(([label, value, caption]) => <div key={label} className="person-vital-cell"><span>{label}</span><strong>{value}</strong><small>{caption}</small></div>)}</div>;
+	const trafficValue = user.traffic ? formatBytes(user.traffic.current_month_bytes, s) : "—";
+	const trafficNote = user.traffic ? `${formatBytes(user.traffic.observed_total_bytes, s)} ${s.people.allTime}` : s.people.trafficHistory.empty;
+	return <div className="person-vitals-grid bg-surface">{[[s.people.connections, String(user.current_connections), s.people.now], [s.people.activeIps, String(user.active_unique_ips), user.max_unique_ips ? `${s.people.meta.of} ${user.max_unique_ips}` : "∞"], [s.shell.traffic, trafficValue, trafficNote]].map(([label, value, caption]) => <div key={label} className="person-vital-cell"><span>{label}</span><strong>{value}</strong><small>{caption}</small></div>)}</div>;
 }
 
 function MobileOverview({ user, now }: { user: UsersTopicUser; now: number }) {
@@ -104,7 +104,7 @@ function MobileOverview({ user, now }: { user: UsersTopicUser; now: number }) {
   const topic = useUsersTopic();
   const activeIps = user.active_unique_ips_list ?? [];
   const recentIps = user.recent_unique_ips_list ?? [];
-  return <><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, findQuotaEntry(topic.quota, user.username))} /></section><PersonTrafficHistory username={user.username} /><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.activeIpsTitle} · {activeIps.length}</SectionLabel><IpCards ips={activeIps} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.recentIpsTitle} · {recentIps.length}</SectionLabel><IpCards ips={recentIps} /></section><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></>;
+  return <><section><SectionLabel className="mb-2">{s.people.inspector.usage}</SectionLabel><PersonQuotaCard quota={getUserQuota(user, findQuotaEntry(topic.quota, user.username))} /></section><PersonTrafficHistory username={user.username} traffic={user.traffic} /><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.activeIpsTitle} · {activeIps.length}</SectionLabel><IpCards ips={activeIps} /></section><section className="border-t border-border pt-4"><SectionLabel className="mb-2">{s.people.detail.recentIpsTitle} · {recentIps.length}</SectionLabel><IpCards ips={recentIps} /></section><div className="border-t border-border pt-3"><KVRow label={s.people.form.expiry} value={<ExpiryLine expirationRfc3339={user.expiration_rfc3339} now={now} />} /><KVRow label={s.people.runtimeState} value={user.in_runtime ? s.people.runtimeLoaded : s.people.status.not_in_runtime} /></div></>;
 }
 
 function MobileAccess({ user }: { user: UsersTopicUser }) {

@@ -162,16 +162,77 @@ func (s *SQLite) startMetricMaintenance() {
 			select {
 			case <-ticker.C:
 				if _, err := s.pruneMetricBatch(time.Now(), metricPruneBatchSize); err != nil {
-					slog.Warn("store: metric retention worker failed", "driver", s.driver, "error", err)
+					slog.Warn("store: metric retention worker failed", "driver", s.Driver(), "error", err)
 				}
 				if _, err := s.pruneHistoryEventBatch(time.Now(), metricPruneBatchSize); err != nil {
-					slog.Warn("store: event retention worker failed", "driver", s.driver, "error", err)
+					slog.Warn("store: event retention worker failed", "driver", s.Driver(), "error", err)
+				}
+				if _, err := s.pruneUserTrafficBatch(time.Now(), metricPruneBatchSize); err != nil {
+					slog.Warn("store: user traffic retention worker failed", "driver", s.Driver(), "error", err)
 				}
 			case <-s.maintenanceStop:
 				return
 			}
 		}
 	}()
+}
+
+type staleUserTrafficKey struct {
+	userID int64
+	tier   int
+	ts     int64
+}
+
+func (s *SQLite) pruneUserTrafficBatch(now time.Time, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	policy := s.policy(StorageUserTraffic)
+	retention := retentionDuration(policy)
+	rows, err := s.query(`SELECT user_id, tier, ts FROM user_traffic_buckets
+		WHERE (tier = 0 AND ts < ?)
+		   OR (tier = 1 AND ts < ?)
+		   OR (tier = 2 AND ts < ?)
+		ORDER BY ts LIMIT ?`,
+		now.Add(-min(userTrafficFineRetention, retention)).Unix(),
+		now.Add(-min(30*24*time.Hour, retention)).Unix(),
+		now.Add(-retention).Unix(),
+		limit,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("select stale user traffic: %w", err)
+	}
+	var keys []staleUserTrafficKey
+	for rows.Next() {
+		var key staleUserTrafficKey
+		if err := rows.Scan(&key.userID, &key.tier, &key.ts); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan stale user traffic: %w", err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, fmt.Errorf("read stale user traffic: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := s.withOperationTx(func(tx *sql.Tx) error {
+		for _, key := range keys {
+			if _, err := tx.Exec(s.bind(`DELETE FROM user_traffic_buckets WHERE user_id = ? AND tier = ? AND ts = ?`), key.userID, key.tier, key.ts); err != nil {
+				return err
+			}
+		}
+		_, err := tx.Exec(s.bind(`DELETE FROM user_traffic_users
+			WHERE deleted_ts IS NOT NULL AND deleted_ts < ?
+			  AND NOT EXISTS (SELECT 1 FROM user_traffic_buckets WHERE user_id = user_traffic_users.id)`),
+			now.Add(-retention).Unix())
+		return err
+	}); err != nil {
+		return 0, fmt.Errorf("prune user traffic batch: %w", err)
+	}
+	return len(keys), nil
 }
 
 type staleMetricKey struct {
@@ -182,8 +243,7 @@ type staleMetricKey struct {
 
 // pruneMetricBatch deletes at most limit stale rows. Tier cutoffs keep the
 // write-heavy resolutions bounded independently from the administrator's
-// category retention. Per-user 15-minute buckets keep only the most recent
-// day; their hourly tier follows the configured user-traffic retention.
+// category retention.
 func (s *SQLite) pruneMetricBatch(now time.Time, limit int) (int, error) {
 	if limit <= 0 {
 		return 0, nil
@@ -198,10 +258,6 @@ func (s *SQLite) pruneMetricBatch(now time.Time, limit int) (int, error) {
 		policy := s.policies[category]
 		if !policy.Enabled {
 			continue
-		}
-		if category == StorageUserTraffic {
-			conditions = append(conditions, "(category = ? AND tier = ? AND ts < ?)")
-			args = append(args, category, MetricTierQuarter, now.Add(-userTrafficFineRetention).Unix())
 		}
 		conditions = append(conditions, "(category = ? AND ts < ?)")
 		args = append(args, category, now.Add(-retentionDuration(policy)).Unix())

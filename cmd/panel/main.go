@@ -94,8 +94,6 @@ func runStoreCommand(args []string) error {
 		return storeCommandUsage()
 	}
 	switch args[0] {
-	case "check":
-		return runStoreCheck(args[1:])
 	case "export":
 		return runStoreExport(args[1:])
 	case "import":
@@ -106,25 +104,7 @@ func runStoreCommand(args []string) error {
 }
 
 func storeCommandUsage() error {
-	return errors.New("usage: telemt-panel store check --driver postgres|mysql --dsn DSN | store export --config config.toml --out dump.json | store import --config config.toml --in dump.json")
-}
-
-func runStoreCheck(args []string) error {
-	flags := flag.NewFlagSet("store check", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	driver := flags.String("driver", "", "database driver")
-	dsn := flags.String("dsn", "", "database DSN")
-	if err := flags.Parse(args); err != nil {
-		return errors.New("usage: telemt-panel store check --driver postgres|mysql --dsn DSN")
-	}
-	if flags.NArg() != 0 || (*driver != "postgres" && *driver != "mysql") || *dsn == "" {
-		return errors.New("usage: telemt-panel store check --driver postgres|mysql --dsn DSN")
-	}
-	if err := store.CheckConnection(*driver, *dsn); err != nil {
-		return err
-	}
-	fmt.Printf("%s connection ok\n", *driver)
-	return nil
+	return errors.New("usage: telemt-panel store export --config config.toml --out dump.json | store import --config config.toml --in dump.json")
 }
 
 func runStoreExport(args []string) error {
@@ -227,7 +207,6 @@ func openTransferStore(configPath string, importing bool) (store.Store, error) {
 	history, err := store.Open(store.OpenOptions{
 		Driver: cfg.Store.Driver,
 		Path:   cfg.Store.Path,
-		DSN:    cfg.Store.DSN,
 	})
 	if err != nil {
 		_ = state.Close()
@@ -284,38 +263,18 @@ func newStore(cfg *config.Config) (store.Store, error) {
 	history, err := store.Open(store.OpenOptions{
 		Driver: cfg.Store.Driver,
 		Path:   cfg.Store.Path,
-		DSN:    cfg.Store.DSN,
 	})
-	if err == nil {
-		combined, combineErr := store.NewComposite(state, history)
-		if combineErr != nil {
-			_ = history.Close()
-			_ = state.Close()
-			return nil, fmt.Errorf("configure history store: %w", combineErr)
-		}
-		return combined, nil
-	}
-	if (cfg.Store.Driver != "postgres" && cfg.Store.Driver != "mysql") || !store.IsConnectionUnavailable(err) {
+	if err != nil {
 		_ = state.Close()
 		return nil, err
 	}
-
-	// A remote database outage degrades history only. Authentication, settings
-	// and update recovery continue using the local state file.
-	temporaryHistory, memoryErr := store.Open(store.OpenOptions{Driver: "memory"})
-	if memoryErr != nil {
-		_ = state.Close()
-		return nil, fmt.Errorf("open temporary memory store: %w", memoryErr)
-	}
-	combined, combineErr := store.NewComposite(state, temporaryHistory)
+	combined, combineErr := store.NewComposite(state, history)
 	if combineErr != nil {
-		_ = temporaryHistory.Close()
+		_ = history.Close()
 		_ = state.Close()
-		return nil, fmt.Errorf("configure temporary history store: %w", combineErr)
+		return nil, fmt.Errorf("configure history store: %w", combineErr)
 	}
-	reason := cfg.Store.Driver + " history database is unavailable; history is held in memory until restart while panel state remains local"
-	slog.Warn("configured history database unavailable; using temporary memory history", "driver", cfg.Store.Driver)
-	return store.WithFallback(combined, cfg.Store.Driver, reason), nil
+	return combined, nil
 }
 
 // resolveStatePath creates the directory for the local control-plane state.

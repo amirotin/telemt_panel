@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getMeQueryKey } from "../../auth/guards";
 import { copyText } from "../../lib/copyText";
 import {
-  getHealthOptions,
   totpDisableMutation,
   totpEnableMutation,
   totpSetupMutation,
@@ -39,12 +38,6 @@ function downloadRecoveryCodes(codes: string[]) {
 export function TwoFactorSettings({ enabled }: TwoFactorSettingsProps) {
   const s = useStrings();
   const queryClient = useQueryClient();
-  const healthQuery = useQuery({ ...getHealthOptions(), staleTime: 30_000, retry: false });
-  const health = healthQuery.data;
-  const unavailable =
-    health?.active_driver === "memory" &&
-    (health.configured_driver === "postgres" || health.configured_driver === "mysql") &&
-    Boolean(health.store_error);
   const [setupOpen, setSetupOpen] = useState(false);
   const [setup, setSetup] = useState<TotpSetupResponse | null>(null);
   const [code, setCode] = useState("");
@@ -128,8 +121,6 @@ export function TwoFactorSettings({ enabled }: TwoFactorSettingsProps) {
           className={
             enabled
               ? "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-ok/12 text-ok"
-              : unavailable
-                ? "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-warning/12 text-warning-text"
               : "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent"
           }
           aria-hidden="true"
@@ -146,23 +137,15 @@ export function TwoFactorSettings({ enabled }: TwoFactorSettingsProps) {
               className={
                 enabled
                   ? "rounded-full bg-ok/12 px-2 py-0.5 text-[9px] font-bold text-ok"
-                  : unavailable
-                    ? "rounded-full bg-warning/12 px-2 py-0.5 text-[9px] font-bold text-warning-text"
                   : "rounded-full bg-surface-2 px-2 py-0.5 text-[9px] font-bold text-text-muted"
               }
             >
-              {enabled
-                ? s.server.settings.twoFactorEnabled
-                : unavailable
-                  ? s.server.settings.twoFactorUnavailable
-                : s.server.settings.twoFactorDisabled}
+              {enabled ? s.server.settings.twoFactorEnabled : s.server.settings.twoFactorDisabled}
             </small>
           </span>
           <p className="mt-1 text-[10px] leading-snug text-text-faint">
             {enabled
               ? s.server.settings.twoFactorEnabledNote
-              : unavailable
-                ? s.server.settings.twoFactorUnavailableNote
               : s.server.settings.twoFactorDisabledNote}
           </p>
         </div>
@@ -170,7 +153,6 @@ export function TwoFactorSettings({ enabled }: TwoFactorSettingsProps) {
           variant={enabled ? "danger" : "secondary"}
           size="sm"
           className="col-span-2 sm:col-span-1"
-          disabled={unavailable}
           onClick={() => (enabled ? setDisableOpen(true) : openSetup())}
         >
           {enabled

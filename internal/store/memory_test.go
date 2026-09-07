@@ -24,6 +24,21 @@ func newMemory(t *testing.T) *Memory {
 	return m
 }
 
+func TestMemoryUserTrafficBucketCap(t *testing.T) {
+	m := newMemory(t)
+	now := time.Now().Unix()
+	for index := 0; index < userTrafficMemoryMaxBuckets+5; index++ {
+		m.userTrafficBuckets[memoryUserTrafficBucketKey{
+			username: fmt.Sprintf("user-%04d", index%2000),
+			ts:       now - int64(index/2000)*900,
+		}] = 1
+	}
+	pruneMemoryUserTrafficBuckets(m.userTrafficBuckets, now)
+	if got := len(m.userTrafficBuckets); got != userTrafficMemoryMaxBuckets {
+		t.Fatalf("bucket count = %d, want %d", got, userTrafficMemoryMaxBuckets)
+	}
+}
+
 func TestSessionCRUD(t *testing.T) {
 	m := newMemory(t)
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)

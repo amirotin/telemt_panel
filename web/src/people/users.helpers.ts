@@ -174,7 +174,10 @@ export function sortUsers(users: UsersTopicUser[], sort: UserSortState): UsersTo
       case "name":
         return dir * a.username.localeCompare(b.username);
       case "traffic":
-        return dir * (a.total_octets - b.total_octets);
+		if (!a.traffic && !b.traffic) return a.username.localeCompare(b.username);
+		if (!a.traffic) return 1;
+		if (!b.traffic) return -1;
+		return dir * (a.traffic.current_month_bytes - b.traffic.current_month_bytes);
       case "connections":
         return dir * (a.current_connections - b.current_connections);
       default:

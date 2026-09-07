@@ -9,7 +9,6 @@ import { safeRedirectTarget } from "../auth/safeRedirect";
 import { errorMessage, useStrings, type Dict } from "../i18n";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
-import { StoreFallbackBanner } from "../shell/StoreFallbackBanner";
 import {
   loginCredentialToJSON,
   passkeysSupported,
@@ -126,8 +125,6 @@ function LoginPage() {
         <h1 className="mt-1 text-xl font-extrabold tracking-tight text-text">{s.app.title}</h1>
         <p className="text-meta text-text-muted">{s.auth.tagline}</p>
       </div>
-
-      <StoreFallbackBanner showAction={false} />
 
       <form
         onSubmit={handleSubmit}

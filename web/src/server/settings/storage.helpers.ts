@@ -7,6 +7,9 @@ export function applyStorageProfile(
   profile: Exclude<StorageProfile, "custom">,
 ): StoragePolicy[] {
   return policies.map((policy) => {
+    if (policy.category === "user_ip_history") {
+      return { ...policy, enabled: true, retention_days: profile === "minimum" ? 7 : profile === "recommended" ? 30 : policy.retention_days };
+    }
     if (policy.category === "technical") {
       return { ...policy, enabled: true, retention_days: 7 };
     }
@@ -16,13 +19,13 @@ export function applyStorageProfile(
     if (profile === "extended") {
       return { ...policy, enabled: true };
     }
-    const enabled = ["events", "audit", "connection_issues", "traffic"].includes(policy.category);
+    const enabled = ["events", "audit", "connection_issues", "traffic", "user_traffic"].includes(policy.category);
     const retention: Partial<Record<StorageCategory, number>> = {
       events: 30,
       audit: 90,
       connection_issues: 14,
       traffic: 7,
-      user_traffic: 30,
+      user_traffic: 365,
       diagnostics: 7,
     };
     return {

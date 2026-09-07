@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet } from "../ui/Sheet";
 import { Button } from "../ui/Button";
 import { CopyField } from "../ui/CopyField";
@@ -9,6 +9,7 @@ import { useStrings } from "../i18n";
 import { useCaps } from "../caps/useCaps";
 import {
   deleteUserMutation,
+  resetUserTrafficMutation,
   resetUserQuotaMutation,
   rotateUserSecretMutation,
   setUserEnabledMutation,
@@ -65,6 +66,7 @@ export function UserActionSheet({
   const [view, setView] = useState<ActionSheetView>(() => intentToView(intent, user));
   const caps = useCaps();
   const refreshTopic = useRefreshTopic();
+  const queryClient = useQueryClient();
 
   function close() {
     setView({ kind: "menu" });
@@ -88,6 +90,17 @@ export function UserActionSheet({
       pushToast(s.people.toast.quotaReset, "ok");
       close();
       refreshUsersAfterMutation(refreshTopic);
+    },
+    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
+  });
+
+  const resetTrafficMutation = useMutation({
+    ...resetUserTrafficMutation(),
+    onSuccess: async () => {
+      pushToast(s.people.toast.trafficReset, "ok");
+      close();
+      refreshUsersAfterMutation(refreshTopic);
+      await queryClient.invalidateQueries();
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
@@ -162,6 +175,9 @@ export function UserActionSheet({
           <Button variant="secondary" onClick={() => setView({ kind: "confirm-reset-quota" })}>
             {s.people.actions.resetQuota}
           </Button>
+          <Button variant="secondary" onClick={() => setView({ kind: "confirm-reset-traffic" })}>
+            {s.people.actions.resetTraffic}
+          </Button>
           <div className="flex flex-col gap-1">
             <Button
               variant="secondary"
@@ -219,6 +235,17 @@ export function UserActionSheet({
         />
       )}
 
+      {view.kind === "confirm-reset-traffic" && (
+        <ConfirmView
+          description={s.people.actions.confirmResetTraffic}
+          confirmLabel={s.people.actions.resetTraffic}
+          danger
+          pending={resetTrafficMutation.isPending}
+          onCancel={() => setView({ kind: "menu" })}
+          onConfirm={() => resetTrafficMutation.mutate({ path: { username: user.username }, body: { confirm: true } })}
+        />
+      )}
+
       {view.kind === "confirm-toggle-enabled" && (
         <ConfirmView
           description={
@@ -272,4 +299,3 @@ function TelegramQRView({ user }: { user: UsersTopicUser }) {
     </div>
   );
 }
-

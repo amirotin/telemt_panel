@@ -50,16 +50,22 @@ type StateStore interface {
 // HistoryStore owns observability history only. SQL implementations may be
 // unavailable without affecting StateStore or the administration plane.
 type HistoryStore interface {
+	UserIPStore
 	Driver() string
 	Info() Info
 	RecordMetric(string, MetricPoint) error
 	RecordMetrics([]NamedMetricPoint) error
 	MetricRange(string, int64) ([]MetricPoint, error)
 	MetricRetention(string) time.Duration
-	RecordUserTraffic([]UserTrafficDelta) error
-	UserTrafficRange(string, int64) ([]MetricPoint, error)
+	ApplyUserTrafficSnapshot(UserTrafficSnapshot) (UserTrafficApplyResult, error)
+	UserTrafficSummaries() (map[string]UserTrafficSummary, error)
+	UserTrafficCollectorState() (UserTrafficCollectorState, error)
+	UserTrafficRange(string, int64) ([]UserTrafficPoint, error)
+	UserTrafficAggregate(int64, int64) (int64, []UserTrafficPoint, error)
+	UserTrafficRanking(int64, int64, bool, int, *UserTrafficRankCursor) ([]UserTrafficRank, error)
 	UserTrafficRetention() time.Duration
 	DeleteUserHistory(string) error
+	ResetUserTraffic() error
 	AppendHistoryEvent(HistoryEvent) error
 	ListHistoryEvents(HistoryEventFilter) ([]HistoryEvent, error)
 	ApplyStoragePolicies([]StoragePolicy) error
@@ -168,17 +174,32 @@ func (s *Composite) MetricRange(name string, from int64) ([]MetricPoint, error) 
 func (s *Composite) MetricRetention(name string) time.Duration {
 	return s.history.MetricRetention(name)
 }
-func (s *Composite) RecordUserTraffic(deltas []UserTrafficDelta) error {
-	return s.history.RecordUserTraffic(deltas)
+func (s *Composite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTrafficApplyResult, error) {
+	return s.history.ApplyUserTrafficSnapshot(snapshot)
 }
-func (s *Composite) UserTrafficRange(username string, from int64) ([]MetricPoint, error) {
+func (s *Composite) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
+	return s.history.UserTrafficSummaries()
+}
+func (s *Composite) UserTrafficCollectorState() (UserTrafficCollectorState, error) {
+	return s.history.UserTrafficCollectorState()
+}
+func (s *Composite) UserTrafficRange(username string, from int64) ([]UserTrafficPoint, error) {
 	return s.history.UserTrafficRange(username, from)
+}
+func (s *Composite) UserTrafficAggregate(from, to int64) (int64, []UserTrafficPoint, error) {
+	return s.history.UserTrafficAggregate(from, to)
+}
+func (s *Composite) UserTrafficRanking(from, to int64, includeDeleted bool, limit int, cursor *UserTrafficRankCursor) ([]UserTrafficRank, error) {
+	return s.history.UserTrafficRanking(from, to, includeDeleted, limit, cursor)
 }
 func (s *Composite) UserTrafficRetention() time.Duration {
 	return s.history.UserTrafficRetention()
 }
 func (s *Composite) DeleteUserHistory(username string) error {
 	return s.history.DeleteUserHistory(username)
+}
+func (s *Composite) ResetUserTraffic() error {
+	return s.history.ResetUserTraffic()
 }
 func (s *Composite) AppendHistoryEvent(value HistoryEvent) error {
 	return s.history.AppendHistoryEvent(value)
@@ -276,6 +297,11 @@ func (s *Composite) ExportData() (PortableData, error) {
 	}
 	stateData.Metrics = historyData.Metrics
 	stateData.Events = historyData.Events
+	stateData.UserTraffic = historyData.UserTraffic
+	stateData.UserTrafficBuckets = historyData.UserTrafficBuckets
+	stateData.UserTrafficCollector = historyData.UserTrafficCollector
+	stateData.UserIPs = historyData.UserIPs
+	stateData.UserIPCollection = historyData.UserIPCollection
 	stateData.FormatVersion = portableFormatVersion
 	return normalizePortableData(stateData)
 }
@@ -312,10 +338,20 @@ func (s *Composite) ImportData(data PortableData) error {
 	stateData := data
 	stateData.Metrics = nil
 	stateData.Events = nil
+	stateData.UserTraffic = nil
+	stateData.UserTrafficBuckets = nil
+	stateData.UserTrafficCollector = nil
+	stateData.UserIPs = nil
+	stateData.UserIPCollection = nil
 	historyData := PortableData{
-		FormatVersion: portableFormatVersion,
-		Metrics:       data.Metrics,
-		Events:        data.Events,
+		UserIPs:              data.UserIPs,
+		UserIPCollection:     data.UserIPCollection,
+		FormatVersion:        portableFormatVersion,
+		Metrics:              data.Metrics,
+		Events:               data.Events,
+		UserTraffic:          data.UserTraffic,
+		UserTrafficBuckets:   data.UserTrafficBuckets,
+		UserTrafficCollector: data.UserTrafficCollector,
 	}
 	previousPolicies, err := s.state.ListStoragePolicies()
 	if err != nil {
@@ -352,7 +388,10 @@ func portableStateEmpty(data PortableData) bool {
 }
 
 func portableHistoryEmpty(data PortableData) bool {
-	if len(data.Events) != 0 {
+	if len(data.UserIPs) > 0 || data.UserIPCollection != nil {
+		return false
+	}
+	if len(data.Events) != 0 || len(data.UserTraffic) != 0 || len(data.UserTrafficBuckets) != 0 || data.UserTrafficCollector != nil {
 		return false
 	}
 	for _, points := range data.Metrics {

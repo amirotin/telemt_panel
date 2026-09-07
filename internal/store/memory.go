@@ -1,12 +1,16 @@
 package store
 
 import (
+	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,22 +47,28 @@ const touchStateDebounce = 30 * time.Second
 // policies, audit and update recovery to JSON, while the history instance
 // keeps metrics/events for this process only.
 type Memory struct {
-	mu sync.Mutex
+	mu               sync.Mutex
+	userIPs          map[userIPKey]UserIPRecord
+	userIPCollection UserIPCollection
 
-	sessions            map[string]Session
-	audit               []AuditEntry
-	events              []HistoryEvent
-	journal             map[string][]UpdateJournalEntry
-	metrics             map[string][]MetricPoint
-	subpageNonces       map[string]string
-	settings            map[string]string
-	policies            map[StorageCategory]StoragePolicy
-	totp                TOTPState
-	recoveryCodes       map[string]struct{}
-	webauthnUserHandle  []byte
-	webauthnCredentials map[string]WebAuthnCredential
-	webauthnChallenges  map[string]WebAuthnChallenge
-	nextEventID         int64
+	sessions             map[string]Session
+	audit                []AuditEntry
+	events               []HistoryEvent
+	journal              map[string][]UpdateJournalEntry
+	metrics              map[string][]MetricPoint
+	userTraffic          map[string]memoryUserTraffic
+	userTrafficBuckets   map[memoryUserTrafficBucketKey]int64
+	userTrafficCollector UserTrafficCollectorState
+	hasTrafficCollector  bool
+	subpageNonces        map[string]string
+	settings             map[string]string
+	policies             map[StorageCategory]StoragePolicy
+	totp                 TOTPState
+	recoveryCodes        map[string]struct{}
+	webauthnUserHandle   []byte
+	webauthnCredentials  map[string]WebAuthnCredential
+	webauthnChallenges   map[string]WebAuthnChallenge
+	nextEventID          int64
 
 	statePath string
 
@@ -79,7 +89,7 @@ func (m *Memory) Driver() string { return "memory" }
 
 // Info reports the volatile memory backend capabilities.
 func (m *Memory) Info() Info {
-	return Info{Driver: "memory", Durable: false, Remote: false, Schema: 0, SizeHint: 0}
+	return Info{Driver: "memory", Durable: false, Schema: 0, SizeHint: 0}
 }
 
 // StateDurable reports whether this state instance writes panel-state.json.
@@ -123,6 +133,8 @@ func NewMemory(statePath string) (*Memory, error) {
 		sessions:            make(map[string]Session),
 		journal:             make(map[string][]UpdateJournalEntry),
 		metrics:             make(map[string][]MetricPoint),
+		userTraffic:         make(map[string]memoryUserTraffic),
+		userTrafficBuckets:  make(map[memoryUserTrafficBucketKey]int64),
 		subpageNonces:       make(map[string]string),
 		settings:            make(map[string]string),
 		policies:            defaultPolicyMap(),
@@ -164,6 +176,7 @@ func NewMemory(statePath string) (*Memory, error) {
 		m.settings = mf.Settings
 	}
 	if len(mf.Policies) > 0 {
+		mf.Policies = upgradeUserIPPolicies(mf.Policies)
 		if err := ValidateStoragePolicies(mf.Policies); err != nil {
 			slog.Warn("store: state-file storage policies invalid, using defaults", "path", statePath, "error", err)
 		} else {
@@ -602,73 +615,298 @@ func (m *Memory) MetricRetention(name string) time.Duration {
 	return 30 * time.Minute
 }
 
-// RecordUserTraffic aggregates sparse per-user deltas without writing them to
-// durable history. The memory profile keeps at most one day of 15-minute
-// buckets and thirty days of hourly buckets, regardless of configured policy.
-func (m *Memory) RecordUserTraffic(deltas []UserTrafficDelta) error {
+type memoryUserTraffic struct {
+	summary         UserTrafficSummary
+	lastRaw         int64
+	lastSourceStart int64
+	hasBaseline     bool
+}
+
+type memoryUserTrafficBucketKey struct {
+	username string
+	ts       int64
+}
+
+// ApplyUserTrafficSnapshot applies the durable-store accounting rules to the
+// bounded process-local fallback.
+func (m *Memory) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTrafficApplyResult, error) {
+	if err := validateUserTrafficSnapshot(snapshot); err != nil {
+		return UserTrafficApplyResult{}, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !m.policies[StorageUserTraffic].Enabled {
-		return nil
+	if m.hasTrafficCollector && snapshot.ObservedAt <= m.userTrafficCollector.LastSuccessTS {
+		return UserTrafficApplyResult{}, fmt.Errorf("user traffic snapshot is stale: observed=%d last=%d", snapshot.ObservedAt, m.userTrafficCollector.LastSuccessTS)
 	}
-	for _, delta := range deltas {
-		if delta.Username == "" || delta.TS <= 0 || delta.Bytes == 0 {
+	// Work on copies so validation and overflow errors cannot advance only a
+	// prefix of a snapshot. The SQL implementation gets the same guarantee
+	// from its transaction.
+	traffic := make(map[string]memoryUserTraffic, len(m.userTraffic)+len(snapshot.Users))
+	for username, current := range m.userTraffic {
+		traffic[username] = current
+	}
+	buckets := make(map[memoryUserTrafficBucketKey]int64, len(m.userTrafficBuckets)+len(snapshot.Users))
+	for key, bytes := range m.userTrafficBuckets {
+		buckets[key] = bytes
+	}
+
+	continuity := nextUserTrafficContinuity(m.userTrafficCollector, m.hasTrafficCollector, snapshot)
+	seen := make(map[string]struct{}, len(snapshot.Users))
+	monthKey := utcMonthKey(snapshot.ObservedAt)
+	var result UserTrafficApplyResult
+	for _, observation := range snapshot.Users {
+		seen[observation.Username] = struct{}{}
+		raw, _ := userTrafficInt64(observation.RawOctets)
+		current, exists := traffic[observation.Username]
+		if !exists {
+			if !snapshot.TelemetryEnabled {
+				continue
+			}
+			traffic[observation.Username] = memoryUserTraffic{
+				summary: UserTrafficSummary{
+					Username:               observation.Username,
+					MonthKey:               monthKey,
+					ObservedSinceEpochSecs: snapshot.ObservedAt,
+					Continuity:             continuity,
+				},
+				lastRaw:         raw,
+				lastSourceStart: snapshot.SourceStartedAt,
+				hasBaseline:     true,
+			}
 			continue
 		}
-		name := userTrafficMetricName(delta.Username)
-		points := m.metrics[name]
-		for _, tier := range []struct {
-			name  MetricTier
-			width time.Duration
-		}{
-			{name: MetricTierQuarter, width: 15 * time.Minute},
-			{name: MetricTierHour, width: time.Hour},
-		} {
-			bucket := metricBucket(delta.TS, tier.width)
-			updated := false
-			for i := len(points) - 1; i >= 0; i-- {
-				if points[i].Tier == tier.name && points[i].TS == bucket {
-					value := float64(delta.Bytes)
-					points[i].Value += value
-					if value > points[i].Max {
-						points[i].Max = value
-					}
-					points[i].Samples++
-					updated = true
-					break
+
+		if continuity == UserTrafficPartial {
+			current.summary.Continuity = UserTrafficPartial
+		}
+		current.summary.DeletedEpochSecs = 0
+		if !snapshot.TelemetryEnabled {
+			traffic[observation.Username] = current
+			continue
+		}
+
+		delta := int64(0)
+		if current.hasBaseline {
+			switch {
+			case current.lastSourceStart != snapshot.SourceStartedAt:
+				delta = raw
+			case raw < current.lastRaw:
+				delta = raw
+			default:
+				delta = raw - current.lastRaw
+			}
+		}
+		if delta > math.MaxInt64-current.summary.ObservedTotalBytes || result.DeltaBytes > math.MaxInt64-delta {
+			return UserTrafficApplyResult{}, fmt.Errorf("user %q traffic exceeds int64", observation.Username)
+		}
+		current.summary.ObservedTotalBytes += delta
+		if current.summary.MonthKey != monthKey {
+			current.summary.MonthKey = monthKey
+			current.summary.CurrentMonthBytes = delta
+		} else {
+			if delta > math.MaxInt64-current.summary.CurrentMonthBytes {
+				return UserTrafficApplyResult{}, fmt.Errorf("user %q monthly traffic exceeds int64", observation.Username)
+			}
+			current.summary.CurrentMonthBytes += delta
+		}
+		if delta > 0 {
+			current.summary.LastActivityEpochSecs = snapshot.ObservedAt
+			result.DeltaBytes += delta
+			if m.policies[StorageUserTraffic].Enabled {
+				key := memoryUserTrafficBucketKey{
+					username: observation.Username,
+					ts:       snapshot.ObservedAt - snapshot.ObservedAt%int64((15*time.Minute)/time.Second),
 				}
-			}
-			if !updated {
-				value := float64(delta.Bytes)
-				points = append(points, MetricPoint{TS: bucket, Value: value, Max: value, Samples: 1, Tier: tier.name})
-			}
-		}
-		quarterCutoff := delta.TS - int64(userTrafficFineRetention/time.Second)
-		hourCutoff := delta.TS - int64(userTrafficMemoryRetention/time.Second)
-		kept := points[:0]
-		for _, point := range points {
-			if (point.Tier == MetricTierQuarter && point.TS >= quarterCutoff) ||
-				(point.Tier == MetricTierHour && point.TS >= hourCutoff) {
-				kept = append(kept, point)
+				if delta > math.MaxInt64-buckets[key] {
+					return UserTrafficApplyResult{}, fmt.Errorf("user %q bucket exceeds int64", observation.Username)
+				}
+				buckets[key] += delta
 			}
 		}
-		m.metrics[name] = kept
+		current.lastRaw = raw
+		current.lastSourceStart = snapshot.SourceStartedAt
+		current.hasBaseline = true
+		traffic[observation.Username] = current
 	}
-	return nil
+	for username, current := range traffic {
+		if _, ok := seen[username]; ok || current.summary.DeletedEpochSecs != 0 {
+			continue
+		}
+		current.summary.DeletedEpochSecs = snapshot.ObservedAt
+		traffic[username] = current
+	}
+	pruneMemoryUserTrafficBuckets(buckets, snapshot.ObservedAt)
+	m.userTraffic = traffic
+	m.userTrafficBuckets = buckets
+	m.userTrafficCollector = UserTrafficCollectorState{
+		LastSuccessTS:   snapshot.ObservedAt,
+		SourceStartedAt: snapshot.SourceStartedAt,
+		SourceState:     userTrafficSourceState(snapshot.TelemetryEnabled),
+		Continuity:      continuity,
+	}
+	m.hasTrafficCollector = true
+	return result, nil
 }
 
-// UserTrafficRange returns a user's sparse traffic history.
-func (m *Memory) UserTrafficRange(username string, fromTS int64) ([]MetricPoint, error) {
+func (m *Memory) pruneUserTrafficBucketsLocked(now int64) {
+	pruneMemoryUserTrafficBuckets(m.userTrafficBuckets, now)
+}
+
+func pruneMemoryUserTrafficBuckets(buckets map[memoryUserTrafficBucketKey]int64, now int64) {
+	cutoff := now - int64(userTrafficMemoryRetention/time.Second)
+	for key := range buckets {
+		if key.ts < cutoff {
+			delete(buckets, key)
+		}
+	}
+	if len(buckets) <= userTrafficMemoryMaxBuckets {
+		return
+	}
+	keys := make([]memoryUserTrafficBucketKey, 0, len(buckets))
+	for key := range buckets {
+		keys = append(keys, key)
+	}
+	slices.SortFunc(keys, func(a, b memoryUserTrafficBucketKey) int {
+		if a.ts < b.ts {
+			return -1
+		}
+		if a.ts > b.ts {
+			return 1
+		}
+		return 0
+	})
+	for _, key := range keys[:len(keys)-userTrafficMemoryMaxBuckets] {
+		delete(buckets, key)
+	}
+}
+
+// UserTrafficSummaries returns a copy of every process-local account total.
+func (m *Memory) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	monthKey := utcMonthKey(time.Now().Unix())
+	result := make(map[string]UserTrafficSummary, len(m.userTraffic))
+	for username, current := range m.userTraffic {
+		summary := current.summary
+		if summary.MonthKey != monthKey {
+			summary.CurrentMonthBytes = 0
+		}
+		result[username] = summary
+	}
+	return result, nil
+}
+
+// UserTrafficCollectorState returns the last process-local source observation.
+func (m *Memory) UserTrafficCollectorState() (UserTrafficCollectorState, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.hasTrafficCollector {
+		return UserTrafficCollectorState{SourceState: UserTrafficUnavailable, Continuity: UserTrafficNormal}, nil
+	}
+	return m.userTrafficCollector, nil
+}
+
+// UserTrafficRange returns bounded 15-minute process-local buckets.
+func (m *Memory) UserTrafficRange(username string, fromTS int64) ([]UserTrafficPoint, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.policies[StorageUserTraffic].Enabled {
-		return []MetricPoint{}, nil
+		return []UserTrafficPoint{}, nil
 	}
-	points := append([]MetricPoint(nil), m.metrics[userTrafficMetricName(username)]...)
-	return selectUserTrafficPoints(points, fromTS, time.Now().Unix()), nil
+	points := make([]UserTrafficPoint, 0)
+	for key, bytes := range m.userTrafficBuckets {
+		if key.username == username && key.ts >= fromTS {
+			points = append(points, UserTrafficPoint{TS: key.ts, Bytes: bytes, Tier: MetricTierQuarter})
+		}
+	}
+	slices.SortFunc(points, func(a, b UserTrafficPoint) int {
+		if a.TS < b.TS {
+			return -1
+		}
+		if a.TS > b.TS {
+			return 1
+		}
+		return 0
+	})
+	return points, nil
 }
 
-// UserTrafficRetention reports the bounded RAM reach when enabled.
+func (m *Memory) UserTrafficAggregate(fromTS, toTS int64) (int64, []UserTrafficPoint, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.policies[StorageUserTraffic].Enabled {
+		return 0, []UserTrafficPoint{}, nil
+	}
+	byTS := make(map[int64]int64)
+	var total int64
+	for key, bytes := range m.userTrafficBuckets {
+		if key.ts < fromTS || key.ts >= toTS {
+			continue
+		}
+		if bytes > math.MaxInt64-total || bytes > math.MaxInt64-byTS[key.ts] {
+			return 0, nil, errors.New("aggregate user traffic exceeds int64")
+		}
+		total += bytes
+		byTS[key.ts] += bytes
+	}
+	points := make([]UserTrafficPoint, 0, len(byTS))
+	for ts, bytes := range byTS {
+		points = append(points, UserTrafficPoint{TS: ts, Bytes: bytes, Tier: MetricTierQuarter})
+	}
+	slices.SortFunc(points, func(a, b UserTrafficPoint) int { return cmp.Compare(a.TS, b.TS) })
+	return total, points, nil
+}
+
+func (m *Memory) UserTrafficRanking(fromTS, toTS int64, includeDeleted bool, limit int, cursor *UserTrafficRankCursor) ([]UserTrafficRank, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.policies[StorageUserTraffic].Enabled || limit <= 0 {
+		return []UserTrafficRank{}, nil
+	}
+	period := make(map[string]int64)
+	for key, bytes := range m.userTrafficBuckets {
+		if key.ts < fromTS || key.ts >= toTS {
+			continue
+		}
+		if bytes > math.MaxInt64-period[key.username] {
+			return nil, fmt.Errorf("user %q range traffic exceeds int64", key.username)
+		}
+		period[key.username] += bytes
+	}
+	monthKey := utcMonthKey(time.Now().Unix())
+	ranks := make([]UserTrafficRank, 0, len(period))
+	for username, bytes := range period {
+		current := m.userTraffic[username]
+		if bytes == 0 || (!includeDeleted && current.summary.DeletedEpochSecs != 0) {
+			continue
+		}
+		monthBytes := current.summary.CurrentMonthBytes
+		if current.summary.MonthKey != monthKey {
+			monthBytes = 0
+		}
+		rank := UserTrafficRank{
+			Username: username, Bytes: bytes, ObservedTotal: current.summary.ObservedTotalBytes,
+			CurrentMonth: monthBytes, DeletedEpochSecs: current.summary.DeletedEpochSecs,
+			Continuity: current.summary.Continuity,
+		}
+		if cursor != nil && (rank.Bytes > cursor.Bytes || (rank.Bytes == cursor.Bytes && rank.Username <= cursor.Username)) {
+			continue
+		}
+		ranks = append(ranks, rank)
+	}
+	slices.SortFunc(ranks, func(a, b UserTrafficRank) int {
+		if a.Bytes != b.Bytes {
+			return cmp.Compare(b.Bytes, a.Bytes)
+		}
+		return strings.Compare(a.Username, b.Username)
+	})
+	if len(ranks) > limit {
+		ranks = ranks[:limit]
+	}
+	return ranks, nil
+}
+
+// UserTrafficRetention reports the bounded RAM reach when history is enabled.
 func (m *Memory) UserTrafficRetention() time.Duration {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -678,11 +916,27 @@ func (m *Memory) UserTrafficRetention() time.Duration {
 	return userTrafficMemoryRetention
 }
 
-// DeleteUserHistory removes all optional history owned by username.
+// DeleteUserHistory removes a user's totals, baseline and buckets.
 func (m *Memory) DeleteUserHistory(username string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.metrics, userTrafficMetricName(username))
+	delete(m.userTraffic, username)
+	for key := range m.userTrafficBuckets {
+		if key.username == username {
+			delete(m.userTrafficBuckets, key)
+		}
+	}
+	return nil
+}
+
+// ResetUserTraffic removes every accumulated total, baseline, bucket and
+// collector marker. The next coherent snapshot establishes fresh baselines.
+func (m *Memory) ResetUserTraffic() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	clear(m.userTraffic)
+	clear(m.userTrafficBuckets)
+	m.userTrafficCollector = UserTrafficCollectorState{}
 	return nil
 }
 
@@ -729,6 +983,12 @@ func (m *Memory) rollbackImportedHistory() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.metrics = make(map[string][]MetricPoint)
+	m.userIPs = nil
+	m.userIPCollection = UserIPCollection{}
+	m.userTraffic = make(map[string]memoryUserTraffic)
+	m.userTrafficBuckets = make(map[memoryUserTrafficBucketKey]int64)
+	m.userTrafficCollector = UserTrafficCollectorState{}
+	m.hasTrafficCollector = false
 	m.events = nil
 	m.nextEventID = 0
 	return nil
@@ -749,6 +1009,9 @@ func (m *Memory) PurgeAudit() error {
 
 // PurgeHistory removes the selected in-memory history family.
 func (m *Memory) PurgeHistory(category StorageCategory) error {
+	if category == StorageUserIPHistory {
+		return m.ResetUserIPHistory("")
+	}
 	if _, ok := defaultPolicyMap()[category]; !ok {
 		return fmt.Errorf("unknown storage category %q", category)
 	}
@@ -765,6 +1028,9 @@ func (m *Memory) PurgeHistory(category StorageCategory) error {
 			delete(m.metrics, name)
 		}
 	}
+	if category == StorageUserTraffic {
+		clear(m.userTrafficBuckets)
+	}
 	return nil
 }
 
@@ -775,12 +1041,28 @@ func (m *Memory) StorageStats() (StorageStats, error) {
 	counts := make(map[StorageCategory]int64, len(storageCategoryOrder))
 	counts[StorageAudit] = int64(len(m.audit))
 	counts[StorageEvents] = int64(len(m.events))
+	for _, r := range m.userIPs {
+		if r.Last >= time.Now().Unix()-int64(m.UserIPRetention()/time.Second) {
+			counts[StorageUserIPHistory]++
+		}
+	}
 	for name, points := range m.metrics {
 		counts[metricCategory(name)] += int64(len(points))
 	}
+	counts[StorageUserTraffic] += int64(len(m.userTrafficBuckets))
 	categories := make([]StorageCategoryStats, 0, len(storageCategoryOrder))
 	for _, category := range storageCategoryOrder {
-		categories = append(categories, StorageCategoryStats{Category: category, Records: counts[category]})
+		stats := StorageCategoryStats{Category: category, Records: counts[category]}
+		if category == StorageUserTraffic {
+			entities := int64(len(m.userTraffic))
+			collector := m.userTrafficCollector
+			if !m.hasTrafficCollector {
+				collector = UserTrafficCollectorState{SourceState: UserTrafficUnavailable, Continuity: UserTrafficNormal}
+			}
+			stats.Entities = &entities
+			stats.Collector = &collector
+		}
+		categories = append(categories, stats)
 	}
 	return StorageStats{Driver: "memory", Durable: false, Categories: categories}, nil
 }

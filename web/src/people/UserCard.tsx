@@ -188,8 +188,8 @@ export function UserCard({
         </span>
 
         <span className={cn("people-row-cell people-row-traffic", status === "quota_exhausted" && "is-warn")}>
-          <strong>{formatBytes(user.total_octets, s)}</strong>
-          <small>{quotaPercent === null ? s.people.allTime : `${quotaPercent}% ${s.people.quotaShort}`}</small>
+          <strong>{user.traffic ? formatBytes(user.traffic.current_month_bytes, s) : "—"}</strong>
+		  <small>{quotaPercent === null ? s.people.currentMonth : `${quotaPercent}% ${s.people.quotaShort}`}</small>
         </span>
 
         <span className={cn("people-row-cell people-row-access", status !== "active" && "is-warn")}>

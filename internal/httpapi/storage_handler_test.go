@@ -36,29 +36,11 @@ func TestHandleGetStorageSettings(t *testing.T) {
 	if response.Stats.Driver != "memory" || response.Stats.Durable {
 		t.Fatalf("stats = %+v", response.Stats)
 	}
-	if response.ConfiguredDriver != "memory" || response.ActiveDriver != "memory" || response.StoreError != "" {
-		t.Fatalf("runtime = configured %q active %q error %q", response.ConfiguredDriver, response.ActiveDriver, response.StoreError)
-	}
 	if response.StateDurable {
 		t.Fatal("RAM-only test state was reported as durable")
 	}
 	if len(response.Policies) != len(store.DefaultStoragePolicies()) {
 		t.Fatalf("policies = %d", len(response.Policies))
-	}
-}
-
-func TestHandleGetStorageSettingsReportsTemporaryFallback(t *testing.T) {
-	srv, st := newStorageTestServer(t)
-	srv.cfg.Store.Driver = "postgres"
-	srv.st = store.WithFallback(st, "postgres", "postgres database is unavailable")
-	recorder := httptest.NewRecorder()
-	srv.handleGetStorageSettings(recorder, httptest.NewRequest(http.MethodGet, "/api/settings/storage", nil))
-	var response storageSettingsView
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatal(err)
-	}
-	if response.ConfiguredDriver != "postgres" || response.ActiveDriver != "memory" || response.StoreError == "" {
-		t.Fatalf("fallback runtime = %+v", response)
 	}
 }
 
@@ -111,5 +93,77 @@ func TestHandlePurgeStorageHistoryRequiresConfirmation(t *testing.T) {
 	}
 	if got, _ := st.MetricRange("traffic", 0); len(got) != 0 {
 		t.Fatalf("confirmed purge kept data: %+v", got)
+	}
+}
+
+func TestHandleResetUserTrafficRequiresConfirmation(t *testing.T) {
+	srv, st := newStorageTestServer(t)
+	seedUserTraffic(t, st, "alice")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/alice/traffic/reset", bytes.NewBufferString(`{"confirm":false}`))
+	req.SetPathValue("username", "alice")
+	recorder := httptest.NewRecorder()
+	srv.handleResetUserTraffic(recorder, req)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unconfirmed status = %d", recorder.Code)
+	}
+	if summaries, _ := st.UserTrafficSummaries(); summaries["alice"].ObservedTotalBytes != 100 {
+		t.Fatalf("unconfirmed reset changed traffic: %+v", summaries)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/users/alice/traffic/reset", bytes.NewBufferString(`{"confirm":true}`))
+	req.SetPathValue("username", "alice")
+	recorder = httptest.NewRecorder()
+	srv.handleResetUserTraffic(recorder, req)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("confirmed status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if summaries, _ := st.UserTrafficSummaries(); len(summaries) != 0 {
+		t.Fatalf("confirmed reset kept traffic: %+v", summaries)
+	}
+}
+
+func TestHandleResetAllUserTraffic(t *testing.T) {
+	srv, st := newStorageTestServer(t)
+	seedUserTraffic(t, st, "alice")
+	seedUserTraffic(t, st, "bob")
+
+	recorder := httptest.NewRecorder()
+	srv.handleResetAllUserTraffic(recorder, httptest.NewRequest(http.MethodPost, "/api/traffic/reset", bytes.NewBufferString(`{"confirm":true}`)))
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if summaries, _ := st.UserTrafficSummaries(); len(summaries) != 0 {
+		t.Fatalf("reset kept summaries: %+v", summaries)
+	}
+	if state, _ := st.UserTrafficCollectorState(); state.LastSuccessTS != 0 {
+		t.Fatalf("reset kept collector: %+v", state)
+	}
+}
+
+func seedUserTraffic(t *testing.T, st store.Store, username string) {
+	t.Helper()
+	now := time.Now().Unix()
+	state, err := st.UserTrafficCollectorState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if now <= state.LastSuccessTS+1 {
+		now = state.LastSuccessTS + 2
+	}
+	sourceStartedAt := state.SourceStartedAt
+	if sourceStartedAt == 0 {
+		sourceStartedAt = now - 3600
+	}
+	for _, observation := range []struct {
+		at  int64
+		raw uint64
+	}{{now - 1, 10}, {now, 110}} {
+		if _, err := st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+			ObservedAt: observation.at, SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
+			Users: []store.UserTrafficObservation{{Username: username, RawOctets: observation.raw}},
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

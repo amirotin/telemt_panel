@@ -14,7 +14,6 @@ import { useKeyboardInset } from "./useKeyboardInset";
 import { useLogout } from "../auth/useLogout";
 import { Sheet } from "../ui/Sheet";
 import { IconLogout, IconMore, IconSettings } from "../ui/icons";
-import { StoreFallbackBanner } from "./StoreFallbackBanner";
 
 export function BrandMark({ className }: { className?: string }) {
   const s = useStrings();
@@ -104,7 +103,6 @@ export function Shell({ children }: { children: ReactNode }) {
             className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col"
             data-testid="page-frame"
           >
-            <StoreFallbackBanner />
             {children}
           </div>
         </main>

@@ -5,13 +5,13 @@ import type {
 } from "../../realtime/topics";
 import type { ConnectionsPagePayload } from "../details-builder/definitions/connections";
 
-// usersTrafficTotal sums every user's cumulative total_octets — the same
-// figure internal/hub/hub.go records as the `traffic` history metric, and
-// the only lifetime traffic number Telemt exposes. Returns null when the
-// users topic hasn't loaded, so an absent payload can never render as "0 B".
+// usersTrafficTotal sums panel-owned observed totals. Raw Telemt total_octets
+// resets with the service and must never be presented as durable lifetime
+// traffic. Returns null until at least one collector summary is available.
 export function usersTrafficTotal(users: UsersTopic | null): number | null {
   if (!users) return null;
-  return users.users.reduce((sum, u) => sum + u.total_octets, 0);
+  const observed = users.users.flatMap((user) => user.traffic ? [user.traffic.observed_total_bytes] : []);
+  return observed.length === 0 ? null : observed.reduce((sum, bytes) => sum + bytes, 0);
 }
 
 // connectionsPagePayload joins the always-on `GET /v1/stats/summary` half,

@@ -422,7 +422,7 @@ func administrativeHistoryEvent(ts time.Time, action, subject string) (store.His
 	case "config.patch", "config.patch.toml", "config.web_access",
 		"quota.reset", "secret.rotate", "storage.history_purge", "storage.policy_change",
 		"sublink.rotate", "telemt.reload", "telemt.restart", "update.apply",
-		"update.auto_change", "user.create", "user.delete", "user.enabled",
+		"update.auto_change", "user.create", "user.delete", "user.enabled", "user.traffic_reset", "user.ip_history_reset", "traffic.reset",
 		"user.patch", "web.sessions.close", "totp.enable", "totp.disable",
 		"passkey.register", "passkey.delete":
 		// Explicit allowlist: a future audit action does not enter long-lived
@@ -431,7 +431,7 @@ func administrativeHistoryEvent(ts time.Time, action, subject string) (store.His
 		return store.HistoryEvent{}, false
 	}
 	severity := "info"
-	if action == "user.delete" || action == "storage.history_purge" || action == "telemt.restart" {
+	if action == "user.delete" || action == "user.traffic_reset" || action == "user.ip_history_reset" || action == "traffic.reset" || action == "storage.history_purge" || action == "telemt.restart" {
 		severity = "warning"
 	}
 	return store.HistoryEvent{

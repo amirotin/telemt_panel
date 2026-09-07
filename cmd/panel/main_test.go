@@ -38,39 +38,6 @@ func TestNewStoreBuildsMemoryStore(t *testing.T) {
 	}
 }
 
-func TestNewStoreFallsBackWhenPostgresIsUnavailable(t *testing.T) {
-	if store.Variant == "lite" {
-		t.Skip("network drivers are intentionally omitted from the lite build")
-	}
-	dataDir := t.TempDir()
-	cfg := &config.Config{DataDir: dataDir, Store: config.StoreConfig{
-		Driver: "postgres",
-		DSN:    "postgres://127.0.0.1:1/telemt_panel?connect_timeout=1",
-	}}
-	st, err := newStore(cfg)
-	if err != nil {
-		t.Fatalf("newStore: %v", err)
-	}
-	status := store.Runtime(st, cfg.Store.Driver)
-	if status.ConfiguredDriver != "postgres" || status.ActiveDriver != "memory" || status.Error == "" {
-		t.Fatalf("fallback status = %+v", status)
-	}
-	if err := st.SetSetting("fallback-state", "durable"); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := store.NewState(filepath.Join(dataDir, panelStateFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
-	if value, ok, err := reopened.GetSetting("fallback-state"); err != nil || !ok || value != "durable" {
-		t.Fatalf("state during history fallback = %q, %v, %v", value, ok, err)
-	}
-}
-
 func TestResolveStatePathEmptyUsesVolatileState(t *testing.T) {
 	got, err := resolveStatePath("")
 	if err != nil || got != "" {
@@ -79,7 +46,7 @@ func TestResolveStatePathEmptyUsesVolatileState(t *testing.T) {
 }
 
 func TestRunStoreCommandValidatesArguments(t *testing.T) {
-	for _, args := range [][]string{nil, {"check"}, {"check", "--driver", "sqlite", "--dsn", "x"}} {
+	for _, args := range [][]string{nil, {"check"}, {"export"}, {"import"}} {
 		if err := runStoreCommand(args); err == nil {
 			t.Fatalf("runStoreCommand(%v) accepted invalid arguments", args)
 		}

@@ -18,14 +18,11 @@ import (
 	sqlitedriver "github.com/ncruces/go-sqlite3/driver"
 )
 
-// SQLite is the shared SQL implementation for SQLite, PostgreSQL and MySQL.
-// It contains observability history only; control-plane state lives in the
+// SQLite contains observability history only; control-plane state lives in the
 // local panel-state.json store.
 type SQLite struct {
 	db      *sql.DB
 	path    string
-	driver  string
-	remote  bool
 	schema  int
 	dialect sqlstore.Dialect
 
@@ -37,8 +34,6 @@ type SQLite struct {
 	closeOnce       sync.Once
 	closeErr        error
 }
-
-const sqlOperationTimeout = 5 * time.Second
 
 type queryRows struct {
 	*sql.Rows
@@ -91,7 +86,7 @@ func NewSQLite(path string) (*SQLite, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	store := newSQLStore(db, sqlstore.SQLiteDialect{}, "sqlite", path, false)
+	store := newSQLStore(db, path)
 	if err := store.initialize(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -104,29 +99,26 @@ func NewSQLite(path string) (*SQLite, error) {
 	return store, nil
 }
 
-func (s *SQLite) Driver() string { return s.driver }
+func (s *SQLite) Driver() string { return "sqlite" }
 
 func (s *SQLite) Info() Info {
-	if s.remote {
-		return Info{Driver: s.driver, Durable: true, Remote: true, Schema: s.schema, SizeHint: -1}
-	}
 	size := int64(0)
 	for _, path := range []string{s.path, s.path + "-wal", s.path + "-shm"} {
 		info, err := os.Stat(path)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				return Info{Driver: s.driver, Durable: true, Schema: s.schema, SizeHint: -1}
+				return Info{Driver: "sqlite", Durable: true, Schema: s.schema, SizeHint: -1}
 			}
 			continue
 		}
 		size += info.Size()
 	}
-	return Info{Driver: s.driver, Durable: true, Schema: s.schema, SizeHint: size}
+	return Info{Driver: "sqlite", Durable: true, Schema: s.schema, SizeHint: size}
 }
 
-func newSQLStore(db *sql.DB, dialect sqlstore.Dialect, driver, path string, remote bool) *SQLite {
+func newSQLStore(db *sql.DB, path string) *SQLite {
 	return &SQLite{
-		db: db, path: path, driver: driver, remote: remote, dialect: dialect,
+		db: db, path: path, dialect: sqlstore.SQLiteDialect{},
 		policies: defaultPolicyMap(),
 	}
 }
@@ -155,9 +147,6 @@ func (s *SQLite) queryRow(query string, args ...any) queryRow {
 }
 
 func (s *SQLite) operationContext() (context.Context, context.CancelFunc) {
-	if s.remote {
-		return context.WithTimeout(context.Background(), sqlOperationTimeout)
-	}
 	return context.WithCancel(context.Background())
 }
 
@@ -202,7 +191,7 @@ func (s *SQLite) initialize() error {
 func (s *SQLite) initializeSQL(ctx context.Context) error {
 	version, err := sqlstore.Migrate(ctx, s.db, s.dialect)
 	if err != nil {
-		return fmt.Errorf("migrate %s store: %w", s.driver, err)
+		return fmt.Errorf("migrate sqlite store: %w", err)
 	}
 	s.schema = version
 	return nil
@@ -236,6 +225,9 @@ func (s *SQLite) ApplyStoragePolicies(policies []StoragePolicy) error {
 }
 
 func (s *SQLite) PurgeHistory(category StorageCategory) error {
+	if category == StorageUserIPHistory {
+		return s.ResetUserIPHistory("")
+	}
 	if _, ok := defaultPolicyMap()[category]; !ok {
 		return fmt.Errorf("unknown storage category %q", category)
 	}
@@ -250,6 +242,11 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 		}
 		if _, err := tx.Exec(s.bind(`DELETE FROM metric_points WHERE category = ?`), category); err != nil {
 			return fmt.Errorf("purge metric history: %w", err)
+		}
+		if category == StorageUserTraffic {
+			if _, err := tx.Exec(`DELETE FROM user_traffic_buckets`); err != nil {
+				return fmt.Errorf("purge user traffic buckets: %w", err)
+			}
 		}
 		return nil
 	})
@@ -278,22 +275,44 @@ func (s *SQLite) StorageStats() (StorageStats, error) {
 		return StorageStats{}, fmt.Errorf("count event history: %w", err)
 	}
 	counts[StorageEvents] = eventCount
+	var ipCount int64
+	if err := s.queryRow("SELECT count(*) FROM user_ip_history WHERE last_ts>=?", time.Now().Unix()-int64(s.UserIPRetention()/time.Second)).Scan(&ipCount); err != nil {
+		return StorageStats{}, err
+	}
+	counts[StorageUserIPHistory] = ipCount
+	var userTrafficCount int64
+	if err := s.queryRow(`SELECT count(*) FROM user_traffic_buckets`).Scan(&userTrafficCount); err != nil {
+		return StorageStats{}, fmt.Errorf("count user traffic history: %w", err)
+	}
+	counts[StorageUserTraffic] += userTrafficCount
+	var userTrafficUsers int64
+	if err := s.queryRow(`SELECT count(*) FROM user_traffic_users`).Scan(&userTrafficUsers); err != nil {
+		return StorageStats{}, fmt.Errorf("count user traffic users: %w", err)
+	}
+	collector, err := s.UserTrafficCollectorState()
+	if err != nil {
+		return StorageStats{}, err
+	}
 	databaseBytes := int64(0)
-	if !s.remote {
-		for _, path := range []string{s.path, s.path + "-wal", s.path + "-shm"} {
-			info, err := os.Stat(path)
-			if err == nil {
-				databaseBytes += info.Size()
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return StorageStats{}, fmt.Errorf("stat sqlite store: %w", err)
-			}
+	for _, path := range []string{s.path, s.path + "-wal", s.path + "-shm"} {
+		info, err := os.Stat(path)
+		if err == nil {
+			databaseBytes += info.Size()
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return StorageStats{}, fmt.Errorf("stat sqlite store: %w", err)
 		}
 	}
 	categories := make([]StorageCategoryStats, 0, len(storageCategoryOrder))
 	for _, category := range storageCategoryOrder {
-		categories = append(categories, StorageCategoryStats{Category: category, Records: counts[category]})
+		stats := StorageCategoryStats{Category: category, Records: counts[category]}
+		if category == StorageUserTraffic {
+			entities := userTrafficUsers
+			stats.Entities = &entities
+			stats.Collector = &collector
+		}
+		categories = append(categories, stats)
 	}
-	return StorageStats{Driver: s.driver, Durable: true, DatabaseBytes: databaseBytes, Categories: categories}, nil
+	return StorageStats{Driver: "sqlite", Durable: true, DatabaseBytes: databaseBytes, Categories: categories}, nil
 }
 
 func (s *SQLite) policy(category StorageCategory) StoragePolicy {
@@ -315,10 +334,8 @@ func (s *SQLite) closeStore() error {
 		s.maintenanceStop = nil
 		s.maintenanceDone = nil
 	}
-	if !s.remote {
-		if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
-			errs = append(errs, err.Error())
-		}
+	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		errs = append(errs, err.Error())
 	}
 	if err := s.db.Close(); err != nil {
 		errs = append(errs, err.Error())

@@ -13,7 +13,6 @@ import (
 type OpenOptions struct {
 	Driver string
 	Path   string
-	DSN    string
 }
 
 // Constructor opens one configured store backend.
@@ -47,14 +46,6 @@ type OpenError struct {
 
 func (e *OpenError) Error() string { return fmt.Sprintf("store: open %s: %v", e.Driver, e.Err) }
 func (e *OpenError) Unwrap() error { return e.Err }
-
-// ConnectionUnavailableError is returned only after a valid network driver
-// configuration failed its startup connectivity probe.
-type ConnectionUnavailableError struct{ Driver string }
-
-func (e *ConnectionUnavailableError) Error() string {
-	return e.Driver + " database connection failed"
-}
 
 var driverRegistry = struct {
 	sync.RWMutex
@@ -113,13 +104,6 @@ func Open(options OpenOptions) (HistoryStore, error) {
 // constructor rather than from an unknown or unavailable driver.
 func IsRuntimeOpenError(err error) bool {
 	var target *OpenError
-	return errors.As(err, &target)
-}
-
-// IsConnectionUnavailable reports the one failure class for which startup is
-// allowed to continue with a temporary memory store.
-func IsConnectionUnavailable(err error) bool {
-	var target *ConnectionUnavailableError
 	return errors.As(err, &target)
 }
 

@@ -19,6 +19,7 @@ const (
 	StorageConnectionIssues StorageCategory = "connection_issues"
 	StorageTraffic          StorageCategory = "traffic"
 	StorageUserTraffic      StorageCategory = "user_traffic"
+	StorageUserIPHistory    StorageCategory = "user_ip_history"
 	StorageDiagnostics      StorageCategory = "diagnostics"
 )
 
@@ -37,8 +38,10 @@ type StoragePolicy struct {
 
 // StorageCategoryStats reports the current number of retained records.
 type StorageCategoryStats struct {
-	Category StorageCategory `json:"category"`
-	Records  int64           `json:"records"`
+	Category  StorageCategory            `json:"category"`
+	Records   int64                      `json:"records"`
+	Entities  *int64                     `json:"entities,omitempty"`
+	Collector *UserTrafficCollectorState `json:"collector,omitempty"`
 }
 
 // StorageStats describes the active backend and its current footprint.
@@ -56,6 +59,7 @@ var storageCategoryOrder = []StorageCategory{
 	StorageConnectionIssues,
 	StorageTraffic,
 	StorageUserTraffic,
+	StorageUserIPHistory,
 	StorageDiagnostics,
 }
 
@@ -67,7 +71,8 @@ func DefaultStoragePolicies() []StoragePolicy {
 		{Category: StorageAudit, Enabled: true, RetentionDays: 90},
 		{Category: StorageConnectionIssues, Enabled: true, RetentionDays: 14},
 		{Category: StorageTraffic, Enabled: true, RetentionDays: 7},
-		{Category: StorageUserTraffic, Enabled: false, RetentionDays: 30},
+		{Category: StorageUserTraffic, Enabled: true, RetentionDays: 365},
+		{Category: StorageUserIPHistory, Enabled: true, RetentionDays: 30},
 		{Category: StorageDiagnostics, Enabled: false, RetentionDays: 7},
 	}
 }
@@ -78,6 +83,19 @@ func defaultPolicyMap() map[StorageCategory]StoragePolicy {
 		out[policy.Category] = policy
 	}
 	return out
+}
+
+// Upgrade persisted policy sets only; API replacements still require completeness.
+func upgradeUserIPPolicies(policies []StoragePolicy) []StoragePolicy {
+	if len(policies) == 0 {
+		return policies
+	}
+	for _, p := range policies {
+		if p.Category == StorageUserIPHistory {
+			return policies
+		}
+	}
+	return append(policies, StoragePolicy{Category: StorageUserIPHistory, Enabled: true, RetentionDays: 30})
 }
 
 // ValidateStoragePolicies requires a complete, duplicate-free policy set.
@@ -97,8 +115,8 @@ func ValidateStoragePolicies(policies []StoragePolicy) error {
 		if policy.RetentionDays < MinRetentionDays || policy.RetentionDays > MaxRetentionDays {
 			return fmt.Errorf("storage policies: retention_days for %q must be between %d and %d", policy.Category, MinRetentionDays, MaxRetentionDays)
 		}
-		if policy.Category == StorageTechnical && !policy.Enabled {
-			return fmt.Errorf("storage policies: technical history cannot be disabled")
+		if (policy.Category == StorageTechnical || policy.Category == StorageUserIPHistory) && !policy.Enabled {
+			return fmt.Errorf("storage policies: %s history cannot be disabled", policy.Category)
 		}
 	}
 	return nil
