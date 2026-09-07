@@ -752,6 +752,10 @@ export type HistorySeries = {
          */
         first_observed_epoch_secs?: number;
         /**
+         * Value at the first actual observation; absent for raw points and legacy aggregates. Allows counter continuity checks across adjacent buckets.
+         */
+        first_observed_value?: number;
+        /**
          * Last actual observation; absent for legacy aggregates
          */
         last_observed_epoch_secs?: number;

@@ -13,6 +13,7 @@ import (
 const (
 	metricMaintenanceInterval = 5 * time.Minute
 	metricPruneBatchSize      = 250
+	metricPruneCatchUpDelay   = 5 * time.Second
 )
 
 // MetricRange selects live samples, five-minute detail or hourly history.
@@ -54,26 +55,52 @@ func (s *SQLite) startMetricMaintenance() {
 		defer close(s.maintenanceDone)
 		ticker := time.NewTicker(metricMaintenanceInterval)
 		defer ticker.Stop()
+		pruneTimer := time.NewTimer(metricMaintenanceInterval)
+		defer pruneTimer.Stop()
 		for {
+			select {
+			case <-s.maintenanceStop:
+				return
+			default:
+			}
 			select {
 			case <-ticker.C:
 				if err := s.flushMetrics(); err != nil {
 					slog.Warn("store: metric flush failed", "error", err)
 				}
-				if _, err := s.pruneMetricBatch(time.Now(), metricPruneBatchSize); err != nil {
-					slog.Warn("store: metric retention worker failed", "driver", s.Driver(), "error", err)
-				}
-				if _, err := s.pruneHistoryEventBatch(time.Now(), metricPruneBatchSize); err != nil {
-					slog.Warn("store: event retention worker failed", "driver", s.Driver(), "error", err)
-				}
-				if _, err := s.pruneUserTrafficBatch(time.Now(), metricPruneBatchSize); err != nil {
-					slog.Warn("store: user traffic retention worker failed", "driver", s.Driver(), "error", err)
-				}
+			case <-pruneTimer.C:
+				pruneTimer.Reset(s.pruneHistoryPass(time.Now()))
 			case <-s.maintenanceStop:
 				return
 			}
 		}
 	}()
+}
+
+// pruneHistoryPass yields between bounded transactions. A full batch may
+// leave a backlog, so revisit it sooner without increasing the flush rate.
+func (s *SQLite) pruneHistoryPass(now time.Time) time.Duration {
+	catchUp, failed := false, false
+	for _, task := range []struct {
+		name string
+		run  func(time.Time, int) (int, error)
+	}{
+		{"metrics", s.pruneMetricBatch},
+		{"events", s.pruneHistoryEventBatch},
+		{"user_traffic", s.pruneUserTrafficBatch},
+	} {
+		removed, err := task.run(now, metricPruneBatchSize)
+		if err != nil {
+			failed = true
+			slog.Warn("store: history retention worker failed", "category", task.name, "driver", s.Driver(), "error", err)
+		}
+		catchUp = catchUp || removed == metricPruneBatchSize
+	}
+	// Database failures retain the normal backoff instead of a noisy retry loop.
+	if catchUp && !failed {
+		return metricPruneCatchUpDelay
+	}
+	return metricMaintenanceInterval
 }
 
 type staleUserTrafficKey struct {

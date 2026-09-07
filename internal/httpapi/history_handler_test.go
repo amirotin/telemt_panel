@@ -13,17 +13,18 @@ import (
 func TestHistoryAggregateMetadata(t *testing.T) {
 	minimum, delta := 2.0, 5.0
 	points := toHistoryPoints([]store.MetricPoint{
-		{TS: 300, Value: 7, Tier: store.MetricTierFive, Min: &minimum, Max: 9, Samples: 3, FirstTS: 305, LastTS: 315, Delta: &delta, ObservedSeconds: 10},
+		{TS: 300, Value: 7, Tier: store.MetricTierFive, Min: &minimum, Max: 9, Samples: 3, FirstTS: 305, LastTS: 315, FirstValue: 2, Delta: &delta, ObservedSeconds: 10},
 		{TS: 600, Value: 4, Tier: store.MetricTierQuarter, Max: 8, Samples: 6},
 		{TS: 1500, Value: 1},
 	})
 	p := points[0]
 	if p.Min == nil || *p.Min != 2 || p.Max == nil || *p.Max != 9 || p.Samples != 3 ||
 		p.FirstTS == nil || *p.FirstTS != 305 || p.LastTS == nil || *p.LastTS != 315 ||
+		p.FirstValue == nil || *p.FirstValue != 2 ||
 		p.Delta == nil || *p.Delta != 5 || p.ObservedSeconds == nil || *p.ObservedSeconds != 10 || p.Gaps == nil || *p.Gaps != 0 {
 		t.Fatalf("aggregate metadata lost: %+v", p)
 	}
-	if points[1].Min != nil || points[1].FirstTS != nil || points[1].Delta != nil || points[1].ObservedSeconds != nil || points[2].Max != nil {
+	if points[1].Min != nil || points[1].FirstTS != nil || points[1].FirstValue != nil || points[1].Delta != nil || points[1].ObservedSeconds != nil || points[2].Max != nil || points[2].FirstValue != nil {
 		t.Fatalf("fabricated raw or legacy metadata: %+v", points)
 	}
 }

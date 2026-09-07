@@ -1,6 +1,6 @@
 # Telemt Panel (next / 1.x) — configuration
 # The panel never writes to this file: settings changed from the UI are
-# persisted to the store.
+# persisted separately to data_dir/panel-state.json.
 
 listen = "0.0.0.0:8080"
 
@@ -29,14 +29,13 @@ data_dir = "/var/lib/telemt-panel"
 url = "http://127.0.0.1:9091"
 # Authorization header value, verbatim ([server.api].auth_header in Telemt).
 auth_header = ""
-# How the (not yet implemented) Telemt config editor will apply changes:
-# "api" (default) PATCHes through the Telemt API; "file" rewrites the file
-# directly. Wire-only for now — reported by GET /api/telemt/info.
+# Config editing currently uses the Telemt Config API only.
+# "file" is accepted by the loader, but direct file editing is not implemented.
 # config_edit_mode = "api" # api | file
 
 [auth]
 # Password login is the base method; passkeys and TOTP are enabled from the
-# UI and live in the store, not here.
+# UI and live in panel-state.json, not here.
 username = "admin"
 # Generate with: telemt-panel hash-password
 password_hash = "$2a$10$CHANGE_ME"

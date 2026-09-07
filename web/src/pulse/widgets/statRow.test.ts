@@ -104,8 +104,8 @@ describe("historyWindowDelta", () => {
     expect(historyWindowDelta(traffic([274_877_906_944]))).toBeNull();
   });
 
-  it("treats a counter reset as the amount accumulated since the reset", () => {
-    expect(historyWindowDelta(traffic([9_000, 9_500, 120]))).toBe(120);
+  it("preserves observed growth before a reset without assuming its timing", () => {
+    expect(historyWindowDelta(traffic([9_000, 9_500, 120]))).toBe(500);
   });
 
   it("is zero for a flat series — a real 'no traffic this window' answer", () => {
@@ -132,8 +132,8 @@ describe("deltaSparklineValues", () => {
     expect(deltaSparklineValues(traffic([42]))).toEqual([]);
   });
 
-  it("takes the post-reset value as that step's delta instead of going negative", () => {
-    expect(deltaSparklineValues(traffic([500, 900, 30, 80]))).toEqual([400, 30, 50]);
+  it("starts a new continuous rate curve after a reset", () => {
+    expect(deltaSparklineValues(traffic([500, 900, 30, 80]))).toEqual([50]);
   });
 });
 

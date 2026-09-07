@@ -1,6 +1,52 @@
 import { expect, test } from "./fixtures";
 
 for (const width of [1440, 768, 390]) {
+  test(`overview KPI keeps mixed history accurate at ${width}px`, async ({ page, login }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const base = Math.floor(Date.now() / 300000) * 300 - 1800;
+    let missingRefusals = false, partial = false;
+    await page.route("**/api/history?*", async route => {
+      const metric = new URL(route.request().url()).searchParams.get("metric");
+      if (!["traffic", "attempts", "refusals"].includes(metric ?? "")) return route.continue();
+      const value = (ts: number) => metric === "traffic" ? ts * 1024 : metric === "attempts" ? ts * 20 : ts <= 900 ? ts / 5 : 180 + ts - 900;
+      const points = [
+        ...Array.from({ length: 5 }, (_, i) => {
+          const ts = i * 300;
+          return { ts: base + ts, v: value(ts + 295), tier: "5m", samples: 60,
+            min: value(ts), max: value(ts + 295), first_observed_value: value(ts),
+            first_observed_epoch_secs: base + ts, last_observed_epoch_secs: base + ts + 295,
+            observed_delta: value(ts + 295) - value(ts), observed_seconds: 295, gaps: 0 };
+        }),
+        ...Array.from({ length: 61 }, (_, i) => ({ ts: base + 1500 + i * 5, v: value(1500 + i * 5) })),
+        ...(partial ? [{ ts: base + 1810, v: value(1810) }] : []),
+      ];
+      const empty = missingRefusals && metric === "refusals";
+      await route.fulfill({ json: { metric, range: "30m", state: empty ? "empty" : "ready",
+        requested_from_epoch_secs: base, retention_secs: 86400, source_available: true, points: empty ? [] : points } });
+    });
+    await login();
+    await page.goto("/overview");
+    const grid = page.getByTestId("kpi-grid");
+    const traffic = grid.getByRole("link", { name: /Трафик/ });
+    const quality = grid.getByRole("link", { name: /Качество подключений/ });
+    await expect(traffic).toContainText(/900\s+КБ/);
+    await expect(quality).toContainText("95 %");
+    await expect(quality).toContainText("−4 % за 15 мин");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: test.info().outputPath("overview-mixed-history.png") });
+
+    partial = true;
+    await page.reload();
+    await expect(traffic).toContainText("доступна часть истории");
+    await expect(quality).not.toContainText("−4 % за 15 мин");
+    missingRefusals = true;
+    await page.reload();
+    await expect(quality).toContainText("—");
+    await expect(quality).not.toContainText("100 %");
+  });
+}
+
+for (const width of [1440, 768, 390]) {
   test(`independent history settings confirm retention without changing other categories at ${width}px`, async ({ page, login }) => {
     await page.setViewportSize({ width, height: 900 });
     await login();

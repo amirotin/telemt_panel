@@ -1,11 +1,20 @@
 # Binaries
-telemt-panel
+/telemt-panel
+/telemt-panel-lite
+/telemt-mock
+/panel
 /panel-agent
-release/
+/release/
+/releases/
+coverage.out
+*.test
 
 # Frontend
-web/node_modules/
+node_modules/
 web/.openapi-filtered.yaml
+web/.tanstack/
+web/.vite/
+web/coverage/
 
 # Playwright e2e artifacts (web/e2e) — reports/traces from local runs.
 web/playwright-report/
@@ -24,12 +33,25 @@ internal/webui/dist/*
 
 # Config with secrets
 config.toml
+.env
+.env.*
+!.env.example
 
 # Local state
 *.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # IDE / tools
 .claude/
+.superpowers/
+.codex/
+.agents/
+AGENTS.md
+CLAUDE.md
 .vscode/
 .idea/
 *.swp

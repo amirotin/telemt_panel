@@ -1,6 +1,7 @@
 import { fill, formatNumber, pluralTemplate, type Dict } from "../../i18n";
 import type { StatsSnapshot } from "../../realtime/topics";
 import type { HistorySeries } from "../../lib/api/generated/types.gen";
+import { completeCounterWindow, counterRates, counterSteps, historyPointEnd, matchingCounterSteps, sliceHistory } from "./historyIntervals.helpers";
 
 export interface StatRowValues {
   connections: number | null;
@@ -57,8 +58,8 @@ export function windowSeries(
 ): HistorySeries | undefined {
   const points = series?.points;
   if (!series || !points || points.length === 0) return series;
-  const end = points[points.length - 1].ts;
-  return { ...series, points: points.filter((p) => p.ts >= end - secs) };
+  const end = historyPointEnd(points[points.length - 1]);
+  return sliceHistory(series, end - secs, end);
 }
 
 // previousWindowSeries is the `secs` seconds immediately BEFORE
@@ -71,51 +72,23 @@ export function previousWindowSeries(
 ): HistorySeries | undefined {
   const points = series?.points;
   if (!series || !points || points.length === 0) return undefined;
-  const seam = points[points.length - 1].ts - secs;
-  const prior = points.filter((p) => p.ts >= seam - secs && p.ts <= seam);
-  return prior.length === 0 ? undefined : { ...series, points: prior };
+  const seam = historyPointEnd(points[points.length - 1]) - secs;
+  const prior = sliceHistory(series, seam - secs, seam);
+  return prior.points.length === 0 ? undefined : prior;
 }
 
-// historyWindowDelta turns a CUMULATIVE counter series into the amount it
-// grew across the series it is handed — so callers cut the window first
-// (windowSeries above) rather than trusting whatever /api/history returned.
-// The `traffic` metric is the sum of every user's total_octets at
-// each poll (internal/hub/hub.go's usersTrafficTotal), i.e. a lifetime
-// total: on a 20-day-old server its last point is ~256 GB, which is what the
-// "Трафик (15 мин)" row used to show. The honest 15-min figure is
-// newest − oldest.
-//
-// Returns null with fewer than two points: one point carries no delta, and
-// showing the raw cumulative value there would be exactly the defect this
-// replaces — «—» is the correct answer until a second point lands.
-//
-// Counter resets (Telemt restarted, a user removed) make newest < oldest.
-// Rather than render a negative "traffic", the newest value is taken as the
-// amount accumulated since the reset — a lower bound on the real window
-// total, never a nonsense figure.
+// Sum known counter movement, not lifetime totals. A single aggregate can
+// contain a measured delta; a single raw sample cannot. Unknown reset/gap
+// intervals add nothing, while observed movement on both sides is retained.
 export function historyWindowDelta(series: HistorySeries | undefined): number | null {
-  const points = series?.points;
-  if (!points || points.length < 2) return null;
-  const oldest = points[0].v;
-  const newest = points[points.length - 1].v;
-  return newest < oldest ? newest : newest - oldest;
+  const { steps } = counterSteps(series);
+  return steps.length ? steps.reduce((sum, step) => sum + step.delta, 0) : null;
 }
 
-// deltaSparklineValues plots the same counter as a RATE: one value per
-// step, so the sparkline shows the shape of traffic over the window instead
-// of the cumulative ramp (which on a lifetime counter is a near-flat line
-// nudging upward, carrying no information). Same reset rule as
-// historyWindowDelta; a series shorter than two points has no steps at all.
+// Rates are bytes per observed second, so a five-minute bucket cannot look
+// like a spike beside a five-second poll. Unknown intervals break the curve.
 export function deltaSparklineValues(series: HistorySeries | undefined): number[] {
-  const points = series?.points;
-  if (!points || points.length < 2) return [];
-  const out: number[] = [];
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1].v;
-    const cur = points[i].v;
-    out.push(cur < prev ? cur : cur - prev);
-  }
-  return out;
+  return counterRates(series);
 }
 
 // peakHistoryValue — the highest point in a series, for the row's "пик за
@@ -164,19 +137,19 @@ export function connectionQuality(
   refusals: HistorySeries | undefined,
   windowSecs: number = HISTORY_WINDOW_SECS,
 ): ConnectionQuality {
+  const windows = [windowSeries(attempts, windowSecs), windowSeries(refusals, windowSecs),
+    previousWindowSeries(attempts, windowSecs), previousWindowSeries(refusals, windowSecs)];
   const current = windowRatio(
-    windowSeries(attempts, windowSecs),
-    windowSeries(refusals, windowSecs),
+    windows[0], windows[1],
   );
   const previous = windowRatio(
-    previousWindowSeries(attempts, windowSecs),
-    previousWindowSeries(refusals, windowSecs),
+    windows[2], windows[3],
   );
   return {
     percent: current.percent,
     refusals: current.refusals,
     changePoints:
-      current.percent === null || previous.percent === null
+      current.percent === null || previous.percent === null || !windows.every(series => completeCounterWindow(series, windowSecs))
         ? null
         : current.percent - previous.percent,
   };
@@ -190,8 +163,9 @@ function windowRatio(
   refusals: HistorySeries | undefined,
 ): { percent: number | null; refusals: number } {
   const windowRefusals = historyWindowDelta(refusals) ?? 0;
-  const windowAttempts = historyWindowDelta(attempts);
-  if (windowAttempts === null || windowAttempts <= 0) {
+  const steps = matchingCounterSteps(attempts, refusals);
+  const windowAttempts = steps?.reduce((sum, step) => sum + step.delta, 0) ?? 0;
+  if (!steps || windowAttempts <= 0) {
     return { percent: null, refusals: windowRefusals };
   }
   return { percent: 100 - (windowRefusals / windowAttempts) * 100, refusals: windowRefusals };
@@ -205,19 +179,15 @@ export function qualitySparklineValues(
   attempts: HistorySeries | undefined,
   refusals: HistorySeries | undefined,
 ): number[] {
-  const a = attempts?.points ?? [];
-  const r = refusals?.points ?? [];
-  const n = Math.min(a.length, r.length);
-  if (n < 2) return [];
-  const out: number[] = [];
-  let last = 100;
-  for (let i = 1; i < n; i++) {
-    const da = a[i].v - a[i - 1].v;
-    const dr = r[i].v - r[i - 1].v;
-    if (da > 0 && dr >= 0) last = 100 - (dr / da) * 100;
-    out.push(last);
+  let out: number[] = [], last: number | undefined, end: number | undefined;
+  for (const step of matchingCounterSteps(attempts, refusals) ?? []) {
+    if (end !== step.from) { out = []; last = undefined; }
+    if (step.delta > 0) last = 100 - (step.refused / step.delta) * 100;
+    if (last !== undefined) out.push(last);
+    end = step.to;
   }
-  return out;
+  const a = attempts?.points.at(-1), r = refusals?.points.at(-1);
+  return a && r && end === historyPointEnd(a) && end === historyPointEnd(r) ? out : [];
 }
 
 // qualityCaption writes the fourth tile's second line: «−0,3 % за 15 мин»

@@ -97,6 +97,7 @@ type historyPointView struct {
 	Min             *float64 `json:"min,omitempty"`
 	Samples         int64    `json:"samples,omitempty"`
 	FirstTS         *int64   `json:"first_observed_epoch_secs,omitempty"`
+	FirstValue      *float64 `json:"first_observed_value,omitempty"`
 	LastTS          *int64   `json:"last_observed_epoch_secs,omitempty"`
 	Delta           *float64 `json:"observed_delta,omitempty"`
 	ObservedSeconds *int64   `json:"observed_seconds,omitempty"`
@@ -621,6 +622,8 @@ func toHistoryPoints(points []store.MetricPoint) []historyPointView {
 			if p.Min != nil {
 				first, last, observed, gaps := p.FirstTS, p.LastTS, p.ObservedSeconds, p.Gaps
 				out[i].FirstTS, out[i].LastTS = &first, &last
+				firstValue := p.FirstValue
+				out[i].FirstValue = &firstValue
 				out[i].ObservedSeconds, out[i].Gaps = &observed, &gaps
 				out[i].Delta = p.Delta
 			}

@@ -64,10 +64,10 @@ function history(metric: string, first: number, last: number): HistorySeries {
     range: "30m",
     state: "ready", requested_from_epoch_secs: 0,
     retention_secs: 1800,
-    points: [
-      { ts: Math.floor(NOW / 1000) - 15 * 60, v: first },
-      { ts: Math.floor(NOW / 1000), v: last },
-    ],
+    points: Array.from({ length: 91 }, (_, i) => ({
+      ts: Math.floor(NOW / 1000) - 15 * 60 + i * 10,
+      v: Math.round(first + (last - first) * i / 90),
+    })),
   };
 }
 

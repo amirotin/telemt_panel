@@ -138,13 +138,8 @@ function Tile({ metric }: { metric: Metric }) {
 // widget; the fourth KPI per the dashboard concept §5 — «нормально ли
 // устанавливаются соединения», with «Проблемы» below explaining why not).
 //
-// The two window metrics are labelled "(15 мин)" and show exactly that: the
-// recorded traffic series is a cumulative lifetime total summed across users
-// on each stats tick and the refusals series is the hub's own accumulator
-// (internal/hub/refusals.go), so both render newest − oldest over the window
-// and plot per-step deltas — see statRow.helpers.ts. Their lifetime figures
-// go in the caption rather than the value, which is where the "256 ГБ за 15
-// минут" bug used to live.
+// Window figures use observed deltas from live samples and disk aggregates,
+// with partial coverage explicitly labelled. Lifetime totals stay captions.
 //
 // The uptime metric is gone: the status banner carries it now, beside the
 // version and the route mode, and a dashboard does not need the same figure
@@ -176,6 +171,8 @@ export function StatRow() {
   const connectionsWindow = windowSeries(connectionsHistory.data);
   const usersWindow = windowSeries(usersHistory.data);
   const trafficWindow = windowSeries(trafficHistory.data);
+  const attemptsWindow = windowSeries(attemptsHistory.data);
+  const refusalsWindow = windowSeries(refusalsHistory.data);
   const traffic = historyWindowDelta(trafficWindow);
   const trafficTotal = lastHistoryValue(trafficWindow);
   const quality = connectionQuality(attemptsHistory.data, refusalsHistory.data);
@@ -200,7 +197,7 @@ export function StatRow() {
       tone: "accent",
       label: values.connectionsApprox ? s.pulse.stat.connectionsApprox : s.pulse.stat.connections,
       value: values.connections ?? "—",
-      caption: historyCaption(connectionsHistory.data, peakCaption(peakHistoryValue(connectionsWindow))),
+      caption: historyCaption(connectionsWindow, peakCaption(peakHistoryValue(connectionsWindow))),
       series: sparklineValues(connectionsWindow),
       domain: "connections",
     },
@@ -210,7 +207,7 @@ export function StatRow() {
       tone: "ok",
       label: values.activeUsersApprox ? s.pulse.stat.activeUsersApprox : s.pulse.stat.activeUsers,
       value: values.activeUsers ?? "—",
-      caption: historyCaption(usersHistory.data, peakCaption(peakHistoryValue(usersWindow))),
+      caption: historyCaption(usersWindow, peakCaption(peakHistoryValue(usersWindow))),
       series: sparklineValues(usersWindow),
       domain: "connections",
     },
@@ -220,7 +217,7 @@ export function StatRow() {
       tone: "accent",
       label: s.pulse.stat.traffic,
       value: traffic !== null ? formatBytes(traffic, s) : "—",
-      caption: historyCaption(trafficHistory.data, totalCaption(trafficTotal === null ? null : formatBytes(trafficTotal, s))),
+      caption: historyCaption(trafficWindow, totalCaption(trafficTotal === null ? null : formatBytes(trafficTotal, s))),
       series: deltaSparklineValues(trafficWindow),
       domain: "connections",
     },
@@ -243,10 +240,10 @@ export function StatRow() {
       // — the first quarter-hour after a panel start — it falls back to
       // naming the refusals rather than claiming a comparison it cannot make.
       caption: historyCaption(
-        attemptsHistory.data?.state !== "ready" ? attemptsHistory.data : refusalsHistory.data,
+        attemptsWindow?.state !== "ready" ? attemptsWindow : refusalsWindow,
         qualityCaption(quality, s),
       ),
-      series: qualitySparklineValues(windowSeries(attemptsHistory.data), windowSeries(refusalsHistory.data)),
+      series: qualitySparklineValues(attemptsWindow, refusalsWindow),
       domain: "counters",
     },
   ];

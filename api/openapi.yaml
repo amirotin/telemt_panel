@@ -2061,6 +2061,7 @@ components:
               min: { type: number, description: Bucket minimum; absent for legacy aggregates without observed minima }
               samples: { type: integer, format: int64, minimum: 1, description: Number of observed samples in the aggregate }
               first_observed_epoch_secs: { type: integer, format: int64, description: First actual observation; absent for legacy aggregates }
+              first_observed_value: { type: number, description: Value at the first actual observation; absent for raw points and legacy aggregates. Allows counter continuity checks across adjacent buckets. }
               last_observed_epoch_secs: { type: integer, format: int64, description: Last actual observation; absent for legacy aggregates }
               observed_delta: { type: number, minimum: 0, description: Counter movement between observed samples only; excludes resets and unobserved gaps. Not an exact total for the nominal bucket. Absent for gauges or unknown continuity. }
               observed_seconds: { type: integer, format: int64, minimum: 0, description: Observed duration excluding gaps and resets; absent when legacy metadata is unknown }

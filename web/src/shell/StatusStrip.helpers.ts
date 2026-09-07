@@ -40,10 +40,9 @@ export function connectionsLabel(data: StatsSnapshot | null, s: Dict): string {
 // trafficLabel reuses StatRow's own 15-min /api/history figure — the same
 // useHistorySeries("traffic") query and the same historyWindowDelta helper,
 // so the sidebar card and the Пульс row can never disagree. The recorded
-// series is a cumulative lifetime total (internal/hub/hub.go sums every
-// user's total_octets per tick), so the window figure is newest − oldest;
-// see historyWindowDelta for the reset rule. Falls back to
-// trafficUnavailable while the ring holds fewer than two points — the
+// series is a cumulative lifetime total, so the window figure sums observed
+// increments across live samples and disk aggregates. Falls back to
+// trafficUnavailable when no increment can be measured — the
 // cumulative value is NOT an acceptable stand-in, it is the 256-GB figure
 // this card used to show for "15 минут".
 export function trafficLabel(series: HistorySeries | undefined, s: Dict): string {
