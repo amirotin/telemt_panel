@@ -16,13 +16,9 @@ import (
 	wa "github.com/go-webauthn/webauthn/webauthn"
 )
 
-func TestAuthMethodsDoesNotRevealTOTP(t *testing.T) {
+func TestAuthMethodsOnlyExposePasskeyAvailability(t *testing.T) {
 	srv := newTestServer(t)
 	h := srv.Handler()
-	if err := srv.st.BeginTOTPSetup("secret", time.Now().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-
 	r := httptest.NewRequest(http.MethodGet, "/api/auth/methods", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)

@@ -10,10 +10,6 @@ DROP TABLE IF EXISTS settings;
 -- statement
 DROP TABLE IF EXISTS storage_policies;
 -- statement
-DROP TABLE IF EXISTS auth_totp;
--- statement
-DROP TABLE IF EXISTS auth_recovery_codes;
--- statement
 DROP TABLE IF EXISTS auth_webauthn_user;
 -- statement
 DROP TABLE IF EXISTS auth_webauthn_credentials;

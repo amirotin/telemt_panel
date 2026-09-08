@@ -310,7 +310,7 @@ func TestSQLiteMigrationEightDropsDevelopmentStateTables(t *testing.T) {
 	}
 	for _, table := range []string{
 		"sessions", "audit_entries", "update_journal", "subpage_nonces",
-		"settings", "storage_policies", "auth_totp", "auth_recovery_codes",
+		"settings", "storage_policies",
 		"auth_webauthn_user", "auth_webauthn_credentials", "auth_webauthn_challenges",
 	} {
 		if _, err := store.db.Exec(`CREATE TABLE ` + table + ` (id INTEGER)`); err != nil {
@@ -340,7 +340,7 @@ func TestSQLiteMigrationEightDropsDevelopmentStateTables(t *testing.T) {
 	var stateTables int
 	if err := migrated.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN (` +
 		`'sessions','audit_entries','update_journal','subpage_nonces','settings','storage_policies',` +
-		`'auth_totp','auth_recovery_codes','auth_webauthn_user','auth_webauthn_credentials','auth_webauthn_challenges')`).Scan(&stateTables); err != nil {
+		`'auth_webauthn_user','auth_webauthn_credentials','auth_webauthn_challenges')`).Scan(&stateTables); err != nil {
 		t.Fatal(err)
 	}
 	if stateTables != 0 {
@@ -945,7 +945,7 @@ func TestStateFileRemainsSeparateFromSQLiteHistory(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"sessions", "settings", "auth_totp", "auth_webauthn_credentials", "storage_policies", "audit_entries"} {
+	for _, forbidden := range []string{"sessions", "settings", "auth_webauthn_credentials", "storage_policies", "audit_entries"} {
 		if slices.Contains(tables, forbidden) {
 			t.Fatalf("control-plane table %q leaked into history database: %v", forbidden, tables)
 		}

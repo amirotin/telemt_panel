@@ -24,7 +24,7 @@ afterEach(() => {
 describe("requireAuth", () => {
   it("resolves without redirecting when GET /api/auth/me succeeds", async () => {
     mockedGetMe.mockResolvedValue({
-      data: { username: "admin", totp_enabled: false, passkeys: [] },
+      data: { username: "admin", passkeys: [] },
       request: new Request("http://x/api/auth/me"),
       response: new Response(null, { status: 200 }),
     });
@@ -59,7 +59,7 @@ describe("redirectIfAuthenticated", () => {
 
   it("redirects to /people by default when already authenticated", async () => {
     mockedGetMe.mockResolvedValue({
-      data: { username: "admin", totp_enabled: false, passkeys: [] },
+      data: { username: "admin", passkeys: [] },
       request: new Request("http://x/api/auth/me"),
       response: new Response(null, { status: 200 }),
     });
@@ -78,7 +78,7 @@ describe("redirectIfAuthenticated", () => {
 
   it("redirects to the requested target when already authenticated", async () => {
     mockedGetMe.mockResolvedValue({
-      data: { username: "admin", totp_enabled: false, passkeys: [] },
+      data: { username: "admin", passkeys: [] },
       request: new Request("http://x/api/auth/me"),
       response: new Response(null, { status: 200 }),
     });

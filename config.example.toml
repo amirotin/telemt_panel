@@ -34,7 +34,7 @@ auth_header = ""
 # config_edit_mode = "api" # api | file
 
 [auth]
-# Password login is the base method; passkeys and TOTP are enabled from the
+# Password login is the base method; optional passkeys are enabled from the
 # UI and live in panel-state.json, not here.
 username = "admin"
 # Generate with: telemt-panel hash-password

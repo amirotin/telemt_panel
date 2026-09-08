@@ -7,10 +7,6 @@ import (
 )
 
 var (
-	ErrTOTPAlreadyEnabled         = errors.New("TOTP is already enabled")
-	ErrTOTPSetupInvalid           = errors.New("TOTP setup is missing, expired, or replaced")
-	ErrTOTPReplay                 = errors.New("TOTP timestep was already used")
-	ErrRecoveryCode               = errors.New("recovery code is invalid or already used")
 	ErrWebAuthnCredentialExists   = errors.New("WebAuthn credential already exists")
 	ErrWebAuthnCredentialNotFound = errors.New("WebAuthn credential not found")
 	ErrWebAuthnCredentialChanged  = errors.New("WebAuthn credential changed concurrently")
@@ -36,17 +32,6 @@ type Session struct {
 	IP             string
 	UserAgentLabel string
 	AuthMethod     string
-}
-
-// TOTPState is the complete server-side second-factor state. Secret fields
-// never leave the store/auth boundary; HTTP responses expose only Enabled.
-type TOTPState struct {
-	Enabled        bool      `json:"enabled"`
-	Secret         string    `json:"secret,omitempty"`
-	PendingSecret  string    `json:"pending_secret,omitempty"`
-	PendingExpires time.Time `json:"pending_expires,omitempty"`
-	LastTimestep   int64     `json:"last_timestep"`
-	RecoveryCodes  int       `json:"recovery_codes"`
 }
 
 // WebAuthnCredential is the driver-neutral credential record. CredentialData

@@ -49,7 +49,7 @@ type TelemtConfig struct {
 	ConfigEditMode string `toml:"config_edit_mode"`
 }
 
-// AuthConfig holds the password login; passkeys/TOTP state lives in the store.
+// AuthConfig holds the password login; passkey state lives in the store.
 type AuthConfig struct {
 	Username     string `toml:"username"`
 	PasswordHash string `toml:"password_hash"`

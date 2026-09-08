@@ -34,8 +34,6 @@ type PortableData struct {
 	UserTraffic          []PortableUserTrafficUser       `json:"user_traffic,omitempty"`
 	UserTrafficBuckets   []PortableUserTrafficBucket     `json:"user_traffic_buckets,omitempty"`
 	UserTrafficCollector *UserTrafficCollectorState      `json:"user_traffic_collector,omitempty"`
-	TOTP                 TOTPState                       `json:"totp,omitempty"`
-	RecoveryCodes        [][]byte                        `json:"totp_recovery_hashes,omitempty"`
 	WebAuthnUserHandle   []byte                          `json:"webauthn_user_handle,omitempty"`
 	WebAuthnCredentials  map[string]WebAuthnCredential   `json:"webauthn_credentials,omitempty"`
 	// WebAuthnChallenges is accepted from format v3 backups only. In-flight
@@ -84,8 +82,6 @@ func (m *Memory) ExportData() (PortableData, error) {
 		UserTraffic:          portableMemoryUserTraffic(m.userTraffic),
 		UserTrafficBuckets:   portableMemoryUserTrafficBuckets(m.userTrafficBuckets),
 		UserTrafficCollector: portableMemoryUserTrafficCollector(m.userTrafficCollector, m.hasTrafficCollector),
-		TOTP:                 m.totp,
-		RecoveryCodes:        recoveryCodeHashes(m.recoveryCodes),
 		WebAuthnUserHandle:   append([]byte(nil), m.webauthnUserHandle...),
 		WebAuthnCredentials:  m.webauthnCredentials,
 	})
@@ -114,7 +110,7 @@ func (m *Memory) ImportData(data PortableData) error {
 	if len(m.userIPs) > 0 || m.userIPCollection.BatchID != "" {
 		return ErrStoreNotEmpty
 	}
-	if len(m.sessions)+len(m.subpageNonces)+len(m.settings)+len(m.journal)+len(m.audit)+len(m.metrics)+len(m.events)+len(m.userTraffic)+len(m.userTrafficBuckets)+len(m.recoveryCodes)+len(m.webauthnCredentials)+len(m.webauthnChallenges)+len(m.webauthnUserHandle) != 0 || m.hasTrafficCollector || m.totp.Enabled || m.totp.PendingSecret != "" {
+	if len(m.sessions)+len(m.subpageNonces)+len(m.settings)+len(m.journal)+len(m.audit)+len(m.metrics)+len(m.events)+len(m.userTraffic)+len(m.userTrafficBuckets)+len(m.webauthnCredentials)+len(m.webauthnChallenges)+len(m.webauthnUserHandle) != 0 || m.hasTrafficCollector {
 		return ErrStoreNotEmpty
 	}
 	m.sessions = data.Sessions
@@ -138,12 +134,9 @@ func (m *Memory) ImportData(data PortableData) error {
 		m.hasTrafficCollector = true
 		m.pruneUserTrafficBucketsLocked(m.userTrafficCollector.LastSuccessTS)
 	}
-	m.totp = data.TOTP
-	m.recoveryCodes = recoveryCodeMap(data.RecoveryCodes)
 	m.webauthnUserHandle = append([]byte(nil), data.WebAuthnUserHandle...)
 	m.webauthnCredentials = cloneWebAuthnCredentials(data.WebAuthnCredentials)
 	m.webauthnChallenges = make(map[string]WebAuthnChallenge)
-	m.totp.RecoveryCodes = len(m.recoveryCodes)
 	for i := range m.events {
 		m.nextEventID++
 		m.events[i].ID = m.nextEventID
@@ -167,8 +160,6 @@ func (m *Memory) ImportData(data PortableData) error {
 		m.hasTrafficCollector = false
 		m.nextEventID = 0
 		m.policies = defaultPolicyMap()
-		m.totp = TOTPState{LastTimestep: -1}
-		m.recoveryCodes = make(map[string]struct{})
 		m.webauthnUserHandle = nil
 		m.webauthnCredentials = make(map[string]WebAuthnCredential)
 		m.webauthnChallenges = make(map[string]WebAuthnChallenge)
@@ -207,14 +198,10 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 			return PortableData{}, fmt.Errorf("invalid storage policies: %w", err)
 		}
 	}
-	if err := validatePortableTOTP(data.TOTP, data.RecoveryCodes); err != nil {
-		return PortableData{}, err
-	}
 	if err := validatePortableWebAuthn(data.WebAuthnUserHandle, data.WebAuthnCredentials, data.WebAuthnChallenges); err != nil {
 		return PortableData{}, err
 	}
 	data.WebAuthnChallenges = nil
-	data.TOTP.RecoveryCodes = len(data.RecoveryCodes)
 	for target, entries := range data.Journal {
 		if len(entries) > journalCap {
 			return PortableData{}, fmt.Errorf("update journal %q has %d entries (maximum %d)", target, len(entries), journalCap)

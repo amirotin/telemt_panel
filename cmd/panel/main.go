@@ -260,6 +260,10 @@ func newStore(cfg *config.Config) (store.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open panel state: %w", err)
 	}
+	if err := state.BindPasswordAuth(cfg.Auth.Username, cfg.Auth.PasswordHash); err != nil {
+		_ = state.Close()
+		return nil, fmt.Errorf("bind password authentication: %w", err)
+	}
 	history, err := store.Open(store.OpenOptions{
 		Driver: cfg.Store.Driver,
 		Path:   cfg.Store.Path,
@@ -318,6 +322,19 @@ func runHashPassword() error {
 	if err != nil {
 		return fmt.Errorf("read password: %w", err)
 	}
+	if password == "" {
+		return errors.New("password must not be empty")
+	}
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Fprint(os.Stderr, "Confirm ")
+		confirmation, err := readPassword()
+		if err != nil {
+			return fmt.Errorf("confirm password: %w", err)
+		}
+		if confirmation != password {
+			return errors.New("passwords do not match")
+		}
+	}
 
 	hash, err := auth.HashPassword(password)
 	if err != nil {
@@ -339,9 +356,16 @@ func readPassword() (string, error) {
 		return string(raw), nil
 	}
 
-	data, err := io.ReadAll(os.Stdin)
+	return readPasswordInput(os.Stdin)
+}
+
+func readPasswordInput(input io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(input, 4097))
 	if err != nil {
 		return "", err
+	}
+	if len(data) > 4096 {
+		return "", errors.New("password input is too large")
 	}
 	return string(bytes.TrimRight(data, "\r\n")), nil
 }

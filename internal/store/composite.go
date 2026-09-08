@@ -18,13 +18,6 @@ type StateStore interface {
 	DeleteOtherSessions(string) error
 	ListSessions() ([]Session, error)
 
-	GetTOTPState() (TOTPState, error)
-	BeginTOTPSetup(string, time.Time) error
-	EnableTOTP(string, time.Time, [][]byte) error
-	DisableTOTP() error
-	AcceptTOTPTimestep(int64) error
-	ConsumeRecoveryCode([]byte) error
-
 	GetOrCreateWebAuthnUserHandle([]byte) ([]byte, error)
 	ListWebAuthnCredentials() ([]WebAuthnCredential, error)
 	GetWebAuthnCredential(string) (WebAuthnCredential, bool, error)
@@ -112,21 +105,6 @@ func (s *Composite) DeleteOtherSessions(keep string) error {
 	return s.state.DeleteOtherSessions(keep)
 }
 func (s *Composite) ListSessions() ([]Session, error) { return s.state.ListSessions() }
-
-func (s *Composite) GetTOTPState() (TOTPState, error) { return s.state.GetTOTPState() }
-func (s *Composite) BeginTOTPSetup(secret string, expires time.Time) error {
-	return s.state.BeginTOTPSetup(secret, expires)
-}
-func (s *Composite) EnableTOTP(secret string, now time.Time, hashes [][]byte) error {
-	return s.state.EnableTOTP(secret, now, hashes)
-}
-func (s *Composite) DisableTOTP() error { return s.state.DisableTOTP() }
-func (s *Composite) AcceptTOTPTimestep(step int64) error {
-	return s.state.AcceptTOTPTimestep(step)
-}
-func (s *Composite) ConsumeRecoveryCode(hash []byte) error {
-	return s.state.ConsumeRecoveryCode(hash)
-}
 
 func (s *Composite) GetOrCreateWebAuthnUserHandle(candidate []byte) ([]byte, error) {
 	return s.state.GetOrCreateWebAuthnUserHandle(candidate)
@@ -389,8 +367,6 @@ func portableStateEmpty(data PortableData) bool {
 		len(data.Settings) == 0 &&
 		len(data.Journal) == 0 &&
 		len(data.Audit) == 0 &&
-		!data.TOTP.Enabled && data.TOTP.PendingSecret == "" &&
-		len(data.RecoveryCodes) == 0 &&
 		len(data.WebAuthnUserHandle) == 0 &&
 		len(data.WebAuthnCredentials) == 0
 }

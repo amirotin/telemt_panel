@@ -107,7 +107,7 @@ func TestLoginMeLogoutFlow(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &me); err != nil {
 		t.Fatalf("decode me response: %v", err)
 	}
-	if me.Username != "admin" || me.TOTPEnabled || me.Passkeys == nil || len(me.Passkeys) != 0 {
+	if me.Username != "admin" || me.Passkeys == nil || len(me.Passkeys) != 0 {
 		t.Fatalf("me response = %+v, want {admin false []}", me)
 	}
 

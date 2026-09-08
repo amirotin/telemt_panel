@@ -1,7 +1,5 @@
-// Package auth implements password login, opaque browser sessions, the CSRF
-// and session middleware, and the login rate limiter. Passkeys and TOTP
-// (spec 05-auth.md) are later milestones; this package covers the password
-// path only.
+// Package auth implements password login, opaque browser sessions, CSRF
+// protection and login rate limiting. Passkey ceremonies live in httpapi.
 package auth
 
 import (

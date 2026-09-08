@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -581,40 +580,6 @@ func TestStateMutationsRollbackWhenPersistenceFails(t *testing.T) {
 		if policy.Category == StorageTraffic && !policy.Enabled {
 			t.Fatal("failed policy mutation survived")
 		}
-	}
-}
-
-func TestStateFileInvalidTOTPStateFailsClosed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "panel-state.json")
-	mf := stateFile{TOTP: TOTPState{Enabled: true, LastTimestep: -1}}
-	data, err := json.Marshal(mf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewMemory(path); err == nil {
-		t.Fatal("NewMemory accepted enabled TOTP without a secret")
-	}
-}
-
-func TestStateFileDuplicateRecoveryHashFailsClosed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "panel-state.json")
-	hash := strings.Repeat("ab", 32)
-	mf := stateFile{
-		TOTP:          TOTPState{Enabled: true, Secret: "secret", LastTimestep: -1},
-		RecoveryCodes: []string{hash, hash},
-	}
-	data, err := json.Marshal(mf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewMemory(path); err == nil {
-		t.Fatal("NewMemory accepted duplicate TOTP recovery hashes")
 	}
 }
 

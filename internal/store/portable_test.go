@@ -217,17 +217,6 @@ func populatePortableStore(t *testing.T, st Store) {
 			t.Fatalf("populate store: %v", err)
 		}
 	}
-	recovery := make([][]byte, 10)
-	for i := range recovery {
-		hash := sha256.Sum256([]byte(fmt.Sprintf("portable-recovery-%d", i)))
-		recovery[i] = append([]byte(nil), hash[:]...)
-	}
-	if err := st.BeginTOTPSetup("portable-secret", now.Add(time.Hour)); err != nil {
-		t.Fatalf("populate TOTP setup: %v", err)
-	}
-	if err := st.EnableTOTP("portable-secret", now, recovery); err != nil {
-		t.Fatalf("populate TOTP state: %v", err)
-	}
 	handle := make([]byte, webAuthnUserHandleBytes)
 	for i := range handle {
 		handle[i] = byte(i + 1)

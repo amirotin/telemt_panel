@@ -49,8 +49,6 @@ type Memory struct {
 	subpageNonces        map[string]string
 	settings             map[string]string
 	policies             map[StorageCategory]StoragePolicy
-	totp                 TOTPState
-	recoveryCodes        map[string]struct{}
 	webauthnUserHandle   []byte
 	webauthnCredentials  map[string]WebAuthnCredential
 	webauthnChallenges   map[string]WebAuthnChallenge
@@ -89,8 +87,6 @@ type stateFile struct {
 	Journal             map[string][]UpdateJournalEntry `json:"journal"`
 	Policies            []StoragePolicy                 `json:"storage_policies,omitempty"`
 	Audit               []AuditEntry                    `json:"audit,omitempty"`
-	TOTP                TOTPState                       `json:"totp,omitempty"`
-	RecoveryCodes       []string                        `json:"totp_recovery_codes,omitempty"`
 	WebAuthnUserHandle  []byte                          `json:"webauthn_user_handle,omitempty"`
 	WebAuthnCredentials map[string]WebAuthnCredential   `json:"webauthn_credentials,omitempty"`
 	// Kept only so state files written by the pre-split development build can
@@ -112,8 +108,7 @@ func NewMemoryHistory() (*Memory, error) {
 // control-plane state is loaded from it now and persisted back on every
 // subsequent mutation (session touches are debounced). A
 // missing state file starts empty. An existing unreadable or corrupt file fails
-// startup: otherwise damaged persisted TOTP state could silently disappear and
-// weaken authentication.
+// startup rather than silently discarding authentication or settings.
 func NewMemory(statePath string) (*Memory, error) {
 	m := &Memory{
 		sessions:            make(map[string]Session),
@@ -124,8 +119,6 @@ func NewMemory(statePath string) (*Memory, error) {
 		subpageNonces:       make(map[string]string),
 		settings:            make(map[string]string),
 		policies:            defaultPolicyMap(),
-		totp:                TOTPState{LastTimestep: -1},
-		recoveryCodes:       make(map[string]struct{}),
 		webauthnCredentials: make(map[string]WebAuthnCredential),
 		webauthnChallenges:  make(map[string]WebAuthnChallenge),
 		statePath:           statePath,
@@ -187,20 +180,6 @@ func NewMemory(statePath string) (*Memory, error) {
 		}
 		m.journal = mf.Journal
 	}
-	m.totp = mf.TOTP
-	for _, hash := range mf.RecoveryCodes {
-		if !validRecoveryCodeKey(hash) {
-			return nil, fmt.Errorf("store: state file contains an invalid TOTP recovery hash")
-		}
-		if _, duplicate := m.recoveryCodes[hash]; duplicate {
-			return nil, fmt.Errorf("store: state file contains a duplicate TOTP recovery hash")
-		}
-		m.recoveryCodes[hash] = struct{}{}
-	}
-	if err := validatePortableTOTP(m.totp, recoveryCodeHashes(m.recoveryCodes)); err != nil {
-		return nil, fmt.Errorf("store: state file contains invalid TOTP state: %w", err)
-	}
-	m.totp.RecoveryCodes = len(m.recoveryCodes)
 	m.webauthnUserHandle = append([]byte(nil), mf.WebAuthnUserHandle...)
 	if mf.WebAuthnCredentials != nil {
 		m.webauthnCredentials = cloneWebAuthnCredentials(mf.WebAuthnCredentials)
@@ -234,8 +213,6 @@ func (m *Memory) writeStateLocked() error {
 		Journal:             m.journal,
 		Policies:            policiesFromMap(m.policies),
 		Audit:               m.audit,
-		TOTP:                m.totp,
-		RecoveryCodes:       recoveryCodeKeys(m.recoveryCodes),
 		WebAuthnUserHandle:  append([]byte(nil), m.webauthnUserHandle...),
 		WebAuthnCredentials: m.webauthnCredentials,
 	}

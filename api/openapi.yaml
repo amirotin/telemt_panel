@@ -51,12 +51,11 @@ paths:
               properties:
                 username: { type: string }
                 password: { type: string }
-                totp: { type: string, description: Required when TOTP is enabled }
       responses:
         "204": { description: Logged in; session cookie set }
         "400": { description: bad_request — malformed request body, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401":
-          description: invalid_credentials | totp_required
+          description: invalid_credentials
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "429": { $ref: "#/components/responses/RateLimited" }
 
@@ -71,7 +70,7 @@ paths:
       tags: [auth]
       security: []
       operationId: getAuthMethods
-      description: Public login-method availability. Does not reveal whether TOTP is enabled.
+      description: Public passkey availability. Password login is always available.
       responses:
         "200":
           description: Available passwordless methods
@@ -94,10 +93,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [username, totp_enabled, passkeys]
+                required: [username, passkeys]
                 properties:
                   username: { type: string }
-                  totp_enabled: { type: boolean }
                   passkeys:
                     type: array
                     items: { $ref: "#/components/schemas/PasskeyInfo" }
@@ -133,55 +131,6 @@ paths:
       responses:
         "204": { description: Revoked }
         "404": { $ref: "#/components/responses/NotFound" }
-
-  # TOTP lifecycle (state lives in store, not Telemt config).
-  /api/auth/totp/setup:
-    post:
-      tags: [auth]
-      operationId: totpSetup
-      responses:
-        "200":
-          description: Provisioning secret for QR (not yet enabled)
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [otpauth_url, secret]
-                properties:
-                  otpauth_url: { type: string }
-                  secret: { type: string }
-        "409":
-          description: totp_already_enabled
-          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
-  /api/auth/totp/enable:
-    post:
-      tags: [auth]
-      operationId: totpEnable
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object, required: [code], properties: { code: { type: string } } }
-      responses:
-        "200":
-          description: Enabled; recovery codes shown exactly once
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [recovery_codes]
-                properties:
-                  recovery_codes: { type: array, items: { type: string } }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "409":
-          description: totp_setup_changed
-          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
-        "429": { $ref: "#/components/responses/RateLimited" }
-  /api/auth/totp:
-    delete:
-      tags: [auth]
-      operationId: totpDisable
-      responses: { "204": { description: Disabled } }
 
   # WebAuthn: public_key and credential are the standard WebAuthn JSON shapes.
   /api/auth/webauthn/register/begin:
@@ -1205,10 +1154,6 @@ components:
             - log_tail_unavailable
             - log_stream_unavailable
             - log_source_error
-            - totp_required
-            - invalid_totp
-            - totp_already_enabled
-            - totp_setup_changed
             - invalid_webauthn_origin
             - invalid_webauthn_challenge
             - invalid_webauthn_response
@@ -1254,8 +1199,7 @@ components:
             telemt_unreachable, capability_absent, capability_unavailable,
             manual_restart_required, update_locked, sublink_unavailable,
             log_tail_unavailable, log_stream_unavailable, log_source_error,
-            totp_required, invalid_totp, totp_already_enabled,
-            totp_setup_changed, invalid_webauthn_origin,
+            invalid_webauthn_origin,
             invalid_webauthn_challenge, invalid_webauthn_response,
             webauthn_credential_exists, passkey_unavailable,
             invalid_toml, invalid_config_path, config_unset_unsupported,
@@ -1871,7 +1815,7 @@ components:
         last_seen: { type: string, format: date-time }
         ip: { type: string }
         user_agent_label: { type: string, description: Parsed, human-readable ("iPhone · Safari") }
-        auth_method: { type: string, enum: [password, password+totp, password+recovery, passkey] }
+        auth_method: { type: string, enum: [password, passkey] }
         current: { type: boolean }
 
     SessionPage:
