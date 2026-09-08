@@ -197,7 +197,11 @@ func (s *Server) handlePutAutoUpdate(w http.ResponseWriter, r *http.Request) {
 
 	settings := update.AutoSettings{Telemt: req.Telemt, Panel: req.Panel, Interval: interval}
 	if err := update.SetAutoSettings(s.st, settings); err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		if errors.Is(err, update.ErrInvalidAutoSettings) {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not save auto-update settings")
 		return
 	}
 	s.appendAudit(r, "update.auto_change", "", req.Telemt+"/"+req.Panel+"/"+req.Interval)

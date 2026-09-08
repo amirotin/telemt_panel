@@ -62,6 +62,12 @@ type PortableStore interface {
 	ImportData(PortableData) error
 }
 
+// PortableHistoryEmpty reports whether an export contains no observability
+// history that requires a durable history destination.
+func PortableHistoryEmpty(data PortableData) bool {
+	return portableHistoryEmpty(data)
+}
+
 // ExportData returns a detached copy of all persisted panel state.
 func (m *Memory) ExportData() (PortableData, error) {
 	m.mu.Lock()

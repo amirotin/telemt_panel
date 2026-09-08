@@ -416,6 +416,76 @@ func TestHandleAutoUpdate_GetPutRoundTripAndValidation(t *testing.T) {
 	}
 }
 
+type failingAutoUpdateStore struct {
+	store.Store
+	err error
+}
+
+func (s *failingAutoUpdateStore) SetSetting(string, string) error {
+	return s.err
+}
+
+func TestHandlePutAutoUpdate_PersistenceFailureIsInternalErrorWithoutSuccessAudit(t *testing.T) {
+	srv, cookie, _ := newUpdatesTestServer(t, &hosttest.Runner{}, "v1.0.0")
+	baseStore := srv.st
+	secret := "/private/panel-state.json"
+	srv.st = &failingAutoUpdateStore{Store: baseStore, err: fmt.Errorf("persist %s: permission denied", secret)}
+
+	r := mutatingJSON(t, "PUT", "/api/updates/auto", cookie, autoUpdateSettingsView{
+		Telemt: "apply", Panel: "check", Interval: "2h",
+	})
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", w.Code, w.Body)
+	}
+	var body struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Code != "internal_error" {
+		t.Fatalf("error code = %q, want internal_error", body.Code)
+	}
+	if strings.Contains(w.Body.String(), secret) {
+		t.Fatalf("error response exposed persistence path: %s", w.Body)
+	}
+	audits, err := baseStore.ListAudit(0)
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	for _, entry := range audits {
+		if entry.Action == "update.auto_change" {
+			t.Fatalf("failed settings write created success audit: %+v", entry)
+		}
+	}
+}
+
+func TestHandleGetAutoUpdate_InvalidStoredRecordIsInternalError(t *testing.T) {
+	srv, cookie, _ := newUpdatesTestServer(t, &hosttest.Runner{}, "v1.0.0")
+	if err := srv.st.SetSetting("auto_update", `{"telemt":"bogus","panel":"off","interval":"2h"}`); err != nil {
+		t.Fatalf("seed invalid stored record: %v", err)
+	}
+	r := httptest.NewRequest("GET", "/api/updates/auto", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", w.Code, w.Body)
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Code != "internal_error" {
+		t.Fatalf("error code = %q, want internal_error", body.Code)
+	}
+}
+
 func TestSSEUpdateTopic_DeliversRunProgress(t *testing.T) {
 	runner := &hosttest.Runner{}
 	srv, cookie, engine := newUpdatesTestServer(t, runner, "v1.0.0")

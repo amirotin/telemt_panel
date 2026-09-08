@@ -210,19 +210,48 @@ func TestExtractSingleBinary_ExactCountMismatchFails(t *testing.T) {
 }
 
 func TestParseChecksumFile(t *testing.T) {
+	const digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 	tests := []struct {
+		name    string
 		content string
 		want    string
 	}{
-		{"deadbeef\n", "deadbeef"},
-		{"DEADBEEF  telemt.tar.gz\n", "deadbeef"},
-		{"", ""},
-		{"   \n", ""},
+		{name: "lowercase bare digest", content: digest + "\n", want: digest},
+		{name: "uppercase bare digest", content: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n", want: digest},
+		{name: "coreutils text format", content: digest + "  telemt.tar.gz\n", want: digest},
+		{name: "coreutils binary format", content: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA *telemt.tar.gz\n", want: digest},
 	}
 	for _, tc := range tests {
-		if got := parseChecksumFile(tc.content); got != tc.want {
-			t.Errorf("parseChecksumFile(%q) = %q, want %q", tc.content, got, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseChecksumFile(tc.content)
+			if err != nil {
+				t.Fatalf("parseChecksumFile(%q): %v", tc.content, err)
+			}
+			if got != tc.want {
+				t.Errorf("parseChecksumFile(%q) = %q, want %q", tc.content, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseChecksumFile_RejectsInvalidDigest(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "empty", content: ""},
+		{name: "whitespace", content: " \n"},
+		{name: "wrong length", content: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"},
+		{name: "non-hex", content: "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseChecksumFile(tc.content)
+			if err == nil {
+				t.Fatalf("accepted invalid checksum %q: %q", tc.content, got)
+			}
+		})
 	}
 }
 

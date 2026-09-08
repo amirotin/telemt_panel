@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -86,15 +87,22 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// parseChecksumFile extracts the hex digest from a ".sha256" asset's
-// content, tolerating both the bare-hash form and the coreutils
-// "<hash>  <filename>" form; returns "" for empty/unparseable content.
-func parseChecksumFile(content string) string {
+// parseChecksumFile extracts and validates the SHA-256 digest from a
+// ".sha256" asset, accepting both a bare digest and the coreutils
+// "<digest>  <filename>" form.
+func parseChecksumFile(content string) (string, error) {
 	fields := strings.Fields(content)
 	if len(fields) == 0 {
-		return ""
+		return "", errors.New("checksum is empty")
 	}
-	return strings.ToLower(fields[0])
+	digest := fields[0]
+	if len(digest) != sha256.Size*2 {
+		return "", fmt.Errorf("checksum digest length is %d, want %d", len(digest), sha256.Size*2)
+	}
+	if _, err := hex.DecodeString(digest); err != nil {
+		return "", fmt.Errorf("checksum digest is not hexadecimal: %w", err)
+	}
+	return strings.ToLower(digest), nil
 }
 
 // findRelease returns the release tagged exactly version.

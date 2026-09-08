@@ -1,6 +1,7 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -237,8 +238,8 @@ func TestApply_ChecksumMismatch_FailsWithoutInstalling(t *testing.T) {
 	tarBytes := buildTarGz(t, "telemt", []byte("new-binary"))
 	assetName := AssetName("telemt", "x86_64", "musl")
 	url := fixture.addAsset(assetName, tarBytes)
-	// Wrong checksum on purpose.
-	sumURL := fixture.addAsset(assetName+".sha256", []byte("deadbeef  "+assetName+"\n"))
+	// Syntactically valid but deliberately incorrect checksum.
+	sumURL := fixture.addAsset(assetName+".sha256", []byte(strings.Repeat("0", 64)+"  "+assetName+"\n"))
 	fixture.releases = []Release{{Tag: "v2.0.0", Assets: []Asset{
 		{Name: assetName, BrowserDownloadURL: url},
 		{Name: assetName + ".sha256", BrowserDownloadURL: sumURL},
@@ -259,6 +260,150 @@ func TestApply_ChecksumMismatch_FailsWithoutInstalling(t *testing.T) {
 	}
 	if calls := runner.CallsSnapshot(); len(calls) != 0 {
 		t.Errorf("runner calls = %+v, want none (verification failed before any install)", calls)
+	}
+}
+
+func TestApply_AbsentChecksumAsset_PreservesOptionalPolicy(t *testing.T) {
+	dir := t.TempDir()
+	binaryPath := filepath.Join(dir, "telemt")
+	if err := os.WriteFile(binaryPath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatalf("seed binary: %v", err)
+	}
+
+	fixture := newFakeReleaseServer(t)
+	tarBytes := buildTarGz(t, "telemt", []byte("new-binary"))
+	assetName := AssetName("telemt", "x86_64", "musl")
+	url := fixture.addAsset(assetName, tarBytes)
+	fixture.releases = []Release{{Tag: "v2.0.0", Assets: []Asset{
+		{Name: assetName, BrowserDownloadURL: url},
+	}}}
+
+	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", binaryPath: binaryPath, serviceName: "telemt", version: "v1.0.0"}
+	runner := newTestRunner()
+	e, st := newTestEngine(t, fixture, runner, map[string]Target{TargetTelemt: target}, nil)
+
+	if err := e.Apply(context.Background(), TargetTelemt, "v2.0.0"); err != nil {
+		t.Fatalf("Apply without checksum asset: %v", err)
+	}
+	entries, err := st.ListUpdateJournal(TargetTelemt, 20)
+	if err != nil {
+		t.Fatalf("ListUpdateJournal: %v", err)
+	}
+	if len(entries) == 0 || entries[0].Phase != PhaseDone {
+		t.Fatalf("last journal entry = %+v, want phase=done", entries)
+	}
+	if calls := runner.CallsSnapshot(); len(calls) != 3 {
+		t.Fatalf("runner calls = %+v, want backup install, binary install and restart", calls)
+	}
+}
+
+func TestApply_InvalidPublishedChecksum_FailsBeforeInstalling(t *testing.T) {
+	tests := []struct {
+		name     string
+		checksum string
+	}{
+		{name: "blank", checksum: " \n"},
+		{name: "wrong length", checksum: "deadbeef\n"},
+		{name: "non-hex", checksum: strings.Repeat("g", 64) + "\n"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			binaryPath := filepath.Join(dir, "telemt")
+			if err := os.WriteFile(binaryPath, []byte("old-binary"), 0o755); err != nil {
+				t.Fatalf("seed binary: %v", err)
+			}
+
+			fixture := newFakeReleaseServer(t)
+			tarBytes := buildTarGz(t, "telemt", []byte("new-binary"))
+			assetName := AssetName("telemt", "x86_64", "musl")
+			url := fixture.addAsset(assetName, tarBytes)
+			sumURL := fixture.addAsset(assetName+".sha256", []byte(tc.checksum))
+			fixture.releases = []Release{{Tag: "v2.0.0", Assets: []Asset{
+				{Name: assetName, BrowserDownloadURL: url},
+				{Name: assetName + ".sha256", BrowserDownloadURL: sumURL},
+			}}}
+
+			target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", binaryPath: binaryPath, serviceName: "telemt", version: "v1.0.0"}
+			runner := newTestRunner()
+			e, st := newTestEngine(t, fixture, runner, map[string]Target{TargetTelemt: target}, nil)
+
+			err := e.Apply(context.Background(), TargetTelemt, "v2.0.0")
+			if err == nil || !strings.Contains(err.Error(), "invalid checksum") {
+				t.Fatalf("Apply error = %v, want invalid checksum error", err)
+			}
+
+			got, readErr := os.ReadFile(binaryPath)
+			if readErr != nil {
+				t.Fatalf("read original binary: %v", readErr)
+			}
+			if string(got) != "old-binary" {
+				t.Errorf("binary = %q, want original bytes", got)
+			}
+			entries, journalErr := st.ListUpdateJournal(TargetTelemt, 20)
+			if journalErr != nil {
+				t.Fatalf("ListUpdateJournal: %v", journalErr)
+			}
+			if len(entries) == 0 || entries[0].Phase != PhaseFailed {
+				t.Fatalf("last journal entry = %+v, want phase=failed", entries)
+			}
+			if calls := runner.CallsSnapshot(); len(calls) != 0 {
+				t.Errorf("runner calls = %+v, want none", calls)
+			}
+		})
+	}
+}
+
+func TestStageBinaryBackup_CopiesBytesAndExecutableMode(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "telemt")
+	destination := filepath.Join(dir, "backup")
+	want := bytes.Repeat([]byte("backup-data-"), 4096)
+	if err := os.WriteFile(source, want, 0o644); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+
+	if err := stageBinaryBackup(source, destination); err != nil {
+		t.Fatalf("stageBinaryBackup: %v", err)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatalf("read destination: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("backup bytes differ: got %d bytes, want %d", len(got), len(want))
+	}
+	info, err := os.Stat(destination)
+	if err != nil {
+		t.Fatalf("stat destination: %v", err)
+	}
+	if gotMode := info.Mode().Perm(); gotMode != 0o755 {
+		t.Errorf("backup mode = %o, want 755", gotMode)
+	}
+}
+
+func TestStageBinaryBackup_MissingSourcePreservesNotExist(t *testing.T) {
+	dir := t.TempDir()
+	err := stageBinaryBackup(filepath.Join(dir, "missing"), filepath.Join(dir, "backup"))
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stageBinaryBackup missing source error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func BenchmarkStageBinaryBackup(b *testing.B) {
+	dir := b.TempDir()
+	source := filepath.Join(dir, "telemt")
+	destination := filepath.Join(dir, "backup")
+	if err := os.WriteFile(source, bytes.Repeat([]byte("x"), 16<<20), 0o755); err != nil {
+		b.Fatalf("seed source: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if err := stageBinaryBackup(source, destination); err != nil {
+			b.Fatalf("stageBinaryBackup: %v", err)
+		}
 	}
 }
 

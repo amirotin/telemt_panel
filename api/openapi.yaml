@@ -827,6 +827,7 @@ paths:
       operationId: getAutoUpdate
       responses:
         "200": { description: Settings, content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdateSettings" } } } }
+        "500": { $ref: "#/components/responses/InternalError" }
     put:
       tags: [updates]
       operationId: putAutoUpdate
@@ -837,6 +838,7 @@ paths:
       responses:
         "204": { description: Saved }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /api/settings/storage:
     get:

@@ -2671,6 +2671,15 @@ export type GetAutoUpdateData = {
     url: '/api/updates/auto';
 };
 
+export type GetAutoUpdateErrors = {
+    /**
+     * Internal panel error
+     */
+    500: Error;
+};
+
+export type GetAutoUpdateError = GetAutoUpdateErrors[keyof GetAutoUpdateErrors];
+
 export type GetAutoUpdateResponses = {
     /**
      * Settings
@@ -2692,6 +2701,10 @@ export type PutAutoUpdateErrors = {
      * Invalid input
      */
     400: Error;
+    /**
+     * Internal panel error
+     */
+    500: Error;
 };
 
 export type PutAutoUpdateError = PutAutoUpdateErrors[keyof PutAutoUpdateErrors];

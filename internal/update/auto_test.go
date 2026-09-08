@@ -2,6 +2,9 @@ package update
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,16 +29,18 @@ func TestAutoSettings_GetDefaultsAndRoundTrip(t *testing.T) {
 		t.Errorf("defaults = %+v, want %+v", got, want)
 	}
 
-	set := AutoSettings{Telemt: AutoModeApply, Panel: AutoModeCheck, Interval: 2 * time.Hour}
-	if err := SetAutoSettings(st, set); err != nil {
-		t.Fatalf("SetAutoSettings: %v", err)
+	values := []AutoSettings{
+		{Telemt: AutoModeApply, Panel: AutoModeCheck, Interval: 2 * time.Hour},
+		{Telemt: AutoModeCheck, Panel: AutoModeOff, Interval: 12 * time.Hour},
 	}
-	got, err = GetAutoSettings(st)
-	if err != nil {
-		t.Fatalf("GetAutoSettings after set: %v", err)
-	}
-	if got != set {
-		t.Errorf("round-trip = %+v, want %+v", got, set)
+	for _, want := range values {
+		if err := SetAutoSettings(st, want); err != nil {
+			t.Fatalf("SetAutoSettings(%+v): %v", want, err)
+		}
+		got, err = GetAutoSettings(st)
+		if err != nil || got != want {
+			t.Fatalf("got %+v, %v; want %+v", got, err, want)
+		}
 	}
 }
 
@@ -43,11 +48,137 @@ func TestSetAutoSettings_RejectsInvalidModeAndInterval(t *testing.T) {
 	st, _ := store.NewMemory("")
 	defer st.Close()
 
-	if err := SetAutoSettings(st, AutoSettings{Telemt: "bogus", Panel: AutoModeOff, Interval: time.Hour}); err == nil {
-		t.Error("want error for invalid mode")
+	if err := SetAutoSettings(st, AutoSettings{Telemt: "bogus", Panel: AutoModeOff, Interval: time.Hour}); !errors.Is(err, ErrInvalidAutoSettings) {
+		t.Errorf("invalid mode error = %v, want ErrInvalidAutoSettings", err)
 	}
-	if err := SetAutoSettings(st, AutoSettings{Telemt: AutoModeOff, Panel: AutoModeOff, Interval: 30 * time.Minute}); err == nil {
-		t.Error("want error for interval below the 1h floor")
+	if err := SetAutoSettings(st, AutoSettings{Telemt: AutoModeOff, Panel: AutoModeOff, Interval: 30 * time.Minute}); !errors.Is(err, ErrInvalidAutoSettings) {
+		t.Errorf("invalid interval error = %v, want ErrInvalidAutoSettings", err)
+	}
+}
+
+func TestAutoSettings_ReopensDurableState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
+	st, err := store.NewMemory(path)
+	if err != nil {
+		t.Fatalf("store.NewMemory: %v", err)
+	}
+	want := AutoSettings{Telemt: AutoModeCheck, Panel: AutoModeApply, Interval: 8 * time.Hour}
+	if err := SetAutoSettings(st, want); err != nil {
+		t.Fatalf("SetAutoSettings: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	reopened, err := store.NewMemory(path)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	defer reopened.Close()
+	got, err := GetAutoSettings(reopened)
+	if err != nil || got != want {
+		t.Fatalf("got %+v, %v after reopen; want %+v", got, err, want)
+	}
+}
+
+func TestGetAutoSettings_RejectsMalformedOrInvalidStoredRecord(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "malformed JSON", raw: `{"telemt":`},
+		{name: "invalid telemt mode", raw: `{"telemt":"bogus","panel":"off","interval":"2h"}`},
+		{name: "invalid panel mode", raw: `{"telemt":"off","panel":"bogus","interval":"2h"}`},
+		{name: "malformed interval", raw: `{"telemt":"off","panel":"off","interval":"sometimes"}`},
+		{name: "interval below floor", raw: `{"telemt":"off","panel":"off","interval":"30m"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := store.NewMemory("")
+			if err != nil {
+				t.Fatalf("store.NewMemory: %v", err)
+			}
+			defer st.Close()
+			if err := st.SetSetting("auto_update", tt.raw); err != nil {
+				t.Fatalf("seed stored record: %v", err)
+			}
+			if got, err := GetAutoSettings(st); err == nil {
+				t.Fatalf("GetAutoSettings = %+v, nil; want error", got)
+			}
+		})
+	}
+}
+
+type autoSettingsFailureStore struct {
+	store.Store
+	failOn int
+	calls  int
+}
+
+func (s *autoSettingsFailureStore) SetSetting(key, value string) error {
+	s.calls++
+	if s.calls == s.failOn {
+		return errors.New("persist settings: /private/panel-state.json is unavailable")
+	}
+	return s.Store.SetSetting(key, value)
+}
+
+func TestSetAutoSettings_PersistenceFailureKeepsCompleteSettings(t *testing.T) {
+	for _, failOn := range []int{1, 2} {
+		t.Run(fmt.Sprintf("failure boundary %d", failOn), func(t *testing.T) {
+			st, err := store.NewMemory("")
+			if err != nil {
+				t.Fatalf("store.NewMemory: %v", err)
+			}
+			defer st.Close()
+
+			before := AutoSettings{Telemt: AutoModeCheck, Panel: AutoModeOff, Interval: 2 * time.Hour}
+			if err := SetAutoSettings(st, before); err != nil {
+				t.Fatalf("seed settings: %v", err)
+			}
+			after := AutoSettings{Telemt: AutoModeApply, Panel: AutoModeApply, Interval: 12 * time.Hour}
+			err = SetAutoSettings(&autoSettingsFailureStore{Store: st, failOn: failOn}, after)
+			want := after
+			if err != nil {
+				want = before
+			}
+			got, getErr := GetAutoSettings(st)
+			if getErr != nil || got != want {
+				t.Fatalf("SetAutoSettings error = %v; got %+v, %v; want complete %+v", err, got, getErr, want)
+			}
+			if failOn == 1 && err == nil {
+				t.Fatal("first setting write unexpectedly crossed the failure boundary")
+			}
+		})
+	}
+}
+
+func TestSetAutoSettings_PersistsSingleCompleteRecord(t *testing.T) {
+	st, err := store.NewMemory("")
+	if err != nil {
+		t.Fatalf("store.NewMemory: %v", err)
+	}
+	defer st.Close()
+	want := AutoSettings{Telemt: AutoModeApply, Panel: AutoModeCheck, Interval: 2 * time.Hour}
+	if err := SetAutoSettings(st, want); err != nil {
+		t.Fatalf("SetAutoSettings: %v", err)
+	}
+	raw, ok, err := st.GetSetting("auto_update")
+	if err != nil || !ok {
+		t.Fatalf("GetSetting(auto_update) = %q, %v, %v; want stored record", raw, ok, err)
+	}
+	var got map[string]string
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("stored record is not JSON: %v", err)
+	}
+	wantRecord := map[string]string{"telemt": "apply", "panel": "check", "interval": "2h0m0s"}
+	if len(got) != len(wantRecord) {
+		t.Fatalf("stored record = %#v, want %#v", got, wantRecord)
+	}
+	for key, wantValue := range wantRecord {
+		if got[key] != wantValue {
+			t.Fatalf("stored record[%q] = %q, want %q", key, got[key], wantValue)
+		}
 	}
 }
 

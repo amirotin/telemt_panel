@@ -74,9 +74,9 @@ func TestReleaseContract(t *testing.T) {
 				if err != nil {
 					t.Fatalf("read %q: %v", sumPath, err)
 				}
-				want := parseChecksumFile(string(sumContent))
-				if want == "" {
-					t.Fatalf("%q has no parseable checksum", sumPath)
+				want, err := parseChecksumFile(string(sumContent))
+				if err != nil {
+					t.Fatalf("parse checksum %q: %v", sumPath, err)
 				}
 				if digest != want {
 					t.Fatalf("%q sha256 = %s, checksum file says %s", tarPath, digest, want)

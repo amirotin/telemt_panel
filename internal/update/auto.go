@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,13 +19,9 @@ const (
 	AutoModeApply = "apply"
 )
 
-// Store setting keys AutoSettings is persisted under (spec
-// 03-update-engine.md: "живут в store", never in config.toml).
-const (
-	autoSettingKeyTelemt   = "auto_update.telemt"
-	autoSettingKeyPanel    = "auto_update.panel"
-	autoSettingKeyInterval = "auto_update.interval"
-)
+// autoSettingKey stores AutoSettings as one record so a save cannot expose a
+// mixture of old and new fields.
+const autoSettingKey = "auto_update"
 
 // defaultAutoInterval/minAutoInterval bound AutoSettings.Interval: default
 // 6h, floor 1h (spec).
@@ -41,28 +38,45 @@ type AutoSettings struct {
 	Interval time.Duration
 }
 
-// GetAutoSettings reads AutoSettings from the store, filling in defaults
-// (off/off/6h) for any key that has never been set — the settings a fresh
-// install starts with.
-func GetAutoSettings(st store.Store) (AutoSettings, error) {
-	out := AutoSettings{Telemt: AutoModeOff, Panel: AutoModeOff, Interval: defaultAutoInterval}
+// ErrInvalidAutoSettings classifies invalid auto-update modes and intervals.
+var ErrInvalidAutoSettings = errors.New("invalid auto-update settings")
 
-	if v, ok, err := st.GetSetting(autoSettingKeyTelemt); err != nil {
+type invalidAutoSettingsError struct {
+	message string
+}
+
+func (e invalidAutoSettingsError) Error() string { return e.message }
+func (e invalidAutoSettingsError) Unwrap() error { return ErrInvalidAutoSettings }
+
+type autoSettingsRecord struct {
+	Telemt   string `json:"telemt"`
+	Panel    string `json:"panel"`
+	Interval string `json:"interval"`
+}
+
+// GetAutoSettings reads one complete AutoSettings record from the store. A
+// fresh install defaults to off/off/6h; malformed or invalid persisted values
+// are returned as errors rather than silently replaced with defaults.
+func GetAutoSettings(st store.Store) (AutoSettings, error) {
+	raw, ok, err := st.GetSetting(autoSettingKey)
+	if err != nil {
 		return AutoSettings{}, err
-	} else if ok {
-		out.Telemt = v
 	}
-	if v, ok, err := st.GetSetting(autoSettingKeyPanel); err != nil {
-		return AutoSettings{}, err
-	} else if ok {
-		out.Panel = v
+	if !ok {
+		return AutoSettings{Telemt: AutoModeOff, Panel: AutoModeOff, Interval: defaultAutoInterval}, nil
 	}
-	if v, ok, err := st.GetSetting(autoSettingKeyInterval); err != nil {
+
+	var record autoSettingsRecord
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return AutoSettings{}, fmt.Errorf("update: decode auto-update settings: %w", err)
+	}
+	interval, err := time.ParseDuration(record.Interval)
+	if err != nil {
+		return AutoSettings{}, invalidAutoSettingsError{message: fmt.Sprintf("update: invalid auto-update interval %q", record.Interval)}
+	}
+	out := AutoSettings{Telemt: record.Telemt, Panel: record.Panel, Interval: interval}
+	if err := validateAutoSettings(out); err != nil {
 		return AutoSettings{}, err
-	} else if ok {
-		if d, err := time.ParseDuration(v); err == nil && d >= minAutoInterval {
-			out.Interval = d
-		}
 	}
 	return out, nil
 }
@@ -71,6 +85,19 @@ func GetAutoSettings(st store.Store) (AutoSettings, error) {
 // mode or an interval below minAutoInterval is rejected without writing
 // anything.
 func SetAutoSettings(st store.Store, s AutoSettings) error {
+	if err := validateAutoSettings(s); err != nil {
+		return err
+	}
+	record, err := json.Marshal(autoSettingsRecord{
+		Telemt: s.Telemt, Panel: s.Panel, Interval: s.Interval.String(),
+	})
+	if err != nil {
+		return fmt.Errorf("update: encode auto-update settings: %w", err)
+	}
+	return st.SetSetting(autoSettingKey, string(record))
+}
+
+func validateAutoSettings(s AutoSettings) error {
 	if err := validateAutoMode(s.Telemt); err != nil {
 		return err
 	}
@@ -78,16 +105,9 @@ func SetAutoSettings(st store.Store, s AutoSettings) error {
 		return err
 	}
 	if s.Interval < minAutoInterval {
-		return fmt.Errorf("update: auto interval must be >= %s", minAutoInterval)
+		return invalidAutoSettingsError{message: fmt.Sprintf("update: auto interval must be >= %s", minAutoInterval)}
 	}
-
-	if err := st.SetSetting(autoSettingKeyTelemt, s.Telemt); err != nil {
-		return err
-	}
-	if err := st.SetSetting(autoSettingKeyPanel, s.Panel); err != nil {
-		return err
-	}
-	return st.SetSetting(autoSettingKeyInterval, s.Interval.String())
+	return nil
 }
 
 func validateAutoMode(m string) error {
@@ -95,7 +115,7 @@ func validateAutoMode(m string) error {
 	case AutoModeOff, AutoModeCheck, AutoModeApply:
 		return nil
 	default:
-		return fmt.Errorf("update: invalid auto-update mode %q", m)
+		return invalidAutoSettingsError{message: fmt.Sprintf("update: invalid auto-update mode %q", m)}
 	}
 }
 

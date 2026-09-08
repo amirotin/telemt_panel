@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -464,8 +465,9 @@ func (e *Engine) fail(rc *runCtx, phase, detail string) error {
 //
 // backupPath=="" is a deliberate, distinct outcome, not an edge case of
 // the above: it means this was a first-ever install (target.BinaryPath()
-// didn't exist before runPhases' staging phase, so there was never
-// anything to back up — see runPhases' os.ReadFile/os.IsNotExist branch).
+// didn't exist before runPhases' staging phase, so stageBinaryBackup reached
+// runPhases' errors.Is(stageErr, os.ErrNotExist) branch and there was never
+// anything to back up).
 // There is nothing to roll back TO, so rollback journals failed instead
 // of rolled_back here — "rolled_back" would be a lie about a prior state
 // that never existed. Callers must not treat failed as "rollback didn't
@@ -511,6 +513,38 @@ func (e *Engine) assetMatcher(targetName string) AssetMatcher {
 		return NewPanelAssetMatcher(e.arch, e.variant, e.buildVariant)
 	}
 	return NewAssetMatcher(assetBaseName(targetName), e.arch, e.variant)
+}
+
+// stageBinaryBackup copies the installed binary without retaining its bytes in
+// memory and leaves an executable staging file for the privileged installer.
+func stageBinaryBackup(sourcePath, destinationPath string) (retErr error) {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open current binary %q: %w", sourcePath, err)
+	}
+	defer func() {
+		if err := source.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close current binary %q: %w", sourcePath, err))
+		}
+	}()
+
+	destination, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	if err != nil {
+		return fmt.Errorf("create staged backup %q: %w", destinationPath, err)
+	}
+	defer func() {
+		if err := destination.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close staged backup %q: %w", destinationPath, err))
+		}
+	}()
+
+	if err := destination.Chmod(0o755); err != nil {
+		return fmt.Errorf("set staged backup mode %q: %w", destinationPath, err)
+	}
+	if _, err := io.Copy(destination, source); err != nil {
+		return fmt.Errorf("copy current binary %q to staged backup %q: %w", sourcePath, destinationPath, err)
+	}
+	return nil
 }
 
 // runPhases drives one run through the full state machine. See engine.go's
@@ -566,11 +600,14 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 		if err != nil {
 			return e.fail(rc, PhaseDownloading, "read checksum: "+err.Error())
 		}
-		expectedSum = parseChecksumFile(string(data))
+		expectedSum, err = parseChecksumFile(string(data))
+		if err != nil {
+			return e.fail(rc, PhaseDownloading, "invalid checksum: "+err.Error())
+		}
 	}
 
 	e.transition(rc, PhaseVerifying, "")
-	if expectedSum != "" {
+	if sum != nil {
 		actual, err := sha256File(tarPath)
 		if err != nil {
 			return e.fail(rc, PhaseVerifying, err.Error())
@@ -597,11 +634,8 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 	// installed yet (first-ever install) has no backup and therefore no
 	// rollback path; that is surfaced by rollback's backupPath=="" case.
 	var backupPath string
-	if current, readErr := os.ReadFile(target.BinaryPath()); readErr == nil {
-		tmpBackup := filepath.Join(runDir, "backup")
-		if err := os.WriteFile(tmpBackup, current, 0o755); err != nil {
-			return e.fail(rc, PhaseStaging, "stage backup: "+err.Error())
-		}
+	tmpBackup := filepath.Join(runDir, "backup")
+	if stageErr := stageBinaryBackup(target.BinaryPath(), tmpBackup); stageErr == nil {
 		candidate := target.BinaryPath() + ".bak"
 		if _, err := e.runner.Run(ctx, host.Op{Kind: host.OpInstallBinary, Args: map[string]string{
 			host.ArgStaging: tmpBackup, host.ArgDest: candidate,
@@ -609,8 +643,8 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 			return e.fail(rc, PhaseStaging, "save backup: "+err.Error())
 		}
 		backupPath = candidate
-	} else if !os.IsNotExist(readErr) {
-		return e.fail(rc, PhaseStaging, "read current binary: "+readErr.Error())
+	} else if !errors.Is(stageErr, os.ErrNotExist) {
+		return e.fail(rc, PhaseStaging, "stage backup: "+stageErr.Error())
 	}
 
 	e.transition(rc, PhaseInstalling, "")

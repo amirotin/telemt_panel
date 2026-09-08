@@ -176,6 +176,9 @@ func runStoreImport(args []string) error {
 	if !ok {
 		return fmt.Errorf("store driver %q does not support import", st.Driver())
 	}
+	if st.Driver() == "memory" && !store.PortableHistoryEmpty(data) {
+		return errors.New("memory store cannot import history because it would be lost on restart; use a SQLite destination or a state-only backup")
+	}
 	if err := portable.ImportData(data); err != nil {
 		return err
 	}
@@ -188,8 +191,8 @@ func openTransferStore(configPath string, importing bool) (store.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-	if importing && cfg.DataDir == "" {
-		return nil, errors.New("store import requires data_dir so panel state can be persisted")
+	if cfg.DataDir == "" && (importing || cfg.Store.Driver == "memory") {
+		return nil, errors.New("store transfer requires data_dir so panel state can be persisted")
 	}
 	statePath := ""
 	if cfg.DataDir != "" {
