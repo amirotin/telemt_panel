@@ -113,12 +113,19 @@ describe("null, false and zero (spec §13.1)", () => {
     expect(formatValue(null, ru, { nowMs: NOW }).text).toBe("—");
   });
 
-  it("distinguishes an absent optional field from a collected null", () => {
-    const missing = formatValue(undefined, ru, { nowMs: NOW });
-    const nulled = formatValue(null, ru, { nowMs: NOW });
-    expect(missing.absence).toBe("missing");
-    expect(nulled.absence).toBe("null");
-    expect(missing.text).not.toBe(nulled.text);
+  it("renders a missing value with its own absence text", () => {
+    expect(formatValue(undefined, ru, { nowMs: NOW })).toMatchObject({
+      text: ru.details.value.missing,
+      absence: "missing",
+    });
+  });
+
+  it("renders an explicit null separately from a missing value", () => {
+    expect(formatValue(null, ru, { nowMs: NOW })).toMatchObject({
+      text: ru.details.value.none,
+      absence: "null",
+    });
+    expect(ru.details.value.none).not.toBe(ru.details.value.missing);
   });
 
   it("distinguishes unsupported from unavailable", () => {
@@ -204,6 +211,14 @@ describe("formatter identity travels with the value (spec §13)", () => {
     expect(formatValue(1536, ru, { unit: "bytes", nowMs: NOW }).formatter).toBe("bytes");
     // No formatter and no unit still names the one that ran.
     expect(formatValue("x", ru, { nowMs: NOW }).formatter).toBe("text");
+  });
+
+  it("keeps numeric-looking strings as strings", () => {
+    expect(formatValue("0042", ru, { formatter: "integer", nowMs: NOW })).toEqual({
+      text: "0042",
+      formatter: "integer",
+      numeric: false,
+    });
   });
 
   it("flags rendered numbers so a renderer can apply tabular numerals", () => {

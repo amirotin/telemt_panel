@@ -9,10 +9,10 @@ import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import { formatDurationApprox } from "../../people/expiry";
 import { useNow } from "../../people/useNow";
-import { describeField } from "../details-builder/fieldCatalog";
 import { formatValue } from "../formatting";
 import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { DetailHeader } from "./DetailHeader";
+import { describeCounter } from "./counterCatalog";
 import {
   COUNTER_GROUP_PATHS,
   computeCounterDeltas,
@@ -25,6 +25,7 @@ import {
 } from "./counters.helpers";
 import {
   breakdownRows,
+  counterRowMatchesSearch,
   counterViewMetrics,
   readCounterViewValues,
   scalarCounterRows,
@@ -271,13 +272,13 @@ function ExplorerPanel({ data, window, sinceOpen, windowSeconds, reset }: { data
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CounterFilter>("all");
   const [expanded, setExpanded] = useState<ReadonlySet<CounterGroupPath>>(() => new Set(COUNTER_GROUP_PATHS));
-  const rows = useMemo(() => scalarCounterRows(data).map((row) => ({ ...row, field: describeField(row.path, s) })), [data, s]);
+  const rows = useMemo(() => scalarCounterRows(data).map((row) => ({ ...row, field: describeCounter(row.path, s) })), [data, s]);
   const needle = query.trim().toLocaleLowerCase();
   const filtered = rows.filter((row) => {
     const delta = window?.[row.path];
     if (filter === "nonzero" && (row.value === 0 || row.value === false || row.value === null || row.value === undefined) && !delta) return false;
     if (filter === "errors" && !isFailureCounterPath(row.path)) return false;
-    return !needle || `${row.group} ${row.path} ${row.field.description}`.toLocaleLowerCase().includes(needle);
+    return counterRowMatchesSearch(row, row.field.description, needle);
   });
   const groupLabels: Record<CounterGroupPath, string> = { core: s.details.pages.counters.groups.core, upstream: s.details.pages.counters.groups.upstream, middle_proxy: s.details.pages.counters.groups.middleProxy, pool: s.details.pages.counters.groups.pool, desync: s.details.pages.counters.groups.desync };
   return (

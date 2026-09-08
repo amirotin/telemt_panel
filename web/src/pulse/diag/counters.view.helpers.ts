@@ -21,6 +21,15 @@ export interface CounterViewMetrics {
   newFailureSignals: number | null;
 }
 
+export function counterRowMatchesSearch(
+  row: { group: CounterGroupPath; path: string },
+  description: string,
+  normalizedNeedle: string,
+): boolean {
+  return !normalizedNeedle
+    || `${row.group} ${row.path} ${description}`.toLocaleLowerCase().includes(normalizedNeedle);
+}
+
 const BREAKDOWNS: Array<[CounterGroupPath, string]> = [
   ["core", "connections_bad_by_class"],
   ["core", "handshake_failures_by_class"],

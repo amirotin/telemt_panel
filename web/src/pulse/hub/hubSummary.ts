@@ -1,7 +1,6 @@
 import type { Dict } from "../../i18n";
 import type { RuntimeNatStun } from "../../realtime/topics";
-import { formatValue, type FormatterName } from "../formatting";
-import type { FieldUnit } from "../details-builder/model";
+import { formatValue, type FieldUnit, type FormatterName } from "../formatting";
 import type { ConnectionsPagePayload } from "../diag/connections.helpers";
 import { reflectionAgeSecs, STUN_REFLECTION_TTL_SECONDS } from "../diag/nat.helpers";
 import {

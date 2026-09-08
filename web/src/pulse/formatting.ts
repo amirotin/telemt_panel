@@ -23,7 +23,8 @@ import type { Dict } from "../i18n";
 import { fill, formatNumber, localeOf } from "../i18n";
 import { formatBytes } from "../lib/format";
 import { formatDurationApprox } from "../people/expiry";
-import type { FieldUnit } from "./details-builder/model";
+
+export type FieldUnit = "percent" | "milliseconds" | "seconds" | "bytes" | "timestamp";
 
 /** The formatter families spec §13 makes mandatory. */
 export type FormatterName =

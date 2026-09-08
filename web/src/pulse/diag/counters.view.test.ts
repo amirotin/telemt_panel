@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
+import { ru } from "../../i18n/ru";
 import { zeroAll } from "../__fixtures__";
+import { describeCounter } from "./counterCatalog";
 import {
   breakdownRows,
+  counterRowMatchesSearch,
   counterViewMetrics,
   readCounterViewValues,
   scalarCounterRows,
@@ -48,5 +51,36 @@ describe("Counters custom detail view", () => {
     const rows = scalarCounterRows(zeroAll);
     expect(rows.some((row) => row.path === "core.core_0_total")).toBe(true);
     expect(rows.some((row) => row.path.includes("connections_bad_by_class"))).toBe(false);
+  });
+
+  it("keeps future scalar and falsy counters visible and searchable", () => {
+    const payload = {
+      ...zeroAll,
+      core: {
+        ...zeroAll.core,
+        future_active_gauge: 0,
+        future_enabled: false,
+        future_note: "42",
+        future_null: null,
+        future_nested: { hidden: 1 },
+      },
+    } as unknown as ZeroAllData;
+    const future = scalarCounterRows(payload).filter((row) => row.key.startsWith("future_"));
+    expect(future.map((row) => [row.key, row.value])).toEqual([
+      ["future_active_gauge", 0],
+      ["future_enabled", false],
+      ["future_note", "42"],
+      ["future_null", null],
+    ]);
+    expect(
+      future.filter((row) =>
+        counterRowMatchesSearch(row, describeCounter(row.path, ru).description, "future_note"),
+      ).map((row) => row.key),
+    ).toEqual(["future_note"]);
+    expect(
+      future.filter((row) =>
+        counterRowMatchesSearch(row, describeCounter(row.path, ru).description, "текущее количество"),
+      ).map((row) => row.key),
+    ).toEqual(["future_active_gauge"]);
   });
 });
