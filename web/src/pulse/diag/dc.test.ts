@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dcPagePayload } from "./dc.helpers";
+import { dcEntityKey, dcPagePayload } from "./dc.helpers";
 import type { DcStatus, DcStatusData } from "../../realtime/topics";
-import { selectDcContext } from "../details-builder/definitions/dc";
 
 function dc(overrides: Partial<DcStatus> = {}): DcStatus {
   return {
@@ -52,34 +51,9 @@ describe("dcPagePayload", () => {
   });
 });
 
-describe("selectDcContext", () => {
-  it("folds the response metadata into the selected DC", () => {
-    const context = selectDcContext(payload([dc({ dc: 2 }), dc({ dc: 4 })]), "dc4");
-    expect(context?.dc).toBe(4);
-    expect(context?.middle_proxy_enabled).toBe(true);
-    expect(context?.generated_at_epoch_secs).toBe(1756000000);
-  });
-
-  it("falls back to the first DC for an unknown or missing key", () => {
-    const data = payload([dc({ dc: 2 }), dc({ dc: 4 })]);
-    expect(selectDcContext(data, undefined)?.dc).toBe(2);
-    expect(selectDcContext(data, "dc999")?.dc).toBe(2);
-  });
-
-  it("returns null when there is no DC at all", () => {
-    expect(selectDcContext(payload([]), undefined)).toBeNull();
-  });
-
-  it("merges only the matching DC's network path", () => {
-    const data = { ...payload([dc({ dc: 2 }), dc({ dc: 4 })]), network_paths: [{ dc: 2 }] };
-    expect(selectDcContext(data, "dc2")?.network_path).toEqual({ dc: 2 });
-    expect(selectDcContext(data, "dc4")?.network_path).toBeUndefined();
-  });
-
-  it("omits `reason` entirely when the proxy did not send one", () => {
-    const context = selectDcContext(payload([dc()]), "dc2");
-    // Absent, not null: §13.1 keeps "did not arrive" apart from "arrived
-    // empty", and a null here would print the wrong one of the two.
-    expect(context !== null && "reason" in context).toBe(false);
+describe("dcEntityKey", () => {
+  it("preserves positive and media DC identities", () => {
+    expect(dcEntityKey({ dc: 4 })).toBe("dc4");
+    expect(dcEntityKey({ dc: -203 })).toBe("dc-203");
   });
 });

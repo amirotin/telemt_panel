@@ -11,15 +11,13 @@ import type {
   RuntimeTopic,
 } from "../../realtime/topics";
 import { IconChevronDown } from "../../ui/icons";
-import { DetailHeader } from "../details-builder/DetailHeader";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import {
   EVENT_FAMILY_OTHER,
   eventFamily,
   eventTypeCount,
-  eventsPageDefinition,
   orderedEvents,
-} from "../details-builder/definitions/events";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
+} from "./events.helpers";
 import {
   eventAgo,
   eventLine,
@@ -29,6 +27,8 @@ import {
   type EventTone,
 } from "../widgets/recentEvents.helpers";
 import { resolveGated } from "../widgets/gated";
+import { DetailHeader } from "./DetailHeader";
+import { eventsSources } from "./sourceDefinitions";
 
 type EventFamilyFilter = "all" | "admission" | "config" | "api" | "other";
 
@@ -543,7 +543,7 @@ export function EventsPage() {
   const inputs: Record<string, DetailSourceInput> = {
     events: { kind: "topic", snapshot: runtime, gated: gate },
   };
-  const sources = useDetailSources(eventsPageDefinition.sources, inputs);
+  const sources = useDetailSources(eventsSources, inputs);
   const disabled = runtime.data !== null && data === null;
   const status = disabled ? "disabled" : sources.status;
 

@@ -9,7 +9,7 @@ import {
   splitPath,
   walkLeafPaths,
 } from "./paths";
-import { dcs } from "./__fixtures__";
+import { dcs } from "../__fixtures__";
 
 describe("normalized paths", () => {
   it("tokenizes keys and array indices alike", () => {

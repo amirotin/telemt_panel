@@ -45,7 +45,7 @@ import {
   zeroAll,
   webSessionsAll,
   webStatusRunning,
-} from "./__fixtures__";
+} from "../__fixtures__";
 
 describe("field catalog coverage: DC domain", () => {
   it("describes every leaf of the production DC payload", () => {

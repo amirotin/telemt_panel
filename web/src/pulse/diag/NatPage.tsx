@@ -12,16 +12,17 @@ import type {
 } from "../../realtime/topics";
 import { IconChevronDown } from "../../ui/icons";
 import { StatePill, type State } from "../../ui/StatePill";
-import { DetailHeader } from "../details-builder/DetailHeader";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
+import { resolveGated } from "../widgets/gated";
+import { DetailHeader } from "./DetailHeader";
+import { meRouteMode, type MeRouteMode } from "./me.helpers";
 import {
-  natPageDefinition,
+  natMechanismState,
   reflectionAgeSecs,
   STUN_REFLECTION_TTL_SECONDS,
-} from "../details-builder/definitions/nat";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
-import { resolveGated } from "../widgets/gated";
-import { meRouteMode, type MeRouteMode } from "./me.helpers";
-import { natMechanismState, type NatMechanismState } from "./nat.helpers";
+  type NatMechanismState,
+} from "./nat.helpers";
+import { natSources } from "./sourceDefinitions";
 
 type NatTab = "overview" | "servers";
 
@@ -644,7 +645,7 @@ export function NatPage() {
   const inputs: Record<string, DetailSourceInput> = {
     nat: { kind: "topic", snapshot: runtime, gated: natGate },
   };
-  const sources = useDetailSources(natPageDefinition.sources, inputs);
+  const sources = useDetailSources(natSources, inputs);
   const v = s.details.pages.nat.view;
   const headerStatus =
     mode === "direct" ? "ready" : mode === "fallback" ? "partial" : sources.status;

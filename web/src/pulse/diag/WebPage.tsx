@@ -19,23 +19,21 @@ import type { WebTopic } from "../../realtime/topics";
 import { ConfirmView } from "../../ui/ConfirmView";
 import { IconChevronDown, IconChevronRight, IconWarning } from "../../ui/icons";
 import { pushToast } from "../../ui/Toast";
-import { DetailHeader } from "../details-builder/DetailHeader";
-import { AdaptiveDetailSurface } from "../details-builder/surfaces/AdaptiveDetailSurface";
-import {
-  WEB_FILTER_CARRIER,
-  WEB_FILTER_STATE,
-  webPageDefinition,
-} from "../details-builder/definitions/web";
-import type { FilterValue } from "../details-builder/model";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
+import { AdaptiveDetailSurface } from "./AdaptiveDetailSurface";
+import { DetailHeader } from "./DetailHeader";
+import { webSources } from "./sourceDefinitions";
 import {
   WEB_CLOSE_MAX_REFS,
+  WEB_FILTER_CARRIER,
+  WEB_FILTER_STATE,
   webCloseIntent,
   webCloseSelector,
   webFilterSummary,
   webPagePayload,
   webRuntimeInstance,
   type CloseIntent,
+  type FilterValue,
   type WebPagePayload,
 } from "./web.helpers";
 import {
@@ -1003,7 +1001,7 @@ export function WebPage({ backTo = "/pulse" }: { backTo?: "/pulse" | "/server" }
       dataUpdatedAt: sessions.dataUpdatedAt,
     },
   };
-  const sources = useDetailSources(webPageDefinition.sources, inputs);
+  const sources = useDetailSources(webSources, inputs);
   const [intent, setIntent] = useState<CloseIntent | null>(null);
   const [selectedSession, setSelectedSession] = useState<WebSessionRow | null>(null);
   const closeSurface = useCallback(() => {

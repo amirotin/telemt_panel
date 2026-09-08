@@ -16,9 +16,7 @@ import type {
 } from "../../realtime/topics";
 import type { State } from "../../ui/StatePill";
 import { IconCheck, IconChevronDown, IconWarning } from "../../ui/icons";
-import { DetailHeader } from "../details-builder/DetailHeader";
-import { connectionsPageDefinition } from "../details-builder/definitions/connections";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { useHistorySeries } from "../useHistorySeries";
 import {
   connectionQuality,
@@ -26,7 +24,9 @@ import {
   lastHistoryValue,
 } from "../widgets/statRow.helpers";
 import { resolveGated } from "../widgets/gated";
+import { DetailHeader } from "./DetailHeader";
 import { usersTrafficTotal } from "./connections.helpers";
+import { connectionsSources } from "./sourceDefinitions";
 
 const THIRTY_MINUTES_SECONDS = 30 * 60;
 
@@ -399,7 +399,7 @@ export function ConnectionsPage() {
       gated: stats.data?.connections_summary ?? null,
     },
   };
-  const sources = useDetailSources(connectionsPageDefinition.sources, inputs);
+  const sources = useDetailSources(connectionsSources, inputs);
 
   const connectionReadings = connectionsHistory.data?.points ?? [];
   const activeUserReadings = activeUsersHistory.data?.points ?? [];

@@ -97,7 +97,7 @@ func TestScenarioEdgeOff(t *testing.T) {
 // shape a gate can take. runtime_edge is on, so the panel's capability
 // probe passes and connections/events carry real data, while the minimal
 // runtime group answers with a present-but-disabled Gated wrapper instead
-// of a missing key — the branch details-builder/sources.ts resolves through
+// of a missing key — the branch pulse/sourceState.ts resolves through
 // gatedStatus rather than through the absent-wrapper rule.
 func TestScenarioEdgeGated(t *testing.T) {
 	fake := telemttest.New(scenarios["edge-gated"])

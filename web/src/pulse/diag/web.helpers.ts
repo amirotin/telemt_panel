@@ -4,12 +4,6 @@ import type {
   WebSessionRow,
 } from "../../lib/api/generated/types.gen";
 import type { Dict } from "../../i18n";
-import {
-  WEB_FILTER_CARRIER,
-  WEB_FILTER_STATE,
-  WEB_FILTER_USER,
-} from "../details-builder/definitions/web";
-import type { FilterValue } from "../details-builder/model";
 import type {
   WebBudgetStatus,
   WebDebugStatus,
@@ -21,6 +15,12 @@ import type {
   WebStatus,
   WebStreamStatus,
 } from "../../realtime/topics";
+
+export type FilterValue = string | boolean | string[];
+
+export const WEB_FILTER_CARRIER = "web.carrier";
+export const WEB_FILTER_STATE = "web.state";
+export const WEB_FILTER_USER = "web.user";
 
 // The WEB Details page's payload adapter (M4 task 8b).
 //

@@ -8,7 +8,7 @@ import type { KVGroup } from "./rows";
 // KVGroupList renders a list of KVGroups — one card per group under the
 // prototype's uppercase section caption, KVRow per leaf.
 //
-// It used to be every Диагностика page's body. Since the M4 details-builder
+// It used to be every Диагностика page's body. Since the M4 diagnostic-page
 // wave those pages are declarative DetailPages built from DescribedRow
 // lists, and this component's ONLY remaining consumer is
 // server/security/SecurityPage — the read-only /server/security screen,

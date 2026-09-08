@@ -8,7 +8,7 @@ import {
   meRuntime,
   meSelftest,
   meWriters,
-} from "../details-builder/__fixtures__";
+} from "../__fixtures__";
 
 // mePagePayload is all that is left of the old `meGroups`: it says WHERE the
 // ME page's five independently gated halves come from, and nothing about

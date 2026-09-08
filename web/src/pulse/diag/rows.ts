@@ -1,4 +1,4 @@
-// Generic KVRow-group building blocks. Since the M4 details-builder wave the
+// Generic KVRow-group building blocks. Since the M4 diagnostic-page wave the
 // Диагностика pages are declarative DetailPages and no longer flatten
 // anything; the remaining consumer is securityGroups (security.helpers.ts),
 // which feeds /server/security's KVGroupList. Retained, not dead.

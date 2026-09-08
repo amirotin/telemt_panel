@@ -4,7 +4,7 @@ import {
   countersRestarted,
   readCounterValues,
 } from "./counters.helpers";
-import { zeroAll } from "../details-builder/__fixtures__";
+import { zeroAll } from "../__fixtures__";
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
 
 // counters.helpers.ts is what is left of `countersGroups`: the page's

@@ -7,13 +7,10 @@ import { useSnapshot } from "../../realtime";
 import type { RuntimeTopic, UpstreamStatus, UpstreamsTopic } from "../../realtime/topics";
 import { IconChevronDown, IconCheck, IconWarning } from "../../ui/icons";
 import { StatePill } from "../../ui/StatePill";
-import { DetailHeader } from "../details-builder/DetailHeader";
-import {
-  connectSuccessPct,
-  upstreamsPageDefinition,
-} from "../details-builder/definitions/upstreams";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
-import { upstreamsPagePayload } from "./upstreams.helpers";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
+import { DetailHeader } from "./DetailHeader";
+import { upstreamsSources } from "./sourceDefinitions";
+import { connectSuccessPct, upstreamsPagePayload } from "./upstreams.helpers";
 
 const HIGH_RTT_MS = 250;
 
@@ -179,7 +176,7 @@ export function UpstreamsPage() {
       generatedAt: quality?.generated_at_epoch_secs ?? null,
     },
   };
-  const sources = useDetailSources(upstreamsPageDefinition.sources, inputs);
+  const sources = useDetailSources(upstreamsSources, inputs);
 
   const routes = payload?.upstreams ?? [];
   const selected = routes.find((route) => route.upstream_id === selectedId) ?? routes[0] ?? null;

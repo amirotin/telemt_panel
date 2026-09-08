@@ -236,48 +236,32 @@ Notes:
   interval — this is what `web/e2e/mobile.spec.ts`'s "user appears in the
   list without a manual reload" step exercises end to end.
 
-## Details pages: adding one by definition
+## Pulse diagnostic pages
 
-Every page under `/pulse/diag/$domain` is a `DetailPageDefinition`
-(`src/pulse/details-builder/model.ts`) plus a ~40-line component that owns
-nothing but the subscriptions. `src/pulse/details-builder/DetailPage.tsx`
-renders header, summary tiles, entity selector, tabs, attention card,
-sections and the unknown tail; no page draws a row of its own. The normative
-spec is `v2/design/uploads/TELEMT_DETAILS_PAGE_BUILDER_SPEC.md`.
+Every `/pulse/diag/$domain` route is a bespoke operational view. Shared code
+is deliberately narrow:
 
-To add a page:
+- `pulse/diag/sourceDefinitions.ts` declares each page's exact topic/REST,
+  required/optional, freshness and capability boundaries.
+- `pulse/sourceState.ts` resolves those inputs into loading, ready, stale,
+  partial, disabled, unsupported, error and empty states. For gated data,
+  `undefined` means "no gate" while `null` means "the gate is off".
+- `pulse/diag/DetailHeader.tsx` keeps back navigation, freshness and state
+  consistent. `AdaptiveDetailSurface.tsx` and `layoutMode.ts` provide the
+  responsive WEB detail sheet without imposing a generic page renderer.
+- `pulse/diag/<domain>.helpers.ts` owns wire projections and domain rules;
+  `<Domain>Page.tsx` owns the information architecture and interactions.
+- `pulse/hub/hubSummary.ts` contains only the nine metrics the hub imports
+  from Connections, NAT, Upstreams and WEB, with explicit localized labels.
 
-1. **Describe the fields.** Add the payload's leaves to
-   `fieldCatalog.ts` — an exact path, a `*` wildcard, or an endpoint-scoped
-   entry (ruling R9: the most specific rule wins). A leaf with no entry is
-   not lost, it lands in the unknown tail; a leaf with a *wrong* entry is
-   worse than none, so scope narrowly.
-2. **Write the definition** in `definitions/<domain>.ts`: `sources` (a topic
-   id or a REST endpoint, `required` or not), optional `freshness`, `summary`
-   tiles, optional `navigation` (`entities` for a selector, `tabs` — each
-   tab may carry a `count(context)` badge), and `sections`. Section kinds are
-   §9's eight: `scalars`, `array`, `entityList`, `breakdown`, `timeline`,
-   `ranking`, `dynamicMap`, `custom`. Bind each section to the `sourceId` it
-   actually reads — a section under the wrong source says "did not arrive"
-   under a header claiming a healthy one.
-3. **Write the adapter** in `diag/<domain>.helpers.ts` if the wire shape and
-   the page context differ (they usually do — a gate wrapper to unwrap, two
-   endpoints to merge). Keep it a projection, never a filter: a field it
-   drops never reaches the unknown tail either.
-4. **Write the component** in `diag/<Domain>Page.tsx`: subscribe, build the
-   payload, build `inputs` for `useDetailSources`, render `<DetailPage>`.
-   For a gated source pass `gated: data?.field ?? null` — `undefined` means
-   "no gate", `null` means "the gate is off" (`sources.ts`).
-5. **Add the hub card** in `hub/hubCards.ts`, reusing the definition's own
-   `summary` tiles so the card and the page cannot print different numbers.
-6. **Tests.** Every definition has a `definitions/<domain>.test.ts` with the
-   §27.4 completeness equation over the production-size fixture:
-   `all leaf paths − consumed − explicitly ignored = the unknown tail`, and
-   the residue must be empty. `completeness.test.ts` runs it for every page.
+To add or change a diagnostic page, preserve the source contract first,
+keep adapters as projections rather than filters, and write the domain view
+around the operator's question. Add hub metrics explicitly; a deep-page
+field does not belong on the hub merely because it exists.
 
-Fixtures live in `details-builder/__fixtures__/` — production-SIZED and
-seeded, never hand-written three-element mocks, because the whole point of
-the builder is what happens at 50 records and 1955 leaves.
+Production-sized deterministic fixtures live in `pulse/__fixtures__/`.
+They retain realistic cardinalities for adapters and view tests without
+shipping a DEV-only page harness.
 
 ## When Telemt is bumped
 
@@ -295,11 +279,10 @@ the panel shows as a bare key. Run through this before shipping a bump:
    `descriptionKey`s and no `summary.*` path is declared twice. A new
    `summary.<something>` on any of the three is where a silent collision
    would come from.
-3. Check the classification table test (`resolveSections.test.ts`): a new
-   object may need to be a `dynamicMap` rather than a record, or the reverse.
-4. Update `__fixtures__/` to the new payloads, then re-read the completeness
-   residue in every `definitions/*.test.ts` — new leaves land in the unknown
-   tail until a section or an `alsoConsumes` claims them.
+3. Update `pulse/__fixtures__/` to the new payloads and re-run the affected
+   domain adapter/view tests at their production-sized cardinality.
+4. Re-read the bespoke page: every new operational field needs an explicit
+   placement or an explicit decision not to surface it.
 5. Update the RU **and** EN catalog entries together; `fieldCatalog.test.ts`
    fails on a key present in one dictionary only.
 6. If the bump adds a capability, decide `disabled` vs `unsupported` for it
@@ -313,8 +296,9 @@ No PNG baselines live in this repo. A pixel baseline for ten screens across
 nine viewports is ninety files that a font-hinting difference between two
 machines invalidates wholesale, and re-recording one is not reviewing it.
 
-The CI guard is behavioural: `mobile`/`desktop`/`details` assert the DOM and
-sweep every §27.1 viewport for horizontal overflow. The picture matrix is
+The CI guard is behavioural: `mobile` and `desktop` assert the DOM, while
+`diagnostics.spec.ts` opens all nine built diagnostic routes in both projects
+to guard horizontal overflow and WEB sheet keyboard/focus behavior. The picture matrix is
 reproducible on demand — `npm run screenshots` writes
 `screenshots-out/<viewport>/<screen>.png` (gitignored; `SCREENSHOT_DIR`
 overrides the destination), driven by `e2e/screenshots.ts` in an opt-in
@@ -330,15 +314,6 @@ dashboard + layout editor → Пульс hub → a Details page and back → Ж�
 Сервер) and `desktop` (1280×800 smoke — the five-section sidebar, the
 Сводка/Пульс split, the Raw config editor/CodeMirror actually mounting at
 `lg:`).
-
-A third project, `details`, is the one exception: it drives the Details
-builder's `/dev/details` harness, which lives behind `import.meta.env.DEV`
-and is dropped from the bundle the binary embeds, so it runs against a vite
-dev server on its own port. That server is started and stopped by
-`e2e/details.spec.ts` itself (`e2e/devServer.ts`), not by the config's
-`webServer` — which is config-level and would make `mobile` and `desktop`
-wait for a server they never use. A vite already listening on the port is
-reused and left running.
 
 ```bash
 npx playwright install chromium   # once per machine

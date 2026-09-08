@@ -38,7 +38,7 @@ export const test = base.extend<{ login: () => Promise<void> }>({
       await page.goto("/login");
       await page.getByLabel("Имя пользователя").fill(ADMIN_USERNAME);
       await page.getByLabel("Пароль").fill(ADMIN_PASSWORD);
-      await page.getByRole("button", { name: "Войти" }).click();
+      await page.getByRole("button", { name: "Войти", exact: true }).click();
       await expect(page).toHaveURL(/\/people$/);
     });
   },

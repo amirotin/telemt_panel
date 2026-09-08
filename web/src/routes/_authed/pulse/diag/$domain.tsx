@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DiagDomainPage } from "../../../../pulse/diag/DiagDomainPage";
-import { validateDetailSearch } from "../../../../pulse/details-builder/state";
+import { validateDetailSearch } from "../../../../pulse/diag/search";
 
 export const Route = createFileRoute("/_authed/pulse/diag/$domain")({
   component: RouteComponent,

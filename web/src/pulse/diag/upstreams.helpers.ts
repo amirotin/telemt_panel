@@ -1,9 +1,46 @@
-import type { RuntimeUpstreamQualityData, UpstreamStatus, UpstreamsData } from "../../realtime/topics";
-import type { UpstreamsPagePayload } from "../details-builder/definitions/upstreams";
+import type {
+  RuntimeUpstreamQualityData,
+  RuntimeUpstreamQualityPolicy,
+  UpstreamStatus,
+  UpstreamSummary,
+  UpstreamsData,
+  ZeroUpstream,
+} from "../../realtime/topics";
+
+export interface UpstreamsResponseMeta {
+  enabled: boolean;
+  reason?: string;
+  generated_at_epoch_secs: number;
+}
+
+export interface UpstreamQualityMeta extends UpstreamsResponseMeta {
+  policy: RuntimeUpstreamQualityPolicy;
+}
+
+export interface UpstreamsPagePayload {
+  upstreams?: UpstreamStatus[];
+  summary?: UpstreamSummary;
+  zero?: Partial<ZeroUpstream>;
+  stats?: UpstreamsResponseMeta;
+  upstream_quality?: UpstreamQualityMeta;
+}
+
+export function connectSuccessPct(zero: Partial<ZeroUpstream> | undefined): number | null {
+  const attempts = zero?.connect_attempt_total;
+  const successes = zero?.connect_success_total;
+  if (attempts === undefined || successes === undefined || attempts === 0) return null;
+  return (successes / attempts) * 100;
+}
+
+export function bestLatencyMs(upstreams: readonly UpstreamStatus[] | undefined): number | null {
+  const measured = (upstreams ?? [])
+    .map((upstream) => upstream.effective_latency_ms)
+    .filter((latency): latency is number => latency !== null && latency !== undefined);
+  return measured.length === 0 ? null : Math.min(...measured);
+}
 
 // upstreamsPagePayload joins the two endpoints the Upstreams domain is
-// spread across into the ONE payload its definition reads
-// (details-builder/definitions/upstreams.ts).
+// spread across into the ONE payload its bespoke view reads.
 //
 // This is all that is left of the old `upstreamsGroups`, which rendered the
 // same upstream twice — «Апстримы #0» from `GET /v1/stats/upstreams` and

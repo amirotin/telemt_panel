@@ -1,5 +1,5 @@
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
-import { COUNTER_GROUP_PATHS, isFailureCounterPath, type CounterGroupPath } from "../details-builder/definitions/counters";
+import { COUNTER_GROUP_PATHS, isFailureCounterPath, type CounterGroupPath } from "./counters.helpers";
 import { readCounterValues, type CounterSnapshot } from "./counters.helpers";
 
 export interface BreakdownRow {

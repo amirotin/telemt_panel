@@ -9,21 +9,18 @@ import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import { formatDurationApprox } from "../../people/expiry";
 import { useNow } from "../../people/useNow";
-import { DetailHeader } from "../details-builder/DetailHeader";
+import { describeField } from "../details-builder/fieldCatalog";
+import { formatValue } from "../formatting";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
+import { DetailHeader } from "./DetailHeader";
 import {
   COUNTER_GROUP_PATHS,
-  counterLeaves,
-  countersPageDefinition,
-  isFailureCounterPath,
-  type CounterGroupPath,
-} from "../details-builder/definitions/counters";
-import { describeField } from "../details-builder/fieldCatalog";
-import { formatValue } from "../details-builder/formatting";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
-import {
   computeCounterDeltas,
+  counterLeaves,
   countersRefetchInterval,
   countersRestarted,
+  isFailureCounterPath,
+  type CounterGroupPath,
   type CounterSnapshot,
 } from "./counters.helpers";
 import {
@@ -34,6 +31,7 @@ import {
   type BreakdownRow,
   type CounterViewMetrics,
 } from "./counters.view.helpers";
+import { countersSources } from "./sourceDefinitions";
 
 type CountersTab = "activity" | "failures" | "explorer";
 type CounterFilter = "all" | "nonzero" | "errors";
@@ -321,7 +319,7 @@ export function CountersPage() {
   const zero = useQuery({ ...getTelemtZeroOptions(), refetchInterval: countersRefetchInterval(mode) });
   const { window, sinceOpen, windowSeconds, restarted, reset } = useCounterDeltas(zero.data, zero.dataUpdatedAt);
   const inputs: Record<string, DetailSourceInput> = { zero: { kind: "query", isPending: zero.isPending, isError: zero.isError, error: zero.error ?? null, data: zero.data, dataUpdatedAt: zero.dataUpdatedAt } };
-  const sources = useDetailSources(countersPageDefinition.sources, inputs);
+  const sources = useDetailSources(countersSources, inputs);
   const metrics = counterViewMetrics(window);
   const failureCount = metrics.newFailureSignals;
   const count = zero.data ? counterLeaves(zero.data).length : null;

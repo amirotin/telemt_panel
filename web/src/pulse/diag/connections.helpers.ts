@@ -3,7 +3,15 @@ import type {
   StatsSummary,
   UsersTopic,
 } from "../../realtime/topics";
-import type { ConnectionsPagePayload } from "../details-builder/definitions/connections";
+
+export interface ConnectionsPagePayload {
+  summary?: StatsSummary;
+  users_traffic_total?: number;
+  cache?: RuntimeEdgeConnectionsSummary["cache"];
+  totals?: RuntimeEdgeConnectionsSummary["totals"];
+  top?: RuntimeEdgeConnectionsSummary["top"];
+  telemetry?: RuntimeEdgeConnectionsSummary["telemetry"];
+}
 
 // usersTrafficTotal sums panel-owned observed totals. Raw Telemt total_octets
 // resets with the service and must never be presented as durable lifetime
@@ -16,13 +24,11 @@ export function usersTrafficTotal(users: UsersTopic | null): number | null {
 
 // connectionsPagePayload joins the always-on `GET /v1/stats/summary` half,
 // the runtime_edge-gated connections summary and the one derived figure the
-// page owns into the payload its definition reads
-// (details-builder/definitions/connections.ts).
+// page owns into the payload its bespoke view reads.
 //
 // This is all that is left of the old `connectionsGroups`/`summaryGroup`,
 // which flattened the two top-10 rankings into thirty KV rows: composition
-// of the page is now the definition's job, and this module only says WHERE
-// the data comes from.
+// of the page is now the view's job, and this module only says WHERE the data comes from.
 //
 // The four blocks of connections_summary are spread FLAT (`cache`,
 // `totals`, `top`, `telemetry`) because the field catalog keys those paths

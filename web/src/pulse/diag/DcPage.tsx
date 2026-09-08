@@ -13,12 +13,12 @@ import type {
 } from "../../realtime/topics";
 import { IconChevronDown } from "../../ui/icons";
 import { StatePill, type State } from "../../ui/StatePill";
-import { DetailHeader } from "../details-builder/DetailHeader";
-import { dcPageDefinition } from "../details-builder/definitions/dc";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { DC_RTT_WARN_MS, dcRouteGroups, type DcRouteGroup } from "../widgets/dc.helpers";
 import { resolveGated } from "../widgets/gated";
+import { DetailHeader } from "./DetailHeader";
 import { dcPagePayload } from "./dc.helpers";
+import { dcSources } from "./sourceDefinitions";
 
 type PairTone = "ok" | "warn" | "error" | "latency";
 type RouteIssue = "coverage" | "fresh" | "endpoints" | "latency" | null;
@@ -410,7 +410,7 @@ export function DcPage() {
     },
     runtime: { kind: "topic", snapshot: runtime, gated: runtime.data?.minimal ?? null },
   };
-  const sources = useDetailSources(dcPageDefinition.sources, inputs);
+  const sources = useDetailSources(dcSources, inputs);
 
   const pairs = dcRouteGroups(payload?.dcs ?? []);
   const defaultPair =

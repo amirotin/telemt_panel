@@ -4,7 +4,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { TlsSourceNotice } from "./TlsSourceNotice";
 import type { TlsFingerprintsState } from "./tlsFingerprints.helpers";
 import { ru } from "../../i18n/testing";
-import { tlsFingerprints } from "../details-builder/__fixtures__";
+import { tlsFingerprints } from "../__fixtures__";
 
 function renderInto(node: React.ReactElement): { container: HTMLElement; root: Root } {
   const container = document.createElement("div");

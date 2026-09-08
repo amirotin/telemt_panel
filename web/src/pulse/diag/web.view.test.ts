@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { webSessionRows } from "../details-builder/__fixtures__/web";
+import { webSessionRows } from "../__fixtures__/web";
 import { webPagePayload } from "./web.helpers";
-import { webStatusPartialPlanes, webStatusRunning } from "../details-builder/__fixtures__/web";
+import { webStatusPartialPlanes, webStatusRunning } from "../__fixtures__/web";
 import {
   webCapacityReadings,
   webCapacityTone,

@@ -271,19 +271,6 @@
   background-image: linear-gradient(135deg, rgb(var(--brand-from)), rgb(var(--brand-to)));
 }
 
-/* The Details layout model (spec §15) — the three lengths tokens.css
-   declares, as utilities, so a component never hard-codes a rail width the
-   token was supposed to own. */
-@utility detail-rail {
-  width: var(--layout-rail-width);
-}
-@utility detail-master {
-  width: var(--layout-master-width);
-}
-@utility detail-readable {
-  max-width: var(--layout-readable-max);
-}
-
 /* Horizontally scrollable strips (the People chip row on a phone) keep the
    scroll without the 6px bar cutting into a 34px chip. */
 @utility no-scrollbar {

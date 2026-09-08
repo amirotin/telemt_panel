@@ -6,10 +6,15 @@ import type {
   SecurityTopic,
   SecurityWhitelist,
 } from "../../realtime/topics";
-import type { SecurityPageData } from "../details-builder/definitions/security";
 // TLS fingerprints are a REST payload (GET /api/telemt/tls-fingerprints),
 // not a topic field, since M4 task 1 — hence the generated client's type.
 import type { TlsFingerprints } from "../../lib/api/generated/types.gen";
+
+export interface SecurityPageData extends Partial<TlsFingerprints> {
+  posture?: SecurityPosture;
+  whitelist?: SecurityWhitelist;
+  effective_limits?: EffectiveLimits;
+}
 
 export interface SecurityGroupsInput {
   posture?: SecurityPosture;
@@ -40,8 +45,7 @@ export function securityGroups(input: SecurityGroupsInput, s: Dict): KVGroup[] {
 }
 
 // securityPageData joins the `security` topic with the separately fetched
-// TLS aggregates into the ONE payload the Security Details page's
-// definition reads (details-builder/definitions/security.ts).
+// TLS aggregates into the ONE payload the Security diagnostic page reads.
 //
 // The TLS half is SPREAD at the top level rather than nested: the field
 // catalog's TLS entries are endpoint-scoped (ruling R9) and keyed exactly

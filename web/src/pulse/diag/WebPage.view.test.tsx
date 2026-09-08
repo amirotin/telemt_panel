@@ -6,7 +6,7 @@ import {
   webSessionsAll,
   webStatusRunning,
   webTopicUnsupported,
-} from "../details-builder/__fixtures__/web";
+} from "../__fixtures__/web";
 import { webPagePayload } from "./web.helpers";
 import { GateView, Overview, SessionsView } from "./WebPage";
 

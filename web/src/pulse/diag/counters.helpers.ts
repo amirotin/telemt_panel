@@ -1,6 +1,41 @@
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
 import type { DisplayMode } from "../../display-mode";
-import { COUNTER_GROUP_PATHS } from "../details-builder/definitions/counters";
+
+export const COUNTER_GROUP_PATHS = [
+  "core",
+  "upstream",
+  "middle_proxy",
+  "pool",
+  "desync",
+] as const;
+
+export type CounterGroupPath = (typeof COUNTER_GROUP_PATHS)[number];
+
+const ERROR_KEY = /(errors?|failures?|failed|fail|drops?|drop|reject|timeouts?|invalid)/;
+
+export function isFailureCounterPath(path: string): boolean {
+  const key = path.split(".").at(-1) ?? path;
+  return ERROR_KEY.test(key);
+}
+
+export interface CounterLeaf {
+  path: string;
+  key: string;
+  value: unknown;
+}
+
+export function counterLeaves(data: ZeroAllData | null | undefined): CounterLeaf[] {
+  if (!data) return [];
+  const out: CounterLeaf[] = [];
+  for (const group of COUNTER_GROUP_PATHS) {
+    const section = (data as unknown as Record<string, unknown>)[group];
+    if (section === null || typeof section !== "object" || Array.isArray(section)) continue;
+    for (const [key, value] of Object.entries(section as Record<string, unknown>)) {
+      if (value === null || typeof value !== "object") out.push({ path: `${group}.${key}`, key, value });
+    }
+  }
+  return out;
+}
 
 // countersRefetchMs: the poll that MAKES the deltas (ruling R4). The panel
 // has no counter-history endpoint, so "change per second" is the difference
@@ -34,7 +69,7 @@ export type CounterSnapshot = Record<string, number>;
 //
 // Nested containers (`connections_bad_by_class`, `handshake_error_codes`)
 // are skipped here: they are breakdowns with their own section, and the
-// resolver already gives them one.
+// bespoke page already gives them one.
 export function readCounterValues(data: ZeroAllData | undefined): CounterSnapshot {
   const out: CounterSnapshot = {};
   if (!data) return out;

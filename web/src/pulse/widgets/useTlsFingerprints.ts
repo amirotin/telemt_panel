@@ -37,7 +37,7 @@ export function useTlsFingerprints(enabled = true): TlsFingerprintsState & { ref
 // useTlsFingerprintsQuery is the SAME request, handed over unmapped.
 //
 // The Details builder resolves every source — SSE and REST alike — through
-// its own §14 state machine (details-builder/sources.ts), which makes the
+// its own §14 state machine (sourceState.ts), which makes the
 // R5 disabled-vs-unsupported split in one place for all eight pages. Mapping
 // the query here first and re-deriving a status from the mapped result would
 // be that decision made twice. Both hooks share one query key, so a page

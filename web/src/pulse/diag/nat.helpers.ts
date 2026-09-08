@@ -1,5 +1,13 @@
 import type { RuntimeNatStun } from "../../realtime/topics";
-import { reflectionAgeSecs, STUN_REFLECTION_TTL_SECONDS } from "../details-builder/definitions/nat";
+
+export const STUN_REFLECTION_TTL_SECONDS = 600;
+
+export function reflectionAgeSecs(nat: RuntimeNatStun | null | undefined): number | null {
+  const ages = [nat?.reflection?.v4?.age_secs, nat?.reflection?.v6?.age_secs].filter(
+    (age): age is number => typeof age === "number",
+  );
+  return ages.length === 0 ? null : Math.min(...ages);
+}
 
 export type NatMechanismState = "fresh" | "delayed" | "stale" | "pending" | "missing" | "disabled";
 

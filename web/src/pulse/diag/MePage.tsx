@@ -19,11 +19,11 @@ import type {
 } from "../../realtime/topics";
 import { IconChevronDown } from "../../ui/icons";
 import { StatePill, type State } from "../../ui/StatePill";
-import { DetailHeader } from "../details-builder/DetailHeader";
-import { mePageDefinition } from "../details-builder/definitions/me";
-import { useDetailSources, type DetailSourceInput } from "../details-builder/sources";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { resolveGated } from "../widgets/gated";
+import { DetailHeader } from "./DetailHeader";
 import { mePagePayload, meRouteMode, type MeRouteMode } from "./me.helpers";
+import { meSources } from "./sourceDefinitions";
 
 type MeTab = "overview" | "writers" | "quality" | "initialization" | "runtime";
 type WriterFilter = "all" | "active" | "degraded" | "draining";
@@ -1321,7 +1321,7 @@ export function MePage() {
     runtime_edge: { kind: "topic", snapshot: runtime, gated: runtime.data?.me_pool_state ?? null },
     minimal: { kind: "topic", snapshot: runtime, gated: runtime.data?.minimal ?? null },
   };
-  const sources = useDetailSources(mePageDefinition.sources, inputs);
+  const sources = useDetailSources(meSources, inputs);
   const v = s.details.pages.me.view;
   const tabs: Array<[MeTab, string, number | null]> = [
     ["overview", s.details.pages.me.tabs.overview, null],

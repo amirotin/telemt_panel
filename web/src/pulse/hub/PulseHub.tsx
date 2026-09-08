@@ -29,8 +29,8 @@ import {
   IconWarning,
   type IconProps,
 } from "../../ui/icons";
-import { formatRelativeAge } from "../details-builder/formatting";
-import type { SummaryTone } from "../details-builder/model";
+import { formatRelativeAge } from "../formatting";
+import type { SummaryTone } from "./hubSummary";
 import type { DiagDomain } from "../types";
 import { useHistorySeries } from "../useHistorySeries";
 import { buildHubCards, type HubCard, type HubCardMetric } from "./hubCards";

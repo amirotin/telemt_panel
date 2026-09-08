@@ -138,18 +138,16 @@
 }
 
 /*
- * Layout model — the four responsive modes of the Details pages
- * (TELEMT_DETAILS_PAGE_BUILDER_SPEC §15.1). Theme-independent, so they sit
- * in their own block rather than being repeated in every palette.
+ * Layout model — the four responsive modes retained by the live WEB detail
+ * surface. Theme-independent, so they sit in their own block rather than
+ * being repeated in every palette.
  *
  * These four thresholds are the SINGLE source of the layout decision. The
  * mode itself is decided in TypeScript (a media query cannot express
  * "compact by height OR by width, but wide only when BOTH pass"), so
- * surfaces/layoutTokens.ts mirrors the numbers and
- * surfaces/useLayoutMode.test.ts parses THIS file and fails if the two ever
- * drift. The lengths below are consumed straight from CSS by the
- * `detail-rail` / `detail-master` / `detail-readable` utilities in
- * index.css.
+ * pulse/diag/layoutTokens.ts mirrors the numbers and
+ * pulse/diag/layoutMode.test.ts parses THIS file and fails if the two ever
+ * drift.
  */
 :root {
   /* §15.1: height decides compact first and independently of width — a
@@ -158,14 +156,6 @@
   --layout-compact-width: 600px;
   --layout-wide-width: 900px;
   --layout-wide-height: 600px;
-
-  /* R1 / §15.3: the compact-landscape entity rail is 80–96 px. A 300 px
-     desktop master pane in landscape is explicitly forbidden. */
-  --layout-rail-width: 88px;
-  /* §15.4: the wide master pane. */
-  --layout-master-width: 280px;
-  /* §15.4: "ширина content ограничивается readable max width". */
-  --layout-readable-max: 960px;
 }
 
 [data-theme="light"] {

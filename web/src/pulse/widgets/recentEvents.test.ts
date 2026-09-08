@@ -12,7 +12,7 @@ import {
   eventTime,
   eventTone,
 } from "./recentEvents.helpers";
-import { events as eventsFixture } from "../details-builder/__fixtures__";
+import { events as eventsFixture } from "../__fixtures__";
 import type { RuntimeEdgeEventRecord, RuntimeEdgeEvents } from "../../realtime/topics";
 import { en, ru } from "../../i18n/testing";
 

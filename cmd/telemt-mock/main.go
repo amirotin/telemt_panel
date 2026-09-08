@@ -43,8 +43,8 @@ var scenarios = map[string]telemttest.Scenario{
 	// capability probe reads `enabled:false` off /v1/runtime/connections/
 	// summary, so hub.go never fetches the runtime-edge payloads and drops
 	// `connections_summary`/`recent_events` from the topic JSON entirely
-	// (their `omitempty` tags). The Details builder must read that absence
-	// as the gate being off — details-builder/sources.ts.
+	// (their `omitempty` tags). The Pulse source-state resolver must read
+	// that absence as the gate being off — pulse/sourceState.ts.
 	"edge-off": {},
 	// edge-gated: the other wire shape — an EXPLICIT `{enabled:false,
 	// reason}` wrapper instead of a missing key. runtime_edge is on (so

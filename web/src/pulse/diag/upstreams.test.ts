@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeUpstreams, upstreamsPagePayload } from "./upstreams.helpers";
-import { upstreams, upstreamQuality } from "../details-builder/__fixtures__";
+import { upstreams, upstreamQuality } from "../__fixtures__";
 import type { UpstreamStatus } from "../../realtime/topics";
 
 function upstream(overrides: Partial<UpstreamStatus> = {}): UpstreamStatus {

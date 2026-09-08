@@ -28,8 +28,8 @@ import {
   webTopicRunning,
   webTopicDisabled,
   webTopicUnsupported,
-} from "../details-builder/__fixtures__";
-import type { QuerySourceInput } from "../details-builder/sources";
+} from "../__fixtures__";
+import type { QuerySourceInput } from "../sourceState";
 import {
   HUB_DOMAINS,
   buildHubCards,
@@ -130,6 +130,27 @@ describe("the nine hub cards", () => {
     expect(buildHubCards(inputs(), en).map((c) => c.title)).toEqual(
       DOMAIN_ORDER.map((d) => en.diag.domains[d]),
     );
+  });
+
+  it("keeps the nine imported summary metrics on their existing localized labels", () => {
+    for (const s of [ru, en]) {
+      const byDomain = Object.fromEntries(buildHubCards(inputs(), s).map((card) => [card.domain, card]));
+      expect(byDomain["connections"]!.metrics.slice(0, 2).map((metric) => metric.label)).toEqual([
+        s.details.fields.shortLabels["connections.totals.current_connections"],
+        s.details.fields.shortLabels["connections.totals.active_users"],
+      ]);
+      expect(byDomain["upstreams"]!.metrics.map((metric) => metric.label)).toEqual([
+        s.details.fields.shortLabels["upstreams.summary.configured_total"],
+        s.details.fields.shortLabels["upstreams.summary.healthy_total"],
+        s.details.pages.upstreams.latencyTile,
+      ]);
+      expect(byDomain["nat"]!.metrics[0]!.label).toBe(s.details.pages.nat.reflectionAgeTile);
+      expect(byDomain["web"]!.metrics.map((metric) => metric.label)).toEqual([
+        s.details.fields.shortLabels["web.lifecycle"],
+        s.details.fields.shortLabels["web.manager.sessions"],
+        s.details.fields.shortLabels["web.streams.live"],
+      ]);
+    }
   });
 
   it("previews the operational figures selected for each domain", () => {

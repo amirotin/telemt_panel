@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { connectionsPagePayload, usersTrafficTotal } from "./connections.helpers";
-import { connectionsSummary, summary } from "../details-builder/__fixtures__";
+import { connectionsSummary, summary } from "../__fixtures__";
 import type { UsersTopic } from "../../realtime/topics";
 
 const users = {

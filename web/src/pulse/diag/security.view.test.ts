@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { posture, tlsFingerprints } from "../details-builder/__fixtures__/security";
+import { posture, tlsFingerprints } from "../__fixtures__/security";
 import { filterTlsRows, securityLevel, tlsRowIdentity, tlsTotals } from "./security.view.helpers";
 
 describe("Security custom detail view", () => {

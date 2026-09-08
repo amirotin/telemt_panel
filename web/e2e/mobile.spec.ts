@@ -236,7 +236,10 @@ test("login → people → create user → share → sub-page → overview → p
     await page.getByRole("button", { name: "Войти по passkey" }).click();
     await expect(page).toHaveURL(/\/people$/);
     await page.goto("/server/settings");
-    await page.getByTestId("settings-sessions").locator("button").first().click();
+    await page
+      .getByTestId("settings-sessions")
+      .getByRole("button", { name: /Это устройство/ })
+      .click();
     await expect(page.getByRole("dialog").getByText("Ключ доступа", { exact: true })).toBeVisible();
     await page.getByRole("dialog").getByRole("button", { name: "Закрыть" }).click();
   });

@@ -8,7 +8,7 @@ import { fill, formatNumber, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { WidgetFrame } from "../WidgetFrame";
 import { GatedNote } from "../GatedNote";
-import { dcEntityKey } from "../details-builder/definitions/dc";
+import { dcEntityKey } from "../diag/dc.helpers";
 import {
   computeDc,
   dcCoverageState,

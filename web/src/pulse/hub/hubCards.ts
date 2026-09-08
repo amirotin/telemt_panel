@@ -5,12 +5,10 @@
 // Two rules shape this module, and both are about not having a second
 // source of truth:
 //
-//   * the numbers on a card are the SAME §6 summary tiles its Details page
-//     shows, resolved through details-builder/summaryMetric.ts — a preview
-//     that computed its own figures would sooner or later disagree with the
-//     page one tap away;
+//   * each number is an explicitly curated operational metric with the same
+//     source path and localized short label as its diagnostic page;
 //   * the card's state is the SAME §14 source state the page header shows,
-//     resolved through details-builder/sources.ts — including ruling R5's
+//     resolved through sourceState.ts — including ruling R5's
 //     `disabled` (a switch the admin can flip) versus `unsupported` (a build
 //     that predates the feature), which is what decides which Gated hint the
 //     card offers.
@@ -47,23 +45,26 @@ import type { State } from "../../ui/StatePill";
 import { connectionsPagePayload, usersTrafficTotal } from "../diag/connections.helpers";
 import { upstreamsPagePayload } from "../diag/upstreams.helpers";
 import { webPagePayload } from "../diag/web.helpers";
-import { connectionsPageDefinition } from "../details-builder/definitions/connections";
-import { natPageDefinition } from "../details-builder/definitions/nat";
-import { upstreamsPageDefinition } from "../details-builder/definitions/upstreams";
-import { WEB_ENDPOINT, webPageDefinition } from "../details-builder/definitions/web";
-import type { DetailPageDefinition, SummaryMetricDefinition, SummaryTone } from "../details-builder/model";
 import {
   resolveSource,
   sourceStatusShortLabel,
   type DetailSourceInput,
   type QuerySourceInput,
   type SourceStatus,
-} from "../details-builder/sources";
-import { resolveSummaryMetric } from "../details-builder/summaryMetric";
+} from "../sourceState";
 import { dcRttTone } from "../widgets/dc.helpers";
 import { resolveGated } from "../widgets/gated";
 import { connectionQuality, historyWindowDelta, windowSeries } from "../widgets/statRow.helpers";
 import type { DiagDomain } from "../types";
+import {
+  CONNECTIONS_HUB_METRICS,
+  NAT_HUB_METRICS,
+  resolveSummaryMetric,
+  UPSTREAMS_HUB_METRICS,
+  WEB_HUB_METRICS,
+  type SummaryMetricDefinition,
+  type SummaryTone,
+} from "./hubSummary";
 
 export interface HubCardMetric {
   id: string;
@@ -224,32 +225,6 @@ interface HubDomainSpec {
   ignoreMetricWarnings?: boolean;
 }
 
-/**
- * `tiles` picks the preview subset of a page's own summary metrics, by id and
- * in the order the card shows them. Two or three: a card is a glance, and the
- * fourth tile is what the Details page is for.
- */
-function fromTiles<TPayload, TContext>(
-  definition: DetailPageDefinition<TPayload, TContext>,
-  ids: readonly string[],
-  context: TContext | null,
-  s: Dict,
-  nowMs: number,
-  endpoint?: string,
-): HubCardMetric[] {
-  if (context === null) return [];
-  const summary = definition.summary ?? [];
-  return ids
-    .map((id) => summary.find((metric) => metric.id === id))
-    .filter((metric): metric is SummaryMetricDefinition<TContext> => metric !== undefined)
-    .map((metric) =>
-      resolveSummaryMetric(metric, context, s, {
-        nowMs,
-        ...(endpoint !== undefined ? { lookup: { endpoint } } : {}),
-      }),
-    );
-}
-
 function metricsOf<T>(
   metrics: readonly SummaryMetricDefinition<T>[],
   context: T | null,
@@ -257,7 +232,7 @@ function metricsOf<T>(
   nowMs: number,
 ): HubCardMetric[] {
   if (context === null) return [];
-  return metrics.map((metric) => resolveSummaryMetric(metric, context, s, { nowMs }));
+  return metrics.map((metric) => resolveSummaryMetric(metric, context, s, nowMs));
 }
 
 // HUB_DOMAINS is the hub's single ordered list — the nine cards of
@@ -415,9 +390,8 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
     }),
     metrics: ({ stats, users, nowMs }, s) => {
       const gated = stats.data ? resolveGated(stats.data.connections_summary) : null;
-      const load = fromTiles(
-        connectionsPageDefinition,
-        ["current_connections", "active_users"],
+      const load = metricsOf(
+        CONNECTIONS_HUB_METRICS,
         connectionsPagePayload(
           stats.data?.summary,
           gated?.status === "ok" ? gated.data : null,
@@ -469,9 +443,8 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
       };
     },
     metrics: ({ upstreams, runtime, nowMs }, s) =>
-      fromTiles(
-        upstreamsPageDefinition,
-        ["configured", "healthy", "latency"],
+      metricsOf(
+        UPSTREAMS_HUB_METRICS,
         upstreamsPagePayload(upstreams.data?.upstreams, runtime.data?.upstream_quality),
         s,
         nowMs,
@@ -499,9 +472,8 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
     metrics: ({ runtime, nowMs }, s) => {
       const nat = runtime.data ? resolveGated(runtime.data.nat_stun) : null;
       if (nat?.status !== "ok") return [];
-      const reflection = fromTiles(
-        natPageDefinition,
-        ["reflection_age"],
+      const reflection = metricsOf(
+        NAT_HUB_METRICS,
         nat.data,
         s,
         nowMs,
@@ -574,16 +546,14 @@ export const HUB_DOMAINS: readonly HubDomainSpec[] = [
     }),
     metrics: ({ web, nowMs }, s) => {
       const status = web.data ? resolveGated(web.data.status) : null;
-      return fromTiles(
-        webPageDefinition,
-        ["lifecycle", "sessions", "streams"],
+      return metricsOf(
+        WEB_HUB_METRICS,
         // The card previews the STATUS half only: the sessions are a
         // fetch-on-visit request the page owns, and a hub of nine cards
         // must not pull a page of session rows to show three numbers.
         webPagePayload(status?.status === "ok" ? status.data : null, null),
         s,
         nowMs,
-        WEB_ENDPOINT,
       );
     },
   },

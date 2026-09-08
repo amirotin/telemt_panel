@@ -12,15 +12,15 @@ import type {
   SecurityWhitelist,
 } from "../../realtime/topics";
 import { GatedNote } from "../GatedNote";
-import { DetailHeader } from "../details-builder/DetailHeader";
-import { securityPageDefinition } from "../details-builder/definitions/security";
 import {
   useDetailSources,
   type DetailSourceInput,
   type SourceState,
-} from "../details-builder/sources";
+} from "../sourceState";
 import { useTlsFingerprintsQuery } from "../widgets/useTlsFingerprints";
+import { DetailHeader } from "./DetailHeader";
 import { securityPageData } from "./security.helpers";
+import { securitySources } from "./sourceDefinitions";
 import {
   filterTlsRows,
   securityLevel,
@@ -879,7 +879,7 @@ export function SecurityPage() {
       gated: tlsQuery.data ?? null,
     },
   };
-  const sources = useDetailSources(securityPageDefinition.sources, inputs);
+  const sources = useDetailSources(securitySources, inputs);
   const tabs: Array<[SecurityTab, string, string, number | null]> = [
     ["posture", v.postureTab, v.postureTabShort, null],
     [

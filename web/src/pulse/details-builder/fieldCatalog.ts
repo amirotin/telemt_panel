@@ -32,7 +32,7 @@
 
 import type { Dict } from "../../i18n";
 import type { DisplayMode } from "../../display-mode/mode";
-import type { FormatterName } from "./formatting";
+import type { FormatterName } from "../formatting";
 import type { FieldDefinition, FieldUnit } from "./model";
 import { matchesPattern, patternSpecificity, walkLeafPaths } from "./paths";
 

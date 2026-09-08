@@ -1,5 +1,7 @@
 import type {
+  MeWriterStatus,
   MeWritersData,
+  MeWritersSummary,
   RuntimeGates,
   RuntimeInitialization,
   RuntimeMePoolState,
@@ -7,7 +9,20 @@ import type {
   RuntimeMeSelftest,
   RuntimeMinimalMeRuntime,
 } from "../../realtime/topics";
-import type { MePagePayload } from "../details-builder/definitions/me";
+
+export interface MePagePayload {
+  middle_proxy_enabled?: boolean;
+  reason?: string;
+  generated_at_epoch_secs?: number;
+  summary?: MeWritersSummary;
+  writers?: MeWriterStatus[];
+  gates?: RuntimeGates;
+  initialization?: RuntimeInitialization;
+  pool?: RuntimeMePoolState;
+  quality?: RuntimeMeQuality;
+  selftest?: RuntimeMeSelftest;
+  me_runtime?: RuntimeMinimalMeRuntime;
+}
 
 export type MeRouteMode = "middle" | "fallback" | "direct";
 
@@ -43,12 +58,11 @@ export interface MeSourcesInput {
 }
 
 // mePagePayload joins the five independently gated sub-payloads the ME
-// domain is spread across into the ONE payload its definition reads
-// (details-builder/definitions/me.ts).
+// domain is spread across into the ONE payload its bespoke view reads.
 //
 // This is all that is left of the old `meGroups`, which flattened the same
 // inputs into thirteen KV groups and ~1 091 rows: composition of the page is
-// now the definition's job, and this module only says WHERE the data comes
+// now the view's job, and this module only says WHERE the data comes
 // from. Every half is optional on its own — a gated-off sub-payload simply
 // contributes no fields, and the page reports it as a degraded source while
 // every other section keeps working (spec §14).

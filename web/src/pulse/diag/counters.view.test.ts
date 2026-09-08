@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
-import { zeroAll } from "../details-builder/__fixtures__";
+import { zeroAll } from "../__fixtures__";
 import {
   breakdownRows,
   counterViewMetrics,

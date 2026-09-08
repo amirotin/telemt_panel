@@ -22,7 +22,7 @@ export function computeDc(
 // dcCoverageState maps a DC's coverage_pct to the StatePill semantic set —
 // full coverage is ok, any shortfall relative to the floor is a problem
 // worth flagging (warn under 100%, error at 0 alive writers). Same rule as
-// details-builder's dcAttentionTone, in the widget's own vocabulary.
+// The diagnostic page's attention rule, in the widget's own vocabulary.
 export function dcCoverageState(dc: DcStatus): "ok" | "warn" | "error" {
   if (dc.alive_writers === 0) return "error";
   if (dc.coverage_pct < 100) return "warn";

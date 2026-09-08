@@ -7,7 +7,7 @@ import {
   pollUntilTerminal,
 } from "./useTelemtOperation";
 import type { WebControlOperationStatus } from "./api/generated/types.gen";
-import { webOperationCompleted, webOperationQueued } from "../pulse/details-builder/__fixtures__";
+import { webOperationCompleted, webOperationQueued } from "../pulse/__fixtures__";
 
 const interval = pollUntilTerminal<WebControlOperationStatus>((data) =>
   isTerminalWebOperationState(data.state),
