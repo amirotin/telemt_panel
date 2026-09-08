@@ -35,8 +35,9 @@ type userIPCollector struct {
 }
 
 func (h *Hub) pollPeriodic(t *topicState) bool {
+	profile := h.periodicPollProfile(t)
 	if t.name != "users" || h.st == nil {
-		return h.poll(t)
+		return h.pollWithProfile(h.ctx, t, profile, recheckNone, 0)
 	}
 	h.ips.mu.Lock()
 	generation := h.ips.generation
@@ -54,7 +55,7 @@ func (h *Hub) pollPeriodic(t *topicState) bool {
 		}
 	}
 	ctx := context.WithValue(h.ctx, ipObserverKey{}, func(users []telemt.UserInfo) { h.observeUserIPs(users, generation) })
-	ok := h.pollWithContext(ctx, t)
+	ok := h.pollWithProfile(ctx, t, profile, recheckNone, 0)
 	h.ips.mu.Lock()
 	if !ok {
 		h.ips.failed = true
@@ -81,6 +82,15 @@ func (h *Hub) pollPeriodic(t *topicState) bool {
 		h.ips.mu.Unlock()
 	}
 	return ok
+}
+
+func (h *Hub) periodicPollProfile(t *topicState) pollProfile {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.tc != nil && t.historyFetch != nil && t.subCount == 0 && !t.fullPending {
+		return pollHistory
+	}
+	return pollFull
 }
 
 // observeUserIPs is called only by the periodic users fetch, before optional

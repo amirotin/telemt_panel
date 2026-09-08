@@ -186,11 +186,23 @@ type usersLiveGauges struct {
 	activeUsers int
 }
 
+func (g *usersLiveGauges) addUser(currentConnections uint64) {
+	g.connections += currentConnections
+	if currentConnections > 0 {
+		g.activeUsers++
+	}
+}
+
 // topicState is one topic's poller lifecycle and cache, guarded by Hub.mu.
 type topicState struct {
 	name     string
 	interval time.Duration
 	fetch    fetchFunc
+	// historyFetch collects only inputs required by history/live gauges.
+	// It is selected by the existing poller when no UI subscriber needs a
+	// full projection; history-only results are never marshalled or published.
+	historyFetch fetchFunc
+	pollGate     chan struct{}
 	// persistent keeps a collector alive without subscribers. Durable
 	// stores use this for technical history; volatile stores preserve the
 	// demand-driven router profile.
@@ -201,20 +213,28 @@ type topicState struct {
 	stop       chan struct{}
 	graceTimer *time.Timer
 
-	hasData   bool
-	lastData  json.RawMessage
-	lastKey   json.RawMessage
-	lastEvent Event
-	// lastObservedAt tracks successful polls even when push-on-change skips
-	// a broadcast. A failed poll clears it without removing the UI cache.
+	hasData     bool
+	fullFresh   bool
+	fullVersion uint64
+	// fullPending is subscriber hydration demand that must survive an
+	// in-flight history poll and bypass the ordinary Poke floor.
+	fullPending bool
+	// pokePending is kept separately so completing hydration cannot consume
+	// a mutation-triggered refresh that arrived while the full fetch ran.
+	pokePending bool
+	lastData    json.RawMessage
+	lastKey     json.RawMessage
+	lastEvent   Event
+	// lastObservedAt tracks successful full polls and minimal users gauge
+	// observations even when push-on-change skips a broadcast. A failed
+	// relevant poll clears it without removing the UI cache.
 	lastObservedAt time.Time
 	usersGauges    usersLiveGauges
 	usersGaugesOK  bool
 
-	// wake carries Poke requests to runPoller: a buffered(1), non-blocking
-	// send so concurrent Poke calls coalesce into at most one pending
-	// forced poll. nil for topics with no poller (fetch == nil, i.e.
-	// "update").
+	// wake carries hydration and Poke requests to runPoller: a buffered(1),
+	// non-blocking signal. Explicit flags preserve the two kinds of demand
+	// while redundant signals coalesce. nil for push-only topics.
 	wake chan struct{}
 	// lastForcedPollAt is touched only by runPoller's own goroutine (never
 	// read or written under Hub.mu, never from Poke) — safe without a lock
@@ -305,44 +325,54 @@ func New(cfg Config, tc *telemt.Client, st store.HistoryStore) *Hub {
 	durableHistory := st != nil && st.Info().Durable
 	h.topics = map[string]*topicState{
 		"users": {
-			name:       "users",
-			wake:       make(chan struct{}, 1),
-			interval:   cfg.UsersInterval,
-			fetch:      func(ctx context.Context) (any, error) { return fetchUsers(ctx, tc, st) },
-			persistent: durableHistory,
+			name:         "users",
+			wake:         make(chan struct{}, 1),
+			interval:     cfg.UsersInterval,
+			fetch:        func(ctx context.Context) (any, error) { return fetchUsers(ctx, tc, st) },
+			historyFetch: func(ctx context.Context) (any, error) { return fetchUsersHistory(ctx, tc) },
+			pollGate:     newTopicGate(),
+			persistent:   durableHistory,
 		},
 		"stats": {
-			name:       "stats",
-			wake:       make(chan struct{}, 1),
-			interval:   cfg.StatsInterval,
-			fetch:      func(ctx context.Context) (any, error) { return fetchStats(ctx, tc, sysInfo) },
-			persistent: durableHistory,
+			name:         "stats",
+			wake:         make(chan struct{}, 1),
+			interval:     cfg.StatsInterval,
+			fetch:        func(ctx context.Context) (any, error) { return fetchStats(ctx, tc, sysInfo) },
+			historyFetch: func(ctx context.Context) (any, error) { return fetchStatsHistory(ctx, tc) },
+			pollGate:     newTopicGate(),
+			persistent:   durableHistory,
 		},
 		"runtime": {
-			name:       "runtime",
-			wake:       make(chan struct{}, 1),
-			interval:   cfg.RuntimeInterval,
-			fetch:      func(ctx context.Context) (any, error) { return fetchRuntime(ctx, tc) },
-			persistent: durableHistory,
+			name:         "runtime",
+			wake:         make(chan struct{}, 1),
+			interval:     cfg.RuntimeInterval,
+			fetch:        func(ctx context.Context) (any, error) { return fetchRuntime(ctx, tc) },
+			historyFetch: func(ctx context.Context) (any, error) { return fetchRuntimeHistory(ctx, tc) },
+			pollGate:     newTopicGate(),
+			persistent:   durableHistory,
 		},
 		"upstreams": {
-			name:       "upstreams",
-			wake:       make(chan struct{}, 1),
-			interval:   cfg.UpstreamsInterval,
-			fetch:      func(ctx context.Context) (any, error) { return fetchUpstreams(ctx, tc) },
-			persistent: durableHistory,
+			name:         "upstreams",
+			wake:         make(chan struct{}, 1),
+			interval:     cfg.UpstreamsInterval,
+			fetch:        func(ctx context.Context) (any, error) { return fetchUpstreams(ctx, tc) },
+			historyFetch: func(ctx context.Context) (any, error) { return fetchUpstreamsHistory(ctx, tc) },
+			pollGate:     newTopicGate(),
+			persistent:   durableHistory,
 		},
 		"security": {
 			name:     "security",
 			wake:     make(chan struct{}, 1),
 			interval: cfg.SecurityInterval,
 			fetch:    func(ctx context.Context) (any, error) { return fetchSecurity(ctx, tc) },
+			pollGate: newTopicGate(),
 		},
 		"web": {
 			name:     "web",
 			wake:     make(chan struct{}, 1),
 			interval: cfg.WebInterval,
 			fetch:    func(ctx context.Context) (any, error) { return fetchWeb(ctx, tc) },
+			pollGate: newTopicGate(),
 		},
 		// "update" is event-driven, not polled: the update engine and
 		// auto-updater push snapshots into it directly via PublishUpdate.
@@ -366,6 +396,8 @@ type usersSnapshot struct {
 	Users          []userSnapshotItem           `json:"users"`
 	Quota          map[string]telemt.QuotaEntry `json:"quota"`
 	QuotaSupported bool                         `json:"quota_supported"`
+	liveGauges     usersLiveGauges
+	liveGaugesOK   bool
 }
 
 type userSnapshotItem struct {
@@ -384,12 +416,9 @@ type userTrafficSnapshot struct {
 }
 
 func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (usersSnapshot, error) {
-	users, err := tc.Users(ctx)
+	users, gauges, err := fetchUsersObservation(ctx, tc)
 	if err != nil {
 		return usersSnapshot{}, err
-	}
-	if observe, ok := ctx.Value(ipObserverKey{}).(func([]telemt.UserInfo)); ok {
-		observe(users)
 	}
 	// Both calls run under the poll's own context/timeout — a quota hiccup
 	// must not cost the users topic its own budget twice.
@@ -427,7 +456,10 @@ func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (
 			}
 		}
 	}
-	return usersSnapshot{Users: items, Quota: quota, QuotaSupported: hasQuota}, nil
+	return usersSnapshot{
+		Users: items, Quota: quota, QuotaSupported: hasQuota,
+		liveGauges: gauges, liveGaugesOK: true,
+	}, nil
 }
 
 // statsSnapshot is the "stats" topic's composite payload (spec
@@ -459,32 +491,9 @@ type statsSnapshot struct {
 }
 
 func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRefresher) (statsSnapshot, error) {
-	var snap statsSnapshot
-	health, healthErr := tc.Health(ctx)
-	if healthErr == nil {
-		snap.Health = &health
-	}
-	summary, summaryErr := tc.StatsSummary(ctx)
-	if summaryErr == nil {
-		snap.Summary = &summary
-	}
-	ready, readyErr := tc.Ready(ctx)
-	if readyErr == nil {
-		snap.Ready = &ready
-	}
-	// Every primary sub-call failing means Telemt itself is unreachable, so
-	// this must surface as a fetch error — the source_error/backoff path —
-	// not a silent all-null snapshot. Any one succeeding still publishes.
-	if healthErr != nil && summaryErr != nil && readyErr != nil {
-		return statsSnapshot{}, fmt.Errorf("stats: %w", errors.Join(healthErr, summaryErr, readyErr))
-	}
-
-	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
-		if cs, err := tc.ConnectionsSummary(ctx); err == nil {
-			snap.ConnectionsSummary = &cs
-		} else {
-			slog.Warn("hub: stats topic: connections summary", "err", err)
-		}
+	snap, err := fetchStatsHistory(ctx, tc)
+	if err != nil {
+		return statsSnapshot{}, err
 	}
 
 	if info, ok := sysInfo.get(ctx); ok {
@@ -585,13 +594,12 @@ type runtimeSnapshot struct {
 }
 
 func fetchRuntime(ctx context.Context, tc *telemt.Client) (runtimeSnapshot, error) {
-	var snap runtimeSnapshot
+	history := collectRuntimeHistoryInputs(ctx, tc)
+	snap := history.snapshot
 	var errs []error
 
-	if v, err := tc.Gates(ctx); err == nil {
-		snap.Gates = &v
-	} else {
-		errs = append(errs, err)
+	if history.gatesErr != nil {
+		errs = append(errs, history.gatesErr)
 	}
 	if v, err := tc.Initialization(ctx); err == nil {
 		snap.Initialization = &v
@@ -633,10 +641,8 @@ func fetchRuntime(ctx context.Context, tc *telemt.Client) (runtimeSnapshot, erro
 	} else {
 		slog.Warn("hub: runtime topic: minimal all", "err", err)
 	}
-	if v, err := tc.UpstreamQuality(ctx); err == nil {
-		snap.UpstreamQuality = &v
-	} else {
-		slog.Warn("hub: runtime topic: upstream quality", "err", err)
+	if history.qualityErr != nil {
+		slog.Warn("hub: runtime topic: upstream quality", "err", history.qualityErr)
 	}
 
 	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
@@ -669,8 +675,8 @@ func fetchUpstreams(ctx context.Context, tc *telemt.Client) (upstreamsSnapshot, 
 	} else {
 		upstreamsErr = err
 	}
-	if v, err := tc.DCs(ctx); err == nil {
-		snap.DCs = &v
+	if history, err := fetchUpstreamsHistory(ctx, tc); err == nil {
+		snap.DCs = history.DCs
 	} else {
 		dcsErr = err
 	}
@@ -847,10 +853,7 @@ func (h *Hub) cachedUsersLiveGauges() (usersLiveGauges, bool) {
 func usersLiveTotals(users []userSnapshotItem) usersLiveGauges {
 	var gauges usersLiveGauges
 	for _, user := range users {
-		gauges.connections += user.CurrentConnections
-		if user.CurrentConnections > 0 {
-			gauges.activeUsers++
-		}
+		gauges.addUser(user.CurrentConnections)
 	}
 	return gauges
 }
@@ -995,6 +998,7 @@ func (h *Hub) Subscribe(topics []string) (ch <-chan Event, snapshots []Event, ca
 		sub.topics[name] = struct{}{}
 
 		t := h.topics[name]
+		firstSubscriber := t.subCount == 0
 		t.subCount++
 		if t.graceTimer != nil {
 			t.graceTimer.Stop()
@@ -1003,11 +1007,22 @@ func (h *Hub) Subscribe(topics []string) (ch <-chan Event, snapshots []Event, ca
 		// A nil fetch marks a push-only topic (see New's "update" entry):
 		// there is nothing to poll, so no poller ever starts for it — its
 		// snapshot only ever changes via PublishUpdate.
-		if !t.running && t.fetch != nil {
+		wasRunning := t.running
+		if !wasRunning && t.fetch != nil {
 			t.running = true
 			t.stop = make(chan struct{})
 			h.wg.Add(1)
 			go h.runPoller(t)
+		}
+		if firstSubscriber && t.historyFetch != nil {
+			t.fullFresh = false
+			t.fullPending = true
+			if wasRunning {
+				select {
+				case t.wake <- struct{}{}:
+				default:
+				}
+			}
 		}
 		if t.hasData {
 			snapshots = append(snapshots, t.lastEvent)
@@ -1045,6 +1060,10 @@ func (h *Hub) closeSubscriberLocked(id uint64, sub *subscriber) {
 	for name := range sub.topics {
 		t := h.topics[name]
 		t.subCount--
+		if t.subCount == 0 && t.historyFetch != nil {
+			t.fullFresh = false
+			t.fullPending = false
+		}
 		if t.subCount == 0 && !t.persistent && t.graceTimer == nil {
 			t.graceTimer = time.AfterFunc(h.cfg.Grace, func() { h.stopIfIdle(t) })
 		}
@@ -1067,10 +1086,11 @@ func (h *Hub) stopIfIdle(t *topicState) {
 // polls immediately on start so a first subscriber never waits a full
 // interval for its snapshot, then on t.interval, doubling the wait on
 // fetch errors up to maxBackoff and resetting it on the next success. A
-// Poke-triggered wake (t.wake) is handled the same way as a normal timer
-// tick, subject to the poke floor (t.lastForcedPollAt, touched only here —
-// see topicState's doc comment) — this is the only place t.fetch is ever
-// called for t, so two polls of the same topic can never run concurrently.
+// Hydration/Poke-triggered wake (t.wake) is handled like a normal timer tick.
+// Poke remains subject to the floor (t.lastForcedPollAt, touched only here —
+// see topicState's doc comment), while first-subscriber hydration bypasses it.
+// Direct Snapshot/Poke callers share the topic's context-aware gate with this
+// goroutine, so observation and publication for one topic remain serialized.
 func (h *Hub) runPoller(t *topicState) {
 	defer h.wg.Done()
 
@@ -1108,15 +1128,31 @@ func (h *Hub) runPoller(t *topicState) {
 			}
 			resetTimer(backoff)
 		case <-t.wake:
-			if h.now().Sub(t.lastForcedPollAt) < h.cfg.PokeFloor {
-				// Another forced poll happened too recently — drop this
-				// wake rather than queue it; the data is already about as
-				// fresh as Poke could make it, and the normal interval
-				// timer above is still running unaffected.
+			h.mu.Lock()
+			hydration := t.fullPending
+			poke := t.pokePending
+			version := t.fullVersion
+			if !hydration && !poke {
+				h.mu.Unlock()
 				continue
 			}
-			t.lastForcedPollAt = h.now()
-			if h.poll(t) {
+			if !hydration && h.now().Sub(t.lastForcedPollAt) < h.cfg.PokeFloor {
+				t.pokePending = false
+				h.mu.Unlock()
+				continue
+			}
+			if poke {
+				t.pokePending = false
+			}
+			h.mu.Unlock()
+			if !hydration {
+				t.lastForcedPollAt = h.now()
+			}
+			recheck := recheckNone
+			if hydration && !poke {
+				recheck = recheckHydration
+			}
+			if h.pollWithProfile(h.ctx, t, pollFull, recheck, version) {
 				backoff = t.interval
 			} else {
 				backoff *= 2
@@ -1143,7 +1179,40 @@ func (h *Hub) poll(t *topicState) bool {
 // bind a fetch to the caller's request context instead of the hub's
 // lifetime one — a slow /api/snapshot request can't outlive its client.
 func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
-	snapshot, err := t.fetch(ctx)
+	return h.pollWithProfile(ctx, t, pollFull, recheckNone, 0)
+}
+
+func (h *Hub) pollWithProfile(ctx context.Context, t *topicState, profile pollProfile, recheck pollGateRecheck, previousVersion uint64) bool {
+	if !acquireTopicGate(ctx, t.pollGate) {
+		return false
+	}
+	defer releaseTopicGate(t.pollGate)
+
+	h.mu.Lock()
+	if profile == pollHistory && (t.subCount > 0 || t.fullPending) {
+		profile = pollFull
+	}
+	if profile == pollHistory {
+		// Invalidate only after this history poll owns the topic gate. A
+		// full fetch that completed while we waited must not make the later
+		// minimal observation look like a fresh UI projection.
+		t.fullFresh = false
+	}
+	if recheck == recheckHydration && !t.fullPending {
+		h.mu.Unlock()
+		return true
+	}
+	if recheck == recheckSnapshot && t.fullFresh && t.hasData && !t.fullPending && (t.running || t.fullVersion != previousVersion) {
+		h.mu.Unlock()
+		return true
+	}
+	h.mu.Unlock()
+
+	fetch := t.fetch
+	if profile == pollHistory && t.historyFetch != nil {
+		fetch = t.historyFetch
+	}
+	snapshot, err := fetch(ctx)
 	if err != nil {
 		// A shutdown or caller deadline canceled the observation, not Telemt.
 		if ctx.Err() != nil {
@@ -1151,6 +1220,13 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 		}
 		if t.name == "stats" {
 			h.recordTelemtAvailability(false)
+		}
+		if profile == pollHistory {
+			slog.Warn("hub: history poll failed", "topic", t.name, "err", err)
+			if t.name == "users" {
+				h.recordUsersObservationError(t)
+			}
+			return false
 		}
 		h.recordFetchError(t, err)
 		return false
@@ -1163,8 +1239,13 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	// no recorder needs to decode the payload it just helped construct.
 	switch snap := snapshot.(type) {
 	case usersSnapshot:
-		value := usersLiveTotals(snap.Users)
+		value := snap.liveGauges
+		if !snap.liveGaugesOK {
+			value = usersLiveTotals(snap.Users)
+		}
 		gauges = &value
+	case usersHistoryObservation:
+		h.recordUsersObservation(t, snap.gauges)
 	case statsSnapshot:
 		h.recordStatsHistory(snap)
 		if h.historyRecordedHook != nil {
@@ -1175,6 +1256,9 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	case upstreamsSnapshot:
 		h.recordUpstreamsHistory(snap)
 	}
+	if profile == pollHistory {
+		return true
+	}
 	data, err := json.Marshal(snapshot)
 	if err != nil {
 		h.recordFetchError(t, fmt.Errorf("marshal %s snapshot: %w", t.name, err))
@@ -1184,16 +1268,49 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	return true
 }
 
+func (h *Hub) recordUsersObservation(t *topicState, gauges usersLiveGauges) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t.lastObservedAt = h.now()
+	t.usersGauges = gauges
+	t.usersGaugesOK = true
+}
+
+func (h *Hub) recordUsersObservationError(t *topicState) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t.lastObservedAt = time.Time{}
+	t.usersGaugesOK = false
+}
+
 func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage, gauges *usersLiveGauges) {
 	key := diffKey(t.name, data)
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	hydrating := t.fullPending
 	t.lastObservedAt = h.now()
+	t.fullFresh = true
+	t.fullPending = false
+	t.fullVersion++
 	if gauges != nil {
 		t.usersGauges = *gauges
 		t.usersGaugesOK = true
 	}
 	if t.hasData && bytes.Equal(t.lastKey, key) {
+		// A full fetch can be source-fresh while its normalized comparison
+		// key is unchanged. Refresh the cached projection, and publish one
+		// fresh event only when satisfying first-subscriber hydration. Ordinary
+		// periodic polls retain push-on-change suppression.
+		t.lastData = data
+		if hydrating {
+			ev := Event{Seq: h.nextSeqLocked(), Topic: t.name, Data: data, TS: time.Now().Unix()}
+			t.lastEvent = ev
+			h.appendRingLocked(ev)
+			h.broadcastLocked(ev)
+			return
+		}
+		t.lastEvent.Data = data
+		t.lastEvent.TS = time.Now().Unix()
 		return
 	}
 	t.hasData = true
@@ -1332,6 +1449,7 @@ func (h *Hub) recordFetchError(t *topicState, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	t.lastObservedAt = time.Time{}
+	t.fullFresh = false
 	if t.name == "users" {
 		t.usersGaugesOK = false
 	}
@@ -1438,20 +1556,11 @@ func (h *Hub) ReplaySince(since uint64, topics []string) ([]Event, bool) {
 //     wakes runPoller via t.wake, a buffered(1) non-blocking send — a
 //     wake already pending absorbs this call for free (coalescing), and
 //     runPoller's own floor check (Config.PokeFloor, default 500ms) caps
-//     how often a wake actually triggers a fetch. Since t.fetch is only
-//     ever called from runPoller's single goroutine, this can never race
-//     with — or run concurrently alongside — that topic's normal polling.
+//     how often a wake actually triggers a fetch. Subscriber hydration
+//     bypasses that floor, and every path shares the per-topic poll gate.
 //   - Topic has no live poller (no subscribers, t.running false): runs a
-//     one-shot synchronous fetch (the same on-demand path Snapshot uses
-//     for an idle topic) so the cached snapshot is warm. Note that
-//     Snapshot re-fetches an idle topic on every call anyway, so this
-//     branch mainly keeps the cache and the source_error/backoff state
-//     current; it is cheap and harmless. Narrow, accepted race: if a new subscriber
-//     starts this topic's poller in the brief window between this check
-//     and the fetch actually running, both fetches proceed independently
-//     — recordFetchSuccess is safe under concurrent callers (Hub.mu), so
-//     the only cost is one harmless duplicate Telemt round trip, not a
-//     correctness issue.
+//     one-shot synchronous full fetch through the same topic gate Snapshot
+//     uses, so the cache is warmed without racing a newly started poller.
 func (h *Hub) Poke(topic string) error {
 	h.mu.Lock()
 	t, ok := h.topics[topic]
@@ -1468,6 +1577,7 @@ func (h *Hub) Poke(topic string) error {
 		h.pollWithContext(h.ctx, t)
 		return nil
 	}
+	t.pokePending = true
 	h.mu.Unlock()
 
 	select {
@@ -1521,11 +1631,12 @@ func (h *Hub) Snapshot(ctx context.Context, topics []string) (map[string]json.Ra
 		t := h.topics[name]
 		// A push-only topic (nil fetch) has nothing to fetch on demand —
 		// its cached value (possibly still empty) is always "fresh".
-		fresh := t.fetch == nil || (t.running && t.hasData)
+		version := t.fullVersion
+		fresh := t.fetch == nil || (t.running && t.hasData && t.fullFresh && !t.fullPending)
 		h.mu.Unlock()
 
 		if !fresh {
-			h.pollWithContext(ctx, t)
+			h.pollWithProfile(ctx, t, pollFull, recheckSnapshot, version)
 		}
 
 		h.mu.Lock()

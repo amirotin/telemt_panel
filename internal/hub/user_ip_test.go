@@ -138,9 +138,50 @@ func TestUserIPOnlyPeriodicUsersFetchCounts(t *testing.T) {
 	if status.RecentWindow == nil || *status.RecentWindow != 75 {
 		t.Fatalf("window: %+v", status)
 	}
+	h.ips.mu.Lock()
+	before := struct {
+		generation, through, flushed uint64
+		pending                      int
+		retry, gap, failed           bool
+	}{
+		generation: h.ips.generation,
+		through:    uint64(h.ips.through),
+		flushed:    uint64(h.ips.flushed),
+		pending:    len(h.ips.pending),
+		retry:      h.ips.retry != nil,
+		gap:        h.ips.gap,
+		failed:     h.ips.failed,
+	}
+	h.ips.mu.Unlock()
 	now = now.Add(10 * time.Second)
-	if !h.poll(h.topics["users"]) {
-		t.Fatal("manual users poll failed")
+	for i := 0; i < 2; i++ {
+		if !h.poll(h.topics["users"]) {
+			t.Fatal("manual users poll failed")
+		}
+	}
+	if _, err := h.Snapshot(context.Background(), []string{"users"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Poke("users"); err != nil {
+		t.Fatal(err)
+	}
+	h.ips.mu.Lock()
+	after := struct {
+		generation, through, flushed uint64
+		pending                      int
+		retry, gap, failed           bool
+	}{
+		generation: h.ips.generation,
+		through:    uint64(h.ips.through),
+		flushed:    uint64(h.ips.flushed),
+		pending:    len(h.ips.pending),
+		retry:      h.ips.retry != nil,
+		gap:        h.ips.gap,
+		failed:     h.ips.failed,
+	}
+	h.ips.mu.Unlock()
+	if after != before {
+		t.Fatalf("manual hydration changed periodic IP state: before=%+v after=%+v", before, after)
 	}
 	page, _ := m.UserIPHistory(store.UserIPQuery{Username: "alice", Now: now.Unix(), Limit: 50})
 	if page.Total != 1 || page.Items[0].Observations != 1 {

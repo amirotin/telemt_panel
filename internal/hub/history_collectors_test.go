@@ -153,6 +153,34 @@ func TestHistoryMissingOptionalSourcesDoNotCreateObservations(t *testing.T) {
 	}
 }
 
+func TestHistoryOnlyPollsReuseTypedRuntimeAndDCRecorders(t *testing.T) {
+	_, client := newCountedTelemtFixture(t)
+	memory, err := store.NewMemory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { memory.Close() })
+	capture := &historyCapture{HistoryStore: memory}
+	h := New(Config{}, client, capture)
+	t.Cleanup(h.Close)
+
+	if !h.pollPeriodic(h.topics["runtime"]) || !h.pollPeriodic(h.topics["upstreams"]) {
+		t.Fatal("history-only runtime/DC poll failed")
+	}
+	names := make(map[string]bool)
+	for _, metric := range capture.metrics {
+		names[metric.Name] = true
+	}
+	if !names[metricRouteMode] || !names["upstream.healthy_total"] || !names["dc.coverage_pct"] {
+		t.Fatalf("typed history metrics = %v", names)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.topics["runtime"].hasData || h.topics["upstreams"].hasData || h.seq != 0 || len(h.ring) != 0 {
+		t.Fatalf("history-only typed recorders published UI state: seq=%d ring=%d", h.seq, len(h.ring))
+	}
+}
+
 func TestHistoryAvailabilityIgnoresCanceledObservation(t *testing.T) {
 	for _, reason := range []string{"panel shutdown", "request deadline", "source failure"} {
 		t.Run(reason, func(t *testing.T) {
