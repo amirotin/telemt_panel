@@ -1,12 +1,14 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +29,7 @@ type pollDeadlineFixture struct {
 	server    *httptest.Server
 	blocked   map[string]<-chan struct{}
 	started   chan string
+	completed chan string
 	paths     []string
 	inFlight  int
 	maxFlight int
@@ -43,9 +46,10 @@ func newColdPollDeadlineFixture(t *testing.T) (*pollDeadlineFixture, *telemt.Cli
 func newPollDeadlineFixtureWithCache(t *testing.T, warmCapabilities bool) (*pollDeadlineFixture, *telemt.Client) {
 	t.Helper()
 	f := &pollDeadlineFixture{
-		upstream: telemttest.New(telemttest.Scenario{}),
-		blocked:  make(map[string]<-chan struct{}),
-		started:  make(chan string, 128),
+		upstream:  telemttest.New(telemttest.Scenario{}),
+		blocked:   make(map[string]<-chan struct{}),
+		started:   make(chan string, 128),
+		completed: make(chan string, 128),
 	}
 	t.Cleanup(f.upstream.Close)
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +75,7 @@ func newPollDeadlineFixtureWithCache(t *testing.T, warmCapabilities bool) (*poll
 			}
 		}
 		f.upstream.Handler().ServeHTTP(w, r)
+		f.completed <- r.URL.Path
 	}))
 	t.Cleanup(f.server.Close)
 	client := telemt.New(f.server.URL, "")
@@ -92,7 +97,34 @@ func (f *pollDeadlineFixture) reset() {
 		select {
 		case <-f.started:
 		default:
+			goto completed
+		}
+	}
+
+completed:
+	for {
+		select {
+		case <-f.completed:
+		default:
 			return
+		}
+	}
+}
+
+func (f *pollDeadlineFixture) awaitCompleted(t *testing.T, paths ...string) {
+	t.Helper()
+	want := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		want[path] = true
+	}
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	for len(want) > 0 {
+		select {
+		case path := <-f.completed:
+			delete(want, path)
+		case <-timer.C:
+			t.Fatalf("requests did not complete: %v", want)
 		}
 	}
 }
@@ -411,5 +443,92 @@ func TestHealthyStatsPollDoesNotWaitPastBudgetForColdCapabilityLeader(t *testing
 	releaseLeader()
 	if err := <-leaderDone; err != nil {
 		t.Fatalf("cold-cache leader: %v", err)
+	}
+}
+
+func TestCanceledStatsPartialDoesNotCommitObservation(t *testing.T) {
+	for _, cancelKind := range []string{"parent", "hub shutdown"} {
+		t.Run(cancelKind, func(t *testing.T) {
+			fixture, client := newPollDeadlineFixture(t)
+			memory, err := store.NewMemory("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer memory.Close()
+			capture := &historyCapture{HistoryStore: memory}
+			h := New(Config{PollTimeout: time.Second}, client, capture)
+			closed := false
+			defer func() {
+				if !closed {
+					h.Close()
+				}
+			}()
+			var historyCalls atomic.Int32
+			h.historyRecordedHook = func() { historyCalls.Add(1) }
+			if !h.pollWithContext(context.Background(), h.topics["stats"]) {
+				t.Fatal("initial stats poll failed")
+			}
+			fixture.reset()
+
+			h.mu.Lock()
+			topic := h.topics["stats"]
+			beforeData := append(json.RawMessage(nil), topic.lastData...)
+			beforeSeq := h.seq
+			beforeRing := len(h.ring)
+			beforeVersion := topic.fullVersion
+			beforeObservedAt := topic.lastObservedAt
+			beforeFresh := topic.fullFresh
+			h.mu.Unlock()
+			beforeMetrics := len(capture.metrics)
+			beforeHistoryCalls := historyCalls.Load()
+			beforeEvents := len(historyEvents(t, memory))
+
+			releaseHealth := fixture.block("/v1/health")
+			defer releaseHealth()
+			var done <-chan bool
+			var cancel context.CancelFunc
+			if cancelKind == "parent" {
+				var ctx context.Context
+				ctx, cancel = context.WithCancel(context.Background())
+				defer cancel()
+				done = pollTopic(t, ctx, h, "stats")
+			} else {
+				result := make(chan bool, 1)
+				go func() { result <- h.poll(h.topics["stats"]) }()
+				done = result
+			}
+			fixture.awaitStarted(t, "/v1/health", "/v1/stats/summary", "/v1/health/ready")
+			fixture.awaitCompleted(t, "/v1/stats/summary", "/v1/health/ready")
+			if cancelKind == "parent" {
+				cancel()
+			} else {
+				h.Close()
+				closed = true
+			}
+			if awaitPoll(t, done, 500*time.Millisecond) {
+				t.Error("canceled partial poll reported success")
+			}
+
+			h.mu.Lock()
+			afterData := append(json.RawMessage(nil), topic.lastData...)
+			afterSeq := h.seq
+			afterRing := len(h.ring)
+			afterVersion := topic.fullVersion
+			afterObservedAt := topic.lastObservedAt
+			afterFresh := topic.fullFresh
+			h.mu.Unlock()
+			if !bytes.Equal(afterData, beforeData) || afterSeq != beforeSeq || afterRing != beforeRing {
+				t.Errorf("canceled poll changed payload/replay state: data_equal=%v seq=%d/%d ring=%d/%d",
+					bytes.Equal(afterData, beforeData), afterSeq, beforeSeq, afterRing, beforeRing)
+			}
+			if afterVersion != beforeVersion || !afterObservedAt.Equal(beforeObservedAt) || afterFresh != beforeFresh {
+				t.Errorf("canceled poll changed freshness: version=%d/%d observed=%v/%v fresh=%v/%v",
+					afterVersion, beforeVersion, afterObservedAt, beforeObservedAt, afterFresh, beforeFresh)
+			}
+			if len(capture.metrics) != beforeMetrics || historyCalls.Load() != beforeHistoryCalls || len(historyEvents(t, memory)) != beforeEvents {
+				t.Errorf("canceled poll recorded history: metrics=%d/%d hooks=%d/%d events=%d/%d",
+					len(capture.metrics), beforeMetrics, historyCalls.Load(), beforeHistoryCalls, len(historyEvents(t, memory)), beforeEvents)
+			}
+		})
 	}
 }

@@ -1291,6 +1291,12 @@ func (h *Hub) pollWithProfile(ctx context.Context, t *topicState, profile pollPr
 	fetchCtx, cancel := context.WithTimeout(ctx, h.cfg.PollTimeout)
 	snapshot, err := fetch(fetchCtx)
 	cancel()
+	// A composite fetch may return a usable partial snapshot after one of its
+	// siblings observes parent cancellation. Reject that canceled observation
+	// before availability/history/freshness or publication can advance.
+	if ctx.Err() != nil {
+		return false
+	}
 	if err != nil {
 		// Compare the original context, not fetchCtx: a shutdown or caller
 		// deadline canceled the observation, while our own deadline is a real
