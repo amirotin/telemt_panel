@@ -1,7 +1,7 @@
 // Package hub polls Telemt on behalf of every connected client and fans
 // out changes over Server-Sent Events. See v2/specs/02-hub-sse.md: one
 // poller per topic no matter how many subscribers, the client never picks
-// the interval, and a push happens only when the normalized snapshot
+// the interval, and a push happens only when the topic's comparison snapshot
 // actually changes.
 package hub
 
@@ -36,6 +36,7 @@ const (
 	defaultHeartbeat        = 25 * time.Second
 	defaultSubscriberBuffer = 64
 	defaultReplayRingSize   = 256
+	defaultReplayMaxBytes   = 8 << 20
 
 	// defaultStatsSysInfoRefresh bounds how often the "stats" topic's poll
 	// re-fetches GET /v1/system/info for its version/uptime fields — every
@@ -97,6 +98,7 @@ type Config struct {
 	Heartbeat         time.Duration
 	SubscriberBuffer  int
 	ReplayRingSize    int
+	ReplayMaxBytes    int
 	// StatsSysInfoRefresh overrides defaultStatsSysInfoRefresh; tests set
 	// this small to observe the refresh without a real 60s wait.
 	StatsSysInfoRefresh time.Duration
@@ -139,6 +141,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.ReplayRingSize <= 0 {
 		c.ReplayRingSize = defaultReplayRingSize
+	}
+	if c.ReplayMaxBytes <= 0 {
+		c.ReplayMaxBytes = defaultReplayMaxBytes
 	}
 	if c.StatsSysInfoRefresh <= 0 {
 		c.StatsSysInfoRefresh = defaultStatsSysInfoRefresh
@@ -238,6 +243,7 @@ type Hub struct {
 	nextSubID   uint64
 	seq         uint64
 	ring        []Event
+	ringBytes   int
 
 	// refusals/attempts hold the running totals behind those two history
 	// series across polls (counters.go) — their own locks, since
@@ -1161,9 +1167,8 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 		h.recordTelemtAvailability(true)
 	}
 	// recordStatsHistory reads the "users" topic's cache under h.mu itself
-	// (usersTrafficTotal) — it must run before recordFetchSuccess takes
-	// that same lock below, not while holding it (sync.Mutex isn't
-	// reentrant).
+	// (usersTrafficTotal) — it must finish before recordFetchSuccess reaches
+	// its locked cache update below (sync.Mutex isn't reentrant).
 	switch t.name {
 	case "stats":
 		h.recordStatsHistory(data)
@@ -1180,10 +1185,10 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 }
 
 func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
+	key := diffKey(t.name, data)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	t.lastObservedAt = h.now()
-	key := diffKey(t.name, data)
 	if t.hasData && bytes.Equal(t.lastKey, key) {
 		return
 	}
@@ -1197,10 +1202,11 @@ func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
 }
 
 // diffKey computes push-on-change's comparison key for a topic's raw
-// snapshot: a copy with every "generated_at_epoch_secs" field zeroed,
-// wherever it appears in the (possibly nested) JSON object. The payload
-// actually cached/broadcast to subscribers (t.lastData/ev.Data above) keeps
-// the real timestamps — only this comparison key strips them.
+// snapshot. Users snapshots are compared byte-for-byte so their uint64
+// counters keep their full precision. For other topics, the key is a copy
+// with every "generated_at_epoch_secs" field zeroed wherever it appears in
+// the (possibly nested) JSON object. The payload actually cached/broadcast
+// to subscribers (t.lastData/ev.Data above) always remains unchanged.
 //
 // Telemt stamps generated_at_epoch_secs with a fresh wall-clock read
 // (SystemTime::now(), Rust source: runtime_min.rs/runtime_edge.rs/
@@ -1215,18 +1221,19 @@ func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
 // a "changed" event purely because Telemt re-stamped the time, even when
 // every other field is byte-identical.
 //
-// Implemented as a single generic JSON walk (decode, zero any key literally
-// named "generated_at_epoch_secs" at any depth, re-encode) rather than
-// per-fetcher special-casing, since the field appears in several different
-// shapes across the four affected topics: nested inside Gated[T]'s
+// Topics that need timestamp suppression use a single generic JSON walk
+// (decode, zero any key literally named "generated_at_epoch_secs" at any
+// depth, re-encode) rather than per-fetcher special-casing, since the field
+// appears in several different shapes: nested inside Gated[T]'s
 // generated_at_epoch_secs, and as a top-level field on the flat
 // DcStatusData/MeWritersData/UpstreamsData/SecurityWhitelistData structs.
-// This also means any *future* endpoint added to a topic with the same
-// field name is covered automatically, with no separate opt-in.
 //
 // One topic needs more than that one key, which is why the topic name is a
 // parameter: see volatileKeysByTopic.
 func diffKey(topic string, data json.RawMessage) json.RawMessage {
+	if topic == "users" {
+		return data
+	}
 	var v any
 	if err := json.Unmarshal(data, &v); err != nil {
 		// data just came from this package's own json.Marshal a moment
@@ -1243,9 +1250,10 @@ func diffKey(topic string, data json.RawMessage) json.RawMessage {
 	return normalized
 }
 
-// volatileTimestampKey is the JSON field name diffKey strips on EVERY topic
-// — see its doc comment. A single named constant so every occurrence
-// (Gated[T], the flat stats-group structs) is covered by construction
+// volatileTimestampKey is the JSON field name diffKey strips on every topic
+// that uses normalized comparison — see its doc comment. A single named
+// constant so every occurrence (Gated[T], the flat stats-group structs) is
+// covered by construction
 // rather than requiring a matching list to be kept in sync.
 const volatileTimestampKey = "generated_at_epoch_secs"
 
@@ -1265,8 +1273,8 @@ var volatileKeysByTopic = map[string][]string{
 
 // volatileKeySets is volatileKeysByTopic resolved once, at init, into the
 // set diffKey actually indexes. Built at package scope rather than per call
-// because diffKey runs on EVERY successful poll of EVERY topic, and the
-// poll loop does not allocate (Global Constraints).
+// because normalized comparison runs on every successful poll of those
+// topics, and the poll loop avoids needless allocations.
 var volatileKeySets = buildVolatileKeySets()
 
 // defaultVolatileKeys is what a topic with no extra names of its own gets —
@@ -1334,8 +1342,13 @@ func (h *Hub) nextSeqLocked() uint64 {
 
 func (h *Hub) appendRingLocked(ev Event) {
 	h.ring = append(h.ring, ev)
-	if len(h.ring) > h.cfg.ReplayRingSize {
-		h.ring = h.ring[len(h.ring)-h.cfg.ReplayRingSize:]
+	h.ringBytes += len(ev.Data)
+	for len(h.ring) > h.cfg.ReplayRingSize || h.ringBytes > h.cfg.ReplayMaxBytes {
+		h.ringBytes -= len(h.ring[0].Data)
+		// A reslice alone would leave the discarded RawMessage reachable
+		// through the backing array.
+		h.ring[0] = Event{}
+		h.ring = h.ring[1:]
 	}
 }
 
@@ -1356,10 +1369,10 @@ func (h *Hub) broadcastLocked(ev Event) {
 	}
 }
 
-// ReplaySince returns the events for topics with Seq > since, in order,
-// plus true — or nil, false if since predates the ring's oldest retained
-// event (some events were lost; the caller must fall back to full
-// snapshots).
+// ReplaySince returns the retained events for topics with Seq > since, in
+// order, plus true. It returns nil, false when since predates the ring's
+// continuous retained suffix, including when byte eviction left the ring
+// empty; the caller must then fall back to full snapshots.
 func (h *Hub) ReplaySince(since uint64, topics []string) ([]Event, bool) {
 	want := make(map[string]struct{}, len(topics))
 	for _, t := range topics {
@@ -1384,7 +1397,9 @@ func (h *Hub) ReplaySince(since uint64, topics []string) ([]Event, bool) {
 	if len(h.ring) > 0 && since+1 < h.ring[0].Seq {
 		return nil, false
 	}
-
+	if len(h.ring) == 0 && since < h.seq {
+		return nil, false
+	}
 	var out []Event
 	for _, ev := range h.ring {
 		if ev.Seq <= since {

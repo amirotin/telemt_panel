@@ -200,6 +200,36 @@ func TestHandleEventsWritesInitialSnapshot(t *testing.T) {
 	}
 }
 
+func TestHandleEventsFallsBackToLatestSnapshotAfterReplayByteEviction(t *testing.T) {
+	tc := telemt.New("http://127.0.0.1:1", "")
+	latest := json.RawMessage(`{"phase":"latest"}`)
+	srv, cookie := newSSETestServer(t, tc, hub.Config{ReplayRingSize: 8, ReplayMaxBytes: len(latest)})
+
+	srv.hub.PublishUpdate(json.RawMessage(`{"phase":"old"}`))
+	srv.hub.PublishUpdate(latest)
+
+	r := httptest.NewRequest("GET", "/api/events?topics=update", nil)
+	r.Header.Set("Last-Event-ID", "0")
+	r.AddCookie(cookie)
+	reqCtx, reqCancel := context.WithCancel(r.Context())
+	reqCancel()
+	r = r.WithContext(reqCtx)
+
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	body := w.Body.String()
+	if strings.Count(body, "event: update") != 1 || !strings.Contains(body, `"phase":"latest"`) {
+		t.Fatalf("body = %q, want exactly the latest update snapshot", body)
+	}
+	if strings.Contains(body, `"phase":"old"`) {
+		t.Fatalf("body = %q, must not replay the byte-evicted update", body)
+	}
+}
+
 // mutableFakeTelemtHTTP is a Telemt stand-in whose /v1/users response can
 // be changed mid-test, for exercising the hub's poller against a real
 // upstream server rather than a pre-canceled request.
