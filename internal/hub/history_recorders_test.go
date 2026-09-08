@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -30,14 +29,14 @@ func latestMetric(t *testing.T, memory *store.Memory, name string) store.MetricP
 func TestRecordUpstreamsHistoryKeepsRPCAndMediaSeparate(t *testing.T) {
 	h, memory := recorderHub(t)
 	rttRPC, rttMedia := 42.0, 87.0
-	raw, _ := json.Marshal(upstreamsSnapshot{DCs: &telemt.DcStatusData{
+	snapshot := upstreamsSnapshot{DCs: &telemt.DcStatusData{
 		MiddleProxyEnabled: true,
 		DCs: []telemt.DcStatus{
 			{DC: 2, RequiredWriters: 3, AliveWriters: 3, CoveragePct: 100, RttMs: &rttRPC},
 			{DC: -2, RequiredWriters: 3, AliveWriters: 2, CoveragePct: 66, RttMs: &rttMedia},
 		},
-	}})
-	h.recordUpstreamsHistory(raw)
+	}}
+	h.recordUpstreamsHistory(snapshot)
 	if got := latestMetric(t, memory, "dc.2.rtt_ms").Value; got != 42 {
 		t.Fatalf("RPC RTT = %v, want 42", got)
 	}
@@ -52,7 +51,7 @@ func TestRecordUpstreamsHistoryKeepsRPCAndMediaSeparate(t *testing.T) {
 func TestRecordRuntimeHistoryDistinguishesFallbackAndUpstreamHealth(t *testing.T) {
 	h, memory := recorderHub(t)
 	latency := 55.0
-	raw, _ := json.Marshal(runtimeSnapshot{
+	snapshot := runtimeSnapshot{
 		Gates: &telemt.RuntimeGatesData{UseMiddleProxy: true, RouteMode: "direct", RerouteActive: true},
 		UpstreamQuality: &telemt.RuntimeUpstreamQualityData{
 			Enabled: true,
@@ -61,8 +60,8 @@ func TestRecordRuntimeHistoryDistinguishesFallbackAndUpstreamHealth(t *testing.T
 				{UpstreamID: 7, Healthy: false, EffectiveLatencyMs: &latency},
 			},
 		},
-	})
-	h.recordRuntimeHistory(raw)
+	}
+	h.recordRuntimeHistory(snapshot)
 	if got := latestMetric(t, memory, metricRouteMode).Value; got != routeModeFallback {
 		t.Fatalf("route mode = %v, want fallback", got)
 	}
@@ -105,26 +104,24 @@ func TestHistoryTransitionsSkipBaselineAndRecordChanges(t *testing.T) {
 	h.recordTelemtAvailability(false)
 	h.recordTelemtAvailability(true)
 
-	runtime := func(useMiddle bool, route string, reroute, healthy bool) json.RawMessage {
-		raw, _ := json.Marshal(runtimeSnapshot{
+	runtime := func(useMiddle bool, route string, reroute, healthy bool) runtimeSnapshot {
+		return runtimeSnapshot{
 			Gates: &telemt.RuntimeGatesData{UseMiddleProxy: useMiddle, RouteMode: route, RerouteActive: reroute},
 			UpstreamQuality: &telemt.RuntimeUpstreamQualityData{
 				Enabled: true, Summary: &telemt.RuntimeUpstreamQualitySummaryData{},
 				Upstreams: []telemt.RuntimeUpstreamQualityUpstreamData{{UpstreamID: 7, Healthy: healthy}},
 			},
-		})
-		return raw
+		}
 	}
 	h.recordRuntimeHistory(runtime(true, "middle", false, true))
 	h.recordRuntimeHistory(runtime(true, "direct", true, false))
 	h.recordRuntimeHistory(runtime(false, "direct", false, true))
 
-	dcs := func(coverage float64) json.RawMessage {
-		raw, _ := json.Marshal(upstreamsSnapshot{DCs: &telemt.DcStatusData{
+	dcs := func(coverage float64) upstreamsSnapshot {
+		return upstreamsSnapshot{DCs: &telemt.DcStatusData{
 			MiddleProxyEnabled: true,
 			DCs:                []telemt.DcStatus{{DC: -203, RequiredWriters: 3, AliveWriters: 2, CoveragePct: coverage}},
-		}})
-		return raw
+		}}
 	}
 	h.recordUpstreamsHistory(dcs(100))
 	h.recordUpstreamsHistory(dcs(66.4))
@@ -177,25 +174,23 @@ func TestHistoryTransitionsRespectEventsPolicy(t *testing.T) {
 
 func TestHistoryTransitionsResetOptionalSourceBaselines(t *testing.T) {
 	h, memory := recorderHub(t)
-	runtime := func(enabled, healthy bool) json.RawMessage {
-		raw, _ := json.Marshal(runtimeSnapshot{
+	runtime := func(enabled, healthy bool) runtimeSnapshot {
+		return runtimeSnapshot{
 			UpstreamQuality: &telemt.RuntimeUpstreamQualityData{
 				Enabled: enabled, Summary: &telemt.RuntimeUpstreamQualitySummaryData{},
 				Upstreams: []telemt.RuntimeUpstreamQualityUpstreamData{{UpstreamID: 7, Healthy: healthy}},
 			},
-		})
-		return raw
+		}
 	}
 	h.recordRuntimeHistory(runtime(true, false))
 	h.recordRuntimeHistory(runtime(false, false))
 	h.recordRuntimeHistory(runtime(true, true))
 
-	dcs := func(enabled bool, coverage float64) json.RawMessage {
-		raw, _ := json.Marshal(upstreamsSnapshot{DCs: &telemt.DcStatusData{
+	dcs := func(enabled bool, coverage float64) upstreamsSnapshot {
+		return upstreamsSnapshot{DCs: &telemt.DcStatusData{
 			MiddleProxyEnabled: enabled,
 			DCs:                []telemt.DcStatus{{DC: 4, CoveragePct: coverage}},
-		}})
-		return raw
+		}}
 	}
 	h.recordUpstreamsHistory(dcs(true, 33))
 	h.recordUpstreamsHistory(dcs(false, 33))

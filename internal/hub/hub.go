@@ -177,7 +177,14 @@ func (e *ErrUnknownTopic) Error() string {
 }
 
 // fetchFunc retrieves and normalizes one topic's current data.
-type fetchFunc func(ctx context.Context) (json.RawMessage, error)
+type fetchFunc func(ctx context.Context) (any, error)
+
+// usersLiveGauges is the scalar slice of a successful users observation that
+// stats history may reuse while it is fresh.
+type usersLiveGauges struct {
+	connections uint64
+	activeUsers int
+}
 
 // topicState is one topic's poller lifecycle and cache, guarded by Hub.mu.
 type topicState struct {
@@ -201,6 +208,8 @@ type topicState struct {
 	// lastObservedAt tracks successful polls even when push-on-change skips
 	// a broadcast. A failed poll clears it without removing the UI cache.
 	lastObservedAt time.Time
+	usersGauges    usersLiveGauges
+	usersGaugesOK  bool
 
 	// wake carries Poke requests to runPoller: a buffered(1), non-blocking
 	// send so concurrent Poke calls coalesce into at most one pending
@@ -299,41 +308,41 @@ func New(cfg Config, tc *telemt.Client, st store.HistoryStore) *Hub {
 			name:       "users",
 			wake:       make(chan struct{}, 1),
 			interval:   cfg.UsersInterval,
-			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchUsers(ctx, tc, st) },
+			fetch:      func(ctx context.Context) (any, error) { return fetchUsers(ctx, tc, st) },
 			persistent: durableHistory,
 		},
 		"stats": {
 			name:       "stats",
 			wake:       make(chan struct{}, 1),
 			interval:   cfg.StatsInterval,
-			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchStats(ctx, tc, sysInfo) },
+			fetch:      func(ctx context.Context) (any, error) { return fetchStats(ctx, tc, sysInfo) },
 			persistent: durableHistory,
 		},
 		"runtime": {
 			name:       "runtime",
 			wake:       make(chan struct{}, 1),
 			interval:   cfg.RuntimeInterval,
-			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchRuntime(ctx, tc) },
+			fetch:      func(ctx context.Context) (any, error) { return fetchRuntime(ctx, tc) },
 			persistent: durableHistory,
 		},
 		"upstreams": {
 			name:       "upstreams",
 			wake:       make(chan struct{}, 1),
 			interval:   cfg.UpstreamsInterval,
-			fetch:      func(ctx context.Context) (json.RawMessage, error) { return fetchUpstreams(ctx, tc) },
+			fetch:      func(ctx context.Context) (any, error) { return fetchUpstreams(ctx, tc) },
 			persistent: durableHistory,
 		},
 		"security": {
 			name:     "security",
 			wake:     make(chan struct{}, 1),
 			interval: cfg.SecurityInterval,
-			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchSecurity(ctx, tc) },
+			fetch:    func(ctx context.Context) (any, error) { return fetchSecurity(ctx, tc) },
 		},
 		"web": {
 			name:     "web",
 			wake:     make(chan struct{}, 1),
 			interval: cfg.WebInterval,
-			fetch:    func(ctx context.Context) (json.RawMessage, error) { return fetchWeb(ctx, tc) },
+			fetch:    func(ctx context.Context) (any, error) { return fetchWeb(ctx, tc) },
 		},
 		// "update" is event-driven, not polled: the update engine and
 		// auto-updater push snapshots into it directly via PublishUpdate.
@@ -374,10 +383,10 @@ type userTrafficSnapshot struct {
 	Continuity             store.UserTrafficContinuity `json:"continuity"`
 }
 
-func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (json.RawMessage, error) {
+func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (usersSnapshot, error) {
 	users, err := tc.Users(ctx)
 	if err != nil {
-		return nil, err
+		return usersSnapshot{}, err
 	}
 	if observe, ok := ctx.Value(ipObserverKey{}).(func([]telemt.UserInfo)); ok {
 		observe(users)
@@ -418,7 +427,7 @@ func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (
 			}
 		}
 	}
-	return json.Marshal(usersSnapshot{Users: items, Quota: quota, QuotaSupported: hasQuota})
+	return usersSnapshot{Users: items, Quota: quota, QuotaSupported: hasQuota}, nil
 }
 
 // statsSnapshot is the "stats" topic's composite payload (spec
@@ -449,7 +458,7 @@ type statsSnapshot struct {
 	LastConfigReloadEpochSecs *int64 `json:"last_config_reload_epoch_secs,omitempty"`
 }
 
-func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRefresher) (json.RawMessage, error) {
+func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRefresher) (statsSnapshot, error) {
 	var snap statsSnapshot
 	health, healthErr := tc.Health(ctx)
 	if healthErr == nil {
@@ -467,7 +476,7 @@ func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRef
 	// this must surface as a fetch error — the source_error/backoff path —
 	// not a silent all-null snapshot. Any one succeeding still publishes.
 	if healthErr != nil && summaryErr != nil && readyErr != nil {
-		return nil, fmt.Errorf("stats: %w", errors.Join(healthErr, summaryErr, readyErr))
+		return statsSnapshot{}, fmt.Errorf("stats: %w", errors.Join(healthErr, summaryErr, readyErr))
 	}
 
 	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
@@ -485,7 +494,7 @@ func fetchStats(ctx context.Context, tc *telemt.Client, sysInfo *statsSysInfoRef
 		snap.LastConfigReloadEpochSecs = info.lastConfigReload
 	}
 
-	return json.Marshal(snap)
+	return snap, nil
 }
 
 // statsSysInfoRefresher rate-limits GET /v1/system/info fetches inside the
@@ -575,7 +584,7 @@ type runtimeSnapshot struct {
 	RecentEvents    *telemt.Gated[telemt.RuntimeEdgeEventsPayload]  `json:"recent_events,omitempty"`
 }
 
-func fetchRuntime(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+func fetchRuntime(ctx context.Context, tc *telemt.Client) (runtimeSnapshot, error) {
 	var snap runtimeSnapshot
 	var errs []error
 
@@ -610,7 +619,7 @@ func fetchRuntime(ctx context.Context, tc *telemt.Client) (json.RawMessage, erro
 		errs = append(errs, err)
 	}
 	if len(errs) == 6 {
-		return nil, fmt.Errorf("runtime: %w", errors.Join(errs...))
+		return runtimeSnapshot{}, fmt.Errorf("runtime: %w", errors.Join(errs...))
 	}
 
 	// Minimal/UpstreamQuality: always attempted (gated by
@@ -638,7 +647,7 @@ func fetchRuntime(ctx context.Context, tc *telemt.Client) (json.RawMessage, erro
 		}
 	}
 
-	return json.Marshal(snap)
+	return snap, nil
 }
 
 // upstreamsSnapshot is the "upstreams" topic's composite payload: Upstreams
@@ -651,7 +660,7 @@ type upstreamsSnapshot struct {
 	MeWriters *telemt.MeWritersData `json:"me_writers"`
 }
 
-func fetchUpstreams(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+func fetchUpstreams(ctx context.Context, tc *telemt.Client) (upstreamsSnapshot, error) {
 	var snap upstreamsSnapshot
 	var upstreamsErr, dcsErr, meWritersErr error
 
@@ -671,9 +680,9 @@ func fetchUpstreams(ctx context.Context, tc *telemt.Client) (json.RawMessage, er
 		meWritersErr = err
 	}
 	if upstreamsErr != nil && dcsErr != nil && meWritersErr != nil {
-		return nil, fmt.Errorf("upstreams: %w", errors.Join(upstreamsErr, dcsErr, meWritersErr))
+		return upstreamsSnapshot{}, fmt.Errorf("upstreams: %w", errors.Join(upstreamsErr, dcsErr, meWritersErr))
 	}
-	return json.Marshal(snap)
+	return snap, nil
 }
 
 // securitySnapshot is the "security" topic's composite payload: Posture +
@@ -693,7 +702,7 @@ type securitySnapshot struct {
 	EffectiveLimits *telemt.EffectiveLimitsData   `json:"effective_limits"`
 }
 
-func fetchSecurity(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+func fetchSecurity(ctx context.Context, tc *telemt.Client) (securitySnapshot, error) {
 	var snap securitySnapshot
 	var postureErr, whitelistErr, limitsErr error
 
@@ -713,10 +722,10 @@ func fetchSecurity(ctx context.Context, tc *telemt.Client) (json.RawMessage, err
 		limitsErr = err
 	}
 	if postureErr != nil && whitelistErr != nil && limitsErr != nil {
-		return nil, fmt.Errorf("security: %w", errors.Join(postureErr, whitelistErr, limitsErr))
+		return securitySnapshot{}, fmt.Errorf("security: %w", errors.Join(postureErr, whitelistErr, limitsErr))
 	}
 
-	return json.Marshal(snap)
+	return snap, nil
 }
 
 // webSnapshot is the "web" topic's payload: the WEB runtime status behind
@@ -744,7 +753,7 @@ type webSnapshot struct {
 // setting your binary does not have".
 const webGateReasonUnsupported = "capability_absent"
 
-func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
+func fetchWeb(ctx context.Context, tc *telemt.Client) (webSnapshot, error) {
 	status, err := tc.WebStatus(ctx)
 	switch {
 	case err == nil:
@@ -753,19 +762,19 @@ func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 			Reason:  status.Reason,
 			Data:    &status,
 		}
-		return json.Marshal(webSnapshot{Status: &gated})
+		return webSnapshot{Status: &gated}, nil
 	case telemt.IsWebRouteAbsent(err):
 		// Telemt < 3.5.3 does not register /v1/runtime/web/* at all. Not an
 		// error: an old build is a state the panel renders, not a failure.
-		return json.Marshal(webSnapshot{Status: &telemt.Gated[telemt.WebStatusData]{Reason: webGateReasonUnsupported}})
+		return webSnapshot{Status: &telemt.Gated[telemt.WebStatusData]{Reason: webGateReasonUnsupported}}, nil
 	case telemt.IsWebRuntimeUnavailable(err):
 		// Defensive: the status route itself never answers 503 today, but
 		// the code is the group's documented "runtime is not running"
 		// signal and mapping it to a closed gate keeps the topic honest if
 		// a future build starts using it here too.
-		return json.Marshal(webSnapshot{Status: &telemt.Gated[telemt.WebStatusData]{Reason: telemt.CodeWebRuntimeUnavailable}})
+		return webSnapshot{Status: &telemt.Gated[telemt.WebStatusData]{Reason: telemt.CodeWebRuntimeUnavailable}}, nil
 	default:
-		return nil, fmt.Errorf("web: %w", err)
+		return webSnapshot{}, fmt.Errorf("web: %w", err)
 	}
 }
 
@@ -788,13 +797,8 @@ func fetchWeb(ctx context.Context, tc *telemt.Client) (json.RawMessage, error) {
 //
 // User traffic has its own coherent collector. It must not combine this
 // topic's cached users with a separately sampled uptime.
-func (h *Hub) recordStatsHistory(data json.RawMessage) {
+func (h *Hub) recordStatsHistory(snap statsSnapshot) {
 	if h.st == nil {
-		return
-	}
-	var snap statsSnapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		slog.Warn("hub: history: decode stats snapshot", "err", err)
 		return
 	}
 	ts := time.Now().Unix()
@@ -805,16 +809,15 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 	add(metricTelemtAvailable, 1)
 	add(metricTelemtUnavailable, 0)
 
-	users, hasUsers := h.cachedUsers()
+	usersGauges, hasUsersGauges := h.cachedUsersLiveGauges()
 	switch {
 	case snap.ConnectionsSummary != nil && snap.ConnectionsSummary.Enabled && snap.ConnectionsSummary.Data != nil:
 		totals := snap.ConnectionsSummary.Data.Totals
 		add(metricConnections, float64(totals.CurrentConnections))
 		add(metricActiveUsers, float64(totals.ActiveUsers))
-	case hasUsers:
-		connections, activeUsers := usersLiveTotals(users)
-		add(metricConnections, float64(connections))
-		add(metricActiveUsers, float64(activeUsers))
+	case hasUsersGauges:
+		add(metricConnections, float64(usersGauges.connections))
+		add(metricActiveUsers, float64(usersGauges.activeUsers))
 	}
 
 	if snap.Summary != nil {
@@ -827,40 +830,29 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 	}
 }
 
-// cachedUsers supplies history fallback gauges only from a fresh successful
-// poll. The UI may retain old data during an outage; history must not turn it
-// into new observations. Allow two poll intervals for scheduling skew.
-func (h *Hub) cachedUsers() ([]telemt.UserInfo, bool) {
+// cachedUsersLiveGauges supplies history fallback gauges only from a fresh
+// successful poll. The UI may retain old data during an outage; history must
+// not turn it into new observations. Allow two poll intervals for scheduling
+// skew.
+func (h *Hub) cachedUsersLiveGauges() (usersLiveGauges, bool) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	t := h.topics["users"]
-	if t == nil || t.lastObservedAt.IsZero() || h.now().Sub(t.lastObservedAt) > 2*t.interval {
-		h.mu.Unlock()
-		return nil, false
+	if t == nil || !t.usersGaugesOK || t.lastObservedAt.IsZero() || h.now().Sub(t.lastObservedAt) > 2*t.interval {
+		return usersLiveGauges{}, false
 	}
-	hasData, data := t.hasData, t.lastData
-	h.mu.Unlock()
-	if !hasData {
-		return nil, false
-	}
-	var snap usersSnapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		return nil, false
-	}
-	users := make([]telemt.UserInfo, len(snap.Users))
-	for i := range snap.Users {
-		users[i] = snap.Users[i].UserInfo
-	}
-	return users, true
+	return t.usersGauges, true
 }
 
-func usersLiveTotals(users []telemt.UserInfo) (connections uint64, activeUsers int) {
+func usersLiveTotals(users []userSnapshotItem) usersLiveGauges {
+	var gauges usersLiveGauges
 	for _, user := range users {
-		connections += user.CurrentConnections
+		gauges.connections += user.CurrentConnections
 		if user.CurrentConnections > 0 {
-			activeUsers++
+			gauges.activeUsers++
 		}
 	}
-	return connections, activeUsers
+	return gauges
 }
 
 // HistoryRetention returns the active store's actual reach. Durable stores use
@@ -1151,7 +1143,7 @@ func (h *Hub) poll(t *topicState) bool {
 // bind a fetch to the caller's request context instead of the hub's
 // lifetime one — a slow /api/snapshot request can't outlive its client.
 func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
-	data, err := t.fetch(ctx)
+	snapshot, err := t.fetch(ctx)
 	if err != nil {
 		// A shutdown or caller deadline canceled the observation, not Telemt.
 		if ctx.Err() != nil {
@@ -1166,29 +1158,41 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	if t.name == "stats" {
 		h.recordTelemtAvailability(true)
 	}
-	// recordStatsHistory reads the "users" topic's cache under h.mu itself
-	// (usersTrafficTotal) — it must finish before recordFetchSuccess reaches
-	// its locked cache update below (sync.Mutex isn't reentrant).
-	switch t.name {
-	case "stats":
-		h.recordStatsHistory(data)
+	var gauges *usersLiveGauges
+	// Typed history projection happens before the single publication marshal;
+	// no recorder needs to decode the payload it just helped construct.
+	switch snap := snapshot.(type) {
+	case usersSnapshot:
+		value := usersLiveTotals(snap.Users)
+		gauges = &value
+	case statsSnapshot:
+		h.recordStatsHistory(snap)
 		if h.historyRecordedHook != nil {
 			h.historyRecordedHook()
 		}
-	case "runtime":
-		h.recordRuntimeHistory(data)
-	case "upstreams":
-		h.recordUpstreamsHistory(data)
+	case runtimeSnapshot:
+		h.recordRuntimeHistory(snap)
+	case upstreamsSnapshot:
+		h.recordUpstreamsHistory(snap)
 	}
-	h.recordFetchSuccess(t, data)
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		h.recordFetchError(t, fmt.Errorf("marshal %s snapshot: %w", t.name, err))
+		return false
+	}
+	h.recordFetchSuccess(t, data, gauges)
 	return true
 }
 
-func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
+func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage, gauges *usersLiveGauges) {
 	key := diffKey(t.name, data)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	t.lastObservedAt = h.now()
+	if gauges != nil {
+		t.usersGauges = *gauges
+		t.usersGaugesOK = true
+	}
 	if t.hasData && bytes.Equal(t.lastKey, key) {
 		return
 	}
@@ -1328,6 +1332,9 @@ func (h *Hub) recordFetchError(t *topicState, err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	t.lastObservedAt = time.Time{}
+	if t.name == "users" {
+		t.usersGaugesOK = false
+	}
 	ev := Event{Seq: h.nextSeqLocked(), Topic: t.name, Err: sourceErrorCode, TS: time.Now().Unix()}
 	h.appendRingLocked(ev)
 	h.broadcastLocked(ev)
@@ -1544,7 +1551,7 @@ func (h *Hub) PublishUpdate(data json.RawMessage) {
 	h.mu.Lock()
 	t := h.topics["update"]
 	h.mu.Unlock()
-	h.recordFetchSuccess(t, data)
+	h.recordFetchSuccess(t, data, nil)
 }
 
 // Close stops every poller and disconnects every subscriber. Safe to call

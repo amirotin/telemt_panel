@@ -2,6 +2,7 @@ package telemt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -185,6 +186,23 @@ func TestStatsSummaryOmitsByClassOnOldBuild(t *testing.T) {
 	}
 	if s.HandshakeFailuresByClass == nil || len(s.HandshakeFailuresByClass) != 0 {
 		t.Errorf("HandshakeFailuresByClass = %#v, want non-nil empty", s.HandshakeFailuresByClass)
+	}
+}
+
+func TestStatsSummaryRejectsMalformedSuccessfulResponse(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/stats/summary" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{`))
+	})
+
+	_, err := c.StatsSummary(context.Background())
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("StatsSummary malformed 200 response error = %v, want JSON syntax error", err)
 	}
 }
 

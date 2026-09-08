@@ -13,9 +13,9 @@ func TestReplayByteBudgetEvictsOldestAcrossTopics(t *testing.T) {
 	h := New(Config{ReplayRingSize: 8, ReplayMaxBytes: 7}, nil, nil)
 	t.Cleanup(h.Close)
 
-	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`"old"`))
+	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`"old"`), &usersLiveGauges{})
 	h.recordFetchError(h.topics["stats"], errors.New("unavailable"))
-	h.recordFetchSuccess(h.topics["update"], json.RawMessage(`"newer"`))
+	h.recordFetchSuccess(h.topics["update"], json.RawMessage(`"newer"`), nil)
 
 	if events, ok := h.ReplaySince(0, []string{"users", "stats", "update"}); ok || events != nil {
 		t.Fatalf("ReplaySince(0) = (%+v, %v), want (nil, false) after byte eviction", events, ok)
@@ -47,8 +47,8 @@ func TestReplayRetainsPayloadsAtExactByteBudget(t *testing.T) {
 	h := New(Config{ReplayRingSize: 8, ReplayMaxBytes: 6}, nil, nil)
 	t.Cleanup(h.Close)
 
-	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`"a"`))
-	h.recordFetchSuccess(h.topics["stats"], json.RawMessage(`"b"`))
+	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`"a"`), &usersLiveGauges{})
+	h.recordFetchSuccess(h.topics["stats"], json.RawMessage(`"b"`), nil)
 
 	events, ok := h.ReplaySince(0, []string{"users", "stats"})
 	if !ok || len(events) != 2 {
@@ -60,9 +60,9 @@ func TestReplayCountLimitStillEvictsWithGenerousByteBudget(t *testing.T) {
 	h := New(Config{ReplayRingSize: 2, ReplayMaxBytes: 100}, nil, nil)
 	t.Cleanup(h.Close)
 
-	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`"a"`))
-	h.recordFetchSuccess(h.topics["stats"], json.RawMessage(`"b"`))
-	h.recordFetchSuccess(h.topics["update"], json.RawMessage(`"c"`))
+	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`"a"`), &usersLiveGauges{})
+	h.recordFetchSuccess(h.topics["stats"], json.RawMessage(`"b"`), nil)
+	h.recordFetchSuccess(h.topics["update"], json.RawMessage(`"c"`), nil)
 
 	if events, ok := h.ReplaySince(0, []string{"users", "stats", "update"}); ok || events != nil {
 		t.Fatalf("ReplaySince(0) = (%+v, %v), want (nil, false) after count eviction", events, ok)

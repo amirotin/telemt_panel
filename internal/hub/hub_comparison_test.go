@@ -22,10 +22,11 @@ func TestUsersComparisonPreservesAdjacentUint64Values(t *testing.T) {
 		},
 	}
 	state := &topicState{name: "users"}
+	gauges := usersLiveGauges{}
 
-	h.recordFetchSuccess(state, first)
-	h.recordFetchSuccess(state, second)
-	h.recordFetchSuccess(state, second)
+	h.recordFetchSuccess(state, first, &gauges)
+	h.recordFetchSuccess(state, second, &gauges)
+	h.recordFetchSuccess(state, second, &gauges)
 
 	if got := len(events); got != 2 {
 		t.Fatalf("published events = %d, want 2 for adjacent uint64 values followed by an identical snapshot", got)
@@ -56,12 +57,13 @@ func BenchmarkUsersComparison(b *testing.B) {
 		b.Run(fmt.Sprintf("users_%d/record_fetch_success_unchanged", users), func(b *testing.B) {
 			h := &Hub{cfg: Config{}.withDefaults(), now: time.Now}
 			state := &topicState{name: "users"}
-			h.recordFetchSuccess(state, payload)
+			gauges := usersLiveGauges{}
+			h.recordFetchSuccess(state, payload, &gauges)
 			b.ReportAllocs()
 			b.ResetTimer()
 			b.ReportMetric(float64(len(payload)), "payload_B")
 			for range b.N {
-				h.recordFetchSuccess(state, incoming)
+				h.recordFetchSuccess(state, incoming, &gauges)
 			}
 		})
 	}

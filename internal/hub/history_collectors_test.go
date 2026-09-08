@@ -21,6 +21,15 @@ type historyCapture struct {
 	failEvent bool
 }
 
+func decodeHistoryFixture[T any](t testing.TB, raw string) T {
+	t.Helper()
+	var value T
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		t.Fatalf("decode history fixture: %v", err)
+	}
+	return value
+}
+
 func (s *historyCapture) RecordMetrics(batch []store.NamedMetricPoint) error {
 	s.metrics = append(s.metrics, batch...)
 	return nil
@@ -44,20 +53,21 @@ func TestHistoryFallbackRequiresFreshUsersObservation(t *testing.T) {
 			h.now = func() time.Time { return now }
 			users := h.topics["users"]
 			payload := json.RawMessage(`{"users":[{"username":"alice","current_connections":7}]}`)
-			h.recordFetchSuccess(users, payload)
+			liveGauges := usersLiveGauges{connections: 7, activeUsers: 1}
+			h.recordFetchSuccess(users, payload, &liveGauges)
 			switch scenario {
 			case "failed", "recovered":
 				h.recordFetchError(users, errors.New("users endpoint unavailable"))
 				if scenario == "recovered" {
-					h.recordFetchSuccess(users, payload)
+					h.recordFetchSuccess(users, payload, &liveGauges)
 				}
 			case "expired", "unchanged refresh":
 				now = now.Add(time.Minute)
 				if scenario == "unchanged refresh" {
-					h.recordFetchSuccess(users, payload)
+					h.recordFetchSuccess(users, payload, &liveGauges)
 				}
 			}
-			h.recordStatsHistory(json.RawMessage(`{}`))
+			h.recordStatsHistory(statsSnapshot{})
 			gauges := map[string]float64{}
 			for _, metric := range capture.metrics {
 				if metric.Name == metricConnections || metric.Name == metricActiveUsers {
@@ -112,7 +122,7 @@ func TestHistoryFreshPrimaryGaugesDoNotDependOnUsersCache(t *testing.T) {
 	h := New(Config{}, nil, capture)
 	t.Cleanup(h.Close)
 	h.recordFetchError(h.topics["users"], errors.New("users endpoint unavailable"))
-	h.recordStatsHistory(json.RawMessage(`{"connections_summary":{"enabled":true,"data":{"totals":{"current_connections":11,"active_users":2}}}}`))
+	h.recordStatsHistory(decodeHistoryFixture[statsSnapshot](t, `{"connections_summary":{"enabled":true,"data":{"totals":{"current_connections":11,"active_users":2}}}}`))
 	gauges := map[string]float64{}
 	for _, metric := range capture.metrics {
 		gauges[metric.Name] = metric.Point.Value
@@ -129,10 +139,8 @@ func TestHistoryMissingOptionalSourcesDoNotCreateObservations(t *testing.T) {
 	h.observeRouteMode(&telemt.RuntimeGatesData{UseMiddleProxy: true, RouteMode: "middle_proxy"})
 	h.observeUpstreamHealth([]telemt.RuntimeUpstreamQualityUpstreamData{{UpstreamID: 7, Healthy: false}})
 	h.observeDCCoverage([]telemt.DcStatus{{DC: -203, CoveragePct: 0}})
-	for _, raw := range []json.RawMessage{json.RawMessage(`{}`), json.RawMessage(`null`), json.RawMessage(`{`)} {
-		h.recordRuntimeHistory(raw)
-		h.recordUpstreamsHistory(raw)
-	}
+	h.recordRuntimeHistory(runtimeSnapshot{})
+	h.recordUpstreamsHistory(upstreamsSnapshot{})
 	if len(capture.metrics) != 0 || len(historyEvents(t, memory)) != 0 {
 		t.Fatal("missing sources created observations or recovery events")
 	}
@@ -159,7 +167,7 @@ func TestHistoryAvailabilityIgnoresCanceledObservation(t *testing.T) {
 				defer cancel()
 			}
 			stats := h.topics["stats"]
-			stats.fetch = func(ctx context.Context) (json.RawMessage, error) {
+			stats.fetch = func(ctx context.Context) (any, error) {
 				if reason == "panel shutdown" {
 					h.cancel()
 				}
@@ -241,16 +249,8 @@ func TestHistoryCollectorDiskContract(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 	h := New(Config{}, nil, st)
 	t.Cleanup(h.Close)
-	marshal := func(value any) json.RawMessage {
-		t.Helper()
-		raw, err := json.Marshal(value)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return raw
-	}
-	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`{"users":[{"username":"alice","current_connections":7}]}`))
-	h.recordStatsHistory(json.RawMessage(`{"summary":{"connections_total":10,"uptime_seconds":100}}`))
+	h.recordFetchSuccess(h.topics["users"], json.RawMessage(`{"users":[{"username":"alice","current_connections":7}]}`), &usersLiveGauges{connections: 7, activeUsers: 1})
+	h.recordStatsHistory(decodeHistoryFixture[statsSnapshot](t, `{"summary":{"connections_total":10,"uptime_seconds":100}}`))
 	if err := st.RecordMetric(metricTraffic, store.MetricPoint{TS: time.Now().Unix(), Value: 1024}); err != nil {
 		t.Fatal(err)
 	}
@@ -264,18 +264,18 @@ func TestHistoryCollectorDiskContract(t *testing.T) {
 			Upstreams: []telemt.RuntimeUpstreamQualityUpstreamData{{UpstreamID: 7, Healthy: true, EffectiveLatencyMs: &latency}},
 		},
 	}
-	h.recordRuntimeHistory(marshal(runtime))
+	h.recordRuntimeHistory(runtime)
 	runtime.Gates.RouteMode, runtime.Gates.RerouteActive = "direct", true
 	runtime.UpstreamQuality.Upstreams[0].Healthy = false
 	runtime.UpstreamQuality.Summary.HealthyTotal, runtime.UpstreamQuality.Summary.UnhealthyTotal = 0, 1
-	h.recordRuntimeHistory(marshal(runtime))
+	h.recordRuntimeHistory(runtime)
 	dcs := upstreamsSnapshot{DCs: &telemt.DcStatusData{MiddleProxyEnabled: true, DCs: []telemt.DcStatus{
 		{DC: 203, CoveragePct: 100, RequiredWriters: 3, AliveWriters: 3, RttMs: &latency},
 		{DC: -203, CoveragePct: 100, RequiredWriters: 3, AliveWriters: 3, RttMs: &latency},
 	}}}
-	h.recordUpstreamsHistory(marshal(dcs))
+	h.recordUpstreamsHistory(dcs)
 	dcs.DCs.DCs[1].CoveragePct, dcs.DCs.DCs[1].AliveWriters = 66, 2
-	h.recordUpstreamsHistory(marshal(dcs))
+	h.recordUpstreamsHistory(dcs)
 
 	// A second connection sees committed transitions before the metric flush.
 	db, err := sql.Open("sqlite3", path)

@@ -159,13 +159,13 @@ func TestCounterAccumulatorPairStaysConsistentAcrossRestart(t *testing.T) {
 }
 
 func TestUsersLiveTotalsUseCurrentConnections(t *testing.T) {
-	connections, active := usersLiveTotals([]telemt.UserInfo{
-		{Username: "idle", CurrentConnections: 0},
-		{Username: "one", CurrentConnections: 3},
-		{Username: "two", CurrentConnections: 9},
+	gauges := usersLiveTotals([]userSnapshotItem{
+		{UserInfo: telemt.UserInfo{Username: "idle", CurrentConnections: 0}},
+		{UserInfo: telemt.UserInfo{Username: "one", CurrentConnections: 3}},
+		{UserInfo: telemt.UserInfo{Username: "two", CurrentConnections: 9}},
 	})
-	if connections != 12 || active != 2 {
-		t.Fatalf("usersLiveTotals = %d connections / %d active, want 12 / 2", connections, active)
+	if gauges.connections != 12 || gauges.activeUsers != 2 {
+		t.Fatalf("usersLiveTotals = %d connections / %d active, want 12 / 2", gauges.connections, gauges.activeUsers)
 	}
 }
 

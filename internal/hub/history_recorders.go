@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -35,12 +34,8 @@ func (h *Hub) recordTelemtAvailability(available bool) {
 	h.observeTelemtAvailability(available)
 }
 
-func (h *Hub) recordRuntimeHistory(data json.RawMessage) {
+func (h *Hub) recordRuntimeHistory(snap runtimeSnapshot) {
 	if h.st == nil {
-		return
-	}
-	var snap runtimeSnapshot
-	if json.Unmarshal(data, &snap) != nil {
 		return
 	}
 	ts := time.Now().Unix()
@@ -92,12 +87,11 @@ func routeModeValue(gates *telemt.RuntimeGatesData) float64 {
 	return routeModeDirect
 }
 
-func (h *Hub) recordUpstreamsHistory(data json.RawMessage) {
+func (h *Hub) recordUpstreamsHistory(snap upstreamsSnapshot) {
 	if h.st == nil {
 		return
 	}
-	var snap upstreamsSnapshot
-	if json.Unmarshal(data, &snap) != nil || snap.DCs == nil {
+	if snap.DCs == nil {
 		return
 	}
 	if !snap.DCs.MiddleProxyEnabled {

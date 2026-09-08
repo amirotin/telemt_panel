@@ -166,7 +166,7 @@ func TestUserIPCleanupDuringSourceOutage(t *testing.T) {
 	h := New(Config{}, nil, m)
 	defer h.Close()
 	h.now = func() time.Time { return now }
-	h.topics["users"].fetch = func(context.Context) (json.RawMessage, error) { return nil, errors.New("users unavailable") }
+	h.topics["users"].fetch = func(context.Context) (any, error) { return nil, errors.New("users unavailable") }
 	if h.pollPeriodic(h.topics["users"]) {
 		t.Fatal("unexpected source success")
 	}
