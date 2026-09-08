@@ -49,7 +49,11 @@ func (c *Client) Capabilities(ctx context.Context) (Caps, error) {
 
 	caps, cached := c.cachedCaps()
 	if !cached {
-		caps = c.probeCapsSingleFlight(ctx)
+		var err error
+		caps, err = c.probeCapsSingleFlight(ctx)
+		if err != nil {
+			return Caps{}, err
+		}
 	}
 
 	caps.UserEnableDisable = !c.userEnableDisableAbsent.Load()
@@ -60,20 +64,29 @@ func (c *Client) Capabilities(ctx context.Context) (Caps, error) {
 // probeCapsSingleFlight ensures only one goroutine actually probes Telemt
 // per stale cache window. cachedCaps releases capsMu before a probe runs, so
 // without this, N concurrent cold-cache callers would each fire a full
-// 4-probe round (a thundering herd) — c.probeMu serializes entry, and the
-// cachedCaps re-check under it (double-checked locking) lets every goroutine
-// but the first skip straight to the winner's freshly stored result instead
-// of probing again.
-func (c *Client) probeCapsSingleFlight(ctx context.Context) Caps {
-	c.probeMu.Lock()
-	defer c.probeMu.Unlock()
+// 4-probe round (a thundering herd). The token gate serializes entry while
+// letting a waiter stop on its own context; the cachedCaps re-check after
+// acquisition lets every waiter skip the winning caller's probe round.
+func (c *Client) probeCapsSingleFlight(ctx context.Context) (Caps, error) {
+	select {
+	case <-ctx.Done():
+		return Caps{}, ctx.Err()
+	case <-c.capabilityProbeGate:
+	}
+	defer func() { c.capabilityProbeGate <- struct{}{} }()
 
 	if caps, cached := c.cachedCaps(); cached {
-		return caps
+		return caps, nil
 	}
 	caps := c.probeCaps(ctx)
+	if err := ctx.Err(); err != nil {
+		// A canceled round contains defaults produced by context failures, not
+		// a five-minute capability observation. Leave the cache cold so the
+		// next live caller performs a complete probe.
+		return Caps{}, err
+	}
 	c.storeCaps(caps)
-	return caps
+	return caps, nil
 }
 
 func (c *Client) cachedCaps() (Caps, bool) {

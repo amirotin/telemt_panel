@@ -2,6 +2,7 @@ package telemt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -257,7 +258,7 @@ func TestCapabilitiesRotateSecretWellFormedNotFoundDoesNotFlip(t *testing.T) {
 // exactly one 4-probe round, not one round per caller. The first goroutine
 // to reach the quota probe is held there (via the release channel) for a
 // beat so every other goroutine has time to call Capabilities and block on
-// the single-flight guard — without probeMu serializing them, they would
+// the single-flight guard — without the token gate serializing them, they would
 // instead all reach the fake server concurrently and this count would come
 // back well above 1.
 func TestCapabilitiesSingleFlightsColdCacheProbe(t *testing.T) {
@@ -302,7 +303,7 @@ func TestCapabilitiesSingleFlightsColdCacheProbe(t *testing.T) {
 	}
 
 	// Let every goroutine reach Capabilities and pile up on the
-	// single-flight guard before releasing the winner's quota probe.
+	// single-flight gate before releasing the winner's quota probe.
 	time.Sleep(100 * time.Millisecond)
 	close(release)
 	wg.Wait()
@@ -310,5 +311,136 @@ func TestCapabilitiesSingleFlightsColdCacheProbe(t *testing.T) {
 	if quotaCalls != 1 || runtimeCalls != 1 || reloadCalls != 1 || configCalls != 1 {
 		t.Fatalf("probe calls = quota:%d runtime:%d reload:%d config:%d, want exactly 1 each (single-flight)",
 			quotaCalls, runtimeCalls, reloadCalls, configCalls)
+	}
+}
+
+type capabilityWaitContext struct {
+	context.Context
+	checked chan struct{}
+	once    sync.Once
+}
+
+func (c *capabilityWaitContext) Err() error {
+	err := c.Context.Err()
+	if err == nil {
+		c.once.Do(func() { close(c.checked) })
+	}
+	return err
+}
+
+func TestCapabilitiesSingleFlightWaitHonorsContextCancellation(t *testing.T) {
+	releaseLeader := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseLeader) }) }
+	defer release()
+	leaderEntered := make(chan struct{})
+	var enterOnce sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/stats/users/quota" {
+			enterOnce.Do(func() { close(leaderEntered) })
+			select {
+			case <-releaseLeader:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		switch r.URL.Path {
+		case "/v1/stats/users/quota":
+			fmt.Fprint(w, `{"ok":true,"data":{"users":[]},"revision":"r"}`)
+		case "/v1/runtime/connections/summary":
+			fmt.Fprint(w, `{"ok":true,"data":{"enabled":false},"revision":"r"}`)
+		case "/v1/system/reload/0", "/v1/config":
+			fmt.Fprint(w, `{"ok":true,"data":{},"revision":"r"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "")
+	leaderDone := make(chan error, 1)
+	go func() {
+		_, err := c.Capabilities(context.Background())
+		leaderDone <- err
+	}()
+	select {
+	case <-leaderEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cold-cache leader did not enter quota probe")
+	}
+
+	base, cancel := context.WithCancel(context.Background())
+	waitCtx := &capabilityWaitContext{Context: base, checked: make(chan struct{})}
+	waiterDone := make(chan error, 1)
+	go func() {
+		_, err := c.Capabilities(waitCtx)
+		waiterDone <- err
+	}()
+	select {
+	case <-waitCtx.checked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter did not pass the initial context check")
+	}
+	cancel()
+	select {
+	case err := <-waiterDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiter error = %v, want context.Canceled", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("capability waiter ignored cancellation behind the cold-cache leader")
+	}
+	release()
+	if err := <-leaderDone; err != nil {
+		t.Fatalf("leader probe: %v", err)
+	}
+}
+
+func TestCapabilitiesCanceledProbeIsNotCached(t *testing.T) {
+	firstEntered := make(chan struct{})
+	var quotaCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/stats/users/quota":
+			if quotaCalls.Add(1) == 1 {
+				close(firstEntered)
+				<-r.Context().Done()
+				return
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"users":[]},"revision":"r"}`)
+		case "/v1/runtime/connections/summary":
+			fmt.Fprint(w, `{"ok":true,"data":{"enabled":true},"revision":"r"}`)
+		case "/v1/system/reload/0", "/v1/config":
+			fmt.Fprint(w, `{"ok":true,"data":{},"revision":"r"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := c.Capabilities(ctx)
+		firstDone <- err
+	}()
+	select {
+	case <-firstEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first quota probe did not start")
+	}
+	cancel()
+	if err := <-firstDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled probe error = %v, want context.Canceled", err)
+	}
+
+	caps, err := c.Capabilities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quotaCalls.Load() != 2 {
+		t.Fatalf("quota probes = %d, want retry after canceled leader", quotaCalls.Load())
+	}
+	if !caps.Quota || !caps.RuntimeEdge || !caps.ReloadAPI || !caps.ConfigAPI {
+		t.Fatalf("retried capabilities = %+v, want successful probe flags", caps)
 	}
 }

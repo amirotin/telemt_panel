@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -34,6 +33,7 @@ const (
 	defaultWebInterval      = 10 * time.Second
 	defaultGrace            = 30 * time.Second
 	defaultHeartbeat        = 25 * time.Second
+	defaultPollTimeout      = 15 * time.Second
 	defaultSubscriberBuffer = 64
 	defaultReplayRingSize   = 256
 	defaultReplayMaxBytes   = 8 << 20
@@ -96,6 +96,7 @@ type Config struct {
 	WebInterval       time.Duration
 	Grace             time.Duration
 	Heartbeat         time.Duration
+	PollTimeout       time.Duration
 	SubscriberBuffer  int
 	ReplayRingSize    int
 	ReplayMaxBytes    int
@@ -135,6 +136,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.Heartbeat <= 0 {
 		c.Heartbeat = defaultHeartbeat
+	}
+	if c.PollTimeout <= 0 {
+		c.PollTimeout = defaultPollTimeout
 	}
 	if c.SubscriberBuffer <= 0 {
 		c.SubscriberBuffer = defaultSubscriberBuffer
@@ -594,62 +598,105 @@ type runtimeSnapshot struct {
 }
 
 func fetchRuntime(ctx context.Context, tc *telemt.Client) (runtimeSnapshot, error) {
-	history := collectRuntimeHistoryInputs(ctx, tc)
-	snap := history.snapshot
-	var errs []error
+	var snap runtimeSnapshot
+	var gates telemt.RuntimeGatesData
+	var quality telemt.RuntimeUpstreamQualityData
+	var initialization telemt.RuntimeInitializationData
+	var mePool telemt.Gated[telemt.RuntimeMePoolStatePayload]
+	var meQuality telemt.Gated[telemt.RuntimeMeQualityPayload]
+	var natStun telemt.Gated[telemt.RuntimeNatStunPayload]
+	var meSelfTest telemt.Gated[telemt.RuntimeMeSelftestPayload]
+	var minimal telemt.Gated[telemt.MinimalAllPayload]
+	var gatesAttempt, qualityAttempt, initializationAttempt, mePoolAttempt fetchAttempt
+	var meQualityAttempt, natStunAttempt, meSelfTestAttempt, minimalAttempt fetchAttempt
+	group := newBoundedFetchGroup(ctx)
+	group.add(&gatesAttempt, func(ctx context.Context) error {
+		var err error
+		gates, err = tc.Gates(ctx)
+		return err
+	})
+	group.add(&qualityAttempt, func(ctx context.Context) error {
+		var err error
+		quality, err = tc.UpstreamQuality(ctx)
+		return err
+	})
+	group.add(&initializationAttempt, func(ctx context.Context) error {
+		var err error
+		initialization, err = tc.Initialization(ctx)
+		return err
+	})
+	group.add(&mePoolAttempt, func(ctx context.Context) error {
+		var err error
+		mePool, err = tc.MePoolState(ctx)
+		return err
+	})
+	group.add(&meQualityAttempt, func(ctx context.Context) error {
+		var err error
+		meQuality, err = tc.MeQuality(ctx)
+		return err
+	})
+	group.add(&natStunAttempt, func(ctx context.Context) error {
+		var err error
+		natStun, err = tc.NatStun(ctx)
+		return err
+	})
+	group.add(&meSelfTestAttempt, func(ctx context.Context) error {
+		var err error
+		meSelfTest, err = tc.MeSelfTest(ctx)
+		return err
+	})
+	group.add(&minimalAttempt, func(ctx context.Context) error {
+		var err error
+		minimal, err = tc.MinimalAll(ctx)
+		return err
+	})
+	group.wait()
 
-	if history.gatesErr != nil {
-		errs = append(errs, history.gatesErr)
+	if gatesAttempt.succeeded() {
+		snap.Gates = &gates
 	}
-	if v, err := tc.Initialization(ctx); err == nil {
-		snap.Initialization = &v
-	} else {
-		errs = append(errs, err)
+	if qualityAttempt.succeeded() {
+		snap.UpstreamQuality = &quality
+	} else if qualityAttempt.attempted {
+		slog.Warn("hub: runtime topic: upstream quality", "err", qualityAttempt.err)
 	}
-	if v, err := tc.MePoolState(ctx); err == nil {
-		snap.MePoolState = &v
-	} else {
-		errs = append(errs, err)
+	if initializationAttempt.succeeded() {
+		snap.Initialization = &initialization
 	}
-	if v, err := tc.MeQuality(ctx); err == nil {
-		snap.MeQuality = &v
-	} else {
-		errs = append(errs, err)
+	if mePoolAttempt.succeeded() {
+		snap.MePoolState = &mePool
 	}
-	if v, err := tc.NatStun(ctx); err == nil {
-		snap.NatStun = &v
-	} else {
-		errs = append(errs, err)
+	if meQualityAttempt.succeeded() {
+		snap.MeQuality = &meQuality
 	}
-	if v, err := tc.MeSelfTest(ctx); err == nil {
-		snap.MeSelfTest = &v
-	} else {
-		errs = append(errs, err)
+	if natStunAttempt.succeeded() {
+		snap.NatStun = &natStun
 	}
-	if len(errs) == 6 {
-		return runtimeSnapshot{}, fmt.Errorf("runtime: %w", errors.Join(errs...))
+	if meSelfTestAttempt.succeeded() {
+		snap.MeSelfTest = &meSelfTest
+	}
+	if minimalAttempt.succeeded() {
+		snap.Minimal = &minimal
+	} else if minimalAttempt.attempted {
+		slog.Warn("hub: runtime topic: minimal all", "err", minimalAttempt.err)
 	}
 
-	// Minimal/UpstreamQuality: always attempted (gated by
-	// minimal_runtime_enabled, reflected in their own response, not by a
-	// capability probe here) — a failure is logged and leaves the field
-	// null, same degrade rule as every other sub-call, but never joins
-	// errs above: mini-task 2c scopes these two as best-effort additions
-	// that must not turn a healthy six-call poll into a source_error.
-	if v, err := tc.MinimalAll(ctx); err == nil {
-		snap.Minimal = &v
-	} else {
-		slog.Warn("hub: runtime topic: minimal all", "err", err)
-	}
-	if history.qualityErr != nil {
-		slog.Warn("hub: runtime topic: upstream quality", "err", history.qualityErr)
+	if !gatesAttempt.succeeded() && !initializationAttempt.succeeded() && !mePoolAttempt.succeeded() &&
+		!meQualityAttempt.succeeded() && !natStunAttempt.succeeded() && !meSelfTestAttempt.succeeded() {
+		return runtimeSnapshot{}, noSuccessfulPrimaryError("runtime", ctx, gatesAttempt, initializationAttempt,
+			mePoolAttempt, meQualityAttempt, natStunAttempt, meSelfTestAttempt)
 	}
 
-	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
-		if v, err := tc.RecentEvents(ctx, recentEventsLimit); err == nil {
-			snap.RecentEvents = &v
-		} else {
-			slog.Warn("hub: runtime topic: recent events", "err", err)
+	// Capability discovery and recent events are optional and use only the
+	// budget left after the primary and history inputs above.
+	if ctx.Err() == nil {
+		caps, err := tc.Capabilities(ctx)
+		if err == nil && caps.RuntimeEdge {
+			if v, err := tc.RecentEvents(ctx, recentEventsLimit); err == nil {
+				snap.RecentEvents = &v
+			} else {
+				slog.Warn("hub: runtime topic: recent events", "err", err)
+			}
 		}
 	}
 
@@ -668,25 +715,38 @@ type upstreamsSnapshot struct {
 
 func fetchUpstreams(ctx context.Context, tc *telemt.Client) (upstreamsSnapshot, error) {
 	var snap upstreamsSnapshot
-	var upstreamsErr, dcsErr, meWritersErr error
-
-	if v, err := tc.Upstreams(ctx); err == nil {
-		snap.Upstreams = &v
-	} else {
-		upstreamsErr = err
+	var upstreams telemt.UpstreamsData
+	var dcs telemt.DcStatusData
+	var meWriters telemt.MeWritersData
+	var upstreamsAttempt, dcsAttempt, meWritersAttempt fetchAttempt
+	group := newBoundedFetchGroup(ctx)
+	group.add(&upstreamsAttempt, func(ctx context.Context) error {
+		var err error
+		upstreams, err = tc.Upstreams(ctx)
+		return err
+	})
+	group.add(&dcsAttempt, func(ctx context.Context) error {
+		var err error
+		dcs, err = tc.DCs(ctx)
+		return err
+	})
+	group.add(&meWritersAttempt, func(ctx context.Context) error {
+		var err error
+		meWriters, err = tc.MeWriters(ctx)
+		return err
+	})
+	group.wait()
+	if upstreamsAttempt.succeeded() {
+		snap.Upstreams = &upstreams
 	}
-	if history, err := fetchUpstreamsHistory(ctx, tc); err == nil {
-		snap.DCs = history.DCs
-	} else {
-		dcsErr = err
+	if dcsAttempt.succeeded() {
+		snap.DCs = &dcs
 	}
-	if v, err := tc.MeWriters(ctx); err == nil {
-		snap.MeWriters = &v
-	} else {
-		meWritersErr = err
+	if meWritersAttempt.succeeded() {
+		snap.MeWriters = &meWriters
 	}
-	if upstreamsErr != nil && dcsErr != nil && meWritersErr != nil {
-		return upstreamsSnapshot{}, fmt.Errorf("upstreams: %w", errors.Join(upstreamsErr, dcsErr, meWritersErr))
+	if !upstreamsAttempt.succeeded() && !dcsAttempt.succeeded() && !meWritersAttempt.succeeded() {
+		return upstreamsSnapshot{}, noSuccessfulPrimaryError("upstreams", ctx, upstreamsAttempt, dcsAttempt, meWritersAttempt)
 	}
 	return snap, nil
 }
@@ -710,25 +770,38 @@ type securitySnapshot struct {
 
 func fetchSecurity(ctx context.Context, tc *telemt.Client) (securitySnapshot, error) {
 	var snap securitySnapshot
-	var postureErr, whitelistErr, limitsErr error
-
-	if v, err := tc.Posture(ctx); err == nil {
-		snap.Posture = &v
-	} else {
-		postureErr = err
+	var posture telemt.SecurityPostureData
+	var whitelist telemt.SecurityWhitelistData
+	var limits telemt.EffectiveLimitsData
+	var postureAttempt, whitelistAttempt, limitsAttempt fetchAttempt
+	group := newBoundedFetchGroup(ctx)
+	group.add(&postureAttempt, func(ctx context.Context) error {
+		var err error
+		posture, err = tc.Posture(ctx)
+		return err
+	})
+	group.add(&whitelistAttempt, func(ctx context.Context) error {
+		var err error
+		whitelist, err = tc.Whitelist(ctx)
+		return err
+	})
+	group.add(&limitsAttempt, func(ctx context.Context) error {
+		var err error
+		limits, err = tc.EffectiveLimits(ctx)
+		return err
+	})
+	group.wait()
+	if postureAttempt.succeeded() {
+		snap.Posture = &posture
 	}
-	if v, err := tc.Whitelist(ctx); err == nil {
-		snap.Whitelist = &v
-	} else {
-		whitelistErr = err
+	if whitelistAttempt.succeeded() {
+		snap.Whitelist = &whitelist
 	}
-	if v, err := tc.EffectiveLimits(ctx); err == nil {
-		snap.EffectiveLimits = &v
-	} else {
-		limitsErr = err
+	if limitsAttempt.succeeded() {
+		snap.EffectiveLimits = &limits
 	}
-	if postureErr != nil && whitelistErr != nil && limitsErr != nil {
-		return securitySnapshot{}, fmt.Errorf("security: %w", errors.Join(postureErr, whitelistErr, limitsErr))
+	if !postureAttempt.succeeded() && !whitelistAttempt.succeeded() && !limitsAttempt.succeeded() {
+		return securitySnapshot{}, noSuccessfulPrimaryError("security", ctx, postureAttempt, whitelistAttempt, limitsAttempt)
 	}
 
 	return snap, nil
@@ -1212,9 +1285,16 @@ func (h *Hub) pollWithProfile(ctx context.Context, t *topicState, profile pollPr
 	if profile == pollHistory && t.historyFetch != nil {
 		fetch = t.historyFetch
 	}
-	snapshot, err := fetch(ctx)
+	// The shared deadline starts only after this poll owns the topic gate and
+	// has rechecked whether work is still needed. It bounds active Telemt SDK
+	// fetches; later non-context-aware history/store writes may take longer.
+	fetchCtx, cancel := context.WithTimeout(ctx, h.cfg.PollTimeout)
+	snapshot, err := fetch(fetchCtx)
+	cancel()
 	if err != nil {
-		// A shutdown or caller deadline canceled the observation, not Telemt.
+		// Compare the original context, not fetchCtx: a shutdown or caller
+		// deadline canceled the observation, while our own deadline is a real
+		// fetch failure when no required source produced usable data.
 		if ctx.Err() != nil {
 			return false
 		}

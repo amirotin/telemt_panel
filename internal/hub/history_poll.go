@@ -2,7 +2,6 @@ package hub
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -50,20 +49,38 @@ func fetchUsersHistory(ctx context.Context, tc *telemt.Client) (usersHistoryObse
 
 func fetchStatsHistory(ctx context.Context, tc *telemt.Client) (statsSnapshot, error) {
 	var snap statsSnapshot
-	health, healthErr := tc.Health(ctx)
-	if healthErr == nil {
+	var health telemt.HealthData
+	var summary telemt.SummaryData
+	var ready telemt.ReadyData
+	var healthAttempt, summaryAttempt, readyAttempt fetchAttempt
+	group := newBoundedFetchGroup(ctx)
+	group.add(&healthAttempt, func(ctx context.Context) error {
+		var err error
+		health, err = tc.Health(ctx)
+		return err
+	})
+	group.add(&summaryAttempt, func(ctx context.Context) error {
+		var err error
+		summary, err = tc.StatsSummary(ctx)
+		return err
+	})
+	group.add(&readyAttempt, func(ctx context.Context) error {
+		var err error
+		ready, err = tc.Ready(ctx)
+		return err
+	})
+	group.wait()
+	if healthAttempt.succeeded() {
 		snap.Health = &health
 	}
-	summary, summaryErr := tc.StatsSummary(ctx)
-	if summaryErr == nil {
+	if summaryAttempt.succeeded() {
 		snap.Summary = &summary
 	}
-	ready, readyErr := tc.Ready(ctx)
-	if readyErr == nil {
+	if readyAttempt.succeeded() {
 		snap.Ready = &ready
 	}
-	if healthErr != nil && summaryErr != nil && readyErr != nil {
-		return statsSnapshot{}, fmt.Errorf("stats: %w", errors.Join(healthErr, summaryErr, readyErr))
+	if !healthAttempt.succeeded() && !summaryAttempt.succeeded() && !readyAttempt.succeeded() {
+		return statsSnapshot{}, noSuccessfulPrimaryError("stats", ctx, healthAttempt, summaryAttempt, readyAttempt)
 	}
 	if caps, err := tc.Capabilities(ctx); err == nil && caps.RuntimeEdge {
 		if cs, err := tc.ConnectionsSummary(ctx); err == nil {
@@ -83,23 +100,43 @@ type runtimeHistoryInputs struct {
 
 func collectRuntimeHistoryInputs(ctx context.Context, tc *telemt.Client) runtimeHistoryInputs {
 	var result runtimeHistoryInputs
-	if value, err := tc.Gates(ctx); err == nil {
+	var gates telemt.RuntimeGatesData
+	var quality telemt.RuntimeUpstreamQualityData
+	var gatesAttempt, qualityAttempt fetchAttempt
+	group := newBoundedFetchGroup(ctx)
+	group.add(&gatesAttempt, func(ctx context.Context) error {
+		var err error
+		gates, err = tc.Gates(ctx)
+		return err
+	})
+	group.add(&qualityAttempt, func(ctx context.Context) error {
+		var err error
+		quality, err = tc.UpstreamQuality(ctx)
+		return err
+	})
+	group.wait()
+	if gatesAttempt.succeeded() {
+		value := gates
 		result.snapshot.Gates = &value
 	} else {
-		result.gatesErr = err
+		result.gatesErr = gatesAttempt.err
 	}
-	if value, err := tc.UpstreamQuality(ctx); err == nil {
+	if qualityAttempt.succeeded() {
+		value := quality
 		result.snapshot.UpstreamQuality = &value
 	} else {
-		result.qualityErr = err
+		result.qualityErr = qualityAttempt.err
 	}
 	return result
 }
 
 func fetchRuntimeHistory(ctx context.Context, tc *telemt.Client) (runtimeSnapshot, error) {
 	result := collectRuntimeHistoryInputs(ctx, tc)
-	if result.gatesErr != nil && result.qualityErr != nil {
-		return runtimeSnapshot{}, fmt.Errorf("runtime history: %w", errors.Join(result.gatesErr, result.qualityErr))
+	if result.snapshot.Gates == nil && result.snapshot.UpstreamQuality == nil {
+		return runtimeSnapshot{}, noSuccessfulPrimaryError("runtime history", ctx,
+			fetchAttempt{attempted: result.gatesErr != nil, err: result.gatesErr},
+			fetchAttempt{attempted: result.qualityErr != nil, err: result.qualityErr},
+		)
 	}
 	return result.snapshot, nil
 }

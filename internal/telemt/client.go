@@ -45,10 +45,10 @@ type Client struct {
 	caps      Caps
 	capsAt    time.Time
 	capsValid bool
-	// probeMu serializes the actual Telemt probe round in
-	// probeCapsSingleFlight (capabilities.go), independent of capsMu (which
-	// only guards the cached snapshot) — see that function's doc comment.
-	probeMu sync.Mutex
+	// capabilityProbeGate serializes the actual Telemt probe round while
+	// allowing waiters to honor their own context. capsMu only guards the
+	// cached snapshot; see probeCapsSingleFlight in capabilities.go.
+	capabilityProbeGate chan struct{}
 
 	// userEnableDisableAbsent and rotateSecretAbsent latch true the first
 	// time SetEnabled/RotateSecret sees a real 404/405 from Telemt —
@@ -68,12 +68,15 @@ func New(baseURL, authHeader string) *Client {
 // newClient is the injectable-clock constructor used by tests to exercise
 // the Capabilities cache without sleeping.
 func newClient(baseURL, authHeader string, now func() time.Time) *Client {
-	return &Client{
-		baseURL:    baseURL,
-		authHeader: authHeader,
-		http:       &http.Client{Timeout: 15 * time.Second},
-		now:        now,
+	c := &Client{
+		baseURL:             baseURL,
+		authHeader:          authHeader,
+		http:                &http.Client{Timeout: 15 * time.Second},
+		now:                 now,
+		capabilityProbeGate: make(chan struct{}, 1),
 	}
+	c.capabilityProbeGate <- struct{}{}
+	return c
 }
 
 // envelope is Telemt's native success wrapper; revision is present on every
