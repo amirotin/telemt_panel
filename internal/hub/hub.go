@@ -193,6 +193,9 @@ type topicState struct {
 	lastData  json.RawMessage
 	lastKey   json.RawMessage
 	lastEvent Event
+	// lastObservedAt tracks successful polls even when push-on-change skips
+	// a broadcast. A failed poll clears it without removing the UI cache.
+	lastObservedAt time.Time
 
 	// wake carries Poke requests to runPoller: a buffered(1), non-blocking
 	// send so concurrent Poke calls coalesce into at most one pending
@@ -818,11 +821,16 @@ func (h *Hub) recordStatsHistory(data json.RawMessage) {
 	}
 }
 
-// cachedUsers returns the latest users payload. ok is false until the users
-// topic has completed its first successful poll or if the cache is corrupt.
+// cachedUsers supplies history fallback gauges only from a fresh successful
+// poll. The UI may retain old data during an outage; history must not turn it
+// into new observations. Allow two poll intervals for scheduling skew.
 func (h *Hub) cachedUsers() ([]telemt.UserInfo, bool) {
 	h.mu.Lock()
 	t := h.topics["users"]
+	if t == nil || t.lastObservedAt.IsZero() || h.now().Sub(t.lastObservedAt) > 2*t.interval {
+		h.mu.Unlock()
+		return nil, false
+	}
 	hasData, data := t.hasData, t.lastData
 	h.mu.Unlock()
 	if !hasData {
@@ -1139,6 +1147,10 @@ func (h *Hub) poll(t *topicState) bool {
 func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 	data, err := t.fetch(ctx)
 	if err != nil {
+		// A shutdown or caller deadline canceled the observation, not Telemt.
+		if ctx.Err() != nil {
+			return false
+		}
 		if t.name == "stats" {
 			h.recordTelemtAvailability(false)
 		}
@@ -1170,6 +1182,7 @@ func (h *Hub) pollWithContext(ctx context.Context, t *topicState) bool {
 func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	t.lastObservedAt = h.now()
 	key := diffKey(t.name, data)
 	if t.hasData && bytes.Equal(t.lastKey, key) {
 		return
@@ -1306,6 +1319,7 @@ func (h *Hub) recordFetchError(t *topicState, err error) {
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	t.lastObservedAt = time.Time{}
 	ev := Event{Seq: h.nextSeqLocked(), Topic: t.name, Err: sourceErrorCode, TS: time.Now().Unix()}
 	h.appendRingLocked(ev)
 	h.broadcastLocked(ev)
