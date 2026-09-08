@@ -14,7 +14,6 @@
     "screenshots": "SCREENSHOTS=1 playwright test --project=screenshots"
   },
   "dependencies": {
-    "@codemirror/lang-json": "6.0.2",
     "@codemirror/state": "6.7.1",
     "@codemirror/view": "6.43.9",
     "@react-aria/interactions": "3.28.1",

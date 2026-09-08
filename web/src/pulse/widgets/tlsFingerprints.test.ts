@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCapabilityCode, resolveTlsFingerprintsQuery, topFingerprints } from "./tlsFingerprints.helpers";
+import { isCapabilityCode, resolveTlsFingerprintsQuery } from "./tlsFingerprints.helpers";
 import type { TlsFingerprints } from "../../lib/api/generated/types.gen";
 
 function row(ja3: string, total: number) {
@@ -20,20 +20,6 @@ function payload(overrides: Partial<TlsFingerprints> = {}): TlsFingerprints {
     ...overrides,
   };
 }
-
-describe("topFingerprints", () => {
-  it("sorts by_fingerprint descending by total", () => {
-    expect(topFingerprints(payload()).map((r) => r.ja3)).toEqual(["b", "c", "a"]);
-  });
-
-  it("caps at the given limit", () => {
-    expect(topFingerprints(payload(), 2)).toHaveLength(2);
-  });
-
-  it("is empty when by_fingerprint is empty", () => {
-    expect(topFingerprints(payload({ by_fingerprint: [] }))).toEqual([]);
-  });
-});
 
 describe("resolveTlsFingerprintsQuery", () => {
   it("is loading while pending", () => {

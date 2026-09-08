@@ -1,12 +1,4 @@
-import type { Error as ApiError, TlsFingerprintRow, TlsFingerprints } from "../../lib/api/generated/types.gen";
-
-// topFingerprints returns the by_fingerprint rows, highest total first,
-// capped at `limit` — the widget's compact "top-N" showcase (06-ui.md:
-// "TLS fingerprints — top-N table"); the Диагностика page shows every
-// scope (by_fingerprint/by_ip/by_cidr/by_user) in full.
-export function topFingerprints(payload: TlsFingerprints, limit = 5): TlsFingerprintRow[] {
-  return [...payload.by_fingerprint].sort((a, b) => b.total - a.total).slice(0, limit);
-}
+import type { Error as ApiError, TlsFingerprints } from "../../lib/api/generated/types.gen";
 
 // TlsFingerprintsState is what useTlsFingerprints hands its callers.
 //

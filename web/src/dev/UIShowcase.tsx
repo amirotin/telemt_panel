@@ -11,12 +11,9 @@ import {
   IconButton,
   Input,
   Select,
-  Stepper,
   Sheet,
-  StatCard,
   KVRow,
   StatePill,
-  QuotaBar,
   CopyField,
   QR,
   Sparkline,
@@ -41,7 +38,6 @@ import { fill, useStrings } from "../i18n";
 export function UIShowcase() {
   const s = useStrings();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [stepperValue, setStepperValue] = useState(3);
   const [cardToggle, setCardToggle] = useState(true);
 
   return (
@@ -153,10 +149,6 @@ export function UIShowcase() {
         </Select>
       </Section>
 
-      <Section title="Stepper">
-        <Stepper value={stepperValue} onChange={setStepperValue} min={0} max={10} />
-      </Section>
-
       <Section title="Sheet">
         <Button onClick={() => setSheetOpen(true)}>{s.dev.openSheet}</Button>
         <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={s.dev.sheetTitle}>
@@ -179,18 +171,6 @@ export function UIShowcase() {
         <ToastViewport />
       </Section>
 
-      <Section title="StatCard">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label={s.shell.connections} value={128} />
-          <StatCard
-            label={s.shell.traffic}
-            value={`4.2 ${s.ui.byteUnits[3]}`}
-            delta="+3%"
-            sparkline={<Sparkline values={[3, 5, 4, 8, 6, 9, 7, 10]} />}
-          />
-        </div>
-      </Section>
-
       <Section title="KVRow">
         <div className="max-w-sm rounded-xl bg-surface px-3.5">
           <KVRow label={s.dev.version} value="2.0.0-draft1" />
@@ -204,15 +184,6 @@ export function UIShowcase() {
           <StatePill state="warn">warn</StatePill>
           <StatePill state="error">error</StatePill>
           <StatePill state="muted">muted</StatePill>
-        </div>
-      </Section>
-
-      <Section title="QuotaBar">
-        <div className="flex max-w-xs flex-col gap-4">
-          <QuotaBar usedBytes={2_500_000_000} limitBytes={10_000_000_000} />
-          <QuotaBar usedBytes={9_800_000_000} limitBytes={10_000_000_000} />
-          <QuotaBar usedBytes={11_000_000_000} limitBytes={10_000_000_000} />
-          <QuotaBar usedBytes={5_000_000_000} limitBytes={null} />
         </div>
       </Section>
 
