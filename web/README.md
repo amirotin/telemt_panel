@@ -35,6 +35,24 @@ builds the frontend into `internal/webui/dist`, then `make dev-backend` (or the
 built `telemt-panel` binary) serves it directly at `:8080` with no separate
 frontend dev server.
 
+Production builds store JavaScript and CSS as gzip-only resources in
+`internal/webui/dist`. The Go handler serves them at their original `.js`/`.css`
+URLs, with gzip negotiation and a decoded fallback for clients that do not
+accept gzip. Uncompressed duplicates are not embedded. HTML (including the
+runtime base-path injection), images and API/SSE responses are unchanged.
+Use the panel binary to preview this packed production output; `npm run dev`
+continues to serve normal source files through Vite. The former `npm run preview`
+command is removed: Vite's static preview does not implement the panel's
+gzip-only resource handling or runtime base-path injection.
+
+The production build merges small shared chunks by their consuming entries,
+while keeping lazy routes separate and preserving module initialization order.
+Initial HTML module-preload hints are disabled to avoid false cross-world
+service-worker mismatch warnings in affected Chromium versions. Lazy navigation
+still preloads dependencies and CSS; the service worker remains enabled.
+The desktop asset tests cover the emitted HTML, the People script-request
+budget and a service-worker-controlled reload.
+
 ## Scripts
 
 | Command | What |

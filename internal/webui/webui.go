@@ -73,7 +73,8 @@ type Handler struct {
 	// construction since embedded content never changes at runtime. Its
 	// keys double as the "does this path exist as a real file" check that
 	// decides file-serve vs. SPA-fallback in ServeHTTP.
-	assetETags map[string]string
+	assetETags       map[string]string
+	compressedAssets map[string]string
 }
 
 // New builds a Handler over fsys (the dist subtree — production code
@@ -98,6 +99,7 @@ func New(fsys fs.FS, basePath string) (*Handler, error) {
 	h.indexETag = etagOf(h.index)
 
 	h.assetETags = map[string]string{}
+	h.compressedAssets = map[string]string{}
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || path == "index.html" {
 			return nil
@@ -106,7 +108,12 @@ func New(fsys fs.FS, basePath string) (*Handler, error) {
 		if readErr != nil {
 			return nil
 		}
-		h.assetETags[path] = etagOf(b)
+		logicalPath := path
+		if strings.HasSuffix(path, ".js.gz") || strings.HasSuffix(path, ".css.gz") {
+			logicalPath = strings.TrimSuffix(path, ".gz")
+			h.compressedAssets[logicalPath] = path
+		}
+		h.assetETags[logicalPath] = etagOf(b)
 		return nil
 	})
 	if err != nil {
@@ -206,6 +213,10 @@ func (h *Handler) serveAsset(w http.ResponseWriter, r *http.Request, p, etag str
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
+	}
+	if packedPath, ok := h.compressedAssets[p]; ok {
+		h.serveCompressedAsset(w, r, p, packedPath, etag)
+		return
 	}
 	w.Header().Set("ETag", etag)
 	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {

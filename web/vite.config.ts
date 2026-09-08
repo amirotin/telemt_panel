@@ -3,6 +3,7 @@ import { defineConfig, type Plugin } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import { compressedAssets } from "./scripts/compress-assets.ts";
 
 // emptyOutDir wipes internal/webui/dist/.gitkeep along with everything else
 // on every build — restore it so `git status` doesn't show it as deleted
@@ -30,8 +31,30 @@ export default defineConfig({
     react(),
     tailwindcss(),
     restoreDistGitkeep(),
+    compressedAssets(),
   ],
   build: {
+    modulePreload: {
+      // Chrome can reject HTML preloads served by a controlling service worker.
+      // Keep dependency preloading for lazy navigation, including route CSS.
+      resolveDependencies: (_filename, dependencies, { hostType }) =>
+        hostType === "html" ? [] : dependencies,
+    },
+    rolldownOptions: {
+      output: {
+        // Shared subgroup merging must preserve module initialization order.
+        strictExecutionOrder: true,
+        codeSplitting: {
+          groups: [{
+            name: "shared",
+            minShareCount: 2,
+            entriesAware: true,
+            // Merge tiny shared chunks without combining every lazy route.
+            entriesAwareMergeThreshold: 12_000,
+          }],
+        },
+      },
+    },
     // Builds straight into the Go package that embeds it — no v0-style
     // copy/symlink step between `npm run build` and `go:embed`. See
     // internal/webui/embed.go.
