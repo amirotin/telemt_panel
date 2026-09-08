@@ -5,7 +5,7 @@ import {
   sessionUserAgentRaw,
   sortSessions,
 } from "./sessions.helpers";
-import { ru, ru as s } from "../../i18n";
+import { ru, ru as s } from "../../i18n/testing";
 import type { SessionInfo } from "../../lib/api/generated/types.gen";
 
 function session(overrides: Partial<SessionInfo>): SessionInfo {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { personAvatarTone, personBadge, personMeta } from "./personMeta.helpers";
 import type { UserQuotaView } from "./users.helpers";
-import { ru as s } from "../i18n";
+import { ru as s } from "../i18n/testing";
 
 const GB = 1024 ** 3;
 const quota: UserQuotaView = { usedBytes: 12 * GB, limitBytes: 50 * GB };

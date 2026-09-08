@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { WEB_REASON_UNSUPPORTED, computeWebCard } from "./web.helpers";
 import type { Gated, WebRuntimeStatus, WebStatus } from "../../realtime/topics";
-import { en, ru } from "../../i18n";
+import { en, ru } from "../../i18n/testing";
 
 function runtime(overrides: Partial<WebRuntimeStatus> = {}): WebRuntimeStatus {
   return {

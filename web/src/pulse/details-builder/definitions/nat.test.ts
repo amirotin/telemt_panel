@@ -3,7 +3,7 @@
 // (13 configured x 10 / 7 / 0 live — TELEMT_LIVE_API_DATA §15).
 
 import { describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { ru } from "../../../i18n/testing";
 import { describeField } from "../fieldCatalog";
 import {
   natStunConfiguredCount,

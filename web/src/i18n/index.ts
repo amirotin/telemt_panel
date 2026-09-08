@@ -35,7 +35,5 @@ export {
   useLocalePreference,
   useStrings,
 } from "./store";
-export { auditActionLabel, errorMessage, isKnownAuditAction } from "./messages";
-export { ru } from "./ru";
-export { en } from "./en";
+export { auditActionLabel, errorMessage } from "./messages";
 export { LanguageToggle } from "./LanguageToggle";

@@ -3,7 +3,7 @@
 // posture, whitelist, 40 effective-limit leaves), plus the §23.3 shape.
 
 import { describe, expect, it } from "vitest";
-import { en, ru } from "../../../i18n";
+import { en, ru } from "../../../i18n/testing";
 import { effectiveLimits, posture, tlsFingerprints, whitelist } from "../__fixtures__";
 import { securityPageData } from "../../diag/security.helpers";
 import { TLS_FINGERPRINTS_ENDPOINT } from "../fieldCatalog";

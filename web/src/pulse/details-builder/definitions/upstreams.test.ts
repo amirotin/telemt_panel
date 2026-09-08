@@ -2,7 +2,7 @@
 // page's own §27.4 completeness equation over the production-size payload.
 
 import { describe, expect, it } from "vitest";
-import { en, ru } from "../../../i18n";
+import { en, ru } from "../../../i18n/testing";
 import { describeField, lookupField } from "../fieldCatalog";
 import { upstreams, upstreamQuality } from "../__fixtures__";
 import { upstreamsPagePayload } from "../../diag/upstreams.helpers";

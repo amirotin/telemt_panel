@@ -31,7 +31,7 @@ afterEach(() => {
     mounted.container.remove();
     mounted = null;
   }
-  act(() => setLocalePreference("ru"));
+  act(() => { void setLocalePreference("ru"); });
 });
 
 // A bystander screen: it reads the dictionary but has nothing to do with
@@ -43,7 +43,7 @@ function Bystander() {
 
 describe("LanguageToggle", () => {
   it("renders one chip per choice and marks the active one", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const container = renderInto(<LanguageToggle />);
     const labels = chips(container).map((b) => b.textContent);
     expect(labels).toEqual(["Русский", "English", "Как в браузере"]);
@@ -55,7 +55,7 @@ describe("LanguageToggle", () => {
   });
 
   it("switches the language of an unrelated mounted screen", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const container = renderInto(
       <>
         <LanguageToggle />

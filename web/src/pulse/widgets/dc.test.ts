@@ -14,7 +14,7 @@ import {
   isMediaDc,
 } from "./dc.helpers";
 import type { DcStatus } from "../../realtime/topics";
-import { en, ru } from "../../i18n";
+import { en, ru } from "../../i18n/testing";
 
 function dc(overrides: Partial<DcStatus> = {}): DcStatus {
   return {

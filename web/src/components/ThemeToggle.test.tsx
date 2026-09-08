@@ -37,7 +37,7 @@ afterEach(() => {
   localStorage.removeItem(STORAGE_KEY);
   document.documentElement.removeAttribute("data-theme");
   document.getElementById("theme-color-meta")?.remove();
-  act(() => setLocalePreference("ru"));
+  act(() => { void setLocalePreference("ru"); });
 });
 
 describe("ThemeToggle", () => {
@@ -61,7 +61,7 @@ describe("ThemeToggle", () => {
   });
 
   it("names the warm themes in English too", () => {
-    act(() => setLocalePreference("en"));
+    act(() => { void setLocalePreference("en"); });
     const container = renderToggle();
     expect(chips(container).map((b) => b.textContent)).toEqual([
       "System",

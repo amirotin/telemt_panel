@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { securityGroups } from "./security.helpers";
 import type { SecurityPosture, SecurityWhitelist } from "../../realtime/topics";
-import { ru as s } from "../../i18n";
+import { ru as s } from "../../i18n/testing";
 
 const posture: SecurityPosture = {
   api_read_only: false,

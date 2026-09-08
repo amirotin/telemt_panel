@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { connectionsLabel, healthLabel, healthPillState, trafficLabel } from "./StatusStrip.helpers";
 import type { StatsSnapshot } from "../realtime/topics";
 import type { HistorySeries } from "../lib/api/generated/types.gen";
-import { ru as s } from "../i18n";
+import { ru as s } from "../i18n/testing";
 
 describe("healthPillState", () => {
   it("is muted when there is no status yet", () => {

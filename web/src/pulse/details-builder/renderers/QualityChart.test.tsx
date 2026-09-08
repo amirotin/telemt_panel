@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { ru } from "../../../i18n/testing";
 import type { CustomRendererOptions } from "../model";
 import type { CustomSectionInstance } from "../resolveSections";
 import { QualityChart } from "./QualityChart";

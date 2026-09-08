@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getStorageSettingsQueryKey } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { StorageSettings as StorageSettingsData } from "../../lib/api/generated/types.gen";
 import { StorageSettings } from "./StorageSettings";
-import { ru } from "../../i18n";
+import { ru } from "../../i18n/testing";
 import { formatBytes } from "../../lib/format";
 
 const { saveRequest } = vi.hoisted(() => ({ saveRequest: vi.fn().mockResolvedValue(undefined) }));

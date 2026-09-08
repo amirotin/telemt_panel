@@ -35,6 +35,8 @@ export const en: Dict = {
     },
   },
   language: {
+    loading: "Loading language…",
+    loadFailed: "Could not load the language. Your current language has been kept.",
     label: "Language",
     auto: "Browser",
     ru: "Русский",

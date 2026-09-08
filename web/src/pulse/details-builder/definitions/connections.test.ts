@@ -2,7 +2,7 @@
 // the page's own §27.4 completeness equation over the production payload.
 
 import { describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { ru } from "../../../i18n/testing";
 import { connectionsSummary, connectionsTopLimit, statsSnapshot, summary } from "../__fixtures__";
 import type { StatsSnapshot } from "../../../realtime/topics";
 import { aggregateSources, resolveTopicSource } from "../sources";

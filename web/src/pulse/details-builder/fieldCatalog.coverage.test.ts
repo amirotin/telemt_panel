@@ -8,7 +8,7 @@
 // Counters (Task 7), Upstreams, Connections, NAT and Events (Task 8), WEB
 // (Task 8b) — the Telemt-bump checklist points at this file.
 import { describe, expect, it } from "vitest";
-import { en, ru } from "../../i18n";
+import { en, ru } from "../../i18n/testing";
 import {
   DEFAULT_FIELD_CATALOG,
   catalogCoverage,

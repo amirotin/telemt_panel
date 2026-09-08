@@ -9,7 +9,7 @@
 // when the old page silently dropped a group.
 
 import { describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { ru } from "../../../i18n/testing";
 import { describeField } from "../fieldCatalog";
 import { mePagePayload } from "../../diag/me.helpers";
 import {

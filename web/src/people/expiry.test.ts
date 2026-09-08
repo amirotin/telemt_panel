@@ -6,7 +6,7 @@ import {
   isoToDatetimeLocalValue,
   presetToExpiration,
 } from "./expiry";
-import { ru as s } from "../i18n";
+import { ru as s } from "../i18n/testing";
 
 describe("presetToExpiration", () => {
   const now = new Date("2026-08-25T12:00:00.000Z");

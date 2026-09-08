@@ -5,7 +5,7 @@ import {
   isQuickSettingsSectionShown,
   unknownKeysInSection,
 } from "./configFields";
-import { en, ru } from "../../i18n";
+import { en, ru } from "../../i18n/testing";
 
 describe("unknownKeysInSection", () => {
   it("returns nothing when every key is known", () => {

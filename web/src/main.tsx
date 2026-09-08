@@ -12,6 +12,7 @@ import { SSEProvider } from "./realtime";
 import { registerServiceWorker } from "./pwa/registerSW";
 import { applyTheme, getStoredTheme } from "./lib/theme";
 import { applyDocumentLocale, getLocale } from "./i18n";
+import { LocaleBootstrap } from "./i18n/LocaleBootstrap";
 import "./styles/index.css";
 
 // index.html's boot script already pinned [data-theme] before first paint;
@@ -47,12 +48,14 @@ if (!rootEl) throw new Error("#root element missing from index.html");
 
 createRoot(rootEl).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <DisplayModeProvider>
-        <SSEProvider>
-          <RouterProvider router={router} />
-        </SSEProvider>
-      </DisplayModeProvider>
-    </QueryClientProvider>
+    <LocaleBootstrap>
+      <QueryClientProvider client={queryClient}>
+        <DisplayModeProvider>
+          <SSEProvider>
+            <RouterProvider router={router} />
+          </SSEProvider>
+        </DisplayModeProvider>
+      </QueryClientProvider>
+    </LocaleBootstrap>
   </StrictMode>,
 );

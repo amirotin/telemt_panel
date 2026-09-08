@@ -2,6 +2,7 @@ import { Chip } from "../ui/Chip";
 import { SectionLabel } from "../ui/SectionLabel";
 import type { LocalePreference } from "./dict";
 import { setLocalePreference, useLocalePreference, useStrings } from "./store";
+import { LocaleLoadFeedback } from "./LocaleLoadFeedback";
 
 // LanguageToggle — the per-device language switch in Настройки панели,
 // rendered as the same segmented pill strip ThemeToggle and
@@ -29,12 +30,13 @@ export function LanguageToggle() {
           <Chip
             key={opt.value}
             active={preference === opt.value}
-            onClick={() => setLocalePreference(opt.value)}
+            onClick={() => void setLocalePreference(opt.value)}
           >
             {opt.label}
           </Chip>
         ))}
       </div>
+      <LocaleLoadFeedback />
     </div>
   );
 }

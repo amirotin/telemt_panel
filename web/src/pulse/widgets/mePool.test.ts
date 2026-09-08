@@ -5,7 +5,7 @@ import type {
   RuntimeMePoolState,
   RuntimeMeQuality,
 } from "../../realtime/topics";
-import { en } from "../../i18n";
+import { en } from "../../i18n/testing";
 
 function pool(overrides: Partial<RuntimeMePoolState["writers"]> = {}): RuntimeMePoolState {
   return {

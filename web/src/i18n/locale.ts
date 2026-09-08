@@ -65,7 +65,11 @@ function navigatorLanguages(): readonly string[] {
 }
 
 export function resolveInitialLocale(): Locale {
-  return resolveLocale(getStoredLocalePreference(), navigatorLanguages());
+  return resolvePreferredLocale(getStoredLocalePreference());
+}
+
+export function resolvePreferredLocale(pref: LocalePreference): Locale {
+  return resolveLocale(pref, navigatorLanguages());
 }
 
 // applyDocumentLocale keeps <html lang> in sync with the active language —

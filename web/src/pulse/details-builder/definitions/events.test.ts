@@ -3,7 +3,7 @@
 // (TELEMT_LIVE_API_DATA §18).
 
 import { describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { ru } from "../../../i18n/testing";
 import { describeField, lookupField } from "../fieldCatalog";
 import { admissionEventCount, eventCount, events, runtimeSnapshot } from "../__fixtures__";
 import { eventsPagePayload } from "../../diag/events.helpers";

@@ -58,7 +58,7 @@ describe("SummaryGrid tile names (spec §6, §8)", () => {
       { id: "coverage", path: "coverage_pct", value: (c) => c.coverage_pct, unit: "percent" },
     ];
 
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const ru = render(metrics);
     expect(ru.textContent).toContain("Покрытие");
     expect(ru.textContent).not.toContain("coverage_pct");
@@ -67,20 +67,20 @@ describe("SummaryGrid tile names (spec §6, §8)", () => {
     mounted!.container.remove();
     mounted = null;
 
-    act(() => setLocalePreference("en"));
+    act(() => { void setLocalePreference("en"); });
     const en = render(metrics);
     expect(en.textContent).toContain("Coverage");
     expect(en.textContent).not.toContain("coverage_pct");
   });
 
   it("takes the path from the metric id when there is no explicit path", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const el = render([{ id: "coverage_pct", value: (c) => c.coverage_pct, unit: "percent" }]);
     expect(el.textContent).toContain("Покрытие");
   });
 
   it("falls back to the raw key only when the catalog describes nothing", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const el = render([
       { id: "dropped", path: "dropped_total", value: (c) => c.dropped_total, format: "integer" },
     ]);
@@ -88,7 +88,7 @@ describe("SummaryGrid tile names (spec §6, §8)", () => {
   });
 
   it("still honours an explicit label over the catalog", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const el = render([
       {
         id: "coverage",
@@ -119,7 +119,7 @@ describe("SummaryGrid tone cues (spec §21)", () => {
   }
 
   it("gives warn and bad different glyphs, not just different colours", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
 
     const warn = toned("warn");
     const warnGlyph = glyph(warn);
@@ -138,7 +138,7 @@ describe("SummaryGrid tone cues (spec §21)", () => {
   });
 
   it("marks a healthy tile with nothing at all", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const good = toned("good");
     expect(glyph(good)).toBe("");
   });
@@ -146,13 +146,13 @@ describe("SummaryGrid tone cues (spec §21)", () => {
 
 describe("SummaryGrid shortcuts (spec §18.2)", () => {
   it("stays a plain tile when the metric declares no shortcut", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const el = render([{ id: "coverage_pct", value: (c) => c.coverage_pct, unit: "percent" }]);
     expect(el.querySelector("button")).toBeNull();
   });
 
   it("becomes a button that applies the declared filter and sort", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const applied: SummaryShortcut[] = [];
     const el = render(
       [
@@ -183,7 +183,7 @@ describe("SummaryGrid shortcuts (spec §18.2)", () => {
   });
 
   it("stays a plain tile when the page wires no shortcut handler", () => {
-    act(() => setLocalePreference("ru"));
+    act(() => { void setLocalePreference("ru"); });
     const el = render([
       {
         id: "dropped",

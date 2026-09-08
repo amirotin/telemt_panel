@@ -14,6 +14,8 @@
 // but it's the documented, correct way to declare "yes, this is a test
 // environment" to React, and leaving it unset is exactly the kind of
 // harness gap that can silently change behavior on a future React upgrade.
+import { initializeLocale, setLocalePreference } from "./i18n/store";
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
 }
@@ -29,3 +31,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // store module is imported before any test body runs. A test that wants the
 // other language calls setLocalePreference("en") itself.
 localStorage.setItem("telemt-panel:locale:v1", "ru");
+
+// Component tests use ready dictionaries; store.async tests and browser tests
+// exercise cold loading, failure, cancellation and retry separately.
+await initializeLocale();
+await setLocalePreference("en");
+await setLocalePreference("ru");

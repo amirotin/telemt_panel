@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { en, ru, type Dict } from "../i18n";
+import { en, ru, type Dict } from "../i18n/testing";
 import {
   gateHint,
   resolveGateHint,

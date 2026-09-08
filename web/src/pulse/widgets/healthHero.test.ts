@@ -8,7 +8,7 @@ import {
 } from "./healthHero.helpers";
 import type { RuntimeGates, RuntimeTopic, StatsSnapshot } from "../../realtime/topics";
 import type { UpdatesStatus } from "../../lib/api/generated/types.gen";
-import { ru as s } from "../../i18n";
+import { ru as s } from "../../i18n/testing";
 
 function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
   return { health: null, summary: null, ready: null, ...overrides };

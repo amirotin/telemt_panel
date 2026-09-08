@@ -23,7 +23,7 @@ import {
   type UserQuotaView,
 } from "./users.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
-import { ru as s } from "../i18n";
+import { ru as s } from "../i18n/testing";
 
 function user(overrides: Partial<UsersTopicUser> = {}): UsersTopicUser {
   return {

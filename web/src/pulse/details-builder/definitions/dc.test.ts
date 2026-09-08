@@ -8,7 +8,7 @@
 // the definition (plan Task 6).
 
 import { describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { ru } from "../../../i18n/testing";
 import { dcs, minimalAll } from "../__fixtures__";
 import { resolveSections } from "../resolveSections";
 import type { CollectionSectionInstance, ScalarSectionInstance } from "../resolveSections";

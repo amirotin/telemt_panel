@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { en, ru, type Dict } from "../i18n";
+import { en, ru, type Dict } from "../i18n/testing";
 import {
   MANAGEMENT_NAV_ITEMS,
   NAV_ITEMS,

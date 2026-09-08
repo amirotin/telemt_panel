@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { postureBadges } from "./posture.helpers";
 import type { SecurityPosture } from "../../realtime/topics";
-import { ru as s } from "../../i18n";
+import { ru as s } from "../../i18n/testing";
 
 function posture(overrides: Partial<SecurityPosture>): SecurityPosture {
   return {

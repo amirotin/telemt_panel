@@ -1,5 +1,4 @@
 import type { Dict } from "./dict";
-import { ru } from "./ru";
 
 // The two dynamic-key tables live inside the dictionaries (ru.errors /
 // ru.auditActions) so en.ts must translate every entry or fail to compile.
@@ -21,11 +20,4 @@ export function errorMessage(s: Dict, code: string): string {
 // an action string this build doesn't know yet.
 export function auditActionLabel(s: Dict, action: string): string | undefined {
   return table(s.auditActions)[action];
-}
-
-// isKnownAuditAction reads the Russian table deliberately: the KEY set is
-// the contract with the backend and is locale-independent, and ru.ts is the
-// dictionary that defines the shape both languages share.
-export function isKnownAuditAction(action: string): boolean {
-  return Object.prototype.hasOwnProperty.call(ru.auditActions, action);
 }

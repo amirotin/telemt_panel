@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { compressedAssets } from "./scripts/compress-assets.ts";
+import { localeAssets } from "./scripts/locale-assets.ts";
 
 // emptyOutDir wipes internal/webui/dist/.gitkeep along with everything else
 // on every build — restore it so `git status` doesn't show it as deleted
@@ -30,6 +31,7 @@ export default defineConfig({
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react(),
     tailwindcss(),
+    localeAssets(),
     restoreDistGitkeep(),
     compressedAssets(),
   ],

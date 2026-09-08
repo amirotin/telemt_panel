@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { auditActionFamily, renderAuditAction } from "./auditActions";
 import type { AuditEntry } from "../lib/api/generated/types.gen";
-import { isKnownAuditAction, ru as s } from "../i18n";
+import { ru as s } from "../i18n/testing";
 
 // KNOWN_BACKEND_ACTIONS mirrors every literal string passed as the first
 // argument to `s.appendAudit(...)` across internal/httpapi/*.go (excluding
@@ -50,7 +50,7 @@ function entry(overrides: Partial<AuditEntry> = {}): AuditEntry {
 describe("audit action dictionary completeness", () => {
   it("has a label for every action the backend actually emits", () => {
     for (const action of KNOWN_BACKEND_ACTIONS) {
-      expect(isKnownAuditAction(action), `missing label for action "${action}"`).toBe(true);
+      expect(Object.hasOwn(s.auditActions, action), `missing label for action "${action}"`).toBe(true);
     }
   });
 });

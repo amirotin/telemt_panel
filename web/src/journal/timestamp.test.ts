@@ -5,7 +5,7 @@ import {
   formatAuditTimestamp,
   formatLogClock,
 } from "./timestamp.helpers";
-import { ru as s } from "../i18n";
+import { ru as s } from "../i18n/testing";
 
 // Assertions use shape (regex), not an exact string — the formatted value
 // depends on the test runner's local timezone, which this suite doesn't

@@ -96,6 +96,14 @@ add.
 
 UI strings live in `src/i18n/` — `ru.ts` is the source of truth for the shape, `en.ts` is typed from it (a missing key is a compile error); components read the active dictionary via `useStrings()`, helpers take `s: Dict`; the language (Русский / English / Browser) is chosen in Server → Panel settings and persisted per device. An eslint rule forbids importing `ru`/`en` outside `src/i18n/`, and `i18n.test.ts` sweeps `src/` for stray Cyrillic.
 
+Only the selected dictionary loads at startup. Switching language keeps the
+current screen mounted until the new dictionary is ready; failed downloads
+offer a retry without reloading forms. `scripts/locale-assets.ts` emits the two
+hashed dictionary entry URLs, including support for the panel's base path.
+The loader changes the URL only on retry because browsers cache failed module
+imports. Tests that need both dictionaries use the test-only `i18n/testing`
+entry; production code must not import it or eagerly import a dictionary.
+
 Design tokens live in `src/styles/tokens.css` (RGB triplets, dark default /
 light / system via `[data-theme]`) mapped into Tailwind's `@theme` in
 `src/styles/index.css`. Theme persistence: `src/lib/theme.ts` +

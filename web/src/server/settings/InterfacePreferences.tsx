@@ -8,6 +8,7 @@ import {
 } from "../../i18n";
 import { useDisplayMode, type DisplayMode } from "../../display-mode";
 import { cn } from "../../lib/cn";
+import { LocaleLoadFeedback } from "../../i18n/LocaleLoadFeedback";
 
 const THEME_SWATCHES: Record<Theme, string> = {
   system:
@@ -106,7 +107,7 @@ export function InterfacePreferences() {
               type="button"
               role="radio"
               aria-checked={locale === option.value}
-              onClick={() => setLocalePreference(option.value)}
+              onClick={() => void setLocalePreference(option.value)}
               className={cn(
                 "tap-target rounded-lg border px-2 text-[11px] font-bold transition-colors",
                 locale === option.value
@@ -118,6 +119,7 @@ export function InterfacePreferences() {
             </button>
           ))}
         </div>
+        <LocaleLoadFeedback />
       </fieldset>
 
       <fieldset className="px-4 py-4">

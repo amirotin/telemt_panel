@@ -74,7 +74,7 @@ export default tseslint.config(
           ],
           patterns: [
             {
-              group: ["**/i18n", "**/i18n/ru", "**/i18n/en"],
+              group: ["**/i18n", "**/i18n/ru", "**/i18n/en", "**/i18n/testing"],
               importNames: ["ru", "en"],
               message:
                 "Read UI strings through useStrings() (components) or an `s: Dict` parameter (helpers) — importing a dictionary directly freezes the string to one language.",

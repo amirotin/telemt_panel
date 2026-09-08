@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { en, ru } from "../../i18n";
+import { en, ru } from "../../i18n/testing";
 import type { HistorySeries } from "../../lib/api/generated/types.gen";
 import type { TopicSnapshot } from "../../realtime/types";
 import type {

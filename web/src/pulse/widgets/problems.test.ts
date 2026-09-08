@@ -9,7 +9,7 @@ import {
   problemSeverity,
 } from "./problems.helpers";
 import type { DcStatus, DcStatusData, StatsSnapshot, StatsSummary } from "../../realtime/topics";
-import { ru as s } from "../../i18n";
+import { ru as s } from "../../i18n/testing";
 
 function stats(overrides: Partial<StatsSnapshot> = {}): StatsSnapshot {
   return { health: null, summary: null, ready: null, ...overrides };

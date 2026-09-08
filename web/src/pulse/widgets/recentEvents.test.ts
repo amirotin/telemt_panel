@@ -14,7 +14,7 @@ import {
 } from "./recentEvents.helpers";
 import { events as eventsFixture } from "../details-builder/__fixtures__";
 import type { RuntimeEdgeEventRecord, RuntimeEdgeEvents } from "../../realtime/topics";
-import { en, ru } from "../../i18n";
+import { en, ru } from "../../i18n/testing";
 
 // Distinct types by default, so the coalescer has nothing to fold and the
 // view's ordering/limit can be checked on its own.

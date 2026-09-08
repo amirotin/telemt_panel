@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatBytes } from "./format";
-import { ru as s } from "../i18n";
+import { ru as s } from "../i18n/testing";
 
 describe("formatBytes", () => {
   it("renders sub-kilobyte values in bytes", () => {

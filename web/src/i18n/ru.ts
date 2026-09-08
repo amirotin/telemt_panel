@@ -47,6 +47,8 @@ export const ru = {
   // language names stay in their own language — that is how a person who
   // landed on the wrong one finds their way back.
   language: {
+    loading: "Загрузка языка…",
+    loadFailed: "Не удалось загрузить язык. Текущий язык сохранён.",
     label: "Язык",
     auto: "Как в браузере",
     ru: "Русский",

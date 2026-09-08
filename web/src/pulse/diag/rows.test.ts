@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { flattenToRows, formatPrimitive, group, humanizeKey } from "./rows";
-import { ru as s } from "../../i18n";
+import { ru as s } from "../../i18n/testing";
 
 describe("formatPrimitive", () => {
   it("renders null/undefined as an em dash", () => {

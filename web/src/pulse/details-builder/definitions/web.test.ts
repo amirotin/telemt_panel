@@ -5,7 +5,7 @@
 // continuation.
 
 import { describe, expect, it } from "vitest";
-import { ru } from "../../../i18n";
+import { ru } from "../../../i18n/testing";
 import {
   webSessionRef,
   webSessionRows,

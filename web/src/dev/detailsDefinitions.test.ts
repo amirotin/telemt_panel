@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ru } from "../i18n";
+import { ru } from "../i18n/testing";
 import { describeField, formatValue } from "../pulse/details-builder";
 import { devMePayload } from "./detailsDefinitions";
 import { meQuality } from "../pulse/details-builder/__fixtures__";
