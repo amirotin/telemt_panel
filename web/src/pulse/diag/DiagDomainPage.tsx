@@ -23,8 +23,8 @@ const PAGES: Record<DiagDomain, () => React.ReactElement> = {
   web: () => <WebPage />,
 };
 
-function isDiagDomain(v: string): v is DiagDomain {
-  return v in PAGES;
+function hasPage(v: string): v is DiagDomain {
+  return Object.prototype.hasOwnProperty.call(PAGES, v);
 }
 
 // DiagDomainPage dispatches the /pulse/diag/$domain route param to the
@@ -32,7 +32,7 @@ function isDiagDomain(v: string): v is DiagDomain {
 // a domain page component.
 export function DiagDomainPage({ domain }: { domain: string }) {
   const s = useStrings();
-  if (!isDiagDomain(domain)) {
+  if (!hasPage(domain)) {
     return <EmptyState title={s.diag.notFoundTitle} />;
   }
   const Page = PAGES[domain];
