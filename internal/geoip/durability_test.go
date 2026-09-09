@@ -9,7 +9,7 @@ import (
 )
 
 func TestManagerDirectorySyncFailurePreservesRecoverableBundles(t *testing.T) {
-	for _, phase := range []string{"bundle", "bundle-parent", "manifest"} {
+	for _, phase := range []string{"bundle", "bundle-parent", "manifest-new", "manifest-old", "manifest-file-sync", "manifest-root-sync"} {
 		t.Run(phase, func(t *testing.T) {
 			dataDir := t.TempDir()
 			root := filepath.Join(dataDir, "geoip")
@@ -35,7 +35,7 @@ func TestManagerDirectorySyncFailurePreservesRecoverableBundles(t *testing.T) {
 				}
 				if (phase == "bundle" && strings.HasPrefix(filepath.Base(path), ".staging-")) ||
 					(phase == "bundle-parent" && path == root && current.Directory == old.Directory) ||
-					(phase == "manifest" && path == root && current.Directory != old.Directory) {
+					(strings.HasPrefix(phase, "manifest-") && path == root && current.Directory != old.Directory) {
 					return errors.New("injected directory sync failure")
 				}
 				return syncDatabaseFile(path)
@@ -61,27 +61,44 @@ func TestManagerDirectorySyncFailurePreservesRecoverableBundles(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(root, old.Directory, "country.mmdb")); err != nil {
 				t.Fatalf("old recoverable generation removed: %v", err)
 			}
-			restored := NewManager(dataDir, settings)
+			// Exercise each possible crash outcome on its own fixture, before a
+			// successful startup makes the selected visible manifest durable.
+			if phase == "manifest-old" {
+				if err := os.WriteFile(filepath.Join(root, "active.json"), oldManifest, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			restored := NewManager("", settings)
+			restored.dataDir = dataDir
+			barrierFailed := phase == "manifest-file-sync" || phase == "manifest-root-sync"
+			if phase == "manifest-file-sync" {
+				restored.syncFile = func(string) error { return errors.New("restore file sync failed") }
+			}
+			if phase == "manifest-root-sync" {
+				restored.syncDir = func(string) error { return errors.New("restore directory sync failed") }
+			}
+			restored.restore()
 			if got := restored.Lookup("81.2.69.142"); got == nil || got.CountryCode != "GB" {
 				t.Fatalf("restart lookup lost: %+v", got)
 			}
 			restored.Close()
-			if phase != "manifest" && current.Directory != old.Directory {
+			if !strings.HasPrefix(phase, "manifest-") && current.Directory != old.Directory {
 				t.Fatal("manifest changed before bundle became durable")
 			}
-			if phase == "manifest" {
+			if strings.HasPrefix(phase, "manifest-") {
 				if current.Directory == old.Directory {
 					t.Fatal("post-rename failure was not exercised")
 				}
-				// A crash may retain the old manifest when the replacement rename
-				// was not synced. Both possible manifest generations must work.
-				if err := os.WriteFile(filepath.Join(root, "active.json"), oldManifest, 0o600); err != nil {
-					t.Fatal(err)
+				inactive := old.Directory
+				if phase == "manifest-old" {
+					inactive = current.Directory
 				}
-				recovered := NewManager(dataDir, settings)
-				defer recovered.Close()
-				if got := recovered.Lookup("81.2.69.142"); got == nil || got.CountryCode != "GB" || got.CountryName == "" {
-					t.Fatalf("old manifest recovery failed: %+v", got)
+				_, err := os.Stat(filepath.Join(root, inactive))
+				if barrierFailed && err != nil {
+					t.Fatalf("recoverable generation removed after failed barrier: %v", err)
+				}
+				if !barrierFailed && !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("inactive generation remained after successful barrier: %v", err)
 				}
 			}
 		})

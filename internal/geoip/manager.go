@@ -145,6 +145,7 @@ func (m *Manager) restore() {
 		source := b.source
 		m.status = Status{State: StateReady, Available: true, ActiveSource: &source, Databases: b.statuses()}
 	}
+	m.cleanupRestoredBundle(filepath.Join(m.dataDir, "geoip"))
 }
 
 func errorStatus(active *bundle, code string) Status {
@@ -278,7 +279,7 @@ func (m *Manager) startOperationLocked(cfg Config) {
 			old.close()
 		}
 		if oldDir != "" && oldDir != next.dir {
-			_ = os.RemoveAll(oldDir)
+			_ = cleanupOwnedBundles(filepath.Dir(next.dir), cfg, next, oldDir)
 		}
 	}()
 }
@@ -549,6 +550,9 @@ func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string,
 			_ = os.RemoveAll(staging)
 		}
 	}()
+	if err := writeBundleMarker(staging); err != nil {
+		return nil, "", coded(ErrorActivationFailed, err)
+	}
 	paths := make(map[Kind]string)
 	for _, item := range cfg.databases() {
 		if !item.config.Enabled {
