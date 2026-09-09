@@ -231,6 +231,42 @@ describe("sortUsers", () => {
   });
 });
 
+describe("stable metric sorting", () => {
+  const traffic = {
+    observed_total_bytes: 100,
+    current_month_bytes: 100,
+    month_key: 202609,
+    observed_since_epoch_secs: 1,
+    last_activity_epoch_secs: 2,
+    continuity: "normal" as const,
+  };
+
+  for (const field of ["connections", "traffic"] as const) {
+    it.each(["asc", "desc"] as const)(`${field} ties keep name order in %s across reordered snapshots`, (direction) => {
+      const users = Array.from({ length: 2000 }, (_, index) => user({
+        username: `scale-${String(index).padStart(4, "0")}`,
+        current_connections: 0,
+        traffic,
+      }));
+      expect(sortUsers([...users].reverse(), { field, direction })).toEqual(users);
+      expect(sortUsers([...users.slice(500), ...users.slice(0, 500)], { field, direction })).toEqual(users);
+    });
+  }
+
+  it("keeps metric priority and missing traffic after known values", () => {
+    const users = [
+      user({ username: "missing" }),
+      user({ username: "zeta", current_connections: 2, traffic }),
+      user({ username: "beta", current_connections: 1, traffic: { ...traffic, current_month_bytes: 50 } }),
+      user({ username: "alpha", current_connections: 2, traffic }),
+    ];
+    for (const field of ["connections", "traffic"] as const) {
+      expect(sortUsers(users, { field, direction: "desc" }).map((u) => u.username)).toEqual(["alpha", "zeta", "beta", "missing"]);
+    }
+    expect(sortUsers(users, { field: "traffic", direction: "asc" }).map((u) => u.username)).toEqual(["beta", "alpha", "zeta", "missing"]);
+  });
+});
+
 describe("sort persistence", () => {
   afterEach(() => {
     localStorage.clear();
