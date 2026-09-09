@@ -1,3 +1,5 @@
+# Use the Go minor declared in root go.mod (latest patch) and Node 22.
+# web/go.mod only isolates frontend dependencies from Go package traversal.
 VERSION ?= 0.0.0-dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
 

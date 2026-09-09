@@ -47,7 +47,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: 'stable'
+          go-version-file: go.mod
+          check-latest: true
 
       - name: Lint (gofmt + vet)
         run: make lint
@@ -92,7 +93,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: 'stable'
+          go-version-file: go.mod
+          check-latest: true
 
       - name: Install frontend deps
         working-directory: web
@@ -155,7 +157,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: 'stable'
+          go-version-file: go.mod
+          check-latest: true
 
       # `make release` depends on the `web` target (npm ci + npm run
       # build), building the frontend once ahead of every per-arch Go
@@ -178,7 +181,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: 'stable'
+          go-version-file: go.mod
+          check-latest: true
 
       - name: Lint installer
         run: |
