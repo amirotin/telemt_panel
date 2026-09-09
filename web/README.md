@@ -306,14 +306,14 @@ Playwright project that a normal `npm run e2e` never runs.
 
 ## e2e (Playwright)
 
-`web/e2e/` (chromium only, plan Ruling R4) runs against the **real built
-panel binary** + `cmd/telemt-mock` — never the vite dev server, never a
-mocked `fetch`. Two projects: `mobile` (360×640 — the primary target, one
-sequential flow through login → create a user → share/sub-page → Сводка
-dashboard + layout editor → Пульс hub → a Details page and back → Журнал →
-Сервер) and `desktop` (1280×800 smoke — the five-section sidebar, the
-Сводка/Пульс split, the Raw config editor/CodeMirror actually mounting at
-`lg:`).
+`web/e2e/` runs Chromium against the **real built panel binary** and
+`cmd/telemt-mock`, not the Vite dev server. The `mobile` project starts at
+360×640 and the `desktop` project at 1280×800; responsive tests also resize
+the viewport. Coverage includes authentication, user management, sharing,
+Overview, all nine Pulse diagnostics, Journal, Server forms, localization and
+service-worker reloads. Selected edge-case tests substitute a narrow API
+response (such as historical samples or startup status) while retaining the
+built application. Those fixtures do not replace backend contract tests.
 
 ```bash
 npx playwright install chromium   # once per machine
@@ -343,6 +343,18 @@ npm run e2e                       # playwright test
   `build` job), with `retries: 1` (via `CI=true`) and the Playwright HTML
   report + `test-results/` (screenshots, traces) uploaded as artifacts on
   failure.
+
+The optional large-list regression seeds 2000 synthetic users only into the
+isolated `telemt-mock` owned by the test stack, never a configured Telemt server:
+
+```bash
+RUN_PEOPLE_SCALE=1 npm run e2e -- --project=desktop people-scale.desktop.spec.ts
+```
+
+It checks full-dataset search, virtualized scrolling at 1440/768/360px, sorting,
+filters, long press and returning from the mobile detail screen. Console output
+reports rendered row counts and decoded SSE user-payload bytes, not total network
+transfer or a server memory limit. It is skipped in the ordinary e2e run.
 
 ## PWA
 
