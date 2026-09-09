@@ -118,18 +118,19 @@ func TestReadNewLinesTrimsOnlyIncompleteUTF8AtCap(t *testing.T) {
 	}
 }
 
-func TestReadNewLinesConsumesOnlyAppendedBytesAndCapturedEnd(t *testing.T) {
+func TestReadNewLinesBoundsOverlapAndCapturedEnd(t *testing.T) {
 	content := strings.Repeat("x", 8*maxFollowLineBytes) + "\nend\n"
 	reader := strings.NewReader(content)
 	var cursor fileFollowCursor
 	var end, total int64
 	reads := 0
 	tracked := followReaderAtFunc(func(p []byte, offset int64) (int, error) {
-		if len(p) > followChunkBytes || offset != total || offset+int64(len(p)) > end {
+		overlap := min(total, int64(tailOverlapBytes))
+		if len(p) > followChunkBytes || offset != total-overlap || offset+int64(len(p)) > end {
 			t.Fatalf("unexpected read offset=%d width=%d total=%d end=%d", offset, len(p), total, end)
 		}
 		n, err := reader.ReadAt(p, offset)
-		total += int64(n)
+		total += int64(n) - overlap
 		reads++
 		return n, err
 	})

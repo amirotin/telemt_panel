@@ -97,7 +97,8 @@ func TestFileFollowBlockedHeap(t *testing.T) {
 				t.Logf("shape=%s backlog=%d heap_delta=%d prefix_capacity=%d reads_before_block=%d", shape, size, int64(blocked.HeapAlloc)-int64(before.HeapAlloc), cap(cursor.partial), reads)
 				wantReads := int64(1)
 				if shape == "huge-line" {
-					wantReads = size / followChunkBytes
+					step := int64(followChunkBytes - tailOverlapBytes)
+					wantReads += (size - followChunkBytes + step - 1) / step
 				}
 				if int64(reads) != wantReads || cap(cursor.partial) > maxFollowLineBytes {
 					t.Fatal("reader exceeded first-line reads or prefix cap")

@@ -108,7 +108,7 @@ const tailOverlapBytes = 256
 // copytruncate racing ahead of a slow poll interval) are all handled by
 // resuming from the new content at offset 0 rather than reading stale
 // bytes at a now-meaningless offset or erroring. A bounded partial prefix
-// is retained until its newline arrives, without rereading consumed bytes.
+// is retained until its newline arrives; only a small overlap is reread.
 // The returned channel closes when ctx is done.
 func followFile(ctx context.Context, path string, pollInterval time.Duration) <-chan string {
 	ticker := time.NewTicker(pollInterval)
@@ -123,12 +123,11 @@ func followFileTicks(ctx context.Context, path string, tickCh <-chan time.Time, 
 	var cursor fileFollowCursor
 	var ino uint64
 	var haveIno bool
-	var tailBuf []byte
 	if f, err := os.Open(path); err == nil {
 		if fi, err := f.Stat(); err == nil {
 			cursor.offset = fi.Size()
 			ino, haveIno = fileIno(fi)
-			tailBuf = readTailOverlapFromFile(f, cursor.offset)
+			cursor.remember(readTailOverlapFromFile(f, cursor.offset))
 		}
 		f.Close()
 	}
@@ -166,12 +165,9 @@ func followFileTicks(ctx context.Context, path string, tickCh <-chan time.Time, 
 			// Only worth checking when neither cheaper signal already
 			// caught it, and only meaningful once there's a nonzero
 			// offset with a captured tail to compare against.
-			refilled := !rotated && !shrunk && cursor.offset > 0 && !overlapStillMatches(f, cursor.offset, tailBuf)
+			refilled := !rotated && !shrunk && cursor.offset > 0 && !overlapStillMatches(f, cursor.offset, cursor.overlap[:cursor.overlapLen])
 			if rotated || shrunk || refilled {
-				cursor.offset = 0
-				cursor.partial = cursor.partial[:0]
-				cursor.truncated = false
-				tailBuf = nil
+				cursor.reset()
 			}
 			ino, haveIno = curIno, curHaveIno
 
@@ -189,9 +185,6 @@ func followFileTicks(ctx context.Context, path string, tickCh <-chan time.Time, 
 					return false
 				}
 			})
-			if ctx.Err() == nil {
-				tailBuf = readTailOverlapFromFile(f, cursor.offset)
-			}
 			f.Close()
 		}
 	}()
@@ -244,7 +237,9 @@ func overlapStillMatches(f *os.File, offset int64, want []byte) bool {
 		// Nothing captured yet, so there is no prior content to contradict.
 		return true
 	}
-	return bytes.Equal(readTailOverlapFromFile(f, offset), want)
+	var actual [tailOverlapBytes]byte
+	_, err := f.ReadAt(actual[:len(want)], offset-int64(len(want)))
+	return err == nil && bytes.Equal(actual[:len(want)], want)
 }
 
 const (
@@ -254,25 +249,58 @@ const (
 )
 
 type fileFollowCursor struct {
-	offset    int64
-	partial   []byte
-	truncated bool
+	offset     int64
+	partial    []byte
+	truncated  bool
+	overlap    [tailOverlapBytes]byte
+	overlapLen int
+}
+
+func (c *fileFollowCursor) reset() {
+	c.offset = 0
+	c.partial = c.partial[:0]
+	c.truncated = false
+	c.overlapLen = 0
+}
+
+// remember keeps evidence from the consumed buffer, never from a later file
+// read: copytruncate may have already replaced the bytes at that offset.
+func (c *fileFollowCursor) remember(consumed []byte) {
+	c.overlapLen = copy(c.overlap[:], consumed[max(0, len(consumed)-tailOverlapBytes):])
 }
 
 // readNewLines consumes only [cursor.offset, end), emitting completed lines
 // individually. Partial lines retain a bounded prefix, including across polls.
 // Returning false from emit stops at that line; no backlog slice is retained.
+// Each read includes the previous consumed tail to detect copytruncate between
+// chunks, including while emit blocks. A changed tail resets the cursor and
+// yields to the next poll rather than retrying an actively rewritten file.
 func readNewLines(ctx context.Context, f io.ReaderAt, end int64, cursor *fileFollowCursor, scratch []byte, emit func(string) bool) error {
-	if len(scratch) == 0 {
+	if len(scratch) <= tailOverlapBytes {
 		return io.ErrShortBuffer
 	}
 	for cursor.offset < end {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		width := min(int64(len(scratch)), int64(followChunkBytes), end-cursor.offset)
-		n, err := f.ReadAt(scratch[:width], cursor.offset)
-		chunk := scratch[:n]
+		overlapLen := cursor.overlapLen
+		width := min(int64(len(scratch)), int64(followChunkBytes), end-cursor.offset+int64(overlapLen))
+		n, err := f.ReadAt(scratch[:width], cursor.offset-int64(overlapLen))
+		if n < overlapLen {
+			if err != io.EOF {
+				if err != nil {
+					return err
+				}
+				return io.ErrNoProgress
+			}
+			cursor.reset()
+			return nil
+		}
+		if !bytes.Equal(scratch[:overlapLen], cursor.overlap[:overlapLen]) {
+			cursor.reset()
+			return nil
+		}
+		chunk := scratch[overlapLen:n]
 		for len(chunk) > 0 {
 			newline := bytes.IndexByte(chunk, '\n')
 			length := len(chunk)
@@ -315,13 +343,15 @@ func readNewLines(ctx context.Context, f io.ReaderAt, end int64, cursor *fileFol
 			cursor.partial = cursor.partial[:0]
 			cursor.truncated = false
 			if !emit(line) {
+				cursor.remember(scratch[:n-len(chunk)])
 				return ctx.Err()
 			}
 		}
+		cursor.remember(scratch[:n])
 		if err != nil {
 			return err
 		}
-		if n == 0 {
+		if n == overlapLen {
 			return io.ErrNoProgress
 		}
 	}
