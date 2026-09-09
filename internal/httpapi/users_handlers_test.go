@@ -456,8 +456,8 @@ func TestHandleListUsers_NoNullArraysOnTheWire(t *testing.T) {
 		t.Fatalf("users = %+v, want 1", users)
 	}
 	u := users[0]
-	if u.ActiveUniqueIPsList == nil || u.RecentUniqueIPsList == nil {
-		t.Errorf("ip lists = %#v / %#v, want non-nil empty slices", u.ActiveUniqueIPsList, u.RecentUniqueIPsList)
+	if u.ActiveIPList == nil || u.RecentIPList == nil {
+		t.Errorf("ip lists = %#v / %#v, want non-nil empty slices", u.ActiveIPList, u.RecentIPList)
 	}
 	if u.Links.Classic == nil || u.Links.Secure == nil || u.Links.TLS == nil || u.Links.TLSDomains == nil {
 		t.Errorf("links = %#v, want every array field non-nil", u.Links)
@@ -523,6 +523,61 @@ func TestHandleListUsersMergesQuotaAndSubURL(t *testing.T) {
 	}
 	if bob.SubURL != "" {
 		t.Errorf("bob.SubURL = %q, want empty (no extractable link secret)", bob.SubURL)
+	}
+}
+
+func TestUsersProjectionIPHistoryIsListOnly(t *testing.T) {
+	fake := newFakeTelemt(aliceFixture(), bobFixture())
+	srv, cookie := newUsersTestServer(t, fake, false)
+	now := time.Now().Unix()
+	if err := srv.st.ApplyUserIPBatch(store.UserIPBatch{
+		ID:      "users-projection",
+		Through: now,
+		Records: []store.UserIPRecord{{
+			Username: "alice", IP: "192.0.2.1", Family: 4,
+			First: now, Last: now, Observations: 1, LastActive: now, Source: 1,
+		}},
+	}); err != nil {
+		t.Fatalf("ApplyUserIPBatch: %v", err)
+	}
+	h := srv.Handler()
+
+	list := httptest.NewRecorder()
+	listRequest := httptest.NewRequest("GET", "/api/users", nil)
+	listRequest.AddCookie(cookie)
+	h.ServeHTTP(list, listRequest)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", list.Code, list.Body)
+	}
+	var users []userResponse
+	if err := json.Unmarshal(list.Body.Bytes(), &users); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(users) != 2 || users[0].Username != "alice" || users[0].IPHistory == nil || users[0].IPHistory.Unique != 1 {
+		t.Fatalf("list users = %#v, want available IP summary", users)
+	}
+	if users[1].Username != "bob" || users[1].IPHistory != nil {
+		t.Fatalf("list bob = %#v, want no unavailable IP summary", users[1])
+	}
+
+	detail := httptest.NewRecorder()
+	detailRequest := httptest.NewRequest("GET", "/api/users/alice", nil)
+	detailRequest.AddCookie(cookie)
+	h.ServeHTTP(detail, detailRequest)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("detail status = %d: %s", detail.Code, detail.Body)
+	}
+	if bytes.Contains(detail.Body.Bytes(), []byte(`"ip_history"`)) {
+		t.Fatalf("detail unexpectedly contains IP history: %s", detail.Body)
+	}
+
+	mutation := httptest.NewRecorder()
+	h.ServeHTTP(mutation, mutatingJSON(t, "PUT", "/api/users/alice/enabled", cookie, map[string]bool{"enabled": false}))
+	if mutation.Code != http.StatusOK {
+		t.Fatalf("mutation status = %d: %s", mutation.Code, mutation.Body)
+	}
+	if bytes.Contains(mutation.Body.Bytes(), []byte(`"ip_history"`)) {
+		t.Fatalf("mutation unexpectedly contains IP history: %s", mutation.Body)
 	}
 }
 

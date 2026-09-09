@@ -312,6 +312,18 @@ func TestUsersTopicComposite(t *testing.T) {
 	if !ok || alice.UsedBytes != 512 || alice.DataQuotaBytes != 1024 {
 		t.Fatalf("quota[alice] = %+v, ok=%v", alice, ok)
 	}
+	var wire struct {
+		Users []map[string]json.RawMessage `json:"users"`
+	}
+	if err := json.Unmarshal(ev.Data, &wire); err != nil {
+		t.Fatalf("decode raw users topic: %v", err)
+	}
+	if _, ok := wire.Users[0]["quota"]; ok {
+		t.Fatalf("users topic item contains REST nested quota: %s", ev.Data)
+	}
+	if _, ok := wire.Users[0]["sub_url"]; ok {
+		t.Fatalf("users topic item contains REST sub_url: %s", ev.Data)
+	}
 }
 
 // TestUsersTopicDegradesQuotaWhenCapabilityAbsent covers the same composite

@@ -16,6 +16,7 @@ import (
 
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"github.com/amirotin/telemt_panel/internal/userprojection"
 )
 
 // Default poll intervals and lifecycle timings (spec 02-hub-sse.md). Tests
@@ -397,27 +398,14 @@ func New(cfg Config, tc *telemt.Client, st store.HistoryStore) *Hub {
 // quota data. Quota is an explicit JSON null (Go's nil-map default), not an
 // omitted key, when the capability is unsupported or the probe failed.
 type usersSnapshot struct {
-	Users          []userSnapshotItem           `json:"users"`
+	Users          []userprojection.User        `json:"users"`
 	Quota          map[string]telemt.QuotaEntry `json:"quota"`
 	QuotaSupported bool                         `json:"quota_supported"`
 	liveGauges     usersLiveGauges
 	liveGaugesOK   bool
 }
 
-type userSnapshotItem struct {
-	telemt.UserInfo
-	IPHistory *store.UserIPSummary `json:"ip_history,omitempty"`
-	Traffic   *userTrafficSnapshot `json:"traffic,omitempty"`
-}
-
-type userTrafficSnapshot struct {
-	ObservedTotalBytes     int64                       `json:"observed_total_bytes"`
-	CurrentMonthBytes      int64                       `json:"current_month_bytes"`
-	MonthKey               int                         `json:"month_key"`
-	ObservedSinceEpochSecs int64                       `json:"observed_since_epoch_secs"`
-	LastActivityEpochSecs  int64                       `json:"last_activity_epoch_secs"`
-	Continuity             store.UserTrafficContinuity `json:"continuity"`
-}
+type userSnapshotItem = userprojection.User
 
 func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (usersSnapshot, error) {
 	users, gauges, err := fetchUsersObservation(ctx, tc)
@@ -446,19 +434,9 @@ func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (
 			slog.Warn("hub: IP summaries unavailable")
 		}
 	}
-	items := make([]userSnapshotItem, len(users))
+	items := make([]userprojection.User, len(users))
 	for i, user := range users {
-		items[i].UserInfo = user
-		if summary, ok := ips[user.Username]; ok {
-			items[i].IPHistory = &summary
-		}
-		if summary, ok := traffic[user.Username]; ok {
-			items[i].Traffic = &userTrafficSnapshot{
-				ObservedTotalBytes: summary.ObservedTotalBytes, CurrentMonthBytes: summary.CurrentMonthBytes,
-				MonthKey: summary.MonthKey, ObservedSinceEpochSecs: summary.ObservedSinceEpochSecs,
-				LastActivityEpochSecs: summary.LastActivityEpochSecs, Continuity: summary.Continuity,
-			}
-		}
+		items[i] = userprojection.Build(user, traffic, ips)
 	}
 	return usersSnapshot{
 		Users: items, Quota: quota, QuotaSupported: hasQuota,
@@ -923,7 +901,7 @@ func (h *Hub) cachedUsersLiveGauges() (usersLiveGauges, bool) {
 	return t.usersGauges, true
 }
 
-func usersLiveTotals(users []userSnapshotItem) usersLiveGauges {
+func usersLiveTotals(users []userprojection.User) usersLiveGauges {
 	var gauges usersLiveGauges
 	for _, user := range users {
 		gauges.addUser(user.CurrentConnections)

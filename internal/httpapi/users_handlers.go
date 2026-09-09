@@ -14,6 +14,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/subpage"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"github.com/amirotin/telemt_panel/internal/userprojection"
 )
 
 // userMutationPokeDelay is how long after a user mutation's response the
@@ -54,39 +55,12 @@ type userQuota struct {
 	LastResetEpochSecs int64  `json:"last_reset_epoch_secs"`
 }
 
-type userTraffic struct {
-	ObservedTotalBytes     int64                       `json:"observed_total_bytes"`
-	CurrentMonthBytes      int64                       `json:"current_month_bytes"`
-	MonthKey               int                         `json:"month_key"`
-	ObservedSinceEpochSecs int64                       `json:"observed_since_epoch_secs"`
-	LastActivityEpochSecs  int64                       `json:"last_activity_epoch_secs"`
-	Continuity             store.UserTrafficContinuity `json:"continuity"`
-}
-
 // userResponse mirrors api/openapi.yaml schema User: Telemt's UserInfo
 // merged with quota usage and the panel's sub_url extra.
 type userResponse struct {
-	Username            string               `json:"username"`
-	Enabled             bool                 `json:"enabled"`
-	InRuntime           bool                 `json:"in_runtime"`
-	UserAdTag           string               `json:"user_ad_tag,omitempty"`
-	MaxTCPConns         *uint64              `json:"max_tcp_conns,omitempty"`
-	MaxUniqueIPs        *uint64              `json:"max_unique_ips,omitempty"`
-	DataQuotaBytes      *uint64              `json:"data_quota_bytes,omitempty"`
-	ExpirationRFC3339   string               `json:"expiration_rfc3339,omitempty"`
-	RateLimitUpBps      *uint64              `json:"rate_limit_up_bps,omitempty"`
-	RateLimitDownBps    *uint64              `json:"rate_limit_down_bps,omitempty"`
-	CurrentConnections  uint64               `json:"current_connections"`
-	ActiveUniqueIPs     uint64               `json:"active_unique_ips"`
-	ActiveUniqueIPsList []string             `json:"active_unique_ips_list"`
-	RecentUniqueIPs     uint64               `json:"recent_unique_ips"`
-	RecentUniqueIPsList []string             `json:"recent_unique_ips_list"`
-	TotalOctets         uint64               `json:"total_octets"`
-	Links               telemt.UserLinks     `json:"links"`
-	Quota               *userQuota           `json:"quota,omitempty"`
-	Traffic             *userTraffic         `json:"traffic,omitempty"`
-	IPHistory           *store.UserIPSummary `json:"ip_history,omitempty"`
-	SubURL              string               `json:"sub_url,omitempty"`
+	userprojection.User
+	Quota  *userQuota `json:"quota,omitempty"`
+	SubURL string     `json:"sub_url,omitempty"`
 }
 
 // userSecretResponse mirrors the {user, secret} response shape shared by
@@ -102,36 +76,13 @@ type userSecretResponse struct {
 // failure to build sub_url — a store error reading the nonce — is logged
 // and the field is simply omitted; it must never turn an otherwise
 // successful users read into an error.
-func (s *Server) buildUserResponse(r *http.Request, u telemt.UserInfo, quota map[string]telemt.QuotaEntry, hasQuota bool, traffic map[string]store.UserTrafficSummary) userResponse {
+func (s *Server) buildUserResponse(r *http.Request, u telemt.UserInfo, quota map[string]telemt.QuotaEntry, hasQuota bool, traffic map[string]store.UserTrafficSummary, ips map[string]store.UserIPSummary) userResponse {
 	resp := userResponse{
-		Username:            u.Username,
-		Enabled:             u.Enabled,
-		InRuntime:           u.InRuntime,
-		UserAdTag:           u.UserAdTag,
-		MaxTCPConns:         u.MaxTCPConns,
-		MaxUniqueIPs:        u.MaxUniqueIPs,
-		DataQuotaBytes:      u.DataQuotaBytes,
-		ExpirationRFC3339:   u.ExpirationRFC3339,
-		RateLimitUpBps:      u.RateLimitUpBps,
-		RateLimitDownBps:    u.RateLimitDownBps,
-		CurrentConnections:  u.CurrentConnections,
-		ActiveUniqueIPs:     u.ActiveUniqueIPs,
-		ActiveUniqueIPsList: u.ActiveIPList,
-		RecentUniqueIPs:     u.RecentUniqueIPs,
-		RecentUniqueIPsList: u.RecentIPList,
-		TotalOctets:         u.TotalOctets,
-		Links:               u.Links,
+		User: userprojection.Build(u, traffic, ips),
 	}
 	if hasQuota {
 		if q, ok := quota[u.Username]; ok {
 			resp.Quota = &userQuota{UsedBytes: q.UsedBytes, LastResetEpochSecs: q.LastResetEpochSecs}
-		}
-	}
-	if summary, ok := traffic[u.Username]; ok {
-		resp.Traffic = &userTraffic{
-			ObservedTotalBytes: summary.ObservedTotalBytes, CurrentMonthBytes: summary.CurrentMonthBytes,
-			MonthKey: summary.MonthKey, ObservedSinceEpochSecs: summary.ObservedSinceEpochSecs,
-			LastActivityEpochSecs: summary.LastActivityEpochSecs, Continuity: summary.Continuity,
 		}
 	}
 	if s.cfg.Subpage.Enabled {
@@ -187,10 +138,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("user IP summaries unavailable")
 	}
 	for i, u := range users {
-		out[i] = s.buildUserResponse(r, u, quota, hasQuota, traffic)
-		if summary, ok := ips[u.Username]; ok {
-			out[i].IPHistory = &summary
-		}
+		out[i] = s.buildUserResponse(r, u, quota, hasQuota, traffic, ips)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -217,7 +165,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
 	traffic := s.userTrafficOrDegrade()
 	writeJSON(w, http.StatusCreated, userSecretResponse{
-		User:   s.buildUserResponse(r, u, quota, hasQuota, traffic),
+		User:   s.buildUserResponse(r, u, quota, hasQuota, traffic, nil),
 		Secret: secret,
 	})
 }
@@ -240,7 +188,7 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade()))
+	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade(), nil))
 }
 
 // handlePatchUser implements PATCH /api/users/{username}.
@@ -287,7 +235,7 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade()))
+	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade(), nil))
 }
 
 // handleDeleteUser implements DELETE /api/users/{username}.
@@ -380,7 +328,7 @@ func (s *Server) handleRotateSecret(w http.ResponseWriter, r *http.Request) {
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
 	traffic := s.userTrafficOrDegrade()
 	writeJSON(w, http.StatusOK, userSecretResponse{
-		User:   s.buildUserResponse(r, u, quota, hasQuota, traffic),
+		User:   s.buildUserResponse(r, u, quota, hasQuota, traffic, nil),
 		Secret: secret,
 	})
 }
@@ -419,7 +367,7 @@ func (s *Server) handleSetEnabled(w http.ResponseWriter, r *http.Request) {
 	s.pokeUsersAfterMutation()
 
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade()))
+	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade(), nil))
 }
 
 // decodeEnabledRequest parses the PUT /api/users/{username}/enabled body's
