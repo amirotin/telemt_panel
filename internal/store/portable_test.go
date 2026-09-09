@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -102,6 +104,36 @@ func TestPortableExportIsDetached(t *testing.T) {
 	got, ok, err := st.GetSetting("theme")
 	if err != nil || !ok || got != "dark" {
 		t.Fatalf("store was mutated through export: value=%q ok=%v err=%v", got, ok, err)
+	}
+}
+
+func TestPortableJSONMemoryPreservesNilAndEmptyMetricSeries(t *testing.T) {
+	st, err := NewMemory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ImportData(PortableData{
+		FormatVersion: portableFormatVersion,
+		Metrics: map[string][]MetricPoint{
+			"nil-series":   nil,
+			"empty-series": {},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var raw bytes.Buffer
+	if err := st.ExportJSON(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var got PortableData
+	if err := json.Unmarshal(raw.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Metrics["nil-series"] != nil {
+		t.Fatalf("nil metric series became %#v", got.Metrics["nil-series"])
+	}
+	if got.Metrics["empty-series"] == nil {
+		t.Fatal("empty metric series became nil")
 	}
 }
 

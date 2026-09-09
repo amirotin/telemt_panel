@@ -21,3 +21,15 @@ func TestMetricPortableRejectsInvalidObservationMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPortableRejectsEmptyMetricNameWithoutPoints(t *testing.T) {
+	for _, points := range [][]MetricPoint{nil, {}} {
+		_, err := normalizePortableData(PortableData{
+			FormatVersion: portableFormatVersion,
+			Metrics:       map[string][]MetricPoint{"": points},
+		})
+		if err == nil {
+			t.Fatalf("normalizePortableData accepted empty metric name with %#v", points)
+		}
+	}
+}

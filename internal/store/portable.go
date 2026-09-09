@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"strings"
@@ -62,6 +63,12 @@ type PortableStore interface {
 	ImportData(PortableData) error
 }
 
+// PortableJSONStore writes an operator backup without requiring callers to
+// retain the encoded payload. It is intentionally separate from Store.
+type PortableJSONStore interface {
+	ExportJSON(io.Writer) error
+}
+
 // PortableHistoryEmpty reports whether an export contains no observability
 // history that requires a durable history destination.
 func PortableHistoryEmpty(data PortableData) bool {
@@ -91,6 +98,34 @@ func (m *Memory) ExportData() (PortableData, error) {
 		WebAuthnUserHandle:   append([]byte(nil), m.webauthnUserHandle...),
 		WebAuthnCredentials:  m.webauthnCredentials,
 	})
+}
+
+// ExportJSON writes the bounded in-memory store as a portable JSON backup.
+func (m *Memory) ExportJSON(w io.Writer) error {
+	data, err := m.ExportData()
+	if err != nil {
+		return err
+	}
+	data, err = normalizePortableData(data)
+	if err != nil {
+		return err
+	}
+	return writePortableJSON(w, data)
+}
+
+func (m *Memory) portableHistoryEmpty() (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.userIPs) != 0 || m.userIPCollection.BatchID != "" || len(m.events) != 0 ||
+		len(m.userTraffic) != 0 || len(m.userTrafficBuckets) != 0 || m.hasTrafficCollector {
+		return false, nil
+	}
+	for _, points := range m.metrics {
+		if len(points) != 0 {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // ImportData atomically initializes an empty memory store from an export.
@@ -226,11 +261,8 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 		}
 	}
 	for i := range data.Events {
-		if data.Events[i].Category == "" {
-			data.Events[i].Category = StorageEvents
-		}
-		if _, ok := defaultPolicyMap()[data.Events[i].Category]; !ok {
-			return PortableData{}, fmt.Errorf("history event has unknown category %q", data.Events[i].Category)
+		if err := normalizePortableEvent(&data.Events[i]); err != nil {
+			return PortableData{}, err
 		}
 	}
 	if err := validatePortableUserTraffic(data); err != nil {
@@ -240,6 +272,16 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 		return PortableData{}, errors.New("store export contains a reserved migration marker")
 	}
 	return data, nil
+}
+
+func normalizePortableEvent(event *HistoryEvent) error {
+	if event.Category == "" {
+		event.Category = StorageEvents
+	}
+	if _, ok := defaultPolicyMap()[event.Category]; !ok {
+		return fmt.Errorf("history event has unknown category %q", event.Category)
+	}
+	return nil
 }
 
 func clonePortableData(data PortableData) (PortableData, error) {
@@ -344,25 +386,22 @@ func memoryUserTrafficBucketsFromPortable(values []PortableUserTrafficBucket) ma
 func validatePortableUserTraffic(data PortableData) error {
 	users := make(map[string]struct{}, len(data.UserTraffic))
 	for _, item := range data.UserTraffic {
-		summary := item.Summary
-		if summary.Username == "" || summary.ObservedTotalBytes < 0 || summary.CurrentMonthBytes < 0 || summary.ObservedSinceEpochSecs <= 0 ||
-			(summary.Continuity != UserTrafficNormal && summary.Continuity != UserTrafficPartial) {
-			return fmt.Errorf("invalid portable user traffic entry %q", summary.Username)
+		if err := validatePortableUserTrafficUser(item); err != nil {
+			return err
 		}
+		summary := item.Summary
 		if _, duplicate := users[summary.Username]; duplicate {
 			return fmt.Errorf("duplicate portable user traffic entry %q", summary.Username)
 		}
 		users[summary.Username] = struct{}{}
-		if (item.LastRawOctets == nil) != (item.LastSourceStartedAt == nil) ||
-			(item.LastRawOctets != nil && (*item.LastRawOctets < 0 || *item.LastSourceStartedAt <= 0)) {
-			return fmt.Errorf("invalid portable user traffic baseline %q", summary.Username)
-		}
 	}
 	seenBuckets := make(map[string]struct{}, len(data.UserTrafficBuckets))
 	for _, bucket := range data.UserTrafficBuckets {
-		if _, ok := users[bucket.Username]; !ok || bucket.TS <= 0 || bucket.Bytes <= 0 ||
-			(bucket.Tier != MetricTierQuarter && bucket.Tier != MetricTierHour && bucket.Tier != MetricTierDay) {
+		if _, ok := users[bucket.Username]; !ok {
 			return fmt.Errorf("invalid portable user traffic bucket for %q", bucket.Username)
+		}
+		if err := validatePortableUserTrafficBucket(bucket); err != nil {
+			return err
 		}
 		key := fmt.Sprintf("%s\x00%s\x00%d", bucket.Username, bucket.Tier, bucket.TS)
 		if _, duplicate := seenBuckets[key]; duplicate {
@@ -371,11 +410,37 @@ func validatePortableUserTraffic(data PortableData) error {
 		seenBuckets[key] = struct{}{}
 	}
 	if state := data.UserTrafficCollector; state != nil {
-		if state.LastSuccessTS <= 0 || state.SourceStartedAt <= 0 ||
-			(state.SourceState != UserTrafficCollecting && state.SourceState != UserTrafficPaused && state.SourceState != UserTrafficUnavailable) ||
-			(state.Continuity != UserTrafficNormal && state.Continuity != UserTrafficPartial) {
-			return errors.New("invalid portable user traffic collector")
-		}
+		return validatePortableUserTrafficCollector(*state)
+	}
+	return nil
+}
+
+func validatePortableUserTrafficUser(item PortableUserTrafficUser) error {
+	summary := item.Summary
+	if summary.Username == "" || summary.ObservedTotalBytes < 0 || summary.CurrentMonthBytes < 0 || summary.ObservedSinceEpochSecs <= 0 ||
+		(summary.Continuity != UserTrafficNormal && summary.Continuity != UserTrafficPartial) {
+		return fmt.Errorf("invalid portable user traffic entry %q", summary.Username)
+	}
+	if (item.LastRawOctets == nil) != (item.LastSourceStartedAt == nil) ||
+		(item.LastRawOctets != nil && (*item.LastRawOctets < 0 || *item.LastSourceStartedAt <= 0)) {
+		return fmt.Errorf("invalid portable user traffic baseline %q", summary.Username)
+	}
+	return nil
+}
+
+func validatePortableUserTrafficBucket(bucket PortableUserTrafficBucket) error {
+	if bucket.Username == "" || bucket.TS <= 0 || bucket.Bytes <= 0 ||
+		(bucket.Tier != MetricTierQuarter && bucket.Tier != MetricTierHour && bucket.Tier != MetricTierDay) {
+		return fmt.Errorf("invalid portable user traffic bucket for %q", bucket.Username)
+	}
+	return nil
+}
+
+func validatePortableUserTrafficCollector(state UserTrafficCollectorState) error {
+	if state.LastSuccessTS <= 0 || state.SourceStartedAt <= 0 ||
+		(state.SourceState != UserTrafficCollecting && state.SourceState != UserTrafficPaused && state.SourceState != UserTrafficUnavailable) ||
+		(state.Continuity != UserTrafficNormal && state.Continuity != UserTrafficPartial) {
+		return errors.New("invalid portable user traffic collector")
 	}
 	return nil
 }

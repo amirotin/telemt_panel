@@ -45,25 +45,30 @@ func readUserIPCollection(tx *sql.Tx) (UserIPCollection, error) {
 	return c, err
 }
 
-func exportUserIPs(tx *sql.Tx, cutoff int64) ([]UserIPRecord, *UserIPCollection, error) {
+func readPortableUserIPCollection(tx *sql.Tx) (*UserIPCollection, error) {
 	c, err := readUserIPCollection(tx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+	return portableUserIPCollection(c), nil
+}
+
+func walkPortableUserIPs(tx *sql.Tx, cutoff int64, emit func(UserIPRecord) error) (err error) {
 	rows, err := tx.Query("SELECT username,ip,family,first_ts,last_ts,observations,last_active_ts,source FROM user_ip_history WHERE last_ts>=? ORDER BY username,ip", cutoff)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	defer rows.Close()
-	result := []UserIPRecord{}
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var r UserIPRecord
 		if err := rows.Scan(&r.Username, &r.IP, &r.Family, &r.First, &r.Last, &r.Observations, &r.LastActive, &r.Source); err != nil {
-			return nil, nil, err
+			return err
 		}
-		result = append(result, r)
+		if err := emit(r); err != nil {
+			return err
+		}
 	}
-	return result, portableUserIPCollection(c), rows.Err()
+	return rows.Err()
 }
 
 func writeUserIPCollection(tx *sql.Tx, c UserIPCollection) error {

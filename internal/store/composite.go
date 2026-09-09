@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -292,6 +293,62 @@ func (s *Composite) ExportData() (PortableData, error) {
 	return normalizePortableData(stateData)
 }
 
+type portableHistoryJSONExporter interface {
+	exportJSON(io.Writer, PortableData) error
+}
+
+// ExportJSON writes the detached control-plane state followed by one history
+// snapshot. The two stores do not share a transaction.
+func (s *Composite) ExportJSON(w io.Writer) error {
+	statePortable, ok := s.state.(PortableStore)
+	if !ok {
+		return errors.New("state store does not support export")
+	}
+	historyPortable, ok := s.history.(portableHistoryJSONExporter)
+	if !ok {
+		return errors.New("history store does not support streaming export")
+	}
+	stateData, err := statePortable.ExportData()
+	if err != nil {
+		return err
+	}
+	clearPortableHistory(&stateData)
+	stateData, err = normalizePortableData(stateData)
+	if err != nil {
+		return err
+	}
+	return historyPortable.exportJSON(w, stateData)
+}
+
+func clearPortableHistory(data *PortableData) {
+	data.Metrics = nil
+	data.Events = nil
+	data.UserTraffic = nil
+	data.UserTrafficBuckets = nil
+	data.UserTrafficCollector = nil
+	data.UserIPs = nil
+	data.UserIPCollection = nil
+}
+
+func (m *Memory) exportJSON(w io.Writer, stateData PortableData) error {
+	historyData, err := m.ExportData()
+	if err != nil {
+		return err
+	}
+	stateData.Metrics = historyData.Metrics
+	stateData.Events = historyData.Events
+	stateData.UserTraffic = historyData.UserTraffic
+	stateData.UserTrafficBuckets = historyData.UserTrafficBuckets
+	stateData.UserTrafficCollector = historyData.UserTrafficCollector
+	stateData.UserIPs = historyData.UserIPs
+	stateData.UserIPCollection = historyData.UserIPCollection
+	stateData, err = normalizePortableData(stateData)
+	if err != nil {
+		return err
+	}
+	return writePortableJSON(w, stateData)
+}
+
 // ImportData restores history first and control-plane state only after the
 // optional history destination accepted its part of the backup.
 func (s *Composite) ImportData(data PortableData) error {
@@ -314,11 +371,11 @@ func (s *Composite) ImportData(data PortableData) error {
 	if !portableStateEmpty(currentState) {
 		return ErrStoreNotEmpty
 	}
-	currentHistory, err := historyPortable.ExportData()
+	historyEmpty, err := portableHistoryDestinationEmpty(s.history)
 	if err != nil {
 		return fmt.Errorf("inspect history import destination: %w", err)
 	}
-	if !portableHistoryEmpty(currentHistory) {
+	if !historyEmpty {
 		return ErrStoreNotEmpty
 	}
 	stateData := data
@@ -390,6 +447,18 @@ type historyImportRollback interface {
 	rollbackImportedHistory() error
 }
 
+type portableHistoryEmptyStore interface {
+	portableHistoryEmpty() (bool, error)
+}
+
+func portableHistoryDestinationEmpty(history HistoryStore) (bool, error) {
+	target, ok := history.(portableHistoryEmptyStore)
+	if !ok {
+		return false, errors.New("history store cannot inspect portable import destination")
+	}
+	return target.portableHistoryEmpty()
+}
+
 func rollbackImportedHistory(history HistoryStore) error {
 	target, ok := history.(historyImportRollback)
 	if !ok {
@@ -400,3 +469,4 @@ func rollbackImportedHistory(history HistoryStore) error {
 
 var _ Store = (*Composite)(nil)
 var _ PortableStore = (*Composite)(nil)
+var _ PortableJSONStore = (*Composite)(nil)

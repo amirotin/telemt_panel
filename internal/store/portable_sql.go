@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"io"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
@@ -20,27 +20,81 @@ func (s *SQLite) ExportData() (PortableData, error) {
 	if err := s.flushMetrics(); err != nil {
 		return PortableData{}, err
 	}
-	data := PortableData{FormatVersion: portableFormatVersion, Metrics: make(map[string][]MetricPoint)}
+	cutoff := time.Now().Unix() - int64(s.UserIPRetention()/time.Second)
+	data := PortableData{FormatVersion: portableFormatVersion, Metrics: make(map[string][]MetricPoint), UserIPs: []UserIPRecord{}}
 	err := sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
-		var err error
-		if data.Metrics, err = exportMetrics(s, tx); err != nil {
+		if err := walkPortableMetrics(s, tx, func(name string, point MetricPoint) error {
+			data.Metrics[name] = append(data.Metrics[name], point)
+			return nil
+		}); err != nil {
 			return err
 		}
-		data.Events, err = exportEvents(s, tx)
+		if err := walkPortableEvents(s, tx, func(event HistoryEvent) error {
+			data.Events = append(data.Events, event)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := walkPortableUserTrafficUsers(s, tx, func(item PortableUserTrafficUser) error {
+			data.UserTraffic = append(data.UserTraffic, item)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := walkPortableUserTrafficBuckets(s, tx, func(item PortableUserTrafficBucket) error {
+			data.UserTrafficBuckets = append(data.UserTrafficBuckets, item)
+			return nil
+		}); err != nil {
+			return err
+		}
+		collector, err := readPortableUserTrafficCollector(s, tx)
 		if err != nil {
 			return err
 		}
-		data.UserTraffic, data.UserTrafficBuckets, data.UserTrafficCollector, err = exportUserTraffic(s, tx)
+		data.UserTrafficCollector = collector
+		collection, err := readPortableUserIPCollection(tx)
 		if err != nil {
 			return err
 		}
-		data.UserIPs, data.UserIPCollection, err = exportUserIPs(tx, time.Now().Unix()-int64(s.UserIPRetention()/time.Second))
-		return err
+		data.UserIPCollection = collection
+		return walkPortableUserIPs(tx, cutoff, func(item UserIPRecord) error {
+			data.UserIPs = append(data.UserIPs, item)
+			return nil
+		})
 	})
 	if err != nil {
 		return PortableData{}, fmt.Errorf("export sqlite history: %w", err)
 	}
 	return data, nil
+}
+
+// ExportJSON streams one internally consistent SQLite history snapshot.
+func (s *SQLite) ExportJSON(w io.Writer) error {
+	state := PortableData{
+		FormatVersion: portableFormatVersion,
+		Sessions:      make(map[string]Session), SubpageNonces: make(map[string]string),
+		Settings: make(map[string]string), Journal: make(map[string][]UpdateJournalEntry),
+	}
+	return s.exportJSON(w, state)
+}
+
+func (s *SQLite) exportJSON(out io.Writer, state PortableData) error {
+	if err := s.flushMetrics(); err != nil {
+		return err
+	}
+	cutoff := time.Now().Unix() - int64(s.UserIPRetention()/time.Second)
+	w := newPortableJSONWriter(out)
+	w.header(state)
+	err := sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
+		if err := streamPortableSQLHistory(s, tx, cutoff, w); err != nil {
+			return err
+		}
+		return w.finish()
+	})
+	if err != nil {
+		return fmt.Errorf("export sqlite history: %w", err)
+	}
+	return nil
 }
 
 // ImportData fills a fresh history database. State fields in a combined
@@ -50,19 +104,15 @@ func (s *SQLite) ImportData(data PortableData) error {
 	if err != nil {
 		return err
 	}
+	if err := s.flushMetrics(); err != nil {
+		return err
+	}
 	err = sqlstore.WithTx(context.Background(), s.db, nil, func(tx *sql.Tx) error {
-		var count int
-		if err := tx.QueryRow(s.bind(`SELECT
-			(SELECT count(*) FROM metric_points) +
-			(SELECT count(*) FROM user_ip_history) +
-			(SELECT count(*) FROM user_ip_history_collection) +
-			(SELECT count(*) FROM history_events) +
-			(SELECT count(*) FROM user_traffic_users) +
-			(SELECT count(*) FROM user_traffic_buckets) +
-			(SELECT count(*) FROM user_traffic_collector)`)).Scan(&count); err != nil {
+		empty, err := portableSQLiteHistoryEmpty(tx)
+		if err != nil {
 			return fmt.Errorf("inspect history destination: %w", err)
 		}
-		if count != 0 {
+		if !empty {
 			return ErrStoreNotEmpty
 		}
 
@@ -170,13 +220,13 @@ func (s *SQLite) rollbackImportedHistory() error {
 	})
 }
 
-func exportUserTraffic(s *SQLite, tx *sql.Tx) ([]PortableUserTrafficUser, []PortableUserTrafficBucket, *UserTrafficCollectorState, error) {
+func walkPortableUserTrafficUsers(s *SQLite, tx *sql.Tx, emit func(PortableUserTrafficUser) error) (err error) {
 	rows, err := tx.Query(s.bind(`SELECT username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
 		last_raw_octets, last_source_started_at, deleted_ts, continuity FROM user_traffic_users ORDER BY username`))
 	if err != nil {
-		return nil, nil, nil, err
+		return err
 	}
-	var users []PortableUserTrafficUser
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var item PortableUserTrafficUser
 		var raw, source, deleted sql.NullInt64
@@ -184,62 +234,60 @@ func exportUserTraffic(s *SQLite, tx *sql.Tx) ([]PortableUserTrafficUser, []Port
 			&item.Summary.ObservedSinceEpochSecs, &item.Summary.LastActivityEpochSecs,
 			&item.Summary.MonthKey, &item.Summary.CurrentMonthBytes, &raw, &source,
 			&deleted, &item.Summary.Continuity); err != nil {
-			rows.Close()
-			return nil, nil, nil, err
+			return err
 		}
 		if raw.Valid {
-			rawValue, sourceValue := raw.Int64, source.Int64
-			item.LastRawOctets, item.LastSourceStartedAt = &rawValue, &sourceValue
+			rawValue := raw.Int64
+			item.LastRawOctets = &rawValue
+		}
+		if source.Valid {
+			sourceValue := source.Int64
+			item.LastSourceStartedAt = &sourceValue
 		}
 		if deleted.Valid {
 			item.Summary.DeletedEpochSecs = deleted.Int64
 		}
-		users = append(users, item)
+		if err := emit(item); err != nil {
+			return err
+		}
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, nil, nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, nil, nil, err
-	}
+	return rows.Err()
+}
 
-	rows, err = tx.Query(s.bind(`SELECT users.username, buckets.tier, buckets.ts, buckets.bytes
+func walkPortableUserTrafficBuckets(s *SQLite, tx *sql.Tx, emit func(PortableUserTrafficBucket) error) (err error) {
+	rows, err := tx.Query(s.bind(`SELECT users.username, buckets.tier, buckets.ts, buckets.bytes
 		FROM user_traffic_buckets AS buckets JOIN user_traffic_users AS users ON users.id = buckets.user_id
 		ORDER BY users.username, buckets.tier, buckets.ts`))
 	if err != nil {
-		return nil, nil, nil, err
+		return err
 	}
-	var buckets []PortableUserTrafficBucket
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var item PortableUserTrafficBucket
 		var tier int
 		if err := rows.Scan(&item.Username, &tier, &item.TS, &item.Bytes); err != nil {
-			rows.Close()
-			return nil, nil, nil, err
+			return err
 		}
 		item.Tier = userTrafficMetricTier(tier)
-		buckets = append(buckets, item)
+		if err := emit(item); err != nil {
+			return err
+		}
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, nil, nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, nil, nil, err
-	}
+	return rows.Err()
+}
 
+func readPortableUserTrafficCollector(s *SQLite, tx *sql.Tx) (*UserTrafficCollectorState, error) {
 	var state UserTrafficCollectorState
-	err = tx.QueryRow(s.bind(`SELECT last_success_ts, source_started_at, source_state, continuity
+	err := tx.QueryRow(s.bind(`SELECT last_success_ts, source_started_at, source_state, continuity
 		FROM user_traffic_collector WHERE singleton = 1`)).Scan(
 		&state.LastSuccessTS, &state.SourceStartedAt, &state.SourceState, &state.Continuity)
 	if errors.Is(err, sql.ErrNoRows) {
-		return users, buckets, nil, nil
+		return nil, nil
 	}
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
-	return users, buckets, &state, nil
+	return &state, nil
 }
 
 func nullablePortableTimestamp(value int64) any {
@@ -260,61 +308,248 @@ func portableUserTrafficTier(tier MetricTier) int {
 	}
 }
 
-func exportMetrics(s *SQLite, tx *sql.Tx) (map[string][]MetricPoint, error) {
+func walkPortableMetrics(s *SQLite, tx *sql.Tx, emit func(string, MetricPoint) error) (err error) {
 	rows, err := tx.Query(s.bind("SELECT name, " + metricPointColumns + " FROM metric_points ORDER BY name, tier, ts"))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-	out := make(map[string][]MetricPoint)
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var name string
 		var tier string
 		var point MetricPoint
 		if err := rows.Scan(&name, &tier, &point.TS, &point.Value, &point.Max, &point.Samples, &point.LastTS,
 			&point.Min, &point.FirstTS, &point.FirstValue, &point.Delta, &point.ObservedSeconds, &point.Gaps); err != nil {
-			return nil, err
+			return err
 		}
 		point.Tier = metricTierFromSQL(tier)
 		if point.Tier == MetricTierRaw {
 			point = MetricPoint{TS: point.TS, Value: point.Value}
 		}
-		out[name] = append(out[name], point)
+		if err := emit(name, point); err != nil {
+			return err
+		}
 	}
-	return out, rows.Err()
+	return rows.Err()
 }
 
-func exportEvents(s *SQLite, tx *sql.Tx) ([]HistoryEvent, error) {
+func walkPortableEvents(s *SQLite, tx *sql.Tx, emit func(HistoryEvent) error) (err error) {
 	rows, err := tx.Query(s.bind(`SELECT seq, ts_ns, category, kind, entity, state, previous_state, severity, attributes_json FROM history_events ORDER BY seq`))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-	var out []HistoryEvent
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var item HistoryEvent
 		var tsNS int64
 		var attributes string
 		if err := rows.Scan(&item.ID, &tsNS, &item.Category, &item.Kind, &item.Entity, &item.State, &item.PreviousState, &item.Severity, &attributes); err != nil {
-			return nil, err
+			return err
 		}
 		item.TS = time.Unix(0, tsNS).UTC()
 		item.ID = 0
 		if attributes != "" && attributes != "null" {
 			if err := json.Unmarshal([]byte(attributes), &item.Attributes); err != nil {
-				return nil, err
+				return err
 			}
 		}
-		out = append(out, item)
+		if err := emit(item); err != nil {
+			return err
+		}
 	}
-	return out, rows.Err()
+	return rows.Err()
 }
 
-func sortedKeys[V any](values map[string]V) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
+func streamPortableSQLHistory(s *SQLite, tx *sql.Tx, cutoff int64, w *portableJSONWriter) error {
+	var orphan bool
+	if err := tx.QueryRow(s.bind(`SELECT EXISTS(
+		SELECT 1 FROM user_traffic_buckets AS buckets
+		LEFT JOIN user_traffic_users AS users ON users.id = buckets.user_id
+		WHERE users.id IS NULL LIMIT 1)`)).Scan(&orphan); err != nil {
+		return err
 	}
-	sort.Strings(keys)
-	return keys
+	if orphan {
+		return errors.New("portable user traffic contains an orphan bucket")
+	}
+
+	metricsStarted := false
+	firstMetricName := true
+	firstMetricPoint := true
+	currentMetric := ""
+	var previousTier MetricTier
+	var previousTS int64
+	if err := walkPortableMetrics(s, tx, func(name string, point MetricPoint) error {
+		if err := validatePortableMetric(name, point); err != nil {
+			return err
+		}
+		if name == currentMetric && point.Tier == previousTier && point.TS == previousTS {
+			return fmt.Errorf("duplicate portable metric point %q", name)
+		}
+		if !metricsStarted {
+			metricsStarted = true
+			firstMetricName = w.beginObject("metrics")
+		}
+		if name != currentMetric {
+			if currentMetric != "" {
+				w.raw("]")
+			}
+			w.objectKey(&firstMetricName, name)
+			w.raw("[")
+			currentMetric = name
+			firstMetricPoint = true
+		}
+		w.element(&firstMetricPoint, point)
+		previousTier, previousTS = point.Tier, point.TS
+		return w.err
+	}); err != nil {
+		return err
+	}
+	if metricsStarted {
+		w.raw("]}")
+	}
+
+	eventsStarted := false
+	firstEvent := true
+	if err := walkPortableEvents(s, tx, func(event HistoryEvent) error {
+		if err := normalizePortableEvent(&event); err != nil {
+			return err
+		}
+		if !eventsStarted {
+			eventsStarted = true
+			firstEvent = w.beginArray("events")
+		}
+		w.element(&firstEvent, event)
+		return w.err
+	}); err != nil {
+		return err
+	}
+	if eventsStarted {
+		w.raw("]")
+	}
+
+	usersStarted := false
+	firstUser := true
+	previousUser := ""
+	if err := walkPortableUserTrafficUsers(s, tx, func(item PortableUserTrafficUser) error {
+		if err := validatePortableUserTrafficUser(item); err != nil {
+			return err
+		}
+		if item.Summary.Username == previousUser {
+			return fmt.Errorf("duplicate portable user traffic entry %q", previousUser)
+		}
+		previousUser = item.Summary.Username
+		if !usersStarted {
+			usersStarted = true
+			firstUser = w.beginArray("user_traffic")
+		}
+		w.element(&firstUser, item)
+		return w.err
+	}); err != nil {
+		return err
+	}
+	if usersStarted {
+		w.raw("]")
+	}
+
+	bucketsStarted := false
+	firstBucket := true
+	if err := walkPortableUserTrafficBuckets(s, tx, func(item PortableUserTrafficBucket) error {
+		if err := validatePortableUserTrafficBucket(item); err != nil {
+			return err
+		}
+		if !bucketsStarted {
+			bucketsStarted = true
+			firstBucket = w.beginArray("user_traffic_buckets")
+		}
+		w.element(&firstBucket, item)
+		return w.err
+	}); err != nil {
+		return err
+	}
+	if bucketsStarted {
+		w.raw("]")
+	}
+
+	collector, err := readPortableUserTrafficCollector(s, tx)
+	if err != nil {
+		return err
+	}
+	if collector != nil {
+		if err := validatePortableUserTrafficCollector(*collector); err != nil {
+			return err
+		}
+		w.field("user_traffic_collector", collector)
+	}
+
+	collection, err := readPortableUserIPCollection(tx)
+	if err != nil {
+		return err
+	}
+	if collection != nil {
+		if err := validatePortableUserIPCollection(*collection); err != nil {
+			return err
+		}
+	}
+	ipsStarted := false
+	firstIP := true
+	totalIPs, perUser := 0, 0
+	previousIPUser, previousIP := "", ""
+	if err := walkPortableUserIPs(tx, cutoff, func(item UserIPRecord) error {
+		if err := validatePortableUserIPRecord(item, collection); err != nil {
+			return err
+		}
+		totalIPs++
+		if item.Username != previousIPUser {
+			previousIPUser, previousIP, perUser = item.Username, "", 0
+		}
+		perUser++
+		if totalIPs > UserIPSQLiteLimit || perUser > UserIPPerUserLimit || item.IP == previousIP {
+			return errors.New("duplicate or excessive imported user IP records")
+		}
+		previousIP = item.IP
+		if !ipsStarted {
+			ipsStarted = true
+			firstIP = w.beginArray("user_ip_history")
+		}
+		w.element(&firstIP, item)
+		return w.err
+	}); err != nil {
+		return err
+	}
+	if ipsStarted {
+		w.raw("]")
+	}
+	if collection != nil {
+		w.field("user_ip_collection", collection)
+	}
+	return w.err
+}
+
+func (s *SQLite) portableHistoryEmpty() (bool, error) {
+	if err := s.flushMetrics(); err != nil {
+		return false, err
+	}
+	var empty bool
+	err := sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
+		var err error
+		empty, err = portableSQLiteHistoryEmpty(tx)
+		return err
+	})
+	return empty, err
+}
+
+func portableSQLiteHistoryEmpty(tx *sql.Tx) (bool, error) {
+	for _, table := range []string{
+		"metric_points", "user_ip_history", "user_ip_history_collection", "history_events",
+		"user_traffic_users", "user_traffic_buckets", "user_traffic_collector",
+	} {
+		var exists bool
+		if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM " + table + " LIMIT 1)").Scan(&exists); err != nil {
+			return false, err
+		}
+		if exists {
+			return false, nil
+		}
+	}
+	return true, nil
 }

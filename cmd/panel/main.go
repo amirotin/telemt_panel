@@ -120,20 +120,11 @@ func runStoreExport(args []string) error {
 		return err
 	}
 	defer st.Close()
-	portable, ok := st.(store.PortableStore)
+	portable, ok := st.(store.PortableJSONStore)
 	if !ok {
 		return fmt.Errorf("store driver %q does not support export", st.Driver())
 	}
-	data, err := portable.ExportData()
-	if err != nil {
-		return err
-	}
-	raw, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode store export: %w", err)
-	}
-	raw = append(raw, '\n')
-	if err := writeExclusiveFile(*outPath, raw); err != nil {
+	if err := writeExclusiveFile(*outPath, portable.ExportJSON); err != nil {
 		return fmt.Errorf("write store export: %w", err)
 	}
 	fmt.Printf("%s store exported to %s\n", st.Driver(), *outPath)
@@ -224,7 +215,7 @@ func openTransferStore(configPath string, importing bool) (store.Store, error) {
 	return combined, nil
 }
 
-func writeExclusiveFile(path string, data []byte) (err error) {
+func writeExclusiveFile(path string, write func(io.Writer) error) (err error) {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
@@ -236,7 +227,7 @@ func writeExclusiveFile(path string, data []byte) (err error) {
 			_ = os.Remove(path)
 		}
 	}()
-	if _, err = file.Write(data); err != nil {
+	if err = write(file); err != nil {
 		return err
 	}
 	if err = file.Sync(); err != nil {

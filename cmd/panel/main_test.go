@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,49 @@ import (
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/store"
 )
+
+func TestWriteExclusiveFileRemovesPartialOutputAfterCallbackFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "partial.json")
+	wantErr := errors.New("injected export failure")
+	err := writeExclusiveFile(path, func(w io.Writer) error {
+		if _, err := io.WriteString(w, "partial"); err != nil {
+			return err
+		}
+		return wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("writeExclusiveFile error = %v, want %v", err, wantErr)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("partial output survived: %v", err)
+	}
+}
+
+func TestWriteExclusiveFileRefusesExistingFileAndSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{target, filepath.Join(dir, "link")} {
+		if path != target {
+			if err := os.Symlink(target, path); err != nil {
+				t.Fatal(err)
+			}
+		}
+		called := false
+		if err := writeExclusiveFile(path, func(io.Writer) error { called = true; return nil }); err == nil {
+			t.Fatalf("writeExclusiveFile(%q) overwrote existing path", path)
+		}
+		if called {
+			t.Fatalf("write callback called for existing path %q", path)
+		}
+	}
+	raw, err := os.ReadFile(target)
+	if err != nil || string(raw) != "keep" {
+		t.Fatalf("existing target changed: %q, %v", raw, err)
+	}
+}
 
 func TestNewStoreBuildsSQLiteStore(t *testing.T) {
 	if store.Variant == "lite" {

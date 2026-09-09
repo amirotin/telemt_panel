@@ -36,7 +36,7 @@ func validatePortableUserIPs(data PortableData) error {
 	seen := make(map[userIPKey]bool)
 	counts := make(map[string]int)
 	for _, r := range data.UserIPs {
-		if err := validateUserIPRecord(r); err != nil {
+		if err := validatePortableUserIPRecord(r, data.UserIPCollection); err != nil {
 			return err
 		}
 		key := userIPKey{r.Username, r.IP}
@@ -45,14 +45,31 @@ func validatePortableUserIPs(data PortableData) error {
 			return errors.New("duplicate or excessive imported user IP records")
 		}
 		seen[key] = true
-		if r.Last > data.UserIPCollection.Through || r.First < data.UserIPCollection.Since {
-			return errors.New("IP history outside collection bounds")
-		}
 	}
 	if c := data.UserIPCollection; c != nil {
-		if c.BatchID == "" || len(c.BatchID) > 128 || c.Since < 0 || c.Through <= 0 || c.Since > c.Through {
-			return errors.New("invalid IP collection metadata")
+		if err := validatePortableUserIPCollection(*c); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func validatePortableUserIPRecord(r UserIPRecord, collection *UserIPCollection) error {
+	if err := validateUserIPRecord(r); err != nil {
+		return err
+	}
+	if collection == nil {
+		return errors.New("IP history lacks collection metadata")
+	}
+	if r.Last > collection.Through || r.First < collection.Since {
+		return errors.New("IP history outside collection bounds")
+	}
+	return nil
+}
+
+func validatePortableUserIPCollection(c UserIPCollection) error {
+	if c.BatchID == "" || len(c.BatchID) > 128 || c.Since < 0 || c.Through <= 0 || c.Since > c.Through {
+		return errors.New("invalid IP collection metadata")
 	}
 	return nil
 }
