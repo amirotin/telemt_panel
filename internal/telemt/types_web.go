@@ -355,14 +355,3 @@ type WebControlOperationStatus struct {
 	UpdatedEpochMillis uint64 `json:"updated_epoch_millis"`
 	Failure            string `json:"failure,omitempty"`
 }
-
-// IsWebOperationTerminal reports whether an operation state can no longer
-// change — what stops the panel's poll loop.
-func IsWebOperationTerminal(state string) bool {
-	switch state {
-	case WebOperationCompleted, WebOperationCancelled, WebOperationFailed:
-		return true
-	default:
-		return false
-	}
-}

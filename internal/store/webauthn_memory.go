@@ -28,15 +28,6 @@ func cloneWebAuthnCredentials(values map[string]WebAuthnCredential) map[string]W
 	return out
 }
 
-func cloneWebAuthnChallenges(values map[string]WebAuthnChallenge) map[string]WebAuthnChallenge {
-	out := make(map[string]WebAuthnChallenge, len(values))
-	for hash, value := range values {
-		value.SessionData = append([]byte(nil), value.SessionData...)
-		out[hash] = value
-	}
-	return out
-}
-
 func validateWebAuthnCredential(value WebAuthnCredential) error {
 	if value.ID == "" || value.Name == "" || len(value.CredentialData) == 0 || value.Created.IsZero() {
 		return fmt.Errorf("incomplete WebAuthn credential")

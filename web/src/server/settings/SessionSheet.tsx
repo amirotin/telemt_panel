@@ -12,8 +12,6 @@ import { Skeleton } from "../../ui/Skeleton";
 import {
   IconChevronLeft,
   IconChevronRight,
-  IconDesktop,
-  IconDevice,
   IconSearch,
 } from "../../ui/icons";
 import {
@@ -24,6 +22,7 @@ import type {
   SessionPage,
 } from "../../lib/api/generated/types.gen";
 import { sessionDeviceLabel, sessionUserAgentRaw } from "./sessions.helpers";
+import { SessionIcon } from "./SessionIcon";
 
 const PAGE_SIZE = 30;
 
@@ -33,22 +32,6 @@ interface SessionSheetProps {
   revokePending: boolean;
   onClose: () => void;
   onRevoke: (sessionId: string) => void;
-}
-
-function SessionIcon({ session }: { session: SessionInfo }) {
-  const mobile = /iphone|ipad|android/i.test(session.user_agent_label ?? "");
-  return (
-    <span
-      aria-hidden="true"
-      className={
-        session.current
-          ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ok/12 text-ok"
-          : "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent"
-      }
-    >
-      {mobile ? <IconDevice /> : <IconDesktop />}
-    </span>
-  );
 }
 
 export function SessionSheet({

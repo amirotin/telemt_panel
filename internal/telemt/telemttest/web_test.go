@@ -187,7 +187,7 @@ func TestWebSessionDetailAndTombstone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WebOperation: %v", err)
 	}
-	if !telemt.IsWebOperationTerminal(done.State) || done.CloseSignalled != 1 {
+	if done.State != telemt.WebOperationCompleted || done.CloseSignalled != 1 {
 		t.Fatalf("operation = %+v, want a terminal close of one session", done)
 	}
 

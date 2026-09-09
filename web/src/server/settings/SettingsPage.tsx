@@ -9,7 +9,7 @@ import { ConfirmView } from "../../ui/ConfirmView";
 import { ErrorState } from "../../ui/ErrorState";
 import { Sheet } from "../../ui/Sheet";
 import { Skeleton } from "../../ui/Skeleton";
-import { IconChevronRight, IconDevice, IconDesktop, IconLogout } from "../../ui/icons";
+import { IconChevronRight, IconLogout } from "../../ui/icons";
 import { pushToast } from "../../ui/Toast";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { useLogout } from "../../auth/useLogout";
@@ -26,25 +26,10 @@ import type { SessionInfo } from "../../lib/api/generated/types.gen";
 import { sessionDeviceLabel } from "./sessions.helpers";
 import { InterfacePreferences } from "./InterfacePreferences";
 import { SessionSheet } from "./SessionSheet";
+import { SessionIcon as SessionGlyph } from "./SessionIcon";
 import { StorageSettings } from "./StorageSettings";
 import { GeoIPSettings } from "./GeoIPSettings";
 import { PasskeySettings } from "./PasskeySettings";
-
-function SessionGlyph({ session }: { session: SessionInfo }) {
-  const mobile = /iphone|ipad|android/i.test(session.user_agent_label ?? "");
-  return (
-    <span
-      aria-hidden="true"
-      className={
-        session.current
-          ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ok/12 text-ok"
-          : "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent"
-      }
-    >
-      {mobile ? <IconDevice /> : <IconDesktop />}
-    </span>
-  );
-}
 
 function MiniInterfacePreview() {
   return (

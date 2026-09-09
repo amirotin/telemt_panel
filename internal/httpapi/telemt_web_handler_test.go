@@ -153,7 +153,7 @@ func TestHandlePostTelemtWebSessionsClose_AuditAndOperation(t *testing.T) {
 		t.Fatalf("poll status = %d, want 200: %s", w.Code, w.Body)
 	}
 	done := decodeWebJSON[telemt.WebControlOperationStatus](t, w.Body.Bytes())
-	if !telemt.IsWebOperationTerminal(done.State) || done.CloseSignalled == 0 {
+	if done.State != telemt.WebOperationCompleted || done.CloseSignalled == 0 {
 		t.Fatalf("polled operation = %+v, want a terminal close", done)
 	}
 

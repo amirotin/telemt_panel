@@ -1,7 +1,6 @@
 package store
 
 import (
-	"sort"
 	"strings"
 	"time"
 )
@@ -81,55 +80,4 @@ func desiredMetricTier(ts, now int64) MetricTier {
 // buckets in charts.
 func selectMetricPoints(points []MetricPoint, fromTS, now int64) []MetricPoint {
 	return selectMetricResolution(points, fromTS, now)
-}
-
-// selectUserTrafficPoints keeps 15-minute buckets for the most recent day and
-// hourly buckets before it. Missing fine buckets fall back to hourly data,
-// which keeps imports and partially aggregated databases readable without
-// showing two resolutions for the same interval.
-func selectUserTrafficPoints(points []MetricPoint, fromTS, now int64) []MetricPoint {
-	quarterBuckets := make(map[int64]bool)
-	for _, point := range points {
-		if point.Tier == MetricTierQuarter {
-			quarterBuckets[point.TS] = true
-		}
-	}
-
-	out := make([]MetricPoint, 0, len(points))
-	fineFrom := now - int64(userTrafficFineRetention/time.Second)
-	for _, point := range points {
-		if point.TS < fromTS {
-			continue
-		}
-		switch point.Tier {
-		case MetricTierQuarter:
-			if point.TS >= fineFrom {
-				out = append(out, point)
-			}
-		case MetricTierHour:
-			if point.TS < fineFrom {
-				out = append(out, point)
-				continue
-			}
-			// A complete hour is represented by its four 15-minute buckets.
-			// Fall back to the hourly value only while those fine buckets do not
-			// exist (for example immediately after an import).
-			hasFine := false
-			for offset := int64(0); offset < int64(time.Hour/time.Second); offset += int64(15 * time.Minute / time.Second) {
-				if quarterBuckets[point.TS+offset] {
-					hasFine = true
-					break
-				}
-			}
-			if !hasFine {
-				out = append(out, point)
-			}
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].TS < out[j].TS })
-	return out
-}
-
-func userTrafficMetricName(username string) string {
-	return "user." + username + ".traffic"
 }

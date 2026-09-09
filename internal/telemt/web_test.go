@@ -581,7 +581,7 @@ func TestWebSessionsCloseBuildsTheStrictControlRequest(t *testing.T) {
 	if len(selector) != 2 || selector["kind"] != "refs" {
 		t.Errorf("selector = %v, want exactly {kind, session_refs}", selector)
 	}
-	if op.State != WebOperationQueued || IsWebOperationTerminal(op.State) {
+	if op.State != WebOperationQueued {
 		t.Errorf("state = %q, want a non-terminal queued", op.State)
 	}
 	if op.HighWaterSessionRef != nil {
@@ -603,7 +603,7 @@ func TestWebSessionsCloseRequiresTheRuntimeFence(t *testing.T) {
 	}
 }
 
-func TestWebOperationPollsAndReportsTerminality(t *testing.T) {
+func TestWebOperationPollsAndReportsCompletion(t *testing.T) {
 	fake := newWebFake(t, http.StatusOK, `{"operation_id":"wo1.0123456789abcdef0123456789abcdef.0000000000000001","state":"completed","high_water_session_ref":"ws1.0123456789abcdef0123456789abcdef.0000000000000003","requested":1,"scanned":3,"matched":1,"close_signalled":1,"conflicted":0,"created_epoch_millis":1756000000000,"updated_epoch_millis":1756000000500}`)
 	op, err := New(fake.URL, "").WebOperation(context.Background(), "wo1.0123456789abcdef0123456789abcdef.0000000000000001")
 	if err != nil {
@@ -612,16 +612,8 @@ func TestWebOperationPollsAndReportsTerminality(t *testing.T) {
 	if fake.path != "/v1/runtime/web/operations/wo1.0123456789abcdef0123456789abcdef.0000000000000001" {
 		t.Errorf("path = %q", fake.path)
 	}
-	if !IsWebOperationTerminal(op.State) || op.CloseSignalled != 1 {
+	if op.State != WebOperationCompleted || op.CloseSignalled != 1 {
 		t.Errorf("op = %+v", op)
-	}
-	for state, want := range map[string]bool{
-		WebOperationQueued: false, WebOperationRunning: false,
-		WebOperationCompleted: true, WebOperationCancelled: true, WebOperationFailed: true,
-	} {
-		if IsWebOperationTerminal(state) != want {
-			t.Errorf("IsWebOperationTerminal(%q) = %v, want %v", state, !want, want)
-		}
 	}
 }
 

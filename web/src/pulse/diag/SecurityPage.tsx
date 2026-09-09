@@ -22,6 +22,7 @@ import { DetailHeader } from "./DetailHeader";
 import { securityPageData } from "./security.helpers";
 import { securitySources } from "./sourceDefinitions";
 import {
+  duration,
   filterTlsRows,
   securityLevel,
   tlsRowIdentity,
@@ -53,12 +54,6 @@ const levelStyles: Record<SecurityLevel, { border: string; mark: string; text: s
 
 function displayNumber(s: Dict, value: number | null): string {
   return value === null ? "—" : formatNumber(s, value);
-}
-
-function duration(s: Dict, seconds: number): string {
-  if (seconds >= 60 && seconds % 60 === 0)
-    return fill(s.details.pages.security.view.minutes, { count: formatNumber(s, seconds / 60) });
-  return fill(s.details.pages.security.view.seconds, { count: formatNumber(s, seconds) });
 }
 
 function SectionHead({ kicker, title, meta }: { kicker: string; title: string; meta?: string }) {

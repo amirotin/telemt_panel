@@ -1,5 +1,14 @@
 import type { TlsFingerprintRow } from "../../lib/api/generated/types.gen";
 import type { SecurityPosture } from "../../realtime/topics";
+import { fill, formatNumber, type Dict } from "../../i18n";
+
+export function duration(s: Dict, seconds: number): string {
+  const v = s.details.pages.security.view;
+  if (seconds >= 60 && seconds % 60 === 0) {
+    return fill(v.minutes, { count: formatNumber(s, seconds / 60) });
+  }
+  return fill(v.seconds, { count: formatNumber(s, seconds) });
+}
 
 export type SecurityLevel = "ok" | "warn" | "error";
 export type SecurityTlsScope = "by_fingerprint" | "by_ip" | "by_cidr" | "by_user";

@@ -25,6 +25,7 @@ import {
 import { TlsSourceNotice } from "../../pulse/widgets/TlsSourceNotice";
 import { useTlsFingerprints } from "../../pulse/widgets/useTlsFingerprints";
 import {
+  duration,
   securityLevel,
   tlsTotals,
   type SecurityLevel,
@@ -48,14 +49,6 @@ const levelClasses: Record<SecurityLevel, { border: string; background: string; 
     text: "text-error-text",
   },
 };
-
-function duration(s: Dict, seconds: number): string {
-  const v = s.details.pages.security.view;
-  if (seconds >= 60 && seconds % 60 === 0) {
-    return fill(v.minutes, { count: formatNumber(s, seconds / 60) });
-  }
-  return fill(v.seconds, { count: formatNumber(s, seconds) });
-}
 
 function protectionCopy(kind: ApiProtectionKind, s: Dict) {
   const copy = s.server.security.view;
