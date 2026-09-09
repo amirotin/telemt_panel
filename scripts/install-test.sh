@@ -6,6 +6,7 @@
 #   sh scripts/install-test.sh
 #   bash scripts/install-test.sh
 # shellcheck disable=SC2034,SC2016  # globals are consumed by the sourced installer
+# shellcheck disable=SC2317  # stubs are called by functions from the sourced installer
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -268,6 +269,7 @@ case "$MIGRATE_SKIPPED" in
 esac
 
 # Exercise the confirmation boundary without running host/service operations.
+# shellcheck disable=SC2094  # the confirmation stub reads output already written to the log
 for _lang in en ru; do
   if (
     L="$_lang"
@@ -292,12 +294,15 @@ for _lang in en ru; do
     setup_dirs() { :; }
     fetch_release() { :; }
     install_binary() { :; }
-    run_quiet() { :; }
+    run_quiet() {
+      case "$*" in *'*.bak'*) exit 1 ;; esac
+    }
     install_sudoers() { :; }
     install_service() { :; }
     start_service() { :; }
     print_done() { :; }
     do_migrate
+    # shellcheck disable=SC2154  # assigned by do_migrate in the sourced installer
     cmp "$TMP/v0.toml" "$_backup" || exit 1
     [ "$(toml_value "$CONFIG_FILE" telemt config_edit_mode)" = file ] || exit 1
     [ "$(toml_value "$CONFIG_FILE" auth password_hash)" = '$2a$10$oldhash' ] || exit 1
@@ -408,6 +413,103 @@ if (validate_existing_store_variant) >/dev/null 2>&1; then
 else
   fail "lite rejected legacy memory config"
 fi
+
+# Destructive operations must refuse broad targets before any host mutation.
+for _dir in / /etc /var /var/lib /tmp /home /home/admin /usr/local /root relative /var/lib/../..; do
+  if (validate_panel_directory "$_dir") >/dev/null 2>&1; then
+    fail "directory guard accepted $_dir"
+  else
+    pass
+  fi
+done
+mkdir -p "$TMP/panel-data"
+ln -s / "$TMP/root-link"
+if (validate_panel_directory "$TMP/root-link") >/dev/null 2>&1; then
+  fail "directory guard accepted symlink to root"
+else
+  pass
+fi
+if (validate_panel_directory "$TMP/panel-data") >/dev/null 2>&1; then pass; else fail "directory guard rejected dedicated directory"; fi
+if (validate_panel_directory "$TMP/new-panel-data") >/dev/null 2>&1; then pass; else fail "directory guard rejected new dedicated directory"; fi
+for _dir in / /tmp "$TMP/root-link"; do
+  if (
+    CONFIG_DIR="$TMP/panel-data"; DATA_DIR="$_dir"
+    require_tty() { :; }
+    check_prereqs_quiet() { :; }
+    detect_init() { :; }
+    apply_layout() { :; }
+    detect_existing() { EXISTING=none; }
+    confirm_danger() { return 0; }
+    do_uninstall() { printf 'uninstall\n' >>"$TMP/unsafe-mutations"; }
+    run() { printf 'run\n' >>"$TMP/unsafe-mutations"; }
+    do_purge
+  ) >/dev/null 2>&1; then fail "purge accepted unsafe directory"; else pass; fi
+done
+if [ -e "$TMP/unsafe-mutations" ]; then fail "purge mutated host before rejecting unsafe path"; else pass; fi
+if (
+  CONFIG_DIR="$TMP/panel-data"; DATA_DIR=/
+  run() { printf 'run\n' >>"$TMP/unsafe-setup"; }
+  setup_dirs
+) >/dev/null 2>&1; then fail "setup accepted root data directory"; else pass; fi
+if [ -e "$TMP/unsafe-setup" ]; then fail "setup mutated host before rejecting unsafe path"; else pass; fi
+
+# Sudoers arguments are literal paths, never patterns or policy syntax.
+for _path in '/usr/bin/*' '/usr/bin/panel?' '/usr/bin/[panel]' '/usr/bin/panel,ALL' '/usr/bin/panel:other' '/usr/bin/panel#comment'; do
+  if sudoers_path_ok "$_path"; then fail "sudoers accepted metacharacters: $_path"; else pass; fi
+done
+if sudoers_path_ok /usr/local/bin/telemt-panel; then pass; else fail "sudoers rejected normal path"; fi
+for _service in '*' '../other' 'telemt;id' '-other' 'telemt,ALL' 'telemt:other'; do
+  if service_name_ok "$_service"; then fail "service accepted unsafe name: $_service"; else pass; fi
+done
+if service_name_ok telemt@main.service; then pass; else fail "service rejected normal template instance"; fi
+
+cat >"$TMP/custom-service.toml" <<'EOF'
+[host]
+panel_service = "panel-custom"
+[privileges]
+mode = "direct"
+EOF
+CONFIG_FILE="$TMP/custom-service.toml"
+INIT=systemd
+load_v1_config
+assert_eq "existing custom panel service" "panel-custom" "$SERVICE_NAME"
+apply_layout_from_answers
+assert_eq "existing custom service file" "/etc/systemd/system/panel-custom.service" "$SERVICE_FILE"
+
+# A failed readiness probe is a failed installation, not a success warning.
+if (
+  DRY_RUN=0; NO_START=0; HEALTH_WAIT_SECONDS=1; LISTEN=127.0.0.1:8080
+  run() { :; }
+  sleep() { :; }
+  http_get() { printf 503; }
+  start_service
+) >"$TMP/health-failure.log" 2>&1; then fail "failed health returned success"; else pass; fi
+if (
+  DRY_RUN=0; NO_START=0; HEALTH_WAIT_SECONDS=1; LISTEN=127.0.0.1:8080
+  run() { :; }
+  http_get() { printf 200; }
+  start_service
+) >/dev/null 2>&1; then pass; else fail "healthy panel rejected"; fi
+
+# Remote releases require a verified checksum before extraction/installation.
+for _scenario in missing no-tool mismatch; do
+  if (
+    BINARY_FILE=""; BUILD_VARIANT=full; ARCH=x86_64; LIBC=gnu
+    resolve_tag() { INSTALLED_TAG=v1.0.0; }
+    sha256_of() { [ "$_scenario" = no-tool ] || printf '%064d' 0; }
+    download() {
+      case "$1" in
+        *.sha256)
+          [ "$_scenario" != missing ] || return 1
+          printf '%064d\n' 1 >"$2" ;;
+        *) printf 'synthetic archive\n' >"$2" ;;
+      esac
+    }
+    tar() { printf 'extract\n' >>"$TMP/unverified-extraction"; }
+    fetch_release
+  ) >"$TMP/checksum-$_scenario.log" 2>&1; then fail "unverified release accepted: $_scenario"; else pass; fi
+done
+if [ -e "$TMP/unverified-extraction" ]; then fail "unverified archive extracted"; else pass; fi
 
 printf '%s passed, %s failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]
