@@ -79,7 +79,11 @@ func cleanupOwnedBundles(root string, cfg Config, active *bundle, only string) e
 	if err != nil || !validManifest(manifest) {
 		return err
 	}
-	if filepath.Join(abs, manifest.Directory) != filepath.Clean(active.dir) {
+	activePath, err := filepath.Abs(active.dir)
+	if err != nil {
+		return err
+	}
+	if filepath.Join(abs, manifest.Directory) != activePath {
 		return nil
 	}
 	var sources []string
@@ -106,10 +110,14 @@ func cleanupOwnedBundles(root string, cfg Config, active *bundle, only string) e
 	}
 	var names []string
 	if only != "" {
-		if filepath.Dir(only) != abs {
+		target, err := filepath.Abs(only)
+		if err != nil {
+			return err
+		}
+		if filepath.Dir(target) != abs {
 			return nil
 		}
-		names = []string{filepath.Base(only)}
+		names = []string{filepath.Base(target)}
 	} else {
 		names, err = dir.Readdirnames(-1)
 		if err != nil {

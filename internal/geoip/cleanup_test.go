@@ -282,6 +282,38 @@ func TestBundleMarkerIsExclusive(t *testing.T) {
 	}
 }
 
+func TestCleanupWithRelativeDataDirectory(t *testing.T) {
+	for _, targeted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "startup", true: "replacement"}[targeted], func(t *testing.T) {
+			m, cfg, active := cleanupFixture(t)
+			root := filepath.Join(m.dataDir, "geoip")
+			orphan := ownedFixture(t, root, "bundle-relative")
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			relativeRoot, err := filepath.Rel(cwd, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			metadata := &bundle{dir: filepath.Join(relativeRoot, filepath.Base(active.dir))}
+			only := ""
+			if targeted {
+				only = filepath.Join(relativeRoot, filepath.Base(orphan))
+			}
+			if err := cleanupOwnedBundles(relativeRoot, cfg, metadata, only); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(orphan); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("relative owned orphan retained: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(active.dir, "country.mmdb")); err != nil {
+				t.Fatalf("relative active lost: %v", err)
+			}
+		})
+	}
+}
+
 func TestRestoreCleanupRequiresVerifiedDurableManifest(t *testing.T) {
 	for _, scenario := range []string{"success", "manifest-sync", "root-sync", "disabled", "missing-manifest", "corrupt-manifest", "unreadable-manifest", "symlink-manifest", "invalid-manifest", "corrupt-database", "bad-settings", "unmarked-active"} {
 		t.Run(scenario, func(t *testing.T) {
