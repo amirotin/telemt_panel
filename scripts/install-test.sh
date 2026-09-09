@@ -267,11 +267,74 @@ case "$MIGRATE_SKIPPED" in
   *"telemt.config_path"*) pass ;; *) fail "skipped list lacks config_path" ;;
 esac
 
+# Exercise the confirmation boundary without running host/service operations.
+for _lang in en ru; do
+  if (
+    L="$_lang"
+    TEMP_DIR="$TMP/migrate-$_lang"
+    mkdir -p "$TEMP_DIR"
+    CONFIG_FILE="$TEMP_DIR/config.toml"
+    cp "$TMP/v0.toml" "$CONFIG_FILE"
+    ask_choice() { _c=1; }
+    ask_subpage() { :; }
+    ask_run_as() { RUN_AS=root; }
+    apply_layout_from_answers() { :; }
+    print_summary() { :; }
+    confirm() {
+      # The warning must already be visible when confirmation is requested.
+      grep -qF "$(t migrate_config_api_only)" "$TMP/migrate-$_lang.log"
+    }
+    write_root_file() {
+      [ "$2" = 0600 ] && [ "$3" = root ] || exit 1
+      cat >"$1"
+    }
+    create_user() { :; }
+    setup_dirs() { :; }
+    fetch_release() { :; }
+    install_binary() { :; }
+    run_quiet() { :; }
+    install_sudoers() { :; }
+    install_service() { :; }
+    start_service() { :; }
+    print_done() { :; }
+    do_migrate
+    cmp "$TMP/v0.toml" "$_backup" || exit 1
+    [ "$(toml_value "$CONFIG_FILE" telemt config_edit_mode)" = file ] || exit 1
+    [ "$(toml_value "$CONFIG_FILE" auth password_hash)" = '$2a$10$oldhash' ] || exit 1
+    [ "$(toml_value "$CONFIG_FILE" host telemt_service)" = telemt-custom ] || exit 1
+    [ "$(toml_value "$CONFIG_FILE" updates telemt_binary_path)" = /usr/local/bin/telemt ]
+  ) >"$TMP/migrate-$_lang.log" 2>&1; then
+    # A rejected confirmation exits successfully, so verify application too.
+    if [ "$(toml_value "$TMP/migrate-$_lang/config.toml" updates telemt_binary_path)" = /usr/local/bin/telemt ]; then
+      pass
+    else
+      fail "$_lang migration warning missing before confirmation"
+    fi
+  else
+    fail "$_lang migration fixture failed"
+  fi
+done
+
+for _mode in api absent unknown; do
+  if [ "$_mode" = absent ]; then
+    sed '/^config_edit_mode = /d' "$TMP/v0.toml" >"$TMP/mode.toml"
+    _expected=""
+  else
+    sed "s/^config_edit_mode = .*/config_edit_mode = \"$_mode\"/" "$TMP/v0.toml" >"$TMP/mode.toml"
+    _expected="$_mode"
+  fi
+  cp "$TMP/mode.toml" "$TMP/mode-original.toml"
+  migrate_v0_config "$TMP/mode.toml" "$TMP/mode-new.toml"
+  assert_eq "migrate $_mode stays literal" "$_expected" "$(toml_value "$TMP/mode-new.toml" telemt config_edit_mode)"
+  if cmp -s "$TMP/mode.toml" "$TMP/mode-original.toml"; then pass; else fail "migration changed source"; fi
+done
+
 # The migrated config must load in the real binary when one is available.
 BIN="${TP_TEST_BINARY:-$HERE/../telemt-panel}"
 if [ -x "$BIN" ]; then
   sed -e 's#^data_dir = .*#data_dir = ""#' \
       -e 's#^listen = .*#listen = "127.0.0.1:0"#' \
+      -e 's#^url = .*#url = "http://127.0.0.1:1"#' \
       -e "s#^path = .*#path = \"$TMP/panel.db\"#" \
       "$TMP/v1.toml" >"$TMP/v1-run.toml"
   # The binary needs a port and a reachable-or-not Telemt; both are fine

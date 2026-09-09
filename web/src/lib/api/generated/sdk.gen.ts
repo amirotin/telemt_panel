@@ -375,7 +375,7 @@ export const getTelemtInfo = <ThrowOnError extends boolean = false>(options?: Op
 });
 
 /**
- * Passthrough of Telemt's GET /v1/config: editable sections plus the revision to chain into a later PATCH's If-Match. api mode only in this release — file mode (telemt.config_edit_mode=file) is not implemented yet.
+ * Passthrough of Telemt's GET /v1/config: editable sections plus the revision to chain into a later PATCH's If-Match. Editing requires the Telemt Config API; the legacy telemt.config_edit_mode value does not select a file writer.
  *
  */
 export const getTelemtConfig = <ThrowOnError extends boolean = false>(options?: Options<GetTelemtConfigData, ThrowOnError>): RequestResult<GetTelemtConfigResponses, GetTelemtConfigErrors, ThrowOnError> => (options?.client ?? client).get<GetTelemtConfigResponses, GetTelemtConfigErrors, ThrowOnError>({

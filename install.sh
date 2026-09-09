@@ -458,6 +458,8 @@ Paths: binary %s, config %s, data %s
     en:migrate_backup) _f='Old config saved as: %s' ;;
     ru:migrate_skipped_title) _f='Не перенесено (нет аналога в 1.x, значения остались в резервной копии):' ;;
     en:migrate_skipped_title) _f='Not migrated (no 1.x equivalent, values remain in the backup):' ;;
+    ru:migrate_config_api_only) _f='Редактирование настроек Telemt в 1.x требует Config API. Старое значение config_edit_mode=file сохраняется только для совместимости; прямая запись файла не поддерживается.' ;;
+    en:migrate_config_api_only) _f='Editing Telemt settings in 1.x requires the Config API. The legacy config_edit_mode=file value is preserved only for compatibility; direct file editing is not supported.' ;;
     ru:mk_jwt) _f='сессии хранятся в store панели, ключ не нужен' ;;
     en:mk_jwt) _f='sessions live in the panel store, the key is no longer needed' ;;
     ru:mk_auto_update) _f='автообновление настраивается в панели (Сервер → Обновления)' ;;
@@ -2050,6 +2052,9 @@ do_migrate() {
   blank
   step 4 step_summary
   print_summary
+  if [ "$V0_EDIT_MODE" = file ]; then
+    warn "$(t migrate_config_api_only)"
+  fi
   blank
   confirm apply_q || { say "$(t aborted)"; exit 0; }
 

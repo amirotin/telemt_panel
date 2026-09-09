@@ -119,6 +119,9 @@ export type TelemtInfo = {
     os?: string;
     uptime_seconds?: number;
     config_path?: string;
+    /**
+     * Deprecated compatibility value from 0.x; editing always requires the Telemt Config API.
+     */
     config_edit_mode?: 'api' | 'file';
     /**
      * Detected per 07-telemt-sdk.md §SDK-3.
@@ -341,7 +344,7 @@ export type WebControlOperationStatus = {
 };
 
 /**
- * api mode only in this release (file mode / telemt.config_edit_mode=file is not implemented yet — see GET /api/telemt/config's description).
+ * Editable configuration obtained through the Telemt Config API. Direct file editing is not supported, regardless of telemt.config_edit_mode.
  *
  */
 export type TelemtConfig = {

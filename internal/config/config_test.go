@@ -79,6 +79,31 @@ func TestLoadDataDirEmptyMakesStateProcessLocal(t *testing.T) {
 	}
 }
 
+func TestLoadConfigEditModeCompatibility(t *testing.T) {
+	for _, mode := range []string{"", "api", "file", "unknown"} {
+		t.Run(mode, func(t *testing.T) {
+			content := strings.Replace(minimal, "[telemt]", "[telemt]\nconfig_edit_mode = \""+mode+"\"", 1)
+			cfg, err := load(t, content)
+			if mode == "unknown" {
+				if err == nil {
+					t.Fatal("invalid mode accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := mode
+			if want == "" {
+				want = "api"
+			}
+			if cfg.Telemt.ConfigEditMode != want {
+				t.Fatalf("mode = %q, want %q", cfg.Telemt.ConfigEditMode, want)
+			}
+		})
+	}
+}
+
 func TestLoadHostAndUpdatesOverrides(t *testing.T) {
 	cfg, err := load(t, minimal+`
 [host]

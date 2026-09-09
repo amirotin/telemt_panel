@@ -29,8 +29,8 @@ data_dir = "/var/lib/telemt-panel"
 url = "http://127.0.0.1:9091"
 # Authorization header value, verbatim ([server.api].auth_header in Telemt).
 auth_header = ""
-# Config editing currently uses the Telemt Config API only.
-# "file" is accepted by the loader, but direct file editing is not implemented.
+# Deprecated compatibility key from 0.x; does not select an editing method.
+# Editing requires the Telemt Config API; direct file editing is not supported.
 # config_edit_mode = "api" # api | file
 
 [auth]

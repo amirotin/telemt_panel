@@ -109,6 +109,56 @@ func TestHandleGetTelemtConfig_CapabilityUnavailable(t *testing.T) {
 	}
 }
 
+func TestConfigEditModeDoesNotSelectFileWriter(t *testing.T) {
+	for _, mode := range []string{"api", "file"} {
+		for _, oldBuild := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/old=%v", mode, oldBuild), func(t *testing.T) {
+				srv, cookie, _ := newTelemttestConfigServer(t, telemttest.Scenario{OldBuild: oldBuild})
+				srv.cfg.Telemt.ConfigEditMode = mode
+				runner := &hosttest.Runner{}
+				srv.runner = runner
+				get := doRequest(t, srv, cookie, "GET", "/api/telemt/config", nil, nil)
+				want := http.StatusOK
+				if oldBuild {
+					want = http.StatusServiceUnavailable
+				}
+				if get.Code != want {
+					t.Fatalf("GET status=%d: %s", get.Code, get.Body)
+				}
+				var cfg telemtConfigView
+				if !oldBuild {
+					if err := json.Unmarshal(get.Body.Bytes(), &cfg); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					cfg.Revision = "unused"
+				}
+				patch := doRequest(t, srv, cookie, "PATCH", "/api/telemt/config",
+					map[string]string{"If-Match": cfg.Revision}, []byte(`{"sections":{"general":{"log_level":"debug"}}}`))
+				if patch.Code != want {
+					t.Fatalf("PATCH status=%d: %s", patch.Code, patch.Body)
+				}
+				if oldBuild {
+					for _, response := range []*httptest.ResponseRecorder{get, patch} {
+						var failure struct{ Code string }
+						if err := json.Unmarshal(response.Body.Bytes(), &failure); err != nil || failure.Code != "capability_unavailable" {
+							t.Fatalf("capability error: %s (%v)", response.Body, err)
+						}
+					}
+				} else {
+					var result telemt.PatchConfigResult
+					if err := json.Unmarshal(patch.Body.Bytes(), &result); err != nil || result.Revision == "" || result.Revision == cfg.Revision {
+						t.Fatalf("Config API patch did not advance revision: %s (%v)", patch.Body, err)
+					}
+				}
+				if calls := runner.CallsSnapshot(); len(calls) != 0 {
+					t.Fatalf("config handler called host runner: %v", calls)
+				}
+			})
+		}
+	}
+}
+
 // TestHandlePatchTelemtConfig_RequiresIfMatch covers the required-header
 // contract: no If-Match, no call to Telemt at all.
 func TestHandlePatchTelemtConfig_RequiresIfMatch(t *testing.T) {

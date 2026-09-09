@@ -11,26 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/host/hosttest"
 )
-
-func inode(t *testing.T, path string) uint64 {
-	t.Helper()
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat %q: %v", path, err)
-	}
-	sys, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		t.Fatalf("Sys() is not *syscall.Stat_t on this platform")
-	}
-	return sys.Ino
-}
 
 func TestDirectRunner_InstallBinary_AtomicWriteMode0755(t *testing.T) {
 	dir := t.TempDir()
@@ -369,89 +355,15 @@ func TestDirectRunner_ReadJournal_BoundsLines(t *testing.T) {
 	}
 }
 
-func TestDirectRunner_WriteConfig_PreservesInodeAndMode(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "telemt.toml")
-	if err := os.WriteFile(path, []byte("old = true\n"), 0o640); err != nil {
-		t.Fatal(err)
-	}
-	wantIno := inode(t, path)
-
-	r := host.NewDirectRunner(host.AllowLists{ConfigPaths: []string{path}}, nil, nil)
-	_, err := r.Run(context.Background(), host.Op{Kind: host.OpWriteConfig, Args: map[string]string{
-		host.ArgPath: path, host.ArgContent: "new = true\n",
-	}})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "new = true\n" {
-		t.Errorf("content = %q", got)
-	}
-	if gotIno := inode(t, path); gotIno != wantIno {
-		t.Errorf("inode changed: got %d, want %d (write must be in-place, not replace-the-file)", gotIno, wantIno)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o640 {
-		t.Errorf("mode changed: got %v, want 0640 (preserved from before the write)", info.Mode().Perm())
-	}
-}
-
-func TestDirectRunner_WriteConfig_CreatesFreshFileWhenMissing(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "new-config.toml")
-
-	r := host.NewDirectRunner(host.AllowLists{ConfigPaths: []string{path}}, nil, nil)
-	_, err := r.Run(context.Background(), host.Op{Kind: host.OpWriteConfig, Args: map[string]string{
-		host.ArgPath: path, host.ArgContent: "fresh = true\n",
-	}})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "fresh = true\n" {
-		t.Errorf("content = %q", got)
-	}
-}
-
-func TestDirectRunner_WriteConfig_RejectsPathNotAllowed(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "telemt.toml")
-	os.WriteFile(path, []byte("old"), 0o600)
-
-	r := host.NewDirectRunner(host.AllowLists{ConfigPaths: []string{filepath.Join(dir, "other.toml")}}, nil, nil)
-	_, err := r.Run(context.Background(), host.Op{Kind: host.OpWriteConfig, Args: map[string]string{
-		host.ArgPath: path, host.ArgContent: "new",
-	}})
-	if err == nil {
-		t.Fatal("want error, got nil")
-	}
-	got, _ := os.ReadFile(path)
-	if string(got) != "old" {
-		t.Errorf("file must not have been touched, content = %q", got)
-	}
-}
-
-// TestDirectRunner_BinaryPathsAndConfigPathsAreNotCrossAddressable is
-// FINDING 2's regression test: a path allow-listed only for one purpose
-// (binary install/restore vs. config rewrite) must not validate for the
-// other op kind, even though both ops go through the same
-// requireAllowedPath check internally.
-func TestDirectRunner_BinaryPathsAndConfigPathsAreNotCrossAddressable(t *testing.T) {
+func TestDirectRunner_RejectsConfigTargetsAndRetiredWriter(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "telemt.toml")
 	binaryDest := filepath.Join(dir, "telemt")
-	os.WriteFile(configPath, []byte("old"), 0o600)
+	for _, path := range []string{configPath, binaryDest} {
+		if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	t.Run("config path is not install-binary-addressable", func(t *testing.T) {
 		stagingDir := filepath.Join(dir, "staging")
@@ -459,26 +371,30 @@ func TestDirectRunner_BinaryPathsAndConfigPathsAreNotCrossAddressable(t *testing
 		staging := filepath.Join(stagingDir, "s")
 		os.WriteFile(staging, []byte("x"), 0o644)
 
-		// configPath is only in ConfigPaths, not BinaryPaths.
-		r := host.NewDirectRunner(host.AllowLists{ConfigPaths: []string{configPath}, StagingPrefix: stagingDir}, nil, nil)
+		r := host.NewDirectRunner(host.AllowLists{BinaryPaths: []string{binaryDest}, StagingPrefix: stagingDir}, nil, nil)
 		_, err := r.Run(context.Background(), host.Op{Kind: host.OpInstallBinary, Args: map[string]string{
 			host.ArgStaging: staging, host.ArgDest: configPath,
 		}})
 		if err == nil {
-			t.Fatal("want error: a ConfigPaths-only entry must not be install-binary-addressable")
+			t.Fatal("want error: a config outside BinaryPaths must not be install-binary-addressable")
 		}
 	})
 
 	t.Run("binary dest is not write-config-addressable", func(t *testing.T) {
-		// binaryDest is only in BinaryPaths, not ConfigPaths.
 		r := host.NewDirectRunner(host.AllowLists{BinaryPaths: []string{binaryDest}}, nil, nil)
-		_, err := r.Run(context.Background(), host.Op{Kind: host.OpWriteConfig, Args: map[string]string{
-			host.ArgPath: binaryDest, host.ArgContent: "malicious",
+		_, err := r.Run(context.Background(), host.Op{Kind: "write-config", Args: map[string]string{
+			"path": binaryDest, "content": "malicious",
 		}})
-		if err == nil {
-			t.Fatal("want error: a BinaryPaths-only entry must not be write-config-addressable")
+		if err == nil || !strings.Contains(err.Error(), "unknown op kind") {
+			t.Fatalf("want unknown operation, got %v", err)
 		}
 	})
+	for _, path := range []string{configPath, binaryDest} {
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != "old" {
+			t.Fatalf("protected file changed: %q, %v", got, err)
+		}
+	}
 }
 
 func TestDirectRunner_RejectsUnknownKind(t *testing.T) {

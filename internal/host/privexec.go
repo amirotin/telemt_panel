@@ -21,23 +21,12 @@ const maxJournalLines = 10000
 // both direct and sudo execution paths. The caller wiring SelectRunner builds
 // it from the configured Telemt/panel binary paths, staging directory and
 // service/container names.
-//
-// The three path fields are deliberately partitioned by purpose rather
-// than one shared list: install-binary/restore-binary and write-config
-// must never become mutually addressable (a client that can only write
-// binaries must not be able to redirect that into overwriting a config
-// file, and vice versa) once M3 adds a real write-config path — see
-// ExecOp, which validates each op's path args against exactly one of
-// these fields, never a union of them.
 type AllowLists struct {
 	// BinaryPaths lists the absolute paths install-binary's "dest" and
 	// restore-binary's "dest"/"backup" may target.
 	BinaryPaths []string
-	// ConfigPaths lists the absolute paths write-config's "path" may
-	// target. Kept separate from BinaryPaths (see the type doc comment).
-	ConfigPaths []string
 	// StagingPrefix is the one directory prefix install-binary's
-	// "staging" source must fall under. Unlike BinaryPaths/ConfigPaths
+	// "staging" source must fall under. Unlike BinaryPaths,
 	// this is a *prefix*, not an exact-match list: the panel's staging
 	// path varies per update run (e.g. a fresh subdirectory per run), so
 	// a fixed allow-list entry doesn't fit. Without this, a caller could
@@ -108,17 +97,6 @@ func ExecOp(ctx context.Context, op Op, allow AllowLists, svcMgr ServiceManager,
 			return Output{}, err
 		}
 		return Output{Stdout: formatLogLines(logLines)}, nil
-
-	case OpWriteConfig:
-		path, err := requireAllowedPath(op, ArgPath, allow.ConfigPaths)
-		if err != nil {
-			return Output{}, err
-		}
-		content, ok := op.Args[ArgContent]
-		if !ok {
-			return Output{}, fmt.Errorf("host: %s: missing required arg %q", op.Kind, ArgContent)
-		}
-		return Output{}, writeFileInPlace(path, content)
 
 	default:
 		return Output{}, fmt.Errorf("host: unknown op kind %q", op.Kind)
@@ -289,35 +267,6 @@ func atomicWrite(dest string, data []byte, mode os.FileMode) error {
 	}
 	if err := os.Rename(tmpPath, dest); err != nil {
 		return fmt.Errorf("host: rename %q to %q: %w", tmpPath, dest, err)
-	}
-	return nil
-}
-
-// writeFileInPlace rewrites path's content in place (truncate + write +
-// sync on the existing file descriptor), preserving the file's inode and
-// therefore its owner, group and permission bits — reimplemented from
-// v0's telemt_config write semantics (file_write.go's writeConfigInPlace)
-// for the same reason: an operator-managed config file's ownership must
-// survive an edit made through this direct path. A path that
-// doesn't exist yet is created fresh (nothing to preserve).
-func writeFileInPlace(path, content string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return os.WriteFile(path, []byte(content), 0o600)
-		}
-		return fmt.Errorf("host: open %q: %w", path, err)
-	}
-	if _, err := f.WriteString(content); err != nil {
-		f.Close()
-		return fmt.Errorf("host: write %q: %w", path, err)
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return fmt.Errorf("host: sync %q: %w", path, err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("host: close %q: %w", path, err)
 	}
 	return nil
 }

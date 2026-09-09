@@ -79,9 +79,6 @@ func (r *SudoRunner) Run(ctx context.Context, op Op) (Output, error) {
 		}
 		return Output{Stdout: formatLogLines(logLines)}, nil
 
-	case OpWriteConfig:
-		return Output{}, fmt.Errorf("host: %s is not supported by sudo mode; use the Telemt config API", op.Kind)
-
 	default:
 		return Output{}, fmt.Errorf("host: unknown op kind %q", op.Kind)
 	}

@@ -632,7 +632,7 @@ export const getTelemtInfoOptions = (options?: Options<GetTelemtInfoData>) => qu
 export const getTelemtConfigQueryKey = (options?: Options<GetTelemtConfigData>) => createQueryKey('getTelemtConfig', options);
 
 /**
- * Passthrough of Telemt's GET /v1/config: editable sections plus the revision to chain into a later PATCH's If-Match. api mode only in this release — file mode (telemt.config_edit_mode=file) is not implemented yet.
+ * Passthrough of Telemt's GET /v1/config: editable sections plus the revision to chain into a later PATCH's If-Match. Editing requires the Telemt Config API; the legacy telemt.config_edit_mode value does not select a file writer.
  *
  */
 export const getTelemtConfigOptions = (options?: Options<GetTelemtConfigData>) => queryOptions<GetTelemtConfigResponse, GetTelemtConfigError, GetTelemtConfigResponse, ReturnType<typeof getTelemtConfigQueryKey>>({

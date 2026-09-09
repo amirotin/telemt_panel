@@ -21,9 +21,6 @@ const (
 	// OpReadJournal tails a service's log. Args: "service" (must be
 	// allow-listed), "lines" (bounded positive integer, as a string).
 	OpReadJournal = "read-journal"
-	// OpWriteConfig rewrites a config file in place. Args: "path" (must be
-	// allow-listed), "content" (the new file contents).
-	OpWriteConfig = "write-config"
 )
 
 // Op argument keys, shared between callers building an Op and every Runner's
@@ -34,8 +31,6 @@ const (
 	ArgDest    = "dest"
 	ArgService = "service"
 	ArgLines   = "lines"
-	ArgPath    = "path"
-	ArgContent = "content"
 )
 
 // Op is one privileged operation request: a fixed kind plus its named
@@ -48,16 +43,15 @@ type Op struct {
 	Args map[string]string `json:"args"`
 }
 
-// Output is a privileged operation's result. Only restart-service and
-// write-config carry no meaningful stdout; read-journal's is the
-// formatted tail (see formatLogLines).
+// Output is a privileged operation's result. Only read-journal carries
+// meaningful stdout: the formatted tail (see formatLogLines).
 type Output struct {
 	Stdout string `json:"stdout"`
 }
 
 // Runner is the single execution point for privileged operations — the
 // only thing in the panel process (or its privilege transport) allowed to
-// touch protected binaries, config files, or services. Direct and sudo
+// touch protected binaries or services. Direct and sudo
 // implementations share the same operation contract; a manual fallback keeps
 // the panel readable when neither is available.
 type Runner interface {

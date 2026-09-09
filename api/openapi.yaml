@@ -467,8 +467,8 @@ paths:
       operationId: getTelemtConfig
       description: >
         Passthrough of Telemt's GET /v1/config: editable sections plus the revision to
-        chain into a later PATCH's If-Match. api mode only in this release — file mode
-        (telemt.config_edit_mode=file) is not implemented yet.
+        chain into a later PATCH's If-Match. Editing requires the Telemt Config API;
+        the legacy telemt.config_edit_mode value does not select a file writer.
       responses:
         "200":
           description: Editable sections + revision
@@ -1350,7 +1350,10 @@ components:
         os: { type: string }
         uptime_seconds: { type: number }
         config_path: { type: string }
-        config_edit_mode: { type: string, enum: [api, file] }
+        config_edit_mode:
+          type: string
+          enum: [api, file]
+          description: Deprecated compatibility value from 0.x; editing always requires the Telemt Config API.
         capabilities:
           type: object
           description: Detected per 07-telemt-sdk.md §SDK-3.
@@ -1591,8 +1594,8 @@ components:
     TelemtConfig:
       type: object
       description: >
-        api mode only in this release (file mode / telemt.config_edit_mode=file is not
-        implemented yet — see GET /api/telemt/config's description).
+        Editable configuration obtained through the Telemt Config API.
+        Direct file editing is not supported, regardless of telemt.config_edit_mode.
       required: [revision, sections]
       properties:
         revision: { type: string }

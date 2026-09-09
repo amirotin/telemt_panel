@@ -51,7 +51,7 @@ type telemtConfigView struct {
 func (s *Server) requireConfigAPI(w http.ResponseWriter, r *http.Request) bool {
 	caps, err := s.tc.Capabilities(r.Context())
 	if err == nil && !caps.ConfigAPI {
-		auth.WriteError(w, http.StatusServiceUnavailable, "capability_unavailable", "telemt build/config does not expose the config API (config_edit_mode=file is not implemented in this release)")
+		auth.WriteError(w, http.StatusServiceUnavailable, "capability_unavailable", "editing requires the Telemt Config API, which this build/config does not expose; direct file editing is not supported")
 		return false
 	}
 	return true

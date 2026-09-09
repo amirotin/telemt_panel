@@ -41,11 +41,9 @@ type Config struct {
 type TelemtConfig struct {
 	URL        string `toml:"url"`
 	AuthHeader string `toml:"auth_header"`
-	// ConfigEditMode selects how GET/PATCH /api/telemt/config will edit
-	// Telemt's own config once that milestone lands: "api" (default, PATCH
-	// through the Telemt API) or "file" (direct file rewrite). Wire-only
-	// for now — GET /api/telemt/info reports it, but no config-editing
-	// endpoint reads it yet.
+	// ConfigEditMode preserves the api/file value from 0.x configurations
+	// and reports it in Telemt info. Deprecated: compatibility only;
+	// editing always requires the Telemt Config API, never a file writer.
 	ConfigEditMode string `toml:"config_edit_mode"`
 }
 
