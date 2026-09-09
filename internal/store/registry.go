@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
 )
 
 // OpenOptions contains driver-neutral connection settings. Constructors use
@@ -95,13 +97,17 @@ func Open(options OpenOptions) (HistoryStore, error) {
 	options.Driver = name
 	opened, err := registration.constructor(options)
 	if err != nil {
+		var unsupported *sqlstore.UnsupportedSchemaError
+		if errors.As(err, &unsupported) {
+			return nil, err
+		}
 		return nil, &OpenError{Driver: name, Err: err}
 	}
 	return opened, nil
 }
 
-// IsRuntimeOpenError reports whether err came from a compiled driver's
-// constructor rather than from an unknown or unavailable driver.
+// IsRuntimeOpenError reports whether err came from a compiled driver's runtime
+// initialization rather than configuration, build-variant or schema gates.
 func IsRuntimeOpenError(err error) bool {
 	var target *OpenError
 	return errors.As(err, &target)

@@ -168,20 +168,22 @@ func init() {
 }
 
 func (s *SQLite) initialize() error {
+	if _, err := s.db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return fmt.Errorf("configure sqlite store (PRAGMA busy_timeout=5000): %w", err)
+	}
+	if err := s.initializeSQL(context.Background()); err != nil {
+		return err
+	}
 	for _, statement := range []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA synchronous=FULL",
 		"PRAGMA foreign_keys=ON",
-		"PRAGMA busy_timeout=5000",
 		"PRAGMA cache_size=-20480",
 		"PRAGMA journal_size_limit=16777216",
 	} {
 		if _, err := s.db.Exec(statement); err != nil {
 			return fmt.Errorf("configure sqlite store (%s): %w", statement, err)
 		}
-	}
-	if err := s.initializeSQL(context.Background()); err != nil {
-		return err
 	}
 	var integrity string
 	if err := s.db.QueryRow("PRAGMA quick_check").Scan(&integrity); err != nil {

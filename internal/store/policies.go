@@ -85,19 +85,6 @@ func defaultPolicyMap() map[StorageCategory]StoragePolicy {
 	return out
 }
 
-// Upgrade persisted policy sets only; API replacements still require completeness.
-func upgradeUserIPPolicies(policies []StoragePolicy) []StoragePolicy {
-	if len(policies) == 0 {
-		return policies
-	}
-	for _, p := range policies {
-		if p.Category == StorageUserIPHistory {
-			return policies
-		}
-	}
-	return append(policies, StoragePolicy{Category: StorageUserIPHistory, Enabled: true, RetentionDays: 30})
-}
-
 // ValidateStoragePolicies requires a complete, duplicate-free policy set.
 func ValidateStoragePolicies(policies []StoragePolicy) error {
 	if len(policies) != len(storageCategoryOrder) {

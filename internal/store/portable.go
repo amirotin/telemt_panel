@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -37,9 +35,6 @@ type PortableData struct {
 	UserTrafficCollector *UserTrafficCollectorState      `json:"user_traffic_collector,omitempty"`
 	WebAuthnUserHandle   []byte                          `json:"webauthn_user_handle,omitempty"`
 	WebAuthnCredentials  map[string]WebAuthnCredential   `json:"webauthn_credentials,omitempty"`
-	// WebAuthnChallenges is accepted from format v3 backups only. In-flight
-	// ceremonies are process-local and are never exported or restored.
-	WebAuthnChallenges map[string]WebAuthnChallenge `json:"webauthn_challenges,omitempty"`
 }
 
 type PortableUserTrafficUser struct {
@@ -210,26 +205,15 @@ func (m *Memory) ImportData(data PortableData) error {
 }
 
 func normalizePortableData(data PortableData) (PortableData, error) {
-	originalVersion := data.FormatVersion
-	if originalVersion < 1 || originalVersion > portableFormatVersion {
-		return PortableData{}, fmt.Errorf("unsupported store export format version %d (supported: %d)", data.FormatVersion, portableFormatVersion)
+	if err := ValidatePortableFormatVersion(data.FormatVersion); err != nil {
+		return PortableData{}, err
 	}
-	var err error
-	data, err = clonePortableData(data)
+	data, err := clonePortableData(data)
 	if err != nil {
 		return PortableData{}, err
 	}
-	if originalVersion < 5 {
-		if err := migratePortableUserTraffic(&data); err != nil {
-			return PortableData{}, err
-		}
-	}
-	data.FormatVersion = portableFormatVersion
 	if err := validatePortableMetrics(data.Metrics); err != nil {
 		return PortableData{}, err
-	}
-	if originalVersion < 6 {
-		data.Policies = upgradeUserIPPolicies(data.Policies)
 	}
 	if err := validatePortableUserIPs(data); err != nil {
 		return PortableData{}, err
@@ -239,10 +223,9 @@ func normalizePortableData(data PortableData) (PortableData, error) {
 			return PortableData{}, fmt.Errorf("invalid storage policies: %w", err)
 		}
 	}
-	if err := validatePortableWebAuthn(data.WebAuthnUserHandle, data.WebAuthnCredentials, data.WebAuthnChallenges); err != nil {
+	if err := validatePortableWebAuthn(data.WebAuthnUserHandle, data.WebAuthnCredentials, nil); err != nil {
 		return PortableData{}, err
 	}
-	data.WebAuthnChallenges = nil
 	for target, entries := range data.Journal {
 		if len(entries) > journalCap {
 			return PortableData{}, fmt.Errorf("update journal %q has %d entries (maximum %d)", target, len(entries), journalCap)
@@ -311,10 +294,16 @@ func clonePortableData(data PortableData) (PortableData, error) {
 	if clone.WebAuthnCredentials == nil {
 		clone.WebAuthnCredentials = make(map[string]WebAuthnCredential)
 	}
-	if clone.WebAuthnChallenges == nil {
-		clone.WebAuthnChallenges = make(map[string]WebAuthnChallenge)
-	}
 	return clone, nil
+}
+
+// ValidatePortableFormatVersion rejects every portable development format
+// except the current operator backup format.
+func ValidatePortableFormatVersion(version int) error {
+	if version != portableFormatVersion {
+		return fmt.Errorf("unsupported store export format version %d (supported: %d)", version, portableFormatVersion)
+	}
+	return nil
 }
 
 func portableMemoryUserTraffic(values map[string]memoryUserTraffic) []PortableUserTrafficUser {
@@ -445,125 +434,6 @@ func validatePortableUserTrafficCollector(state UserTrafficCollectorState) error
 	return nil
 }
 
-func migratePortableUserTraffic(data *PortableData) error {
-	type legacyUser struct {
-		quarter []MetricPoint
-		hour    []MetricPoint
-	}
-	legacy := make(map[string]*legacyUser)
-	for name, points := range data.Metrics {
-		username, ok := portableTrafficUsername(name)
-		if !ok {
-			continue
-		}
-		entry := legacy[username]
-		if entry == nil {
-			entry = &legacyUser{}
-			legacy[username] = entry
-		}
-		for _, point := range points {
-			switch point.Tier {
-			case MetricTierQuarter:
-				entry.quarter = append(entry.quarter, point)
-			case MetricTierHour:
-				entry.hour = append(entry.hour, point)
-			}
-		}
-		delete(data.Metrics, name)
-	}
-	monthKey := utcMonthKey(time.Now().Unix())
-	for username, entry := range legacy {
-		selected := entry.hour
-		if len(selected) == 0 {
-			selected = entry.quarter
-		}
-		if len(selected) == 0 {
-			continue
-		}
-		summary := UserTrafficSummary{Username: username, MonthKey: monthKey, Continuity: UserTrafficNormal}
-		for _, point := range selected {
-			bytes, err := portableLegacyTrafficBytes(point.Value)
-			if err != nil || bytes > math.MaxInt64-summary.ObservedTotalBytes {
-				return fmt.Errorf("migrate portable user traffic %q: invalid bytes", username)
-			}
-			summary.ObservedTotalBytes += bytes
-			if summary.ObservedSinceEpochSecs == 0 || point.TS < summary.ObservedSinceEpochSecs {
-				summary.ObservedSinceEpochSecs = point.TS
-			}
-			if point.TS > summary.LastActivityEpochSecs {
-				summary.LastActivityEpochSecs = point.TS
-			}
-			if utcMonthKey(point.TS) == monthKey {
-				summary.CurrentMonthBytes += bytes
-			}
-		}
-		data.UserTraffic = append(data.UserTraffic, PortableUserTrafficUser{Summary: summary})
-		for _, tierPoints := range []struct {
-			tier   MetricTier
-			points []MetricPoint
-		}{{MetricTierQuarter, entry.quarter}, {MetricTierHour, entry.hour}} {
-			for _, point := range tierPoints.points {
-				bytes, err := portableLegacyTrafficBytes(point.Value)
-				if err != nil {
-					return fmt.Errorf("migrate portable user traffic %q: %w", username, err)
-				}
-				if bytes > 0 {
-					data.UserTrafficBuckets = append(data.UserTrafficBuckets, PortableUserTrafficBucket{Username: username, Tier: tierPoints.tier, TS: point.TS, Bytes: bytes})
-				}
-			}
-		}
-		dayBytes := make(map[int64]int64)
-		for _, point := range entry.hour {
-			bytes, _ := portableLegacyTrafficBytes(point.Value)
-			day := point.TS - point.TS%86400
-			if bytes > math.MaxInt64-dayBytes[day] {
-				return fmt.Errorf("migrate portable user traffic %q: daily bytes overflow", username)
-			}
-			dayBytes[day] += bytes
-		}
-		for day, bytes := range dayBytes {
-			if bytes > 0 {
-				data.UserTrafficBuckets = append(data.UserTrafficBuckets, PortableUserTrafficBucket{Username: username, Tier: MetricTierDay, TS: day, Bytes: bytes})
-			}
-		}
-	}
-	sort.Slice(data.UserTraffic, func(i, j int) bool {
-		return data.UserTraffic[i].Summary.Username < data.UserTraffic[j].Summary.Username
-	})
-	sort.Slice(data.UserTrafficBuckets, func(i, j int) bool {
-		a, b := data.UserTrafficBuckets[i], data.UserTrafficBuckets[j]
-		if a.Username != b.Username {
-			return a.Username < b.Username
-		}
-		if a.Tier != b.Tier {
-			return a.Tier < b.Tier
-		}
-		return a.TS < b.TS
-	})
-	return nil
-}
-
-func portableTrafficUsername(name string) (string, bool) {
-	if !strings.HasPrefix(name, "user.") || !strings.HasSuffix(name, ".traffic") {
-		return "", false
-	}
-	username := strings.TrimSuffix(strings.TrimPrefix(name, "user."), ".traffic")
-	return username, username != ""
-}
-
-func portableLegacyTrafficBytes(value float64) (int64, error) {
-	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return 0, errors.New("non-finite bytes")
-	}
-	converted := int64(value)
-	if converted < 0 || float64(converted) != value {
-		return 0, errors.New("bytes are not an exact non-negative int64")
-	}
-	return converted, nil
-}
-
-// portableEvents strips store-local sequence numbers. Import assigns fresh
-// IDs while preserving timestamps and semantic ordering across drivers.
 func portableEvents(events []HistoryEvent) []HistoryEvent {
 	if len(events) == 0 {
 		return nil

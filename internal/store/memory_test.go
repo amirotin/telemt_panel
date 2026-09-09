@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -8,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -536,6 +539,106 @@ func TestStateFileCorruptFileFailsClosed(t *testing.T) {
 
 	if _, err := NewMemory(path); err == nil {
 		t.Fatal("NewMemory accepted a corrupt persistent state file")
+	}
+}
+
+func TestStateFileRejectsInvalidStoragePoliciesWithoutMutation(t *testing.T) {
+	incomplete := DefaultStoragePolicies()
+	incomplete = append(incomplete[:6:6], incomplete[7:]...)
+	invalid := DefaultStoragePolicies()
+	invalid[0].RetentionDays = 0
+	for _, test := range []struct {
+		name     string
+		policies []StoragePolicy
+	}{
+		{name: "incomplete development set", policies: incomplete},
+		{name: "invalid current set", policies: invalid},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "panel-state.json")
+			raw, err := json.MarshalIndent(stateFile{Policies: test.policies}, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err = NewMemory(path)
+			if err == nil || !strings.Contains(err.Error(), "state file contains invalid storage policies") {
+				t.Fatalf("NewMemory error = %v, want explicit invalid-policy error", err)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if !bytes.Equal(after, raw) {
+				t.Fatal("invalid policy rejection rewrote the state file")
+			}
+		})
+	}
+}
+
+func TestStateFileAbsentOrEmptyStoragePoliciesUseDefaults(t *testing.T) {
+	for _, raw := range []string{`{}`, `{"storage_policies":[]}`} {
+		t.Run(raw, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "panel-state.json")
+			if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			state, err := NewMemory(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			got, err := state.ListStoragePolicies()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := DefaultStoragePolicies(); !reflect.DeepEqual(got, want) {
+				t.Fatalf("default policies = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+func TestStateFileCompleteCustomStoragePoliciesRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel-state.json")
+	want := DefaultStoragePolicies()
+	for i := range want {
+		want[i].RetentionDays = 11 + i
+		if want[i].Category != StorageUserIPHistory {
+			want[i].Enabled = i%2 == 0
+		}
+	}
+	raw, err := json.Marshal(stateFile{Policies: want})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SetSetting("policy-roundtrip", "preserved"); err != nil {
+		state.Close()
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewMemory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	got, err := reopened.ListStoragePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("round-tripped policies = %+v, want %+v", got, want)
 	}
 }
 

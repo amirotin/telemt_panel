@@ -101,6 +101,46 @@ func TestRunStoreCommandValidatesArguments(t *testing.T) {
 	}
 }
 
+func TestRunStoreImportRejectsUnsupportedFormatBeforeOpeningTarget(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "destination-data")
+	databasePath := filepath.Join(dir, "destination.db")
+	configPath := writeStoreCommandConfigWithDataDir(t, dir, "destination.toml", dataDir, databasePath)
+	dump := filepath.Join(dir, "obsolete.json")
+	if err := os.WriteFile(dump, []byte(`{"format_version":6}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := runStoreImport([]string{"--config", configPath, "--in", dump})
+	if err == nil || err.Error() != "unsupported store export format version 6 (supported: 7)" {
+		t.Fatalf("obsolete import error = %v", err)
+	}
+	for _, path := range []string{dataDir, databasePath} {
+		if _, statErr := os.Lstat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("unsupported import initialized %s: %v", path, statErr)
+		}
+	}
+}
+
+func TestRunStoreImportRejectsLegacyPortableChallengeField(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "destination-data")
+	databasePath := filepath.Join(dir, "destination.db")
+	configPath := writeStoreCommandConfigWithDataDir(t, dir, "destination.toml", dataDir, databasePath)
+	dump := filepath.Join(dir, "legacy-field.json")
+	if err := os.WriteFile(dump, []byte(`{"format_version":7,"webauthn_challenges":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := runStoreImport([]string{"--config", configPath, "--in", dump})
+	if err == nil || !strings.Contains(err.Error(), `unknown field "webauthn_challenges"`) {
+		t.Fatalf("legacy challenge import error = %v", err)
+	}
+	for _, path := range []string{dataDir, databasePath} {
+		if _, statErr := os.Lstat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("unknown-field import initialized %s: %v", path, statErr)
+		}
+	}
+}
+
 func TestRunStoreExportImport(t *testing.T) {
 	if store.Variant == "lite" {
 		t.Skip("SQLite is intentionally omitted from the lite build")

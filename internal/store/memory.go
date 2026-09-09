@@ -155,12 +155,10 @@ func NewMemory(statePath string) (*Memory, error) {
 		m.settings = mf.Settings
 	}
 	if len(mf.Policies) > 0 {
-		mf.Policies = upgradeUserIPPolicies(mf.Policies)
 		if err := ValidateStoragePolicies(mf.Policies); err != nil {
-			slog.Warn("store: state-file storage policies invalid, using defaults", "path", statePath, "error", err)
-		} else {
-			m.policies = policyMap(mf.Policies)
+			return nil, fmt.Errorf("store: state file contains invalid storage policies: %w", err)
 		}
+		m.policies = policyMap(mf.Policies)
 	}
 	if len(mf.Audit) > auditCap {
 		mf.Audit = mf.Audit[len(mf.Audit)-auditCap:]

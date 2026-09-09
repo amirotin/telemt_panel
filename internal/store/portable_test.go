@@ -66,10 +66,6 @@ func TestPortableRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ExportData: %v", err)
 			}
-			if len(exported.WebAuthnChallenges) != 0 {
-				t.Fatalf("export contains %d process-local WebAuthn challenges", len(exported.WebAuthnChallenges))
-			}
-
 			destination := test.open(t)
 			defer destination.Close()
 			if err := destination.(PortableStore).ImportData(exported); err != nil {
@@ -137,40 +133,37 @@ func TestPortableJSONMemoryPreservesNilAndEmptyMetricSeries(t *testing.T) {
 	}
 }
 
-func TestPortableRejectsUnknownFormat(t *testing.T) {
+func TestPortableAcceptsOnlyFormatSeven(t *testing.T) {
+	for _, version := range []int{0, 1, 2, 3, 4, 5, 6, 8} {
+		t.Run(fmt.Sprintf("version_%d", version), func(t *testing.T) {
+			_, err := normalizePortableData(PortableData{FormatVersion: version})
+			want := fmt.Sprintf("unsupported store export format version %d (supported: 7)", version)
+			if err == nil || err.Error() != want {
+				t.Fatalf("normalizePortableData version %d error = %v, want %q", version, err, want)
+			}
+		})
+	}
+}
+
+func TestPortableFormatSevenExportOmitsLegacyChallenges(t *testing.T) {
 	st, err := NewMemory("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if err := st.ImportData(PortableData{FormatVersion: portableFormatVersion + 1}); err == nil {
-		t.Fatal("ImportData accepted a future format version")
-	}
-}
-
-func TestPortableFormatFourMigratesUserTrafficWithoutDoubleCounting(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Hour).Unix()
-	data, err := normalizePortableData(PortableData{
-		FormatVersion: 4,
-		Metrics: map[string][]MetricPoint{
-			"user.alice.traffic": {
-				{TS: now, Tier: MetricTierQuarter, Value: 40},
-				{TS: now + 900, Tier: MetricTierQuarter, Value: 60},
-				{TS: now, Tier: MetricTierHour, Value: 100},
-			},
-		},
-	})
-	if err != nil {
+	flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte("portable-flow")))
+	if err := st.PutWebAuthnChallenge(WebAuthnChallenge{
+		FlowHash: flowHash, Kind: "login", SessionData: []byte(`{"challenge":"one"}`),
+		Origin: "https://panel.example", RPID: "panel.example", Expires: time.Now().Add(time.Hour),
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if data.FormatVersion != portableFormatVersion || len(data.UserTraffic) != 1 || data.UserTraffic[0].Summary.ObservedTotalBytes != 100 {
-		t.Fatalf("migrated summaries = %+v", data.UserTraffic)
+	var raw bytes.Buffer
+	if err := st.ExportJSON(&raw); err != nil {
+		t.Fatal(err)
 	}
-	if _, exists := data.Metrics["user.alice.traffic"]; exists {
-		t.Fatal("legacy traffic metric survived migration")
-	}
-	if len(data.UserTrafficBuckets) != 4 {
-		t.Fatalf("migrated buckets = %+v", data.UserTrafficBuckets)
+	if bytes.Contains(raw.Bytes(), []byte("webauthn_challenges")) {
+		t.Fatalf("format-7 export contains process-local challenge field: %s", raw.Bytes())
 	}
 }
 

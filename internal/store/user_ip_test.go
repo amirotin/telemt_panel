@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -196,28 +195,13 @@ func TestUserIPPortableAndStateIsolation(t *testing.T) {
 	if err := state.ImportData(data); err == nil {
 		t.Fatal("IP history imported into state file")
 	}
-	legacy := PortableData{FormatVersion: 5, Policies: DefaultStoragePolicies()}
-	for i, p := range legacy.Policies {
-		if p.Category == StorageUserIPHistory {
-			legacy.Policies = append(legacy.Policies[:i], legacy.Policies[i+1:]...)
-			break
-		}
+	if err := state.ImportData(PortableData{FormatVersion: 5, Policies: DefaultStoragePolicies()}); err == nil {
+		t.Fatal("state import accepted obsolete portable format 5")
 	}
-	legacy.Policies[1].RetentionDays = 123
-	if err := state.ImportData(legacy); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+		t.Fatalf("rejected imports initialized state file: %v", err)
 	}
-	policies, _ := state.ListStoragePolicies()
-	if len(policies) != len(DefaultStoragePolicies()) || policies[1].RetentionDays != 123 {
-		t.Fatalf("policy upgrade lost values: %+v", policies)
-	}
-	encoded, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(encoded, []byte("2001:db8")) || bytes.Contains(encoded, []byte("user_ip_collection")) {
-		t.Fatal("historical data leaked to state")
-	}
+	policies := DefaultStoragePolicies()
 	policies[6].Enabled = false
 	if err := ValidateStoragePolicies(policies); err == nil {
 		t.Fatal("IP collection can be disabled")

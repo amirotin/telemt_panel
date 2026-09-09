@@ -157,6 +157,9 @@ func runStoreImport(args []string) error {
 		}
 		return fmt.Errorf("decode store export: %w", err)
 	}
+	if err := store.ValidatePortableFormatVersion(data.FormatVersion); err != nil {
+		return err
+	}
 
 	st, err := openTransferStore(*configPath, true)
 	if err != nil {
