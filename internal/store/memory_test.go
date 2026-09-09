@@ -651,6 +651,12 @@ func TestStateMutationsRollbackWhenPersistenceFails(t *testing.T) {
 	if err := os.Mkdir(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := state.PutSession(Session{IDHash: "failed", Created: time.Now(), LastSeen: time.Now()}); err == nil {
+		t.Fatal("PutSession hid a state-file write failure")
+	}
+	if session, ok, err := state.GetSession("failed"); err != nil || ok {
+		t.Fatalf("failed session mutation survived: %+v, ok=%v err=%v", session, ok, err)
+	}
 	if err := state.SetSetting("theme", "dark"); err == nil {
 		t.Fatal("SetSetting hid a state-file write failure")
 	}

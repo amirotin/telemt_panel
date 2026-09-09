@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,29 @@ import (
 )
 
 const testPassword = "s3cr3t-password"
+
+type authIssuanceStore struct {
+	store.Store
+	putSessionErr       error
+	updateCredentialErr error
+	calls               []string
+}
+
+func (s *authIssuanceStore) PutSession(session store.Session) error {
+	s.calls = append(s.calls, "session")
+	if s.putSessionErr != nil {
+		return s.putSessionErr
+	}
+	return s.Store.PutSession(session)
+}
+
+func (s *authIssuanceStore) UpdateWebAuthnCredential(credential store.WebAuthnCredential, oldSignCount uint32) error {
+	s.calls = append(s.calls, "credential")
+	if s.updateCredentialErr != nil {
+		return s.updateCredentialErr
+	}
+	return s.Store.UpdateWebAuthnCredential(credential, oldSignCount)
+}
 
 // newTestServer builds a Server backed by a fresh in-memory store and an
 // unreachable Telemt client (fine — none of these tests exercise the
@@ -134,6 +158,134 @@ func TestLoginMeLogoutFlow(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("me after logout status = %d, want 401", w.Code)
+	}
+}
+
+func TestLoginRejectsUnreadJSONBeforeRateLimiter(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "trailing JSON", body: `{"username":"admin","password":"s3cr3t-password"}{}`},
+		{name: "body overflow after valid JSON", body: `{"username":"admin","password":"s3cr3t-password"}` + strings.Repeat(" ", loginRequestBodyLimit)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newTestServer(t)
+			h := srv.Handler()
+			for attempt := 0; attempt < 6; attempt++ {
+				r := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(tc.body))
+				r.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r)
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("attempt %d status = %d, want 400: %s", attempt, w.Code, w.Body.String())
+				}
+				if len(w.Result().Cookies()) != 0 {
+					t.Fatalf("attempt %d set cookies on a rejected body", attempt)
+				}
+			}
+
+			w, cookie := login(t, h, "admin", testPassword)
+			if w.Code != http.StatusNoContent || cookie == nil {
+				t.Fatalf("valid login after malformed bodies = %d, cookie %v; want 204 with cookie", w.Code, cookie != nil)
+			}
+			entries, err := srv.st.ListAudit(10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Action != "login" {
+				t.Fatalf("audit entries = %+v, want only the successful login", entries)
+			}
+		})
+	}
+}
+
+func TestPasswordLoginSessionIssuanceContract(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	issue := func() *http.Cookie {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"admin","password":"s3cr3t-password","future":true}`))
+		r.RemoteAddr = "192.0.2.25:43100"
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Chrome/140.0")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204: %s", w.Code, w.Body.String())
+		}
+		for _, cookie := range w.Result().Cookies() {
+			if cookie.Name == auth.CookieName {
+				return cookie
+			}
+		}
+		t.Fatal("login did not set a session cookie")
+		return nil
+	}
+
+	first := issue()
+	second := issue()
+	if first.Value == second.Value {
+		t.Fatal("successive logins reused the same session token")
+	}
+	sessions, err := srv.st.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %+v, want both fresh sessions retained", sessions)
+	}
+	wantHashes := map[string]bool{auth.HashToken(first.Value): true, auth.HashToken(second.Value): true}
+	for _, session := range sessions {
+		if !wantHashes[session.IDHash] {
+			t.Errorf("stored unhashed or unexpected token id %q", session.IDHash)
+		}
+		if !session.Created.Equal(session.LastSeen) {
+			t.Errorf("Created %v != LastSeen %v", session.Created, session.LastSeen)
+		}
+		if session.IP != "192.0.2.25" || session.UserAgentLabel == "" || session.AuthMethod != "password" {
+			t.Errorf("session metadata = %+v", session)
+		}
+	}
+	entries, err := srv.st.ListAudit(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || entries[0].Action != "login" || entries[1].Action != "login" {
+		t.Fatalf("audit entries = %+v, want one login audit per issuance", entries)
+	}
+}
+
+func TestPasswordLoginStoreFailureDoesNotIssueCookieOrAudit(t *testing.T) {
+	srv := newTestServer(t)
+	failing := &authIssuanceStore{Store: srv.st, putSessionErr: errors.New("session store unavailable")}
+	srv.st = failing
+
+	w, cookie := login(t, srv.Handler(), "admin", testPassword)
+	if w.Code != http.StatusInternalServerError || cookie != nil {
+		t.Fatalf("login = %d, cookie %v; want 500 without cookie", w.Code, cookie != nil)
+	}
+	var problem struct{ Code string }
+	if err := json.Unmarshal(w.Body.Bytes(), &problem); err != nil || problem.Code != "internal_error" {
+		t.Fatalf("problem = %+v, err %v; want internal_error", problem, err)
+	}
+	if len(w.Result().Cookies()) != 0 {
+		t.Fatalf("store failure set cookies: %+v", w.Result().Cookies())
+	}
+	sessions, err := srv.st.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %+v, want none", sessions)
+	}
+	entries, err := srv.st.ListAudit(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("audit entries = %+v, want no success audit", entries)
 	}
 }
 

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -46,10 +45,8 @@ type loginRequest struct {
 // handleLogin implements POST /api/auth/login: verify credentials, rate
 // limit failures per client IP, and start a session on success.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, loginRequestBodyLimit)
-
 	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: loginRequestBodyLimit}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
@@ -74,29 +71,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.NewToken()
-	if err != nil {
-		slog.Error("login: generate session token", "err", err)
+	if err := s.createAuthenticatedSession(w, r, "password"); err != nil {
+		slog.Error("login: create session", "err", err)
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not create session")
 		return
 	}
 
-	now := time.Now()
-	sess := store.Session{
-		IDHash:         auth.HashToken(token),
-		Created:        now,
-		LastSeen:       now,
-		IP:             ip,
-		UserAgentLabel: userAgentLabel(r),
-		AuthMethod:     "password",
-	}
-	if err := s.st.PutSession(sess); err != nil {
-		slog.Error("login: store session", "err", err)
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not create session")
-		return
-	}
-
-	auth.SetSessionCookie(w, r, s.cfg, token)
 	s.appendAudit(r, "login", req.Username, "ip="+ip)
 	w.WriteHeader(http.StatusNoContent)
 }

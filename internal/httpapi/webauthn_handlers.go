@@ -187,9 +187,8 @@ func (s *Server) consumeWebAuthnChallenge(r *http.Request, flowID, kind string) 
 }
 
 func decodeWebAuthnFinish(w http.ResponseWriter, r *http.Request) (webAuthnFinishRequest, *http.Request, bool) {
-	r.Body = http.MaxBytesReader(w, r.Body, webAuthnBodyLimit)
 	var body webAuthnFinishRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Credential) == 0 {
+	if err := decodeJSONBody(w, r, &body, jsonBodyOptions{MaxBytes: webAuthnBodyLimit}); err != nil || len(body.Credential) == 0 {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid WebAuthn response")
 		return webAuthnFinishRequest{}, nil, false
 	}
@@ -202,9 +201,8 @@ func decodeWebAuthnFinish(w http.ResponseWriter, r *http.Request) (webAuthnFinis
 }
 
 func (s *Server) handleWebAuthnRegisterBegin(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, webAuthnBodyLimit)
 	var body webAuthnRegisterBeginRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, &body, jsonBodyOptions{MaxBytes: webAuthnBodyLimit}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
