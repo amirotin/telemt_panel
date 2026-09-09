@@ -96,6 +96,8 @@ export const en: Dict = {
   shell: {
     menu: "Menu",
     navLabel: "Main navigation",
+    historyTemporary: "SQLite unavailable · temporary history",
+    historyTemporaryHint: "New history is kept in memory and will be lost when the panel restarts. Previous history is currently unavailable. Panel settings and sign-in are independent of the history database. Check SQLite file access and panel logs, then restart the panel. Temporary history is not automatically transferred to SQLite.",
     overviewGroup: "Overview",
     managementGroup: "Management",
     panelSettings: "Panel settings",

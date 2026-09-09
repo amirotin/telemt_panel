@@ -10,7 +10,67 @@ import (
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/host/hosttest"
+	"github.com/amirotin/telemt_panel/internal/store"
 )
+
+func TestHandleHostDistinguishesTemporaryAndIntentionalMemory(t *testing.T) {
+	for _, driver := range []string{"", "memory", "sqlite"} {
+		t.Run(driver, func(t *testing.T) {
+			srv, cookie, _, _ := newHostTestServer(t)
+			srv.cfg.Store.Driver = driver
+			if srv.st.Driver() != "memory" {
+				t.Fatal("fixture must use memory history")
+			}
+			r := httptest.NewRequest("GET", "/api/host", nil)
+			r.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(w, r)
+			var got hostInfo
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != http.StatusOK || got.ActiveStore != "memory" || got.HistoryTemporary != (driver == "sqlite") {
+				t.Fatalf("unexpected history status: %d, %+v", w.Code, got)
+			}
+		})
+	}
+}
+
+func TestHandleHostHealthySQLiteIsNotTemporary(t *testing.T) {
+	if store.Variant == "lite" {
+		t.Skip("SQLite is intentionally omitted from the lite build")
+	}
+	srv, cookie, _, _ := newHostTestServer(t)
+	history, err := store.Open(store.OpenOptions{Driver: "sqlite", Path: t.TempDir() + "/history.db"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.NewState("")
+	if err != nil {
+		_ = history.Close()
+		t.Fatal(err)
+	}
+	combined, err := store.NewComposite(state, history)
+	if err != nil {
+		_ = history.Close()
+		_ = state.Close()
+		t.Fatal(err)
+	}
+	defer combined.Close()
+	srv.st = combined
+	srv.cfg.Store.Driver = "sqlite"
+	r := httptest.NewRequest("GET", "/api/host", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.handleHost(w, r)
+	var got hostInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ActiveStore != "sqlite" || got.HistoryTemporary {
+		t.Fatalf("healthy SQLite reported temporary: %+v", got)
+	}
+}
 
 // newHostTestServer builds a logged-in Server (via newTestServer) with its
 // real host.ServiceManager/host.LogSource swapped for scriptable

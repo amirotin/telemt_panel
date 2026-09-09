@@ -14,6 +14,7 @@ import { useKeyboardInset } from "./useKeyboardInset";
 import { useLogout } from "../auth/useLogout";
 import { Sheet } from "../ui/Sheet";
 import { IconLogout, IconMore, IconSettings } from "../ui/icons";
+import { HistoryNotice } from "./HistoryNotice";
 
 export function BrandMark({ className }: { className?: string }) {
   const s = useStrings();
@@ -108,6 +109,7 @@ export function Shell({ children }: { children: ReactNode }) {
             )}
             data-testid="page-frame"
           >
+            <HistoryNotice />
             {children}
           </div>
         </main>

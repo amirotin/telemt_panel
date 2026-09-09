@@ -29,17 +29,18 @@ type hostCaps struct {
 
 // hostInfo mirrors openapi HostInfo.
 type hostInfo struct {
-	ServiceManager string            `json:"service_manager"`
-	LogSource      string            `json:"log_source"`
-	PrivilegesMode string            `json:"privileges_mode"`
-	OS             string            `json:"os"`
-	Arch           string            `json:"arch"`
-	OSRelease      string            `json:"os_release,omitempty"`
-	PanelVariant   string            `json:"panel_variant"`
-	StorageDrivers []string          `json:"storage_drivers"`
-	ActiveStore    string            `json:"active_store"`
-	Caps           hostCaps          `json:"caps"`
-	ManualCommands map[string]string `json:"manual_commands,omitempty"`
+	ServiceManager   string            `json:"service_manager"`
+	LogSource        string            `json:"log_source"`
+	PrivilegesMode   string            `json:"privileges_mode"`
+	OS               string            `json:"os"`
+	Arch             string            `json:"arch"`
+	OSRelease        string            `json:"os_release,omitempty"`
+	PanelVariant     string            `json:"panel_variant"`
+	StorageDrivers   []string          `json:"storage_drivers"`
+	ActiveStore      string            `json:"active_store"`
+	HistoryTemporary bool              `json:"history_temporary"`
+	Caps             hostCaps          `json:"caps"`
+	ManualCommands   map[string]string `json:"manual_commands,omitempty"`
 }
 
 // handleHost implements GET /api/host: detected platform kinds, the
@@ -82,15 +83,16 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, hostInfo{
-		ServiceManager: s.svcMgr.Kind(),
-		LogSource:      s.logSrc.Kind(),
-		PrivilegesMode: s.privilegesMode,
-		OS:             runtime.GOOS,
-		Arch:           runtime.GOARCH,
-		OSRelease:      detectOSRelease(),
-		PanelVariant:   store.Variant,
-		StorageDrivers: store.AvailableDrivers(),
-		ActiveStore:    s.st.Info().Driver,
+		ServiceManager:   s.svcMgr.Kind(),
+		LogSource:        s.logSrc.Kind(),
+		PrivilegesMode:   s.privilegesMode,
+		OS:               runtime.GOOS,
+		Arch:             runtime.GOARCH,
+		OSRelease:        detectOSRelease(),
+		PanelVariant:     store.Variant,
+		StorageDrivers:   store.AvailableDrivers(),
+		ActiveStore:      s.st.Info().Driver,
+		HistoryTemporary: strings.EqualFold(strings.TrimSpace(s.cfg.Store.Driver), "sqlite") && s.st.Driver() == "memory",
 		Caps: hostCaps{
 			RestartTelemt: restartAvailable,
 			RestartPanel:  restartAvailable,

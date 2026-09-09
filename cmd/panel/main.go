@@ -265,6 +265,10 @@ func newStore(cfg *config.Config) (store.Store, error) {
 		Driver: cfg.Store.Driver,
 		Path:   cfg.Store.Path,
 	})
+	if store.IsRuntimeOpenError(err) {
+		slog.Warn("SQLite history unavailable; using temporary memory history until restart", "err", err)
+		history, err = store.NewMemoryHistory()
+	}
 	if err != nil {
 		_ = state.Close()
 		return nil, err

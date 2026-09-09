@@ -1735,7 +1735,7 @@ components:
 
     HostInfo:
       type: object
-      required: [service_manager, log_source, privileges_mode, os, arch, panel_variant, storage_drivers, active_store, caps]
+      required: [service_manager, log_source, privileges_mode, os, arch, panel_variant, storage_drivers, active_store, history_temporary, caps]
       properties:
         service_manager: { type: string, enum: [systemd, openrc, procd, sysvinit, docker, none] }
         log_source: { type: string, enum: [journald, logread, syslog, docker, file, none] }
@@ -1748,6 +1748,9 @@ components:
           type: array
           items: { type: string, enum: [memory, sqlite] }
         active_store: { type: string, enum: [memory, sqlite] }
+        history_temporary:
+          type: boolean
+          description: SQLite could not be opened at daemon startup; history is temporarily in memory until restart. False for intentionally configured memory storage. Panel state persistence is independent.
         caps:
           type: object
           required: [restart_telemt, restart_panel, log_tail, log_stream, self_update]

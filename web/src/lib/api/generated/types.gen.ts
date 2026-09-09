@@ -495,6 +495,10 @@ export type HostInfo = {
     panel_variant: 'full' | 'lite';
     storage_drivers: Array<'memory' | 'sqlite'>;
     active_store: 'memory' | 'sqlite';
+    /**
+     * SQLite could not be opened at daemon startup; history is temporarily in memory until restart. False for intentionally configured memory storage. Panel state persistence is independent.
+     */
+    history_temporary: boolean;
     caps: {
         restart_telemt: boolean;
         restart_panel: boolean;
