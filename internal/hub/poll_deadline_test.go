@@ -195,6 +195,8 @@ func TestStatsPollPreservesReadyAndSummaryWhenHealthTimesOut(t *testing.T) {
 	fixture, client := newPollDeadlineFixture(t)
 	release := fixture.block("/v1/health")
 	defer release()
+	releaseSuccessful := fixture.block("/v1/stats/summary", "/v1/health/ready")
+	defer releaseSuccessful()
 	const budget = 100 * time.Millisecond
 	h := New(Config{PollTimeout: budget}, client, nil)
 	defer h.Close()
@@ -202,7 +204,10 @@ func TestStatsPollPreservesReadyAndSummaryWhenHealthTimesOut(t *testing.T) {
 	defer cancel()
 
 	done := pollTopic(t, guard, h, "stats")
-	fixture.awaitStarted(t, "/v1/health")
+	// Prove overlap explicitly: fast sources may otherwise finish before the
+	// blocked health request starts, regardless of the client's concurrency.
+	fixture.awaitStarted(t, "/v1/health", "/v1/stats/summary", "/v1/health/ready")
+	releaseSuccessful()
 	if !awaitPoll(t, done, 5*budget) {
 		t.Fatal("stats poll failed despite two successful primary sources")
 	}
