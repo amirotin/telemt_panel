@@ -124,6 +124,9 @@ func (s *Server) handleResetUserTraffic(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.appendAudit(r, "user.traffic_reset", username, "")
+	if s.hub != nil {
+		s.pokeUsersAfterMutation()
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -138,6 +141,9 @@ func (s *Server) handleResetAllUserTraffic(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.appendAudit(r, "traffic.reset", "user_traffic", "")
+	if s.hub != nil {
+		s.pokeUsersAfterMutation()
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/hub"
+	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"github.com/amirotin/telemt_panel/internal/userprojection"
 )
 
 // pokeUsersSnapshot mirrors just the field this file's tests need from the
@@ -15,10 +18,10 @@ import (
 // rather than exported, matching hub_test.go's own decodeUsersSnapshot
 // pattern in the other direction.
 type pokeUsersSnapshot struct {
-	Users []telemt.UserInfo `json:"users"`
+	Users []userprojection.User `json:"users"`
 }
 
-func decodePokeUsersSnapshot(t *testing.T, data json.RawMessage) []telemt.UserInfo {
+func decodePokeUsersSnapshot(t *testing.T, data json.RawMessage) []userprojection.User {
 	t.Helper()
 	var snap pokeUsersSnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
@@ -27,13 +30,42 @@ func decodePokeUsersSnapshot(t *testing.T, data json.RawMessage) []telemt.UserIn
 	return snap.Users
 }
 
-func hasUsername(users []telemt.UserInfo, name string) bool {
+func hasUsername(users []userprojection.User, name string) bool {
 	for _, u := range users {
 		if u.Username == name {
 			return true
 		}
 	}
 	return false
+}
+
+func seedPokeUserTraffic(t *testing.T, st store.Store, usernames ...string) {
+	t.Helper()
+	for index, raw := range []uint64{10, 110} {
+		users := make([]store.UserTrafficObservation, len(usernames))
+		for i, username := range usernames {
+			users[i] = store.UserTrafficObservation{Username: username, RawOctets: raw}
+		}
+		if _, err := st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+			ObservedAt:       int64(1_700_000_000 + index),
+			SourceStartedAt:  1_699_999_000,
+			TelemetryEnabled: true,
+			Users:            users,
+		}); err != nil {
+			t.Fatalf("seed user traffic: %v", err)
+		}
+	}
+}
+
+func trafficForUsername(t *testing.T, data json.RawMessage, username string) *userprojection.Traffic {
+	t.Helper()
+	for _, user := range decodePokeUsersSnapshot(t, data) {
+		if user.Username == username {
+			return user.Traffic
+		}
+	}
+	t.Fatalf("users snapshot = %s, want %s", data, username)
+	return nil
 }
 
 // TestUserMutations_PokeUsersTopicPromptly is the handler-level test the
@@ -157,6 +189,71 @@ func TestUserMutations_PokeUsersTopicPromptly(t *testing.T) {
 		users := decodePokeUsersSnapshot(t, ev.Data)
 		if len(users) != 1 || users[0].Enabled {
 			t.Fatalf("users snapshot after disable = %s, want bob disabled", ev.Data)
+		}
+	})
+}
+
+// afterInitialIPObservation makes an accidental new observation distinguishable
+// from the initial periodic poll, even with second-resolution timestamps.
+func afterInitialIPObservation(t *testing.T, srv *Server) int64 {
+	t.Helper()
+	observedAt := srv.hub.UserIPSourceStatus().LastSuccess
+	if observedAt == 0 {
+		t.Fatal("initial periodic users poll did not record an IP observation")
+	}
+	time.Sleep(time.Until(time.Unix(observedAt+1, 0)))
+	return observedAt
+}
+
+func TestTrafficResets_PokeUsersTopicWithoutNewSourceObservation(t *testing.T) {
+	t.Run("individual", func(t *testing.T) {
+		fake := newFakeTelemt(aliceFixture(), bobFixture())
+		srv, cookie := newUsersTestServer(t, fake, false)
+		seedPokeUserTraffic(t, srv.st, "alice", "bob")
+		ch := subscribeUsersDrainInitial(t, srv)
+		observedAt := afterInitialIPObservation(t, srv)
+
+		r := mutatingJSON(t, "POST", "/api/users/alice/traffic/reset", cookie, map[string]any{"confirm": true})
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, r)
+		if w.Code != 204 {
+			t.Fatalf("reset status = %d: %s", w.Code, w.Body)
+		}
+
+		ev := recvEventOrFail(t, ch)
+		if traffic := trafficForUsername(t, ev.Data, "alice"); traffic != nil {
+			t.Fatalf("alice traffic after reset = %+v, want nil", traffic)
+		}
+		if traffic := trafficForUsername(t, ev.Data, "bob"); traffic == nil || traffic.ObservedTotalBytes != 100 {
+			t.Fatalf("bob traffic after alice reset = %+v, want 100 bytes", traffic)
+		}
+		if status := srv.hub.UserIPSourceStatus(); status.LastSuccess != observedAt || status.Pending {
+			t.Fatalf("traffic reset recorded an IP observation: %+v", status)
+		}
+	})
+
+	t.Run("global", func(t *testing.T) {
+		fake := newFakeTelemt(aliceFixture(), bobFixture())
+		srv, cookie := newUsersTestServer(t, fake, false)
+		seedPokeUserTraffic(t, srv.st, "alice", "bob")
+		ch := subscribeUsersDrainInitial(t, srv)
+		observedAt := afterInitialIPObservation(t, srv)
+
+		r := mutatingJSON(t, "POST", "/api/traffic/reset", cookie, map[string]any{"confirm": true})
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, r)
+		if w.Code != 204 {
+			t.Fatalf("reset status = %d: %s", w.Code, w.Body)
+		}
+
+		ev := recvEventOrFail(t, ch)
+		for _, username := range []string{"alice", "bob"} {
+			if traffic := trafficForUsername(t, ev.Data, username); traffic != nil {
+				t.Fatalf("%s traffic after reset = %+v, want nil", username, traffic)
+			}
+		}
+		if status := srv.hub.UserIPSourceStatus(); status.LastSuccess != observedAt || status.Pending {
+			t.Fatalf("traffic reset recorded an IP observation: %+v", status)
 		}
 	})
 }

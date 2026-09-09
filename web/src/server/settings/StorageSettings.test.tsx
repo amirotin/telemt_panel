@@ -1,27 +1,50 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getStorageSettingsQueryKey } from "../../lib/api/generated/@tanstack/react-query.gen";
+import {
+  getStorageSettingsQueryKey,
+  getTrafficSummaryQueryKey,
+  getUserIpHistoryQueryKey,
+  getUserTrafficHistoryQueryKey,
+} from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { StorageSettings as StorageSettingsData } from "../../lib/api/generated/types.gen";
 import { StorageSettings } from "./StorageSettings";
 import { ru } from "../../i18n/testing";
 import { formatBytes } from "../../lib/format";
 
-const { saveRequest } = vi.hoisted(() => ({ saveRequest: vi.fn().mockResolvedValue(undefined) }));
+const { getStorageRequest, resetAllTrafficRequest, saveRequest } = vi.hoisted(() => ({
+  getStorageRequest: vi.fn(),
+  resetAllTrafficRequest: vi.fn().mockResolvedValue(undefined),
+  saveRequest: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("../../lib/api/generated/@tanstack/react-query.gen", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../lib/api/generated/@tanstack/react-query.gen")>();
-  return { ...original, putStorageSettingsMutation: () => ({ mutationFn: saveRequest }) };
+  return {
+    ...original,
+    getStorageSettingsOptions: (
+      options?: Parameters<typeof original.getStorageSettingsOptions>[0],
+    ) => ({
+      queryKey: original.getStorageSettingsQueryKey(options),
+      queryFn: getStorageRequest,
+    }),
+    putStorageSettingsMutation: () => ({ mutationFn: saveRequest }),
+    resetAllUserTrafficMutation: () => ({ mutationFn: resetAllTrafficRequest }),
+  };
 });
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-async function renderStorage(data: StorageSettingsData) {
-  const queryClient = new QueryClient({
+async function renderStorage(
+  data: StorageSettingsData,
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-  });
-  vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+  }),
+  realInvalidation = false,
+) {
+  getStorageRequest.mockResolvedValue(data);
+  if (!realInvalidation) vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
   queryClient.setQueryData(getStorageSettingsQueryKey(), data);
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -37,6 +60,9 @@ async function renderStorage(data: StorageSettingsData) {
 }
 
 afterEach(() => {
+  getStorageRequest.mockReset();
+  resetAllTrafficRequest.mockReset();
+  resetAllTrafficRequest.mockResolvedValue(undefined);
   saveRequest.mockClear();
   if (root) act(() => root!.unmount());
   container?.remove();
@@ -158,5 +184,110 @@ describe("StorageSettings independent history", () => {
     const save = [...view.querySelectorAll("button")].find((b) => b.textContent === "Сохранить")!;
     await act(async () => save.click());
     expect(saveRequest.mock.calls[0][0].body.policies).toEqual(data.policies.map((p) => p.category === "technical" ? { ...p, enabled: false } : p));
+  });
+
+  it("refreshes all users' traffic views without touching IP history after a global reset", async () => {
+    const resetData: StorageSettingsData = {
+      ...data,
+      stats: {
+        ...data.stats,
+        categories: data.stats.categories.map((entry) =>
+          entry.category === "user_traffic" ? { ...entry, entities: 2 } : entry,
+        ),
+      },
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } },
+    });
+    const historyKey = getUserTrafficHistoryQueryKey({
+      path: { username: "bob" },
+      query: { range: "7d" },
+    });
+    const ipKey = getUserIpHistoryQueryKey({
+      path: { username: "bob" },
+      query: { range: "7d" },
+    });
+    const summaryKey = getTrafficSummaryQueryKey({ query: { range: "month" } });
+    queryClient.setQueryData(historyKey, { cached: "history" });
+    queryClient.setQueryData(ipKey, { cached: "ip" });
+    queryClient.setQueryData(summaryKey, { cached: "summary" });
+    let historyRefetches = 0;
+    let ipRefetches = 0;
+    const historyObserver = new QueryObserver(queryClient, {
+      queryKey: historyKey,
+      queryFn: async () => ({ fetch: ++historyRefetches }),
+      staleTime: Infinity,
+    });
+    const ipObserver = new QueryObserver(queryClient, {
+      queryKey: ipKey,
+      queryFn: async () => ({ fetch: ++ipRefetches }),
+      staleTime: Infinity,
+    });
+    const unsubscribeHistory = historyObserver.subscribe(() => {});
+    const unsubscribeIP = ipObserver.subscribe(() => {});
+
+    const view = await renderStorage(resetData, queryClient, true);
+    const openConfirmation = [...view.querySelectorAll("button")].find(
+      (button) => button.textContent === ru.server.settings.storageTrafficReset,
+    );
+    if (!openConfirmation) throw new Error("global traffic reset action button not found");
+    await act(async () => openConfirmation.click());
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) throw new Error("global traffic reset confirmation dialog not found");
+    const confirm = [...dialog.querySelectorAll("button")].find(
+      (button) => button.textContent === ru.server.settings.storageTrafficReset,
+    );
+    if (!confirm) throw new Error("global traffic reset confirmation button not found");
+
+    await act(async () => {
+      confirm.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(resetAllTrafficRequest).toHaveBeenCalledOnce();
+    expect(historyRefetches).toBe(1);
+    expect(ipRefetches).toBe(0);
+    expect(queryClient.getQueryState(summaryKey)?.isInvalidated).toBe(true);
+    unsubscribeHistory();
+    unsubscribeIP();
+  });
+
+  it("leaves cached traffic queries untouched when the global reset fails", async () => {
+    resetAllTrafficRequest.mockRejectedValueOnce(new Error("reset failed"));
+    const resetData: StorageSettingsData = {
+      ...data,
+      stats: {
+        ...data.stats,
+        categories: data.stats.categories.map((entry) =>
+          entry.category === "user_traffic" ? { ...entry, entities: 2 } : entry,
+        ),
+      },
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } },
+    });
+    const summaryKey = getTrafficSummaryQueryKey({ query: { range: "30d" } });
+    queryClient.setQueryData(summaryKey, { cached: "summary" });
+
+    const view = await renderStorage(resetData, queryClient, true);
+    const openConfirmation = [...view.querySelectorAll("button")].find(
+      (button) => button.textContent === ru.server.settings.storageTrafficReset,
+    );
+    if (!openConfirmation) throw new Error("global traffic reset action button not found");
+    await act(async () => openConfirmation.click());
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) throw new Error("global traffic reset confirmation dialog not found");
+    const confirm = [...dialog.querySelectorAll("button")].find(
+      (button) => button.textContent === ru.server.settings.storageTrafficReset,
+    );
+    if (!confirm) throw new Error("global traffic reset confirmation button not found");
+
+    await act(async () => {
+      confirm.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(resetAllTrafficRequest).toHaveBeenCalledOnce();
+    expect(queryClient.getQueryState(summaryKey)?.isInvalidated).toBe(false);
   });
 });

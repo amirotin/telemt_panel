@@ -26,6 +26,7 @@ import {
   type ActionSheetView,
 } from "./actionSheet.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
+import { invalidateTrafficQueries } from "../traffic/trafficInvalidation";
 
 // ActionSheetIntent is re-exported so callers keep importing the sheet's
 // own vocabulary from the sheet.
@@ -96,11 +97,11 @@ export function UserActionSheet({
 
   const resetTrafficMutation = useMutation({
     ...resetUserTrafficMutation(),
-    onSuccess: async () => {
+    onSuccess: async (_data, variables) => {
       pushToast(s.people.toast.trafficReset, "ok");
       close();
       refreshUsersAfterMutation(refreshTopic);
-      await queryClient.invalidateQueries();
+      await invalidateTrafficQueries(queryClient, variables.path.username);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });

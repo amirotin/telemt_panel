@@ -32,6 +32,7 @@ import type {
   StorageSettings as StorageSettingsData,
 } from "../../lib/api/generated/types.gen";
 import { retentionReductions, sameStoragePolicies } from "./storage.helpers";
+import { invalidateTrafficQueries } from "../../traffic/trafficInvalidation";
 
 const retentionOptions = [1, 3, 7, 14, 30, 90, 180, 365, 730];
 
@@ -93,7 +94,7 @@ export function StorageSettings() {
     onSuccess: async () => {
       setResetTrafficOpen(false);
       pushToast(s.server.settings.storageTrafficResetDone, "ok");
-      await queryClient.invalidateQueries();
+      await invalidateTrafficQueries(queryClient);
     },
     onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
   });
