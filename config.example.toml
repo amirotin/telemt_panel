@@ -1,6 +1,7 @@
 # Telemt Panel (next / 1.x) — configuration
 # The panel never writes to this file: settings changed from the UI are
 # persisted separately to data_dir/panel-state.json.
+# Unknown keys and tables are rejected at startup; check spelling against this example.
 
 listen = "0.0.0.0:8080"
 

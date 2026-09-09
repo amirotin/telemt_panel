@@ -77,6 +77,11 @@ path = "/var/lib/telemt-panel/panel.db"
 
 ### Install (English)
 
+The panel rejects unknown keys in its own TOML configuration and reports their
+paths without values. See [configuration reference](docs/CONFIG.md). The deprecated
+`telemt.config_edit_mode = "file"` remains accepted for 0.x compatibility, but
+configuration editing always requires the Telemt Config API.
+
 `install.sh` is a single POSIX-sh installer (dash, bash, busybox) with a Russian/English interface. It detects the host (systemd, OpenRC, procd/OpenWrt, sysvinit), locates Telemt, asks a few explained questions, shows a summary, then installs the release binary, writes the config, a narrow sudoers policy and a service file, starts the panel and checks `/api/health`.
 
 ```sh

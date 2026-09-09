@@ -121,6 +121,49 @@ func TestRunStoreImportRejectsUnsupportedFormatBeforeOpeningTarget(t *testing.T)
 	}
 }
 
+func TestStoreCommandsRejectUnknownConfigBeforeWriting(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "state")
+	databasePath := filepath.Join(dir, "history.db")
+	configPath := writeStoreCommandConfigWithDataDir(t, dir, "panel.toml", dataDir, databasePath)
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := append([]byte("unknown_option = 'SECRET_TOKEN'\n"), raw...)
+	if err := os.WriteFile(configPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dump := filepath.Join(dir, "input.json")
+	input, err := json.Marshal(store.PortableData{FormatVersion: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dump, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "output.json")
+	for _, err := range []error{
+		runStoreExport([]string{"--config", configPath, "--out", out}),
+		runStoreImport([]string{"--config", configPath, "--in", dump}),
+	} {
+		if err == nil || err.Error() != "load config: unknown config keys: unknown_option" {
+			t.Fatalf("config rejection = %v", err)
+		}
+	}
+	for _, path := range []string{dataDir, databasePath, out} {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("invalid config created %s: %v", path, err)
+		}
+	}
+	for path, want := range map[string][]byte{configPath: content, dump: input} {
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != string(want) {
+			t.Fatalf("input changed: %s, %v", path, err)
+		}
+	}
+}
+
 func TestRunStoreImportRejectsLegacyPortableChallengeField(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, "destination-data")

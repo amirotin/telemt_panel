@@ -4,10 +4,12 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"net/netip"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -157,8 +159,17 @@ func Load(path string) (*Config, error) {
 		},
 		Privileges: PrivilegesConfig{Mode: "auto"},
 	}
-	if err := toml.Unmarshal(data, cfg); err != nil {
+	metadata, err := toml.NewDecoder(bytes.NewReader(data)).Decode(cfg)
+	if err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	if unknown := metadata.Undecoded(); len(unknown) != 0 {
+		paths := make([]string, 0, len(unknown))
+		for _, key := range unknown {
+			paths = append(paths, key.String())
+		}
+		slices.Sort(paths)
+		return nil, fmt.Errorf("unknown config keys: %s", strings.Join(slices.Compact(paths), ", "))
 	}
 
 	if cfg.Telemt.URL == "" {
