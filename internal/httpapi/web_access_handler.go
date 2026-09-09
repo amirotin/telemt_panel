@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -81,9 +80,7 @@ func (s *Server) handlePutTelemtUserWebAccess(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var req webUserAccessUpdate
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxWebAccessBody))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxWebAccessBody, RejectUnknown: true}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid WEB access request")
 		return
 	}

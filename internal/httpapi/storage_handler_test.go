@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,6 +139,33 @@ func TestHandleResetUserTrafficRequiresConfirmation(t *testing.T) {
 	}
 	if summaries, _ := st.UserTrafficSummaries(); len(summaries) != 0 {
 		t.Fatalf("confirmed reset kept traffic: %+v", summaries)
+	}
+}
+
+func TestHandleResetUserTrafficRejectsTrailingAndOversizeBodiesBeforeMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "second JSON value", body: `{"confirm":true}{}`},
+		{name: "oversize whitespace suffix", body: `{"confirm":true}` + strings.Repeat(" ", maxStorageSettingsBody)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, st := newStorageTestServer(t)
+			seedUserTraffic(t, st, "alice")
+
+			req := httptest.NewRequest(http.MethodPost, "/api/users/alice/traffic/reset", strings.NewReader(tc.body))
+			req.SetPathValue("username", "alice")
+			recorder := httptest.NewRecorder()
+			srv.handleResetUserTraffic(recorder, req)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+			}
+			if summaries, _ := st.UserTrafficSummaries(); summaries["alice"].ObservedTotalBytes != 100 {
+				t.Fatalf("rejected reset changed traffic: %+v", summaries)
+			}
+		})
 	}
 }
 

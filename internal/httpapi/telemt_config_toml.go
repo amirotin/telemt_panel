@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"reflect"
 	"sort"
@@ -138,14 +137,12 @@ func contextWithTelemtConfigTimeout(r *http.Request) (context.Context, context.C
 
 func decodeTelemtConfigTOMLRequest(w http.ResponseWriter, r *http.Request) (telemtConfigTOMLRequest, bool) {
 	var req telemtConfigTOMLRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxTelemtConfigPatchBody))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
-		return req, false
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "request body must contain exactly one JSON object")
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxTelemtConfigPatchBody, RejectUnknown: true}); err != nil {
+		if errors.Is(err, errJSONBodyTrailingData) {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "request body must contain exactly one JSON object")
+		} else {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+		}
 		return req, false
 	}
 	if strings.TrimSpace(req.TOMLProjection) == "" {

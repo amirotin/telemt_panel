@@ -657,9 +657,10 @@ func TestHandlePatchUserTriState(t *testing.T) {
 	h := srv.Handler()
 
 	body := map[string]any{
-		"data_quota_bytes": 2048,
-		"max_tcp_conns":    nil,
-		"bogus_field":      "should be dropped",
+		"data_quota_bytes":  2048,
+		"max_tcp_conns":     nil,
+		"rate_limit_up_bps": uint64(9007199254740993),
+		"bogus_field":       "should be dropped",
 	}
 	req := mutatingJSON(t, "PATCH", "/api/users/alice", cookie, body)
 	w := httptest.NewRecorder()
@@ -668,7 +669,7 @@ func TestHandlePatchUserTriState(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", w.Code, w.Body)
 	}
 
-	const want = `{"data_quota_bytes":2048,"max_tcp_conns":null}`
+	const want = `{"data_quota_bytes":2048,"max_tcp_conns":null,"rate_limit_up_bps":9007199254740993}`
 	if got := string(fake.lastPatchBody); got != want {
 		t.Errorf("upstream patch body = %s, want %s", got, want)
 	}

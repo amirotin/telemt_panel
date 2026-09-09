@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -158,14 +157,12 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req telemtConfigPatchRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxTelemtConfigPatchBody))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "request body must contain exactly one JSON object")
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxTelemtConfigPatchBody, RejectUnknown: true}); err != nil {
+		if errors.Is(err, errJSONBodyTrailingData) {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "request body must contain exactly one JSON object")
+		} else {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+		}
 		return
 	}
 	if len(req.Sections) == 0 {
@@ -228,11 +225,9 @@ func writeTelemtConfigError(w http.ResponseWriter, err error) {
 // "reload now" click may not be chained from a prior config read.
 func (s *Server) handleTelemtReload(w http.ResponseWriter, r *http.Request) {
 	var req telemt.ReloadRequest
-	if r.ContentLength != 0 {
-		if err := json.NewDecoder(io.LimitReader(r.Body, maxTelemtConfigPatchBody)).Decode(&req); err != nil {
-			auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
-			return
-		}
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxTelemtConfigPatchBody, AllowEmpty: true}); err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), telemtConfigRequestTimeout)

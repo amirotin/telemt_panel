@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -319,6 +320,20 @@ func TestHandleTelemtReload_Accepted(t *testing.T) {
 	}
 	if !found {
 		t.Error("no telemt.reload audit entry recorded")
+	}
+}
+
+func TestHandleTelemtReload_AcceptsActualEmptyBodyWithUnknownLength(t *testing.T) {
+	srv, _, _ := newTelemttestConfigServer(t, telemttest.Scenario{})
+	req := httptest.NewRequest(http.MethodPost, "/api/telemt/reload", nil)
+	req.Body = io.NopCloser(bytes.NewReader(nil))
+	req.ContentLength = -1
+	w := httptest.NewRecorder()
+
+	srv.handleTelemtReload(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202: %s", w.Code, w.Body)
 	}
 }
 

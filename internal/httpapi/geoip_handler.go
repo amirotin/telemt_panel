@@ -1,9 +1,7 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -53,15 +51,13 @@ func (s *Server) handleGetGeoIPSettings(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handlePutGeoIPSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
-	decoder.DisallowUnknownFields()
 	var request *geoIPConfigRequest
-	if err := decoder.Decode(&request); err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid GeoIP configuration")
-		return
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "expected a single GeoIP configuration")
+	if err := decodeJSONBody(w, r, &request, jsonBodyOptions{MaxBytes: 64 << 10, RejectUnknown: true}); err != nil {
+		if errors.Is(err, errJSONBodyTrailingData) {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "expected a single GeoIP configuration")
+		} else {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid GeoIP configuration")
+		}
 		return
 	}
 	cfg, complete := request.config()

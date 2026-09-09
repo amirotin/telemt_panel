@@ -368,4 +368,13 @@ func TestWebRoutesRejectMalformedRequestsPrecisely(t *testing.T) {
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("oversize close = %d, want 413: %s", w.Code, w.Body)
 	}
+
+	// The decoder must consume the complete body before accepting the
+	// first value; otherwise an oversize suffix bypasses the route's 413.
+	valid := `{"runtime_instance":"0123456789abcdef0123456789abcdef","selector":{"kind":"filter","user":"web-user"}}`
+	w = doRequest(t, srv, cookie, "POST", "/api/telemt/web/sessions/close", nil,
+		[]byte(valid+strings.Repeat(" ", maxWebCloseBodyBytes)))
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversize close suffix = %d, want 413: %s", w.Code, w.Body)
+	}
 }

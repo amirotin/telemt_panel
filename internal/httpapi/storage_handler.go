@@ -1,8 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 
@@ -54,9 +52,7 @@ func (s *Server) handlePutStorageSettings(w http.ResponseWriter, r *http.Request
 		Policies                  []store.StoragePolicy `json:"policies"`
 		ConfirmRetentionReduction bool                  `json:"confirm_retention_reduction"`
 	}
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxStorageSettingsBody))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxStorageSettingsBody, RejectUnknown: true}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
@@ -90,9 +86,7 @@ func (s *Server) handlePutStorageSettings(w http.ResponseWriter, r *http.Request
 // handlePurgeStorageHistory implements POST /api/settings/storage/purge.
 func (s *Server) handlePurgeStorageHistory(w http.ResponseWriter, r *http.Request) {
 	var req storagePurgeRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxStorageSettingsBody))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxStorageSettingsBody, RejectUnknown: true}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
@@ -149,9 +143,7 @@ func (s *Server) handleResetAllUserTraffic(w http.ResponseWriter, r *http.Reques
 
 func decodeDestructiveConfirmation(w http.ResponseWriter, r *http.Request, message string) bool {
 	var req destructiveConfirmationRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxStorageSettingsBody))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxStorageSettingsBody, RejectUnknown: true}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return false
 	}

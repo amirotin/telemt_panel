@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -199,7 +198,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 // handleCreateUser implements POST /api/users.
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req telemt.CreateUserRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxUserPatchBody)).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxUserPatchBody}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
@@ -248,9 +247,14 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxUserPatchBody))
-	if err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "could not read request body")
+	var body json.RawMessage
+	if err := decodeJSONBody(w, r, &body, jsonBodyOptions{MaxBytes: maxUserPatchBody}); err != nil {
+		var readErr *jsonBodyReadError
+		if errors.As(err, &readErr) {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "could not read request body")
+		} else {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+		}
 		return
 	}
 	patch, err := decodeUserPatch(body)
@@ -387,9 +391,14 @@ func (s *Server) handleRotateSecret(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSetEnabled(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxUserPatchBody))
-	if err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "could not read request body")
+	var body json.RawMessage
+	if err := decodeJSONBody(w, r, &body, jsonBodyOptions{MaxBytes: maxUserPatchBody}); err != nil {
+		var readErr *jsonBodyReadError
+		if errors.As(err, &readErr) {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "could not read request body")
+		} else {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "enabled is required")
+		}
 		return
 	}
 	enabled, err := decodeEnabledRequest(body)

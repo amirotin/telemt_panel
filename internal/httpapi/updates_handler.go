@@ -2,9 +2,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -145,7 +143,7 @@ func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req applyUpdateRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxUpdatesRequestBody)).Decode(&req); err != nil || req.Version == "" {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxUpdatesRequestBody}); err != nil || req.Version == "" {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "version is required")
 		return
 	}
@@ -185,7 +183,7 @@ func (s *Server) handleGetAutoUpdate(w http.ResponseWriter, r *http.Request) {
 // store — the panel never rewrites its config file (openapi description).
 func (s *Server) handlePutAutoUpdate(w http.ResponseWriter, r *http.Request) {
 	var req autoUpdateSettingsView
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxUpdatesRequestBody)).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxUpdatesRequestBody}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}

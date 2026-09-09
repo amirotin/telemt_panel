@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -226,9 +225,7 @@ func (s *Server) handleGetTelemtWebOperation(w http.ResponseWriter, r *http.Requ
 // here either.
 func (s *Server) handlePostTelemtWebSessionsClose(w http.ResponseWriter, r *http.Request) {
 	var req telemt.WebCloseRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWebCloseBodyBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxWebCloseBodyBytes, RejectUnknown: true}); err != nil {
 		// An oversize body is not a syntax error, and telling the caller it
 		// is sends them looking for a typo in a request that was simply
 		// too big.
