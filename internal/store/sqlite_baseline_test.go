@@ -4,7 +4,6 @@ package store
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
 	sqlitedriver "github.com/ncruces/go-sqlite3/driver"
 )
 
@@ -227,34 +225,6 @@ func TestSQLiteConcurrentFreshInitialization(t *testing.T) {
 	defer store.Close()
 	if got := sqliteLogicalSchema(t, store); !reflect.DeepEqual(got, frozenSQLiteSchema11) {
 		t.Fatalf("parallel initialization schema = %#v", got)
-	}
-}
-
-type failingSchemaVersionDialect struct{ sqlstore.SQLiteDialect }
-
-func (failingSchemaVersionDialect) SetSchemaVersion(context.Context, *sql.Tx, int) error {
-	return errors.New("injected schema-version failure")
-}
-
-func TestSQLiteFreshInitializationRollsBackOnFailure(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "panel.db")
-	db, err := sqlitedriver.Open("file:" + path + "?_txlock=immediate")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := sqlstore.Migrate(context.Background(), db, failingSchemaVersionDialect{}); err == nil {
-		t.Fatal("Migrate accepted injected schema-version failure")
-	}
-	var version, objects int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE sql IS NOT NULL AND substr(name, 1, 7) != 'sqlite_'`).Scan(&objects); err != nil {
-		t.Fatal(err)
-	}
-	if version != 0 || objects != 0 {
-		t.Fatalf("failed initialization left version=%d objects=%d", version, objects)
 	}
 }
 

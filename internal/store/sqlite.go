@@ -21,10 +21,9 @@ import (
 // SQLite contains observability history only; control-plane state lives in the
 // local panel-state.json store.
 type SQLite struct {
-	db      *sql.DB
-	path    string
-	schema  int
-	dialect sqlstore.Dialect
+	db     *sql.DB
+	path   string
+	schema int
 
 	policyMu sync.RWMutex
 	policies map[StorageCategory]StoragePolicy
@@ -123,22 +122,20 @@ func (s *SQLite) Info() Info {
 
 func newSQLStore(db *sql.DB, path string) *SQLite {
 	return &SQLite{
-		db: db, path: path, dialect: sqlstore.SQLiteDialect{},
+		db: db, path: path,
 		policies: defaultPolicyMap(),
 	}
 }
 
-func (s *SQLite) bind(query string) string { return s.dialect.Bind(query) }
-
 func (s *SQLite) exec(query string, args ...any) (sql.Result, error) {
 	ctx, cancel := s.operationContext()
 	defer cancel()
-	return s.db.ExecContext(ctx, s.bind(query), args...)
+	return s.db.ExecContext(ctx, query, args...)
 }
 
 func (s *SQLite) query(query string, args ...any) (*queryRows, error) {
 	ctx, cancel := s.operationContext()
-	rows, err := s.db.QueryContext(ctx, s.bind(query), args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -148,7 +145,7 @@ func (s *SQLite) query(query string, args ...any) (*queryRows, error) {
 
 func (s *SQLite) queryRow(query string, args ...any) queryRow {
 	ctx, cancel := s.operationContext()
-	return queryRow{row: s.db.QueryRowContext(ctx, s.bind(query), args...), cancel: cancel}
+	return queryRow{row: s.db.QueryRowContext(ctx, query, args...), cancel: cancel}
 }
 
 func (s *SQLite) operationContext() (context.Context, context.CancelFunc) {
@@ -159,12 +156,6 @@ func (s *SQLite) withOperationTx(fn func(*sql.Tx) error) error {
 	ctx, cancel := s.operationContext()
 	defer cancel()
 	return sqlstore.WithTx(ctx, s.db, nil, fn)
-}
-
-func init() {
-	Register("sqlite", func(options OpenOptions) (HistoryStore, error) {
-		return NewSQLite(options.Path)
-	})
 }
 
 func (s *SQLite) initialize() error {
@@ -196,7 +187,7 @@ func (s *SQLite) initialize() error {
 }
 
 func (s *SQLite) initializeSQL(ctx context.Context) error {
-	version, err := sqlstore.Migrate(ctx, s.db, s.dialect)
+	version, err := sqlstore.Migrate(ctx, s.db)
 	if err != nil {
 		return fmt.Errorf("migrate sqlite store: %w", err)
 	}
@@ -256,7 +247,7 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 				return fmt.Errorf("purge event history: %w", err)
 			}
 		}
-		if _, err := tx.Exec(s.bind(`DELETE FROM metric_points WHERE category = ?`), category); err != nil {
+		if _, err := tx.Exec(`DELETE FROM metric_points WHERE category = ?`, category); err != nil {
 			return fmt.Errorf("purge metric history: %w", err)
 		}
 		if category == StorageUserTraffic {

@@ -74,7 +74,7 @@ func (s *SQLite) pruneHistoryEventBatch(now time.Time, limit int) (int, error) {
 	}
 	if err := s.withOperationTx(func(tx *sql.Tx) error {
 		for _, id := range ids {
-			if _, err := tx.Exec(s.bind(`DELETE FROM history_events WHERE seq = ?`), id); err != nil {
+			if _, err := tx.Exec(`DELETE FROM history_events WHERE seq = ?`, id); err != nil {
 				return err
 			}
 		}

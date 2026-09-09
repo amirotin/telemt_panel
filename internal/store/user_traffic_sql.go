@@ -153,7 +153,7 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 			if _, ok := seen[username]; ok || current.summary.DeletedEpochSecs != 0 {
 				continue
 			}
-			if _, err := tx.Exec(s.bind(`UPDATE user_traffic_users SET deleted_ts = ? WHERE id = ?`), snapshot.ObservedAt, current.id); err != nil {
+			if _, err := tx.Exec(`UPDATE user_traffic_users SET deleted_ts = ? WHERE id = ?`, snapshot.ObservedAt, current.id); err != nil {
 				return fmt.Errorf("mark deleted user traffic: %w", err)
 			}
 		}
@@ -164,14 +164,14 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 		}
 
 		sourceState := userTrafficSourceState(snapshot.TelemetryEnabled)
-		if _, err := tx.Exec(s.bind(`INSERT INTO user_traffic_collector
+		if _, err := tx.Exec(`INSERT INTO user_traffic_collector
 			(singleton, last_success_ts, source_started_at, source_state, continuity)
 			VALUES (1, ?, ?, ?, ?)
 			ON CONFLICT(singleton) DO UPDATE SET
 			last_success_ts = excluded.last_success_ts,
 			source_started_at = excluded.source_started_at,
 			source_state = excluded.source_state,
-			continuity = excluded.continuity`), snapshot.ObservedAt, snapshot.SourceStartedAt, sourceState, continuity); err != nil {
+			continuity = excluded.continuity`, snapshot.ObservedAt, snapshot.SourceStartedAt, sourceState, continuity); err != nil {
 			return fmt.Errorf("update user traffic collector: %w", err)
 		}
 		return nil
@@ -243,10 +243,10 @@ func (s *SQLite) readUserTrafficUsersTx(tx *sql.Tx) (map[string]storedUserTraffi
 }
 
 func (s *SQLite) insertUserTrafficBaselineTx(tx *sql.Tx, summary UserTrafficSummary, raw, sourceStart int64) (int64, error) {
-	result, err := tx.Exec(s.bind(`INSERT INTO user_traffic_users
+	result, err := tx.Exec(`INSERT INTO user_traffic_users
 		(username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
 		 last_raw_octets, last_source_started_at, deleted_ts, continuity)
-		VALUES (?, 0, ?, 0, ?, 0, ?, ?, NULL, ?)`),
+		VALUES (?, 0, ?, 0, ?, 0, ?, ?, NULL, ?)`,
 		summary.Username, summary.ObservedSinceEpochSecs, summary.MonthKey, raw, sourceStart, summary.Continuity)
 	if err != nil {
 		return 0, fmt.Errorf("insert user traffic baseline: %w", err)
@@ -263,10 +263,10 @@ func (s *SQLite) updateUserTrafficSummaryTx(tx *sql.Tx, current storedUserTraffi
 	if current.summary.DeletedEpochSecs != 0 {
 		deleted = current.summary.DeletedEpochSecs
 	}
-	_, err := tx.Exec(s.bind(`UPDATE user_traffic_users SET
+	_, err := tx.Exec(`UPDATE user_traffic_users SET
 		total_bytes = ?, updated_ts = ?, month_key = ?, month_bytes = ?,
 		last_raw_octets = ?, last_source_started_at = ?, deleted_ts = ?, continuity = ?
-		WHERE id = ?`),
+		WHERE id = ?`,
 		current.summary.ObservedTotalBytes,
 		current.summary.LastActivityEpochSecs,
 		current.summary.MonthKey,
@@ -298,7 +298,7 @@ func (s *SQLite) upsertUserTrafficBucketsTx(tx *sql.Tx, rows []userTrafficBucket
 		}
 		query.WriteString(` ON CONFLICT(user_id, tier, ts)
 			DO UPDATE SET bytes = user_traffic_buckets.bytes + excluded.bytes`)
-		if _, err := tx.Exec(s.bind(query.String()), args...); err != nil {
+		if _, err := tx.Exec(query.String(), args...); err != nil {
 			return fmt.Errorf("upsert user traffic buckets: %w", err)
 		}
 	}

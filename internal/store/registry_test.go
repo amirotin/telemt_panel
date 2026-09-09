@@ -18,6 +18,21 @@ func TestOpenMemoryAndInfo(t *testing.T) {
 	}
 }
 
+func TestOpenNormalizesMemoryDriver(t *testing.T) {
+	for _, driver := range []string{"", "  MeMoRy  "} {
+		opened, err := Open(OpenOptions{Driver: driver, Path: "ignored"})
+		if err != nil {
+			t.Fatalf("Open(%q): %v", driver, err)
+		}
+		if got := opened.Driver(); got != "memory" {
+			t.Fatalf("Open(%q) driver = %q", driver, got)
+		}
+		if err := opened.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestOpenRejectsUnknownDriver(t *testing.T) {
 	if _, err := Open(OpenOptions{Driver: "oracle"}); err == nil || !strings.Contains(err.Error(), "unknown driver") {
 		t.Fatalf("Open unknown driver error = %v", err)
@@ -29,20 +44,10 @@ func TestOpenRejectsUnknownDriver(t *testing.T) {
 	}
 }
 
-func TestDriverListsAreSorted(t *testing.T) {
-	all := Drivers()
-	available := AvailableDrivers()
-	if len(all) != 2 {
-		t.Fatalf("Drivers() = %v", all)
-	}
-	if len(available) == 0 || available[0] != "memory" {
-		t.Fatalf("AvailableDrivers() = %v", available)
-	}
-	for _, list := range [][]string{all, available} {
-		for i := 1; i < len(list); i++ {
-			if list[i-1] >= list[i] {
-				t.Fatalf("driver list is not sorted: %v", list)
-			}
-		}
+func TestOpenErrorUnwrapsCause(t *testing.T) {
+	cause := errors.New("open failed")
+	err := &OpenError{Driver: "sqlite", Err: cause}
+	if !errors.Is(err, cause) || !IsRuntimeOpenError(err) {
+		t.Fatalf("OpenError classification = %T %v", err, err)
 	}
 }

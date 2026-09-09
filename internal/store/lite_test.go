@@ -3,6 +3,7 @@
 package store
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,10 @@ func TestLiteVariantDrivers(t *testing.T) {
 		_, err := Open(OpenOptions{Driver: name})
 		if err == nil || !strings.Contains(err.Error(), "install the full variant") {
 			t.Fatalf("Open(%q) error = %v", name, err)
+		}
+		var unavailable *UnavailableDriverError
+		if !errors.As(err, &unavailable) || unavailable.Driver != name || IsRuntimeOpenError(err) {
+			t.Fatalf("Open(%q) error type = %T", name, err)
 		}
 	}
 }

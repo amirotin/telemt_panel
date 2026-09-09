@@ -146,13 +146,13 @@ func (s *SQLite) pruneUserTrafficBatch(now time.Time, limit int) (int, error) {
 	}
 	if err := s.withOperationTx(func(tx *sql.Tx) error {
 		for _, key := range keys {
-			if _, err := tx.Exec(s.bind(`DELETE FROM user_traffic_buckets WHERE user_id = ? AND tier = ? AND ts = ?`), key.userID, key.tier, key.ts); err != nil {
+			if _, err := tx.Exec(`DELETE FROM user_traffic_buckets WHERE user_id = ? AND tier = ? AND ts = ?`, key.userID, key.tier, key.ts); err != nil {
 				return err
 			}
 		}
-		_, err := tx.Exec(s.bind(`DELETE FROM user_traffic_users
+		_, err := tx.Exec(`DELETE FROM user_traffic_users
 			WHERE deleted_ts IS NOT NULL AND deleted_ts < ?
-			  AND NOT EXISTS (SELECT 1 FROM user_traffic_buckets WHERE user_id = user_traffic_users.id)`),
+			  AND NOT EXISTS (SELECT 1 FROM user_traffic_buckets WHERE user_id = user_traffic_users.id)`,
 			now.Add(-retention).Unix())
 		return err
 	}); err != nil {
@@ -216,7 +216,7 @@ func (s *SQLite) pruneMetricBatch(now time.Time, limit int) (int, error) {
 	}
 	if err := s.withOperationTx(func(tx *sql.Tx) error {
 		for _, key := range keys {
-			if _, err := tx.Exec(s.bind(`DELETE FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`), key.name, key.tier, key.ts); err != nil {
+			if _, err := tx.Exec(`DELETE FROM metric_points WHERE name = ? AND tier = ? AND ts = ?`, key.name, key.tier, key.ts); err != nil {
 				return err
 			}
 		}

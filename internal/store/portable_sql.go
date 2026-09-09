@@ -132,7 +132,7 @@ func (s *SQLite) ImportData(data PortableData) error {
 				if lastTS == 0 {
 					lastTS = point.TS
 				}
-				if _, err := tx.Exec(s.bind(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts, min_value, first_ts, first_value, delta, observed_seconds, gaps) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), name, metricCategory(name), tier, point.TS, point.Value, maxValue, samples, lastTS, point.Min, point.FirstTS, point.FirstValue, point.Delta, point.ObservedSeconds, point.Gaps); err != nil {
+				if _, err := tx.Exec(`INSERT INTO metric_points(name, category, tier, ts, value, max, samples, last_ts, min_value, first_ts, first_value, delta, observed_seconds, gaps) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, name, metricCategory(name), tier, point.TS, point.Value, maxValue, samples, lastTS, point.Min, point.FirstTS, point.FirstValue, point.Delta, point.ObservedSeconds, point.Gaps); err != nil {
 					return fmt.Errorf("import metric point: %w", err)
 				}
 			}
@@ -142,7 +142,7 @@ func (s *SQLite) ImportData(data PortableData) error {
 			if err != nil {
 				return fmt.Errorf("encode imported history event attributes: %w", err)
 			}
-			if _, err := tx.Exec(s.bind(`INSERT INTO history_events(ts_ns, category, kind, entity, state, previous_state, severity, attributes_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`), event.TS.UnixNano(), event.Category, event.Kind, event.Entity, event.State, event.PreviousState, event.Severity, string(attributes)); err != nil {
+			if _, err := tx.Exec(`INSERT INTO history_events(ts_ns, category, kind, entity, state, previous_state, severity, attributes_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, event.TS.UnixNano(), event.Category, event.Kind, event.Entity, event.State, event.PreviousState, event.Severity, string(attributes)); err != nil {
 				return fmt.Errorf("import history event: %w", err)
 			}
 		}
@@ -159,10 +159,10 @@ func (s *SQLite) ImportData(data PortableData) error {
 		}
 		for _, item := range data.UserTraffic {
 			summary := item.Summary
-			result, err := tx.Exec(s.bind(`INSERT INTO user_traffic_users
+			result, err := tx.Exec(`INSERT INTO user_traffic_users
 				(username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
 				 last_raw_octets, last_source_started_at, deleted_ts, continuity)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				summary.Username, summary.ObservedTotalBytes, summary.ObservedSinceEpochSecs,
 				summary.LastActivityEpochSecs, summary.MonthKey, summary.CurrentMonthBytes,
 				item.LastRawOctets, item.LastSourceStartedAt, nullablePortableTimestamp(summary.DeletedEpochSecs), summary.Continuity)
@@ -176,14 +176,14 @@ func (s *SQLite) ImportData(data PortableData) error {
 			userIDs[summary.Username] = id
 		}
 		for _, bucket := range data.UserTrafficBuckets {
-			if _, err := tx.Exec(s.bind(`INSERT INTO user_traffic_buckets(user_id, tier, ts, bytes) VALUES(?, ?, ?, ?)`),
+			if _, err := tx.Exec(`INSERT INTO user_traffic_buckets(user_id, tier, ts, bytes) VALUES(?, ?, ?, ?)`,
 				userIDs[bucket.Username], portableUserTrafficTier(bucket.Tier), bucket.TS, bucket.Bytes); err != nil {
 				return fmt.Errorf("import user traffic bucket: %w", err)
 			}
 		}
 		if state := data.UserTrafficCollector; state != nil {
-			if _, err := tx.Exec(s.bind(`INSERT INTO user_traffic_collector(singleton, last_success_ts, source_started_at, source_state, continuity)
-				VALUES (1, ?, ?, ?, ?)`), state.LastSuccessTS, state.SourceStartedAt, state.SourceState, state.Continuity); err != nil {
+			if _, err := tx.Exec(`INSERT INTO user_traffic_collector(singleton, last_success_ts, source_started_at, source_state, continuity)
+				VALUES (1, ?, ?, ?, ?)`, state.LastSuccessTS, state.SourceStartedAt, state.SourceState, state.Continuity); err != nil {
 				return fmt.Errorf("import user traffic collector: %w", err)
 			}
 		}
@@ -221,8 +221,8 @@ func (s *SQLite) rollbackImportedHistory() error {
 }
 
 func walkPortableUserTrafficUsers(s *SQLite, tx *sql.Tx, emit func(PortableUserTrafficUser) error) (err error) {
-	rows, err := tx.Query(s.bind(`SELECT username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
-		last_raw_octets, last_source_started_at, deleted_ts, continuity FROM user_traffic_users ORDER BY username`))
+	rows, err := tx.Query(`SELECT username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
+		last_raw_octets, last_source_started_at, deleted_ts, continuity FROM user_traffic_users ORDER BY username`)
 	if err != nil {
 		return err
 	}
@@ -255,9 +255,9 @@ func walkPortableUserTrafficUsers(s *SQLite, tx *sql.Tx, emit func(PortableUserT
 }
 
 func walkPortableUserTrafficBuckets(s *SQLite, tx *sql.Tx, emit func(PortableUserTrafficBucket) error) (err error) {
-	rows, err := tx.Query(s.bind(`SELECT users.username, buckets.tier, buckets.ts, buckets.bytes
+	rows, err := tx.Query(`SELECT users.username, buckets.tier, buckets.ts, buckets.bytes
 		FROM user_traffic_buckets AS buckets JOIN user_traffic_users AS users ON users.id = buckets.user_id
-		ORDER BY users.username, buckets.tier, buckets.ts`))
+		ORDER BY users.username, buckets.tier, buckets.ts`)
 	if err != nil {
 		return err
 	}
@@ -278,8 +278,8 @@ func walkPortableUserTrafficBuckets(s *SQLite, tx *sql.Tx, emit func(PortableUse
 
 func readPortableUserTrafficCollector(s *SQLite, tx *sql.Tx) (*UserTrafficCollectorState, error) {
 	var state UserTrafficCollectorState
-	err := tx.QueryRow(s.bind(`SELECT last_success_ts, source_started_at, source_state, continuity
-		FROM user_traffic_collector WHERE singleton = 1`)).Scan(
+	err := tx.QueryRow(`SELECT last_success_ts, source_started_at, source_state, continuity
+		FROM user_traffic_collector WHERE singleton = 1`).Scan(
 		&state.LastSuccessTS, &state.SourceStartedAt, &state.SourceState, &state.Continuity)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -309,7 +309,7 @@ func portableUserTrafficTier(tier MetricTier) int {
 }
 
 func walkPortableMetrics(s *SQLite, tx *sql.Tx, emit func(string, MetricPoint) error) (err error) {
-	rows, err := tx.Query(s.bind("SELECT name, " + metricPointColumns + " FROM metric_points ORDER BY name, tier, ts"))
+	rows, err := tx.Query("SELECT name, " + metricPointColumns + " FROM metric_points ORDER BY name, tier, ts")
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func walkPortableMetrics(s *SQLite, tx *sql.Tx, emit func(string, MetricPoint) e
 }
 
 func walkPortableEvents(s *SQLite, tx *sql.Tx, emit func(HistoryEvent) error) (err error) {
-	rows, err := tx.Query(s.bind(`SELECT seq, ts_ns, category, kind, entity, state, previous_state, severity, attributes_json FROM history_events ORDER BY seq`))
+	rows, err := tx.Query(`SELECT seq, ts_ns, category, kind, entity, state, previous_state, severity, attributes_json FROM history_events ORDER BY seq`)
 	if err != nil {
 		return err
 	}
@@ -362,10 +362,10 @@ func walkPortableEvents(s *SQLite, tx *sql.Tx, emit func(HistoryEvent) error) (e
 
 func streamPortableSQLHistory(s *SQLite, tx *sql.Tx, cutoff int64, w *portableJSONWriter) error {
 	var orphan bool
-	if err := tx.QueryRow(s.bind(`SELECT EXISTS(
+	if err := tx.QueryRow(`SELECT EXISTS(
 		SELECT 1 FROM user_traffic_buckets AS buckets
 		LEFT JOIN user_traffic_users AS users ON users.id = buckets.user_id
-		WHERE users.id IS NULL LIMIT 1)`)).Scan(&orphan); err != nil {
+		WHERE users.id IS NULL LIMIT 1)`).Scan(&orphan); err != nil {
 		return err
 	}
 	if orphan {

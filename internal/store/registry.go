@@ -3,26 +3,16 @@ package store
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
-	"sync"
 
 	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
 )
 
-// OpenOptions contains driver-neutral connection settings. Constructors use
-// only the fields relevant to their backend.
+// OpenOptions contains driver-neutral connection settings. Backends use only
+// the fields relevant to them.
 type OpenOptions struct {
 	Driver string
 	Path   string
-}
-
-// Constructor opens one configured store backend.
-type Constructor func(OpenOptions) (HistoryStore, error)
-
-type driverRegistration struct {
-	constructor Constructor
-	unavailable string
 }
 
 // UnknownDriverError reports a driver name that the panel does not know.
@@ -49,61 +39,37 @@ type OpenError struct {
 func (e *OpenError) Error() string { return fmt.Sprintf("store: open %s: %v", e.Driver, e.Err) }
 func (e *OpenError) Unwrap() error { return e.Err }
 
-var driverRegistry = struct {
-	sync.RWMutex
-	entries map[string]driverRegistration
-}{entries: make(map[string]driverRegistration)}
-
-// Register makes a compiled driver available to Open. Registration is done
-// from build-tagged driver files during package initialization.
-func Register(name string, constructor Constructor) {
-	register(name, driverRegistration{constructor: constructor})
-}
-
-// RegisterUnavailable makes a known but omitted driver return an actionable
-// error instead of looking like an invalid configuration value.
-func RegisterUnavailable(name, message string) {
-	register(name, driverRegistration{unavailable: message})
-}
-
-func register(name string, registration driverRegistration) {
-	name = strings.TrimSpace(strings.ToLower(name))
-	if name == "" || (registration.constructor == nil) == (registration.unavailable == "") {
-		panic("store: invalid driver registration")
-	}
-	driverRegistry.Lock()
-	defer driverRegistry.Unlock()
-	if _, exists := driverRegistry.entries[name]; exists {
-		panic("store: duplicate driver registration: " + name)
-	}
-	driverRegistry.entries[name] = registration
-}
-
-// Open opens the requested registered backend.
+// Open opens the requested backend.
 func Open(options OpenOptions) (HistoryStore, error) {
 	name := strings.TrimSpace(strings.ToLower(options.Driver))
 	if name == "" {
 		name = "memory"
 	}
-	driverRegistry.RLock()
-	registration, ok := driverRegistry.entries[name]
-	driverRegistry.RUnlock()
-	if !ok {
-		return nil, &UnknownDriverError{Driver: name}
-	}
-	if registration.constructor == nil {
-		return nil, &UnavailableDriverError{Driver: name, Message: registration.unavailable}
-	}
 	options.Driver = name
-	opened, err := registration.constructor(options)
-	if err != nil {
+
+	switch name {
+	case "memory":
+		return NewMemoryHistory()
+	case "sqlite":
+		opened, err := openSQLite(options)
+		if err == nil {
+			return opened, nil
+		}
+		var unavailable *UnavailableDriverError
+		if errors.As(err, &unavailable) {
+			return nil, err
+		}
 		var unsupported *sqlstore.UnsupportedSchemaError
 		if errors.As(err, &unsupported) {
 			return nil, err
 		}
+		if options.Path == "" {
+			return nil, err
+		}
 		return nil, &OpenError{Driver: name, Err: err}
+	default:
+		return nil, &UnknownDriverError{Driver: name}
 	}
-	return opened, nil
 }
 
 // IsRuntimeOpenError reports whether err came from a compiled driver's runtime
@@ -113,34 +79,7 @@ func IsRuntimeOpenError(err error) bool {
 	return errors.As(err, &target)
 }
 
-// Drivers returns every compiled and known-unavailable driver in stable order.
-func Drivers() []string {
-	driverRegistry.RLock()
-	defer driverRegistry.RUnlock()
-	out := make([]string, 0, len(driverRegistry.entries))
-	for name := range driverRegistry.entries {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // AvailableDrivers returns the drivers compiled into this binary.
 func AvailableDrivers() []string {
-	driverRegistry.RLock()
-	defer driverRegistry.RUnlock()
-	out := make([]string, 0, len(driverRegistry.entries))
-	for name, registration := range driverRegistry.entries {
-		if registration.constructor != nil {
-			out = append(out, name)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func init() {
-	Register("memory", func(OpenOptions) (HistoryStore, error) {
-		return NewMemoryHistory()
-	})
+	return availableDrivers()
 }

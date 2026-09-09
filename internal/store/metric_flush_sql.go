@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
 )
 
 const metricPointColumns = "tier, ts, value, max, samples, last_ts, min_value, first_ts, first_value, delta, observed_seconds, gaps"
@@ -136,7 +138,7 @@ func scanMetricPoint(row interface{ Scan(...any) error }) (MetricPoint, error) {
 }
 
 func (s *SQLite) writeMetricAggregate(tx *sql.Tx, name string, point MetricPoint) error {
-	query := s.dialect.Upsert("metric_points", []string{"name", "tier", "ts"}, []string{
+	query := sqlstore.Upsert("metric_points", []string{"name", "tier", "ts"}, []string{
 		"category", "value", "max", "samples", "last_ts", "min_value", "first_ts", "first_value", "delta", "observed_seconds", "gaps",
 	})
 	_, err := tx.Exec(query, name, metricTierSQL(point.Tier), point.TS, metricCategory(name),

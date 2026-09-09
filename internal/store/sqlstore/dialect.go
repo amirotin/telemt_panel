@@ -9,24 +9,11 @@ import (
 	"strings"
 )
 
-// Dialect contains the small set of SQL differences used by the panel store.
-type Dialect interface {
-	Name() string
-	Placeholder(i int) string
-	Bind(string) string
-	Upsert(table string, keyCols, updateCols []string) string
-	AutoIncrement() string
-	TimeType() string
-	BlobType() string
-	TxLock() string
-	SchemaVersion(context.Context, *sql.Tx) (int, error)
-	SetMigrationDirty(context.Context, *sql.Tx, bool) error
-	SetSchemaVersion(context.Context, *sql.Tx, int) error
-}
-
 var identifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-func insertPrefix(d Dialect, table string, keyCols, updateCols []string) string {
+// Upsert builds the identifier-safe SQLite INSERT ... ON CONFLICT statement
+// used by metric aggregation. Values use SQLite's question-mark parameters.
+func Upsert(table string, keyCols, updateCols []string) string {
 	columns := append(append([]string(nil), keyCols...), updateCols...)
 	if !identifierPattern.MatchString(table) || len(columns) == 0 {
 		panic("sqlstore: invalid upsert identifier")
@@ -36,20 +23,20 @@ func insertPrefix(d Dialect, table string, keyCols, updateCols []string) string 
 		if !identifierPattern.MatchString(column) {
 			panic("sqlstore: invalid upsert identifier")
 		}
-		placeholders[i] = d.Placeholder(i + 1)
+		placeholders[i] = "?"
 	}
-	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
-}
-
-func updateAssignments(columns []string, value func(string) string) string {
-	out := make([]string, len(columns))
-	for i, column := range columns {
+	prefix := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
+	if len(updateCols) == 0 {
+		return prefix + " ON CONFLICT (" + strings.Join(keyCols, ", ") + ") DO NOTHING"
+	}
+	assignments := make([]string, len(updateCols))
+	for i, column := range updateCols {
 		if !identifierPattern.MatchString(column) {
 			panic("sqlstore: invalid upsert identifier")
 		}
-		out[i] = column + " = " + value(column)
+		assignments[i] = column + " = excluded." + column
 	}
-	return strings.Join(out, ", ")
+	return prefix + " ON CONFLICT (" + strings.Join(keyCols, ", ") + ") DO UPDATE SET " + strings.Join(assignments, ", ")
 }
 
 // WithTx runs fn in one transaction, rolling back on every error or panic.

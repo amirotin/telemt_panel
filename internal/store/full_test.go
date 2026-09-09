@@ -2,7 +2,10 @@
 
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFullVariantIncludesSQLite(t *testing.T) {
 	if Variant != "full" {
@@ -17,5 +20,15 @@ func TestFullVariantIncludesSQLite(t *testing.T) {
 		if available[i] != want[i] {
 			t.Fatalf("AvailableDrivers = %v, want %v", available, want)
 		}
+	}
+}
+
+func TestOpenSQLiteEmptyPathIsNotRuntimeFailure(t *testing.T) {
+	_, err := Open(OpenOptions{Driver: "sqlite"})
+	if err == nil || !strings.Contains(err.Error(), "path is empty") {
+		t.Fatalf("Open sqlite empty path error = %v", err)
+	}
+	if IsRuntimeOpenError(err) {
+		t.Fatalf("Open sqlite empty path classified as runtime failure: %T", err)
 	}
 }

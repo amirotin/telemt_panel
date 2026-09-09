@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -40,17 +41,14 @@ func (e *UnsupportedSchemaError) UnsupportedSchemaVersions() (int, int) {
 
 // Migrate initializes an empty SQLite history store at the sole supported
 // schema baseline. Development schemas are deliberately not converted.
-func Migrate(ctx context.Context, db *sql.DB, dialect Dialect) (int, error) {
-	if dialect.Name() != "sqlite" {
-		return 0, fmt.Errorf("unsupported store dialect %q", dialect.Name())
-	}
+func Migrate(ctx context.Context, db *sql.DB) (int, error) {
 	baseline, err := migrationFiles.ReadFile(sqliteBaselineMigrationSQL)
 	if err != nil {
 		return 0, fmt.Errorf("read SQLite baseline: %w", err)
 	}
 	version := 0
 	err = WithTx(ctx, db, nil, func(tx *sql.Tx) error {
-		current, err := dialect.SchemaVersion(ctx, tx)
+		current, err := readSQLiteSchemaVersion(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -93,7 +91,7 @@ func Migrate(ctx context.Context, db *sql.DB, dialect Dialect) (int, error) {
 				return fmt.Errorf("apply SQLite schema baseline: %w", err)
 			}
 		}
-		if err := dialect.SetSchemaVersion(ctx, tx, sqliteSchemaVersion); err != nil {
+		if err := setSQLiteSchemaVersion(ctx, tx, sqliteSchemaVersion); err != nil {
 			return fmt.Errorf("set SQLite schema baseline version: %w", err)
 		}
 		version = sqliteSchemaVersion
@@ -103,4 +101,20 @@ func Migrate(ctx context.Context, db *sql.DB, dialect Dialect) (int, error) {
 		return 0, err
 	}
 	return version, nil
+}
+
+func readSQLiteSchemaVersion(ctx context.Context, tx *sql.Tx) (int, error) {
+	var version int
+	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return 0, fmt.Errorf("read sqlite schema version: %w", err)
+	}
+	return version, nil
+}
+
+func setSQLiteSchemaVersion(ctx context.Context, tx *sql.Tx, version int) error {
+	if version < 0 {
+		return fmt.Errorf("invalid sqlite schema version %d", version)
+	}
+	_, err := tx.ExecContext(ctx, `PRAGMA user_version = `+strconv.Itoa(version))
+	return err
 }
