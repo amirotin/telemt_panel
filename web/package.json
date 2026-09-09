@@ -26,7 +26,7 @@
     "react-dom": "19.2.8"
   },
   "overrides": {
-    "js-yaml": "4.3.1"
+    "js-yaml": "4.3.2"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -42,7 +42,7 @@
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.4",
     "globals": "17.11.0",
-    "js-yaml": "4.3.1",
+    "js-yaml": "4.3.2",
     "jsdom": "30.0.1",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
