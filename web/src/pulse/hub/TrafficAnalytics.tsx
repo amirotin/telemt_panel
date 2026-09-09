@@ -29,7 +29,7 @@ export function TrafficAnalytics() {
           <h2 className="text-[14px] font-bold text-text">{s.hub.userTraffic.title}</h2>
           <p className="mt-0.5 text-[10px] leading-relaxed text-text-muted">{s.hub.userTraffic.note}</p>
         </div>
-        <div className="-mx-0.5 flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-bg p-0.5" role="group" aria-label={s.hub.userTraffic.period}>
+        {report.data?.state !== "disabled" && month.data?.state !== "disabled" && <div className="-mx-0.5 flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-bg p-0.5" role="group" aria-label={s.hub.userTraffic.period}>
           {ranges.map((value) => (
             <button
               key={value}
@@ -44,7 +44,7 @@ export function TrafficAnalytics() {
               {s.hub.userTraffic.ranges[value]}
             </button>
           ))}
-        </div>
+        </div>}
       </header>
 
       {report.isPending || month.isPending ? (
@@ -69,20 +69,44 @@ function TrafficReport({ report, monthBytes }: { report: TrafficSummary; monthBy
   const historyAvailable = report.state !== "disabled";
   const sourceTone = report.collection.source_state === "collecting" && report.collection.continuity === "normal" ? "text-ok" : "text-warn";
   const sourceText = report.collection.source_state === "collecting"
-    ? report.collection.continuity === "partial" ? s.hub.userTraffic.partial : s.hub.userTraffic.collecting
+    ? report.collection.continuity === "partial" ? s.hub.userTraffic.partial
+      : historyAvailable ? s.hub.userTraffic.collecting : s.hub.userTraffic.totalsCollecting
     : report.collection.source_state === "paused" ? s.hub.userTraffic.paused : s.hub.userTraffic.unavailable;
+
+  if (!historyAvailable) {
+    return (
+      <div className="grid gap-4 p-3.5 sm:grid-cols-[minmax(0,200px)_minmax(0,1fr)] sm:items-start">
+        <div className="rounded-lg bg-bg p-3.5">
+          <p className="text-[12px] text-text-muted">{s.hub.userTraffic.month}</p>
+          <strong className="mt-1 block font-mono text-[24px] font-bold tabular-nums text-text">{formatBytes(monthBytes, s)}</strong>
+          <p className={cn("mt-2 text-[12px] font-medium leading-relaxed", sourceTone)}>{sourceText}</p>
+        </div>
+        <div className="min-w-0 py-1">
+          <h3 className="text-[14px] font-semibold text-text">{s.hub.userTraffic.historyDisabled}</h3>
+          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-text-muted">{s.hub.userTraffic.historyDisabledHint}</p>
+          <Link
+            to="/server/settings"
+            hash="storage"
+            className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg bg-accent/10 px-3 text-[13px] font-semibold text-accent transition-colors hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {s.hub.userTraffic.storageSettings}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-3 p-3.5 lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)]">
       <div className="min-w-0">
         <div className="grid grid-cols-3 gap-2">
-          <TrafficValue label={s.hub.userTraffic.today} value={historyAvailable ? formatBytes(todayBytes, s) : "—"} />
+          <TrafficValue label={s.hub.userTraffic.today} value={formatBytes(todayBytes, s)} />
           <TrafficValue label={s.hub.userTraffic.month} value={formatBytes(monthBytes, s)} />
-          <TrafficValue label={s.hub.userTraffic.selected} value={historyAvailable ? formatBytes(report.total_bytes, s) : "—"} />
+          <TrafficValue label={s.hub.userTraffic.selected} value={formatBytes(report.total_bytes, s)} />
         </div>
         <TrafficChart points={report.points} from={report.requested_from_epoch_secs} to={report.collection.observed_through_epoch_secs ?? report.requested_from_epoch_secs + 1} />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-text-muted">
-          <span>{historyAvailable ? comparisonText(report, s) : s.hub.userTraffic.historyDisabled}</span>
+          <span>{comparisonText(report, s)}</span>
           <span className={cn("font-semibold", sourceTone)}>{sourceText}</span>
         </div>
       </div>

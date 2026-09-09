@@ -335,7 +335,9 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <StorageSettings />
+      <div id="storage" className="scroll-mt-24">
+        <StorageSettings />
+      </div>
       <GeoIPSettings />
 
       {sessionSheetOpen && (
