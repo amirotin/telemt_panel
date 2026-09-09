@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TelemtConfigCatalog, TelemtConfigField } from "../../lib/api/generated/types.gen";
-import { getStrings } from "../../i18n";
+import { getStrings, resetLocaleForTests, setLocalePreference } from "../../i18n";
 import { StructuredSettingsForm } from "./StructuredSettingsForm";
 
 function field(path: string, kind: TelemtConfigField["kind"], group: string, dataType = "String"): TelemtConfigField {
@@ -44,6 +44,8 @@ describe("StructuredSettingsForm record editors", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
+    resetLocaleForTests();
   });
 
   it("does not introduce a second main landmark inside the page shell", () => {
@@ -52,6 +54,53 @@ describe("StructuredSettingsForm record editors", () => {
 
     expect(container.querySelector("main")).toBeNull();
     expect(container.querySelector("section")).not.toBeNull();
+  });
+
+  it.each(["ru", "en"] as const)("keeps cross-group advanced search and normal-mode filtering in %s", async (locale) => {
+    await setLocalePreference(locale);
+    const fields = [
+      field("general.fast_mode", "boolean", "routing", "bool"),
+      { ...field("general.middle_proxy_nat_ip", "string", "me"), tier: "advanced" as const },
+    ];
+    const model = catalog("routing", fields);
+    model.groups.push(...catalog("me", []).groups);
+    const sections = { general: { fast_mode: false, middle_proxy_nat_ip: "192.0.2.1" } };
+    const onChange = vi.fn();
+    act(() => root.render(<StructuredSettingsForm catalog={model} sections={sections} mode="advanced" onChange={onChange} />));
+    const copy = getStrings().server.config.catalog;
+    const search = container.querySelector<HTMLInputElement>(`input[aria-label="${copy.searchLabel}"]`)!;
+    expect(search).toBeTruthy();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "general.middle_proxy_nat_ip");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(container.querySelector("h2")?.textContent).toBe(copy.searchResults);
+    expect(container.querySelector("code")?.textContent).toBe("general.middle_proxy_nat_ip");
+    expect(container.querySelector<HTMLInputElement>('input[value="192.0.2.1"]')).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => root.render(<StructuredSettingsForm catalog={model} sections={sections} mode="normal" onChange={onChange} />));
+    expect(container.querySelector(`input[aria-label="${copy.searchLabel}"]`)).toBeNull();
+    expect(container.querySelector("h2")?.textContent).toBe(model.groups[0].title);
+    expect(container.textContent).not.toContain("general.middle_proxy_nat_ip");
+  });
+
+  it("preserves carrier ordering, removal guards and immutable updates", () => {
+    const fields = [field("web.carriers", "string", "web")];
+    const sections = { web: { carriers: ["https", "websocket"] } };
+    const original = structuredClone(sections);
+    const onChange = vi.fn();
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("web", fields)} sections={sections} mode="normal" onChange={onChange} />));
+    const copy = getStrings().server.config.catalog;
+    const up = [...container.querySelectorAll<HTMLButtonElement>(`button[aria-label="${copy.moveCarrierUp}"]`)];
+    const down = [...container.querySelectorAll<HTMLButtonElement>(`button[aria-label="${copy.moveCarrierDown}"]`)];
+    expect(up[0].disabled).toBe(true);
+    expect(down[1].disabled).toBe(true);
+    act(() => down[0].click());
+    expect(onChange.mock.calls[0][0].web.carriers).toEqual(["websocket", "https"]);
+    expect(sections).toEqual(original);
+    const single = { web: { carriers: ["https"] } };
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("web", fields)} sections={single} mode="normal" onChange={onChange} />));
+    expect(container.querySelector<HTMLButtonElement>(`button[aria-label="${copy.removeCarrier}"]`)?.disabled).toBe(true);
   });
 
   it("keeps multiple upstreams as bounded collapsible records and duplicates the whole record", () => {

@@ -27,12 +27,12 @@ export default defineConfig({
     {
       name: "mobile",
       use: { viewport: { width: 360, height: 640 } },
-      testMatch: /(?:mobile|diagnostics)\.spec\.ts/,
+      testMatch: /(?:mobile|diagnostics|config-forms)\.spec\.ts/,
     },
     {
       name: "desktop",
       use: { viewport: { width: 1280, height: 800 } },
-      testMatch: /(?:desktop|diagnostics)\.spec\.ts/,
+      testMatch: /(?:desktop|diagnostics|config-forms)\.spec\.ts/,
     },
     // The §27.1 picture matrix (`npm run screenshots`) and the WEB
     // three-build sweep (e2e/web-scenarios.spec.ts). Opt-in: the matrix is
