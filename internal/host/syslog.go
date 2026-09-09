@@ -55,14 +55,19 @@ func (s *Syslog) Tail(ctx context.Context, service string, lines int) ([]LogLine
 }
 
 // Stream implements LogSource. See Tail's doc comment on why each line is
-// parsed rather than passed through raw.
+// parsed rather than passed through raw. Oversized lines match only their
+// retained source prefix, never the synthetic truncation marker.
 func (s *Syslog) Stream(ctx context.Context, service string) (<-chan LogLine, error) {
 	raw := followFile(ctx, s.path, s.pollInterval)
 	ch := make(chan LogLine)
 	go func() {
 		defer close(ch)
 		for line := range raw {
-			if service != "" && !strings.Contains(strings.ToLower(line), strings.ToLower(service)) {
+			matchText := line
+			if len(matchText) > maxFollowLineBytes {
+				matchText = strings.TrimSuffix(matchText, followLineMarker)
+			}
+			if service != "" && !strings.Contains(strings.ToLower(matchText), strings.ToLower(service)) {
 				continue
 			}
 			select {

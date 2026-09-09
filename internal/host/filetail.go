@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 // maxTailBytes bounds how much of a file's tail tailFileLines reads,
@@ -106,9 +107,9 @@ const tailOverlapBytes = 256
 // offset again, so a plain size<offset check can't see it — logrotate's
 // copytruncate racing ahead of a slow poll interval) are all handled by
 // resuming from the new content at offset 0 rather than reading stale
-// bytes at a now-meaningless offset or erroring; a still-partial line at
-// the end of the read window is held back and re-read whole once its
-// newline arrives. The returned channel closes when ctx is done.
+// bytes at a now-meaningless offset or erroring. A bounded partial prefix
+// is retained until its newline arrives, without rereading consumed bytes.
+// The returned channel closes when ctx is done.
 func followFile(ctx context.Context, path string, pollInterval time.Duration) <-chan string {
 	ticker := time.NewTicker(pollInterval)
 	return followFileTicks(ctx, path, ticker.C, ticker.Stop)
@@ -119,66 +120,79 @@ func followFile(ctx context.Context, path string, pollInterval time.Duration) <-
 // value on tickCh to force exactly one poll — instead of racing a real
 // wall-clock ticker.
 func followFileTicks(ctx context.Context, path string, tickCh <-chan time.Time, stop func()) <-chan string {
-	var offset int64
+	var cursor fileFollowCursor
 	var ino uint64
 	var haveIno bool
 	var tailBuf []byte
-	if fi, err := os.Stat(path); err == nil {
-		offset = fi.Size()
-		ino, haveIno = fileIno(fi)
-		tailBuf = readTailOverlap(path, offset)
+	if f, err := os.Open(path); err == nil {
+		if fi, err := f.Stat(); err == nil {
+			cursor.offset = fi.Size()
+			ino, haveIno = fileIno(fi)
+			tailBuf = readTailOverlapFromFile(f, cursor.offset)
+		}
+		f.Close()
 	}
 
 	out := make(chan string)
 	go func() {
 		defer close(out)
 		defer stop()
+		scratch := make([]byte, followChunkBytes)
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-tickCh:
+			case _, ok := <-tickCh:
+				if !ok {
+					return
+				}
 			}
 
-			fi, err := os.Stat(path)
+			f, err := os.Open(path)
 			if err != nil {
 				// Transient (e.g. mid-rotation, momentarily missing) —
 				// retry on the next tick instead of ending the stream.
 				continue
 			}
+			fi, err := f.Stat()
+			if err != nil {
+				f.Close()
+				continue
+			}
 			curIno, curHaveIno := fileIno(fi)
 			rotated := haveIno && curHaveIno && curIno != ino
-			shrunk := fi.Size() < offset
+			shrunk := fi.Size() < cursor.offset
 			// Only worth checking when neither cheaper signal already
 			// caught it, and only meaningful once there's a nonzero
 			// offset with a captured tail to compare against.
-			refilled := !rotated && !shrunk && offset > 0 && !overlapStillMatches(path, offset, tailBuf)
+			refilled := !rotated && !shrunk && cursor.offset > 0 && !overlapStillMatches(f, cursor.offset, tailBuf)
 			if rotated || shrunk || refilled {
-				offset = 0
+				cursor.offset = 0
+				cursor.partial = cursor.partial[:0]
+				cursor.truncated = false
 				tailBuf = nil
 			}
 			ino, haveIno = curIno, curHaveIno
 
-			if fi.Size() <= offset {
+			if fi.Size() <= cursor.offset {
+				f.Close()
 				continue
 			}
-			f, err := os.Open(path)
-			if err != nil {
-				continue
-			}
-			newOffset, lines := readNewLines(f, offset)
-			offset = newOffset
-			tailBuf = readTailOverlapFromFile(f, offset)
-			f.Close()
-
-			for _, line := range lines {
+			// A fixed end bounds this poll even if the writer keeps growing.
+			// Partial reads retain their consumed offset for the next poll.
+			_ = readNewLines(ctx, f, fi.Size(), &cursor, scratch, func(line string) bool {
 				select {
 				case out <- line:
+					return true
 				case <-ctx.Done():
-					return
+					return false
 				}
+			})
+			if ctx.Err() == nil {
+				tailBuf = readTailOverlapFromFile(f, cursor.offset)
 			}
+			f.Close()
 		}
 	}()
 	return out
@@ -196,22 +210,9 @@ func fileIno(fi os.FileInfo) (ino uint64, ok bool) {
 	return sys.Ino, true
 }
 
-// readTailOverlap opens path and returns the last tailOverlapBytes (or
-// fewer, near the start of a small file) ending at offset. Returns nil if
-// the file can't be opened/read at that range (e.g. it's shorter than
-// offset right now) — the caller treats that the same as a mismatch.
-func readTailOverlap(path string, offset int64) []byte {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	return readTailOverlapFromFile(f, offset)
-}
-
-// readTailOverlapFromFile is readTailOverlap over an already-open handle,
-// used right after a growth read so followFileTicks doesn't have to
-// reopen path a second time in the same tick.
+// readTailOverlapFromFile returns up to tailOverlapBytes ending at offset
+// from the same descriptor used for generation checks and growth reads.
+// An unreadable range returns nil, treated as a mismatch by the caller.
 func readTailOverlapFromFile(f *os.File, offset int64) []byte {
 	k := int64(tailOverlapBytes)
 	if offset < k {
@@ -228,7 +229,7 @@ func readTailOverlapFromFile(f *os.File, offset int64) []byte {
 }
 
 // overlapStillMatches reports whether the tailOverlapBytes ending at
-// offset in the file at path still match want — the same window captured
+// offset in the opened file still match want — the same window captured
 // the last time offset was advanced to its current value. A mismatch (or
 // the window no longer being readable there at all) means the content up
 // to offset was rewritten since: e.g. logrotate's copytruncate truncating
@@ -238,31 +239,91 @@ func readTailOverlapFromFile(f *os.File, offset int64) []byte {
 // old offset, just with different bytes there — so the file's actual
 // trailing content at that position has to be compared, not just its
 // length.
-func overlapStillMatches(path string, offset int64, want []byte) bool {
+func overlapStillMatches(f *os.File, offset int64, want []byte) bool {
 	if len(want) == 0 {
-		return true // nothing captured yet (e.g. right after a reset) — no prior content to contradict
+		// Nothing captured yet, so there is no prior content to contradict.
+		return true
 	}
-	return bytes.Equal(readTailOverlap(path, offset), want)
+	return bytes.Equal(readTailOverlapFromFile(f, offset), want)
 }
 
-// readNewLines reads f from offset to EOF and returns every complete
-// (newline-terminated) line found, plus the offset just past the last one
-// consumed. A trailing partial line (no newline yet) is left unconsumed —
-// its bytes stay unread past the returned offset — so it's re-read whole
-// once the writer finishes it.
-func readNewLines(f *os.File, offset int64) (int64, []string) {
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		return offset, nil
+const (
+	followChunkBytes   = 32 << 10
+	maxFollowLineBytes = maxTailBytes
+	followLineMarker   = " [line truncated after 262144 bytes]"
+)
+
+type fileFollowCursor struct {
+	offset    int64
+	partial   []byte
+	truncated bool
+}
+
+// readNewLines consumes only [cursor.offset, end), emitting completed lines
+// individually. Partial lines retain a bounded prefix, including across polls.
+// Returning false from emit stops at that line; no backlog slice is retained.
+func readNewLines(ctx context.Context, f io.ReaderAt, end int64, cursor *fileFollowCursor, scratch []byte, emit func(string) bool) error {
+	if len(scratch) == 0 {
+		return io.ErrShortBuffer
 	}
-	data, err := io.ReadAll(f)
-	if err != nil || len(data) == 0 {
-		return offset, nil
+	for cursor.offset < end {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		width := min(int64(len(scratch)), int64(followChunkBytes), end-cursor.offset)
+		n, err := f.ReadAt(scratch[:width], cursor.offset)
+		chunk := scratch[:n]
+		for len(chunk) > 0 {
+			newline := bytes.IndexByte(chunk, '\n')
+			length := len(chunk)
+			if newline >= 0 {
+				length = newline
+			}
+			keep := min(length, maxFollowLineBytes-len(cursor.partial))
+			if keep > 0 {
+				if cursor.partial == nil {
+					// A fixed capacity avoids append growth beyond the line cap.
+					cursor.partial = make([]byte, 0, maxFollowLineBytes)
+				}
+				cursor.partial = append(cursor.partial, chunk[:keep]...)
+			}
+			cursor.truncated = cursor.truncated || keep < length
+			cursor.offset += int64(length)
+			chunk = chunk[length:]
+			if newline < 0 {
+				break
+			}
+			cursor.offset++
+			chunk = chunk[1:]
+			prefix := cursor.partial
+			if cursor.truncated {
+				// Trim only an incomplete final UTF-8 rune introduced by the cap.
+				start := len(prefix) - 1
+				for start >= 0 && !utf8.RuneStart(prefix[start]) {
+					start--
+				}
+				if start >= 0 && !utf8.FullRune(prefix[start:]) {
+					prefix = prefix[:start]
+				}
+			}
+			var line string
+			if cursor.truncated {
+				line = string(prefix) + followLineMarker
+			} else {
+				line = string(prefix)
+			}
+			cursor.partial = cursor.partial[:0]
+			cursor.truncated = false
+			if !emit(line) {
+				return ctx.Err()
+			}
+		}
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrNoProgress
+		}
 	}
-	parts := strings.Split(string(data), "\n")
-	complete := parts[:len(parts)-1] // last element is "" (ends in \n) or a partial line
-	consumed := offset
-	for _, line := range complete {
-		consumed += int64(len(line)) + 1
-	}
-	return consumed, complete
+	return nil
 }
