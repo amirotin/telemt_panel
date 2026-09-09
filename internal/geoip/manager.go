@@ -52,12 +52,13 @@ type cacheItem struct {
 
 // Manager owns GeoIP configuration, updates, readers, and lookup caching.
 type Manager struct {
-	dataDir  string
-	store    SettingsStore
-	client   downloader
-	now      func() time.Time
-	syncFile func(string) error
-	syncDir  func(string) error
+	dataDir    string
+	store      SettingsStore
+	client     downloader
+	now        func() time.Time
+	syncFile   func(string) error
+	syncDir    func(string) error
+	openBundle func(map[Kind]string, int64) (*bundle, error)
 
 	mu          sync.RWMutex
 	config      Config
@@ -87,7 +88,7 @@ func NewManager(dataDir string, settingsStore SettingsStore) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &Manager{
 		dataDir: dataDir, store: settingsStore, client: newSecureDownloader(),
-		now: time.Now, syncFile: syncDatabaseFile, syncDir: syncDatabaseFile, config: DefaultConfig(), status: DisabledStatus(),
+		now: time.Now, syncFile: syncDatabaseFile, syncDir: syncDatabaseFile, openBundle: openBundle, config: DefaultConfig(), status: DisabledStatus(),
 		cache: make(map[netip.Addr]*list.Element, cacheCapacity), cacheOrder: list.New(),
 		ctx: ctx, cancel: cancel, closeDone: make(chan struct{}),
 	}
@@ -573,11 +574,16 @@ func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string,
 		paths[item.kind] = destination
 	}
 	loadedAt := m.now().Unix()
-	checked, err := openBundle(paths, loadedAt)
+	next, err := m.openBundle(paths, loadedAt)
 	if err != nil {
 		return nil, "", databaseError(err)
 	}
-	checked.close()
+	transferred := false
+	defer func() {
+		if !transferred {
+			next.close()
+		}
+	}()
 	if err := m.syncDir(staging); err != nil {
 		return nil, "", coded(ErrorActivationFailed, err)
 	}
@@ -589,35 +595,28 @@ func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string,
 		return nil, "", coded(ErrorActivationFailed, err)
 	}
 	keepStaging = true
-	if err := m.syncDir(root); err != nil {
-		_ = os.RemoveAll(final)
-		return nil, "", coded(ErrorActivationFailed, err)
-	}
-	finalPaths := make(map[Kind]string, len(paths))
-	for kind := range paths {
-		finalPaths[kind] = filepath.Join(final, string(kind)+".mmdb")
-	}
-	next, err := openBundle(finalPaths, loadedAt)
-	if err != nil {
-		_ = os.RemoveAll(final)
-		return nil, "", databaseError(err)
-	}
 	next.dir = final
 	next.source = cfg.Source
+	keepFinal := false
+	defer func() {
+		if !keepFinal {
+			_ = os.RemoveAll(final)
+		}
+	}()
+	if err := m.syncDir(root); err != nil {
+		return nil, "", coded(ErrorActivationFailed, err)
+	}
 	if err := ctx.Err(); err != nil {
-		next.close()
-		_ = os.RemoveAll(final)
 		return nil, "", coded(ErrorSourceUnavailable, err)
 	}
 	oldDir, err := writeActiveManifest(ctx, root, next, cfg, m.syncDir)
 	if err != nil {
-		next.close()
 		var published *manifestPublicationError
-		if !errors.As(err, &published) {
-			_ = os.RemoveAll(final)
-		}
+		keepFinal = errors.As(err, &published)
 		return nil, "", coded(ErrorActivationFailed, err)
 	}
+	keepFinal = true
+	transferred = true
 	return next, oldDir, nil
 }
 

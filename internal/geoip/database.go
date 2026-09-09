@@ -29,13 +29,17 @@ type bundle struct {
 }
 
 func openBundle(paths map[Kind]string, loadedAt int64) (*bundle, error) {
+	return openBundleWithVerifier(paths, loadedAt, (*maxminddb.Reader).Verify)
+}
+
+func openBundleWithVerifier(paths map[Kind]string, loadedAt int64, verify func(*maxminddb.Reader) error) (*bundle, error) {
 	out := &bundle{databases: make(map[Kind]*database, len(paths))}
 	for _, kind := range []Kind{KindCountry, KindASN, KindCity} {
 		path, ok := paths[kind]
 		if !ok {
 			continue
 		}
-		db, err := openDatabase(kind, path, loadedAt)
+		db, err := openDatabase(kind, path, loadedAt, verify)
 		if err != nil {
 			out.close()
 			return nil, err
@@ -48,7 +52,7 @@ func openBundle(paths map[Kind]string, loadedAt int64) (*bundle, error) {
 	return out, nil
 }
 
-func openDatabase(kind Kind, path string, loadedAt int64) (*database, error) {
+func openDatabase(kind Kind, path string, loadedAt int64, verify func(*maxminddb.Reader) error) (*database, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("geoip: inspect database: %w", err)
@@ -63,7 +67,7 @@ func openDatabase(kind Kind, path string, loadedAt int64) (*database, error) {
 	if err != nil {
 		return nil, fmt.Errorf("geoip: open database: %w", err)
 	}
-	if err := reader.Verify(); err != nil {
+	if err := verify(reader); err != nil {
 		reader.Close()
 		return nil, fmt.Errorf("geoip: verify database: %w", err)
 	}
