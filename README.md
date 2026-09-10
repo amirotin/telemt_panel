@@ -1,7 +1,11 @@
-# Telemt Panel
+# Telemt Panel 0.6.2 — legacy
 
-[![CI](https://github.com/amirotin/telemt_panel/actions/workflows/ci.yml/badge.svg)](https://github.com/amirotin/telemt_panel/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/amirotin/telemt_panel?include_prereleases)](https://github.com/amirotin/telemt_panel/releases)
+> Версия 0.6.2 больше не развивается. Эта ветка сохранена как архив исходников
+> и документации старой панели. Актуальная разработка Telemt Panel 1.x находится
+> в [ветке main](https://github.com/amirotin/telemt_panel/tree/main).
+> Инструкции ниже относятся только к старой версии.
+
+[![Release 0.6.2](https://img.shields.io/badge/release-0.6.2-blue)](https://github.com/amirotin/telemt_panel/releases/tag/v0.6.2)
 [![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go)](https://go.dev/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -56,14 +60,14 @@ Web-панель управления для [Telemt](https://github.com/telemt/
 ### Установка скриптом
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amirotin/telemt_panel/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amirotin/telemt_panel/legacy/install.sh | bash -s -- install v0.6.2
 ```
 
 Скрипт скачает бинарник, создаст конфиг, настроит systemd-сервис и запустит панель.
 
 ### Ручная установка
 
-1. Скачайте бинарник из [Releases](https://github.com/amirotin/telemt_panel/releases) (или соберите сами — см. ниже).
+1. Скачайте бинарник из [релиза 0.6.2](https://github.com/amirotin/telemt_panel/releases/tag/v0.6.2) (или соберите сами — см. ниже).
 
 2. Создайте конфиг:
 
@@ -192,7 +196,7 @@ go build -ldflags="-s -w -X main.version=1.2.3" -o telemt-panel .
 генерирует hardened systemd-юнит:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amirotin/telemt_panel/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amirotin/telemt_panel/legacy/install.sh | bash -s -- install v0.6.2
 ```
 
 | Компонент | Путь |
