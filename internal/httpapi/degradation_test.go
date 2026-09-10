@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/hub"
@@ -32,10 +31,7 @@ import (
 // This test must stay green forever; do not delete or weaken it without an
 // explicit owner ruling superseding the invariant it encodes.
 func TestAPIOnlyDegradation(t *testing.T) {
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{
 		// Unreachable Telemt: nothing listens on this port.
 		Telemt: config.TelemtConfig{URL: "http://127.0.0.1:1", ConfigEditMode: "api"},
@@ -366,10 +362,7 @@ func TestAPIOnlyDegradation(t *testing.T) {
 // normal 200). Kept as its own test, alongside (not inside)
 // TestAPIOnlyDegradation, per that test's "do not weaken" note.
 func TestAPIOnlyDegradation_M3Endpoints(t *testing.T) {
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{
 		Telemt: config.TelemtConfig{URL: "http://127.0.0.1:1", ConfigEditMode: "api"},
 		Auth:   config.AuthConfig{Username: "admin", PasswordHash: hash},

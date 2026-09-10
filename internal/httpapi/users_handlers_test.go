@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
@@ -346,10 +345,7 @@ func writeTelemtErrBody(w http.ResponseWriter, e telemtErr) {
 // subpage module enabled unless subpageEnabled is false.
 func newUsersTestServer(t *testing.T, fake *fakeTelemt, subpageEnabled bool) (*Server, *http.Cookie) {
 	t.Helper()
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{
 		Auth:    config.AuthConfig{Username: "admin", PasswordHash: hash},
 		Subpage: config.SubpageConfig{Enabled: subpageEnabled, Secret: "panel-secret"},
@@ -622,10 +618,7 @@ func TestHandleListUsersSubURLOmittedWhenSubpageDisabled(t *testing.T) {
 }
 
 func TestHandleListUsersTelemtUnreachable(t *testing.T) {
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{Auth: config.AuthConfig{Username: "admin", PasswordHash: hash}}
 	st, err := store.NewMemory("")
 	if err != nil {

@@ -3,12 +3,22 @@ name: CI
 on:
   push:
     branches: [ main ]
+    paths-ignore: [ '**/*.md', 'docs/**', 'LICENSE' ]
   pull_request:
     branches: [ main ]
+    paths-ignore: [ '**/*.md', 'docs/**', 'LICENSE' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -32,16 +42,13 @@ jobs:
         working-directory: web
         run: npm run lint
 
-      - name: Typecheck frontend
-        working-directory: web
-        run: npx tsc --noEmit
-
       - name: Test frontend
         working-directory: web
         run: npm test
 
       - name: Build frontend
         working-directory: web
+        # The build script already runs tsc --noEmit before Vite.
         run: npm run build
 
       - name: Setup Go
@@ -54,31 +61,28 @@ jobs:
         run: make lint
 
       - name: Build
-        run: CGO_ENABLED=0 go build ./...
+        run: CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.0.0-dev" -o telemt-panel ./cmd/panel
 
-      - name: Cross-compile targets
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./cmd/panel
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lite ./cmd/panel
-
-      # -race requires cgo — stated explicitly so a future job-level
-      # CGO_ENABLED=0 cleanup cannot silently break this step. The Build
-      # steps above keep verifying the pure-Go configuration we ship.
       - name: Test
         run: make test
         env:
-          CGO_ENABLED: "1"
+          CGO_ENABLED: "0"
 
-  # Playwright e2e (Task 9, R4): chromium only, against the real `make
-  # build` panel binary + cmd/telemt-mock — see web/e2e/stack.ts. A
-  # separate job (not a step tacked onto `build` above) so its own
-  # `make build` + browser install don't slow down the fast unit-test
-  # feedback loop above, and so a flaky e2e run's retry/artifact story
-  # stays isolated from it. `needs: build` — no point paying for browser
-  # download + a Go build on a commit that doesn't even lint/typecheck.
+      - name: Share tested panel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-panel
+          path: telemt-panel
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  # Run browsers against the same binary verified above. The stack only
+  # builds its small Telemt mock; no second frontend/panel build is needed.
   e2e:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -115,11 +119,14 @@ jobs:
         working-directory: web
         run: npx playwright install --with-deps chromium
 
-      # e2e/stack.ts expects the panel binary at ./telemt-panel (make
-      # build's output) and builds cmd/telemt-mock itself — see that
-      # file's own comment.
-      - name: Build panel + frontend
-        run: make build
+      - name: Download tested panel binary
+        uses: actions/download-artifact@v4
+        with:
+          name: tested-panel
+
+      # Artifact downloads do not preserve executable permissions.
+      - name: Make panel executable
+        run: chmod 0755 telemt-panel
 
       - name: Run e2e
         working-directory: web
@@ -137,43 +144,12 @@ jobs:
             web/test-results/
           retention-days: 7
 
-  # Proves the release Makefile target and the self-updater's AssetMatcher
-  # actually agree (P1.2 audit finding): builds every arch/variant tarball
-  # exactly as a real release would, then verifies the updater can find,
-  # checksum, and extract each one.
-  release-contract:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: web/package-lock.json
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          check-latest: true
-
-      # `make release` depends on the `web` target (npm ci + npm run
-      # build), building the frontend once ahead of every per-arch Go
-      # build it embeds into.
-      - name: Build release assets
-        run: make release
-
-      - name: Verify release assets against the updater
-        run: RELEASE_DIR="$PWD/release" RELEASE_VERSION=0.0.0-dev go test -count=1 -run '^TestReleaseContract$' ./internal/update/
-
   # install.sh is POSIX sh and must keep working under dash, bash and
   # busybox: lint + syntax, then the sourced unit tests, then the
   # user-namespace e2e (skips itself where the runner forbids userns).
   install-script:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

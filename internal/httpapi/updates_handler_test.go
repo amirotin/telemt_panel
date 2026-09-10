@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/host/hosttest"
@@ -127,10 +126,7 @@ func newUpdatesTestServer(t *testing.T, runner host.Runner, telemtVersion string
 		},
 	}}
 
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{Auth: config.AuthConfig{Username: "admin", PasswordHash: hash}}
 	st, err := store.NewMemory("")
 	if err != nil {
@@ -315,10 +311,7 @@ func TestNew_DockerServiceManager_RestartTargetsUseContainerNames(t *testing.T) 
 		},
 	}}
 
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{
 		Auth:    config.AuthConfig{Username: "admin", PasswordHash: hash},
 		DataDir: t.TempDir(),

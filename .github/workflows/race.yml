@@ -1,0 +1,37 @@
+name: Race
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: '23 3 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: race-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # Exercise the actual embedded interface, not the committed placeholder.
+      - name: Build frontend
+        run: make web
+      - name: Full race suite
+        run: make test-race
+        env:
+          CGO_ENABLED: '1'

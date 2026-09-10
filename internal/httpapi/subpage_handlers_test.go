@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
@@ -79,10 +78,7 @@ func newSubpageTestServer(t *testing.T, enabled bool) (*Server, *http.Cookie) {
 
 func newSubpageTestServerWithUsers(t *testing.T, enabled bool, users []telemt.UserInfo) (*Server, *http.Cookie) {
 	t.Helper()
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{
 		Auth:    config.AuthConfig{Username: "admin", PasswordHash: hash},
 		Subpage: config.SubpageConfig{Enabled: enabled, Secret: "panel-secret"},

@@ -3,7 +3,7 @@
 VERSION ?= 0.0.0-dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build build-lite test lint release clean mock web dev-frontend dev-backend
+.PHONY: build build-lite test test-race lint release clean mock web dev-frontend dev-backend
 
 # Builds the SPA straight into internal/webui/dist (web/vite.config.ts's
 # outDir) — the package's go:embed directive picks it up with no
@@ -30,10 +30,14 @@ dev-frontend:
 dev-backend:
 	go run ./cmd/panel --config config.toml
 
-# -race matches CI; it needs cgo (a C toolchain), unlike the pure-Go
-# CGO_ENABLED=0 release builds.
+# Fast checks on pushes and PRs; race runs separately and before publication.
 test:
-	go test -race ./...
+	go test ./...
+
+# The race detector requires cgo and a C toolchain, unlike release binaries.
+# Rerun tests even when a previous successful result is cached.
+test-race:
+	go test -race -count=1 ./...
 
 # Dev-only fake Telemt API (internal/telemt/telemttest), replacing the 0.x
 # panel's .claude/mock-server.mjs — point telemt.url at it (default

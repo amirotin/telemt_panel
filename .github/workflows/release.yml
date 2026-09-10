@@ -10,7 +10,13 @@ permissions:
   contents: write
 
 jobs:
+  race:
+    uses: ./.github/workflows/race.yml
+    permissions:
+      contents: read
+
   release:
+    needs: race
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

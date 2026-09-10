@@ -15,9 +15,21 @@ import (
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const testPassword = "s3cr3t-password"
+
+// Reuse a cost-10 fixture instead of running bcrypt for every HTTP server.
+// Password generation and verification remain covered in internal/auth.
+const testPasswordHash = "$2a$10$B3SjWRaNJIFXbjlVwXjbh.btIkjJi5qtMzwyKYC1pHl7aXehfcv1K"
+
+func TestHTTPPasswordFixture(t *testing.T) {
+	cost, err := bcrypt.Cost([]byte(testPasswordHash))
+	if err != nil || cost != 10 || !auth.VerifyPassword(testPasswordHash, testPassword) {
+		t.Fatal("HTTP fixture must match testPassword at the production bcrypt cost")
+	}
+}
 
 type authIssuanceStore struct {
 	store.Store
@@ -47,10 +59,7 @@ func (s *authIssuanceStore) UpdateWebAuthnCredential(credential store.WebAuthnCr
 // Telemt proxy path itself). The caller must stop the rate limiter.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{
 		Auth: config.AuthConfig{
 			Username:     "admin",

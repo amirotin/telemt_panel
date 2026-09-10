@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/hub"
 	"github.com/amirotin/telemt_panel/internal/store"
@@ -46,10 +45,7 @@ func newFakeTelemtHTTP(t *testing.T, users []telemt.UserInfo) *telemt.Client {
 // returning it and a valid session cookie.
 func newSSETestServer(t *testing.T, tc *telemt.Client, hubCfg hub.Config) (*Server, *http.Cookie) {
 	t.Helper()
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	cfg := &config.Config{Auth: config.AuthConfig{Username: "admin", PasswordHash: hash}}
 	st, err := store.NewMemory("")
 	if err != nil {

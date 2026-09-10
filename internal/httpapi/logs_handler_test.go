@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/host/hosttest"
@@ -397,10 +396,7 @@ func TestHandleEventsLogs_StreamStartErrorReturns502(t *testing.T) {
 // registry's Close didn't cancel it, Run would hang until srv.Run's own
 // 10s Shutdown deadline instead of returning promptly.
 func TestServer_Run_ShutsDownPromptlyWithAnOpenLogStream(t *testing.T) {
-	hash, err := auth.HashPassword(testPassword)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
+	hash := testPasswordHash
 	addr := freeAddr(t)
 	cfg := &config.Config{
 		Listen: addr,

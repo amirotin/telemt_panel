@@ -1,0 +1,48 @@
+name: Release contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: &release-paths
+      - 'cmd/**'
+      - 'internal/**'
+      - 'web/**'
+      - 'api/**'
+      - 'scripts/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/**'
+      - '!**/*.md'
+  pull_request:
+    branches: [ main ]
+    paths: *release-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # All supported architectures/profiles and updater-compatible aliases.
+      - name: Build release assets
+        run: make release
+      - name: Verify release assets against the updater
+        run: RELEASE_DIR="$PWD/release" RELEASE_VERSION=0.0.0-dev go test -count=1 -run '^TestReleaseContract$' ./internal/update/
