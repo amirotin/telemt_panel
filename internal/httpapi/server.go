@@ -378,7 +378,7 @@ func (s *Server) Handler() http.Handler {
 
 	apiHandler := apiJSONFallback(mux)
 	if s.webUI == nil {
-		return apiHandler
+		return acceptBasePath(s.cfg.BasePath, apiHandler)
 	}
 	// The embedded SPA (internal/webui) sits behind this mux, not
 	// registered as a "/" pattern on it directly: ServeMux's own
@@ -389,7 +389,23 @@ func (s *Server) Handler() http.Handler {
 	// 404/405 for /sub/*. spaRouter (below) dispatches by namespace
 	// prefix instead (/api, /sub, everything else) so both keep exactly
 	// their own behavior and webUI only ever sees a path neither owns.
-	return &spaRouter{mux: mux, api: apiHandler, webUI: s.webUI}
+	return acceptBasePath(s.cfg.BasePath, &spaRouter{mux: mux, api: apiHandler, webUI: s.webUI})
+}
+
+// acceptBasePath supports both legacy proxies retaining the prefix and proxies
+// stripping it upstream. BasePath is a routing prefix, not an access boundary.
+func acceptBasePath(base string, next http.Handler) http.Handler {
+	if base == "" {
+		return next
+	}
+	stripped := http.StripPrefix(base, next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if pathIsOrUnder(r.URL.Path, base) {
+			stripped.ServeHTTP(w, r)
+		} else {
+			next.ServeHTTP(w, r)
+		}
+	})
 }
 
 // spaRouter is Handler()'s top-level dispatcher once the embedded SPA is

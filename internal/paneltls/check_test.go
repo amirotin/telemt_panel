@@ -61,3 +61,27 @@ func TestRollbackFingerprintAndExactVersion(t *testing.T) {
 		t.Fatal("invalid fingerprint accepted")
 	}
 }
+
+func TestHealthChecksUseConfiguredBasePath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/panel/api/health" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"status":"ok","version":"test"}`))
+	}))
+	defer server.Close()
+	cfg := &config.Config{Listen: strings.TrimPrefix(server.URL, "http://"), BasePath: "/panel", TLS: config.TLSConfig{Mode: "http"}}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := Check(ctx, cfg, "test"); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := Fingerprint(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckFingerprint(ctx, cfg, fingerprint); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -119,7 +119,7 @@ func (m *Manager) Prepare() (*tls.Config, http.Handler, error) {
 		}
 		manager := &autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(m.cfg.AcmeDomain),
+			HostPolicy: acmeHostPolicy(m.cfg.AcmeDomain),
 			Cache:      &observedCache{DirCache: autocert.DirCache(m.cfg.AcmeCacheDir), owner: m},
 			Client: &acme.Client{DirectoryURL: m.directory, HTTPClient: &http.Client{
 				Timeout: 30 * time.Second, Transport: &observedTransport{owner: m, next: m.transport},

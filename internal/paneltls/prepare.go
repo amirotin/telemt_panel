@@ -210,7 +210,7 @@ func prepareCandidate(ctx context.Context, c config.TLSCandidate, activeListen s
 		if mux == nil {
 			mux = NewChallengeMux(nil)
 		}
-		reader := &autocert.Manager{Cache: autocert.DirCache(c.TLS.AcmeCacheDir), HostPolicy: autocert.HostWhitelist(c.TLS.AcmeDomain)}
+		reader := &autocert.Manager{Cache: autocert.DirCache(c.TLS.AcmeCacheDir), HostPolicy: acmeHostPolicy(c.TLS.AcmeDomain)}
 		remove, err := mux.Install(c.TLS.AcmeDomain, reader.HTTPHandler(http.NotFoundHandler()))
 		if err != nil {
 			return nil, err

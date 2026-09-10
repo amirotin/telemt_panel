@@ -102,13 +102,18 @@ State-файл может содержать секреты; не публику
 
 ### Reverse proxy
 
-Прокси должен удалять `base_path` перед передачей запроса панели. Для
+Прокси может сохранять `base_path` (как в 0.6) или удалять его перед передачей
+запроса: поддерживаются оба варианта. Префикс не является границей доступа —
+API в обоих случаях защищён авторизацией. Для
 `base_path = "/panel"` пример nginx:
+
+Если префикс пересекается с внутренними `/api`, `/sub` или `/assets`, сохраняйте
+его в прокси: распознавание уже удалённого префикса тогда неоднозначно.
 
 ```nginx
 location = /panel { return 301 /panel/; }
 location /panel/ {
-    proxy_pass http://127.0.0.1:8080/;
+    proxy_pass http://127.0.0.1:8080;
     proxy_buffering off;
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-For $remote_addr;

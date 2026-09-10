@@ -95,7 +95,7 @@ func checkHealth(ctx context.Context, cfg *config.Config, expectedVersion, expec
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 15 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	endpoint := scheme + "://" + net.JoinHostPort(name, port) + "/api/health"
+	endpoint := scheme + "://" + net.JoinHostPort(name, port) + cfg.BasePath + "/api/health"
 	var last error
 	for {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
