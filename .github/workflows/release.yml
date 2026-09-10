@@ -41,17 +41,37 @@ jobs:
         id: version
         run: |
           tag="${GITHUB_REF_NAME}"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-          if [[ "$tag" == *-* ]]; then
+          number='(0|[1-9][0-9]*)'
+          identifier='[0-9A-Za-z-]+'
+          if [[ ! "$tag" =~ ^v1\.$number\.$number(-$identifier(\.$identifier)*)?(\+$identifier(\.$identifier)*)?$ ]]; then
+            echo "Expected a v1.MINOR.PATCH tag with optional prerelease/build identifiers" >&2
+            exit 1
+          fi
+          # A hyphen in build metadata does not make a release a prerelease.
+          if [[ "${tag%%+*}" == *-* ]]; then
+            prerelease="${tag%%+*}"
+            IFS='.' read -r -a identifiers <<< "${prerelease#*-}"
+            for identifier in "${identifiers[@]}"; do
+              if [[ "$identifier" =~ ^0[0-9]+$ ]]; then
+                echo "Numeric prerelease identifiers must not have leading zeros" >&2
+                exit 1
+              fi
+            done
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build release assets
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: make release VERSION="$VERSION"
+
+      - name: Verify release assets before publication
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: RELEASE_DIR="$PWD/release" go test -count=1 -run '^TestReleaseContract$' ./internal/update/
 
       - name: Create GitHub release
         env:
@@ -64,6 +84,10 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --draft \
             --generate-notes \
             "${flags[@]}" \
             release/*
+          # A failed upload leaves a draft, never a publicly visible partial release.
+          gh release edit "$GITHUB_REF_NAME" --draft=false

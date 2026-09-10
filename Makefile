@@ -72,14 +72,14 @@ lint:
 release: web
 	@rm -rf release/.stage
 	@for path in full/x86_64 full/aarch64 full/armv7 lite/x86_64 lite/aarch64 lite/armv7 lite/mipsle lite/mips; do mkdir -p "release/.stage/$$path"; done
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o release/.stage/full/x86_64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o release/.stage/full/aarch64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(LDFLAGS)" -o release/.stage/full/armv7/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/armv7/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/mipsle/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/mips/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/x86_64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/aarch64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/armv7/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/armv7/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/mipsle/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=softfloat go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/mips/telemt-panel ./cmd/panel
 	@for file in release/.stage/full/*/telemt-panel; do \
 		bytes=$$(wc -c < "$$file"); \
 		if [ "$$bytes" -gt 33554432 ]; then echo "full binary exceeds 32 MiB: $$file ($$bytes bytes)"; exit 1; fi; \
@@ -88,23 +88,23 @@ release: web
 		bytes=$$(wc -c < "$$file"); \
 		if [ "$$bytes" -gt 16777216 ]; then echo "lite binary exceeds 16 MiB: $$file ($$bytes bytes)"; exit 1; fi; \
 	done
-	@for arch in x86_64 aarch64 armv7; do \
+	@set -eu; for arch in x86_64 aarch64 armv7; do \
 		for variant in gnu musl; do \
 			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-$$arch-linux-$$variant.tar.gz -C release/.stage/full/$$arch telemt-panel; \
 		done; \
 	done
-	@for arch in mipsle mips; do \
+	@set -eu; for arch in mipsle mips; do \
 		for variant in gnu musl; do \
 			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-$$arch-linux-$$variant.tar.gz -C release/.stage/lite/$$arch telemt-panel; \
 		done; \
 	done
-	@for arch in x86_64 aarch64 armv7 mipsle mips; do \
+	@set -eu; for arch in x86_64 aarch64 armv7 mipsle mips; do \
 		for variant in gnu musl; do \
 			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-lite-$$arch-linux-$$variant.tar.gz -C release/.stage/lite/$$arch telemt-panel; \
 		done; \
 	done
 	@rm -rf release/.stage
-	cd release && for f in *.tar.gz; do sha256sum "$$f" > "$$f.sha256"; done
+	@set -eu; cd release; for f in *.tar.gz; do sha256sum "$$f" > "$$f.sha256"; done
 	@echo "Release assets in ./release/"
 
 clean:

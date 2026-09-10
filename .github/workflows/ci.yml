@@ -167,7 +167,7 @@ jobs:
         run: make release
 
       - name: Verify release assets against the updater
-        run: RELEASE_DIR=$PWD/release go test -run TestReleaseContract ./internal/update/
+        run: RELEASE_DIR="$PWD/release" RELEASE_VERSION=0.0.0-dev go test -count=1 -run '^TestReleaseContract$' ./internal/update/
 
   # install.sh is POSIX sh and must keep working under dash, bash and
   # busybox: lint + syntax, then the sourced unit tests, then the

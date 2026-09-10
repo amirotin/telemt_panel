@@ -149,6 +149,7 @@ Source builds use the Go minor declared in the root `go.mod` (latest patch withi
 that minor) and Node.js 22. CI and releases use the same runtime families;
 `web/go.mod` is only a package-traversal boundary, not a build-toolchain selector.
 This policy does not guarantee byte-for-byte reproducible binaries.
+Release matrix and local verification: [release preparation](docs/RELEASING.md).
 
 `install.sh` is a single POSIX-sh installer (dash, bash, busybox) with a Russian/English interface. It detects the host (systemd, OpenRC, procd/OpenWrt, sysvinit), locates Telemt, asks a few explained questions, shows a summary, then installs the release binary, writes the config, a narrow sudoers policy and a service file, starts the panel and checks `/api/health`.
 
