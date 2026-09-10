@@ -7,12 +7,13 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 REAL_INSTALL=$(command -v install)
 export REAL_INSTALL
-for scenario in success fail rollback-fail copy-fail old-candidate dry no-start; do
+for scenario in success fail rollback-fail copy-fail old-candidate fifo-config dry no-start; do
   dir="$TMP/$scenario"
   mkdir -p "$dir/bin" "$dir/tools"
   printf 'original binary\n' >"$dir/bin/telemt-panel"
   chmod 0751 "$dir/bin/telemt-panel"
   printf 'private-config-value\n' >"$dir/config.toml"
+  if [ "$scenario" = fifo-config ]; then rm "$dir/config.toml"; mkfifo "$dir/config.toml"; fi
   printf 'ExecStart=%s --config %s\n' "$dir/bin/telemt-panel" "$dir/config.toml" >"$dir/service"
   printf '{"panel_binary_path":"%s","panel_service":"testpanel","store_driver":"memory","listen":"127.0.0.1:8080","tls_mode":"http"}\n' "$dir/bin/telemt-panel" >"$dir/report.json"
   cat >"$dir/candidate" <<'EOF'
@@ -65,14 +66,14 @@ EOF
     do_update_existing
   ) >"$dir/output" 2>&1; then result=0; else result=$?; fi
   case "$scenario" in
-    fail|rollback-fail|copy-fail|old-candidate)
+    fail|rollback-fail|copy-fail|old-candidate|fifo-config)
       [ "$result" != 0 ] || { cat "$dir/output"; exit 1; }
       [ "$(cat "$dir/bin/telemt-panel")" = "original binary" ]
       [ "$(stat -c %a "$dir/bin/telemt-panel")" = 751 ]
       case "$scenario" in
         fail|copy-fail) grep -q 'Previous panel response restored' "$dir/output" ;;
         rollback-fail) grep -q 'Automatic recovery failed' "$dir/output" ;;
-        old-candidate) [ ! -e "$dir/unintended-start" ] && [ ! -e "$dir/service-calls" ] ;;
+        old-candidate|fifo-config) [ ! -e "$dir/unintended-start" ] && [ ! -e "$dir/service-calls" ] ;;
       esac ;;
     dry)
       [ "$result" = 0 ] || { cat "$dir/output"; exit 1; }
@@ -85,7 +86,11 @@ EOF
       [ "$(stat -c %a "$dir/bin/telemt-panel")" = 755 ]
       if [ "$scenario" = no-start ]; then [ ! -e "$dir/service-calls" ]; fi ;;
   esac
-  [ "$(cat "$dir/config.toml")" = private-config-value ]
+  if [ "$scenario" = fifo-config ]; then
+    [ -p "$dir/config.toml" ]
+  else
+    [ "$(cat "$dir/config.toml")" = private-config-value ]
+  fi
   if grep -q private-config-value "$dir/output"; then exit 1; fi
   [ "$(find "$dir/bin" -name '.telemt-panel-new.*' -o -name '.telemt-panel-restore.*' | wc -l)" = 0 ]
   printf 'PASS installer transaction %s\n' "$scenario"

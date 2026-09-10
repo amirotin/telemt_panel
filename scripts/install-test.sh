@@ -149,7 +149,7 @@ assert_eq "config privileges direct" "direct" "$(toml_value "$TMP/cfg2.toml" pri
 assert_eq "config subpage off" "false" "$(toml_value "$TMP/cfg2.toml" subpage enabled)"
 L="ru"
 gen_config >"$TMP/cfg3.toml"
-assert_contains "config russian comments" "# Панель никогда не переписывает" "$TMP/cfg3.toml"
+assert_contains "config russian comments" "# Параметры запуска панели." "$TMP/cfg3.toml"
 L="en"
 RUN_AS="user"; SUBPAGE_ENABLED="yes"
 
@@ -259,21 +259,7 @@ else
 fi
 if (validate_panel_directory "$TMP/panel-data") >/dev/null 2>&1; then pass; else fail "directory guard rejected dedicated directory"; fi
 if (validate_panel_directory "$TMP/new-panel-data") >/dev/null 2>&1; then pass; else fail "directory guard rejected new dedicated directory"; fi
-for _dir in / /tmp "$TMP/root-link"; do
-  if (
-    CONFIG_DIR="$TMP/panel-data"; DATA_DIR="$_dir"
-    require_tty() { :; }
-    check_prereqs_quiet() { :; }
-    detect_init() { :; }
-    apply_layout() { :; }
-    detect_existing() { EXISTING=none; }
-    confirm_danger() { return 0; }
-    do_uninstall() { printf 'uninstall\n' >>"$TMP/unsafe-mutations"; }
-    run() { printf 'run\n' >>"$TMP/unsafe-mutations"; }
-    do_purge
-  ) >/dev/null 2>&1; then fail "purge accepted unsafe directory"; else pass; fi
-done
-if [ -e "$TMP/unsafe-mutations" ]; then fail "purge mutated host before rejecting unsafe path"; else pass; fi
+# Purge target safety is exercised with real parsed configs in install-remove-test.sh.
 if (
   CONFIG_DIR="$TMP/panel-data"; DATA_DIR=/
   run() { printf 'run\n' >>"$TMP/unsafe-setup"; }
@@ -310,6 +296,56 @@ if (
   http_get() { printf 200; }
   start_service
 ) >/dev/null 2>&1; then pass; else fail "healthy panel rejected"; fi
+
+# The invoking sudo user may not be able to stat a protected config directory.
+if (
+  CONFIG_FILE="$TMP/privileged-only.toml"
+  SUDO=privileged_probe
+  privileged_probe() { [ "$*" = "test -e $CONFIG_FILE" ]; }
+  detect_arch() { :; }; detect_libc() { :; }; detect_init() { :; }
+  apply_layout() { :; }; detect_tools() { :; }; detect_telemt() { :; }
+  choose_build_variant() { :; }
+  detect_all
+  [ "$EXISTING" = present ]
+) >/dev/null 2>&1; then pass; else fail "protected config mistaken for fresh install"; fi
+
+if (
+  CONFIG_FILE="$TMP/dangling-config"
+  ln -s "$TMP/missing-target" "$CONFIG_FILE"
+  SUDO=""
+  detect_arch() { :; }; detect_libc() { :; }; detect_init() { :; }
+  apply_layout() { :; }; detect_tools() { :; }; detect_telemt() { :; }
+  choose_build_variant() { :; }
+  detect_all
+  [ "$EXISTING" = present ]
+) >/dev/null 2>&1; then pass; else fail "dangling config mistaken for fresh install"; fi
+
+# Authorization goes through stdin, never the curl process arguments.
+if (
+  curl() {
+    printf '%s\n' "$*" >"$TMP/probe-argv"
+    cat >"$TMP/probe-stdin"
+    printf '200'
+  }
+  [ "$(http_get http://localhost:9091 'Bearer PRIVATE_TOKEN')" = 200 ]
+) >/dev/null 2>&1; then pass; else fail "authenticated curl probe failed"; fi
+assert_not_contains "curl argv contains no token" PRIVATE_TOKEN "$TMP/probe-argv"
+assert_contains "curl stdin carries header" 'Authorization: Bearer PRIVATE_TOKEN' "$TMP/probe-stdin"
+
+if (
+  curl() { printf 'called\n' >"$TMP/injected-request"; }
+  _header=$(printf 'Bearer secret\r\nX-Injected: bad')
+  [ "$(http_get http://localhost:9091 "$_header")" = 000 ]
+  [ ! -e "$TMP/injected-request" ]
+) >/dev/null 2>&1; then pass; else fail "multiline authorization accepted"; fi
+
+if (
+  has() { [ "$1" != curl ]; }
+  wget() { printf 'called\n' >"$TMP/unsafe-wget"; }
+  [ "$(check_telemt_api http://localhost:9091 'PRIVATE_TOKEN')" = needs-curl ]
+  [ "$(http_get http://localhost:9091 'PRIVATE_TOKEN')" = 000 ]
+  [ ! -e "$TMP/unsafe-wget" ]
+) >/dev/null 2>&1; then pass; else fail "wget exposed authenticated header"; fi
 
 # Remote releases require a verified checksum before extraction/installation.
 for _scenario in missing no-tool mismatch; do

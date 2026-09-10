@@ -10,9 +10,8 @@
 #   sh install.sh                # interactive install
 #   sh install.sh --lang en help # every option and environment variable
 #
-# Design notes: every host mutation goes through run()/write_root_file(), so
-# --dry-run can show the complete plan without touching anything; every
-# user-facing string lives in t() so both languages stay in one place.
+# --dry-run skips installation changes; downloads and private preflight files
+# are still needed. User-facing strings live in t() for both languages.
 set -eu
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -277,8 +276,6 @@ Paths: binary %s, config %s, data %s
     en:step_prereq) _f='Checking prerequisites' ;;
     ru:step_detect) _f='Определение системы' ;;
     en:step_detect) _f='Inspecting the host' ;;
-    ru:step_telemt) _f='Поиск Telemt' ;;
-    en:step_telemt) _f='Locating Telemt' ;;
     ru:step_questions) _f='Настройка' ;;
     en:step_questions) _f='Configuration' ;;
     ru:step_summary) _f='Сводка' ;;
@@ -315,8 +312,6 @@ Paths: binary %s, config %s, data %s
     en:no_init) _f='Could not recognise the init system (no systemd, OpenRC, procd or sysvinit).\nThe panel can still be started by hand: %s --config %s' ;;
     ru:d_arch) _f='Архитектура' ;;
     en:d_arch) _f='Architecture' ;;
-    ru:d_libc) _f='Библиотека C' ;;
-    en:d_libc) _f='C library' ;;
     ru:d_variant) _f='Вариант панели' ;;
     en:d_variant) _f='Panel variant' ;;
     ru:d_init) _f='Система запуска' ;;
@@ -331,10 +326,6 @@ Paths: binary %s, config %s, data %s
     en:d_missing) _f='not found' ;;
     ru:d_existing_none) _f='не установлена' ;;
     en:d_existing_none) _f='not installed' ;;
-    ru:d_existing_v1) _f='установлена 1.x (конфиг %s)' ;;
-    en:d_existing_v1) _f='1.x installed (config %s)' ;;
-    ru:d_existing_v0) _f='установлена 0.x (конфиг %s)' ;;
-    en:d_existing_v0) _f='0.x installed (config %s)' ;;
     ru:d_telemt_bin) _f='Бинарь Telemt' ;;
     en:d_telemt_bin) _f='Telemt binary' ;;
     ru:d_telemt_svc) _f='Сервис Telemt' ;;
@@ -373,6 +364,8 @@ Paths: binary %s, config %s, data %s
     en:api_refused) _f='Cannot connect to %s.\nCheck that Telemt is running and [server.api] has enabled = true and the right listen.' ;;
     ru:api_other) _f='Неожиданный ответ от Telemt: HTTP %s.' ;;
     en:api_other) _f='Unexpected response from Telemt: HTTP %s.' ;;
+    ru:api_needs_curl) _f='Для безопасной проверки API с токеном нужен curl. Установите curl или продолжите без проверки; токен будет сохранён в конфиге панели.' ;;
+    en:api_needs_curl) _f='Checking a token-protected API safely requires curl. Install curl or continue without checking; the token will be saved in the panel config.' ;;
     ru:api_retry_q) _f='1) Проверить снова  2) Изменить адрес и заголовок  3) Продолжить без проверки' ;;
     en:api_retry_q) _f='1) Check again  2) Change address and header  3) Continue without checking' ;;
     ru:q_listen) _f='Адрес, на котором слушает панель' ;;
@@ -499,8 +492,6 @@ Paths: binary %s, config %s, data %s
     en:a_hash_fail) _f='Could not hash the password (does the binary run on this system?).' ;;
     ru:a_config_written) _f='Конфиг записан: %s' ;;
     en:a_config_written) _f='Config written: %s' ;;
-    ru:a_config_kept) _f='Конфиг сохранён без изменений: %s' ;;
-    en:a_config_kept) _f='Config kept unchanged: %s' ;;
     ru:a_sudoers) _f='Политика sudo записана: %s' ;;
     en:a_sudoers) _f='Sudo policy written: %s' ;;
     ru:a_sudoers_invalid) _f='visudo отверг сгенерированный файл sudoers — установка остановлена.' ;;
@@ -543,8 +534,6 @@ Paths: binary %s, config %s, data %s
     en:done_uninstall) _f='Removal: sh install.sh uninstall (keeps config) or purge (removes everything).' ;;
 
     # ── update / migrate ──
-    ru:update_intro) _f='Панель 1.x уже установлена. Будут обновлены бинарь, политика sudo и файл сервиса;\nконфиг %s останется как есть.' ;;
-    en:update_intro) _f='Panel 1.x is already installed. The binary, sudo policy and service file will be\nrefreshed; the config %s stays as it is.' ;;
     ru:migrate_config_api_only) _f='Редактирование настроек Telemt в 1.x требует Config API. Старое значение config_edit_mode=file сохраняется только для совместимости; прямая запись файла не поддерживается.' ;;
     en:migrate_config_api_only) _f='Editing Telemt settings in 1.x requires the Config API. The legacy config_edit_mode=file value is preserved only for compatibility; direct file editing is not supported.' ;;
 
@@ -553,12 +542,6 @@ Paths: binary %s, config %s, data %s
     en:uninstall_q) _f='Remove the service, binary and sudo policy? Config and data are kept.' ;;
     ru:purge_q) _f='Удалить сервис, бинарник, sudoers, конфиг %s и данные %s? Системная учётная запись %s и внешние файлы сохранятся.' ;;
     en:purge_q) _f='Remove service, binary, sudoers, config %s and data %s? OS account %s and external files will be retained.' ;;
-    ru:u_service) _f='Сервис остановлен и удалён' ;;
-    en:u_service) _f='Service stopped and removed' ;;
-    ru:u_binary) _f='Бинарь удалён' ;;
-    en:u_binary) _f='Binary removed' ;;
-    ru:u_sudoers) _f='Политика sudo удалена' ;;
-    en:u_sudoers) _f='Sudo policy removed' ;;
     ru:u_kept) _f='Сохранены: %s и %s. Полное удаление: sh install.sh purge' ;;
     en:u_kept) _f='Kept: %s and %s. Full removal: sh install.sh purge' ;;
     ru:u_purged) _f='Панель, конфиг и настроенный каталог данных удалены. Учётная запись ОС и внешние файлы сохранены.' ;;
@@ -695,7 +678,7 @@ owner_group() {
   id -gn "$1" 2>/dev/null || printf '%s' "$1"
 }
 
-# write_root_file PATH MODE [OWNER] — stdin → PATH atomically via install(1).
+# write_root_file PATH MODE [OWNER] — stdin → PATH via install(1).
 write_root_file() {
   _path="$1"; _mode="$2"; _owner="${3:-}"
   ensure_temp_dir
@@ -898,26 +881,29 @@ gen_password() {
 }
 
 # http_get URL [AUTH_HEADER] — body → $HTTP_BODY, prints the HTTP status
-# ("000" when the connection failed). Works with curl, GNU wget, busybox wget.
+# ("000" when the connection failed). Authenticated probes require curl 7.55+;
+# wget has no portable way to keep a header token out of its process arguments.
 http_get() {
   _url="$1"; _hdr="${2:-}"
   ensure_temp_dir
   : >"$HTTP_BODY"
   if has curl; then
     if [ -n "$_hdr" ]; then
-      _code=$(curl -s -m 8 -o "$HTTP_BODY" -w '%{http_code}' -H "Authorization: $_hdr" "$_url" 2>/dev/null) || _code="000"
+      # Reject line injection: @- interprets each input line as a separate header.
+      if [ "$(printf '%s' "$_hdr" | tr -d '\r\n')" != "$_hdr" ]; then printf '000'; return 0; fi
+      _code=$(printf 'Authorization: %s\n' "$_hdr" | curl -s -m 8 -o "$HTTP_BODY" -w '%{http_code}' -H @- "$_url" 2>/dev/null) || _code="000"
     else
       _code=$(curl -s -m 8 -o "$HTTP_BODY" -w '%{http_code}' "$_url" 2>/dev/null) || _code="000"
     fi
     printf '%s' "${_code:-000}"
     return 0
   fi
-  _err="$TEMP_DIR/http.err"
   if [ -n "$_hdr" ]; then
-    wget -q -T 8 -O "$HTTP_BODY" -S --header="Authorization: $_hdr" "$_url" >"$_err" 2>&1 && _rc=0 || _rc=$?
-  else
-    wget -q -T 8 -O "$HTTP_BODY" -S "$_url" >"$_err" 2>&1 && _rc=0 || _rc=$?
+    printf '000'
+    return 0
   fi
+  _err="$TEMP_DIR/http.err"
+  wget -q -T 8 -O "$HTTP_BODY" -S "$_url" >"$_err" 2>&1 && _rc=0 || _rc=$?
   _code=$(grep -o 'HTTP/[0-9.]* [0-9][0-9][0-9]' "$_err" | tail -n 1 | awk '{print $2}')
   if [ -n "$_code" ]; then
     printf '%s' "$_code"
@@ -1144,7 +1130,9 @@ detect_all() {
   detect_tools
   # Installation/update defers schema recognition to the verified Go parser.
   EXISTING="none"
-  if [ -e "$CONFIG_FILE" ]; then EXISTING="present"; fi
+  # The service owns a 0750 config directory; the invoking sudo user may not
+  # be able to stat its contents. A hidden file must never mean a fresh install.
+  if $SUDO test -e "$CONFIG_FILE" || $SUDO test -L "$CONFIG_FILE"; then EXISTING="present"; fi
   detect_telemt
   choose_build_variant
 }
@@ -1183,8 +1171,6 @@ print_detection() {
   case "$EXISTING" in
     present) kv "$(t d_existing)" "$(t existing_config "$CONFIG_FILE")" ;;
     none) kv "$(t d_existing)" "$(t d_existing_none)" ;;
-    v1) kv "$(t d_existing)" "$(t d_existing_v1 "$CONFIG_FILE")" ;;
-    v0) kv "$(t d_existing)" "$(t d_existing_v0 "$CONFIG_FILE")" ;;
   esac
 }
 
@@ -1254,7 +1240,7 @@ gen_config() {
     sqlite) _store_detail_line="path = \"$(toml_escape "$DATA_DIR/panel.db")\"" ;;
   esac
   if [ "$L" = "ru" ]; then
-    _c_top="# Панель никогда не переписывает этот файл: настройки из UI живут в store."
+    _c_top="# Параметры запуска панели. Настройки интерфейса хранятся отдельно в panel-state.json."
     _c_listen="# Адрес панели. За reverse proxy на подпути добавьте base_path = \"/panel\"."
     _c_data="# Каталог состояния (сессии, журнал обновлений). Пусто — только RAM."
     _c_telemt="# Telemt HTTP API: [server.api] в конфиге Telemt."
@@ -1264,7 +1250,7 @@ gen_config() {
     _c_upd="# Пути бинарей, которые заменяет обновление из панели."
     _c_priv="# sudo — узкая политика в $SUDOERS_FILE; direct — панель работает от root."
   else
-    _c_top="# The panel never rewrites this file: settings changed in the UI live in the store."
+    _c_top="# Panel startup parameters. UI settings are stored separately in panel-state.json."
     _c_listen="# Panel address. Behind a reverse proxy on a sub-path add base_path = \"/panel\"."
     _c_data="# State directory (sessions, update journal). Empty keeps state in RAM only."
     _c_telemt="# Telemt HTTP API: [server.api] in the Telemt config."
@@ -1557,8 +1543,9 @@ check_prereqs() {
 #  Questions
 # ═════════════════════════════════════════════════════════════════════════════
 
-# check_telemt_api URL HEADER — prints "ok VERSION" | "auth CODE" | "refused" | "other CODE".
+# check_telemt_api URL HEADER — prints a status, never the header value.
 check_telemt_api() {
+  if [ -n "$2" ] && ! has curl; then printf 'needs-curl'; return 0; fi
   _code=$(http_get "$1/v1/health" "$2")
   case "$_code" in
     200)
@@ -1607,6 +1594,7 @@ ask_telemt_connection() {
         auth\ *) warn "$(t api_auth "${_res#auth }" "$TELEMT_CONFIG")" ;;
         refused) warn "$(t api_refused "$TELEMT_URL")" ;;
         other\ *) warn "$(t api_other "${_res#other }")" ;;
+        needs-curl) warn "$(t api_needs_curl)" ;;
       esac
       if [ "$ASSUME_YES" = 1 ]; then
         return 0
@@ -2147,7 +2135,11 @@ validate_panel_directory() {
     */../*|*/..|*/./*|*/.) die "$(t unsafe_directory "$1")" ;;
   esac
   if [ -d "$_checked_dir" ]; then
-    _checked_dir=$(cd -P "$_checked_dir" && pwd -P) || die "$(t unsafe_directory "$1")"
+    if [ -n "$SUDO" ]; then
+      _checked_dir=$($SUDO readlink -f "$_checked_dir") || die "$(t unsafe_directory "$1")"
+    else
+      _checked_dir=$(cd -P "$_checked_dir" && pwd -P) || die "$(t unsafe_directory "$1")"
+    fi
   else
     while [ "${_checked_dir%/}" != "$_checked_dir" ]; do _checked_dir=${_checked_dir%/}; done
   fi
@@ -2407,7 +2399,7 @@ print_done() {
 
 # validate_existing_store_variant refuses a profile switch that would leave the
 # preserved configuration unreadable by the newly installed binary. It runs
-# before fetch_release and before any users, files or services are changed.
+# after staged inspection, before any installation files or services are changed.
 validate_existing_store_variant() {
   if [ "$BUILD_VARIANT" = "lite" ] && [ "$STORE_DRIVER" != "memory" ]; then
     die "$(t store_lite_existing "$STORE_DRIVER")"
@@ -2440,6 +2432,7 @@ do_update_existing() {
   ensure_temp_dir
   UPDATE_SOURCE="$TEMP_DIR/existing.toml"
   # Snapshot once with privileges; never treat unreadable config as defaults.
+  $SUDO test -f "$CONFIG_FILE" || die "$(t update_preflight_failed)"
   $SUDO cat "$CONFIG_FILE" >"$UPDATE_SOURCE" || die "$(t update_preflight_failed)"
   chmod 0600 "$UPDATE_SOURCE"
   fetch_release
@@ -2576,7 +2569,7 @@ do_install() {
   fi
 
   case "$EXISTING" in
-    present|v0|v1) do_update_existing; return 0 ;;
+    present) do_update_existing; return 0 ;;
   esac
 
   step 3 step_questions
@@ -2611,7 +2604,7 @@ prepare_removal() {
   detect_init
   apply_layout
   ensure_temp_dir
-  if [ ! -f "$CONFIG_FILE" ]; then
+  if ! $SUDO test -f "$CONFIG_FILE"; then
     if [ "$CMD" = uninstall ] && [ ! -e "$PANEL_BIN" ] && [ ! -e "$SERVICE_FILE" ] && [ ! -e "$SUDOERS_FILE" ]; then say "$(t u_nothing)"; exit 0; fi
     die "$(t remove_parser)"
   fi
@@ -2636,9 +2629,9 @@ prepare_removal() {
   sudoers_path_ok "$TELEMT_BIN" || die "$(t remove_unsafe)"
   apply_layout_from_answers
   [ "$SERVICE_NAME" != "$TELEMT_SVC" ] || die "$(t remove_unsafe)"
-  [ "$(readlink -f "$PANEL_BIN")" != "$(readlink -f "$TELEMT_BIN")" ] || die "$(t remove_unsafe)"
+  [ "$($SUDO readlink -f "$PANEL_BIN")" != "$($SUDO readlink -f "$TELEMT_BIN")" ] || die "$(t remove_unsafe)"
   for REMOVE_PROTECTED_FILE in "$CONFIG_FILE" "$TELEMT_CONFIG" "$SERVICE_FILE" "$SUDOERS_FILE"; do
-    [ "$(readlink -f "$PANEL_BIN")" != "$(readlink -f "$REMOVE_PROTECTED_FILE")" ] || die "$(t remove_unsafe)"
+    [ "$($SUDO readlink -f "$PANEL_BIN")" != "$($SUDO readlink -f "$REMOVE_PROTECTED_FILE")" ] || die "$(t remove_unsafe)"
   done
   for REMOVE_FILE in "$PANEL_BIN" "$SERVICE_FILE" "$SUDOERS_FILE"; do
     [ ! -L "$REMOVE_FILE" ] || die "$(t remove_unsafe)"
@@ -2667,9 +2660,9 @@ validate_removal_data() {
   fi
   for REMOVE_DIR in "$CONFIG_DIR" "${DATA_DIR:-$CONFIG_DIR}"; do
     [ ! -L "$REMOVE_DIR" ] || die "$(t remove_unsafe)"
-    REMOVE_CANON=$(readlink -f "$REMOVE_DIR") || die "$(t remove_unsafe)"
+    REMOVE_CANON=$($SUDO readlink -f "$REMOVE_DIR") || die "$(t remove_unsafe)"
     for REMOVE_PROTECTED in "$TELEMT_BIN" "$TELEMT_CONFIG" "$BIN_DIR" "$(dirname "$SERVICE_FILE")" "$(dirname "$SUDOERS_FILE")"; do
-      REMOVE_PROTECTED=$(readlink -f "$REMOVE_PROTECTED") || die "$(t remove_unsafe)"
+      REMOVE_PROTECTED=$($SUDO readlink -f "$REMOVE_PROTECTED") || die "$(t remove_unsafe)"
       case "$REMOVE_PROTECTED" in "$REMOVE_CANON"|"$REMOVE_CANON"/*) die "$(t remove_unsafe)" ;; esac
     done
   done
