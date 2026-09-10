@@ -49,6 +49,8 @@ type SourceReport struct {
 	SessionTTL        string   `json:"session_ttl"`
 	PanelService      string   `json:"panel_service"`
 	TelemtService     string   `json:"telemt_service"`
+	PanelBinaryPath   string   `json:"panel_binary_path"`
+	StoreDriver       string   `json:"store_driver"`
 	HasTelemtAuth     bool     `json:"has_telemt_auth"`
 	HasGithubToken    bool     `json:"has_github_token"`
 	Warnings          []string `json:"warnings"`
@@ -61,7 +63,8 @@ func (s *Source) Report() SourceReport {
 		Listen: c.Listen, BasePath: c.BasePath, DataDir: c.DataDir,
 		TLSMode: c.TLS.Mode, ACMEDomain: c.TLS.AcmeDomain,
 		SessionTTL: c.Auth.SessionTTLDuration().String(), PanelService: c.Host.PanelService,
-		TelemtService: c.Host.TelemtService, HasTelemtAuth: c.Telemt.AuthHeader != "",
+		TelemtService: c.Host.TelemtService, PanelBinaryPath: c.Updates.PanelBinaryPath,
+		StoreDriver: c.Store.Driver, HasTelemtAuth: c.Telemt.AuthHeader != "",
 		HasGithubToken: c.Updates.GithubToken != "", Warnings: s.Warnings}
 }
 

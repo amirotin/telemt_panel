@@ -43,6 +43,7 @@ COLOR=1
 BINARY_FILE=""
 REQ_VERSION=""
 BUILD_VARIANT=""
+VARIANT_EXPLICIT=0
 
 # ── Detection globals ────────────────────────────────────────────────────────
 ARCH=""
@@ -81,8 +82,11 @@ STORE_DRIVER=""
 SUDO=""
 TEMP_DIR=""
 HTTP_BODY=""
-NL='
-'
+UPDATE_PENDING=0
+UPDATE_STAGED=""
+UPDATE_RESTORE=""
+UPDATE_FINGERPRINT=""
+UPDATE_COPY_MODE="-p"
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  i18n
@@ -96,6 +100,28 @@ t() {
   _k="$1"
   shift
   case "${L:-en}:$_k" in
+    ru:update_preflight_failed) _f='Проверка существующей установки или нового бинарника не пройдена; обновление не применено.' ;;
+    en:update_preflight_failed) _f='Existing installation or candidate validation failed; update not applied.' ;;
+    ru:update_preserve) _f='Будет заменён только бинарник. Конфиг, сервис, права и firewall сохраняются.' ;;
+    en:update_preserve) _f='Only the binary will change. Config, service, permissions and firewall are preserved.' ;;
+    ru:update_legacy) _f='Конфиг 0.6 останется без изменений. При первом запуске настройки переносятся один раз; проверки версий — без автоустановки, каждые 6 часов. JWT требует нового входа; параметры без аналога остаются для ручной проверки.' ;;
+    en:update_legacy) _f='The 0.6 config stays unchanged. First startup imports settings once; version checks only, every 6 hours. JWT requires a new login; settings without equivalents remain for review.' ;;
+    ru:update_dry) _f='Проверка завершена. Dry-run: бинарник, конфиг и сервис не изменены.' ;;
+    en:update_dry) _f='Validation complete. Dry-run: binary, config and service unchanged.' ;;
+    ru:update_backup) _f='Резервный бинарник: %s/binary. Копия не удаляется автоматически.' ;;
+    en:update_backup) _f='Backup binary: %s/binary. It will not be removed automatically.' ;;
+    ru:update_verified) _f='Новая версия запущена; health и версия проверены по настроенному HTTP/HTTPS.' ;;
+    en:update_verified) _f='New version is running; health and version verified over configured HTTP/HTTPS.' ;;
+    ru:update_apply_failed) _f='Замена, перезапуск или проверка новой версии не удались.' ;;
+    en:update_apply_failed) _f='Replacement, restart or new-version readiness failed.' ;;
+    ru:update_restoring) _f='Обновление не завершено; восстанавливаю прежний бинарник.' ;;
+    en:update_restoring) _f='Update did not complete; restoring the previous binary.' ;;
+    ru:update_restored) _f='Прежний ответ панели восстановлен. Обновление отменено; backup сохранён: %s' ;;
+    en:update_restored) _f='Previous panel response restored. Update failed; backup retained: %s' ;;
+    ru:update_restore_failed) _f='Автоматическое восстановление не завершено. Не удаляйте backup: %s/binary; восстановите бинарник и перезапустите сервис вручную.' ;;
+    en:update_restore_failed) _f='Automatic recovery failed. Keep %s/binary; restore the binary and restart the service manually.' ;;
+    ru:existing_config) _f='Найден конфиг: %s; формат проверит новый бинарник.' ;;
+    en:existing_config) _f='Configuration found: %s; the candidate will validate its format.' ;;
     ru:q_transport) _f='Доступ: 1) Автоматический HTTPS (ACME)  2) Готовый сертификат  3) За reverse proxy  4) Без HTTPS' ;;
     en:q_transport) _f='Access: 1) Automatic HTTPS (ACME)  2) Existing certificate  3) Behind reverse proxy  4) No HTTPS' ;;
     ru:q_tls_domain) _f='Домен панели (без https:// и порта)' ;;
@@ -253,8 +279,6 @@ Paths: binary %s, config %s, data %s
     en:step_apply) _f='Installing' ;;
     ru:step_done) _f='Готово' ;;
     en:step_done) _f='Done' ;;
-    ru:step_migrate) _f='Миграция с 0.x' ;;
-    en:step_migrate) _f='Migrating from 0.x' ;;
     ru:step_update) _f='Обновление установленной панели' ;;
     en:step_update) _f='Updating the installed panel' ;;
 
@@ -513,30 +537,8 @@ Paths: binary %s, config %s, data %s
     # ── update / migrate ──
     ru:update_intro) _f='Панель 1.x уже установлена. Будут обновлены бинарь, политика sudo и файл сервиса;\nконфиг %s останется как есть.' ;;
     en:update_intro) _f='Panel 1.x is already installed. The binary, sudo policy and service file will be\nrefreshed; the config %s stays as it is.' ;;
-    ru:migrate_intro) _f='Найдена панель 0.x (конфиг %s). Формат конфига в 1.x изменился:\nсессии больше не используют jwt_secret, появились страница подписки и явные настройки\nхоста. Скрипт перенесёт значения в новый формат, а старый файл сохранит рядом.' ;;
-    en:migrate_intro) _f='A 0.x panel was found (config %s). The 1.x config format changed: sessions no\nlonger use jwt_secret, and the subscription page and explicit host settings were\nadded. The script converts the values and keeps the old file next to the new one.' ;;
-    ru:migrate_q) _f='1) Мигрировать (рекомендуется)  2) Отменить' ;;
-    en:migrate_q) _f='1) Migrate (recommended)  2) Cancel' ;;
-    ru:migrate_backup) _f='Старый конфиг сохранён: %s' ;;
-    en:migrate_backup) _f='Old config saved as: %s' ;;
-    ru:migrate_skipped_title) _f='Не перенесено (нет аналога в 1.x, значения остались в резервной копии):' ;;
-    en:migrate_skipped_title) _f='Not migrated (no 1.x equivalent, values remain in the backup):' ;;
     ru:migrate_config_api_only) _f='Редактирование настроек Telemt в 1.x требует Config API. Старое значение config_edit_mode=file сохраняется только для совместимости; прямая запись файла не поддерживается.' ;;
     en:migrate_config_api_only) _f='Editing Telemt settings in 1.x requires the Config API. The legacy config_edit_mode=file value is preserved only for compatibility; direct file editing is not supported.' ;;
-    ru:mk_jwt) _f='сессии хранятся в store панели, ключ не нужен' ;;
-    en:mk_jwt) _f='sessions live in the panel store, the key is no longer needed' ;;
-    ru:mk_auto_update) _f='автообновление настраивается в панели (Сервер → Обновления)' ;;
-    en:mk_auto_update) _f='auto-update is configured in the panel (Server → Updates)' ;;
-    ru:mk_geoip) _f='GeoIP вернётся в следующей волне 1.x' ;;
-    en:mk_geoip) _f='GeoIP returns in a later 1.x wave' ;;
-    ru:mk_users) _f='шаблоны пользователей в 1.x не используются' ;;
-    en:mk_users) _f='user templates are not used in 1.x' ;;
-    ru:mk_releases) _f='ограничения списка релизов в 1.x не используются' ;;
-    en:mk_releases) _f='release list limits are not used in 1.x' ;;
-    ru:mk_config_path) _f='путь к конфигу Telemt панель узнаёт через его API' ;;
-    en:mk_config_path) _f='the panel learns the Telemt config path from its API' ;;
-    ru:migrate_done) _f='Конфиг переведён в формат 1.x: %s' ;;
-    en:migrate_done) _f='Config converted to the 1.x format: %s' ;;
 
     # ── uninstall ──
     ru:uninstall_q) _f='Удалить сервис, бинарь и политику sudo? Конфиг и данные останутся.' ;;
@@ -624,15 +626,30 @@ mask() {
 # ═════════════════════════════════════════════════════════════════════════════
 
 cleanup() {
+  if [ -n "$UPDATE_STAGED" ]; then $SUDO rm -f "$UPDATE_STAGED" || true; fi
+  if [ -n "$UPDATE_RESTORE" ]; then $SUDO rm -f "$UPDATE_RESTORE" || true; fi
   if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
     rm -rf -- "$TEMP_DIR"
   fi
 }
-trap cleanup EXIT INT TERM
+installer_exit() {
+  _exit_code=$?
+  if [ "$UPDATE_PENDING" = 1 ]; then
+    _exit_code=1
+    if ! restore_update; then warn "$(t update_restore_failed "$UPDATE_BACKUP")"; fi
+  fi
+  cleanup
+  trap - EXIT
+  exit "$_exit_code"
+}
+trap installer_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 ensure_temp_dir() {
   if [ -z "$TEMP_DIR" ]; then
     TEMP_DIR=$(mktemp -d)
+    TEMP_DIR=$(cd "$TEMP_DIR" && pwd)
     HTTP_BODY="$TEMP_DIR/http.body"
   fi
 }
@@ -678,7 +695,7 @@ write_root_file() {
   cat >"$_tmp"
   if [ "$DRY_RUN" = 1 ]; then
     printf '  %s--- would write %s (mode %s%s) ---%s\n' "$C_DIM" "$_path" "$_mode" "${_owner:+, owner $_owner}" "$C_RESET"
-    sed 's/^/  │ /' "$_tmp"
+    printf '  [content omitted]\n'
     printf '  %s--- end ---%s\n' "$C_DIM" "$C_RESET"
     rm -f "$_tmp"
     return 0
@@ -1127,19 +1144,17 @@ detect_all() {
   detect_init
   apply_layout
   detect_tools
-  detect_existing
+  # Installation/update defers schema recognition to the verified Go parser.
+  EXISTING="none"
+  if [ -e "$CONFIG_FILE" ]; then EXISTING="present"; fi
   detect_telemt
   choose_build_variant
 }
 
 choose_build_variant() {
   _requested="${BUILD_VARIANT:-${TP_VARIANT:-}}"
-  if [ -z "$_requested" ] && [ -x "$PANEL_BIN" ]; then
-    case $("$PANEL_BIN" version 2>/dev/null || true) in
-      *'(lite:'*) _requested="lite" ;;
-      *'(full:'*) _requested="full" ;;
-    esac
-  fi
+  if [ -n "$_requested" ]; then VARIANT_EXPLICIT=1; fi
+  # Never execute an unverified installed binary; 0.6 treats 'version' as startup.
   if [ -z "$_requested" ]; then
     case "$INIT:$ARCH" in
       procd:*|*:mips|*:mipsle) _requested="lite" ;;
@@ -1168,6 +1183,7 @@ print_detection() {
     kv "$(t d_sudo)" "$(t d_missing)"
   fi
   case "$EXISTING" in
+    present) kv "$(t d_existing)" "$(t existing_config "$CONFIG_FILE")" ;;
     none) kv "$(t d_existing)" "$(t d_existing_none)" ;;
     v1) kv "$(t d_existing)" "$(t d_existing_v1 "$CONFIG_FILE")" ;;
     v0) kv "$(t d_existing)" "$(t d_existing_v0 "$CONFIG_FILE")" ;;
@@ -2235,15 +2251,32 @@ fetch_release() {
     die "$(t a_checksum_missing)"
   fi
 
-  mkdir -p "$TEMP_DIR/extract"
-  tar -xzf "$_tar" -C "$TEMP_DIR/extract"
-  STAGED_BIN="$TEMP_DIR/extract/$BINARY_NAME"
+  _entries=$(tar -tzf "$_tar") || die "$(t a_extract_fail "$BINARY_NAME")"
+  case "$_entries" in "$BINARY_NAME"|"./$BINARY_NAME") ;; *) die "$(t a_extract_fail "$BINARY_NAME")" ;; esac
+  _listing=$(tar -tvzf "$_tar") || die "$(t a_extract_fail "$BINARY_NAME")"
+  case "$_listing" in -*) ;; *) die "$(t a_extract_fail "$BINARY_NAME")" ;; esac
+  _size=$(printf '%s\n' "$_listing" | awk '{print $3}')
+  case "$_size" in ''|*[!0-9]*) die "$(t a_extract_fail "$BINARY_NAME")" ;; esac
+  [ "$_size" -le 67108864 ] || die "$(t a_extract_fail "$BINARY_NAME")"
+  STAGED_BIN="$TEMP_DIR/$BINARY_NAME"
+  tar -xOzf "$_tar" "$_entries" >"$STAGED_BIN" || die "$(t a_extract_fail "$BINARY_NAME")"
   [ -f "$STAGED_BIN" ] || die "$(t a_extract_fail "$BINARY_NAME")"
   chmod 0755 "$STAGED_BIN"
 }
 
 install_binary() {
-  run install -m 0755 "$STAGED_BIN" "$PANEL_BIN"
+  if [ "$DRY_RUN" = 1 ]; then
+    run install -m 0755 "$STAGED_BIN" "$PANEL_BIN"
+  else
+    UPDATE_STAGED=$($SUDO mktemp "$BIN_DIR/.telemt-panel-new.XXXXXX") || return 1
+    $SUDO install -m 0755 "$STAGED_BIN" "$UPDATE_STAGED" || return 1
+    if [ "$UPDATE_PENDING" = 1 ] && [ "$UPDATE_COPY_MODE" = --preserve=all ]; then
+      $SUDO cp --attributes-only --preserve=all "$UPDATE_BACKUP/binary" "$UPDATE_STAGED" || return 1
+      $SUDO chmod 0755 "$UPDATE_STAGED" || return 1
+    fi
+    $SUDO mv -f "$UPDATE_STAGED" "$PANEL_BIN" || return 1
+    UPDATE_STAGED=""
+  fi
   ok "$(t a_installed_bin "$PANEL_BIN" "$INSTALLED_TAG")"
 }
 
@@ -2420,117 +2453,6 @@ validate_existing_store_variant() {
   fi
 }
 
-# migrate_v0_config OLD_FILE NEW_FILE — converts a 0.x config; prints the
-# list of keys without a 1.x equivalent. Answer globals are filled from the
-# old file so gen_config can render the new one.
-migrate_v0_config() {
-  _old="$1"; _new="$2"
-  load_tls_config "$_old"
-  if [ "$TLS_MODE" = acme ] && [ -z "$TLS_CACHE" ]; then TLS_CACHE="/var/lib/telemt-panel/certs"; fi
-  _v=$(toml_value "$_old" "" listen); [ -n "$_v" ] && LISTEN="$_v"
-  _v=$(toml_value "$_old" "" data_dir); [ -n "$_v" ] && DATA_DIR="$_v"
-  V0_BASE_PATH=$(toml_value "$_old" "" base_path)
-  V0_TRUSTED_PROXIES=$(toml_value "$_old" "" trusted_proxies)
-  TELEMT_URL=$(toml_value "$_old" telemt url)
-  TELEMT_AUTH=$(toml_value "$_old" telemt auth_header)
-  V0_EDIT_MODE=$(toml_value "$_old" telemt config_edit_mode)
-  _v=$(toml_value "$_old" telemt binary_path); TELEMT_BIN="${_v:-/bin/telemt}"
-  _v=$(toml_value "$_old" telemt service_name); TELEMT_SVC="${_v:-telemt}"
-  V0_TELEMT_CONTAINER=$(toml_value "$_old" telemt container_name)
-  V0_TELEMT_REPO=$(toml_value "$_old" telemt github_repo)
-  _v=$(toml_value "$_old" panel binary_path); [ -n "$_v" ] && PANEL_BIN="$_v"
-  _v=$(toml_value "$_old" panel service_name); [ -n "$_v" ] && SERVICE_NAME="$_v"
-  V0_PANEL_REPO=$(toml_value "$_old" panel github_repo)
-  V0_GITHUB_TOKEN=$(toml_value "$_old" panel github_token)
-  _v=$(toml_value "$_old" auth username); [ -n "$_v" ] && ADMIN_USER="$_v"
-  PASS_HASH=$(toml_value "$_old" auth password_hash)
-  V0_SESSION_TTL=$(toml_value "$_old" auth session_ttl)
-  SUBPAGE_SECRET=$(gen_secret)
-
-  [ -n "$TELEMT_URL" ] || die "telemt.url missing in $_old"
-  [ -n "$PASS_HASH" ] || die "auth.password_hash missing in $_old"
-
-  EXTRA_TOP=""; EXTRA_TELEMT=""; EXTRA_AUTH=""; EXTRA_HOST=""; EXTRA_UPDATES=""
-  [ -n "$V0_BASE_PATH" ] && EXTRA_TOP="${EXTRA_TOP}${NL}base_path = \"$(toml_escape "$V0_BASE_PATH")\""
-  [ -n "$V0_TRUSTED_PROXIES" ] && EXTRA_TOP="${EXTRA_TOP}${NL}trusted_proxies = $V0_TRUSTED_PROXIES"
-  [ -n "$V0_EDIT_MODE" ] && EXTRA_TELEMT="config_edit_mode = \"$(toml_escape "$V0_EDIT_MODE")\""
-  [ -n "$V0_SESSION_TTL" ] && EXTRA_AUTH="session_ttl = \"$(toml_escape "$V0_SESSION_TTL")\""
-  [ -n "$V0_TELEMT_CONTAINER" ] && EXTRA_HOST="telemt_container = \"$(toml_escape "$V0_TELEMT_CONTAINER")\""
-  [ -n "$V0_TELEMT_REPO" ] && EXTRA_UPDATES="${EXTRA_UPDATES}${NL}telemt_repo = \"$(toml_escape "$V0_TELEMT_REPO")\""
-  [ -n "$V0_PANEL_REPO" ] && EXTRA_UPDATES="${EXTRA_UPDATES}${NL}panel_repo = \"$(toml_escape "$V0_PANEL_REPO")\""
-  [ -n "$V0_GITHUB_TOKEN" ] && EXTRA_UPDATES="${EXTRA_UPDATES}${NL}github_token = \"$(toml_escape "$V0_GITHUB_TOKEN")\""
-  EXTRA_TOP="${EXTRA_TOP#"$NL"}"
-  EXTRA_UPDATES="${EXTRA_UPDATES#"$NL"}"
-  gen_config >"$_new"
-
-  # Keys with no 1.x home, reported with a reason.
-  MIGRATE_SKIPPED=""
-  _skip() { MIGRATE_SKIPPED="$MIGRATE_SKIPPED$NL  $1 — $(t "$2")"; }
-  [ -n "$(toml_value "$_old" auth jwt_secret)" ] && _skip "auth.jwt_secret" mk_jwt
-  grep -q '^[[:space:]]*\[telemt\.auto_update\]\|^[[:space:]]*\[panel\.auto_update\]' "$_old" 2>/dev/null && _skip "*.auto_update" mk_auto_update
-  grep -q '^[[:space:]]*\[geoip\]' "$_old" 2>/dev/null && _skip "geoip.*" mk_geoip
-  grep -q '^[[:space:]]*\[users\]' "$_old" 2>/dev/null && _skip "users.*" mk_users
-  { [ -n "$(toml_value "$_old" panel max_newer_releases)" ] || [ -n "$(toml_value "$_old" panel max_older_releases)" ]; } && _skip "panel.max_*_releases" mk_releases
-  [ -n "$(toml_value "$_old" telemt config_path)" ] && _skip "telemt.config_path" mk_config_path
-  return 0
-}
-
-do_migrate() {
-  step 3 step_migrate
-  explain migrate_intro "$CONFIG_FILE"
-  blank
-  ask_choice _c migrate_q 1 "1 2"
-  if [ "$_c" != 1 ]; then
-    say "$(t aborted)"
-    exit 0
-  fi
-  ask_subpage
-  ask_run_as
-
-  ensure_temp_dir
-  _old_copy="$TEMP_DIR/config.v0.toml"
-  if [ -r "$CONFIG_FILE" ]; then
-    cat "$CONFIG_FILE" >"$_old_copy"
-  else
-    $SUDO cat "$CONFIG_FILE" >"$_old_copy"
-  fi
-  _backup="$CONFIG_FILE.0x-$(date +%Y%m%d-%H%M%S)"
-  migrate_v0_config "$_old_copy" "$TEMP_DIR/config.v1.toml"
-  apply_layout_from_answers
-  validate_transport_rights
-
-  blank
-  step 4 step_summary
-  print_summary
-  if [ "$V0_EDIT_MODE" = file ]; then
-    warn "$(t migrate_config_api_only)"
-  fi
-  blank
-  confirm apply_q || { say "$(t aborted)"; exit 0; }
-
-  step 5 step_apply
-  _owner="root"; [ "$RUN_AS" = "user" ] && _owner="$SYSTEM_USER"
-  write_root_file "$_backup" 0600 "$_owner" <"$_old_copy"
-  ok "$(t migrate_backup "$_backup")"
-  create_user
-  setup_dirs
-  fetch_release
-  install_binary
-  write_root_file "$CONFIG_FILE" 0600 "$_owner" <"$TEMP_DIR/config.v1.toml"
-  ok "$(t migrate_done "$CONFIG_FILE")"
-  if [ -n "$MIGRATE_SKIPPED" ]; then
-    warn "$(t migrate_skipped_title)"
-    printf '%s\n' "${MIGRATE_SKIPPED#"$NL"}"
-  fi
-  # Keep 0.x backups: they may be the only recovery path after this upgrade.
-  install_sudoers
-  install_service
-  configure_firewall
-  start_service
-
-  step 6 step_done
-  print_done
-}
 
 # apply_layout_from_answers — PANEL_BIN may have come from an old config;
 # keep BIN_DIR and SERVICE_FILE consistent with it.
@@ -2543,34 +2465,120 @@ apply_layout_from_answers() {
   esac
 }
 
+# Existing installations retain config/unit/sudoers; only the binary changes.
+# The staged Go parser is authoritative, including legacy TOML.
+staged_inspect() {
+  # Unknown commands in 0.6 start its daemon. An empty working directory keeps
+  # an accidentally selected old candidate from finding a caller's config.toml.
+  (cd "$UPDATE_PROBE_DIR" && timeout 15 "$STAGED_BIN" "$@")
+}
+
 do_update_existing() {
   step 3 step_update
-  load_v1_config
+  if ! has timeout || ! has sha256sum || ! has readlink; then die "$(t update_preflight_failed)"; fi
+  ensure_temp_dir
+  UPDATE_SOURCE="$TEMP_DIR/existing.toml"
+  # Snapshot once with privileges; never treat unreadable config as defaults.
+  $SUDO cat "$CONFIG_FILE" >"$UPDATE_SOURCE" || die "$(t update_preflight_failed)"
+  chmod 0600 "$UPDATE_SOURCE"
+  fetch_release
+  UPDATE_PROBE_DIR="$TEMP_DIR/probe"
+  mkdir "$UPDATE_PROBE_DIR" || die "$(t update_preflight_failed)"
+  UPDATE_VERSION=$(staged_inspect version) || die "$(t update_preflight_failed)"
+  if [ -n "$BINARY_FILE" ] && [ "$VARIANT_EXPLICIT" = 0 ]; then
+    case "$UPDATE_VERSION" in
+      "telemt-panel "*" (full:"*) BUILD_VARIANT=full ;;
+      "telemt-panel "*" (lite:"*) BUILD_VARIANT=lite ;;
+    esac
+  fi
+  case "$UPDATE_VERSION" in "telemt-panel "*" ($BUILD_VARIANT:"*) ;; *) die "$(t update_preflight_failed)" ;; esac
+  staged_inspect config inspect --config "$UPDATE_SOURCE" >"$TEMP_DIR/inspect.json" || die "$(t update_preflight_failed)"
+  PANEL_BIN=$(json_field "$TEMP_DIR/inspect.json" panel_binary_path)
+  SERVICE_NAME=$(json_field "$TEMP_DIR/inspect.json" panel_service)
+  STORE_DRIVER=$(json_field "$TEMP_DIR/inspect.json" store_driver)
+  LISTEN=$(json_field "$TEMP_DIR/inspect.json" listen)
+  TLS_MODE=$(json_field "$TEMP_DIR/inspect.json" tls_mode)
+  sudoers_path_ok "$PANEL_BIN" || die "$(t update_preflight_failed)"
   validate_existing_store_variant
   apply_layout_from_answers
-  explain update_intro "$CONFIG_FILE"
+  if [ ! -f "$PANEL_BIN" ] || [ -L "$PANEL_BIN" ] || [ ! -f "$SERVICE_FILE" ]; then die "$(t update_preflight_failed)"; fi
+  if ! $SUDO grep -qF "$PANEL_BIN" "$SERVICE_FILE" || ! $SUDO grep -qF "$CONFIG_FILE" "$SERVICE_FILE"; then die "$(t update_preflight_failed)"; fi
+  [ "$(readlink -f "$PANEL_BIN")" = "$PANEL_BIN" ] || die "$(t update_preflight_failed)"
+  if [ "$INSTALLED_TAG" != local ]; then
+    UPDATE_CANDIDATE_VERSION=$(printf '%s\n' "$UPDATE_VERSION" | awk '{print $2}')
+    [ "${UPDATE_CANDIDATE_VERSION#v}" = "${INSTALLED_TAG#v}" ] || die "$(t update_preflight_failed)"
+  fi
+  UPDATE_CONFIG_HASH=$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')
+  [ "$UPDATE_CONFIG_HASH" = "$(sha256_of "$UPDATE_SOURCE")" ] || die "$(t update_preflight_failed)"
   blank
-  kv "$(t s_version)" "${BINARY_FILE:-${REQ_VERSION:-$(t s_latest)}}"
-  kv "$(t s_variant)" "$BUILD_VARIANT"
-  kv "$(t s_storage)" "$STORE_DRIVER"
-  kv "$(t s_run_as)" "$([ "$RUN_AS" = user ] && printf '%s' "$SYSTEM_USER" || printf 'root')"
-  kv "$(t s_service)" "$INIT: $SERVICE_FILE"
-  blank
+  say "$(t update_preserve)"
+  kv "$(t s_version)" "$UPDATE_VERSION"
+  kv "$(t s_service)" "$SERVICE_FILE"
+  if grep -q '"requires_migration": true' "$TEMP_DIR/inspect.json"; then
+    warn "$(t update_legacy)"
+  fi
+  if grep -q 'telemt_config_api_required' "$TEMP_DIR/inspect.json"; then warn "$(t migrate_config_api_only)"; fi
   confirm continue_q || { say "$(t aborted)"; exit 0; }
+  if [ "$DRY_RUN" = 1 ]; then
+    say "$(t update_dry)"
+    return 0
+  fi
+  if [ "$NO_START" != 1 ]; then
+    UPDATE_FINGERPRINT=$($SUDO "$STAGED_BIN" tls fingerprint --config "$UPDATE_SOURCE" --timeout 15s) || die "$(t update_preflight_failed)"
+  fi
+  [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$UPDATE_CONFIG_HASH" ] || die "$(t update_preflight_failed)"
+  UPDATE_BACKUP=$($SUDO mktemp -d "$BIN_DIR/.telemt-panel-backup.XXXXXX") || die "$(t update_preflight_failed)"
+  if cp --help 2>&1 | grep -q -- '--attributes-only'; then UPDATE_COPY_MODE=--preserve=all; fi
+  $SUDO cp "$UPDATE_COPY_MODE" "$PANEL_BIN" "$UPDATE_BACKUP/binary" || die "$(t update_preflight_failed)"
+  UPDATE_BINARY_HASH=$($SUDO sha256sum "$PANEL_BIN" | awk '{print $1}')
+  [ "${#UPDATE_BINARY_HASH}" = 64 ] || die "$(t update_preflight_failed)"
+  [ "$($SUDO sha256sum "$UPDATE_BACKUP/binary" | awk '{print $1}')" = "$UPDATE_BINARY_HASH" ] || die "$(t update_preflight_failed)"
+  say "$(t update_backup "$UPDATE_BACKUP")"
+  UPDATE_PENDING=1
+  if [ "$NO_START" != 1 ]; then
+    case "$INIT" in
+      systemd) run systemctl stop "$SERVICE_NAME" || die "$(t update_apply_failed)" ;;
+      openrc) run rc-service "$SERVICE_NAME" stop || die "$(t update_apply_failed)" ;;
+      *) run "$SERVICE_FILE" stop || die "$(t update_apply_failed)" ;;
+    esac
+  fi
+  install_binary || die "$(t update_apply_failed)"
+  if [ "$NO_START" = 1 ]; then
+    UPDATE_PENDING=0
+    warn "$(t a_not_started "$(cmd_restart)")"
+    return 0
+  fi
+  # Retained service definition: do not enable, regenerate or change its user.
+  _restart=$(cmd_restart)
+  # shellcheck disable=SC2086
+  run $_restart || die "$(t update_apply_failed)"
+  $SUDO "$STAGED_BIN" tls check --config "$UPDATE_SOURCE" --timeout 120s || die "$(t update_apply_failed)"
+  if [ "$INIT" = systemd ]; then run_try systemctl is-active --quiet "$SERVICE_NAME" || die "$(t update_apply_failed)"; fi
+  UPDATE_PENDING=0
+  ok "$(t update_verified)"
+}
 
-  step 4 step_apply
-  create_user
-  setup_dirs
-  fetch_release
-  install_binary
-  ok "$(t a_config_kept "$CONFIG_FILE")"
-  install_sudoers
-  install_service
-  configure_firewall
-  start_service
-
-  step 5 step_done
-  print_done
+restore_update() {
+  warn "$(t update_restoring)"
+  UPDATE_PENDING=0
+  if [ -n "$UPDATE_STAGED" ]; then $SUDO rm -f "$UPDATE_STAGED" || true; UPDATE_STAGED=""; fi
+  # A failed copy/rename may leave the old binary intact (including on ENOSPC).
+  # Restart it without demanding enough free space for another complete copy.
+  if [ "$($SUDO sha256sum "$PANEL_BIN" 2>/dev/null | awk '{print $1}')" != "$UPDATE_BINARY_HASH" ]; then
+    UPDATE_RESTORE=$($SUDO mktemp "$BIN_DIR/.telemt-panel-restore.XXXXXX") || return 1
+    $SUDO cp "$UPDATE_COPY_MODE" "$UPDATE_BACKUP/binary" "$UPDATE_RESTORE" || return 1
+    [ "$($SUDO sha256sum "$UPDATE_RESTORE" | awk '{print $1}')" = "$UPDATE_BINARY_HASH" ] || return 1
+    $SUDO mv -f "$UPDATE_RESTORE" "$PANEL_BIN" || return 1
+    UPDATE_RESTORE=""
+  fi
+  if [ "$NO_START" = 1 ]; then return 0; fi
+  if [ "$INIT" = systemd ]; then $SUDO systemctl reset-failed "$SERVICE_NAME" || return 1; fi
+  _restart=$(cmd_restart)
+  # shellcheck disable=SC2086
+  $SUDO $_restart || return 1
+  $SUDO "$STAGED_BIN" tls check --config "$UPDATE_SOURCE" --expect-fingerprint "$UPDATE_FINGERPRINT" --timeout 45s || return 1
+  if [ "$INIT" = systemd ]; then $SUDO systemctl is-active --quiet "$SERVICE_NAME" || return 1; fi
+  warn "$(t update_restored "$UPDATE_BACKUP")"
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2607,8 +2615,7 @@ do_install() {
   fi
 
   case "$EXISTING" in
-    v0) do_migrate; return 0 ;;
-    v1) do_update_existing; return 0 ;;
+    present|v0|v1) do_update_existing; return 0 ;;
   esac
 
   step 3 step_questions

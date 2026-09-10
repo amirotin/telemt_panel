@@ -202,154 +202,16 @@ assert_contains "sysvinit chuid" 'CHUID="--chuid telemt-panel"' "$TMP/sysv"
 assert_contains "sysvinit lsb" "# Provides:          telemt-panel" "$TMP/sysv"
 if [ "$(sh -n "$TMP/sysv" 2>&1)" = "" ]; then pass; else fail "sysvinit script has syntax errors"; fi
 
-# ── migrate_v0_config ────────────────────────────────────────────────────────
-INIT="systemd"
-cat >"$TMP/v0.toml" <<'EOF'
-listen = "127.0.0.1:8090"
-base_path = "/panel"
-data_dir = "/var/lib/telemt-panel"
-trusted_proxies = ["127.0.0.1/32"]
-
-[telemt]
-url = "http://127.0.0.1:9091"
-auth_header = "Bearer old"
-binary_path = "/usr/local/bin/telemt"
-service_name = "telemt-custom"
-config_path = "/etc/telemt/telemt.toml"
-config_edit_mode = "file"
-
-[telemt.auto_update]
-enabled = true
-
-[panel]
-binary_path = "/usr/local/bin/telemt-panel"
-service_name = "telemt-panel"
-github_token = "ghp_x"
-max_newer_releases = 5
-
-[auth]
-username = "boss"
-password_hash = "$2a$10$oldhash"
-jwt_secret = "abc"
-session_ttl = "24h"
-
-EOF
-migrate_v0_config "$TMP/v0.toml" "$TMP/v1.toml"
-assert_eq "migrate listen" "127.0.0.1:8090" "$(toml_value "$TMP/v1.toml" "" listen)"
-assert_eq "migrate base_path" "/panel" "$(toml_value "$TMP/v1.toml" "" base_path)"
-assert_contains "migrate trusted_proxies" 'trusted_proxies = ["127.0.0.1/32"]' "$TMP/v1.toml"
-assert_eq "migrate telemt url" "http://127.0.0.1:9091" "$(toml_value "$TMP/v1.toml" telemt url)"
-assert_eq "migrate auth header" "Bearer old" "$(toml_value "$TMP/v1.toml" telemt auth_header)"
-assert_eq "migrate telemt binary" "/usr/local/bin/telemt" "$(toml_value "$TMP/v1.toml" updates telemt_binary_path)"
-assert_eq "migrate telemt service" "telemt-custom" "$(toml_value "$TMP/v1.toml" host telemt_service)"
-assert_eq "migrate username" "boss" "$(toml_value "$TMP/v1.toml" auth username)"
-assert_eq "migrate hash" '$2a$10$oldhash' "$(toml_value "$TMP/v1.toml" auth password_hash)"
-assert_contains "migrate session_ttl" 'session_ttl = "24h"' "$TMP/v1.toml"
-assert_contains "migrate edit mode" 'config_edit_mode = "file"' "$TMP/v1.toml"
-assert_contains "migrate github token" 'github_token = "ghp_x"' "$TMP/v1.toml"
-assert_not_contains "migrate drops jwt" "jwt_secret" "$TMP/v1.toml"
-assert_eq "migrate HTTP transport" "http" "$(toml_value "$TMP/v1.toml" tls mode)"
-assert_eq "migrate subpage secret set" "64" "$(printf '%s' "$(toml_value "$TMP/v1.toml" subpage secret)" | wc -c)"
-case "$MIGRATE_SKIPPED" in
-  *auth.jwt_secret*) pass ;; *) fail "skipped list lacks jwt_secret" ;;
-esac
-case "$MIGRATE_SKIPPED" in
-  *"*.auto_update"*) pass ;; *) fail "skipped list lacks auto_update" ;;
-esac
-case "$MIGRATE_SKIPPED" in
-  *"tls.*"*) fail "HTTP migration reports lost TLS" ;; *) pass ;;
-esac
-case "$MIGRATE_SKIPPED" in
-  *"panel.max_*_releases"*) pass ;; *) fail "skipped list lacks max releases" ;;
-esac
-case "$MIGRATE_SKIPPED" in
-  *"telemt.config_path"*) pass ;; *) fail "skipped list lacks config_path" ;;
-esac
-
-# Exercise the confirmation boundary without running host/service operations.
-# shellcheck disable=SC2094  # the confirmation stub reads output already written to the log
-for _lang in en ru; do
-  if (
-    L="$_lang"
-    TEMP_DIR="$TMP/migrate-$_lang"
-    mkdir -p "$TEMP_DIR"
-    CONFIG_FILE="$TEMP_DIR/config.toml"
-    cp "$TMP/v0.toml" "$CONFIG_FILE"
-    ask_choice() { _c=1; }
-    ask_subpage() { :; }
-    ask_run_as() { RUN_AS=root; }
-    apply_layout_from_answers() { :; }
-    print_summary() { :; }
-    confirm() {
-      # The warning must already be visible when confirmation is requested.
-      grep -qF "$(t migrate_config_api_only)" "$TMP/migrate-$_lang.log"
-    }
-    write_root_file() {
-      [ "$2" = 0600 ] && [ "$3" = root ] || exit 1
-      cat >"$1"
-    }
-    create_user() { :; }
-    setup_dirs() { :; }
-    fetch_release() { :; }
-    install_binary() { :; }
-    run_quiet() {
-      case "$*" in *'*.bak'*) exit 1 ;; esac
-    }
-    install_sudoers() { :; }
-    install_service() { :; }
-    start_service() { :; }
-    print_done() { :; }
-    do_migrate
-    # shellcheck disable=SC2154  # assigned by do_migrate in the sourced installer
-    cmp "$TMP/v0.toml" "$_backup" || exit 1
-    [ "$(toml_value "$CONFIG_FILE" telemt config_edit_mode)" = file ] || exit 1
-    [ "$(toml_value "$CONFIG_FILE" auth password_hash)" = '$2a$10$oldhash' ] || exit 1
-    [ "$(toml_value "$CONFIG_FILE" host telemt_service)" = telemt-custom ] || exit 1
-    [ "$(toml_value "$CONFIG_FILE" updates telemt_binary_path)" = /usr/local/bin/telemt ]
-  ) >"$TMP/migrate-$_lang.log" 2>&1; then
-    # A rejected confirmation exits successfully, so verify application too.
-    if [ "$(toml_value "$TMP/migrate-$_lang/config.toml" updates telemt_binary_path)" = /usr/local/bin/telemt ]; then
-      pass
-    else
-      fail "$_lang migration warning missing before confirmation"
-    fi
-  else
-    fail "$_lang migration fixture failed"
-  fi
-done
-
-for _mode in api absent unknown; do
-  if [ "$_mode" = absent ]; then
-    sed '/^config_edit_mode = /d' "$TMP/v0.toml" >"$TMP/mode.toml"
-    _expected=""
-  else
-    sed "s/^config_edit_mode = .*/config_edit_mode = \"$_mode\"/" "$TMP/v0.toml" >"$TMP/mode.toml"
-    _expected="$_mode"
-  fi
-  cp "$TMP/mode.toml" "$TMP/mode-original.toml"
-  migrate_v0_config "$TMP/mode.toml" "$TMP/mode-new.toml"
-  assert_eq "migrate $_mode stays literal" "$_expected" "$(toml_value "$TMP/mode-new.toml" telemt config_edit_mode)"
-  if cmp -s "$TMP/mode.toml" "$TMP/mode-original.toml"; then pass; else fail "migration changed source"; fi
-done
-
-# The migrated config must load in the real binary when one is available.
+# Legacy parsing is covered by the shared Go decoder, not an AWK converter.
 BIN="${TP_TEST_BINARY:-$HERE/../telemt-panel}"
 if [ -x "$BIN" ]; then
-  sed -e 's#^data_dir = .*#data_dir = ""#' \
-      -e 's#^listen = .*#listen = "127.0.0.1:0"#' \
-      -e 's#^url = .*#url = "http://127.0.0.1:1"#' \
-      -e "s#^path = .*#path = \"$TMP/panel.db\"#" \
-      "$TMP/v1.toml" >"$TMP/v1-run.toml"
-  # The binary needs a port and a reachable-or-not Telemt; both are fine
-  # for a load check because the panel starts even with Telemt down.
-  ( "$BIN" --config "$TMP/v1-run.toml" >"$TMP/panel.log" 2>&1 & echo $! >"$TMP/pid" )
-  sleep 2
-  if kill -0 "$(cat "$TMP/pid")" 2>/dev/null; then
-    pass
-  else
-    fail "binary refused migrated config: $(cat "$TMP/panel.log")"
-  fi
-  kill "$(cat "$TMP/pid")" 2>/dev/null || true
+  _hash=$(printf 'test-password\n' | "$BIN" hash-password)
+  printf "listen = '127.0.0.1:8090'\n[telemt]\nurl='http://127.0.0.1:1'\n[auth]\nusername='boss'\npassword_hash='%s'\njwt_secret='legacy'\n" "$_hash" >"$TMP/v0.toml"
+  cp "$TMP/v0.toml" "$TMP/v0-original.toml"
+  "$BIN" config inspect --config "$TMP/v0.toml" >"$TMP/legacy-inspect.json"
+  assert_contains "typed legacy recognized" '"format": "0.6"' "$TMP/legacy-inspect.json"
+  assert_contains "old TTL preserved" '"session_ttl": "24h0m0s"' "$TMP/legacy-inspect.json"
+  if cmp -s "$TMP/v0.toml" "$TMP/v0-original.toml"; then pass; else fail "source modified"; fi
 fi
 
 # ── detection helpers on this host ───────────────────────────────────────────
@@ -541,23 +403,17 @@ assert_not_contains "HTTP no extra capability" 'AmbientCapabilities=' "$TMP/http
 if (RUN_AS=user; INIT=openrc; TLS_MODE=acme; validate_transport_rights) >/dev/null 2>&1; then fail "unprovisioned ACME bind accepted"; else pass; fi
 if (RUN_AS=root; INIT=openrc; TLS_MODE=acme; LISTEN=:8443; validate_transport_rights) >/dev/null 2>&1; then pass; else fail "explicit root ACME refused"; fi
 
-cp "$TMP/v0.toml" "$TMP/v0-cert.toml"
-printf '\n[tls]\ncert_file = "/cert.pem"\nkey_file = "/key.pem"\n' >>"$TMP/v0-cert.toml"
-migrate_v0_config "$TMP/v0-cert.toml" "$TMP/v1-cert.toml"
-assert_eq "preserve certificate mode" certificate "$(toml_value "$TMP/v1-cert.toml" tls mode)"
-assert_eq "preserve certificate path" /cert.pem "$(toml_value "$TMP/v1-cert.toml" tls cert_file)"
-assert_eq "preserve key path" /key.pem "$(toml_value "$TMP/v1-cert.toml" tls key_file)"
-cp "$TMP/v0.toml" "$TMP/v0-acme.toml"
-printf '\n[tls]\nacme_domain = "panel.example.com"\n' >>"$TMP/v0-acme.toml"
-migrate_v0_config "$TMP/v0-acme.toml" "$TMP/v1-acme.toml"
-assert_eq "preserve ACME mode" acme "$(toml_value "$TMP/v1-acme.toml" tls mode)"
-assert_eq "preserve ACME domain" panel.example.com "$(toml_value "$TMP/v1-acme.toml" tls acme_domain)"
-assert_eq "preserve legacy default ACME cache" /var/lib/telemt-panel/certs "$(toml_value "$TMP/v1-acme.toml" tls acme_cache_dir)"
 if (
   TLS_MODE=acme; NO_START=0; DRY_RUN=0; SUDO=""; PANEL_BIN=false
   run() { :; }; cmd_restart() { printf true; }
   start_service
 ) >/dev/null 2>&1; then fail "TLS readiness failure ignored"; else pass; fi
+
+if sh "$HERE/install-update-test.sh" >"$TMP/update-test.log" 2>&1; then
+  pass
+else
+  fail "update transaction fixture failed: $(cat "$TMP/update-test.log")"
+fi
 
 # Firewall behavior lives in a focused PATH-stubbed fixture and remains part of
 # the full installer test entrypoint.

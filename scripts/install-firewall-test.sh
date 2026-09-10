@@ -360,42 +360,8 @@ if (
 start' ]
 ) >"$TMP/install-flow.output" 2>&1; then pass; else fail "install flow firewall/start order"; fi
 
-if (
-  FLOW_LOG="$TMP/update-flow"
-  : >"$FLOW_LOG"
-  step() { :; }; load_v1_config() { :; }; validate_existing_store_variant() { :; }
-  apply_layout_from_answers() { :; }; explain() { :; }; blank() { :; }; kv() { :; }
-  confirm() { return 0; }; create_user() { :; }; setup_dirs() { :; }
-  fetch_release() { :; }; install_binary() { :; }; ok() { :; }
-  install_sudoers() { :; }; install_service() { :; }
-  configure_firewall() { printf 'firewall\n' >>"$FLOW_LOG"; }
-  start_service() { printf 'start\n' >>"$FLOW_LOG"; }
-  print_done() { :; }
-  do_update_existing
-  [ "$(cat "$FLOW_LOG")" = 'firewall
-start' ]
-); then pass; else fail "update flow firewall/start order"; fi
-
-if (
-  FLOW_LOG="$TMP/migrate-flow"
-  : >"$FLOW_LOG"
-  CONFIG_FILE="$TMP/migrate-config.toml"
-  V0_EDIT_MODE=""; MIGRATE_SKIPPED=""
-  printf '[auth]\npassword_hash = "hash"\n' >"$CONFIG_FILE"
-  step() { :; }; explain() { :; }; blank() { :; }; ask_choice() { _c=1; }
-  ask_subpage() { :; }; ask_run_as() { :; }
-  migrate_v0_config() { : >"$2"; }; apply_layout_from_answers() { :; }
-  validate_transport_rights() { :; }; print_summary() { :; }; confirm() { return 0; }
-  create_user() { :; }; setup_dirs() { :; }; fetch_release() { :; }
-  install_binary() { :; }; write_root_file() { cat >/dev/null; }; ok() { :; }
-  install_sudoers() { :; }; install_service() { :; }
-  configure_firewall() { printf 'firewall\n' >>"$FLOW_LOG"; }
-  start_service() { printf 'start\n' >>"$FLOW_LOG"; }
-  print_done() { :; }
-  do_migrate
-  [ "$(cat "$FLOW_LOG")" = 'firewall
-start' ]
-); then pass; else fail "migration flow firewall/start order"; fi
+# Existing-installation updates keep the transport and never change firewall.
+# Their transaction boundary is exercised by install-update-test.sh.
 
 printf '%s passed, %s failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]

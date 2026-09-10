@@ -231,6 +231,12 @@ jwt_secret = "legacy"
 session_ttl = "24h"
 EOF
   printf 'old\n' >/etc/sudoers.d/telemt-panel
+  chmod 0600 "$CONFIG"
+  mkdir -p "$(dirname "$PANEL_BIN")" /etc/systemd/system
+  cp "$BIN" "$PANEL_BIN"
+  chmod 0755 "$PANEL_BIN"
+  printf '[Service]\nExecStart=%s --config %s\n' "$PANEL_BIN" "$CONFIG" >/etc/systemd/system/telemt-panel.service
+  cp "$CONFIG" "$WORK/legacy-original.toml"
 fi
 
 echo "--- install"
@@ -276,16 +282,14 @@ case "$SC" in
     check sh -n /etc/init.d/telemt-panel ;;
   migrate)
     check test -f /etc/systemd/system/telemt-panel.service
-    check grep -q 'Config converted to the 1.x format' "$WORK/install.log"
-    check grep -q 'auth.jwt_secret' "$WORK/install.log"
-    check test "$(find /etc/telemt-panel -name 'config.toml.0x-*' | wc -l)" = 1
-    check grep -q '^jwt_secret = "legacy"' /etc/telemt-panel/config.toml.0x-*
+    check grep -q 'The 0.6 config stays unchanged' "$WORK/install.log"
+    check cmp "$CONFIG" "$WORK/legacy-original.toml"
+    check test "$(find /usr/local/bin -name '.telemt-panel-backup.*' | wc -l)" = 1
     check grep -q '^username = "olduser"' "$CONFIG"
-    check grep -q '^telemt_binary_path = "/usr/local/bin/telemt"' "$CONFIG"
+    check grep -q '^binary_path = "/usr/local/bin/telemt"' "$CONFIG"
     check grep -q '^session_ttl = "24h"' "$CONFIG"
-    check grep -q '^secret = "' "$CONFIG"
-    check test ! "$(grep -c jwt_secret "$CONFIG")" -gt 0
-    check grep -q 'cp -f' /etc/sudoers.d/telemt-panel ;;
+    check grep -q '^jwt_secret = "legacy"' "$CONFIG"
+    check grep -q '^old$' /etc/sudoers.d/telemt-panel ;;
 esac
 
 echo "--- start the installed binary with the generated config"
@@ -304,7 +308,7 @@ if [ "$SC" != "migrate" ]; then
   echo "--- second run = update path (config untouched)"
   before=$(cat "$CONFIG")
   run_installer install >"$WORK/update.log" 2>&1 || { cat "$WORK/update.log"; fail "update exited non-zero"; }
-  check grep -q 'Config kept unchanged' "$WORK/update.log"
+  check grep -q 'Only the binary will change' "$WORK/update.log"
   check test "$before" = "$(cat "$CONFIG")"
 fi
 

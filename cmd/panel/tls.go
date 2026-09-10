@@ -22,24 +22,41 @@ func runTLSCommand(args []string) error {
 		slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 		return runTLSPrepare(os.Stdin, os.Stdout)
 	}
-	usage := errors.New("usage: telemt-panel tls check --config config.toml [--timeout 120s]")
-	if len(args) == 0 || args[0] != "check" {
+	usage := errors.New("usage: telemt-panel tls check|fingerprint --config config.toml [--timeout 120s] [--expect-fingerprint HEX]")
+	if len(args) == 0 || (args[0] != "check" && args[0] != "fingerprint") {
 		return usage
 	}
 	flags := flag.NewFlagSet("tls check", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	path := flags.String("config", "config.toml", "panel config")
 	wait := flags.Duration("timeout", 120*time.Second, "readiness deadline")
+	fingerprint := flags.String("expect-fingerprint", "", "pre-update health response digest")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *wait <= 0 || *wait > 10*time.Minute {
 		return usage
 	}
-	cfg, err := config.Load(*path)
+	source, err := loadStartupSource(*path)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *wait)
 	defer cancel()
-	if err := paneltls.Check(ctx, cfg, version); err != nil {
+	if args[0] == "fingerprint" {
+		if *fingerprint != "" {
+			return usage
+		}
+		value, err := paneltls.Fingerprint(ctx, source.Config)
+		if err != nil {
+			return err
+		}
+		fmt.Println(value)
+		return nil
+	}
+	if *fingerprint != "" {
+		err = paneltls.CheckFingerprint(ctx, source.Config, *fingerprint)
+	} else {
+		err = paneltls.Check(ctx, source.Config, version)
+	}
+	if err != nil {
 		return err
 	}
 	fmt.Println("Configured panel transport is ready")
