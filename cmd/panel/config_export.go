@@ -29,7 +29,7 @@ func runLegacyConfigExport(source *config.Source, outPath string, output io.Writ
 		return errors.New("cannot read existing state; configuration was not exported")
 	}
 	defer state.Close()
-	pending, err := migration.PrepareLegacyExport(state, source)
+	report, err := migration.PrepareLegacyExport(state, source)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,8 @@ func runLegacyConfigExport(source *config.Source, outPath string, output io.Writ
 	}
 	// Only fixed labels are printed. Credentials belong solely in the 0600 file.
 	return json.NewEncoder(output).Encode(struct {
-		Status  string   `json:"status"`
-		Pending []string `json:"pending"`
-	}{Status: "exported", Pending: pending})
+		Status     string   `json:"status"`
+		Pending    []string `json:"pending"`
+		NotApplied []string `json:"not_applied"`
+	}{Status: report.Status, Pending: report.Pending, NotApplied: report.NotApplied})
 }

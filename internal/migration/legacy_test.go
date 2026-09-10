@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestLegacyStateImportIsAtomicPersistentAndIdempotent(t *testing.T) {
 	source.Config.Telemt.AuthHeader = "PRIVATE_API_TOKEN"
 	source.Config.Updates.GithubToken = "PRIVATE_GITHUB_TOKEN"
 	report, err := ImportLegacyState(state, source)
-	if err != nil || report.Status != "imported" || len(report.Pending) != 5 {
+	if err != nil || report.Status != "imported" || len(report.Pending) != 3 || !reflect.DeepEqual(report.NotApplied, []string{"user_defaults", "release_limits"}) {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
 	if err := state.Close(); err != nil {
@@ -172,5 +173,48 @@ func TestLegacyStateImportPreservesExistingStoragePolicies(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if !bytes.Equal(before, after) {
 		t.Fatal("destination changed on rejection")
+	}
+}
+
+func TestLegacyDefaultsAreArchivedWithoutApplyingOrRepeatingWarnings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel-state.json")
+	state, err := store.NewState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	source := legacySource()
+	source.Config.DataDir = dir
+	source.Legacy.GeoIP = config.LegacyGeoIP{}
+	source.Legacy.TelemtConfigPath = ""
+	source.Legacy.InactiveCacheDir = ""
+	// An old absolute expiry must not become a new-account default again.
+	source.Legacy.Users.Expiration = "2020-01-01T00:00:00Z"
+	warnings, err := PrepareLegacyStartup(state, source)
+	if err != nil || !slices.Contains(warnings, "legacy_user_defaults_not_applied") || !slices.Contains(warnings, "legacy_release_limits_not_applied") {
+		t.Fatalf("warnings=%v err=%v", warnings, err)
+	}
+	before, _ := os.ReadFile(path)
+	report, err := ImportLegacyState(state, source)
+	if err != nil || len(report.Pending) != 0 || !slices.Equal(report.NotApplied, []string{"user_defaults", "release_limits"}) {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	warnings, err = PrepareLegacyStartup(state, source)
+	if err != nil || len(warnings) != 0 {
+		t.Fatalf("repeat startup warnings=%v err=%v", warnings, err)
+	}
+	after, _ := os.ReadFile(path)
+	if !bytes.Equal(before, after) {
+		t.Fatal("report or repeat startup rewrote archived values")
+	}
+	raw, _, _ := state.GetSetting(legacyStateKey)
+	var record legacyStateRecord
+	if json.Unmarshal([]byte(raw), &record) != nil || !reflect.DeepEqual(record.Retained, source.Legacy) {
+		t.Fatal("archived defaults or release limits lost")
+	}
+	data, err := state.ExportData()
+	if err != nil || len(data.Settings) != 3 || len(data.Sessions) != 0 || !store.PortableHistoryEmpty(data) {
+		t.Fatal("compatibility startup activated unexpected settings or data")
 	}
 }

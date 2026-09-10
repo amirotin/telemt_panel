@@ -33,7 +33,7 @@ type LegacyUserDefaults struct {
 }
 
 // LegacyCarry retains settings that cannot be represented by the current startup
-// TOML alone. A future one-time state importer must consume or report each value.
+// TOML alone. The state importer applies compatible values and reports the rest.
 type LegacyCarry struct {
 	TelemtAuto       LegacyAutoUpdate
 	PanelAuto        LegacyAutoUpdate
@@ -138,10 +138,10 @@ func decodeLegacySource(data []byte, path string) (*Source, error) {
 		warnings = append(warnings, "geoip_requires_state_import")
 	}
 	if old.Users != (LegacyUserDefaults{}) {
-		warnings = append(warnings, "user_defaults_require_review")
+		warnings = append(warnings, "user_defaults_not_applied")
 	}
 	if old.Panel.MaxNewerReleases != 0 || old.Panel.MaxOlderReleases != 0 {
-		warnings = append(warnings, "release_limits_require_review")
+		warnings = append(warnings, "release_limits_not_applied")
 	}
 	if old.Telemt.ConfigPath != "" {
 		warnings = append(warnings, "telemt_config_path_not_used")

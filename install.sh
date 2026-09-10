@@ -111,8 +111,10 @@ t() {
     en:update_preflight_failed) _f='Existing installation or candidate validation failed; update not applied.' ;;
     ru:update_preserve) _f='Будет заменён только бинарник. Конфиг, сервис, права и firewall сохраняются.' ;;
     en:update_preserve) _f='Only the binary will change. Config, service, permissions and firewall are preserved.' ;;
-    ru:update_legacy) _f='Конфиг 0.6 останется без изменений. При первом запуске настройки переносятся один раз; проверки версий — без автоустановки, каждые 6 часов. JWT требует нового входа; параметры без аналога остаются для ручной проверки.' ;;
-    en:update_legacy) _f='The 0.6 config stays unchanged. First startup imports settings once; version checks only, every 6 hours. JWT requires a new login; settings without equivalents remain for review.' ;;
+    ru:update_legacy) _f='Конфиг 0.6 останется без изменений. При первом запуске совместимые настройки переносятся один раз; проверки версий — без автоустановки, каждые 6 часов. JWT требует нового входа.' ;;
+    en:update_legacy) _f='The 0.6 config stays unchanged. First startup imports compatible settings once; version checks only, every 6 hours. JWT requires a new login.' ;;
+    ru:migrate_archived_settings) _f='Старые defaults формы пользователей и лимиты списка релизов не применяются: остаются пресеты 1.x и до 10 новых / 3 старых версий. Старые значения сохраняются в архиве состояния; аккаунты и квоты Telemt не меняются.' ;;
+    en:migrate_archived_settings) _f='Legacy user-form defaults and release-list limits are not applied: 1.x keeps its presets and up to 10 newer / 3 older versions. Old values are archived in panel state; Telemt accounts and quotas are unchanged.' ;;
     ru:update_dry) _f='Проверка завершена. Dry-run: бинарник, конфиг и сервис не изменены.' ;;
     en:update_dry) _f='Validation complete. Dry-run: binary, config and service unchanged.' ;;
     ru:update_backup) _f='Резервный бинарник: %s/binary. Копия не удаляется автоматически.' ;;
@@ -2472,6 +2474,7 @@ do_update_existing() {
     warn "$(t update_legacy)"
   fi
   if grep -q 'telemt_config_api_required' "$TEMP_DIR/inspect.json"; then warn "$(t migrate_config_api_only)"; fi
+  if grep -Eq '"(user_defaults|release_limits)_not_applied"' "$TEMP_DIR/inspect.json"; then warn "$(t migrate_archived_settings)"; fi
   confirm continue_q || { say "$(t aborted)"; exit 0; }
   if [ "$DRY_RUN" = 1 ]; then
     say "$(t update_dry)"

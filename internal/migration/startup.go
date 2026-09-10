@@ -78,6 +78,9 @@ func PrepareLegacyStartup(state *store.Memory, source *config.Source) ([]string,
 		}
 	}
 	if report.Status == "imported" {
+		for _, group := range report.NotApplied {
+			warnings = append(warnings, "legacy_"+group+"_not_applied")
+		}
 		for _, pending := range report.Pending {
 			if pending != "geoip_activation" {
 				warnings = append(warnings, "legacy_"+pending)

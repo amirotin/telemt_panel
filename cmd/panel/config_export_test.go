@@ -93,7 +93,7 @@ func TestConfigExportPreservesRuntimeAndState(t *testing.T) {
 				if err := runConfigCommand([]string{"export", "--config", path, "--out", outPath}, &out); err != nil {
 					t.Fatal(err)
 				}
-				if out.String() != "{\"status\":\"exported\",\"pending\":[\"user_defaults_review\"]}\n" {
+				if out.String() != "{\"status\":\"exported\",\"pending\":[],\"not_applied\":[\"user_defaults\"]}\n" {
 					t.Fatal("incorrect export report")
 				}
 				actual, err := loadStartupSource(outPath)

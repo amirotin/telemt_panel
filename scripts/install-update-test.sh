@@ -7,7 +7,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 REAL_INSTALL=$(command -v install)
 export REAL_INSTALL
-for scenario in success fail rollback-fail copy-fail old-candidate fifo-config dry no-start; do
+for scenario in success archived-settings fail rollback-fail copy-fail old-candidate fifo-config dry no-start; do
   dir="$TMP/$scenario"
   mkdir -p "$dir/bin" "$dir/tools"
   printf 'original binary\n' >"$dir/bin/telemt-panel"
@@ -16,6 +16,9 @@ for scenario in success fail rollback-fail copy-fail old-candidate fifo-config d
   if [ "$scenario" = fifo-config ]; then rm "$dir/config.toml"; mkfifo "$dir/config.toml"; fi
   printf 'ExecStart=%s --config %s\n' "$dir/bin/telemt-panel" "$dir/config.toml" >"$dir/service"
   printf '{"panel_binary_path":"%s","panel_service":"testpanel","store_driver":"memory","listen":"127.0.0.1:8080","tls_mode":"http"}\n' "$dir/bin/telemt-panel" >"$dir/report.json"
+  if [ "$scenario" = archived-settings ]; then
+    printf '{"panel_binary_path":"%s","panel_service":"testpanel","store_driver":"memory","listen":"127.0.0.1:8080","tls_mode":"http","warnings":["user_defaults_not_applied","release_limits_not_applied"]}\n' "$dir/bin/telemt-panel" >"$dir/report.json"
+  fi
   cat >"$dir/candidate" <<'EOF'
 #!/bin/sh
 if [ "$TEST_SCENARIO" = old-candidate ]; then
@@ -92,6 +95,9 @@ EOF
     [ "$(cat "$dir/config.toml")" = private-config-value ]
   fi
   if grep -q private-config-value "$dir/output"; then exit 1; fi
+  if [ "$scenario" = archived-settings ]; then
+    grep -q 'Old values are archived in panel state' "$dir/output"
+  fi
   [ "$(find "$dir/bin" -name '.telemt-panel-new.*' -o -name '.telemt-panel-restore.*' | wc -l)" = 0 ]
   printf 'PASS installer transaction %s\n' "$scenario"
 done

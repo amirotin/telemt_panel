@@ -21,13 +21,14 @@ type legacyStateRecord struct {
 }
 
 // LegacyStateReport contains only fixed labels and scheduler values, not config
-// contents. Pending groups remain retained in state for subsequent upgrade steps.
+// contents. NotApplied groups are archived, not queued for later application.
 type LegacyStateReport struct {
 	Status        string   `json:"status"`
 	TelemtMode    string   `json:"imported_telemt_mode"`
 	PanelMode     string   `json:"imported_panel_mode"`
 	CheckInterval string   `json:"imported_check_interval"`
 	Pending       []string `json:"pending"`
+	NotApplied    []string `json:"not_applied"`
 }
 
 // ImportLegacyState initializes an empty durable control-plane store once.
@@ -101,14 +102,15 @@ func legacyAutoMode(enabled bool) string {
 
 func legacyStateReport(status string, legacy *config.LegacyCarry) LegacyStateReport {
 	pending := []string{}
+	notApplied := []string{}
 	if legacy.GeoIP != (config.LegacyGeoIP{}) {
 		pending = append(pending, "geoip_activation")
 	}
 	if legacy.Users != (config.LegacyUserDefaults{}) {
-		pending = append(pending, "user_defaults_review")
+		notApplied = append(notApplied, "user_defaults")
 	}
 	if legacy.MaxNewerReleases != 0 || legacy.MaxOlderReleases != 0 {
-		pending = append(pending, "release_limits_review")
+		notApplied = append(notApplied, "release_limits")
 	}
 	if legacy.TelemtConfigPath != "" {
 		pending = append(pending, "unused_telemt_config_path")
@@ -118,5 +120,5 @@ func legacyStateReport(status string, legacy *config.LegacyCarry) LegacyStateRep
 	}
 	return LegacyStateReport{Status: status,
 		TelemtMode: legacyAutoMode(legacy.TelemtAuto.Enabled),
-		PanelMode:  legacyAutoMode(legacy.PanelAuto.Enabled), CheckInterval: "6h", Pending: pending}
+		PanelMode:  legacyAutoMode(legacy.PanelAuto.Enabled), CheckInterval: "6h", Pending: pending, NotApplied: notApplied}
 }
