@@ -4,12 +4,88 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type PanelTlsConfig = {
+    mode: 'http' | 'certificate' | 'acme';
+    cert_file?: string;
+    key_file?: string;
+    acme_domain?: string;
+    acme_cache_dir?: string;
+};
+
+export type PanelTlsCandidate = {
+    listen: string;
+    tls: PanelTlsConfig;
+};
+
+export type PanelTlsCertificate = {
+    domain?: string;
+    expires_at: string;
+    publicly_trusted: boolean;
+};
+
+export type PanelTlsWarning = 'toml_formatting' | 'public_reachability_unverified' | 'password_login' | 'firewall_port' | 'acme_port_80' | 'http_unencrypted' | 'certificate_private';
+
+export type PanelTlsPrepared = {
+    /**
+     * Opaque single-use receipt; valid for five minutes
+     */
+    receipt: string;
+    expires_at: string;
+    candidate: PanelTlsCandidate;
+    new_url: string;
+    warnings: Array<PanelTlsWarning>;
+    certificate?: PanelTlsCertificate;
+};
+
+export type PanelTlsSaved = {
+    new_url: string;
+    restart_required: boolean;
+};
+
+export type PanelTlsSettings = {
+    active: PanelTlsCandidate;
+    configured?: PanelTlsCandidate;
+    capabilities: {
+        config_writable: boolean;
+        restart: boolean;
+        prepare: boolean;
+        /**
+         * Helper support; actual port 80 bind permissions are checked before CA acquisition
+         */
+        acme_prepare: boolean;
+    };
+    manual_hints: Array<'edit_startup_config_manually' | 'restart_panel_manually'>;
+    default_acme_cache_dir: string;
+    /**
+     * Trusted startup file path for manual instructions; never accepted from API requests
+     */
+    config_path?: string;
+    /**
+     * Existing service-manager command or manual hint; display only
+     */
+    manual_restart_command: string;
+    state: 'idle' | 'preparing' | 'prepared' | 'saved' | 'restarting' | 'restart_failed';
+    prepared?: PanelTlsPrepared;
+    restart_required: boolean;
+    new_url?: string;
+    error?: 'tls_restart_failed';
+};
+
+export type PanelTlsStatus = {
+    mode: 'http' | 'certificate' | 'acme';
+    state: 'http' | 'waiting' | 'ready' | 'warning' | 'error';
+    domain?: string;
+    expires_at?: string;
+    stage?: string;
+    error?: string;
+};
+
 export type Error = {
     /**
      * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, csrf_rejected, internal_error, not_found, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, invalid_webauthn_origin, invalid_webauthn_challenge, invalid_webauthn_response, webauthn_credential_exists, passkey_unavailable, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
      *
      */
-    code: 'bad_request' | 'conflict' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
+    code: 'bad_request' | 'tls_invalid_candidate' | 'tls_manual_required' | 'tls_prepare_busy' | 'tls_prepare_unavailable' | 'tls_listener_unavailable' | 'tls_challenge_unavailable' | 'tls_cache_unavailable' | 'tls_certificate_invalid' | 'tls_certificate_untrusted' | 'tls_acquisition_failed' | 'tls_prepare_failed' | 'tls_prepare_timeout' | 'tls_config_changed' | 'tls_receipt_invalid' | 'tls_save_failed' | 'tls_restart_not_pending' | 'tls_restart_failed' | 'conflict' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'csrf_rejected' | 'internal_error' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'update_locked' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
     message: string;
 };
 
@@ -1010,6 +1086,200 @@ export type GeoIpResult = {
 };
 
 export type Username = string;
+
+export type GetPanelTlsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/tls';
+};
+
+export type GetPanelTlsErrors = {
+    /**
+     * No valid session
+     */
+    401: Error;
+};
+
+export type GetPanelTlsError = GetPanelTlsErrors[keyof GetPanelTlsErrors];
+
+export type GetPanelTlsResponses = {
+    /**
+     * Panel transport and certificate status
+     */
+    200: PanelTlsStatus;
+};
+
+export type GetPanelTlsResponse = GetPanelTlsResponses[keyof GetPanelTlsResponses];
+
+export type GetPanelTlsConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/tls/config';
+};
+
+export type GetPanelTlsConfigErrors = {
+    /**
+     * No valid session
+     */
+    401: Error;
+};
+
+export type GetPanelTlsConfigError = GetPanelTlsConfigErrors[keyof GetPanelTlsConfigErrors];
+
+export type GetPanelTlsConfigResponses = {
+    /**
+     * Transport settings; configured is omitted if startup file is unavailable
+     */
+    200: PanelTlsSettings;
+};
+
+export type GetPanelTlsConfigResponse = GetPanelTlsConfigResponses[keyof GetPanelTlsConfigResponses];
+
+export type PutPanelTlsConfigData = {
+    body: {
+        receipt: string;
+        candidate: PanelTlsCandidate;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/settings/tls/config';
+};
+
+export type PutPanelTlsConfigErrors = {
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    400: Error;
+    /**
+     * No valid session
+     */
+    401: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    403: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    409: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    422: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    503: Error;
+};
+
+export type PutPanelTlsConfigError = PutPanelTlsConfigErrors[keyof PutPanelTlsConfigErrors];
+
+export type PutPanelTlsConfigResponses = {
+    /**
+     * Saved; running transport remains unchanged until restart
+     */
+    200: PanelTlsSaved;
+};
+
+export type PutPanelTlsConfigResponse = PutPanelTlsConfigResponses[keyof PutPanelTlsConfigResponses];
+
+export type PreparePanelTlsData = {
+    body: {
+        /**
+         * Bind host:port; numeric port 1..65535
+         */
+        listen: string;
+        tls: PanelTlsConfig;
+        /**
+         * Required true for non-loopback plain HTTP
+         */
+        confirm_http?: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/settings/tls/prepare';
+};
+
+export type PreparePanelTlsErrors = {
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    400: Error;
+    /**
+     * No valid session
+     */
+    401: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    403: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    409: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    422: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    503: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    504: Error;
+};
+
+export type PreparePanelTlsError = PreparePanelTlsErrors[keyof PreparePanelTlsErrors];
+
+export type PreparePanelTlsResponses = {
+    /**
+     * Prepared; no configuration was saved
+     */
+    200: PanelTlsPrepared;
+};
+
+export type PreparePanelTlsResponse = PreparePanelTlsResponses[keyof PreparePanelTlsResponses];
+
+export type RestartPanelTlsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/tls/restart';
+};
+
+export type RestartPanelTlsErrors = {
+    /**
+     * No valid session
+     */
+    401: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    403: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    409: Error;
+    /**
+     * Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+     */
+    503: Error;
+};
+
+export type RestartPanelTlsError = RestartPanelTlsErrors[keyof RestartPanelTlsErrors];
+
+export type RestartPanelTlsResponses = {
+    /**
+     * Restart scheduled after response delivery
+     */
+    202: PanelTlsSaved;
+};
+
+export type RestartPanelTlsResponse = RestartPanelTlsResponses[keyof RestartPanelTlsResponses];
 
 export type LoginData = {
     body: {

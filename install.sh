@@ -62,6 +62,11 @@ TELEMT_API_ENABLED=""
 TELEMT_URL=""
 TELEMT_AUTH=""
 LISTEN="0.0.0.0:8080"
+TLS_MODE="http"
+TLS_DOMAIN=""
+TLS_CERT=""
+TLS_KEY=""
+TLS_CACHE=""
 ADMIN_USER="admin"
 ADMIN_PASS=""
 PASS_HASH=""
@@ -91,6 +96,52 @@ t() {
   _k="$1"
   shift
   case "${L:-en}:$_k" in
+    ru:q_transport) _f='Доступ: 1) Автоматический HTTPS (ACME)  2) Готовый сертификат  3) За reverse proxy  4) Без HTTPS' ;;
+    en:q_transport) _f='Access: 1) Automatic HTTPS (ACME)  2) Existing certificate  3) Behind reverse proxy  4) No HTTPS' ;;
+    ru:q_tls_domain) _f='Домен панели (без https:// и порта)' ;;
+    en:q_tls_domain) _f='Panel domain (without https:// or port)' ;;
+    ru:q_tls_cert) _f='Путь к сертификату (fullchain PEM)' ;;
+    en:q_tls_cert) _f='Certificate path (fullchain PEM)' ;;
+    ru:q_tls_key) _f='Путь к приватному ключу (PEM)' ;;
+    en:q_tls_key) _f='Private key path (PEM)' ;;
+    ru:tls_acme_notice) _f="ACME: домен должен указывать на сервер; публичный TCP/80 нужен для проверки и продления. HTTPS может работать на 8443, не занимая 443 у Telemt. Выбор ACME означает согласие с условиями Let's Encrypt: https://letsencrypt.org/repository/" ;;
+    en:tls_acme_notice) _f="ACME: DNS must point to this server; public TCP/80 is needed for validation and renewal. HTTPS can use 8443, leaving Telemt on 443. Selecting ACME accepts the Let's Encrypt terms: https://letsencrypt.org/repository/" ;;
+    ru:tls_http_notice) _f='Без HTTPS: пароль, сессия и данные передаются без шифрования. Не рекомендуется для публичного доступа; passkey на обычном HTTP недоступен. Режим выбран явно, автоматического fallback с HTTPS нет.' ;;
+    en:tls_http_notice) _f='No HTTPS: passwords, sessions and data are unencrypted. Not recommended for public access; passkeys are unavailable on ordinary HTTP. This is an explicit mode, never an automatic HTTPS fallback.' ;;
+    ru:tls_proxy_notice) _f='HTTPS обеспечивает ваш reverse proxy. Панель по умолчанию слушает только 127.0.0.1; trusted_proxies настройте для реального адреса прокси.' ;;
+    en:tls_proxy_notice) _f='Your reverse proxy provides HTTPS. The panel defaults to 127.0.0.1; configure trusted_proxies for the actual proxy address.' ;;
+    ru:tls_bad_domain) _f='Нужен один DNS-домен без схемы, порта, пробелов и wildcard (ASCII или punycode).' ;;
+    en:tls_bad_domain) _f='Use one DNS domain without a scheme, port, whitespace or wildcard (ASCII or punycode).' ;;
+    ru:tls_bind_rights) _f='Для ACME/низкого порта нужны права bind. В этой init-системе выберите запуск root явно (TP_RUN_AS=root) либо настройте права сервиса вручную. Установка остановлена.' ;;
+    en:tls_bind_rights) _f='ACME/low ports need bind permissions. For this init system explicitly choose root (TP_RUN_AS=root), or provision service permissions manually. Installation stopped.' ;;
+    ru:tls_check_failed) _f='HTTPS не готов. Причина указана выше; лог сервиса: %s. На HTTP панель не переключалась, ACME-кеш не удалён.' ;;
+    en:tls_check_failed) _f='HTTPS is not ready. See the error above and service log: %s. No HTTP fallback occurred; the ACME cache was retained.' ;;
+    ru:tls_cert_unreadable) _f='Сертификат и ключ должны существовать и быть доступны установщику: проверьте TP_TLS_CERT_FILE и TP_TLS_KEY_FILE. Пользователю сервиса тоже потребуется доступ на чтение.' ;;
+    en:tls_cert_unreadable) _f='Certificate and key must exist and be readable by the installer: check TP_TLS_CERT_FILE and TP_TLS_KEY_FILE. The service user will also need read access.' ;;
+    ru:s_tls) _f='Транспорт' ;;
+    en:s_tls) _f='Transport' ;;
+    ru:firewall_plan) _f='Firewall: %s. Входящие TCP-порты: %s.' ;;
+    en:firewall_plan) _f='Firewall: %s. Incoming TCP ports: %s.' ;;
+    ru:q_firewall) _f='Добавить эти разрешающие правила?' ;;
+    en:q_firewall) _f='Add these allow rules?' ;;
+    ru:firewall_manual) _f='Откройте входящие TCP-порты вручную: %s. Установщик не меняет firewall провайдера, NAT и неподдерживаемые или неактивные firewall.' ;;
+    en:firewall_manual) _f='Open incoming TCP ports manually: %s. The installer does not change provider firewalls, NAT, or unsupported or inactive firewalls.' ;;
+    ru:firewall_loopback) _f='Firewall: loopback-адрес панели не требует входящего правила.' ;;
+    en:firewall_loopback) _f='Firewall: the panel loopback address needs no incoming rule.' ;;
+    ru:firewall_none_active) _f='Активный UFW или firewalld не найден; firewall не изменён.' ;;
+    en:firewall_none_active) _f='No active UFW or firewalld was found; the firewall was not changed.' ;;
+    ru:firewall_manager_ambiguous) _f='Одновременно активны UFW и firewalld; firewall не изменён.' ;;
+    en:firewall_manager_ambiguous) _f='UFW and firewalld are both active; the firewall was not changed.' ;;
+    ru:firewall_zone_ambiguous) _f='Не удалось однозначно выбрать входящую зону firewalld; firewall не изменён.' ;;
+    en:firewall_zone_ambiguous) _f='The firewalld ingress zone could not be selected unambiguously; the firewall was not changed.' ;;
+    ru:firewall_rule_failed) _f='Не удалось добавить правило firewall: %s.' ;;
+    en:firewall_rule_failed) _f='Could not add firewall rule: %s.' ;;
+    ru:firewall_partial) _f='Успешно добавлены только эти операции; откат чужих правил не выполнялся: %s.' ;;
+    en:firewall_partial) _f='Only these operations succeeded; unrelated rules were not rolled back: %s.' ;;
+    ru:firewall_success) _f='Правила firewall успешно добавлены: %s (%s).' ;;
+    en:firewall_success) _f='Firewall rules added successfully: %s (%s).' ;;
+    ru:firewall_bad_env) _f='Недопустимое TP_OPEN_FIREWALL: ожидается yes или no.' ;;
+    en:firewall_bad_env) _f='Invalid TP_OPEN_FIREWALL: expected yes or no.' ;;
     # ── generic ──
     ru:yn_yes) _f='[Y/n]' ;;
     en:yn_yes) _f='[Y/n]' ;;
@@ -141,6 +192,9 @@ t() {
   TP_ADMIN_PASSWORD (обязательна), TP_LISTEN, TP_TELEMT_BINARY,
   TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR,
   TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|memory
+  TP_TLS_MODE=acme|certificate|proxy|http (при --yes по умолчанию http),
+  TP_TLS_DOMAIN, TP_TLS_CERT_FILE, TP_TLS_KEY_FILE, TP_TLS_CACHE_DIR,
+  TP_OPEN_FIREWALL=yes|no (отдельное явное согласие; --yes недостаточно)
 
 Пути: бинарь %s, конфиг %s, данные %s
 ' ;;
@@ -169,6 +223,9 @@ Variables for --yes (they pre-fill defaults in interactive mode):
   TP_ADMIN_PASSWORD (required), TP_LISTEN, TP_TELEMT_BINARY,
   TP_TELEMT_SERVICE, TP_SUBPAGE=yes|no, TP_RUN_AS=user|root, TP_DATA_DIR,
   TP_VARIANT=full|lite, TP_STORE_DRIVER=sqlite|memory
+  TP_TLS_MODE=acme|certificate|proxy|http (--yes defaults to http),
+  TP_TLS_DOMAIN, TP_TLS_CERT_FILE, TP_TLS_KEY_FILE, TP_TLS_CACHE_DIR,
+  TP_OPEN_FIREWALL=yes|no (separate explicit consent; --yes is insufficient)
 
 Paths: binary %s, config %s, data %s
 ' ;;
@@ -470,8 +527,6 @@ Paths: binary %s, config %s, data %s
     en:mk_jwt) _f='sessions live in the panel store, the key is no longer needed' ;;
     ru:mk_auto_update) _f='автообновление настраивается в панели (Сервер → Обновления)' ;;
     en:mk_auto_update) _f='auto-update is configured in the panel (Server → Updates)' ;;
-    ru:mk_tls) _f='встроенный TLS/ACME вернётся в следующей волне 1.x' ;;
-    en:mk_tls) _f='built-in TLS/ACME returns in a later 1.x wave' ;;
     ru:mk_geoip) _f='GeoIP вернётся в следующей волне 1.x' ;;
     en:mk_geoip) _f='GeoIP returns in a later 1.x wave' ;;
     ru:mk_users) _f='шаблоны пользователей в 1.x не используются' ;;
@@ -885,6 +940,7 @@ host_port_split() {
   case "$SPLIT_PORT" in
     ''|*[!0-9]*) return 1 ;;
   esac
+  [ "$SPLIT_PORT" -ge 1 ] 2>/dev/null && [ "$SPLIT_PORT" -le 65535 ] 2>/dev/null || return 1
   return 0
 }
 
@@ -1215,6 +1271,7 @@ $_c_data
 data_dir = "$(toml_escape "$DATA_DIR")"
 EOF
   emit_extra "$EXTRA_TOP"
+  gen_tls_config
   cat <<EOF
 
 [telemt]
@@ -1329,6 +1386,9 @@ Type=simple
 EOF
   if [ "$RUN_AS" = "user" ]; then
     printf 'User=%s\n' "$SYSTEM_USER"
+    if needs_bind_capability; then
+      printf 'AmbientCapabilities=CAP_NET_BIND_SERVICE\n'
+    fi
   fi
   cat <<EOF
 ExecStart=$PANEL_BIN --config $CONFIG_FILE
@@ -1547,11 +1607,89 @@ ask_telemt_connection() {
   done
 }
 
+gen_tls_config() {
+  printf '\n[tls]\nmode = "%s"\n' "$TLS_MODE"
+  case "$TLS_MODE" in
+    acme)
+      printf 'acme_domain = "%s"\nacme_cache_dir = "%s"\n' "$(toml_escape "$TLS_DOMAIN")" "$(toml_escape "${TLS_CACHE:-$CONFIG_DIR/certs}")" ;;
+    certificate)
+      printf 'cert_file = "%s"\nkey_file = "%s"\n' "$(toml_escape "$TLS_CERT")" "$(toml_escape "$TLS_KEY")" ;;
+  esac
+}
+
+load_tls_config() {
+  TLS_MODE=$(toml_value "$1" tls mode)
+  TLS_DOMAIN=$(toml_value "$1" tls acme_domain)
+  TLS_CERT=$(toml_value "$1" tls cert_file)
+  TLS_KEY=$(toml_value "$1" tls key_file)
+  TLS_CACHE=$(toml_value "$1" tls acme_cache_dir)
+  if [ -z "$TLS_MODE" ]; then
+    if [ -n "$TLS_DOMAIN" ]; then TLS_MODE=acme
+    elif [ -n "$TLS_CERT$TLS_KEY" ]; then TLS_MODE=certificate
+    else TLS_MODE=http
+    fi
+  fi
+  case "$TLS_MODE" in http|certificate|acme) ;; *) die "$(t unknown_option tls.mode)" ;; esac
+}
+
+tls_domain_ok() {
+  case "$1" in ''|*[!A-Za-z0-9.-]*) return 1 ;; esac
+  printf '%s\n' "$1" | awk '
+    length($0) > 253 || $0 !~ /\./ || $0 ~ /^[0-9.]+$/ { exit 1 }
+    { n=split($0, labels, "."); for (i=1;i<=n;i++) {
+      if (length(labels[i]) < 1 || length(labels[i]) > 63 || labels[i] !~ /^[A-Za-z0-9-]+$/ || labels[i] ~ /^-/ || labels[i] ~ /-$/) exit 1
+    } }'
+}
+
+ask_transport() {
+  _default=1
+  _transport="${TP_TLS_MODE:-}"
+  if [ "$ASSUME_YES" = 1 ] && [ -z "$_transport" ]; then _transport=http; fi
+  case "$_transport" in
+    ''|acme) _default=1 ;; certificate) _default=2 ;; proxy) _default=3 ;; http) _default=4 ;;
+    *) die "$(t unknown_option TP_TLS_MODE)" ;;
+  esac
+  ask_choice _tls_choice q_transport "$_default" "1 2 3 4"
+  TLS_DOMAIN=""; TLS_CERT=""; TLS_KEY=""; TLS_CACHE=""
+  # shellcheck disable=SC2154
+  case "$_tls_choice" in
+    1)
+      TLS_MODE=acme; LISTEN="0.0.0.0:8443"
+      TLS_CACHE="${TP_TLS_CACHE_DIR:-$CONFIG_DIR/certs}"
+      explain tls_acme_notice
+      ask TLS_DOMAIN q_tls_domain "${TP_TLS_DOMAIN:-}"
+      tls_domain_ok "$TLS_DOMAIN" || die "$(t tls_bad_domain)"
+      TLS_DOMAIN=$(printf '%s' "$TLS_DOMAIN" | tr '[:upper:]' '[:lower:]') ;;
+    2)
+      TLS_MODE=certificate; LISTEN="0.0.0.0:8443"
+      ask TLS_CERT q_tls_cert "${TP_TLS_CERT_FILE:-}"
+      ask TLS_KEY q_tls_key "${TP_TLS_KEY_FILE:-}"
+      if [ ! -r "$TLS_CERT" ] || [ ! -r "$TLS_KEY" ]; then die "$(t tls_cert_unreadable)"; fi ;;
+    3) TLS_MODE=http; LISTEN="127.0.0.1:8080"; explain tls_proxy_notice ;;
+    4) TLS_MODE=http; LISTEN="0.0.0.0:8080"; warn "$(t tls_http_notice)" ;;
+  esac
+}
+
+needs_bind_capability() {
+  [ "$TLS_MODE" = acme ] && return 0
+  host_port_split "$LISTEN" || return 1
+  [ "$SPLIT_PORT" -lt 1024 ]
+}
+
+validate_transport_rights() {
+  if [ "$RUN_AS" = user ] && [ "$INIT" != systemd ] && needs_bind_capability; then
+    die "$(t tls_bind_rights)"
+  fi
+  if [ "$TLS_MODE" = acme ] && host_port_split "$LISTEN" && [ "$SPLIT_PORT" -eq 80 ]; then
+    die "$(t bad_listen)"
+  fi
+}
+
 ask_listen() {
   blank
   explain x_listen
   while :; do
-    ask LISTEN q_listen "${TP_LISTEN:-0.0.0.0:8080}"
+    ask LISTEN q_listen "${TP_LISTEN:-$LISTEN}"
     if host_port_split "$LISTEN"; then
       break
     fi
@@ -1663,12 +1801,14 @@ collect_answers() {
     warn "$(t missing_env TP_TELEMT_URL)"
   fi
   ask_telemt_connection
+  ask_transport
   ask_listen
   ask_admin
   ask_subpage
   ask_storage
   ask_telemt_paths
   ask_run_as
+  validate_transport_rights
   SUBPAGE_SECRET=$(gen_secret)
 }
 
@@ -1681,6 +1821,7 @@ print_summary() {
   kv "$(t s_variant)" "$BUILD_VARIANT"
   kv "$(t s_storage)" "$STORE_DRIVER"
   kv "$(t s_listen)" "$LISTEN"
+  kv "$(t s_tls)" "$TLS_MODE${TLS_DOMAIN:+: $TLS_DOMAIN}"
   kv "$(t s_admin)" "$ADMIN_USER"
   kv "$(t s_telemt_url)" "$TELEMT_URL"
   if [ -n "$TELEMT_AUTH" ]; then
@@ -1700,6 +1841,246 @@ print_summary() {
   kv "$(t s_paths)" "$PANEL_BIN"
   kv "" "$CONFIG_FILE"
   kv "" "$DATA_DIR"
+}
+
+# firewall_ipv6_loopback recognises equivalent spellings of ::1 without trying
+# to become a general IPv6 parser. The prefix must be all zero, the final group
+# must be one, and compression/group widths must remain structurally valid.
+firewall_ipv6_loopback() {
+  printf '%s\n' "$1" | awk '
+    {
+      addr = tolower($0)
+      left = substr(addr, 1, 1) == "["
+      right = substr(addr, length(addr), 1) == "]"
+      if (left != right) exit 1
+      if (left) addr = substr(addr, 2, length(addr) - 2)
+      sub(/%.*/, "", addr)
+
+      # IPv6 permits a dotted IPv4 tail. Convert that tail to its two hextets
+      # so the structural checks below see the same address semantics.
+      if (addr ~ /\./) {
+        dotted = addr
+        sub(/^.*:/, "", dotted)
+        if (split(dotted, octets, ".") != 4) exit 1
+        for (i = 1; i <= 4; i++) {
+          if (octets[i] !~ /^[0-9]+$/ || length(octets[i]) > 3 || octets[i] > 255) exit 1
+        }
+        prefix = addr
+        sub(/[^:]*$/, "", prefix)
+        addr = prefix sprintf("%x:%x", octets[1] * 256 + octets[2], octets[3] * 256 + octets[4])
+      }
+
+      # IPv4-mapped 127/8 addresses are loopback too. Replace only that exact
+      # mapped suffix with zero groups and one, then reuse the ::1 checks.
+      if (addr ~ /:ffff:[0-9a-f]+:[0-9a-f]+$/) {
+        mapped = addr
+        sub(/^.*:ffff:/, "", mapped)
+        if (split(mapped, mapped_groups, ":") != 2 ||
+            mapped_groups[1] !~ /^7f[0-9a-f][0-9a-f]$/ ||
+            mapped_groups[2] !~ /^[0-9a-f]+$/ || length(mapped_groups[2]) > 4) exit 1
+        sub(/ffff:[^:]+:[^:]+$/, "0:0:1", addr)
+      }
+
+      if (addr !~ /^[0-9a-f:]+$/ || addr !~ /1$/ || index(addr, ":::") != 0) exit 1
+      compact = addr
+      gsub(/[0:]/, "", compact)
+      if (compact != "1") exit 1
+      rest = addr
+      compressed = gsub(/::/, "", rest)
+      if (compressed > 1) exit 1
+      rest = addr
+      colons = gsub(/:/, "", rest)
+      if ((!compressed && colons != 7) || (compressed && (colons < 2 || colons > 7))) exit 1
+      count = split(addr, groups, ":")
+      for (i = 1; i <= count; i++) {
+        if (length(groups[i]) > 4) exit 1
+      }
+      exit 0
+    }'
+}
+
+# firewall_ports derives only externally reachable panel ports. ACME also
+# needs TCP/80 for HTTP-01; a primary listener already on 80 is not duplicated.
+firewall_ports() {
+  FIREWALL_PORTS=""
+  FIREWALL_PORTS_DISPLAY=""
+  host_port_split "$LISTEN" || return 1
+  case "$SPLIT_HOST" in
+    localhost|127.*) ;;
+    *)
+      if ! firewall_ipv6_loopback "$SPLIT_HOST"; then
+        FIREWALL_PORTS="$SPLIT_PORT"
+      fi ;;
+  esac
+  if [ "$TLS_MODE" = acme ]; then
+    case " $FIREWALL_PORTS " in
+      *' 80 '*) ;;
+      *) FIREWALL_PORTS="${FIREWALL_PORTS:+$FIREWALL_PORTS }80" ;;
+    esac
+  fi
+  for _fw_port in $FIREWALL_PORTS; do
+    if [ -z "$FIREWALL_PORTS_DISPLAY" ]; then
+      FIREWALL_PORTS_DISPLAY="$_fw_port/tcp"
+    else
+      FIREWALL_PORTS_DISPLAY="$FIREWALL_PORTS_DISPLAY, $_fw_port/tcp"
+    fi
+  done
+}
+
+firewall_manual() {
+  warn "$(t firewall_manual "$FIREWALL_PORTS_DISPLAY")"
+}
+
+# detect_firewall selects one already-active supported manager. It never
+# installs or enables anything. Return 2 for competing managers and 3 when a
+# firewalld ingress zone cannot be chosen without guessing.
+detect_firewall() {
+  FIREWALL_MANAGER=""
+  FIREWALL_ZONE=""
+  _fw_ufw=0
+  _fw_firewalld=0
+  if has ufw; then
+    # shellcheck disable=SC2086  # SUDO is either empty or the sudo executable
+    _fw_status=$(LC_ALL=C $SUDO ufw status 2>/dev/null || true)
+    printf '%s\n' "$_fw_status" | grep -q '^Status: active$' && _fw_ufw=1
+  fi
+  if has firewall-cmd; then
+    # shellcheck disable=SC2086  # SUDO is either empty or the sudo executable
+    _fw_state=$(LC_ALL=C $SUDO firewall-cmd --state 2>/dev/null || true)
+    [ "$_fw_state" = running ] && _fw_firewalld=1
+  fi
+  if [ "$_fw_ufw" = 1 ] && [ "$_fw_firewalld" = 1 ]; then
+    return 2
+  fi
+  if [ "$_fw_ufw" = 1 ]; then
+    FIREWALL_MANAGER=ufw
+    return 0
+  fi
+  [ "$_fw_firewalld" = 1 ] || return 1
+
+  # Top-level lines are zone names; indented lines contain interface/source
+  # bindings. Multiple active zones are ambiguous without route knowledge.
+  # shellcheck disable=SC2086  # SUDO is either empty or the sudo executable
+  if ! _fw_active=$(LC_ALL=C $SUDO firewall-cmd --get-active-zones 2>/dev/null); then
+    return 3
+  fi
+  _fw_zones=$(printf '%s\n' "$_fw_active" | awk '/^[^[:space:]]/ { print $1 }')
+  # shellcheck disable=SC2086  # intentional word splitting counts zone names
+  set -- $_fw_zones
+  # shellcheck disable=SC2086  # SUDO is either empty or the sudo executable
+  if ! _fw_default=$(LC_ALL=C $SUDO firewall-cmd --get-default-zone 2>/dev/null); then
+    return 3
+  fi
+  case "$_fw_default" in
+    ''|*[!A-Za-z0-9_-]*) return 3 ;;
+  esac
+  if [ "$#" -gt 1 ]; then
+    return 3
+  elif [ "$#" -eq 1 ]; then
+    # A different sole active zone may belong only to Docker or a source
+    # binding while unassigned internet ingress still uses the default zone.
+    [ "$1" = "$_fw_default" ] || return 3
+    FIREWALL_ZONE="$1"
+  else
+    # With no explicit interface/source binding, firewalld uses its default
+    # zone for otherwise-unassigned ingress traffic.
+    FIREWALL_ZONE="$_fw_default"
+  fi
+  case "$FIREWALL_ZONE" in
+    ''|*[!A-Za-z0-9_-]*) return 3 ;;
+  esac
+  FIREWALL_MANAGER=firewalld
+}
+
+firewall_record_success() {
+  if [ -z "$_fw_done" ]; then
+    _fw_done="$1"
+  else
+    _fw_done="$_fw_done, $1"
+  fi
+}
+
+# configure_firewall is an opt-in installer aid. --yes never grants firewall
+# consent: automation must set TP_OPEN_FIREWALL=yes independently.
+configure_firewall() {
+  case "${TP_OPEN_FIREWALL:-}" in
+    yes) _fw_consent=yes ;;
+    no) _fw_consent=no ;;
+    '') _fw_consent="" ;;
+    *) die "$(t firewall_bad_env)" ;;
+  esac
+
+  firewall_ports || die "$(t bad_listen)"
+  if [ -z "$FIREWALL_PORTS" ]; then
+    say "$(t firewall_loopback)"
+    return 0
+  fi
+
+  _fw_detect=0
+  detect_firewall || _fw_detect=$?
+  case "$_fw_detect" in
+    1)
+      warn "$(t firewall_none_active)"
+      firewall_manual
+      return 0 ;;
+    2)
+      warn "$(t firewall_manager_ambiguous)"
+      firewall_manual
+      return 0 ;;
+    3)
+      warn "$(t firewall_zone_ambiguous)"
+      firewall_manual
+      return 0 ;;
+  esac
+
+  _fw_label="$FIREWALL_MANAGER"
+  [ -n "$FIREWALL_ZONE" ] && _fw_label="$FIREWALL_MANAGER ($FIREWALL_ZONE)"
+  say "$(t firewall_plan "$_fw_label" "$FIREWALL_PORTS_DISPLAY")"
+  if [ -z "$_fw_consent" ]; then
+    if [ "$ASSUME_YES" = 1 ] || ! tty_available; then
+      _fw_consent=no
+    elif confirm_yn no q_firewall; then
+      _fw_consent=yes
+    else
+      _fw_consent=no
+    fi
+  fi
+  if [ "$_fw_consent" != yes ]; then
+    firewall_manual
+    return 0
+  fi
+
+  _fw_failed=0
+  _fw_done=""
+  for _fw_port in $FIREWALL_PORTS; do
+    if [ "$FIREWALL_MANAGER" = ufw ]; then
+      if run_try ufw allow "$_fw_port/tcp"; then
+        firewall_record_success "$_fw_port/tcp"
+      else
+        warn "$(t firewall_rule_failed "ufw allow $_fw_port/tcp")"
+        _fw_failed=1
+      fi
+    else
+      if run_try firewall-cmd "--zone=$FIREWALL_ZONE" "--add-port=$_fw_port/tcp"; then
+        firewall_record_success "$_fw_port/tcp runtime"
+      else
+        warn "$(t firewall_rule_failed "firewalld $_fw_port/tcp runtime ($FIREWALL_ZONE)")"
+        _fw_failed=1
+      fi
+      if run_try firewall-cmd --permanent "--zone=$FIREWALL_ZONE" "--add-port=$_fw_port/tcp"; then
+        firewall_record_success "$_fw_port/tcp permanent"
+      else
+        warn "$(t firewall_rule_failed "firewalld $_fw_port/tcp permanent ($FIREWALL_ZONE)")"
+        _fw_failed=1
+      fi
+    fi
+  done
+  if [ "$_fw_failed" = 1 ]; then
+    [ -z "$_fw_done" ] || warn "$(t firewall_partial "$_fw_done")"
+    firewall_manual
+    return 1
+  fi
+  ok "$(t firewall_success "$_fw_label" "$FIREWALL_PORTS_DISPLAY")"
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1944,6 +2325,14 @@ start_service() {
   if [ "$DRY_RUN" = 1 ]; then
     return 0
   fi
+  if [ "$TLS_MODE" != http ]; then
+    if ! $SUDO "$PANEL_BIN" tls check --config "$CONFIG_FILE" --timeout 120s; then
+      warn "$(t tls_check_failed "$(cmd_logs)")"
+      return 1
+    fi
+    ok "$(t a_health_ok HTTPS)"
+    return 0
+  fi
   _url=$(health_url "$LISTEN") || return 0
   _i=0
   while [ "$_i" -lt "$HEALTH_WAIT_SECONDS" ]; do
@@ -1961,7 +2350,12 @@ start_service() {
 print_done() {
   host_port_split "$LISTEN" || return 0
   say "$(t done_open)"
-  case "$SPLIT_HOST" in
+  if [ "$TLS_MODE" = acme ]; then
+    printf '    %shttps://%s:%s%s\n' "$C_CYAN" "$TLS_DOMAIN" "$SPLIT_PORT" "$C_RESET"
+  elif [ "$TLS_MODE" = certificate ]; then
+    printf '    %shttps://<certificate-domain>:%s%s\n' "$C_CYAN" "$SPLIT_PORT" "$C_RESET"
+  else
+   case "$SPLIT_HOST" in
     ''|0.0.0.0|'[::]'|'::')
       _any=0
       for _ip in $(host_addresses); do
@@ -1971,6 +2365,7 @@ print_done() {
       [ "$_any" = 1 ] || printf '    %shttp://<server-ip>:%s%s\n' "$C_CYAN" "$SPLIT_PORT" "$C_RESET" ;;
     *) printf '    %shttp://%s%s\n' "$C_CYAN" "$LISTEN" "$C_RESET" ;;
   esac
+  fi
   say "  $(t done_login "$ADMIN_USER")"
   blank
   say "$(t done_commands)"
@@ -1994,6 +2389,7 @@ print_done() {
 
 # load_v1_config — answers needed for sudoers/service from an existing 1.x config.
 load_v1_config() {
+  load_tls_config "$CONFIG_FILE"
   _v=$(toml_value "$CONFIG_FILE" "" listen); [ -n "$_v" ] && LISTEN="$_v"
   _v=$(toml_value "$CONFIG_FILE" "" data_dir); [ -n "$_v" ] && DATA_DIR="$_v"
   _v=$(toml_value "$CONFIG_FILE" auth username); [ -n "$_v" ] && ADMIN_USER="$_v"
@@ -2012,6 +2408,7 @@ load_v1_config() {
   if [ "$INIT" = "systemd" ] && [ -f "$SERVICE_FILE" ] && grep -q "^User=$SYSTEM_USER" "$SERVICE_FILE"; then
     RUN_AS="user"
   fi
+  validate_transport_rights
 }
 
 # validate_existing_store_variant refuses a profile switch that would leave the
@@ -2028,6 +2425,8 @@ validate_existing_store_variant() {
 # old file so gen_config can render the new one.
 migrate_v0_config() {
   _old="$1"; _new="$2"
+  load_tls_config "$_old"
+  if [ "$TLS_MODE" = acme ] && [ -z "$TLS_CACHE" ]; then TLS_CACHE="/var/lib/telemt-panel/certs"; fi
   _v=$(toml_value "$_old" "" listen); [ -n "$_v" ] && LISTEN="$_v"
   _v=$(toml_value "$_old" "" data_dir); [ -n "$_v" ] && DATA_DIR="$_v"
   V0_BASE_PATH=$(toml_value "$_old" "" base_path)
@@ -2069,7 +2468,6 @@ migrate_v0_config() {
   _skip() { MIGRATE_SKIPPED="$MIGRATE_SKIPPED$NL  $1 — $(t "$2")"; }
   [ -n "$(toml_value "$_old" auth jwt_secret)" ] && _skip "auth.jwt_secret" mk_jwt
   grep -q '^[[:space:]]*\[telemt\.auto_update\]\|^[[:space:]]*\[panel\.auto_update\]' "$_old" 2>/dev/null && _skip "*.auto_update" mk_auto_update
-  grep -q '^[[:space:]]*\[tls\]' "$_old" 2>/dev/null && _skip "tls.*" mk_tls
   grep -q '^[[:space:]]*\[geoip\]' "$_old" 2>/dev/null && _skip "geoip.*" mk_geoip
   grep -q '^[[:space:]]*\[users\]' "$_old" 2>/dev/null && _skip "users.*" mk_users
   { [ -n "$(toml_value "$_old" panel max_newer_releases)" ] || [ -n "$(toml_value "$_old" panel max_older_releases)" ]; } && _skip "panel.max_*_releases" mk_releases
@@ -2099,6 +2497,7 @@ do_migrate() {
   _backup="$CONFIG_FILE.0x-$(date +%Y%m%d-%H%M%S)"
   migrate_v0_config "$_old_copy" "$TEMP_DIR/config.v1.toml"
   apply_layout_from_answers
+  validate_transport_rights
 
   blank
   step 4 step_summary
@@ -2126,6 +2525,7 @@ do_migrate() {
   # Keep 0.x backups: they may be the only recovery path after this upgrade.
   install_sudoers
   install_service
+  configure_firewall
   start_service
 
   step 6 step_done
@@ -2166,6 +2566,7 @@ do_update_existing() {
   ok "$(t a_config_kept "$CONFIG_FILE")"
   install_sudoers
   install_service
+  configure_firewall
   start_service
 
   step 5 step_done
@@ -2228,6 +2629,7 @@ do_install() {
   write_config
   install_sudoers
   install_service
+  configure_firewall
   start_service
 
   step 6 step_done

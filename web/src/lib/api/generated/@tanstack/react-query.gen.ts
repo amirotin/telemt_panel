@@ -3,36 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAuthMethods, getAutoUpdate, getGeoIpSettings, getHealth, getHistory, getHistoryEvents, getHost, getMe, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getTrafficSummary, getTrafficUsers, getUpdates, getUser, getUserIpHistory, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putGeoIpSettings, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetAllUserTraffic, resetUserIpHistory, resetUserQuota, resetUserTraffic, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs, updateGeoIp, webauthnDeleteCredential, webauthnLoginBegin, webauthnLoginFinish, webauthnRegisterBegin, webauthnRegisterFinish } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAuthMethodsData, GetAuthMethodsResponse, GetAutoUpdateData, GetAutoUpdateError, GetAutoUpdateResponse, GetGeoIpSettingsData, GetGeoIpSettingsError, GetGeoIpSettingsResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetTrafficSummaryData, GetTrafficSummaryError, GetTrafficSummaryResponse, GetTrafficUsersData, GetTrafficUsersError, GetTrafficUsersResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserIpHistoryData, GetUserIpHistoryError, GetUserIpHistoryResponse, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutGeoIpSettingsData, PutGeoIpSettingsError, PutGeoIpSettingsResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetAllUserTrafficData, ResetAllUserTrafficError, ResetAllUserTrafficResponse, ResetUserIpHistoryData, ResetUserIpHistoryError, ResetUserIpHistoryResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, ResetUserTrafficData, ResetUserTrafficError, ResetUserTrafficResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse, UpdateGeoIpData, UpdateGeoIpError, UpdateGeoIpResponse, WebauthnDeleteCredentialData, WebauthnDeleteCredentialError, WebauthnDeleteCredentialResponse, WebauthnLoginBeginData, WebauthnLoginBeginError, WebauthnLoginBeginResponse, WebauthnLoginFinishData, WebauthnLoginFinishError, WebauthnLoginFinishResponse, WebauthnRegisterBeginData, WebauthnRegisterBeginError, WebauthnRegisterBeginResponse, WebauthnRegisterFinishData, WebauthnRegisterFinishError, WebauthnRegisterFinishResponse } from '../types.gen';
-
-export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
-    const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await login({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const logoutMutation = (options?: Partial<Options<LogoutData>>): UseMutationOptions<LogoutResponse, DefaultError, Options<LogoutData>> => {
-    const mutationOptions: UseMutationOptions<LogoutResponse, DefaultError, Options<LogoutData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await logout({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
+import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAuthMethods, getAutoUpdate, getGeoIpSettings, getHealth, getHistory, getHistoryEvents, getHost, getMe, getPanelTls, getPanelTlsConfig, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getTrafficSummary, getTrafficUsers, getUpdates, getUser, getUserIpHistory, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, preparePanelTls, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putGeoIpSettings, putPanelTlsConfig, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetAllUserTraffic, resetUserIpHistory, resetUserQuota, resetUserTraffic, restartPanelTls, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, setUserEnabled, tailLogs, updateGeoIp, webauthnDeleteCredential, webauthnLoginBegin, webauthnLoginFinish, webauthnRegisterBegin, webauthnRegisterFinish } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAuthMethodsData, GetAuthMethodsResponse, GetAutoUpdateData, GetAutoUpdateError, GetAutoUpdateResponse, GetGeoIpSettingsData, GetGeoIpSettingsError, GetGeoIpSettingsResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetMeData, GetMeError, GetMeResponse, GetPanelTlsConfigData, GetPanelTlsConfigError, GetPanelTlsConfigResponse, GetPanelTlsData, GetPanelTlsError, GetPanelTlsResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetTrafficSummaryData, GetTrafficSummaryError, GetTrafficSummaryResponse, GetTrafficUsersData, GetTrafficUsersError, GetTrafficUsersResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserIpHistoryData, GetUserIpHistoryError, GetUserIpHistoryResponse, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PreparePanelTlsData, PreparePanelTlsError, PreparePanelTlsResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutGeoIpSettingsData, PutGeoIpSettingsError, PutGeoIpSettingsResponse, PutPanelTlsConfigData, PutPanelTlsConfigError, PutPanelTlsConfigResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetAllUserTrafficData, ResetAllUserTrafficError, ResetAllUserTrafficResponse, ResetUserIpHistoryData, ResetUserIpHistoryError, ResetUserIpHistoryResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, ResetUserTrafficData, ResetUserTrafficError, ResetUserTrafficResponse, RestartPanelTlsData, RestartPanelTlsError, RestartPanelTlsResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, TailLogsData, TailLogsError, TailLogsResponse, UpdateGeoIpData, UpdateGeoIpError, UpdateGeoIpResponse, WebauthnDeleteCredentialData, WebauthnDeleteCredentialError, WebauthnDeleteCredentialResponse, WebauthnLoginBeginData, WebauthnLoginBeginError, WebauthnLoginBeginResponse, WebauthnLoginFinishData, WebauthnLoginFinishError, WebauthnLoginFinishResponse, WebauthnRegisterBeginData, WebauthnRegisterBeginError, WebauthnRegisterBeginResponse, WebauthnRegisterFinishData, WebauthnRegisterFinishError, WebauthnRegisterFinishResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -65,6 +37,124 @@ const createQueryKey = <TOptions extends Options>(id: string, options?: TOptions
         params.query = options.query;
     }
     return [params];
+};
+
+export const getPanelTlsQueryKey = (options?: Options<GetPanelTlsData>) => createQueryKey('getPanelTls', options);
+
+/**
+ * Active runtime status of the panel listener, not Telemt TLS masking. Saved transport changes become active only after restart.
+ */
+export const getPanelTlsOptions = (options?: Options<GetPanelTlsData>) => queryOptions<GetPanelTlsResponse, GetPanelTlsError, GetPanelTlsResponse, ReturnType<typeof getPanelTlsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getPanelTls({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getPanelTlsQueryKey(options)
+});
+
+export const getPanelTlsConfigQueryKey = (options?: Options<GetPanelTlsConfigData>) => createQueryKey('getPanelTlsConfig', options);
+
+/**
+ * Active and disk transport configurations, preparation state and manual capabilities. Admin only; never returns key/config contents.
+ */
+export const getPanelTlsConfigOptions = (options?: Options<GetPanelTlsConfigData>) => queryOptions<GetPanelTlsConfigResponse, GetPanelTlsConfigError, GetPanelTlsConfigResponse, ReturnType<typeof getPanelTlsConfigQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getPanelTlsConfig({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getPanelTlsConfigQueryKey(options)
+});
+
+/**
+ * Atomically save the exact normalized candidate returned by preparation. Receipt expires after five minutes, is single-use, and binds the original file revision. PEM certificate/key availability is rechecked at save. ACME apply verifies the exact prepared chain and matching key from the cache, current validity/system trust and cache write permissions without contacting the CA or reissuing. Only listen/tls change semantically; TOML formatting/comments are normalized. A fixed .bak file retains original bytes; saved file and backup use mode 0600. Requires both config-write and panel-restart capabilities. Does not restart or change firewall rules.
+ *
+ */
+export const putPanelTlsConfigMutation = (options?: Partial<Options<PutPanelTlsConfigData>>): UseMutationOptions<PutPanelTlsConfigResponse, PutPanelTlsConfigError, Options<PutPanelTlsConfigData>> => {
+    const mutationOptions: UseMutationOptions<PutPanelTlsConfigResponse, PutPanelTlsConfigError, Options<PutPanelTlsConfigData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await putPanelTlsConfig({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Validate and acquire certificates before saving, with current access kept alive. One operation at a time; deadline 110 seconds, canceled on disconnect/shutdown. ACME runs in the same executable/UID as a bounded subprocess. Public CA trust is verified. No CA directory override is accepted. Public reachability of the new panel port is not verified. An omitted ACME cache uses the active configured cache, otherwise certs beside the startup config. HTTP behind a reverse proxy is represented by mode http with a loopback listen address.
+ *
+ */
+export const preparePanelTlsMutation = (options?: Partial<Options<PreparePanelTlsData>>): UseMutationOptions<PreparePanelTlsResponse, PreparePanelTlsError, Options<PreparePanelTlsData>> => {
+    const mutationOptions: UseMutationOptions<PreparePanelTlsResponse, PreparePanelTlsError, Options<PreparePanelTlsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await preparePanelTls({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Restart only for a transport change saved by this process, after verifying the saved file revision. Flush the accepted response before invoking the existing allowlisted service Runner. A 202 acknowledges scheduling, not successful service startup. GET config exposes restart_failed if the Runner fails.
+ *
+ */
+export const restartPanelTlsMutation = (options?: Partial<Options<RestartPanelTlsData>>): UseMutationOptions<RestartPanelTlsResponse, RestartPanelTlsError, Options<RestartPanelTlsData>> => {
+    const mutationOptions: UseMutationOptions<RestartPanelTlsResponse, RestartPanelTlsError, Options<RestartPanelTlsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await restartPanelTls({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const loginMutation = (options?: Partial<Options<LoginData>>): UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> => {
+    const mutationOptions: UseMutationOptions<LoginResponse, LoginError, Options<LoginData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await login({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const logoutMutation = (options?: Partial<Options<LogoutData>>): UseMutationOptions<LogoutResponse, DefaultError, Options<LogoutData>> => {
+    const mutationOptions: UseMutationOptions<LogoutResponse, DefaultError, Options<LogoutData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await logout({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
 };
 
 export const getAuthMethodsQueryKey = (options?: Options<GetAuthMethodsData>) => createQueryKey('getAuthMethods', options);

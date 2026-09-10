@@ -1,6 +1,6 @@
 // Package config loads and validates the panel's own configuration.
-// Settings changed from the UI are persisted to the store, never back into
-// this file — the operator's config is read-only for the panel.
+// Most UI settings live in the store. Explicitly prepared transport changes
+// may update only listen/tls in the startup file through TLSFile.
 package config
 
 import (
@@ -37,6 +37,7 @@ type Config struct {
 	Host       HostConfig       `toml:"host"`
 	Updates    UpdatesConfig    `toml:"updates"`
 	Privileges PrivilegesConfig `toml:"privileges"`
+	TLS        TLSConfig        `toml:"tls"`
 }
 
 // TelemtConfig points the panel at the Telemt API.
@@ -137,7 +138,10 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
+	return decode(data, path)
+}
 
+func decode(data []byte, path string) (*Config, error) {
 	cfg := &Config{
 		Listen:  "0.0.0.0:8080",
 		Store:   StoreConfig{Driver: "memory"},
@@ -174,6 +178,9 @@ func Load(path string) (*Config, error) {
 
 	if cfg.Telemt.URL == "" {
 		return nil, fmt.Errorf("telemt.url is required")
+	}
+	if err := cfg.TLS.Normalize(cfg.Listen, cfg.DataDir); err != nil {
+		return nil, err
 	}
 	switch cfg.Telemt.ConfigEditMode {
 	case "":

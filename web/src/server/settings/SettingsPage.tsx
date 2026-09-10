@@ -30,6 +30,7 @@ import { SessionIcon as SessionGlyph } from "./SessionIcon";
 import { StorageSettings } from "./StorageSettings";
 import { GeoIPSettings } from "./GeoIPSettings";
 import { PasskeySettings } from "./PasskeySettings";
+import { TransportStatus } from "./TransportStatus";
 
 function MiniInterfacePreview() {
   return (
@@ -302,6 +303,7 @@ export function SettingsPage() {
 
         <div className="flex min-w-0 flex-col gap-2.5">
           <PasskeySettings passkeys={meQuery.data?.passkeys ?? []} />
+          <TransportStatus />
 
           <InterfacePreferences />
 

@@ -19,6 +19,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/geoip"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/hub"
+	"github.com/amirotin/telemt_panel/internal/paneltls"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/subpage"
 	"github.com/amirotin/telemt_panel/internal/telemt"
@@ -28,6 +29,8 @@ import (
 
 // Server holds the panel's HTTP dependencies.
 type Server struct {
+	access     *panelAccess
+	tlsManager *paneltls.Manager
 	cfg        *config.Config
 	tc         *telemt.Client
 	st         store.Store
@@ -169,6 +172,8 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	}
 
 	return &Server{
+		access:             newPanelAccess(),
+		tlsManager:         paneltls.New(cfg.TLS, cfg.Listen),
 		cfg:                cfg,
 		tc:                 tc,
 		st:                 st,
@@ -289,6 +294,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/auth/methods", s.handleAuthMethods)
 	mux.Handle("POST /api/auth/logout", protect(s.handleLogout))
 	mux.Handle("GET /api/auth/me", protect(s.handleMe))
+	mux.Handle("GET /api/settings/tls", protect(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, s.tlsManager.Status())
+	}))
+	mux.Handle("GET /api/settings/tls/config", protect(s.handleGetTLSConfig))
+	mux.Handle("POST /api/settings/tls/prepare", protect(s.handlePrepareTLS))
+	mux.Handle("PUT /api/settings/tls/config", protect(s.handlePutTLSConfig))
+	mux.Handle("POST /api/settings/tls/restart", protect(s.handleRestartTLS))
 	mux.Handle("GET /api/auth/sessions", protect(s.handleListSessions))
 	mux.Handle("DELETE /api/auth/sessions", protect(s.handleRevokeOtherSessions))
 	mux.Handle("DELETE /api/auth/sessions/{sessionId}", protect(s.handleRevokeSession))
@@ -479,6 +491,9 @@ func apiJSONFallback(mux *http.ServeMux) http.Handler {
 
 // Run serves until ctx is canceled, then drains connections.
 func (s *Server) Run(ctx context.Context) error {
+	stopAccess := context.AfterFunc(ctx, s.access.cancel)
+	defer stopAccess()
+	defer s.access.close()
 	// Cancel owned workers on every return path, including listen failures.
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
@@ -506,8 +521,15 @@ func (s *Server) Run(ctx context.Context) error {
 	defer s.subLimiter.Stop()
 	defer s.hub.Close()
 	defer s.logStreams.Close()
+	defer s.tlsManager.Close()
+	tlsConfig, challengeHandler, err := s.tlsManager.Prepare()
+	if err != nil {
+		return err
+	}
+	s.access.mux = paneltls.NewChallengeMux(challengeHandler)
 
 	srv := &http.Server{
+		TLSConfig:    tlsConfig,
 		Addr:         s.cfg.Listen,
 		Handler:      s.Handler(),
 		ReadTimeout:  30 * time.Second,
@@ -530,32 +552,18 @@ func (s *Server) Run(ctx context.Context) error {
 	// promptly rather than stall Shutdown.
 	srv.RegisterOnShutdown(s.logStreams.Close)
 
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ListenAndServe() }()
-	slog.Info("panel listening", "addr", s.cfg.Listen)
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		slog.Info("shutdown signal received, draining connections")
-		// Visibility only, never a wait: an in-flight install/restart must
-		// not block shutdown (SIGTERM has to work even mid-update, and a
-		// panel self-update restarts this very process by design). The
-		// run's own correctness on an interrupted shutdown comes from
-		// ReconcileStartup at the next boot, not from anything done here.
+	srv.RegisterOnShutdown(func() {
 		if s.updateEngine.HasActiveRun() {
 			slog.Warn("update in progress at shutdown; will reconcile on next boot")
 		}
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return err
-		}
-		<-errCh
-		slog.Info("shutdown complete")
-		return nil
+	})
+	var challenge *http.Server
+	if challengeHandler != nil {
+		challenge = &http.Server{Addr: ":80", Handler: s.access.mux,
+			ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
+			WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	}
+	return serveListeners(ctx, srv, challenge)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

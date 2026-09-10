@@ -40,6 +40,12 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "tls":
+			if err := runTLSCommand(os.Args[2:]); err != nil {
+				slog.Error("TLS check", "err", err)
+				os.Exit(1)
+			}
+			return
 		case "store":
 			if err := runStoreCommand(os.Args[2:]); err != nil {
 				slog.Error("store", "err", err)
@@ -83,6 +89,7 @@ func main() {
 	hb := hub.New(hub.Config{}, tc, st)
 	hb.StartPersistentCollectors()
 	srv := httpapi.New(cfg, tc, st, hb, version)
+	srv.SetTLSConfigPath(*configPath)
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)

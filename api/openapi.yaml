@@ -35,6 +35,108 @@ security:
   - session: []
 
 paths:
+  /api/settings/tls:
+    get:
+      tags: [misc]
+      operationId: getPanelTls
+      description: Active runtime status of the panel listener, not Telemt TLS masking. Saved transport changes become active only after restart.
+      responses:
+        "200":
+          description: Panel transport and certificate status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PanelTlsStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/settings/tls/config:
+    get:
+      tags: [misc]
+      operationId: getPanelTlsConfig
+      description: Active and disk transport configurations, preparation state and manual capabilities. Admin only; never returns key/config contents.
+      responses:
+        "200":
+          description: Transport settings; configured is omitted if startup file is unavailable
+          content: { application/json: { schema: { $ref: "#/components/schemas/PanelTlsSettings" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [misc]
+      operationId: putPanelTlsConfig
+      description: >
+        Atomically save the exact normalized candidate returned by preparation.
+        Receipt expires after five minutes, is single-use, and binds the original file revision.
+        PEM certificate/key availability is rechecked at save. ACME apply verifies the exact prepared chain and matching key from the cache, current validity/system trust and cache write permissions without contacting the CA or reissuing. Only listen/tls change semantically; TOML formatting/comments are normalized.
+        A fixed .bak file retains original bytes; saved file and backup use mode 0600.
+        Requires both config-write and panel-restart capabilities. Does not restart or change firewall rules.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [receipt, candidate]
+              properties:
+                receipt: { type: string }
+                candidate: { $ref: "#/components/schemas/PanelTlsCandidate" }
+      responses:
+        "200":
+          description: Saved; running transport remains unchanged until restart
+          content: { application/json: { schema: { $ref: "#/components/schemas/PanelTlsSaved" } } }
+        "400": { $ref: "#/components/responses/PanelTlsError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PanelTlsError" }
+        "409": { $ref: "#/components/responses/PanelTlsError" }
+        "422": { $ref: "#/components/responses/PanelTlsError" }
+        "503": { $ref: "#/components/responses/PanelTlsError" }
+  /api/settings/tls/prepare:
+    post:
+      tags: [misc]
+      operationId: preparePanelTls
+      description: >
+        Validate and acquire certificates before saving, with current access kept alive.
+        One operation at a time; deadline 110 seconds, canceled on disconnect/shutdown.
+        ACME runs in the same executable/UID as a bounded subprocess. Public CA trust is verified.
+        No CA directory override is accepted. Public reachability of the new panel port is not verified.
+        An omitted ACME cache uses the active configured cache, otherwise certs beside the startup config.
+        HTTP behind a reverse proxy is represented by mode http with a loopback listen address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [listen, tls]
+              properties:
+                listen: { type: string, description: "Bind host:port; numeric port 1..65535" }
+                tls: { $ref: "#/components/schemas/PanelTlsConfig" }
+                confirm_http: { type: boolean, default: false, description: Required true for non-loopback plain HTTP }
+      responses:
+        "200":
+          description: Prepared; no configuration was saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/PanelTlsPrepared" } } }
+        "400": { $ref: "#/components/responses/PanelTlsError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PanelTlsError" }
+        "409": { $ref: "#/components/responses/PanelTlsError" }
+        "422": { $ref: "#/components/responses/PanelTlsError" }
+        "503": { $ref: "#/components/responses/PanelTlsError" }
+        "504": { $ref: "#/components/responses/PanelTlsError" }
+  /api/settings/tls/restart:
+    post:
+      tags: [misc]
+      operationId: restartPanelTls
+      description: >
+        Restart only for a transport change saved by this process, after verifying the saved file revision.
+        Flush the accepted response before invoking the existing allowlisted service Runner.
+        A 202 acknowledges scheduling, not successful service startup. GET config exposes restart_failed if the Runner fails.
+      responses:
+        "202":
+          description: Restart scheduled after response delivery
+          content: { application/json: { schema: { $ref: "#/components/schemas/PanelTlsSaved" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/PanelTlsError" }
+        "409": { $ref: "#/components/responses/PanelTlsError" }
+        "503": { $ref: "#/components/responses/PanelTlsError" }
   # ───────────────────────── auth ─────────────────────────
   /api/auth/login:
     post:
@@ -1108,6 +1210,9 @@ components:
       schema: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
 
   responses:
+    PanelTlsError:
+      description: Actionable transport error; current listener stays active. Error code is stable and message contains no key/account data.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     InternalError:
       description: Internal panel error
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -1131,6 +1236,84 @@ components:
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   schemas:
+    PanelTlsConfig:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [http, certificate, acme] }
+        cert_file: { type: string }
+        key_file: { type: string }
+        acme_domain: { type: string }
+        acme_cache_dir: { type: string }
+    PanelTlsCandidate:
+      type: object
+      additionalProperties: false
+      required: [listen, tls]
+      properties:
+        listen: { type: string }
+        tls: { $ref: "#/components/schemas/PanelTlsConfig" }
+    PanelTlsCertificate:
+      type: object
+      required: [expires_at, publicly_trusted]
+      properties:
+        domain: { type: string }
+        expires_at: { type: string, format: date-time }
+        publicly_trusted: { type: boolean }
+    PanelTlsWarning:
+      type: string
+      enum: [toml_formatting, public_reachability_unverified, password_login, firewall_port, acme_port_80, http_unencrypted, certificate_private]
+    PanelTlsPrepared:
+      type: object
+      required: [receipt, expires_at, candidate, new_url, warnings]
+      properties:
+        receipt: { type: string, description: Opaque single-use receipt; valid for five minutes }
+        expires_at: { type: string, format: date-time }
+        candidate: { $ref: "#/components/schemas/PanelTlsCandidate" }
+        new_url: { type: string, format: uri }
+        warnings: { type: array, items: { $ref: "#/components/schemas/PanelTlsWarning" } }
+        certificate: { $ref: "#/components/schemas/PanelTlsCertificate" }
+    PanelTlsSaved:
+      type: object
+      required: [new_url, restart_required]
+      properties:
+        new_url: { type: string, format: uri }
+        restart_required: { type: boolean }
+    PanelTlsSettings:
+      type: object
+      required: [active, capabilities, manual_hints, manual_restart_command, default_acme_cache_dir, state, restart_required]
+      properties:
+        active: { $ref: "#/components/schemas/PanelTlsCandidate" }
+        configured: { $ref: "#/components/schemas/PanelTlsCandidate" }
+        capabilities:
+          type: object
+          required: [config_writable, restart, prepare, acme_prepare]
+          properties:
+            config_writable: { type: boolean }
+            restart: { type: boolean }
+            prepare: { type: boolean }
+            acme_prepare: { type: boolean, description: Helper support; actual port 80 bind permissions are checked before CA acquisition }
+        manual_hints:
+          type: array
+          items: { type: string, enum: [edit_startup_config_manually, restart_panel_manually] }
+        default_acme_cache_dir: { type: string }
+        config_path: { type: string, description: Trusted startup file path for manual instructions; never accepted from API requests }
+        manual_restart_command: { type: string, description: Existing service-manager command or manual hint; display only, never executed from request input }
+        state: { type: string, enum: [idle, preparing, prepared, saved, restarting, restart_failed] }
+        prepared: { $ref: "#/components/schemas/PanelTlsPrepared" }
+        restart_required: { type: boolean }
+        new_url: { type: string, format: uri }
+        error: { type: string, enum: [tls_restart_failed] }
+    PanelTlsStatus:
+      type: object
+      required: [mode, state]
+      properties:
+        mode: { type: string, enum: [http, certificate, acme] }
+        state: { type: string, enum: [http, waiting, ready, warning, error] }
+        domain: { type: string }
+        expires_at: { type: string, format: date-time }
+        stage: { type: string }
+        error: { type: string, maxLength: 800 }
     Error:
       type: object
       required: [code, message]
@@ -1139,6 +1322,23 @@ components:
           type: string
           enum:
             - bad_request
+            - tls_invalid_candidate
+            - tls_manual_required
+            - tls_prepare_busy
+            - tls_prepare_unavailable
+            - tls_listener_unavailable
+            - tls_challenge_unavailable
+            - tls_cache_unavailable
+            - tls_certificate_invalid
+            - tls_certificate_untrusted
+            - tls_acquisition_failed
+            - tls_prepare_failed
+            - tls_prepare_timeout
+            - tls_config_changed
+            - tls_receipt_invalid
+            - tls_save_failed
+            - tls_restart_not_pending
+            - tls_restart_failed
             - conflict
             - confirmation_required
             - invalid_credentials

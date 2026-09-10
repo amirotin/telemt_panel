@@ -233,8 +233,6 @@ password_hash = "$2a$10$oldhash"
 jwt_secret = "abc"
 session_ttl = "24h"
 
-[tls]
-cert_file = "/x.pem"
 EOF
 migrate_v0_config "$TMP/v0.toml" "$TMP/v1.toml"
 assert_eq "migrate listen" "127.0.0.1:8090" "$(toml_value "$TMP/v1.toml" "" listen)"
@@ -250,7 +248,7 @@ assert_contains "migrate session_ttl" 'session_ttl = "24h"' "$TMP/v1.toml"
 assert_contains "migrate edit mode" 'config_edit_mode = "file"' "$TMP/v1.toml"
 assert_contains "migrate github token" 'github_token = "ghp_x"' "$TMP/v1.toml"
 assert_not_contains "migrate drops jwt" "jwt_secret" "$TMP/v1.toml"
-assert_not_contains "migrate drops tls" "cert_file" "$TMP/v1.toml"
+assert_eq "migrate HTTP transport" "http" "$(toml_value "$TMP/v1.toml" tls mode)"
 assert_eq "migrate subpage secret set" "64" "$(printf '%s' "$(toml_value "$TMP/v1.toml" subpage secret)" | wc -c)"
 case "$MIGRATE_SKIPPED" in
   *auth.jwt_secret*) pass ;; *) fail "skipped list lacks jwt_secret" ;;
@@ -259,7 +257,7 @@ case "$MIGRATE_SKIPPED" in
   *"*.auto_update"*) pass ;; *) fail "skipped list lacks auto_update" ;;
 esac
 case "$MIGRATE_SKIPPED" in
-  *"tls.*"*) pass ;; *) fail "skipped list lacks tls" ;;
+  *"tls.*"*) fail "HTTP migration reports lost TLS" ;; *) pass ;;
 esac
 case "$MIGRATE_SKIPPED" in
   *"panel.max_*_releases"*) pass ;; *) fail "skipped list lacks max releases" ;;
@@ -510,6 +508,64 @@ for _scenario in missing no-tool mismatch; do
   ) >"$TMP/checksum-$_scenario.log" 2>&1; then fail "unverified release accepted: $_scenario"; else pass; fi
 done
 if [ -e "$TMP/unverified-extraction" ]; then fail "unverified archive extracted"; else pass; fi
+
+# Explicit transport choices and service privileges.
+for _tls in http proxy acme; do
+  (
+    TP_TLS_MODE="$_tls"; TP_TLS_DOMAIN=panel.example.com
+    LISTEN=""
+    ask_transport
+    DATA_DIR="$TMP/state"; gen_tls_config
+    printf 'listen = "%s"\n' "$LISTEN"
+  ) >"$TMP/transport-$_tls" 2>&1
+done
+assert_contains "plain mode remains available" 'mode = "http"' "$TMP/transport-http"
+assert_contains "plain mode warns" 'unencrypted' "$TMP/transport-http"
+assert_contains "proxy loopback" 'listen = "127.0.0.1:8080"' "$TMP/transport-proxy"
+assert_contains "ACME domain" 'acme_domain = "panel.example.com"' "$TMP/transport-acme"
+assert_contains "ACME avoids Telemt 443" 'listen = "0.0.0.0:8443"' "$TMP/transport-acme"
+for _domain in '' localhost 127.0.0.1 '*.example.com' 'example.com:443' 'https://example.com' 'a..com' '-a.com'; do
+  if tls_domain_ok "$_domain"; then fail "accepted ACME domain $_domain"; else pass; fi
+done
+if tls_domain_ok panel.example.com; then pass; else fail "normal domain rejected"; fi
+(
+  RUN_AS=user; INIT=systemd; TLS_MODE=acme; LISTEN=0.0.0.0:8443
+  gen_service_systemd
+) >"$TMP/acme-unit"
+assert_contains "ACME bind capability" 'AmbientCapabilities=CAP_NET_BIND_SERVICE' "$TMP/acme-unit"
+(
+  RUN_AS=user; INIT=systemd; TLS_MODE=http; LISTEN=127.0.0.1:8080
+  gen_service_systemd
+) >"$TMP/http-unit"
+assert_not_contains "HTTP no extra capability" 'AmbientCapabilities=' "$TMP/http-unit"
+if (RUN_AS=user; INIT=openrc; TLS_MODE=acme; validate_transport_rights) >/dev/null 2>&1; then fail "unprovisioned ACME bind accepted"; else pass; fi
+if (RUN_AS=root; INIT=openrc; TLS_MODE=acme; LISTEN=:8443; validate_transport_rights) >/dev/null 2>&1; then pass; else fail "explicit root ACME refused"; fi
+
+cp "$TMP/v0.toml" "$TMP/v0-cert.toml"
+printf '\n[tls]\ncert_file = "/cert.pem"\nkey_file = "/key.pem"\n' >>"$TMP/v0-cert.toml"
+migrate_v0_config "$TMP/v0-cert.toml" "$TMP/v1-cert.toml"
+assert_eq "preserve certificate mode" certificate "$(toml_value "$TMP/v1-cert.toml" tls mode)"
+assert_eq "preserve certificate path" /cert.pem "$(toml_value "$TMP/v1-cert.toml" tls cert_file)"
+assert_eq "preserve key path" /key.pem "$(toml_value "$TMP/v1-cert.toml" tls key_file)"
+cp "$TMP/v0.toml" "$TMP/v0-acme.toml"
+printf '\n[tls]\nacme_domain = "panel.example.com"\n' >>"$TMP/v0-acme.toml"
+migrate_v0_config "$TMP/v0-acme.toml" "$TMP/v1-acme.toml"
+assert_eq "preserve ACME mode" acme "$(toml_value "$TMP/v1-acme.toml" tls mode)"
+assert_eq "preserve ACME domain" panel.example.com "$(toml_value "$TMP/v1-acme.toml" tls acme_domain)"
+assert_eq "preserve legacy default ACME cache" /var/lib/telemt-panel/certs "$(toml_value "$TMP/v1-acme.toml" tls acme_cache_dir)"
+if (
+  TLS_MODE=acme; NO_START=0; DRY_RUN=0; SUDO=""; PANEL_BIN=false
+  run() { :; }; cmd_restart() { printf true; }
+  start_service
+) >/dev/null 2>&1; then fail "TLS readiness failure ignored"; else pass; fi
+
+# Firewall behavior lives in a focused PATH-stubbed fixture and remains part of
+# the full installer test entrypoint.
+if sh "$HERE/install-firewall-test.sh" >"$TMP/firewall-test.log" 2>&1; then
+  pass
+else
+  fail "firewall fixture failed: $(tail -20 "$TMP/firewall-test.log")"
+fi
 
 printf '%s passed, %s failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]

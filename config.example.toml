@@ -25,6 +25,20 @@ listen = "0.0.0.0:8080"
 # Empty makes authentication/settings process-local; history still follows [store].
 data_dir = "/var/lib/telemt-panel"
 
+[tls]
+# http: no TLS (also used behind a reverse proxy). acme: built-in Let's Encrypt.
+# certificate: serve an existing PEM certificate/key, reload by restarting the panel.
+# Selecting acme accepts the Let's Encrypt subscriber agreement.
+mode = "http"
+# For ACME, set the TOP-LEVEL listen to "0.0.0.0:8443" and uncomment:
+# acme_domain = "panel.example.com"
+# acme_cache_dir = "/var/lib/telemt-panel/certs"
+# Public TCP/80 must reach the panel for HTTP-01, including future renewals.
+# Use persistent storage for the cache; it contains private account/certificate keys.
+# For certificate mode instead:
+# cert_file = "/etc/telemt-panel/fullchain.pem"
+# key_file = "/etc/telemt-panel/privkey.pem"
+
 [telemt]
 # Telemt API base URL (no trailing slash).
 url = "http://127.0.0.1:9091"

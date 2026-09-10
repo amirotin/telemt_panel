@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CloseTelemtWebSessionsData, CloseTelemtWebSessionsErrors, CloseTelemtWebSessionsResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAuthMethodsData, GetAuthMethodsResponses, GetAutoUpdateData, GetAutoUpdateErrors, GetAutoUpdateResponses, GetGeoIpSettingsData, GetGeoIpSettingsErrors, GetGeoIpSettingsResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryEventsData, GetHistoryEventsErrors, GetHistoryEventsResponses, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetStorageSettingsData, GetStorageSettingsResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtConfigTomlData, GetTelemtConfigTomlErrors, GetTelemtConfigTomlResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtWebAccessData, GetTelemtWebAccessErrors, GetTelemtWebAccessResponses, GetTelemtWebOperationData, GetTelemtWebOperationErrors, GetTelemtWebOperationResponses, GetTelemtWebSessionData, GetTelemtWebSessionErrors, GetTelemtWebSessionResponses, GetTelemtWebSessionsData, GetTelemtWebSessionsErrors, GetTelemtWebSessionsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetTrafficSummaryData, GetTrafficSummaryErrors, GetTrafficSummaryResponses, GetTrafficUsersData, GetTrafficUsersErrors, GetTrafficUsersResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserIpHistoryData, GetUserIpHistoryErrors, GetUserIpHistoryResponses, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, GetUserTrafficHistoryData, GetUserTrafficHistoryErrors, GetUserTrafficHistoryResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchTelemtConfigTomlData, PatchTelemtConfigTomlErrors, PatchTelemtConfigTomlResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlErrors, PreviewTelemtConfigTomlResponses, PurgeStorageHistoryData, PurgeStorageHistoryErrors, PurgeStorageHistoryResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, PutGeoIpSettingsData, PutGeoIpSettingsErrors, PutGeoIpSettingsResponses, PutStorageSettingsData, PutStorageSettingsErrors, PutStorageSettingsResponses, PutTelemtUserWebAccessData, PutTelemtUserWebAccessErrors, PutTelemtUserWebAccessResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetAllUserTrafficData, ResetAllUserTrafficErrors, ResetAllUserTrafficResponses, ResetUserIpHistoryData, ResetUserIpHistoryErrors, ResetUserIpHistoryResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, ResetUserTrafficData, ResetUserTrafficErrors, ResetUserTrafficResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses, UpdateGeoIpData, UpdateGeoIpErrors, UpdateGeoIpResponses, WebauthnDeleteCredentialData, WebauthnDeleteCredentialErrors, WebauthnDeleteCredentialResponses, WebauthnLoginBeginData, WebauthnLoginBeginErrors, WebauthnLoginBeginResponses, WebauthnLoginFinishData, WebauthnLoginFinishErrors, WebauthnLoginFinishResponses, WebauthnRegisterBeginData, WebauthnRegisterBeginErrors, WebauthnRegisterBeginResponses, WebauthnRegisterFinishData, WebauthnRegisterFinishErrors, WebauthnRegisterFinishResponses } from './types.gen';
+import type { ApplyUpdateData, ApplyUpdateErrors, ApplyUpdateResponses, CloseTelemtWebSessionsData, CloseTelemtWebSessionsErrors, CloseTelemtWebSessionsResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetAuditData, GetAuditErrors, GetAuditResponses, GetAuthMethodsData, GetAuthMethodsResponses, GetAutoUpdateData, GetAutoUpdateErrors, GetAutoUpdateResponses, GetGeoIpSettingsData, GetGeoIpSettingsErrors, GetGeoIpSettingsResponses, GetHealthData, GetHealthResponses, GetHistoryData, GetHistoryErrors, GetHistoryEventsData, GetHistoryEventsErrors, GetHistoryEventsResponses, GetHistoryResponses, GetHostData, GetHostResponses, GetMeData, GetMeErrors, GetMeResponses, GetPanelTlsConfigData, GetPanelTlsConfigErrors, GetPanelTlsConfigResponses, GetPanelTlsData, GetPanelTlsErrors, GetPanelTlsResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetStorageSettingsData, GetStorageSettingsResponses, GetSubscriptionPageData, GetSubscriptionPageErrors, GetSubscriptionPageResponses, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponses, GetTelemtConfigData, GetTelemtConfigErrors, GetTelemtConfigResponses, GetTelemtConfigTomlData, GetTelemtConfigTomlErrors, GetTelemtConfigTomlResponses, GetTelemtInfoData, GetTelemtInfoResponses, GetTelemtReloadStatusData, GetTelemtReloadStatusErrors, GetTelemtReloadStatusResponses, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsErrors, GetTelemtTlsFingerprintsResponses, GetTelemtWebAccessData, GetTelemtWebAccessErrors, GetTelemtWebAccessResponses, GetTelemtWebOperationData, GetTelemtWebOperationErrors, GetTelemtWebOperationResponses, GetTelemtWebSessionData, GetTelemtWebSessionErrors, GetTelemtWebSessionResponses, GetTelemtWebSessionsData, GetTelemtWebSessionsErrors, GetTelemtWebSessionsResponses, GetTelemtZeroData, GetTelemtZeroErrors, GetTelemtZeroResponses, GetTrafficSummaryData, GetTrafficSummaryErrors, GetTrafficSummaryResponses, GetTrafficUsersData, GetTrafficUsersErrors, GetTrafficUsersResponses, GetUpdatesData, GetUpdatesResponses, GetUserData, GetUserErrors, GetUserIpHistoryData, GetUserIpHistoryErrors, GetUserIpHistoryResponses, GetUserResponses, GetUserSublinkData, GetUserSublinkErrors, GetUserSublinkResponses, GetUserTrafficHistoryData, GetUserTrafficHistoryErrors, GetUserTrafficHistoryResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, PatchTelemtConfigData, PatchTelemtConfigErrors, PatchTelemtConfigResponses, PatchTelemtConfigTomlData, PatchTelemtConfigTomlErrors, PatchTelemtConfigTomlResponses, PatchUserData, PatchUserErrors, PatchUserResponses, PreparePanelTlsData, PreparePanelTlsErrors, PreparePanelTlsResponses, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlErrors, PreviewTelemtConfigTomlResponses, PurgeStorageHistoryData, PurgeStorageHistoryErrors, PurgeStorageHistoryResponses, PutAutoUpdateData, PutAutoUpdateErrors, PutAutoUpdateResponses, PutGeoIpSettingsData, PutGeoIpSettingsErrors, PutGeoIpSettingsResponses, PutPanelTlsConfigData, PutPanelTlsConfigErrors, PutPanelTlsConfigResponses, PutStorageSettingsData, PutStorageSettingsErrors, PutStorageSettingsResponses, PutTelemtUserWebAccessData, PutTelemtUserWebAccessErrors, PutTelemtUserWebAccessResponses, RegenerateUserSublinkData, RegenerateUserSublinkErrors, RegenerateUserSublinkResponses, ReloadTelemtData, ReloadTelemtErrors, ReloadTelemtResponses, ResetAllUserTrafficData, ResetAllUserTrafficErrors, ResetAllUserTrafficResponses, ResetUserIpHistoryData, ResetUserIpHistoryErrors, ResetUserIpHistoryResponses, ResetUserQuotaData, ResetUserQuotaErrors, ResetUserQuotaResponses, ResetUserTrafficData, ResetUserTrafficErrors, ResetUserTrafficResponses, RestartPanelTlsData, RestartPanelTlsErrors, RestartPanelTlsResponses, RestartTelemtServiceData, RestartTelemtServiceErrors, RestartTelemtServiceResponses, RevokeOtherSessionsData, RevokeOtherSessionsResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RotateUserSecretData, RotateUserSecretErrors, RotateUserSecretResponses, SetUserEnabledData, SetUserEnabledErrors, SetUserEnabledResponses, StreamEventsData, StreamEventsErrors, StreamEventsResponse, StreamEventsResponses, StreamLogsData, StreamLogsErrors, StreamLogsResponse, StreamLogsResponses, TailLogsData, TailLogsErrors, TailLogsResponses, UpdateGeoIpData, UpdateGeoIpErrors, UpdateGeoIpResponses, WebauthnDeleteCredentialData, WebauthnDeleteCredentialErrors, WebauthnDeleteCredentialResponses, WebauthnLoginBeginData, WebauthnLoginBeginErrors, WebauthnLoginBeginResponses, WebauthnLoginFinishData, WebauthnLoginFinishErrors, WebauthnLoginFinishResponses, WebauthnRegisterBeginData, WebauthnRegisterBeginErrors, WebauthnRegisterBeginResponses, WebauthnRegisterFinishData, WebauthnRegisterFinishErrors, WebauthnRegisterFinishResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,82 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Active runtime status of the panel listener, not Telemt TLS masking. Saved transport changes become active only after restart.
+ */
+export const getPanelTls = <ThrowOnError extends boolean = false>(options?: Options<GetPanelTlsData, ThrowOnError>): RequestResult<GetPanelTlsResponses, GetPanelTlsErrors, ThrowOnError> => (options?.client ?? client).get<GetPanelTlsResponses, GetPanelTlsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings/tls',
+    ...options
+});
+
+/**
+ * Active and disk transport configurations, preparation state and manual capabilities. Admin only; never returns key/config contents.
+ */
+export const getPanelTlsConfig = <ThrowOnError extends boolean = false>(options?: Options<GetPanelTlsConfigData, ThrowOnError>): RequestResult<GetPanelTlsConfigResponses, GetPanelTlsConfigErrors, ThrowOnError> => (options?.client ?? client).get<GetPanelTlsConfigResponses, GetPanelTlsConfigErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings/tls/config',
+    ...options
+});
+
+/**
+ * Atomically save the exact normalized candidate returned by preparation. Receipt expires after five minutes, is single-use, and binds the original file revision. PEM certificate/key availability is rechecked at save. ACME apply verifies the exact prepared chain and matching key from the cache, current validity/system trust and cache write permissions without contacting the CA or reissuing. Only listen/tls change semantically; TOML formatting/comments are normalized. A fixed .bak file retains original bytes; saved file and backup use mode 0600. Requires both config-write and panel-restart capabilities. Does not restart or change firewall rules.
+ *
+ */
+export const putPanelTlsConfig = <ThrowOnError extends boolean = false>(options: Options<PutPanelTlsConfigData, ThrowOnError>): RequestResult<PutPanelTlsConfigResponses, PutPanelTlsConfigErrors, ThrowOnError> => (options.client ?? client).put<PutPanelTlsConfigResponses, PutPanelTlsConfigErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings/tls/config',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Validate and acquire certificates before saving, with current access kept alive. One operation at a time; deadline 110 seconds, canceled on disconnect/shutdown. ACME runs in the same executable/UID as a bounded subprocess. Public CA trust is verified. No CA directory override is accepted. Public reachability of the new panel port is not verified. An omitted ACME cache uses the active configured cache, otherwise certs beside the startup config. HTTP behind a reverse proxy is represented by mode http with a loopback listen address.
+ *
+ */
+export const preparePanelTls = <ThrowOnError extends boolean = false>(options: Options<PreparePanelTlsData, ThrowOnError>): RequestResult<PreparePanelTlsResponses, PreparePanelTlsErrors, ThrowOnError> => (options.client ?? client).post<PreparePanelTlsResponses, PreparePanelTlsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings/tls/prepare',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Restart only for a transport change saved by this process, after verifying the saved file revision. Flush the accepted response before invoking the existing allowlisted service Runner. A 202 acknowledges scheduling, not successful service startup. GET config exposes restart_failed if the Runner fails.
+ *
+ */
+export const restartPanelTls = <ThrowOnError extends boolean = false>(options?: Options<RestartPanelTlsData, ThrowOnError>): RequestResult<RestartPanelTlsResponses, RestartPanelTlsErrors, ThrowOnError> => (options?.client ?? client).post<RestartPanelTlsResponses, RestartPanelTlsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'panel_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings/tls/restart',
+    ...options
+});
 
 export const login = <ThrowOnError extends boolean = false>(options: Options<LoginData, ThrowOnError>): RequestResult<LoginResponses, LoginErrors, ThrowOnError> => (options.client ?? client).post<LoginResponses, LoginErrors, ThrowOnError>({
     url: '/api/auth/login',
