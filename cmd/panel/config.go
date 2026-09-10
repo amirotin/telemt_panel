@@ -10,11 +10,13 @@ import (
 	"syscall"
 
 	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/migration"
+	"github.com/amirotin/telemt_panel/internal/store"
 )
 
 func runConfigCommand(args []string, output io.Writer) error {
-	usage := errors.New("usage: telemt-panel config check|inspect --config config.toml --format auto|current|0.6")
-	if len(args) == 0 || (args[0] != "check" && args[0] != "inspect") {
+	usage := errors.New("usage: telemt-panel config check|inspect|import-state --config config.toml --format auto|current|0.6 (stop the panel before import-state)")
+	if len(args) == 0 || (args[0] != "check" && args[0] != "inspect" && args[0] != "import-state") {
 		return usage
 	}
 	flags := flag.NewFlagSet("config "+args[0], flag.ContinueOnError)
@@ -35,6 +37,9 @@ func runConfigCommand(args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if args[0] == "import-state" {
+		return runLegacyStateImport(source, output)
+	}
 	if args[0] == "inspect" {
 		encoder := json.NewEncoder(output)
 		encoder.SetIndent("", "  ")
@@ -53,6 +58,26 @@ func runConfigCommand(args []string, output io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func runLegacyStateImport(source *config.Source, output io.Writer) error {
+	if source.Legacy == nil || source.Config.DataDir == "" {
+		return errors.New("import-state requires a 0.6 configuration with persistent data_dir")
+	}
+	path, err := resolveStatePath(source.Config.DataDir)
+	if err != nil {
+		return errors.New("cannot prepare state directory (check data_dir and permissions)")
+	}
+	state, err := store.NewState(path)
+	if err != nil {
+		return errors.New("cannot open existing state; import was not started")
+	}
+	defer state.Close()
+	report, err := migration.ImportLegacyState(state, source)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(output).Encode(report)
 }
 
 func readConfigSource(path string) ([]byte, error) {

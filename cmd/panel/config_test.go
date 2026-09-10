@@ -107,3 +107,69 @@ func TestConfigCommandRejectsUnsafeInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigImportStatePreservesSourceAndDoesNotOpenRuntimeResources(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, "data")
+	path := filepath.Join(dir, "legacy.toml")
+	raw := fmt.Sprintf("data_dir = %q\n", stateDir) + `
+[telemt]
+url = 'http://unreachable.invalid:1'
+auth_header = 'PRIVATE_API_TOKEN'
+[auth]
+username = 'admin'
+password_hash = 'PRIVATE_PASSWORD'
+jwt_secret = 'PRIVATE_JWT'
+[telemt.auto_update]
+enabled = true
+auto_apply = true
+check_interval = '5m'
+[geoip]
+db_path = '/not-opened/PRIVATE_CITY.mmdb'
+[users]
+data_quota_bytes = 1500000
+`
+	if err := os.WriteFile(path, []byte(raw), 0400); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{"imported", "already_imported"} {
+		var out bytes.Buffer
+		if err := runConfigCommand([]string{"import-state", "--config", path}, &out); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String(), "PRIVATE") || !strings.Contains(out.String(), `"status":"`+status+`"`) || !strings.Contains(out.String(), `"imported_check_interval":"6h"`) {
+			t.Fatal("incorrect or unsafe import report")
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != raw {
+		t.Fatal("legacy source modified")
+	}
+	entries, err := os.ReadDir(stateDir)
+	if err != nil || len(entries) != 1 || entries[0].Name() != panelStateFile {
+		t.Fatal("import created runtime resources")
+	}
+	stateBytes, _ := os.ReadFile(filepath.Join(stateDir, panelStateFile))
+	for _, secret := range []string{"PRIVATE_PASSWORD", "PRIVATE_API_TOKEN", "PRIVATE_JWT"} {
+		if bytes.Contains(stateBytes, []byte(secret)) {
+			t.Fatal("startup credential copied into migration state")
+		}
+	}
+	// Current-format input must be rejected before creating its data directory.
+	currentDir := filepath.Join(dir, "current-data")
+	current := strings.Replace(raw, stateDir, currentDir, 1)
+	current = strings.Replace(current, "jwt_secret = 'PRIVATE_JWT'", "", 1)
+	current = strings.Split(current, "[telemt.auto_update]")[0]
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	current = strings.Replace(current, "PRIVATE_PASSWORD", string(hash), 1)
+	currentPath := filepath.Join(dir, "current.toml")
+	if err := os.WriteFile(currentPath, []byte(current), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runConfigCommand([]string{"import-state", "--config", currentPath}, &bytes.Buffer{}); err == nil {
+		t.Fatal("current config accepted for legacy import")
+	}
+	if _, err := os.Stat(currentDir); !os.IsNotExist(err) {
+		t.Fatal("rejected import created data_dir")
+	}
+}
