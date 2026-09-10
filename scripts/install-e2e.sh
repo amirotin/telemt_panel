@@ -327,9 +327,7 @@ run_installer purge >"$WORK/purge.log" 2>&1 || { cat "$WORK/purge.log"; fail "pu
 check test ! -e "$CONFIG"
 check test -z "$(ls -A /etc/telemt-panel 2>/dev/null)"
 check test ! -e /var/lib/telemt-panel
-if [ "$SC" != "procd" ]; then
-  if grep -q '^telemt-panel:' /etc/passwd; then fail "user still exists after purge"; fi
-fi
+# Account ownership beyond this installation is not guessed during purge.
 
 if [ "$FAILED" -ne 0 ] || [ "${E2E_VERBOSE:-}" = 1 ]; then
   echo "--- install.log"; cat "$WORK/install.log"

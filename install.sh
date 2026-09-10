@@ -100,6 +100,14 @@ t() {
   _k="$1"
   shift
   case "${L:-en}:$_k" in
+    ru:remove_parser) _f='Для безопасного удаления нужен бинарник 1.x с config inspect. Укажите --binary /путь/telemt-panel; старый или отсутствующий бинарник не будет использоваться для угадывания путей.' ;;
+    en:remove_parser) _f='Safe removal requires a 1.x binary with config inspect. Supply --binary /path/telemt-panel; paths will not be guessed from an old or missing binary.' ;;
+    ru:remove_unsafe) _f='Цели удаления не прошли проверку. Дальнейшее удаление остановлено; проверьте конфиг, пути и соответствие сервиса панели.' ;;
+    en:remove_unsafe) _f='Removal targets failed validation. Further removal stopped; check configuration, paths and the panel service definition.' ;;
+    ru:remove_failed) _f='Операция удаления не завершена. Дальнейшее удаление остановлено; исправьте ошибку и повторите.' ;;
+    en:remove_failed) _f='Removal did not complete. Further deletion stopped; resolve the error before retrying.' ;;
+    ru:remove_targets) _f='Будут удалены только указанные файлы и каталоги панели. Telemt и файлы вне этих каталогов сохраняются.' ;;
+    en:remove_targets) _f='Only the listed panel files and directories will be removed. Telemt and files outside those directories are retained.' ;;
     ru:update_preflight_failed) _f='Проверка существующей установки или нового бинарника не пройдена; обновление не применено.' ;;
     en:update_preflight_failed) _f='Existing installation or candidate validation failed; update not applied.' ;;
     ru:update_preserve) _f='Будет заменён только бинарник. Конфиг, сервис, права и firewall сохраняются.' ;;
@@ -200,7 +208,7 @@ t() {
 Команды:
   install        установить, обновить или мигрировать с 0.x (по умолчанию)
   uninstall      удалить бинарь, сервис и sudoers; конфиг и данные остаются
-  purge          удалить всё, включая конфиг, данные и пользователя
+  purge          удалить панель, её конфиг и настроенный каталог данных
   help           эта справка
 
 Параметры:
@@ -231,7 +239,7 @@ Usage: sh install.sh [options] [command]
 Commands:
   install        install, update, or migrate from 0.x (default)
   uninstall      remove binary, service and sudoers; keep config and data
-  purge          remove everything including config, data and the user
+  purge          remove panel, configuration and configured data directory
   help           this help
 
 Options:
@@ -543,8 +551,8 @@ Paths: binary %s, config %s, data %s
     # ── uninstall ──
     ru:uninstall_q) _f='Удалить сервис, бинарь и политику sudo? Конфиг и данные останутся.' ;;
     en:uninstall_q) _f='Remove the service, binary and sudo policy? Config and data are kept.' ;;
-    ru:purge_q) _f='Удалить ВСЁ: сервис, бинарь, sudo, конфиг %s, данные %s и пользователя %s?' ;;
-    en:purge_q) _f='Remove EVERYTHING: service, binary, sudo, config %s, data %s and user %s?' ;;
+    ru:purge_q) _f='Удалить сервис, бинарник, sudoers, конфиг %s и данные %s? Системная учётная запись %s и внешние файлы сохранятся.' ;;
+    en:purge_q) _f='Remove service, binary, sudoers, config %s and data %s? OS account %s and external files will be retained.' ;;
     ru:u_service) _f='Сервис остановлен и удалён' ;;
     en:u_service) _f='Service stopped and removed' ;;
     ru:u_binary) _f='Бинарь удалён' ;;
@@ -553,8 +561,8 @@ Paths: binary %s, config %s, data %s
     en:u_sudoers) _f='Sudo policy removed' ;;
     ru:u_kept) _f='Сохранены: %s и %s. Полное удаление: sh install.sh purge' ;;
     en:u_kept) _f='Kept: %s and %s. Full removal: sh install.sh purge' ;;
-    ru:u_purged) _f='Конфиг, данные и пользователь удалены' ;;
-    en:u_purged) _f='Config, data and user removed' ;;
+    ru:u_purged) _f='Панель, конфиг и настроенный каталог данных удалены. Учётная запись ОС и внешние файлы сохранены.' ;;
+    en:u_purged) _f='Panel, configuration and configured data directory removed. OS account and external files retained.' ;;
     ru:u_nothing) _f='Панель не установлена — удалять нечего' ;;
     en:u_nothing) _f='The panel is not installed — nothing to remove' ;;
 
@@ -1080,16 +1088,6 @@ install_hint() {
   esac
 }
 
-detect_existing() {
-  EXISTING="none"
-  if [ -f "$CONFIG_FILE" ]; then
-    if [ -n "$(toml_value "$CONFIG_FILE" auth jwt_secret)" ] || grep -q '^[[:space:]]*\[panel\]' "$CONFIG_FILE"; then
-      EXISTING="v0"
-    else
-      EXISTING="v1"
-    fi
-  fi
-}
 
 detect_telemt() {
   TELEMT_BIN_DETECTED=""
@@ -1633,20 +1631,6 @@ gen_tls_config() {
   esac
 }
 
-load_tls_config() {
-  TLS_MODE=$(toml_value "$1" tls mode)
-  TLS_DOMAIN=$(toml_value "$1" tls acme_domain)
-  TLS_CERT=$(toml_value "$1" tls cert_file)
-  TLS_KEY=$(toml_value "$1" tls key_file)
-  TLS_CACHE=$(toml_value "$1" tls acme_cache_dir)
-  if [ -z "$TLS_MODE" ]; then
-    if [ -n "$TLS_DOMAIN" ]; then TLS_MODE=acme
-    elif [ -n "$TLS_CERT$TLS_KEY" ]; then TLS_MODE=certificate
-    else TLS_MODE=http
-    fi
-  fi
-  case "$TLS_MODE" in http|certificate|acme) ;; *) die "$(t unknown_option tls.mode)" ;; esac
-}
 
 tls_domain_ok() {
   case "$1" in ''|*[!A-Za-z0-9.-]*) return 1 ;; esac
@@ -2420,29 +2404,6 @@ print_done() {
 #  Existing installation: update (1.x) and migration (0.x)
 # ═════════════════════════════════════════════════════════════════════════════
 
-# load_v1_config — answers needed for sudoers/service from an existing 1.x config.
-load_v1_config() {
-  load_tls_config "$CONFIG_FILE"
-  _v=$(toml_value "$CONFIG_FILE" "" listen); [ -n "$_v" ] && LISTEN="$_v"
-  _v=$(toml_value "$CONFIG_FILE" "" data_dir); [ -n "$_v" ] && DATA_DIR="$_v"
-  _v=$(toml_value "$CONFIG_FILE" auth username); [ -n "$_v" ] && ADMIN_USER="$_v"
-  _v=$(toml_value "$CONFIG_FILE" host telemt_service); [ -n "$_v" ] && TELEMT_SVC="$_v"
-  _v=$(toml_value "$CONFIG_FILE" host panel_service); [ -n "$_v" ] && SERVICE_NAME="$_v"
-  _v=$(toml_value "$CONFIG_FILE" updates telemt_binary_path); TELEMT_BIN="${_v:-/bin/telemt}"
-  _v=$(toml_value "$CONFIG_FILE" updates panel_binary_path); [ -n "$_v" ] && PANEL_BIN="$_v"
-  _v=$(toml_value "$CONFIG_FILE" store driver); STORE_DRIVER="${_v:-memory}"
-  _v=$(toml_value "$CONFIG_FILE" privileges mode)
-  case "$_v" in
-    direct) RUN_AS="root" ;;
-    sudo) RUN_AS="user" ;;
-    *) if [ "$INIT" = "procd" ] || [ "$HAS_SUDO" != 1 ]; then RUN_AS="root"; else RUN_AS="user"; fi ;;
-  esac
-  # A 1.x install that still runs as a service user keeps doing so.
-  if [ "$INIT" = "systemd" ] && [ -f "$SERVICE_FILE" ] && grep -q "^User=$SYSTEM_USER" "$SERVICE_FILE"; then
-    RUN_AS="user"
-  fi
-  validate_transport_rights
-}
 
 # validate_existing_store_variant refuses a profile switch that would leave the
 # preserved configuration unreadable by the newly installed binary. It runs
@@ -2643,81 +2604,123 @@ do_install() {
   print_done
 }
 
+# Parse once before any stop/delete; reuse the existing bounded Go CLI.
+prepare_removal() {
+  require_tty
+  check_prereqs_quiet
+  detect_init
+  apply_layout
+  ensure_temp_dir
+  if [ ! -f "$CONFIG_FILE" ]; then
+    if [ "$CMD" = uninstall ] && [ ! -e "$PANEL_BIN" ] && [ ! -e "$SERVICE_FILE" ] && [ ! -e "$SUDOERS_FILE" ]; then say "$(t u_nothing)"; exit 0; fi
+    die "$(t remove_parser)"
+  fi
+  if ! has timeout || ! has sha256sum || ! has readlink; then die "$(t remove_parser)"; fi
+  UPDATE_SOURCE="$TEMP_DIR/removal.toml"
+  $SUDO cat "$CONFIG_FILE" >"$UPDATE_SOURCE" || die "$(t remove_unsafe)"
+  chmod 0600 "$UPDATE_SOURCE"
+  REMOVE_CONFIG_HASH=$(sha256_of "$UPDATE_SOURCE")
+  REMOVE_PARSER="${BINARY_FILE:-$PANEL_BIN}"
+  [ -f "$REMOVE_PARSER" ] || die "$(t remove_parser)"
+  STAGED_BIN="$TEMP_DIR/$BINARY_NAME"
+  $SUDO install -m 0755 "$REMOVE_PARSER" "$STAGED_BIN" || die "$(t remove_parser)"
+  UPDATE_PROBE_DIR="$TEMP_DIR/probe"
+  mkdir "$UPDATE_PROBE_DIR"
+  staged_inspect config inspect --config "$UPDATE_SOURCE" >"$TEMP_DIR/removal.json" || die "$(t remove_parser)"
+  PANEL_BIN=$(json_field "$TEMP_DIR/removal.json" panel_binary_path)
+  TELEMT_BIN=$(json_field "$TEMP_DIR/removal.json" telemt_binary_path)
+  SERVICE_NAME=$(json_field "$TEMP_DIR/removal.json" panel_service)
+  TELEMT_SVC=$(json_field "$TEMP_DIR/removal.json" telemt_service)
+  DATA_DIR=$(json_field "$TEMP_DIR/removal.json" data_dir)
+  sudoers_path_ok "$PANEL_BIN" || die "$(t remove_unsafe)"
+  sudoers_path_ok "$TELEMT_BIN" || die "$(t remove_unsafe)"
+  apply_layout_from_answers
+  [ "$SERVICE_NAME" != "$TELEMT_SVC" ] || die "$(t remove_unsafe)"
+  [ "$(readlink -f "$PANEL_BIN")" != "$(readlink -f "$TELEMT_BIN")" ] || die "$(t remove_unsafe)"
+  for REMOVE_PROTECTED_FILE in "$CONFIG_FILE" "$TELEMT_CONFIG" "$SERVICE_FILE" "$SUDOERS_FILE"; do
+    [ "$(readlink -f "$PANEL_BIN")" != "$(readlink -f "$REMOVE_PROTECTED_FILE")" ] || die "$(t remove_unsafe)"
+  done
+  for REMOVE_FILE in "$PANEL_BIN" "$SERVICE_FILE" "$SUDOERS_FILE"; do
+    [ ! -L "$REMOVE_FILE" ] || die "$(t remove_unsafe)"
+    if [ -e "$REMOVE_FILE" ] && [ ! -f "$REMOVE_FILE" ]; then die "$(t remove_unsafe)"; fi
+  done
+  if [ -f "$SERVICE_FILE" ]; then
+    if ! $SUDO grep -qF "$PANEL_BIN" "$SERVICE_FILE" || ! $SUDO grep -qF "$CONFIG_FILE" "$SERVICE_FILE"; then die "$(t remove_unsafe)"; fi
+  elif [ -f "$PANEL_BIN" ]; then
+    # Without a matching service definition, do not unlink a possibly running daemon.
+    die "$(t remove_unsafe)"
+  fi
+  validate_removal_data
+  say "$(t remove_targets)"
+  kv "$(t s_service)" "$SERVICE_FILE"
+  kv "$(t s_paths)" "$PANEL_BIN"
+  kv "sudoers" "$SUDOERS_FILE"
+}
+
+validate_removal_data() {
+  if [ "$CMD" != purge ]; then return 0; fi
+  validate_panel_directory "$CONFIG_DIR"
+  sudoers_path_ok "$CONFIG_DIR" || die "$(t remove_unsafe)"
+  if [ -n "$DATA_DIR" ]; then
+    validate_panel_directory "$DATA_DIR"
+    sudoers_path_ok "$DATA_DIR" || die "$(t remove_unsafe)"
+  fi
+  for REMOVE_DIR in "$CONFIG_DIR" "${DATA_DIR:-$CONFIG_DIR}"; do
+    [ ! -L "$REMOVE_DIR" ] || die "$(t remove_unsafe)"
+    REMOVE_CANON=$(readlink -f "$REMOVE_DIR") || die "$(t remove_unsafe)"
+    for REMOVE_PROTECTED in "$TELEMT_BIN" "$TELEMT_CONFIG" "$BIN_DIR" "$(dirname "$SERVICE_FILE")" "$(dirname "$SUDOERS_FILE")"; do
+      REMOVE_PROTECTED=$(readlink -f "$REMOVE_PROTECTED") || die "$(t remove_unsafe)"
+      case "$REMOVE_PROTECTED" in "$REMOVE_CANON"|"$REMOVE_CANON"/*) die "$(t remove_unsafe)" ;; esac
+    done
+  done
+}
+
 stop_and_disable_service() {
   case "$INIT" in
     systemd)
-      run_quiet systemctl stop "$SERVICE_NAME"
-      run_quiet systemctl disable "$SERVICE_NAME" ;;
+      run systemctl stop "$SERVICE_NAME" || return 1
+      run systemctl disable "$SERVICE_NAME" || return 1 ;;
     openrc)
-      run_quiet rc-service "$SERVICE_NAME" stop
-      run_quiet rc-update del "$SERVICE_NAME" default ;;
+      run rc-service "$SERVICE_NAME" stop || return 1
+      run rc-update del "$SERVICE_NAME" default || return 1 ;;
     procd)
-      run_quiet "$SERVICE_FILE" stop
-      run_quiet "$SERVICE_FILE" disable ;;
+      run "$SERVICE_FILE" stop || return 1
+      run "$SERVICE_FILE" disable || return 1 ;;
     sysvinit)
-      run_quiet "$SERVICE_FILE" stop
-      if has update-rc.d; then run_quiet update-rc.d -f "$SERVICE_NAME" remove
-      elif has chkconfig; then run_quiet chkconfig --del "$SERVICE_NAME"; fi ;;
+      run "$SERVICE_FILE" stop || return 1
+      if has update-rc.d; then run update-rc.d -f "$SERVICE_NAME" remove || return 1
+      elif has chkconfig; then run chkconfig --del "$SERVICE_NAME" || return 1; fi ;;
+    *) return 1 ;;
   esac
 }
 
-do_uninstall() {
-  require_tty
-  check_prereqs_quiet
-  detect_init
-  apply_layout
-  detect_existing
-  if [ "$EXISTING" = "v1" ]; then
-    load_v1_config
-    apply_layout_from_answers
-  fi
-  if [ ! -f "$PANEL_BIN" ] && [ ! -f "$SERVICE_FILE" ] && [ ! -f "$CONFIG_FILE" ]; then
-    say "$(t u_nothing)"
-    return 0
-  fi
-  if [ "$CMD" = "uninstall" ]; then
-    confirm_danger uninstall_q || { say "$(t aborted)"; exit 0; }
-  fi
+remove_panel_files() {
+  [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
   if [ -f "$SERVICE_FILE" ]; then
-    stop_and_disable_service
-    run rm -f "$SERVICE_FILE"
-    [ "$INIT" = "systemd" ] && run_quiet systemctl daemon-reload
-    ok "$(t u_service)"
+    stop_and_disable_service || die "$(t remove_failed)"
+    run rm -f "$SERVICE_FILE" || die "$(t remove_failed)"
+    if [ "$INIT" = systemd ]; then run systemctl daemon-reload || die "$(t remove_failed)"; fi
   fi
-  if [ -f "$PANEL_BIN" ]; then
-    run rm -f "$PANEL_BIN" "$PANEL_BIN.bak" "$PANEL_BIN.tmp" "$PANEL_BIN.bak.tmp"
-    ok "$(t u_binary)"
-  fi
-  if [ -f "$SUDOERS_FILE" ]; then
-    run rm -f "$SUDOERS_FILE"
-    ok "$(t u_sudoers)"
-  fi
-  if [ "$CMD" = "uninstall" ]; then
-    say "$(t u_kept "$CONFIG_DIR" "$DATA_DIR")"
-  fi
+  run rm -f "$PANEL_BIN" || die "$(t remove_failed)"
+  run rm -f "$SUDOERS_FILE" || die "$(t remove_failed)"
+}
+
+do_uninstall() {
+  prepare_removal
+  confirm_danger uninstall_q || { say "$(t aborted)"; exit 0; }
+  remove_panel_files
+  say "$(t u_kept "$CONFIG_DIR" "$DATA_DIR")"
 }
 
 do_purge() {
-  require_tty
-  check_prereqs_quiet
-  detect_init
-  apply_layout
-  detect_existing
-  if [ "$EXISTING" = "v1" ]; then
-    load_v1_config
-    apply_layout_from_answers
-  fi
+  prepare_removal
   confirm_danger purge_q "$CONFIG_DIR" "$DATA_DIR" "$SYSTEM_USER" || { say "$(t aborted)"; exit 0; }
-  validate_panel_directory "$CONFIG_DIR"
-  validate_panel_directory "$DATA_DIR"
-  do_uninstall
-  validate_panel_directory "$CONFIG_DIR"
-  validate_panel_directory "$DATA_DIR"
-  run rm -rf "$CONFIG_DIR" "$DATA_DIR"
-  [ -f "$LOG_FILE" ] && run rm -f "$LOG_FILE"
-  if id "$SYSTEM_USER" >/dev/null 2>&1; then
-    if has userdel; then run_quiet userdel "$SYSTEM_USER"; else run_quiet deluser "$SYSTEM_USER"; fi
-  fi
+  remove_panel_files
+  validate_removal_data
+  [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
+  run rm -rf "$CONFIG_DIR" || die "$(t remove_failed)"
+  if [ -n "$DATA_DIR" ] && [ "$DATA_DIR" != "$CONFIG_DIR" ]; then run rm -rf "$DATA_DIR" || die "$(t remove_failed)"; fi
+  # Do not remove an OS account or an external logfile based on a guessed name.
   ok "$(t u_purged)"
 }
 

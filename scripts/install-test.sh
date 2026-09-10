@@ -235,44 +235,12 @@ assert_eq "procd defaults lite" "lite" "$BUILD_VARIANT"
 
 # An update keeps config.toml intact, so a full -> lite switch must be refused
 # before installing a binary that cannot open the configured SQL store.
-cat >"$TMP/existing-v1.toml" <<'EOF'
-[store]
-driver = "sqlite"
-path = "/var/lib/telemt-panel/panel.db"
-EOF
-CONFIG_FILE="$TMP/existing-v1.toml"
-BUILD_VARIANT="lite"
-load_v1_config
-assert_eq "existing store driver loaded" "sqlite" "$STORE_DRIVER"
-if (validate_existing_store_variant) >/dev/null 2>&1; then
-  fail "lite accepted existing sqlite store"
-else
-  pass
-fi
-
-cat >"$TMP/existing-memory-v1.toml" <<'EOF'
-[store]
-driver = "memory"
-EOF
-CONFIG_FILE="$TMP/existing-memory-v1.toml"
-load_v1_config
-if (validate_existing_store_variant) >/dev/null 2>&1; then
-  pass
-else
-  fail "lite rejected existing memory store"
-fi
-
-# Configs written before the store section existed used the memory backend.
-: >"$TMP/existing-legacy-v1.toml"
-CONFIG_FILE="$TMP/existing-legacy-v1.toml"
-STORE_DRIVER="sqlite"
-load_v1_config
-assert_eq "missing store section means memory" "memory" "$STORE_DRIVER"
-if (validate_existing_store_variant) >/dev/null 2>&1; then
-  pass
-else
-  fail "lite rejected legacy memory config"
-fi
+# TOML defaults are covered by the Go decoder; shell enforces profile policy.
+BUILD_VARIANT=lite
+STORE_DRIVER=sqlite
+if (validate_existing_store_variant) >/dev/null 2>&1; then fail "lite accepted SQLite"; else pass; fi
+STORE_DRIVER=memory
+if (validate_existing_store_variant) >/dev/null 2>&1; then pass; else fail "lite rejected memory"; fi
 
 # Destructive operations must refuse broad targets before any host mutation.
 for _dir in / /etc /var /var/lib /tmp /home /home/admin /usr/local /root relative /var/lib/../..; do
@@ -323,18 +291,10 @@ for _service in '*' '../other' 'telemt;id' '-other' 'telemt,ALL' 'telemt:other';
 done
 if service_name_ok telemt@main.service; then pass; else fail "service rejected normal template instance"; fi
 
-cat >"$TMP/custom-service.toml" <<'EOF'
-[host]
-panel_service = "panel-custom"
-[privileges]
-mode = "direct"
-EOF
-CONFIG_FILE="$TMP/custom-service.toml"
+SERVICE_NAME=panel-custom
 INIT=systemd
-load_v1_config
-assert_eq "existing custom panel service" "panel-custom" "$SERVICE_NAME"
 apply_layout_from_answers
-assert_eq "existing custom service file" "/etc/systemd/system/panel-custom.service" "$SERVICE_FILE"
+assert_eq "custom service file" "/etc/systemd/system/panel-custom.service" "$SERVICE_FILE"
 
 # A failed readiness probe is a failed installation, not a success warning.
 if (
@@ -408,6 +368,12 @@ if (
   run() { :; }; cmd_restart() { printf true; }
   start_service
 ) >/dev/null 2>&1; then fail "TLS readiness failure ignored"; else pass; fi
+
+if sh "$HERE/install-remove-test.sh" >"$TMP/remove-test.log" 2>&1; then
+  pass
+else
+  fail "removal fixture failed: $(cat "$TMP/remove-test.log")"
+fi
 
 if sh "$HERE/install-update-test.sh" >"$TMP/update-test.log" 2>&1; then
   pass
