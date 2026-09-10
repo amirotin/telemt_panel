@@ -72,6 +72,9 @@ func NewAssetMatcher(name, arch, variant string) AssetMatcher {
 // static; the transitional 1.0 libc names remain a fallback so a 1.0 panel
 // can update itself before those compatibility duplicates are retired.
 func NewPanelAssetMatcher(arch, libc, buildVariant string) AssetMatcher {
+	if arch != "x86_64" && arch != "aarch64" {
+		return func([]Asset) (*Asset, *Asset) { return nil, nil }
+	}
 	name := "telemt-panel"
 	if buildVariant == "lite" {
 		name += "-lite"

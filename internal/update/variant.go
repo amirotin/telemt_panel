@@ -77,12 +77,6 @@ func archToken(goarch string) string {
 		return "x86_64"
 	case "arm64":
 		return "aarch64"
-	case "arm":
-		return "armv7"
-	case "mipsle":
-		return "mipsle"
-	case "mips":
-		return "mips"
 	default:
 		return goarch
 	}

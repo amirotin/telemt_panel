@@ -216,7 +216,17 @@ fi
 
 # ── detection helpers on this host ───────────────────────────────────────────
 detect_arch
-case "$ARCH" in x86_64|aarch64|armv7|mipsle|mips) pass ;; *) fail "detect_arch: $ARCH" ;; esac
+case "$ARCH" in x86_64|aarch64) pass ;; *) fail "detect_arch: $ARCH" ;; esac
+for _machine in armv7l armv8l mips mipsel mipsle i686 riscv64; do
+  if (
+    uname() { printf '%s\n' "$_machine"; }
+    detect_arch
+  ) >"$TMP/unsupported-arch.log" 2>&1; then
+    fail "installer accepted unsupported architecture $_machine"
+  else
+    pass
+  fi
+done
 detect_libc
 case "$LIBC" in gnu|musl) pass ;; *) fail "detect_libc: $LIBC" ;; esac
 

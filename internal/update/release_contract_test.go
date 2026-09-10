@@ -20,13 +20,13 @@ import (
 )
 
 var (
-	releaseArches   = []string{"x86_64", "aarch64", "armv7", "mipsle", "mips"}
+	releaseArches   = []string{"x86_64", "aarch64"}
 	releaseVariants = []string{"gnu", "musl"}
 )
 
 // TestReleaseContract checks actual make release outputs. RELEASE_DIR enables
 // this gate; RELEASE_VERSION checks the tag's embedded version. GNU/musl names
-// and unprefixed MIPS aliases are transitional, not separate binary builds.
+// are transitional, not separate binary builds.
 func TestReleaseContract(t *testing.T) {
 	dir := os.Getenv("RELEASE_DIR")
 	if dir == "" {
@@ -54,7 +54,7 @@ func TestReleaseContract(t *testing.T) {
 		assets = append(assets, Asset{Name: entry.Name()})
 	}
 	if len(entries) != len(expected) {
-		t.Fatalf("release entries = %d, want %d (20 archives + 20 checksums)", len(entries), len(expected))
+		t.Fatalf("release entries = %d, want %d (8 archives + 8 checksums)", len(entries), len(expected))
 	}
 	hashes := make(map[string][32]byte)
 	for _, prefix := range []string{"telemt-panel", "telemt-panel-lite"} {
@@ -62,13 +62,12 @@ func TestReleaseContract(t *testing.T) {
 			for _, libc := range releaseVariants {
 				name := AssetName(prefix, arch, libc)
 				t.Run(name, func(t *testing.T) {
-					lite := prefix == "telemt-panel-lite" || arch == "mips" || arch == "mipsle"
-					matcher := NewAssetMatcher(prefix, arch, libc)
-					if prefix == "telemt-panel-lite" {
-						matcher = NewPanelAssetMatcher(arch, libc, "lite")
-					} else if !lite {
-						matcher = NewPanelAssetMatcher(arch, libc, "full")
+					lite := prefix == "telemt-panel-lite"
+					profile := "full"
+					if lite {
+						profile = "lite"
 					}
+					matcher := NewPanelAssetMatcher(arch, libc, profile)
 					bin, sum := matcher(assets)
 					if bin == nil || bin.Name != name || sum == nil || sum.Name != name+".sha256" {
 						t.Fatal("updater selected the wrong archive or checksum")
@@ -139,15 +138,8 @@ func checkReleaseELF(t *testing.T, content []byte, arch string, lite bool) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	machine := map[string]elf.Machine{"x86_64": elf.EM_X86_64, "aarch64": elf.EM_AARCH64, "armv7": elf.EM_ARM, "mipsle": elf.EM_MIPS, "mips": elf.EM_MIPS}[arch]
-	class, data := elf.ELFCLASS32, elf.ELFDATA2LSB
-	if arch == "x86_64" || arch == "aarch64" {
-		class = elf.ELFCLASS64
-	}
-	if arch == "mips" {
-		data = elf.ELFDATA2MSB
-	}
-	if f.Machine != machine || f.Class != class || f.Data != data {
+	machine := map[string]elf.Machine{"x86_64": elf.EM_X86_64, "aarch64": elf.EM_AARCH64}[arch]
+	if f.Machine != machine || f.Class != elf.ELFCLASS64 || f.Data != elf.ELFDATA2LSB {
 		t.Fatalf("wrong ELF target: %s %s %s", f.Machine, f.Class, f.Data)
 	}
 	for _, program := range f.Progs {
@@ -169,11 +161,8 @@ func checkReleaseELF(t *testing.T, content []byte, arch string, lite bool) {
 	if settings["CGO_ENABLED"] != "0" || settings["GOOS"] != "linux" || settings["-trimpath"] != "true" || (settings["-tags"] == "lite") != lite {
 		t.Fatal("wrong Go build profile, CGO configuration or trimpath setting")
 	}
-	if arch == "armv7" && strings.Split(settings["GOARM"], ",")[0] != "7" {
-		t.Fatal("ARM build must target ARMv7")
-	}
-	if (arch == "mips" || arch == "mipsle") && settings["GOMIPS"] != "softfloat" {
-		t.Fatal("MIPS build must use softfloat")
+	if arch == "x86_64" && settings["GOAMD64"] != "v1" {
+		t.Fatal("x86_64 releases must work on baseline CPUs as well as v3 CPUs")
 	}
 	hasSQLite := false
 	for _, dependency := range info.Deps {

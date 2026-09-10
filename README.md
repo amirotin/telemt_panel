@@ -30,6 +30,10 @@ sh install.sh
 
 Telemt скрипт не ставит: без него панель запустится, но покажет, что чинить. После установки Telemt перезапустите скрипт — он обновит права.
 
+Официальные сборки панели — Linux **x86_64 и aarch64**, как у Telemt. Это относится
+и к OpenWrt: ARMv7/MIPS не поддерживаются. Для Telemt x86_64-v3 подходит обычная
+панель x86_64; full/lite доступны для обеих архитектур.
+
 | | VPS (systemd/OpenRC/sysvinit) | Роутер (procd/OpenWrt) |
 |---|---|---|
 | вариант | full: memory, SQLite | lite: memory |
@@ -149,6 +153,8 @@ Source builds use the Go minor declared in the root `go.mod` (latest patch withi
 that minor) and Node.js 22. CI and releases use the same runtime families;
 `web/go.mod` is only a package-traversal boundary, not a build-toolchain selector.
 This policy does not guarantee byte-for-byte reproducible binaries.
+Both full and lite releases support Linux x86_64 and aarch64, matching Telemt.
+The ordinary x86_64 panel also works alongside Telemt's x86_64-v3 build.
 Release matrix and local verification: [release preparation](docs/RELEASING.md).
 
 `install.sh` is a single POSIX-sh installer (dash, bash, busybox) with a Russian/English interface. It detects the host (systemd, OpenRC, procd/OpenWrt, sysvinit), locates Telemt, asks a few explained questions, shows a summary, then installs the release binary, writes the config, a narrow sudoers policy and a service file, starts the panel and checks `/api/health`.

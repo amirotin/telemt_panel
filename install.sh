@@ -308,8 +308,8 @@ Paths: binary %s, config %s, data %s
     en:prereq_ok) _f='curl/wget, tar and privileges are available' ;;
 
     # ── detection ──
-    ru:unsupported_arch) _f='Архитектура %s не поддерживается (нужна x86_64, aarch64, armv7, mipsle или mips).' ;;
-    en:unsupported_arch) _f='Architecture %s is not supported (need x86_64, aarch64, armv7, mipsle or mips).' ;;
+    ru:unsupported_arch) _f='Архитектура %s не поддерживается (нужна x86_64 или aarch64, как в официальных сборках Telemt).' ;;
+    en:unsupported_arch) _f='Architecture %s is not supported (need x86_64 or aarch64, matching official Telemt builds).' ;;
     ru:no_init) _f='Не удалось распознать систему инициализации (нет systemd, OpenRC, procd, sysvinit).\nПанель можно запустить вручную: %s --config %s' ;;
     en:no_init) _f='Could not recognise the init system (no systemd, OpenRC, procd or sysvinit).\nThe panel can still be started by hand: %s --config %s' ;;
     ru:d_arch) _f='Архитектура' ;;
@@ -990,9 +990,6 @@ detect_arch() {
   case "$(uname -m)" in
     x86_64|amd64) ARCH="x86_64" ;;
     aarch64|arm64) ARCH="aarch64" ;;
-    armv7*|armv8l) ARCH="armv7" ;;
-    mipsel|mipsle) ARCH="mipsle" ;;
-    mips) ARCH="mips" ;;
     *) die "$(t unsupported_arch "$(uname -m)")" ;;
   esac
 }
@@ -1140,16 +1137,13 @@ choose_build_variant() {
   # Never execute an unverified installed binary; 0.6 treats 'version' as startup.
   if [ -z "$_requested" ]; then
     case "$INIT:$ARCH" in
-      procd:*|*:mips|*:mipsle) _requested="lite" ;;
+      procd:*) _requested="lite" ;;
       *) _requested="full" ;;
     esac
   fi
   case "$_requested" in
     full|lite) BUILD_VARIANT="$_requested" ;;
     *) die "$(t unknown_option "--variant $_requested")" ;;
-  esac
-  case "$BUILD_VARIANT:$ARCH" in
-    full:mips|full:mipsle) die "$(t unsupported_arch "$ARCH (full)")" ;;
   esac
   if [ -z "$STORE_DRIVER" ]; then
     if [ "$BUILD_VARIANT" = "lite" ]; then STORE_DRIVER="memory"; else STORE_DRIVER="sqlite"; fi

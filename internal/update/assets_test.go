@@ -203,3 +203,20 @@ func TestNewPanelAssetMatcherPreservesBuildVariant(t *testing.T) {
 		t.Fatalf("transitional full match = %+v", bin)
 	}
 }
+
+func TestNewPanelAssetMatcherRejectsUnsupportedArchitectures(t *testing.T) {
+	for _, arch := range []string{"arm", "armv7", "mips", "mipsle", "386", "riscv64", "x86_64-v3"} {
+		for _, profile := range []string{"full", "lite"} {
+			prefix := "telemt-panel"
+			if profile == "lite" {
+				prefix += "-lite"
+			}
+			legacy := AssetName(prefix, arch, "gnu")
+			canonical := prefix + "-" + arch + "-linux.tar.gz"
+			assets := []Asset{{Name: legacy}, {Name: legacy + ".sha256"}, {Name: canonical}, {Name: canonical + ".sha256"}}
+			if bin, sum := NewPanelAssetMatcher(arch, "gnu", profile)(assets); bin != nil || sum != nil {
+				t.Fatalf("unsupported %s/%s matched an archive", arch, profile)
+			}
+		}
+	}
+}

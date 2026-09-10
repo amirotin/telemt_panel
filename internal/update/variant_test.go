@@ -87,7 +87,7 @@ func TestArchToken(t *testing.T) {
 	}{
 		{"amd64", "x86_64"},
 		{"arm64", "aarch64"},
-		{"arm", "armv7"},
+		{"arm", "arm"}, // unsupported targets are not mapped to release names
 		{"mipsle", "mipsle"},
 		{"mips", "mips"},
 		{"riscv64", "riscv64"}, // unknown arch passes through verbatim
