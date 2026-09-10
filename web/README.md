@@ -352,9 +352,13 @@ RUN_PEOPLE_SCALE=1 npm run e2e -- --project=desktop people-scale.desktop.spec.ts
 ```
 
 It checks full-dataset search, virtualized scrolling at 1440/768/360px, sorting,
-filters, long press and returning from the mobile detail screen. Console output
+filters, long press, returning from the mobile detail screen, SPA navigation
+and fresh data after an offline interval without reloading or logging in again.
+The offline step waits for an actual SSE request failure after a debounced topic
+change: Chromium can otherwise keep an established stream alive. Console output
 reports rendered row counts and decoded SSE user-payload bytes, not total network
-transfer or a server memory limit. It is skipped in the ordinary e2e run.
+transfer or a server memory limit, along with stream counts and page errors.
+It is skipped in the ordinary e2e run.
 
 ## PWA
 
