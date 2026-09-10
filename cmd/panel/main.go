@@ -46,6 +46,12 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "config":
+			if err := runConfigCommand(os.Args[2:], os.Stdout); err != nil {
+				slog.Error("config", "err", err)
+				os.Exit(1)
+			}
+			return
 		case "store":
 			if err := runStoreCommand(os.Args[2:]); err != nil {
 				slog.Error("store", "err", err)
