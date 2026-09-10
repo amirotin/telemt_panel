@@ -15,18 +15,25 @@ import (
 )
 
 func runConfigCommand(args []string, output io.Writer) error {
-	usage := errors.New("usage: telemt-panel config check|inspect|import-state --config config.toml --format auto|current|0.6 (stop the panel before import-state)")
-	if len(args) == 0 || (args[0] != "check" && args[0] != "inspect" && args[0] != "import-state") {
+	usage := errors.New("usage: telemt-panel config check|inspect|import-state|export --config config.toml --format auto|current|0.6 (export requires --out NEW.toml; stop the panel before import-state or export)")
+	if len(args) == 0 || (args[0] != "check" && args[0] != "inspect" && args[0] != "import-state" && args[0] != "export") {
 		return usage
 	}
 	flags := flag.NewFlagSet("config "+args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	path := flags.String("config", "config.toml", "configuration file")
 	format := flags.String("format", "auto", "source format: auto, current or 0.6")
+	var outPath string
+	if args[0] == "export" {
+		flags.StringVar(&outPath, "out", "", "new current-format file (must not exist)")
+	}
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *path == "" {
 		return usage
 	}
 	if *format != "auto" && *format != "current" && *format != "0.6" {
+		return usage
+	}
+	if args[0] == "export" && outPath == "" {
 		return usage
 	}
 	data, err := readConfigSource(*path)
@@ -39,6 +46,9 @@ func runConfigCommand(args []string, output io.Writer) error {
 	}
 	if args[0] == "import-state" {
 		return runLegacyStateImport(source, output)
+	}
+	if args[0] == "export" {
+		return runLegacyConfigExport(source, outPath, output)
 	}
 	if args[0] == "inspect" {
 		encoder := json.NewEncoder(output)
