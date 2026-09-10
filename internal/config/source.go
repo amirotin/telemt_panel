@@ -15,10 +15,26 @@ import (
 // Source is a validated configuration and any legacy data requiring a later
 // state import. Sensitive values are never included in its JSON representation.
 type Source struct {
-	Format   string       `json:"format"`
-	Config   *Config      `json:"-"`
-	Legacy   *LegacyCarry `json:"-"`
-	Warnings []string     `json:"warnings"`
+	Format         string       `json:"format"`
+	Config         *Config      `json:"-"`
+	Legacy         *LegacyCarry `json:"-"`
+	Warnings       []string     `json:"warnings"`
+	legacyPassword string
+}
+
+// HasLegacyPlaintextPassword reports whether compatibility startup needs a
+// stable bcrypt hash. The original value never enters the serialized carry data.
+func (s *Source) HasLegacyPlaintextPassword() bool { return s.legacyPassword != "" }
+
+// ReuseLegacyPasswordHash keeps the persisted identity when the original legacy
+// password is unchanged. Only our cost-10 compatibility hashes are accepted.
+func (s *Source) ReuseLegacyPasswordHash(hash string) bool {
+	cost, err := bcrypt.Cost([]byte(hash))
+	if !s.HasLegacyPlaintextPassword() || err != nil || cost != 10 || bcrypt.CompareHashAndPassword([]byte(hash), []byte(s.legacyPassword)) != nil {
+		return false
+	}
+	s.Config.Auth.PasswordHash = hash
+	return true
 }
 
 // SourceReport is the allowlisted, non-secret output for offline inspection.

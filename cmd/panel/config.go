@@ -47,7 +47,7 @@ func runConfigCommand(args []string, output io.Writer) error {
 	}
 	message := "Configuration valid (current format); runtime resources not checked."
 	if source.Legacy != nil {
-		message = "Configuration valid (0.6 format); migration required before 1.x startup; runtime resources not checked."
+		message = "Configuration valid (0.6 format); compatibility startup initializes legacy state; runtime resources not checked."
 	}
 	if _, err := fmt.Fprintln(output, message); err != nil {
 		return err
@@ -103,4 +103,12 @@ func readConfigSource(path string) ([]byte, error) {
 		return nil, errors.New("configuration file exceeds 1 MiB")
 	}
 	return data, nil
+}
+
+func loadStartupSource(path string) (*config.Source, error) {
+	data, err := readConfigSource(path)
+	if err != nil {
+		return nil, err
+	}
+	return config.DecodeSource(data, path, "auto")
 }

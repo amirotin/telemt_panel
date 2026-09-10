@@ -54,7 +54,7 @@ func TestConfigCommandsAreOfflineAndReadOnly(t *testing.T) {
 					if report.RequiresMigration != legacy || !report.HasGithubToken || !report.HasTelemtAuth || report.TLSMode != "certificate" {
 						t.Fatalf("unexpected report: %+v", report)
 					}
-				} else if legacy && !strings.Contains(out.String(), "migration required") {
+				} else if legacy && !strings.Contains(out.String(), "compatibility startup") {
 					t.Fatal("legacy check did not explain startup limitation")
 				}
 			}
@@ -68,7 +68,7 @@ func TestConfigCommandsAreOfflineAndReadOnly(t *testing.T) {
 			}
 			if legacy {
 				if _, err := config.Load(path); err == nil {
-					t.Fatal("normal startup must stay strict until state import exists")
+					t.Fatal("strict current-format loader accepted legacy input")
 				}
 			}
 		})

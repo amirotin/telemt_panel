@@ -19,6 +19,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/httpapi"
 	"github.com/amirotin/telemt_panel/internal/hub"
+	"github.com/amirotin/telemt_panel/internal/migration"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 	"github.com/amirotin/telemt_panel/internal/update"
@@ -64,16 +65,17 @@ func main() {
 	configPath := flag.String("config", "config.toml", "path to config file")
 	flag.Parse()
 
-	cfg, err := config.Load(*configPath)
+	source, err := loadStartupSource(*configPath)
 	if err != nil {
 		slog.Error("load config", "err", err)
 		os.Exit(1)
 	}
+	cfg := source.Config
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	st, err := newStore(cfg)
+	st, err := newSourceStore(source)
 	if err != nil {
 		slog.Error("open store", "err", err)
 		os.Exit(1)
@@ -262,6 +264,11 @@ const panelStateFile = "panel-state.json"
 // newStore keeps mandatory panel state in panel-state.json and uses the
 // configured driver only for observability history.
 func newStore(cfg *config.Config) (store.Store, error) {
+	return newSourceStore(&config.Source{Format: "current", Config: cfg})
+}
+
+func newSourceStore(source *config.Source) (store.Store, error) {
+	cfg := source.Config
 	statePath, err := resolveStatePath(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -269,6 +276,17 @@ func newStore(cfg *config.Config) (store.Store, error) {
 	state, err := store.NewState(statePath)
 	if err != nil {
 		return nil, fmt.Errorf("open panel state: %w", err)
+	}
+	if source.Legacy != nil {
+		warnings, err := migration.PrepareLegacyStartup(state, source)
+		if err != nil {
+			_ = state.Close()
+			return nil, err
+		}
+		slog.Warn("legacy configuration compatibility mode; source file preserved; transport edits require manual configuration")
+		for _, warning := range warnings {
+			slog.Warn("legacy startup", "code", warning)
+		}
 	}
 	if err := state.BindPasswordAuth(cfg.Auth.Username, cfg.Auth.PasswordHash); err != nil {
 		_ = state.Close()

@@ -104,7 +104,9 @@ func decodeLegacySource(data []byte, path string) (*Source, error) {
 	}
 	warnings := []string{"legacy_sessions_require_login"}
 	password := old.Auth.PasswordHash
+	plaintext := ""
 	if !strings.HasPrefix(password, "$2a$") && !strings.HasPrefix(password, "$2b$") && !strings.HasPrefix(password, "$2y$") {
+		plaintext = password
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 		if err != nil {
 			return nil, errors.New("cannot hash legacy password")
@@ -174,7 +176,7 @@ func decodeLegacySource(data []byte, path string) (*Source, error) {
 	if err := validateSourceRuntime(cfg); err != nil {
 		return nil, err
 	}
-	return &Source{Format: "0.6", Config: cfg, Legacy: carry, Warnings: warnings}, nil
+	return &Source{Format: "0.6", Config: cfg, Legacy: carry, Warnings: warnings, legacyPassword: plaintext}, nil
 }
 
 func legacyDefault(value, fallback string) string {

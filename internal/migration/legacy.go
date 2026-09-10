@@ -15,8 +15,9 @@ import (
 const legacyStateKey = "migration.0.6.state"
 
 type legacyStateRecord struct {
-	Version  int                 `json:"version"`
-	Retained *config.LegacyCarry `json:"retained"`
+	Version       int                 `json:"version"`
+	Retained      *config.LegacyCarry `json:"retained"`
+	GeoIPComplete bool                `json:"geoip_complete,omitempty"`
 }
 
 // LegacyStateReport contains only fixed labels and scheduler values, not config
@@ -46,7 +47,11 @@ func ImportLegacyState(state *store.Memory, source *config.Source) (LegacyStateR
 		if json.Unmarshal([]byte(raw), &record) != nil || record.Version != 1 || record.Retained == nil {
 			return LegacyStateReport{}, errors.New("invalid legacy state marker; existing state was not changed")
 		}
-		return legacyStateReport("already_imported", record.Retained), nil
+		report := legacyStateReport("already_imported", record.Retained)
+		if record.GeoIPComplete {
+			report.Pending = slices.DeleteFunc(report.Pending, func(value string) bool { return value == "geoip_activation" })
+		}
+		return report, nil
 	}
 	policies, err := state.ListStoragePolicies()
 	if err != nil || !slices.Equal(policies, store.DefaultStoragePolicies()) {
