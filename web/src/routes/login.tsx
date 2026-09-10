@@ -9,6 +9,7 @@ import { safeRedirectTarget } from "../auth/safeRedirect";
 import { errorMessage, useStrings, type Dict } from "../i18n";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import loginLogo from "../assets/logo-login.webp";
 import {
   loginCredentialToJSON,
   passkeysSupported,
@@ -96,16 +97,11 @@ function LoginPage() {
   const canSubmit = username.length > 0 && password.length > 0 && !mutation.isPending;
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[360px] flex-col justify-center gap-3.5 px-4 py-10">
-      <div className="flex flex-col items-center gap-1.5 pb-1">
-        <span
-          className="brand-gradient inline-flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-brand-text"
-          aria-hidden="true"
-        >
-          T
-        </span>
-        <h1 className="mt-1 text-xl font-extrabold tracking-tight text-text">{s.app.title}</h1>
-        <p className="text-meta text-text-muted">{s.auth.tagline}</p>
+    <main className="mx-auto flex min-h-dvh w-full max-w-[400px] flex-col justify-center gap-4 px-4 py-8">
+      <div className="flex flex-col items-center gap-3 pb-1">
+        <img src={loginLogo} alt="" aria-hidden="true" width={1000} height={563} className="w-full rounded-2xl" />
+        <h1 className="sr-only">{s.app.title}</h1>
+        <p className="text-center text-meta text-text-muted">{s.auth.tagline}</p>
       </div>
 
       <form

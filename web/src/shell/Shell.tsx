@@ -15,20 +15,18 @@ import { useLogout } from "../auth/useLogout";
 import { Sheet } from "../ui/Sheet";
 import { IconLogout, IconMore, IconSettings } from "../ui/icons";
 import { HistoryNotice } from "./HistoryNotice";
+import menuLogo from "../assets/logo-menu.webp";
 
 export function BrandMark({ className }: { className?: string }) {
-  const s = useStrings();
   return (
-    <span
+    <img
+      src={menuLogo}
+      alt=""
+      width={160}
+      height={160}
       aria-hidden="true"
-      className={cn(
-        "brand-gradient inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
-        "text-[13px] font-bold leading-none text-brand-text",
-        className,
-      )}
-    >
-      {s.app.title.slice(0, 1)}
-    </span>
+      className={cn("h-10 w-10 shrink-0 rounded-xl object-contain", className)}
+    />
   );
 }
 

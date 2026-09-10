@@ -7,6 +7,20 @@ test("production HTML avoids initial module preloads and supports mobile standal
   await expect(page.locator('meta[name="mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
   await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
   await expect(page.getByLabel("Имя пользователя")).toBeVisible();
+  const logo = page.locator('img[src*="logo-login-"]');
+  await expect(logo).toBeVisible();
+  await expect.poll(() => logo.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+});
+
+test("provided menu logo loads in full sidebar and tablet rail", async ({ page, login }) => {
+  await login();
+  for (const [width, testId] of [[1280, "full-sidebar"], [768, "navigation-rail"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    const logo = page.getByTestId(testId).locator('img[src*="logo-menu-"]');
+    await expect(logo).toBeVisible();
+    await expect.poll(() => logo.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  }
 });
 
 test("people loads within the script request budget after a full navigation", async ({ page, login }) => {
