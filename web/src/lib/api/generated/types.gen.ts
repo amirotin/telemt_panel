@@ -15,6 +15,12 @@ export type PanelTlsConfig = {
 export type PanelTlsCandidate = {
     listen: string;
     tls: PanelTlsConfig;
+    base_path?: string;
+    public_url?: string;
+    /**
+     * Only used for target subscription
+     */
+    enabled?: boolean;
 };
 
 export type PanelTlsCertificate = {
@@ -44,6 +50,7 @@ export type PanelTlsSaved = {
 
 export type PanelTlsSettings = {
     active: PanelTlsCandidate;
+    certificate_status?: PanelTlsStatus;
     configured?: PanelTlsCandidate;
     capabilities: {
         config_writable: boolean;
@@ -1090,7 +1097,9 @@ export type Username = string;
 export type GetPanelTlsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        target?: 'panel' | 'subscription';
+    };
     url: '/api/settings/tls';
 };
 
@@ -1115,7 +1124,9 @@ export type GetPanelTlsResponse = GetPanelTlsResponses[keyof GetPanelTlsResponse
 export type GetPanelTlsConfigData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        target?: 'panel' | 'subscription';
+    };
     url: '/api/settings/tls/config';
 };
 
@@ -1143,7 +1154,9 @@ export type PutPanelTlsConfigData = {
         candidate: PanelTlsCandidate;
     };
     path?: never;
-    query?: never;
+    query?: {
+        target?: 'panel' | 'subscription';
+    };
     url: '/api/settings/tls/config';
 };
 
@@ -1193,12 +1206,26 @@ export type PreparePanelTlsData = {
         listen: string;
         tls: PanelTlsConfig;
         /**
-         * Required true for non-loopback plain HTTP
+         * Strict URL prefix; reverse proxies must preserve it
+         */
+        base_path?: string;
+        /**
+         * External HTTP(S) origin; a supplied path must match base_path
+         */
+        public_url?: string;
+        /**
+         * Only used for target subscription
+         */
+        enabled?: boolean;
+        /**
+         * Required true for non-loopback plain HTTP or an explicit external HTTP URL
          */
         confirm_http?: boolean;
     };
     path?: never;
-    query?: never;
+    query?: {
+        target?: 'panel' | 'subscription';
+    };
     url: '/api/settings/tls/prepare';
 };
 
@@ -2133,7 +2160,7 @@ export type GetUserSublinkErrors = {
      */
     404: Error;
     /**
-     * sublink_unavailable — user has no classic/secure link to derive one from
+     * sublink_unavailable — user has no valid classic/secure/TLS link to derive one from
      */
     409: Error;
     /**
@@ -2168,7 +2195,7 @@ export type RegenerateUserSublinkErrors = {
      */
     404: Error;
     /**
-     * sublink_unavailable — user has no classic/secure link to derive one from
+     * sublink_unavailable — user has no valid classic/secure/TLS link to derive one from
      */
     409: Error;
     /**

@@ -18,9 +18,10 @@ import (
 
 // Config is the panel's own configuration (config.toml).
 type Config struct {
-	Path     string `toml:"-"` // file path, set after loading
-	Listen   string `toml:"listen"`
-	BasePath string `toml:"base_path"`
+	Path      string `toml:"-"` // file path, set after loading
+	Listen    string `toml:"listen"`
+	BasePath  string `toml:"base_path"`
+	PublicURL string `toml:"public_url"`
 	// TrustedProxies lists CIDRs (or bare IPs) of reverse proxies whose
 	// X-Forwarded-* headers are trusted. Empty means headers are ignored.
 	TrustedProxies       []string       `toml:"trusted_proxies"`
@@ -81,8 +82,12 @@ type StoreConfig struct {
 
 // SubpageConfig controls the per-user subscription page.
 type SubpageConfig struct {
-	Enabled bool   `toml:"enabled"`
-	Secret  string `toml:"secret"`
+	Enabled   bool      `toml:"enabled"`
+	Secret    string    `toml:"secret"`
+	Listen    string    `toml:"listen"`
+	BasePath  string    `toml:"base_path"`
+	PublicURL string    `toml:"public_url"`
+	TLS       TLSConfig `toml:"tls"`
 }
 
 // HostConfig describes the host the panel runs on, for the runtime-control
@@ -265,6 +270,9 @@ func decode(data []byte, path string) (*Config, error) {
 		cfg.BasePath = "/" + cfg.BasePath
 	}
 	if err := validateBasePath(cfg.BasePath); err != nil {
+		return nil, err
+	}
+	if err := cfg.NormalizeAccess(); err != nil {
 		return nil, err
 	}
 

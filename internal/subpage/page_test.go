@@ -11,6 +11,23 @@ import (
 
 func uintPtr(n uint64) *uint64 { return &n }
 
+func TestBuildGroupsDeduplicatesTLSDomains(t *testing.T) {
+	const link = "tg://proxy?server=proxy.example&port=443&secret=ee0123456789abcdef0123456789abcdef6578616d706c652e636f6d"
+	groups, err := buildGroups("alice", telemt.UserLinks{
+		TLS: []string{link, link},
+		TLSDomains: []telemt.TLSDomainLink{
+			{Domain: "example.com", Link: link},
+			{Domain: "example.com", Link: link},
+		},
+	}, stringsEN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || len(groups[0].Variants) != 1 || groups[0].Variants[0].Domain != "example.com" {
+		t.Fatalf("expected one labeled TLS variant, got %#v", groups)
+	}
+}
+
 func fixtureUser() telemt.UserInfo {
 	return telemt.UserInfo{
 		Username:          "alice",

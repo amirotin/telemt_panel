@@ -101,7 +101,6 @@ function LoginPage() {
       <div className="flex flex-col items-center gap-3 pb-1">
         <img src={loginLogo} alt="" aria-hidden="true" width={1000} height={563} className="w-full" />
         <h1 className="sr-only">{s.app.title}</h1>
-        <p className="text-center text-meta text-text-muted">{s.auth.tagline}</p>
       </div>
 
       <form

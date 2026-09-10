@@ -36,10 +36,15 @@ func (w *serverLogWriter) Write(p []byte) (int, error) {
 
 // serveListeners binds every required port before accepting application requests.
 // A failed challenge listener must not leave a seemingly successful TLS startup.
-func serveListeners(ctx context.Context, main, challenge *http.Server) error {
+func serveListeners(ctx context.Context, main, challenge *http.Server, additional ...*http.Server) error {
 	servers := []*http.Server{main}
 	if challenge != nil {
 		servers = append(servers, challenge)
+	}
+	for _, srv := range additional {
+		if srv != nil {
+			servers = append(servers, srv)
+		}
 	}
 	listeners := make([]net.Listener, 0, len(servers))
 	defer func() {
@@ -50,15 +55,17 @@ func serveListeners(ctx context.Context, main, challenge *http.Server) error {
 			_ = ln.Close()
 		}
 	}()
-	for i, srv := range servers {
+	for _, srv := range servers {
 		if srv.TLSConfig != nil && srv.ErrorLog == nil {
 			srv.ErrorLog = log.New(&serverLogWriter{}, "", 0)
 		}
 		ln, err := net.Listen("tcp", srv.Addr)
 		if err != nil {
 			purpose := "panel"
-			if i == 1 {
+			if srv == challenge {
 				purpose = "ACME HTTP-01 (public port 80)"
+			} else if srv != main {
+				purpose = "subscription"
 			}
 			return fmt.Errorf("listen %s at %s: check port conflicts and service user bind permissions: %w", purpose, srv.Addr, err)
 		}

@@ -20,8 +20,11 @@ import (
 
 // TLSCandidate is the complete transport proposal; omitted fields are cleared.
 type TLSCandidate struct {
-	Listen string    `json:"listen"`
-	TLS    TLSConfig `json:"tls"`
+	Listen    string    `json:"listen"`
+	TLS       TLSConfig `json:"tls"`
+	BasePath  string    `json:"base_path,omitempty"`
+	PublicURL string    `json:"public_url,omitempty"`
+	Enabled   bool      `json:"enabled,omitempty"`
 }
 
 // Normalize validates the web-editable transport, including HTTP listeners.
@@ -40,7 +43,10 @@ func (c *TLSCandidate) Normalize(defaultCache string) error {
 	if c.TLS.Mode == "acme" && c.TLS.AcmeCacheDir == "" {
 		c.TLS.AcmeCacheDir = defaultCache
 	}
-	return c.TLS.Normalize(c.Listen, "")
+	if err := c.TLS.Normalize(c.Listen, ""); err != nil {
+		return err
+	}
+	return normalizePublicURL(&c.PublicURL, &c.BasePath, c.TLS)
 }
 
 // ErrTLSRevision means the operator changed the configuration since preparation.
@@ -179,6 +185,11 @@ func randomName() string {
 // Save atomically replaces listen/tls only, after validating the whole document.
 // TOML comments/formatting are normalized; unrelated values and omissions survive.
 func (f *TLSFile) Save(revision [32]byte, candidate TLSCandidate) error {
+	return f.SaveAccess(revision, candidate, false, false)
+}
+
+// SaveAccess saves one endpoint, preserving the other endpoint and its secrets.
+func (f *TLSFile) SaveAccess(revision [32]byte, candidate TLSCandidate, subscription, addressFields bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	before, _, err := f.read()
@@ -195,8 +206,23 @@ func (f *TLSFile) Save(revision [32]byte, candidate TLSCandidate) error {
 	if _, err := toml.NewDecoder(bytes.NewReader(before)).Decode(&document); err != nil {
 		return err
 	}
-	document["listen"] = candidate.Listen
-	document["tls"] = candidate.TLS
+	if subscription {
+		sub, _ := document["subpage"].(map[string]any)
+		if sub == nil {
+			sub = make(map[string]any)
+		}
+		sub["enabled"], sub["listen"], sub["tls"] = candidate.Enabled, candidate.Listen, candidate.TLS
+		sub["base_path"], sub["public_url"] = candidate.BasePath, candidate.PublicURL
+		if candidate.Enabled && (sub["secret"] == nil || sub["secret"] == "") {
+			sub["secret"] = rand.Text()
+		}
+		document["subpage"] = sub
+	} else {
+		document["listen"], document["tls"] = candidate.Listen, candidate.TLS
+		if addressFields {
+			document["base_path"], document["public_url"] = candidate.BasePath, candidate.PublicURL
+		}
+	}
 	var encoded bytes.Buffer
 	if err := toml.NewEncoder(&encoded).Encode(document); err != nil {
 		return err

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../ui/Button";
 import { CopyField } from "../ui/CopyField";
@@ -68,7 +69,7 @@ export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
   }
 
   if (!query.data.enabled) {
-    return <p className="text-meta text-text-muted">{s.people.share.unavailableModule}</p>;
+    return <div className="space-y-3"><p className="text-meta text-text-muted">{s.people.share.unavailableModule}</p><Link to="/server/settings" className="inline-flex min-h-11 items-center rounded-lg bg-surface-2 px-3 text-sm font-semibold text-accent">{s.server.settings.transport.configure}</Link></div>;
   }
 
   if (confirming) {

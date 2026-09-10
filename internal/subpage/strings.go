@@ -26,6 +26,7 @@ type uiStrings struct {
 	FieldSecret          string
 	CopyButton           string
 	CopiedButton         string
+	CopyManually         string
 	ManualParams         string
 	ScanHint             string
 }
@@ -45,7 +46,7 @@ var stringsRU = uiStrings{
 	StatusDisabled:       "Отключён",
 	StatusExpired:        "Истёк",
 	StatusQuotaExhausted: "Квота исчерпана",
-	QuotaHeading:         "Остаток квоты",
+	QuotaHeading:         "Использовано квоты",
 	QuotaUsedOf:          "из",
 	QuotaResetLabel:      "Сброшена",
 	ExpiryLabel:          "Действует до",
@@ -61,6 +62,7 @@ var stringsRU = uiStrings{
 	FieldSecret:          "Секрет",
 	CopyButton:           "Копировать",
 	CopiedButton:         "Скопировано",
+	CopyManually:         "Не удалось скопировать автоматически. Текст выделен — скопируйте его вручную.",
 	ManualParams:         "Ручные параметры",
 	ScanHint:             "Отсканируйте камерой Telegram",
 }
@@ -72,7 +74,7 @@ var stringsEN = uiStrings{
 	StatusDisabled:       "Disabled",
 	StatusExpired:        "Expired",
 	StatusQuotaExhausted: "Quota exhausted",
-	QuotaHeading:         "Quota remaining",
+	QuotaHeading:         "Quota used",
 	QuotaUsedOf:          "of",
 	QuotaResetLabel:      "Reset",
 	ExpiryLabel:          "Valid until",
@@ -88,6 +90,7 @@ var stringsEN = uiStrings{
 	FieldSecret:          "Secret",
 	CopyButton:           "Copy",
 	CopiedButton:         "Copied",
+	CopyManually:         "Could not copy automatically. The text is selected — copy it manually.",
 	ManualParams:         "Manual parameters",
 	ScanHint:             "Scan it with the Telegram camera",
 }

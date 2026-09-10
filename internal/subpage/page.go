@@ -240,21 +240,36 @@ func buildGroups(username string, links telemt.UserLinks, s uiStrings) ([]linkGr
 	var groups []linkGroupView
 
 	var tlsVariants []linkVariantView
+	// Telemt includes extra domains in both tls and tls_domains. Preserve
+	// their labels without rendering the same endpoint and QR twice.
+	domains := make(map[string]string, len(links.TLSDomains))
+	for _, d := range links.TLSDomains {
+		domains[d.Link] = d.Domain
+	}
+	seen := make(map[string]bool)
 	for i, link := range links.TLS {
-		v, ok, err := buildVariant(username, "tls", i, link, "")
+		if seen[link] {
+			continue
+		}
+		v, ok, err := buildVariant(username, "tls", i, link, domains[link])
 		if err != nil {
 			return nil, err
 		}
 		if ok {
+			seen[link] = true
 			tlsVariants = append(tlsVariants, v)
 		}
 	}
 	for i, d := range links.TLSDomains {
+		if seen[d.Link] {
+			continue
+		}
 		v, ok, err := buildVariant(username, "tls_domain", i, d.Link, d.Domain)
 		if err != nil {
 			return nil, err
 		}
 		if ok {
+			seen[d.Link] = true
 			tlsVariants = append(tlsVariants, v)
 		}
 	}

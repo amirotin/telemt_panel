@@ -36,6 +36,8 @@ security:
 
 paths:
   /api/settings/tls:
+    parameters:
+      - { name: target, in: query, schema: { type: string, enum: [panel, subscription], default: panel } }
     get:
       tags: [misc]
       operationId: getPanelTls
@@ -48,6 +50,8 @@ paths:
               schema: { $ref: "#/components/schemas/PanelTlsStatus" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/settings/tls/config:
+    parameters:
+      - { name: target, in: query, schema: { type: string, enum: [panel, subscription], default: panel } }
     get:
       tags: [misc]
       operationId: getPanelTlsConfig
@@ -63,9 +67,9 @@ paths:
       description: >
         Atomically save the exact normalized candidate returned by preparation.
         Receipt expires after five minutes, is single-use, and binds the original file revision.
-        PEM certificate/key availability is rechecked at save. ACME apply verifies the exact prepared chain and matching key from the cache, current validity/system trust and cache write permissions without contacting the CA or reissuing. Only listen/tls change semantically; TOML formatting/comments are normalized.
+        PEM certificate/key availability is rechecked at save. ACME apply verifies the exact prepared chain and matching key from the cache, current validity/system trust and cache write permissions without contacting the CA or reissuing. Only the selected endpoint's listen, TLS, public URL, path and enabled flag change; TOML formatting/comments are normalized. First subscription enable creates a missing signing key; existing keys are retained.
         A fixed .bak file retains original bytes; saved file and backup use mode 0600.
-        Requires both config-write and panel-restart capabilities. Does not restart or change firewall rules.
+        Requires config-write capability. Restart may be performed manually. Does not restart or change firewall rules.
       requestBody:
         required: true
         content:
@@ -88,6 +92,8 @@ paths:
         "422": { $ref: "#/components/responses/PanelTlsError" }
         "503": { $ref: "#/components/responses/PanelTlsError" }
   /api/settings/tls/prepare:
+    parameters:
+      - { name: target, in: query, schema: { type: string, enum: [panel, subscription], default: panel } }
     post:
       tags: [misc]
       operationId: preparePanelTls
@@ -109,7 +115,10 @@ paths:
               properties:
                 listen: { type: string, description: "Bind host:port; numeric port 1..65535" }
                 tls: { $ref: "#/components/schemas/PanelTlsConfig" }
-                confirm_http: { type: boolean, default: false, description: Required true for non-loopback plain HTTP }
+                base_path: { type: string, description: Strict URL prefix; reverse proxies must preserve it }
+                public_url: { type: string, description: External HTTP(S) origin; a supplied path must match base_path }
+                enabled: { type: boolean, description: Only used for target subscription }
+                confirm_http: { type: boolean, default: false, description: Required true for non-loopback plain HTTP or an explicit external HTTP URL }
       responses:
         "200":
           description: Prepared; no configuration was saved
@@ -540,7 +549,7 @@ paths:
           description: Current subscription URL for sharing
           content: { application/json: { schema: { $ref: "#/components/schemas/Sublink" } } }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { description: sublink_unavailable — user has no classic/secure link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: sublink_unavailable — user has no valid classic/secure/TLS link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
     post:
       tags: [users]
@@ -550,7 +559,7 @@ paths:
       responses:
         "200": { description: New URL, content: { application/json: { schema: { $ref: "#/components/schemas/Sublink" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { description: sublink_unavailable — user has no classic/secure link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: sublink_unavailable — user has no valid classic/secure/TLS link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   # ───────────────────────── telemt ─────────────────────────
@@ -1253,6 +1262,9 @@ components:
       properties:
         listen: { type: string }
         tls: { $ref: "#/components/schemas/PanelTlsConfig" }
+        base_path: { type: string }
+        public_url: { type: string }
+        enabled: { type: boolean, description: Only used for target subscription }
     PanelTlsCertificate:
       type: object
       required: [expires_at, publicly_trusted]
@@ -1284,6 +1296,7 @@ components:
       required: [active, capabilities, manual_hints, manual_restart_command, default_acme_cache_dir, state, restart_required]
       properties:
         active: { $ref: "#/components/schemas/PanelTlsCandidate" }
+        certificate_status: { $ref: "#/components/schemas/PanelTlsStatus" }
         configured: { $ref: "#/components/schemas/PanelTlsCandidate" }
         capabilities:
           type: object

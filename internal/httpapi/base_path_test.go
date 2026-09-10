@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestPreservedAndStrippedBasePathKeepAPISemantics(t *testing.T) {
+func TestStrictBasePathKeepsAPISemanticsOnlyBehindPrefix(t *testing.T) {
 	server := newTestServer(t)
 	server.cfg.BasePath = "/panel"
 	for _, webUI := range []bool{true, false} {
@@ -26,6 +26,12 @@ func TestPreservedAndStrippedBasePathKeepAPISemantics(t *testing.T) {
 			} {
 				response := httptest.NewRecorder()
 				handler.ServeHTTP(response, httptest.NewRequest(test.method, prefix+test.path, nil))
+				if prefix == "" {
+					if response.Code != 404 || response.Header().Get("Location") != "" {
+						t.Errorf("unprefixed route exposed: %s", test.path)
+					}
+					continue
+				}
 				if response.Code != test.status {
 					t.Errorf("webUI=%v %s %s: got %d, want %d", webUI, test.method, prefix+test.path, response.Code, test.status)
 				}
@@ -49,6 +55,12 @@ func TestBasePathStripsOnlyOneWholePrefix(t *testing.T) {
 				t.Errorf("%s became %s?%s", test.input, r.URL.Path, r.URL.RawQuery)
 			}
 		}))
-		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", test.input+"?page=2", nil))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("GET", test.input+"?page=2", nil))
+		if test.input == "/api/health" || test.input == "/panelish/api/health" {
+			if response.Code != 404 {
+				t.Errorf("prefix bypass: %s", test.input)
+			}
+		}
 	}
 }

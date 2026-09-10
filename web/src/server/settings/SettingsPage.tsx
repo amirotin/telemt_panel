@@ -304,6 +304,7 @@ export function SettingsPage() {
         <div className="flex min-w-0 flex-col gap-2.5">
           <PasskeySettings passkeys={meQuery.data?.passkeys ?? []} />
           <TransportStatus />
+          <TransportStatus target="subscription" />
 
           <InterfacePreferences />
 

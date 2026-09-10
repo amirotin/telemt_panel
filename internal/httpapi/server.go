@@ -5,7 +5,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,17 +31,18 @@ import (
 
 // Server holds the panel's HTTP dependencies.
 type Server struct {
-	access     *panelAccess
-	tlsManager *paneltls.Manager
-	cfg        *config.Config
-	tc         *telemt.Client
-	st         store.Store
-	hub        *hub.Hub
-	limiter    *auth.Limiter
-	subSvc     *subpage.Service
-	subIndex   *subpage.Index
-	subLimiter *subpage.RateLimiter
-	version    string
+	access        *panelAccess
+	tlsManager    *paneltls.Manager
+	subTLSManager *paneltls.Manager
+	cfg           *config.Config
+	tc            *telemt.Client
+	st            store.Store
+	hub           *hub.Hub
+	limiter       *auth.Limiter
+	subSvc        *subpage.Service
+	subIndex      *subpage.Index
+	subLimiter    *subpage.RateLimiter
+	version       string
 
 	svcMgr         host.ServiceManager
 	logSrc         host.LogSource
@@ -174,12 +177,13 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	return &Server{
 		access:             newPanelAccess(),
 		tlsManager:         paneltls.New(cfg.TLS, cfg.Listen),
+		subTLSManager:      paneltls.New(cfg.Subpage.TLS, cfg.Subpage.Listen),
 		cfg:                cfg,
 		tc:                 tc,
 		st:                 st,
 		hub:                hb,
 		limiter:            auth.NewLimiter(),
-		subSvc:             subpage.NewService(cfg.Subpage.Secret, cfg.BasePath, st),
+		subSvc:             subpage.NewService(cfg.Subpage.Secret, cfg.Subpage.BasePath, st),
 		subIndex:           subpage.NewIndex(cfg.Subpage.Secret, tc, st),
 		subLimiter:         subpage.NewRateLimiter(),
 		version:            version,
@@ -295,6 +299,14 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/auth/logout", protect(s.handleLogout))
 	mux.Handle("GET /api/auth/me", protect(s.handleMe))
 	mux.Handle("GET /api/settings/tls", protect(func(w http.ResponseWriter, r *http.Request) {
+		subscription, ok := accessTarget(w, r)
+		if !ok {
+			return
+		}
+		if subscription {
+			writeJSON(w, http.StatusOK, s.subTLSManager.Status())
+			return
+		}
 		writeJSON(w, http.StatusOK, s.tlsManager.Status())
 	}))
 	mux.Handle("GET /api/settings/tls/config", protect(s.handleGetTLSConfig))
@@ -368,14 +380,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/users/{username}/sublink", protect(s.handleGetSublink))
 	mux.Handle("POST /api/users/{username}/sublink", protect(s.handlePostSublink))
 
-	// subpage.enabled=false removes the route entirely rather than
-	// registering it and 404ing — an operator that disabled the module
-	// gets a plain unrouted path, not a page that pretends to check
-	// tokens.
-	if s.cfg.Subpage.Enabled {
-		mux.Handle("GET /sub/{token}", s.subpageRateLimited(s.handleSubpage))
-	}
-
 	apiHandler := apiJSONFallback(mux)
 	if s.webUI == nil {
 		return acceptBasePath(s.cfg.BasePath, apiHandler)
@@ -385,15 +389,14 @@ func (s *Server) Handler() http.Handler {
 	// most-specific-match algorithm can't tell "no /api/ route matches
 	// this path" apart from "the catch-all matched" once a catch-all
 	// exists on the same mux — that would swallow apiJSONFallback's
-	// pattern=="" 404/405 detection for /api/* and the subpage's own
-	// 404/405 for /sub/*. spaRouter (below) dispatches by namespace
+	// pattern=="" 404/405 detection for /api/* and the retired /sub/*
+	// namespace. spaRouter (below) dispatches by namespace
 	// prefix instead (/api, /sub, everything else) so both keep exactly
 	// their own behavior and webUI only ever sees a path neither owns.
 	return acceptBasePath(s.cfg.BasePath, &spaRouter{mux: mux, api: apiHandler, webUI: s.webUI})
 }
 
-// acceptBasePath supports both legacy proxies retaining the prefix and proxies
-// stripping it upstream. BasePath is a routing prefix, not an access boundary.
+// acceptBasePath requires the configured prefix. Proxies must preserve it.
 func acceptBasePath(base string, next http.Handler) http.Handler {
 	if base == "" {
 		return next
@@ -403,7 +406,7 @@ func acceptBasePath(base string, next http.Handler) http.Handler {
 		if pathIsOrUnder(r.URL.Path, base) {
 			stripped.ServeHTTP(w, r)
 		} else {
-			next.ServeHTTP(w, r)
+			http.NotFound(w, r)
 		}
 	})
 }
@@ -415,17 +418,8 @@ func acceptBasePath(base string, next http.Handler) http.Handler {
 //     (apiJSONFallback's JSON {code,message} 404/405 for an unmatched
 //     route, unchanged from pre-M3 other than fix round 1's finding 5:
 //     a bare "/api" now gets the same treatment as "/api/nope").
-//   - /sub and everything under /sub/ always go straight to mux, regardless
-//     of method or whether a pattern actually matches — never to webUI.
-//     This means mux's own behavior applies unconditionally: the subpage
-//     handler's plain-text 404 for an unknown token, its own 405 for a
-//     non-GET request (fix round 1, finding 4 — the earlier version of
-//     this router let a wrong-method /sub/{token} fall through to webUI's
-//     generic 405 instead), and a bare "/sub" 404 (finding 5); or, when
-//     subpage.enabled is false and no /sub/{token} pattern is registered
-//     at all, ServeMux's own plain-text 404 — the exact pre-M3 behavior,
-//     with no special-casing needed since webUI is never consulted for
-//     this prefix either way.
+//   - /sub is retired on the admin listener and returns a plain 404,
+//     never an SPA fallback. Public pages use SubscriptionHandler.
 //   - Everything else falls through to webUI, which answers with the SPA
 //     shell (index.html) for a client-side route or a hashed asset.
 type spaRouter struct {
@@ -538,10 +532,30 @@ func (s *Server) Run(ctx context.Context) error {
 	defer s.hub.Close()
 	defer s.logStreams.Close()
 	defer s.tlsManager.Close()
+	defer s.subTLSManager.Close()
 	tlsConfig, challengeHandler, err := s.tlsManager.Prepare()
 	if err != nil {
 		return err
 	}
+	var subscription *http.Server
+	var subChallenge http.Handler
+	if s.cfg.Subpage.Enabled {
+		var subTLS *tls.Config
+		if s.cfg.TLS.Mode == "acme" && s.cfg.Subpage.TLS == s.cfg.TLS {
+			// One domain/cache has one renewal owner even across two ports.
+			s.subTLSManager.Close()
+			s.subTLSManager = s.tlsManager
+			subTLS = tlsConfig.Clone()
+		} else {
+			subTLS, subChallenge, err = s.subTLSManager.Prepare()
+			if err != nil {
+				return fmt.Errorf("subscription: %w", err)
+			}
+		}
+		subscription = &http.Server{Addr: s.cfg.Subpage.Listen, Handler: s.SubscriptionHandler(), TLSConfig: subTLS,
+			ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	}
+	challengeHandler = paneltls.CombineChallenges(challengeHandler, subChallenge)
 	s.access.mux = paneltls.NewChallengeMux(challengeHandler)
 
 	srv := &http.Server{
@@ -579,7 +593,7 @@ func (s *Server) Run(ctx context.Context) error {
 			ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 			WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	}
-	return serveListeners(ctx, srv, challenge)
+	return serveListeners(ctx, srv, challenge, subscription)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

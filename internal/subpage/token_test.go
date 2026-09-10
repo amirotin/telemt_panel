@@ -96,6 +96,35 @@ func TestExtractSecretNoLinks(t *testing.T) {
 	}
 }
 
+func TestExtractSecretAcrossEnabledModes(t *testing.T) {
+	const raw = "0123456789abcdef0123456789abcdef"
+	link := func(secret string) string { return "tg://proxy?server=proxy.example&port=443&secret=" + secret }
+	tls := "ee" + raw + "6578616d706c652e636f6d"
+	for _, tc := range []struct {
+		name  string
+		links telemt.UserLinks
+		want  bool
+	}{
+		{"TLS only", telemt.UserLinks{TLS: []string{link(tls)}}, true},
+		{"TLS domain only", telemt.UserLinks{TLSDomains: []telemt.TLSDomainLink{{Domain: "example.com", Link: link(tls)}}}, true},
+		{"uppercase", telemt.UserLinks{TLS: []string{link(strings.ToUpper(tls))}}, true},
+		{"second classic", telemt.UserLinks{Classic: []string{link("bad"), link(raw)}}, true},
+		{"second secure", telemt.UserLinks{Secure: []string{link("bad"), link("dd" + raw)}}, true},
+		{"second TLS", telemt.UserLinks{TLS: []string{link("bad"), link(tls)}}, true},
+		{"missing TLS domain", telemt.UserLinks{TLS: []string{link("ee" + raw)}}, false},
+		{"odd domain hex", telemt.UserLinks{TLS: []string{link("ee" + raw + "6")}}, false},
+		{"invalid domain hex", telemt.UserLinks{TLS: []string{link("ee" + raw + "zz")}}, false},
+		{"invalid secret", telemt.UserLinks{TLS: []string{link("ee" + strings.Repeat("z", 32) + "61")}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := ExtractSecret(tc.links)
+			if ok != tc.want || (ok && got != raw) {
+				t.Fatalf("ExtractSecret() = %q, %v; want canonical secret available=%v", got, ok, tc.want)
+			}
+		})
+	}
+}
+
 func TestExtractSecretRejectsMalformedSecret(t *testing.T) {
 	// Classic secret too short and not valid hex; secure secret without
 	// the required dd prefix (so after stripping nothing changes and the

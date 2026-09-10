@@ -246,6 +246,7 @@
           <dt>{{$.S.FieldSecret}}</dt>
           <dd><code>{{.Secret}}</code><button type="button" class="copy" data-copy data-copied="{{$.S.CopiedButton}}">{{$.S.CopyButton}}</button></dd>
         </dl>
+        <p role="status" data-copy-feedback data-manual="{{$.S.CopyManually}}"></p>
       </details>
     </div>
     {{end}}
@@ -266,16 +267,33 @@
   </details>
 </main>
 <script>
-document.addEventListener('click', function (e) {
+document.addEventListener('click', async function (e) {
   var btn = e.target.closest('[data-copy]');
   if (!btn) return;
   var code = btn.previousElementSibling;
-  if (!code || !navigator.clipboard) return;
-  navigator.clipboard.writeText(code.textContent).then(function () {
+  if (!code) return;
+  var feedback = btn.closest('details').querySelector('[data-copy-feedback]');
+  var copied = false;
+  try {
+    await navigator.clipboard.writeText(code.textContent);
+    copied = true;
+  } catch (_) {
+    // Plain HTTP and denied clipboard access retain a native/manual path.
+    var selection = window.getSelection();
+    if (selection) {
+      var range = document.createRange();
+      range.selectNodeContents(code);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      try { copied = document.execCommand('copy'); } catch (_) {}
+    }
+  }
+  feedback.textContent = copied ? '' : feedback.getAttribute('data-manual');
+  if (copied) {
     var prev = btn.textContent;
     btn.textContent = btn.getAttribute('data-copied') || prev;
     setTimeout(function () { btn.textContent = prev; }, 1200);
-  });
+  }
 });
 </script>
 </body>

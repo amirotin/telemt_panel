@@ -23,13 +23,14 @@ import (
 )
 
 type tlsPrepared struct {
-	Receipt     string                    `json:"receipt"`
-	ExpiresAt   time.Time                 `json:"expires_at"`
-	Candidate   config.TLSCandidate       `json:"candidate"`
-	NewURL      string                    `json:"new_url"`
-	Warnings    []string                  `json:"warnings"`
-	Certificate *paneltls.CertificateInfo `json:"certificate,omitempty"`
-	revision    [32]byte
+	Receipt      string                    `json:"receipt"`
+	ExpiresAt    time.Time                 `json:"expires_at"`
+	Candidate    config.TLSCandidate       `json:"candidate"`
+	NewURL       string                    `json:"new_url"`
+	Warnings     []string                  `json:"warnings"`
+	Certificate  *paneltls.CertificateInfo `json:"certificate,omitempty"`
+	revision     [32]byte
+	subscription bool
 }
 
 type tlsCapabilities struct {
@@ -52,22 +53,24 @@ type tlsSettings struct {
 	RestartRequired      bool                 `json:"restart_required"`
 	NewURL               string               `json:"new_url,omitempty"`
 	Error                string               `json:"error,omitempty"`
+	CertificateStatus    paneltls.Status      `json:"certificate_status"`
 }
 
 type panelAccess struct {
-	mu            sync.Mutex
-	file          *config.TLSFile
-	path          string
-	ctx           context.Context
-	cancel        context.CancelFunc
-	mux           *paneltls.ChallengeMux
-	run           paneltls.AcquisitionRunner
-	state         string
-	pending       *tlsPrepared
-	saved         bool
-	savedRevision [32]byte
-	newURL        string
-	err           string
+	mu                sync.Mutex
+	file              *config.TLSFile
+	path              string
+	ctx               context.Context
+	cancel            context.CancelFunc
+	mux               *paneltls.ChallengeMux
+	run               paneltls.AcquisitionRunner
+	state             string
+	pending           *tlsPrepared
+	saved             bool
+	savedRevision     [32]byte
+	newURL            string
+	err               string
+	savedSubscription bool
 }
 
 func newPanelAccess() *panelAccess {
@@ -123,7 +126,7 @@ func (s *Server) tlsCapabilitiesLocked() (tlsCapabilities, []string) {
 	if !caps.Restart {
 		hints = append(hints, "restart_panel_manually")
 	}
-	caps.Prepare = caps.ConfigWritable && caps.Restart
+	caps.Prepare = caps.ConfigWritable
 	// Bind permission and port ownership are checked before contacting the CA.
 	// This capability only promises the helper is installed, not public reachability.
 	_, err := os.Executable()
@@ -146,6 +149,10 @@ func (s *Server) defaultTLSCacheLocked() string {
 }
 
 func (s *Server) handleGetTLSConfig(w http.ResponseWriter, r *http.Request) {
+	subscription, ok := accessTarget(w, r)
+	if !ok {
+		return
+	}
 	a := s.access
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -154,7 +161,17 @@ func (s *Server) handleGetTLSConfig(w http.ResponseWriter, r *http.Request) {
 		a.state = "idle"
 	}
 	caps, hints := s.tlsCapabilitiesLocked()
-	state := tlsSettings{Active: config.TLSCandidate{Listen: s.cfg.Listen, TLS: s.cfg.TLS}, Capabilities: caps, ManualHints: hints, DefaultACMECacheDir: s.defaultTLSCacheLocked(), State: a.state, Prepared: a.pending, RestartRequired: a.saved, NewURL: a.newURL, Error: a.err}
+	state := tlsSettings{Active: accessCandidate(s.cfg, subscription), Capabilities: caps, ManualHints: hints, DefaultACMECacheDir: s.accessCache(subscription), State: a.state, RestartRequired: a.saved, NewURL: a.newURL, Error: a.err}
+	state.CertificateStatus = s.tlsManager.Status()
+	if a.saved && a.savedSubscription != subscription {
+		state.NewURL = ""
+	}
+	if subscription {
+		state.CertificateStatus = s.subTLSManager.Status()
+	}
+	if a.pending != nil && a.pending.subscription == subscription {
+		state.Prepared = a.pending
+	}
 	state.ConfigPath = a.path
 	service, _ := resolveLogicalService("panel", s.svcMgr.Kind(), s.cfg.Host)
 	state.ManualRestartCommand = manualRestartCommand(s.svcMgr.Kind(), service)
@@ -163,7 +180,8 @@ func (s *Server) handleGetTLSConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.file != nil {
 		if snapshot, err := a.file.Read(); err == nil {
-			state.Configured = &config.TLSCandidate{Listen: snapshot.Config.Listen, TLS: snapshot.Config.TLS}
+			configured := accessCandidate(snapshot.Config, subscription)
+			state.Configured = &configured
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -186,6 +204,10 @@ func decodeTLSBody(w http.ResponseWriter, r *http.Request, value any) bool {
 }
 
 func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
+	subscription, ok := accessTarget(w, r)
+	if !ok {
+		return
+	}
 	var request struct {
 		config.TLSCandidate
 		ConfirmHTTP bool `json:"confirm_http"`
@@ -207,12 +229,19 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	candidate := request.TLSCandidate
-	if err := candidate.Normalize(s.defaultTLSCacheLocked()); err != nil {
+	peerTLS := s.cfg.TLS
+	if !subscription {
+		peerTLS = s.cfg.Subpage.TLS
+	}
+	if candidate.TLS.Mode == "acme" && peerTLS.Mode == "acme" && strings.EqualFold(strings.TrimSuffix(candidate.TLS.AcmeDomain, "."), peerTLS.AcmeDomain) && (candidate.TLS.AcmeCacheDir == "" || candidate.TLS.AcmeCacheDir == s.accessCache(subscription)) {
+		candidate.TLS.AcmeCacheDir = peerTLS.AcmeCacheDir
+	}
+	if err := candidate.Normalize(s.accessCache(subscription)); err != nil {
 		a.mu.Unlock()
 		auth.WriteError(w, 400, "tls_invalid_candidate", err.Error())
 		return
 	}
-	if candidate.TLS.Mode == "http" && !loopbackListen(candidate.Listen) && !request.ConfirmHTTP {
+	if (!subscription || candidate.Enabled) && candidate.TLS.Mode == "http" && (!loopbackListen(candidate.Listen) || strings.HasPrefix(candidate.PublicURL, "http://")) && !request.ConfirmHTTP {
 		a.mu.Unlock()
 		auth.WriteError(w, 400, "confirmation_required", "confirm unencrypted HTTP before preparation")
 		return
@@ -221,6 +250,11 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.mu.Unlock()
 		auth.WriteError(w, 409, "tls_config_changed", "startup configuration is no longer readable and valid")
+		return
+	}
+	if err := validateAccessCandidate(snapshot.Config, candidate, subscription); err != nil {
+		a.mu.Unlock()
+		auth.WriteError(w, 400, "tls_invalid_candidate", err.Error())
 		return
 	}
 	a.state = "preparing"
@@ -242,7 +276,17 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	stop := context.AfterFunc(rootCtx, cancel)
 	defer stop()
-	certificate, err := paneltls.PrepareCandidate(ctx, candidate, s.cfg.Listen, mux, run)
+	var certificate *paneltls.CertificateInfo
+	if !subscription || candidate.Enabled {
+		activeListen := s.cfg.Listen
+		if subscription {
+			activeListen = ""
+			if s.cfg.Subpage.Enabled {
+				activeListen = s.cfg.Subpage.Listen
+			}
+		}
+		certificate, err = paneltls.PrepareCandidate(ctx, candidate, activeListen, mux, run)
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.state = "idle"
@@ -269,7 +313,7 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	var nonce [32]byte
 	_, _ = rand.Read(nonce[:])
-	prepared := &tlsPrepared{Receipt: hex.EncodeToString(nonce[:]), ExpiresAt: time.Now().Add(5 * time.Minute), Candidate: candidate, Certificate: certificate, NewURL: s.tlsNewURL(r, candidate, certificate), Warnings: s.tlsWarnings(candidate, certificate), revision: snapshot.Revision}
+	prepared := &tlsPrepared{Receipt: hex.EncodeToString(nonce[:]), ExpiresAt: time.Now().Add(5 * time.Minute), Candidate: candidate, Certificate: certificate, NewURL: s.tlsNewURL(r, candidate, certificate), Warnings: s.tlsWarnings(candidate, certificate, subscription), revision: snapshot.Revision, subscription: subscription}
 	a.pending = prepared
 	a.state = "prepared"
 	w.Header().Set("Cache-Control", "no-store")
@@ -284,9 +328,19 @@ func loopbackListen(listen string) bool {
 	return h == "localhost" || net.ParseIP(h) != nil && net.ParseIP(h).IsLoopback()
 }
 
-func (s *Server) tlsWarnings(c config.TLSCandidate, cert *paneltls.CertificateInfo) []string {
-	warnings := []string{"toml_formatting", "public_reachability_unverified", "password_login"}
-	_, oldPort, _ := net.SplitHostPort(s.cfg.Listen)
+func (s *Server) tlsWarnings(c config.TLSCandidate, cert *paneltls.CertificateInfo, subscription bool) []string {
+	warnings := []string{"toml_formatting"}
+	if subscription && !c.Enabled {
+		return warnings
+	}
+	warnings = append(warnings, "public_reachability_unverified")
+	activeListen := s.cfg.Listen
+	if subscription {
+		activeListen = s.cfg.Subpage.Listen
+	} else {
+		warnings = append(warnings, "password_login")
+	}
+	_, oldPort, _ := net.SplitHostPort(activeListen)
 	_, newPort, _ := net.SplitHostPort(c.Listen)
 	if oldPort != newPort {
 		warnings = append(warnings, "firewall_port")
@@ -304,6 +358,9 @@ func (s *Server) tlsWarnings(c config.TLSCandidate, cert *paneltls.CertificateIn
 }
 
 func (s *Server) tlsNewURL(r *http.Request, c config.TLSCandidate, cert *paneltls.CertificateInfo) string {
+	if c.PublicURL != "" {
+		return c.PublicURL + c.BasePath + "/"
+	}
 	h, port, _ := net.SplitHostPort(c.Listen)
 	scheme := "http"
 	if c.TLS.Mode != "http" {
@@ -324,11 +381,15 @@ func (s *Server) tlsNewURL(r *http.Request, c config.TLSCandidate, cert *paneltl
 			h = "localhost"
 		}
 	}
-	u := url.URL{Scheme: scheme, Host: net.JoinHostPort(h, port), Path: s.cfg.BasePath + "/"}
+	u := url.URL{Scheme: scheme, Host: net.JoinHostPort(h, port), Path: c.BasePath + "/"}
 	return u.String()
 }
 
 func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
+	subscription, ok := accessTarget(w, r)
+	if !ok {
+		return
+	}
 	var request struct {
 		Receipt   string              `json:"receipt"`
 		Candidate config.TLSCandidate `json:"candidate"`
@@ -340,7 +401,7 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	p := a.pending
-	if p == nil || p.Receipt != request.Receipt || time.Now().After(p.ExpiresAt) || request.Candidate != p.Candidate {
+	if p == nil || p.subscription != subscription || p.Receipt != request.Receipt || time.Now().After(p.ExpiresAt) || request.Candidate != p.Candidate {
 		auth.WriteError(w, 409, "tls_receipt_invalid", "prepare this exact candidate again; receipt is stale, changed or already used")
 		return
 	}
@@ -349,14 +410,14 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, 503, "tls_manual_required", "write/restart permissions are unavailable; configuration was not saved")
 		return
 	}
-	if p.Candidate.TLS.Mode == "certificate" {
+	if (!subscription || p.Candidate.Enabled) && p.Candidate.TLS.Mode == "certificate" {
 		certificate, err := paneltls.PrepareCandidate(r.Context(), p.Candidate, p.Candidate.Listen, nil, nil)
 		if err != nil || certificate == nil || p.Certificate == nil || *certificate != *p.Certificate {
 			auth.WriteError(w, 422, "tls_certificate_invalid", "prepared certificate/key changed or became unavailable; prepare again")
 			return
 		}
 	}
-	if p.Candidate.TLS.Mode == "acme" {
+	if (!subscription || p.Candidate.Enabled) && p.Candidate.TLS.Mode == "acme" {
 		if err := paneltls.VerifyPreparedCache(p.Candidate, p.Certificate); err != nil {
 			var preparation *paneltls.PrepareError
 			if errors.As(err, &preparation) {
@@ -367,7 +428,7 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.file.Save(p.revision, p.Candidate); err != nil {
+	if err := a.file.SaveAccess(p.revision, p.Candidate, subscription, true); err != nil {
 		if errors.Is(err, config.ErrTLSRevision) {
 			auth.WriteError(w, 409, "tls_config_changed", "configuration changed after preparation; prepare again")
 		} else {
@@ -380,10 +441,15 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 		a.savedRevision = snapshot.Revision
 	}
 	a.saved = true
+	a.savedSubscription = subscription
 	a.newURL = p.NewURL
 	a.pending = nil
 	a.state = "saved"
-	s.appendAudit(r, "panel.tls.save", "", p.Candidate.TLS.Mode)
+	auditTarget := "panel"
+	if subscription {
+		auditTarget = "subscription"
+	}
+	s.appendAudit(r, "panel.tls.save", "", auditTarget+":"+p.Candidate.TLS.Mode)
 	writeJSON(w, 200, map[string]any{"new_url": a.newURL, "restart_required": true})
 }
 

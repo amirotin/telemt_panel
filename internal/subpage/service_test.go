@@ -13,11 +13,11 @@ func TestServiceURLIncludesBasePathAndToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("URL: %v", err)
 	}
-	if !strings.HasPrefix(url, "/panel/sub/") {
-		t.Fatalf("URL = %q, want a /panel/sub/ prefixed path", url)
+	if !strings.HasPrefix(url, "/panel/") {
+		t.Fatalf("URL = %q, want a /panel/ prefixed path", url)
 	}
 
-	want := "/panel/sub/" + deriveToken([]byte("panel-secret"), "alice", testUserSecret, "")
+	want := "/panel/" + deriveToken([]byte("panel-secret"), "alice", testUserSecret, "")
 	if url != want {
 		t.Fatalf("URL = %q, want %q", url, want)
 	}

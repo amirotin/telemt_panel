@@ -8,9 +8,11 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -188,7 +190,7 @@ func prepareCandidate(ctx context.Context, c config.TLSCandidate, activeListen s
 	if !canReuseActiveListener(c.Listen, activeListen) {
 		ln, err := net.Listen("tcp", c.Listen)
 		if err != nil {
-			return nil, &PrepareError{"tls_listener_unavailable", "new listener cannot bind; check address, port conflicts and service user permissions"}
+			return nil, &PrepareError{"tls_listener_unavailable", fmt.Sprintf("new listener %s: %v", c.Listen, err)}
 		}
 		defer ln.Close()
 	}
@@ -202,7 +204,15 @@ func prepareCandidate(ctx context.Context, c config.TLSCandidate, activeListen s
 		if err != nil {
 			return nil, &PrepareError{"tls_certificate_invalid", "cannot read a matching certificate/key pair as the panel service user"}
 		}
-		return verifyChain(tlsConfig.Certificates[0].Certificate, "", false, nil)
+		domain := ""
+		if c.PublicURL != "" {
+			public, err := url.Parse(c.PublicURL)
+			if err != nil {
+				return nil, err
+			}
+			domain = public.Hostname()
+		}
+		return verifyChain(tlsConfig.Certificates[0].Certificate, domain, false, nil)
 	case "acme":
 		if err := checkCache(c.TLS.AcmeCacheDir); err != nil {
 			return nil, &PrepareError{"tls_cache_unavailable", "ACME cache is not writable as the panel service user; choose persistent storage"}
@@ -219,7 +229,7 @@ func prepareCandidate(ctx context.Context, c config.TLSCandidate, activeListen s
 		if mux.active == nil {
 			ln, err := net.Listen("tcp", challengeAddr)
 			if err != nil {
-				return nil, &PrepareError{"tls_challenge_unavailable", "HTTP-01 cannot bind port 80; free the port or configure service bind permissions manually"}
+				return nil, &PrepareError{"tls_challenge_unavailable", fmt.Sprintf("ACME HTTP-01 listener %s: %v", challengeAddr, err)}
 			}
 			server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 16 << 10}
 			done := make(chan struct{})

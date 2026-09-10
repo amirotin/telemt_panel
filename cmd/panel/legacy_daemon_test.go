@@ -54,7 +54,7 @@ func TestLegacyDaemonLoginSurvivesRestart(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0400); err != nil {
 		t.Fatal(err)
 	}
-	url := "http://" + address
+	url := "http://" + address + "/panel"
 	client := &http.Client{Timeout: time.Second}
 	var session *http.Cookie
 	for iteration := range 2 {

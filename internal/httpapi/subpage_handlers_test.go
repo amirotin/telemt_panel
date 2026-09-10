@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"reflect"
 	"strings"
@@ -18,6 +19,44 @@ import (
 )
 
 const testUserSecret = "0123456789abcdef0123456789abcdef"
+
+// Route fixture requests to their respective listener without changing the
+// existing protocol assertions. Isolation itself is tested on the real handlers.
+func subpageTestHandler(srv *Server) http.Handler {
+	admin, public := srv.Handler(), srv.SubscriptionHandler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/sub/") {
+			public.ServeHTTP(w, r)
+		} else {
+			admin.ServeHTTP(w, r)
+		}
+	})
+}
+
+func TestSubscriptionListenerIsolation(t *testing.T) {
+	srv, cookie := newSubpageTestServer(t, true)
+	link := getSublink(t, srv.Handler(), cookie)
+	for _, tc := range []struct {
+		h    http.Handler
+		path string
+		want int
+	}{
+		{srv.Handler(), pathOf(t, link.URL), 404},
+		{srv.SubscriptionHandler(), pathOf(t, link.URL), 200},
+		{srv.SubscriptionHandler(), "/api/health", 404},
+		{srv.SubscriptionHandler(), "/api/users", 404},
+		{srv.SubscriptionHandler(), "/login", 404},
+		{srv.SubscriptionHandler(), "/sub/api/health", 404},
+	} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", tc.path, nil)
+		r.AddCookie(cookie)
+		tc.h.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Fatalf("%s: status=%d want=%d", tc.path, w.Code, tc.want)
+		}
+	}
+}
 
 func fixtureUsers() []telemt.UserInfo {
 	return []telemt.UserInfo{
@@ -35,6 +74,11 @@ func fixtureUsers() []telemt.UserInfo {
 // enabled and one fixture user ("alice") served by a fake Telemt.
 func newSubpageTestServer(t *testing.T, enabled bool) (*Server, *http.Cookie) {
 	t.Helper()
+	return newSubpageTestServerWithUsers(t, enabled, fixtureUsers())
+}
+
+func newSubpageTestServerWithUsers(t *testing.T, enabled bool, users []telemt.UserInfo) (*Server, *http.Cookie) {
+	t.Helper()
 	hash, err := auth.HashPassword(testPassword)
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
@@ -47,7 +91,7 @@ func newSubpageTestServer(t *testing.T, enabled bool) (*Server, *http.Cookie) {
 	if err != nil {
 		t.Fatalf("store.NewMemory: %v", err)
 	}
-	tc := newFakeTelemtHTTP(t, fixtureUsers())
+	tc := newFakeTelemtHTTP(t, users)
 	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 
@@ -55,7 +99,7 @@ func newSubpageTestServer(t *testing.T, enabled bool) (*Server, *http.Cookie) {
 	t.Cleanup(srv.limiter.Stop)
 	t.Cleanup(srv.subLimiter.Stop)
 
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 	_, cookie := login(t, h, "admin", testPassword)
 	if cookie == nil {
 		t.Fatal("expected a successful login")
@@ -92,7 +136,7 @@ func pathOf(t *testing.T, absoluteURL string) string {
 
 func TestHandleGetSublinkRequiresSession(t *testing.T) {
 	srv, _ := newSubpageTestServer(t, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	r := httptest.NewRequest("GET", "/api/users/alice/sublink", nil)
 	w := httptest.NewRecorder()
@@ -104,7 +148,7 @@ func TestHandleGetSublinkRequiresSession(t *testing.T) {
 
 func TestHandleGetSublinkReturnsAbsoluteURL(t *testing.T) {
 	srv, cookie := newSubpageTestServer(t, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	link := getSublink(t, h, cookie)
 	if !link.Enabled {
@@ -115,9 +159,49 @@ func TestHandleGetSublinkReturnsAbsoluteURL(t *testing.T) {
 	}
 }
 
+func TestSublinkTLSOnlyRoundTrip(t *testing.T) {
+	users := fixtureUsers()
+	const tlsLink = "tg://proxy?server=proxy.example&port=443&secret=ee" + testUserSecret + "6578616d706c652e636f6d"
+	users[0].Links = telemt.UserLinks{TLS: []string{tlsLink}}
+	srv, cookie := newSubpageTestServerWithUsers(t, true, users)
+	h := subpageTestHandler(srv)
+	link := getSublink(t, h, cookie)
+	w := getSubpage(t, h, link.URL)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "ee"+testUserSecret) {
+		t.Fatalf("TLS-only page: status=%d", w.Code)
+	}
+	// Transport and SNI do not change the underlying user's identity.
+	classicSrv, classicCookie := newSubpageTestServer(t, true)
+	classic := getSublink(t, subpageTestHandler(classicSrv), classicCookie)
+	if link.URL != classic.URL {
+		t.Fatal("same user secret produced different tokens for TLS and classic")
+	}
+}
+
+func TestSublinkExternalOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name, peer, forwardedHost, forwardedProto, want string
+	}{
+		{"direct", "192.0.2.1:1234", "", "", "http://panel.example:8080/panel/sub/token"},
+		{"trusted proxy", "127.0.0.1:1234", "public.example", "https", "https://public.example/panel/sub/token"},
+		{"untrusted headers", "192.0.2.1:1234", "spoofed.example", "https", "http://panel.example:8080/panel/sub/token"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "http://panel.example:8080/api/users/alice/sublink", nil)
+			r.RemoteAddr = tc.peer
+			r.Header.Set("X-Forwarded-Host", tc.forwardedHost)
+			r.Header.Set("X-Forwarded-Proto", tc.forwardedProto)
+			cfg := &config.Config{TrustedProxyPrefixes: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}}
+			if got := absoluteURL(r, cfg, "/panel/sub/token"); got != tc.want {
+				t.Fatalf("URL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHandleGetSublinkUnknownUser(t *testing.T) {
 	srv, cookie := newSubpageTestServer(t, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	r := httptest.NewRequest("GET", "/api/users/nobody/sublink", nil)
 	r.AddCookie(cookie)
@@ -130,7 +214,7 @@ func TestHandleGetSublinkUnknownUser(t *testing.T) {
 
 func TestHandleSubpageServesPageForValidToken(t *testing.T) {
 	srv, cookie := newSubpageTestServer(t, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	link := getSublink(t, h, cookie)
 
@@ -163,7 +247,7 @@ func TestHandleSubpageServesPageForValidToken(t *testing.T) {
 
 func TestHandleSubpageUnknownTokenIsUniform404(t *testing.T) {
 	srv, _ := newSubpageTestServer(t, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	r := httptest.NewRequest("GET", "/sub/does-not-exist", nil)
 	w := httptest.NewRecorder()
@@ -195,7 +279,7 @@ func TestHandleSubpageUnknownTokenIsUniform404(t *testing.T) {
 // doesn't depend on `make web` having run either).
 func TestHandleSubpageRouteNotRegisteredWhenDisabled(t *testing.T) {
 	srv, _ := newSubpageTestServer(t, false)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	r := httptest.NewRequest("GET", "/sub/anything", nil)
 	w := httptest.NewRecorder()
@@ -207,7 +291,7 @@ func TestHandleSubpageRouteNotRegisteredWhenDisabled(t *testing.T) {
 
 func TestSublinkRotateInvalidatesOldToken(t *testing.T) {
 	srv, cookie := newSubpageTestServer(t, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	before := getSublink(t, h, cookie)
 
@@ -266,7 +350,7 @@ func TestHandleSubpageUsesQuotaEntryUsedBytesOverLifetimeTotal(t *testing.T) {
 		"alice": {DataQuotaBytes: dataQuota, UsedBytes: 1 << 30, LastResetEpochSecs: 1700000000},
 	}
 	srv, cookie := newUsersTestServer(t, fake, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	link := getSublink(t, h, cookie)
 	r := httptest.NewRequest("GET", pathOf(t, link.URL), nil)
@@ -298,7 +382,7 @@ func TestHandleSubpageWithoutQuotaCapabilityFallsBackToTotalOctets(t *testing.T)
 	fake := newFakeTelemt(u)
 	fake.hasQuota = false
 	srv, cookie := newUsersTestServer(t, fake, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	link := getSublink(t, h, cookie)
 	r := httptest.NewRequest("GET", pathOf(t, link.URL), nil)
@@ -335,7 +419,7 @@ func TestHandleSubpageRenderFailureReturns500(t *testing.T) {
 	}
 	fake := newFakeTelemt(u)
 	srv, cookie := newUsersTestServer(t, fake, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	link := getSublink(t, h, cookie)
 	r := httptest.NewRequest("GET", pathOf(t, link.URL), nil)
@@ -371,7 +455,7 @@ func getSubpage(t *testing.T, h http.Handler, absoluteURL string) *httptest.Resp
 func TestHandleSubpageSecretRotationInvalidatesOldTokenViaVerifyOnHit(t *testing.T) {
 	fake := newFakeTelemt(aliceFixture())
 	srv, cookie := newUsersTestServer(t, fake, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	before := getSublink(t, h, cookie)
 	// Prime the index with a cache hit for the old token.
@@ -422,7 +506,7 @@ func TestHandleSubpageSecretRotationInvalidatesOldTokenViaVerifyOnHit(t *testing
 func TestHandlePatchUserSecretInvalidatesOldTokenViaVerifyOnHit(t *testing.T) {
 	fake := newFakeTelemt(aliceFixture())
 	srv, cookie := newUsersTestServer(t, fake, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	before := getSublink(t, h, cookie)
 	if w := getSubpage(t, h, before.URL); w.Code != http.StatusOK {
@@ -466,7 +550,7 @@ func TestHandlePatchUserSecretInvalidatesOldTokenViaVerifyOnHit(t *testing.T) {
 func TestHandleSubpageNonceRotationFailingRefreshStillInvalidatesOldToken(t *testing.T) {
 	fake := newFakeTelemt(aliceFixture())
 	srv, cookie := newUsersTestServer(t, fake, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	before := getSublink(t, h, cookie)
 	if w := getSubpage(t, h, before.URL); w.Code != http.StatusOK {
@@ -511,7 +595,7 @@ func TestHandleSubpageNonceRotationFailingRefreshStillInvalidatesOldToken(t *tes
 func TestHandleSubpageStaleTokenUniform404MatchesUnknownToken(t *testing.T) {
 	fake := newFakeTelemt(aliceFixture())
 	srv, cookie := newUsersTestServer(t, fake, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	before := getSublink(t, h, cookie)
 	if w := getSubpage(t, h, before.URL); w.Code != http.StatusOK {
@@ -540,7 +624,7 @@ func TestHandleSubpageStaleTokenUniform404MatchesUnknownToken(t *testing.T) {
 
 func TestSubpageRateLimited(t *testing.T) {
 	srv, _ := newSubpageTestServer(t, true)
-	h := srv.Handler()
+	h := subpageTestHandler(srv)
 
 	for i := 0; i < 30; i++ {
 		r := httptest.NewRequest("GET", "/sub/some-token", nil)

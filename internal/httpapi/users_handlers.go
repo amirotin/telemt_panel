@@ -88,7 +88,7 @@ func (s *Server) buildUserResponse(r *http.Request, u telemt.UserInfo, quota map
 	if s.cfg.Subpage.Enabled {
 		if secret, ok := subpage.ExtractSecret(u.Links); ok {
 			if path, err := s.subSvc.URL(u.Username, secret); err == nil {
-				resp.SubURL = absoluteURL(r, s.cfg, path)
+				resp.SubURL = s.subscriptionURL(r, path)
 			} else {
 				slog.Warn("users: build sub_url", "username", u.Username, "err", err)
 			}

@@ -116,7 +116,7 @@ func TestWebUIBasePathInjectedAcrossRoutes(t *testing.T) {
 	srv.cfg.BasePath = "/panel"
 	srv.webUI = fakeWebUI(t, "/panel")
 
-	for _, path := range []string{"/", "/users/alice"} {
+	for _, path := range []string{"/panel/", "/panel/users/alice"} {
 		rec := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 		if rec.Code != 200 {
@@ -132,7 +132,7 @@ func TestWebUIBasePathInjectedAcrossRoutes(t *testing.T) {
 	// config.Config.BasePath's doc comment: a reverse proxy strips it
 	// before forwarding).
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/nope", nil))
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/panel/api/nope", nil))
 	if rec.Code != 404 || rec.Header().Get("Content-Type") != "application/json" {
 		t.Errorf("/api/nope under base_path: status=%d content-type=%q", rec.Code, rec.Header().Get("Content-Type"))
 	}
@@ -150,7 +150,7 @@ func TestWebUISubpageWrongMethodGetsSubpageOwn405(t *testing.T) {
 	srv.webUI = fakeWebUI(t, "")
 
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/sub/bad-token", nil))
+	srv.SubscriptionHandler().ServeHTTP(rec, httptest.NewRequest("POST", "/sub/bad-token", nil))
 	if rec.Code != 405 {
 		t.Fatalf("status = %d, want 405", rec.Code)
 	}

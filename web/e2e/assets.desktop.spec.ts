@@ -7,6 +7,7 @@ test("production HTML avoids initial module preloads and supports mobile standal
   await expect(page.locator('meta[name="mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
   await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
   await expect(page.getByLabel("Имя пользователя")).toBeVisible();
+  await expect(page.getByText("Управление MTProxy", { exact: true })).toHaveCount(0);
   const logo = page.locator('img[src*="logo-login-"]');
   await expect(logo).toBeVisible();
   await expect.poll(() => logo.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);

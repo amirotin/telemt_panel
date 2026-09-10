@@ -3,11 +3,13 @@ package paneltls
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -50,7 +52,9 @@ func TestPreparationListenerConflictAndCancellation(t *testing.T) {
 	}
 	defer ln.Close()
 	c := config.TLSCandidate{Listen: ln.Addr().String(), TLS: config.TLSConfig{Mode: "http"}}
-	if _, err := PrepareCandidate(context.Background(), c, "127.0.0.1:1", nil, nil); err == nil {
+	if _, err := PrepareCandidate(context.Background(), c, "127.0.0.1:1", nil, nil); err != nil {
+		assertListenerFailure(t, err, "tls_listener_unavailable", c.Listen)
+	} else {
 		t.Fatal("conflicting listener accepted")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -58,6 +62,34 @@ func TestPreparationListenerConflictAndCancellation(t *testing.T) {
 	if _, err := PrepareCandidate(ctx, c, c.Listen, nil, nil); err == nil {
 		t.Fatal("cancellation ignored")
 	}
+}
+
+func assertListenerFailure(t *testing.T, err error, code, address string) {
+	t.Helper()
+	var preparation *PrepareError
+	if !errors.As(err, &preparation) || preparation.Code != code {
+		t.Fatalf("expected %s, got %v", code, err)
+	}
+	if !strings.Contains(preparation.Message, address) || !strings.Contains(preparation.Message, syscall.EADDRINUSE.Error()) {
+		t.Fatalf("address or system cause lost: %q", preparation.Message)
+	}
+}
+
+func TestPreparationReportsChallengeBindCauseBeforeContactingCA(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	candidate := config.TLSCandidate{Listen: "127.0.0.1:8443", TLS: config.TLSConfig{
+		Mode: "acme", AcmeDomain: "panel.example", AcmeCacheDir: t.TempDir(),
+	}}
+	_, err = prepareCandidate(context.Background(), candidate, candidate.Listen, nil,
+		func(context.Context, config.TLSCandidate) ([][]byte, error) {
+			t.Fatal("CA must not be contacted when the challenge port is occupied")
+			return nil, nil
+		}, ln.Addr().String())
+	assertListenerFailure(t, err, "tls_challenge_unavailable", ln.Addr().String())
 }
 
 func TestCandidateCertificateTrustRequiresActualChain(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base32"
+	"encoding/hex"
 	"net/url"
 	"strings"
 
@@ -55,8 +56,11 @@ type Service struct {
 }
 
 // NewService creates a Service. secret is the panel's subpage.secret
-// (HMAC key); basePath is cfg.BasePath, prefixed onto every returned URL.
+// (HMAC key); basePath is the subscription's independent path prefix.
 func NewService(secret, basePath string, nonces NonceProvider) *Service {
+	if basePath == "" {
+		basePath = "/sub"
+	}
 	return &Service{secret: []byte(secret), basePath: basePath, nonces: nonces}
 }
 
@@ -70,7 +74,7 @@ func (s *Service) URL(username, userSecret string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return s.basePath + "/sub/" + deriveToken(s.secret, username, userSecret, nonce), nil
+	return s.basePath + "/" + deriveToken(s.secret, username, userSecret, nonce), nil
 }
 
 // Verify reports whether token is the current, correct subpage token for
@@ -91,27 +95,46 @@ func (s *Service) Verify(username, userSecret, token string) (bool, error) {
 }
 
 // ExtractSecret returns the user's canonical 32-hex Telemt secret from
-// their links, preferring the classic link (whose secret param carries it
-// unprefixed) and falling back to the secure link (whose secret param is
-// prefixed "dd"). The fake-TLS links carry an additional SNI-derived
-// prefix and are not used here — spec 07-telemt-sdk.md's prefix table.
-// The bool is false when neither link is present or parseable, which can
-// happen for a user with no classic/secure links configured.
+// their links, preferring classic, then secure, then fake-TLS. Telemt
+// encodes fake-TLS as ee + the 32-hex secret + the hex-encoded SNI domain.
+// The domain is not part of the user's identity: changing the masking
+// domain or enabled transport must not revoke an otherwise valid token.
 func ExtractSecret(links telemt.UserLinks) (string, bool) {
-	if len(links.Classic) > 0 {
-		if secret, ok := secretParam(links.Classic[0]); ok && isHex32(secret) {
+	for _, link := range links.Classic {
+		if secret, ok := secretParam(link); ok && isHex32(secret) {
 			return secret, true
 		}
 	}
-	if len(links.Secure) > 0 {
-		if secret, ok := secretParam(links.Secure[0]); ok {
-			secret = strings.TrimPrefix(strings.ToLower(secret), "dd")
+	for _, link := range links.Secure {
+		if secret, ok := secretParam(link); ok {
+			secret = strings.TrimPrefix(secret, "dd")
 			if isHex32(secret) {
 				return secret, true
 			}
 		}
 	}
+	for _, link := range links.TLS {
+		if secret, ok := tlsSecret(link); ok {
+			return secret, true
+		}
+	}
+	for _, domain := range links.TLSDomains {
+		if secret, ok := tlsSecret(domain.Link); ok {
+			return secret, true
+		}
+	}
 	return "", false
+}
+
+func tlsSecret(link string) (string, bool) {
+	secret, ok := secretParam(link)
+	if !ok || len(secret) <= 34 || !strings.HasPrefix(secret, "ee") || !isHex32(secret[2:34]) {
+		return "", false
+	}
+	if _, err := hex.DecodeString(secret[34:]); err != nil {
+		return "", false
+	}
+	return secret[2:34], true
 }
 
 // secretParam parses a tg://proxy?... or https://t.me/proxy?... link and
@@ -121,7 +144,7 @@ func secretParam(link string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	secret := u.Query().Get("secret")
+	secret := strings.ToLower(u.Query().Get("secret"))
 	return secret, secret != ""
 }
 

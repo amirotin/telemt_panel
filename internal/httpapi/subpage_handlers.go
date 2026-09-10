@@ -6,7 +6,9 @@ import (
 	"crypto/rand"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -18,6 +20,43 @@ import (
 // subpageRequestTimeout bounds the Telemt round trip for both the public
 // /sub/{token} view and the admin sublink endpoints.
 const subpageRequestTimeout = 10 * time.Second
+
+// SubscriptionHandler exposes only token-addressed public pages on its own port.
+func (s *Server) SubscriptionHandler() http.Handler {
+	if !s.cfg.Subpage.Enabled {
+		return http.NotFoundHandler()
+	}
+	base := s.cfg.Subpage.BasePath
+	if base == "" {
+		base = "/sub"
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /{token}", s.subpageRateLimited(s.handleSubpage))
+	return acceptBasePath(base, mux)
+}
+
+func (s *Server) subscriptionURL(r *http.Request, path string) string {
+	if s.cfg.Subpage.PublicURL != "" {
+		return s.cfg.Subpage.PublicURL + path
+	}
+	scheme := "http"
+	if s.cfg.Subpage.TLS.Mode != "" && s.cfg.Subpage.TLS.Mode != "http" {
+		scheme = "https"
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if s.cfg.Subpage.TLS.AcmeDomain != "" {
+		host = s.cfg.Subpage.TLS.AcmeDomain
+	}
+	_, port, _ := net.SplitHostPort(s.cfg.Subpage.Listen)
+	if port == "" {
+		port = "8081"
+	}
+	return scheme + "://" + net.JoinHostPort(host, port) + path
+}
 
 // handleSubpage implements GET /sub/{token}: the token-addressed, no-login
 // per-user subscription page. Every failure path (bad token, unknown
@@ -181,7 +220,7 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 	}
 	secret, ok := subpage.ExtractSecret(u.Links)
 	if !ok {
-		auth.WriteError(w, http.StatusConflict, "sublink_unavailable", "user has no classic or secure link to derive a subpage link from")
+		auth.WriteError(w, http.StatusConflict, "sublink_unavailable", "user has no supported connection link to derive a subpage link from")
 		return
 	}
 
@@ -199,10 +238,9 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 		}
 		// Force an immediate index rebuild so the old token stops
 		// resolving right away, rather than waiting out the lazy
-		// refresh's throttle window. Best-effort: a failed refresh here
-		// just means the old token keeps working until the next lazy
-		// refresh catches up — not a reason to fail the rotation, since
-		// the nonce itself is already durably rotated in the store.
+		// refresh's throttle window. A failed refresh can delay discovery
+		// of the new token, but Verify still rejects the old one against
+		// the durably rotated nonce on every request.
 		if err := s.subIndex.Refresh(ctx); err != nil {
 			slog.Warn("sublink: index refresh after rotate", "username", username, "err", err)
 		}
@@ -217,7 +255,7 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 	}
 
 	writeJSON(w, http.StatusOK, sublinkResponse{
-		URL:     absoluteURL(r, s.cfg, path),
+		URL:     s.subscriptionURL(r, path),
 		Enabled: s.cfg.Subpage.Enabled,
 	})
 }

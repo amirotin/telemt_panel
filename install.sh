@@ -70,7 +70,7 @@ TLS_CACHE=""
 ADMIN_USER="admin"
 ADMIN_PASS=""
 PASS_HASH=""
-SUBPAGE_ENABLED="yes"
+SUBPAGE_ENABLED="no"
 SUBPAGE_SECRET=""
 TELEMT_BIN=""
 TELEMT_SVC="telemt"
@@ -396,8 +396,8 @@ Paths: binary %s, config %s, data %s
     en:pass_mismatch) _f='Passwords do not match — try again.' ;;
     ru:q_subpage) _f='Включить страницу подписки?' ;;
     en:q_subpage) _f='Enable the subscription page?' ;;
-    ru:x_subpage) _f='Каждому пользователю прокси можно выдать личную ссылку /sub/<токен>: страница\nбез входа в панель, с настройками подключения и QR-кодом. Ссылка отзывается\nсменой секрета пользователя. Отключить можно позже одним ключом в конфиге.' ;;
-    en:x_subpage) _f='Every proxy user can get a personal /sub/<token> link: a page with connection\nsettings and a QR code, no panel login needed. Rotating the user secret revokes\nthe link. It can be turned off later with one config key.' ;;
+    ru:x_subpage) _f='Личная страница подключения и QR-код без входа администратора. По умолчанию\nвыключена. При включении здесь слушает только 127.0.0.1:8081; внешний адрес,\nсобственный путь и HTTPS настройте в веб-интерфейсе перед передачей ссылок.' ;;
+    en:x_subpage) _f='A personal connection page and QR code without an admin login. Disabled by\ndefault. Enabling it here binds only 127.0.0.1:8081; configure its external\naddress, custom path and HTTPS in the web interface before sharing links.' ;;
     ru:q_telemt_bin) _f='Путь к бинарю Telemt' ;;
     en:q_telemt_bin) _f='Telemt binary path' ;;
     ru:x_telemt_bin) _f='Нужен только для обновления Telemt из панели: этот файл будет заменяться\nновой версией с резервной копией рядом.' ;;
@@ -1700,7 +1700,7 @@ ask_admin() {
 ask_subpage() {
   blank
   explain x_subpage
-  _def=$(yesno_from "${TP_SUBPAGE:-yes}")
+  _def=$(yesno_from "${TP_SUBPAGE:-no}")
   if confirm_yn "$_def" q_subpage; then SUBPAGE_ENABLED="yes"; else SUBPAGE_ENABLED="no"; fi
 }
 

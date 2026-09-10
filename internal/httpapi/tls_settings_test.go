@@ -94,15 +94,15 @@ func TestPanelAccessRequiresRunningServiceWhenStatusIsSupported(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := status == host.StatusRunning
-			if settings.Capabilities.Restart != want || settings.Capabilities.Prepare != want {
+			if settings.Capabilities.Restart != want || !settings.Capabilities.Prepare {
 				t.Fatalf("service=%s: capabilities=%+v", status, settings.Capabilities)
 			}
 			if !want {
 				before, _ := os.ReadFile(path)
 				w = accessRequest(t, s, cookie, "POST", "/api/settings/tls/prepare", config.TLSCandidate{Listen: s.cfg.Listen, TLS: s.cfg.TLS})
 				after, _ := os.ReadFile(path)
-				if w.Code != http.StatusServiceUnavailable || !bytes.Equal(before, after) {
-					t.Fatalf("manual process accepted preparation: %d", w.Code)
+				if w.Code != http.StatusOK || !bytes.Equal(before, after) {
+					t.Fatalf("manual preparation unavailable or wrote config: %d", w.Code)
 				}
 			}
 		})
@@ -189,7 +189,7 @@ func TestPanelAccessManualOnlyAndUnconfigured(t *testing.T) {
 	s.privilegesMode = host.PrivilegesModeManual
 	before, _ := os.ReadFile(path)
 	w = accessRequest(t, s, cookie, "POST", "/api/settings/tls/prepare", config.TLSCandidate{Listen: "127.0.0.1:8080", TLS: config.TLSConfig{Mode: "http"}})
-	if w.Code != 503 {
+	if w.Code != 200 {
 		t.Fatalf("manual preparation: %d", w.Code)
 	}
 	after, _ := os.ReadFile(path)

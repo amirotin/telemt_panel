@@ -159,7 +159,7 @@ describe("PanelAccessForm", () => {
     await click(button("Проверить настройки"));
     await settle();
     expect(api.prepare).toHaveBeenCalledWith({
-      body: { listen: "0.0.0.0:8080", tls: { mode: "http" }, confirm_http: true },
+      body: { base_path: "", public_url: "", enabled: false, listen: "0.0.0.0:8080", tls: { mode: "http" }, confirm_http: true },
       signal: expect.any(AbortSignal),
     }, expect.anything());
   });
@@ -183,7 +183,7 @@ describe("PanelAccessForm", () => {
     await click(button("Проверить настройки"));
     await settle();
     expect(api.prepare).toHaveBeenCalledWith({
-      body: { listen: "0.0.0.0:8080", tls: { mode: "http" }, confirm_http: true },
+      body: { base_path: "", public_url: "", enabled: false, listen: "0.0.0.0:8080", tls: { mode: "http" }, confirm_http: true },
       signal: expect.any(AbortSignal),
     }, expect.anything());
   });

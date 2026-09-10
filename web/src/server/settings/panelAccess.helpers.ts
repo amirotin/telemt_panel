@@ -7,6 +7,9 @@ import type {
 export type PanelAccessMode = "acme" | "certificate" | "proxy" | "http";
 
 export interface PanelAccessDraft {
+  publicURL?: string;
+  basePath?: string;
+  enabled?: boolean;
   mode: PanelAccessMode;
   host: string;
   port: string;
@@ -19,7 +22,7 @@ export interface PanelAccessDraft {
 
 export function panelAccessMode(candidate: PanelTlsCandidate, browserProtocol: string): PanelAccessMode {
   if (candidate.tls.mode !== "http") return candidate.tls.mode;
-  return browserProtocol === "https:" ? "proxy" : "http";
+  return (candidate.public_url ? candidate.public_url.startsWith("https://") : browserProtocol === "https:") ? "proxy" : "http";
 }
 
 export function splitPanelListen(listen: string): { host: string; port: string } {
@@ -52,13 +55,20 @@ export function createPanelAccessDraft(settings: PanelTlsSettings, browserProtoc
     certFile: candidate.tls.cert_file ?? "",
     keyFile: candidate.tls.key_file ?? "",
     httpConfirmed: false,
+    publicURL: candidate.public_url ?? "",
+    basePath: candidate.base_path ?? "",
+    enabled: candidate.enabled ?? false,
   };
 }
 
 export function buildPanelTlsPrepareBody(draft: PanelAccessDraft): PreparePanelTlsData["body"] {
+  const address = splitAccessURL(draft.publicURL ?? "", draft.basePath ?? "");
   const body: PreparePanelTlsData["body"] = {
     listen: joinPanelListen(draft.host, draft.port),
     tls: { mode: draft.mode === "proxy" ? "http" : draft.mode },
+    base_path: address.basePath,
+    public_url: address.publicURL,
+    enabled: draft.enabled ?? false,
   };
   if (draft.mode === "acme") {
     body.tls.acme_domain = draft.domain.trim();
@@ -75,11 +85,24 @@ export function buildPanelTlsPrepareBody(draft: PanelAccessDraft): PreparePanelT
   return body;
 }
 
+export function splitAccessURL(publicURL: string, basePath: string) {
+  try {
+    const url = new URL(publicURL.trim());
+    if (url.pathname !== "/" && !url.search && !url.hash && !url.username && !url.password) {
+      return { publicURL: url.origin, basePath: url.pathname.replace(/\/+$/, "") };
+    }
+  } catch {
+    // Preserve unfinished input; submit validation provides the explanation.
+  }
+  return { publicURL: publicURL.trim(), basePath };
+}
+
 export function safePanelDestination(url: string | undefined, mode: PanelAccessMode): string | undefined {
-  if (!url || mode === "proxy") return undefined;
+  if (!url) return undefined;
   try {
     const parsed = new URL(url);
     if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password) return undefined;
+    if (mode === "proxy" && (parsed.protocol !== "https:" || isLoopbackHost(parsed.hostname))) return undefined;
     return parsed.toString();
   } catch {
     return undefined;

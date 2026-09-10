@@ -130,6 +130,9 @@ for (const width of [1440, 768, 390, 360]) {
     await expect(dialog.getByRole("button", { name: "Получить сертификат и проверить" })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Изменить параметры" })).toBeVisible();
     expect(calls.prepareBodies.at(-1)).toEqual({
+      base_path: "",
+      public_url: "",
+      enabled: false,
       listen: "0.0.0.0:9443",
       tls: { mode: "acme", acme_domain: "panel.example.com", acme_cache_dir: "/etc/telemt-panel/certs" },
     });
