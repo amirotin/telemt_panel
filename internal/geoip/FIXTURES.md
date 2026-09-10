@@ -33,3 +33,18 @@ Create the tree with `mmdbwriter.New`, insert the network and record using
 `mmdbtype.Map`/`String`/`Uint32`, then `WriteTo` a buffer and gzip/base64 encode it.
 These fixtures contain no downloaded geolocation data and add no runtime or
 test module dependency on the writer.
+
+For an optional measurement against real local files (not committed here), run:
+
+```sh
+GEOIP_BENCH_COUNTRY=/path/to/GeoLite2-Country.mmdb \
+GEOIP_BENCH_ASN=/path/to/GeoLite2-ASN.mmdb \
+GEOIP_BENCH_CITY=/path/to/GeoLite2-City.mmdb \
+go test -run '^$' -bench BenchmarkRecordSchema -benchtime=1x ./internal/geoip
+```
+
+The benchmark reports network count, distinct record count, schema-validation
+time and allocations. It does not download files or measure the panel's full
+startup time. An unset path skips that database kind. Every distinct record is
+checked; offsets are deduplicated only within one reader, never across files
+or database replacements. Structural MMDB verification remains unchanged.

@@ -90,9 +90,18 @@ func openDatabase(kind Kind, path string, loadedAt int64, verify func(*maxminddb
 }
 
 func verifyRecordSchema(reader *maxminddb.Reader, kind Kind) error {
-	// Verify checks the MMDB encoding; decoding every network also checks the
-	// fields consumed by lookup while allowing omitted optional fields.
+	// Verify checks the MMDB encoding. Networks can share a data record;
+	// its offset identifies identical decoded fields within this reader.
+	// Check every distinct record, not the same record once per IP range.
+	seen := make(map[uintptr]struct{})
 	for result := range reader.Networks() {
+		if err := result.Err(); err != nil {
+			return err
+		}
+		offset := result.Offset()
+		if _, ok := seen[offset]; ok {
+			continue
+		}
 		var record any
 		switch kind {
 		case KindCountry:
@@ -105,6 +114,7 @@ func verifyRecordSchema(reader *maxminddb.Reader, kind Kind) error {
 		if err := result.Decode(record); err != nil {
 			return err
 		}
+		seen[offset] = struct{}{}
 	}
 	return nil
 }
