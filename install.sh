@@ -669,11 +669,6 @@ run_try() {
   $SUDO "$@" >/dev/null 2>&1
 }
 
-# run_quiet CMD… — like run_try, but never fails the script.
-run_quiet() {
-  run_try "$@" || true
-}
-
 # owner_group USER — primary group name (falls back to USER under --dry-run
 # when the account does not exist yet).
 owner_group() {
@@ -1216,14 +1211,7 @@ restart_display() {
   esac
 }
 
-# gen_config — the 1.x config from the answer globals, on stdout. The
-# EXTRA_* globals carry per-section lines that only a migrated 0.x config
-# contributes (base_path, session_ttl, …); they are empty otherwise.
-EXTRA_TOP=""; EXTRA_TELEMT=""; EXTRA_AUTH=""; EXTRA_HOST=""; EXTRA_UPDATES=""
-emit_extra() {
-  [ -n "$1" ] && printf '%s\n' "$1"
-  return 0
-}
+# gen_config — fresh-install 1.x config from the answer globals, on stdout.
 gen_config() {
   _mode="direct"
   if [ "$RUN_AS" = "user" ]; then
@@ -1272,7 +1260,6 @@ listen = "$(toml_escape "$LISTEN")"
 $_c_data
 data_dir = "$(toml_escape "$DATA_DIR")"
 EOF
-  emit_extra "$EXTRA_TOP"
   gen_tls_config
   cat <<EOF
 
@@ -1280,17 +1267,11 @@ EOF
 $_c_telemt
 url = "$(toml_escape "$TELEMT_URL")"
 auth_header = "$(toml_escape "$TELEMT_AUTH")"
-EOF
-  emit_extra "$EXTRA_TELEMT"
-  cat <<EOF
 
 [auth]
 username = "$(toml_escape "$ADMIN_USER")"
 $_c_auth
 password_hash = "$(toml_escape "$PASS_HASH")"
-EOF
-  emit_extra "$EXTRA_AUTH"
-  cat <<EOF
 
 [store]
 driver = "$_store_driver"
@@ -1305,17 +1286,11 @@ secret = "$(toml_escape "$SUBPAGE_SECRET")"
 $_c_host
 telemt_service = "$(toml_escape "$TELEMT_SVC")"
 panel_service = "$SERVICE_NAME"
-EOF
-  emit_extra "$EXTRA_HOST"
-  cat <<EOF
 
 [updates]
 $_c_upd
 telemt_binary_path = "$(toml_escape "$TELEMT_BIN")"
 panel_binary_path = "$(toml_escape "$PANEL_BIN")"
-EOF
-  emit_extra "$EXTRA_UPDATES"
-  cat <<EOF
 
 [privileges]
 $_c_priv
@@ -1484,14 +1459,14 @@ start() {
 
 stop() {
 	echo "Stopping $SERVICE_NAME"
-	start-stop-daemon --stop --retry 10 --pidfile "\$PIDFILE"
+	start-stop-daemon --stop --oknodo --retry 10 --pidfile "\$PIDFILE" || return \$?
 	rm -f "\$PIDFILE"
 }
 
 case "\$1" in
 	start) start ;;
 	stop) stop ;;
-	restart) stop; start ;;
+	restart) stop && start ;;
 	status)
 		if [ -f "\$PIDFILE" ] && kill -0 "\$(cat "\$PIDFILE")" 2>/dev/null; then
 			echo "$SERVICE_NAME is running"
@@ -1704,6 +1679,7 @@ ask_admin() {
   if [ "$ASSUME_YES" = 1 ]; then
     ADMIN_PASS="${TP_ADMIN_PASSWORD:-}"
     [ -n "$ADMIN_PASS" ] || die "$(t missing_env TP_ADMIN_PASSWORD)"
+    [ "${#ADMIN_PASS}" -ge 8 ] || die "$(t pass_short)"
     return 0
   fi
   while :; do
@@ -2307,7 +2283,7 @@ install_service() {
       run_try systemctl enable "$SERVICE_NAME" ;;
     openrc)
       gen_service | write_root_file "$SERVICE_FILE" 0755
-      run_quiet rc-update add "$SERVICE_NAME" default ;;
+      run rc-update add "$SERVICE_NAME" default || return 1 ;;
     procd)
       gen_service | write_root_file "$SERVICE_FILE" 0755
       run "$SERVICE_FILE" enable ;;

@@ -365,6 +365,62 @@ for _scenario in missing no-tool mismatch; do
     fetch_release
   ) >"$TMP/checksum-$_scenario.log" 2>&1; then fail "unverified release accepted: $_scenario"; else pass; fi
 done
+
+# Non-interactive input has the same password minimum as the interactive form.
+if (
+  ASSUME_YES=1; TP_ADMIN_PASSWORD=short
+  ask_admin
+) >"$TMP/short-password.log" 2>&1; then fail "short automated password accepted"; else pass; fi
+if (
+  ASSUME_YES=1; TP_ADMIN_PASSWORD=valid-password
+  ask_admin
+  [ "$ADMIN_PASS" = valid-password ]
+) >/dev/null 2>&1; then pass; else fail "valid automated password rejected"; fi
+
+# A SysV stop failure must preserve its PID file and never start a second daemon.
+(
+  RUN_AS=root
+  gen_service_sysvinit
+) | sed -e "s|^PIDFILE=.*|PIDFILE=\"$TMP/sysv.pid\"|" \
+        -e "s|^LOGFILE=.*|LOGFILE=\"$TMP/sysv.log\"|" >"$TMP/sysv-service"
+cat >"$TMP/bin/start-stop-daemon" <<'EOF'
+#!/bin/sh
+case "$1" in
+  --stop) exit "$SYSV_STOP_STATUS" ;;
+  --start) printf 'started\n' >>"$SYSV_STARTS" ;;
+  *) exit 9 ;;
+esac
+EOF
+chmod 0755 "$TMP/bin/start-stop-daemon"
+printf '12345\n' >"$TMP/sysv.pid"
+if SYSV_STOP_STATUS=2 SYSV_STARTS="$TMP/sysv-starts" sh "$TMP/sysv-service" restart >"$TMP/sysv-output" 2>&1; then
+  fail "SysV restart hid stop failure"
+else
+  pass
+fi
+if [ -f "$TMP/sysv.pid" ] && [ ! -e "$TMP/sysv-starts" ]; then pass; else fail "SysV stop failure lost PID or started another daemon"; fi
+if SYSV_STOP_STATUS=0 SYSV_STARTS="$TMP/sysv-starts" sh "$TMP/sysv-service" restart >"$TMP/sysv-output" 2>&1; then
+  pass
+else
+  fail "SysV successful restart failed"
+fi
+if [ ! -e "$TMP/sysv.pid" ] && [ -s "$TMP/sysv-starts" ]; then pass; else fail "SysV successful stop/start was not completed"; fi
+
+# Installing an OpenRC service is not successful if enabling autostart fails.
+if (
+  INIT=openrc
+  gen_service() { printf 'synthetic service\n'; }
+  write_root_file() { cat >/dev/null; }
+  run() { return 1; }
+  install_service
+) >/dev/null 2>&1; then fail "OpenRC enable failure was hidden"; else pass; fi
+if (
+  INIT=openrc
+  gen_service() { printf 'synthetic service\n'; }
+  write_root_file() { cat >/dev/null; }
+  run() { return 0; }
+  install_service
+) >/dev/null 2>&1; then pass; else fail "OpenRC enable success rejected"; fi
 if [ -e "$TMP/unverified-extraction" ]; then fail "unverified archive extracted"; else pass; fi
 
 # Explicit transport choices and service privileges.
