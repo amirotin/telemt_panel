@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!.container-bin/
+!.container-bin/amd64/
+!.container-bin/amd64/telemt-panel
+!.container-bin/arm64/
+!.container-bin/arm64/telemt-panel

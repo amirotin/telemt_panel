@@ -1,0 +1,115 @@
+name: Container prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published prerelease tag to package (no latest tag is changed)
+        required: true
+        default: v1.0.0-rc.1
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: container-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Validate release and download verified binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v1\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]] || { echo 'Use an explicit v1 prerelease tag'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '(.prerelease == true) and (.draft == false)' | grep -qx true
+          git fetch --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          {
+            echo "BINARY_REVISION=$(git rev-parse "$RELEASE_TAG^{commit}")"
+            echo "VERSION=${RELEASE_TAG#v}"
+            echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}"
+          } >> "$GITHUB_ENV"
+          for arch in amd64 arm64; do
+            upstream=x86_64
+            if [ "$arch" = arm64 ]; then upstream=aarch64; fi
+            archive="telemt-panel-$upstream-linux-gnu.tar.gz"
+            mkdir -p ".container-bin/$arch"
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$archive" --pattern "$archive.sha256" --dir ".container-bin/$arch"
+            (cd ".container-bin/$arch" && sha256sum -c "$archive.sha256")
+            python3 - "$arch" ".container-bin/$arch/$archive" <<'PY'
+          import pathlib, struct, sys, tarfile
+          arch, archive = sys.argv[1:]
+          with tarfile.open(archive) as tar:
+              members = tar.getmembers()
+              assert len(members) == 1 and members[0].name == 'telemt-panel' and members[0].isreg()
+              data = tar.extractfile(members[0]).read()
+          assert data[:6] == b'\x7fELF\x02\x01'
+          assert struct.unpack('<H', data[18:20])[0] == {'amd64': 62, 'arm64': 183}[arch]
+          pathlib.Path(archive).with_name('telemt-panel').write_bytes(data)
+          PY
+          done
+
+      - name: Build and test both architectures before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose config --quiet
+          for arch in amd64 arm64; do
+            docker buildx build --platform "linux/$arch" --load --provenance=false \
+              --build-arg "VERSION=$VERSION" --build-arg "SOURCE_REVISION=$GITHUB_SHA" \
+              --build-arg "BINARY_REVISION=$BINARY_REVISION" \
+              --tag "telemt-panel-container-test:$arch" .
+            python3 scripts/container-smoke.py --image "telemt-panel-container-test:$arch" --platform "linux/$arch" --version "$VERSION"
+          done
+
+      - name: Refuse replacing an existing version tag
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY'].lower()
+          with urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:'+repo+':pull', timeout=20) as response:
+              token = json.load(response)['token']
+          req = urllib.request.Request('https://ghcr.io/v2/'+repo+'/manifests/'+os.environ['VERSION'], headers={
+              'Authorization': 'Bearer '+token,
+              'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json'})
+          try:
+              with urllib.request.urlopen(req, timeout=20):
+                  raise SystemExit('Container version already exists; refusing to replace it')
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+          PY
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Publish immutable prerelease and platform manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          digests=()
+          for arch in amd64 arm64; do
+            tag="$IMAGE:$VERSION-$arch"
+            docker tag "telemt-panel-container-test:$arch" "$tag"
+            docker push "$tag"
+            digests+=("$(docker image inspect "$tag" --format '{{index .RepoDigests 0}}')")
+          done
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" "${digests[@]}"
+          docker buildx imagetools inspect "$IMAGE:$VERSION" --raw | \
+            jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
+          echo "Published $IMAGE:$VERSION (latest unchanged)" >> "$GITHUB_STEP_SUMMARY"

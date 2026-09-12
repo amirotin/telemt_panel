@@ -1,4 +1,5 @@
 # Binaries
+/.container-bin/
 /telemt-panel
 /telemt-panel-lite
 /telemt-mock

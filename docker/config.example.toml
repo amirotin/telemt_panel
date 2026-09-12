@@ -1,0 +1,29 @@
+listen = "127.0.0.1:8080"
+data_dir = "/var/lib/telemt-panel"
+
+[telemt]
+url = "http://127.0.0.1:9091"
+auth_header = ""
+
+[auth]
+username = "admin"
+# Generate interactively: docker run --rm -it IMAGE hash-password
+password_hash = "REPLACE_WITH_BCRYPT_HASH"
+
+[store]
+driver = "sqlite"
+path = "/var/lib/telemt-panel/panel.db"
+
+[host]
+service_manager = "none"
+
+[privileges]
+mode = "manual"
+
+[tls]
+mode = "http"
+
+[subpage]
+enabled = false
+listen = "127.0.0.1:8081"
+base_path = "/sub"

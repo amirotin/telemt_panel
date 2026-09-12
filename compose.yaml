@@ -1,0 +1,21 @@
+services:
+  telemt-panel:
+    image: ghcr.io/amirotin/telemt_panel:1.0.0-rc.1
+    restart: unless-stopped
+    # Linux: access Telemt's loopback API without exposing it to the network.
+    network_mode: host
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - type: bind
+        source: ./config
+        target: /etc/telemt-panel
+        bind:
+          create_host_path: false
+      - panel-data:/var/lib/telemt-panel
+
+volumes:
+  panel-data:
