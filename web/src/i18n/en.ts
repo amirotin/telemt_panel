@@ -124,6 +124,7 @@ export const en: Dict = {
     placeholderDescription: "This screen arrives in one of the next tasks.",
   },
   people: {
+    list:{openSearch:"Open search",closeSearch:"Close search",connectionsShort:"conn.",users:"users",month:"this month",monthHint:"Accounted by the panel this month; not Telemt quota usage.",nearQuota:"quotas running low",nearQuotaHint:"Between 85% and 100% of the limit used. Unknown usage is excluded.",telemtQuota:"Telemt quota",quotaHint:"Telemt quota usage, not accumulated panel traffic",observed:"accounted",noQuota:"no quota",panelTraffic:"Accounted by the panel",noTraffic:"Traffic history unavailable",expired:"Expired",until:"Until",summary:"User summary"},
     clearSearch:"Clear search",
     bulkQuota: {
       unconfirmed:"Telemt did not confirm the reset outcome",

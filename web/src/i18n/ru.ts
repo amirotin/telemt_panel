@@ -148,6 +148,7 @@ export const ru = {
     placeholderDescription: "Экран появится в одной из следующих задач.",
   },
   people: {
+    list:{openSearch:"Открыть поиск",closeSearch:"Закрыть поиск",connectionsShort:"соед.",users:"пользователей",month:"за текущий месяц",monthHint:"Учтено панелью за текущий месяц; не расход квот Telemt.",nearQuota:"квот на исходе",nearQuotaHint:"Израсходовано от 85% до 100% лимита. Неизвестный расход не учитывается.",telemtQuota:"Квота Telemt",quotaHint:"Расход квоты Telemt, не накопленный трафик панели",observed:"учтено",noQuota:"без квоты",panelTraffic:"Учтено панелью",noTraffic:"История трафика недоступна",expired:"Истёк",until:"До",summary:"Сводка по пользователям"},
     clearSearch:"Очистить поиск",
     bulkQuota: {
       unconfirmed:"Telemt не подтвердил результат сброса",

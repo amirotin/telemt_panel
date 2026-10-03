@@ -31,7 +31,7 @@ export function QuickConnectionLinks({user}: {user: UsersTopicUser}) {
   if(!kinds.length)return null;
   return <><div className="user-copy-toolbar" role="group" aria-label={`${t.quickLinks} ${user.username}`}>
     <button type="button" className="user-format" aria-label={`${t.format} ${user.username}: ${format==="tg"?"tg://":"t.me"}`} title={t.formatHint} onClick={()=>setFormat(user.username,format==="tg"?"tme":"tg")}>{format==="tg"?"tg://":"t.me"}<span aria-hidden="true">⇄</span></button>
-    {kinds.map(kind=>{const link=links.find(l=>l.kind===kind&&l.primary);return <button type="button" key={kind} className="user-copy-kind" disabled={!link} title={!link?t.webSecretUnavailable:kind==="web"?t.webFormat:t.primaryLink} aria-label={`${s.common.copy} ${names[kind]} · ${user.username}`} onClick={()=>link&&void copy(link)}>{names[kind]}</button>;})}
+    {kinds.map(kind=>{const link=links.find(l=>l.kind===kind&&l.primary);return <button type="button" key={kind} className={`user-copy-kind${kind==="web"?" is-web":""}`} disabled={!link} title={!link?t.webSecretUnavailable:kind==="web"?t.webFormat:t.primaryLink} aria-label={`${s.common.copy} ${names[kind]} · ${user.username}`} onClick={()=>link&&void copy(link)}>{names[kind]}</button>;})}
   </div><Sheet open={manual!==null} onClose={()=>setManual(null)} title={s.common.copyManually}><CopyField value={manual??""}/></Sheet></>;
 }
 

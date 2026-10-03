@@ -17,6 +17,7 @@
 // locale-agnostic or installing competing initialization scripts.
 import { test as base, expect } from "@playwright/test";
 import { ADMIN_PASSWORD, ADMIN_USERNAME } from "./env";
+import type {Page} from "@playwright/test";
 
 export const LOCALE_STORAGE_KEY = "telemt-panel:locale:v1";
 
@@ -44,3 +45,12 @@ export const test = base.extend<{ login: () => Promise<void>; uiLocale: "ru" | "
 });
 
 export { expect };
+
+export async function openUsersSearch(page:Page) {
+  const opener=page.getByRole("button",{name:"Открыть поиск",exact:true});
+  const input=page.getByPlaceholder("Поиск по имени");
+  await expect(input.or(opener)).toBeVisible();
+  if(await opener.isVisible())await opener.click();
+  await expect(input).toBeVisible();
+  return input;
+}

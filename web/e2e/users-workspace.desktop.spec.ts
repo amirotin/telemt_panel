@@ -1,4 +1,4 @@
-import {test,expect} from "./fixtures";
+import {test,expect,openUsersSearch} from "./fixtures";
 
 for(const width of [390,1280]) {
   test(`user workspace preserves exact settings and dedicated navigation (${width}px)`,async({page,login},testInfo)=>{
@@ -23,7 +23,7 @@ for(const width of [390,1280]) {
       expect(saved.data_quota_bytes).toBe(1500000);expect(saved.max_tcp_conns).toBe(13);
       await page.screenshot({path:testInfo.outputPath("person-overview.png"),fullPage:true});
       await page.getByRole("link",{name:"Назад",exact:true}).click();
-      await page.getByPlaceholder("Поиск по имени").fill(username);
+      await (await openUsersSearch(page)).fill(username);
       await page.getByTestId(`user-card-${username}`).click();await expect(page.getByRole("heading",{name:username,exact:true})).toBeVisible();
       await page.goBack();await expect(page.getByPlaceholder("Поиск по имени")).toHaveValue(username);
     }finally{await page.request.delete(`/api/users/${username}`,{headers:{"Sec-Fetch-Site":"same-origin"}});}
@@ -45,7 +45,7 @@ for(const width of [390,1280]) {
       const ts=Math.floor(Date.now()/1000);
       await route.fulfill({contentType:"text/event-stream",body:"retry: 60000\n\n"+Object.entries(snapshot).map(([topic,v])=>`event: ${topic}\ndata: ${JSON.stringify({ts,v})}\n\n`).join("")});
     });
-    await page.goto("/people");await page.getByPlaceholder("Поиск по имени").fill("alice");
+    await page.goto("/people");await (await openUsersSearch(page)).fill("alice");
     const row=page.locator('[data-user="alice"]');
     const format=row.getByRole("button",{name:/^Формат ссылок alice:/});
     await expect(format).toBeVisible();await format.click();

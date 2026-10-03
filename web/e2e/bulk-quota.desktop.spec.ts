@@ -1,4 +1,4 @@
-import {test,expect} from "./fixtures";
+import {test,expect,openUsersSearch} from "./fixtures";
 import {MOCK_URL} from "./env";
 
 test("bulk quota reset confirms all accounts and survives browser reload",async({page,login},testInfo)=>{
@@ -11,7 +11,7 @@ test("bulk quota reset confirms all accounts and survives browser reload",async(
   await login();await page.setViewportSize({width:390,height:900});
   const before=await(await page.request.get("/api/users")).json();
   const total=before.length;
-  await page.getByPlaceholder("Поиск по имени").fill("bulk-0001");
+  await (await openUsersSearch(page)).fill("bulk-0001");
   await expect(page.getByTestId("user-card-bulk-0001")).toBeVisible();
   await page.getByRole("button",{name:"Действия со списком",exact:true}).click();
   await page.getByRole("button",{name:/Сбросить расход квот всем/}).click();

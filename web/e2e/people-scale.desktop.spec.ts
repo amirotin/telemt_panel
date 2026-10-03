@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, openUsersSearch } from "./fixtures";
 import { MOCK_URL } from "./env";
 
 test("2000 users keep bounded rows, navigation and fresh data after reconnect", async ({ page, login }) => {
@@ -47,7 +47,8 @@ test("2000 users keep bounded rows, navigation and fresh data after reconnect", 
   const search = page.getByPlaceholder("Поиск по имени");
   const scroll = page.locator(".people-list-scroll");
   const all = page.getByRole("tab", { name: /^Все/ });
-  await expect(all).toContainText(String(initialCount + 2000), { timeout: 20_000 });
+  const totalCount=()=>all.innerText().then(text=>Number(text.replace(/\D/g,"")));
+  await expect.poll(totalCount,{timeout:20_000}).toBe(initialCount+2000);
   await page.locator(".people-sort-button").click();
   await page.getByRole("dialog").getByRole("button", { name: /Имя/ }).click();
   await expect(page.locator(".people-sort-button")).toContainText("Имя");
@@ -55,13 +56,14 @@ test("2000 users keep bounded rows, navigation and fresh data after reconnect", 
   const measurements: { width: number; position: number; rows: number }[] = [];
   for (const width of [1440, 768, 360]) {
     await page.setViewportSize({ width, height: 800 });
+    await openUsersSearch(page);
     await search.fill("scale-");
     await expect.poll(async () => rows.count()).toBeGreaterThan(1);
     await expect.poll(() => scroll.evaluate((node) => node.scrollHeight)).toBeGreaterThan(100_000);
     for (const position of [0, 0.5, 1]) {
       await scroll.evaluate((node, fraction) => { node.scrollTop = (node.scrollHeight - node.clientHeight) * fraction; }, position);
       await expect.poll(async () => rows.count()).toBeGreaterThan(0);
-      const firstIndex = () => scroll.locator("[data-index]").first().getAttribute("data-index").then(Number);
+      const firstIndex = () => rows.first().getAttribute("data-testid").then(value=>Number(value?.split("-").at(-1)));
       if (position === 0) await expect.poll(firstIndex).toBe(0);
       else await expect.poll(firstIndex).toBeGreaterThan(position === 1 ? 1900 : 700);
       const count = await rows.count();
@@ -93,7 +95,9 @@ test("2000 users keep bounded rows, navigation and fresh data after reconnect", 
   await expect(search).toHaveValue("scale-1999");
   await expect(last).toBeVisible();
 
-  await search.fill("");
+  // Earlier specs can seed disabled accounts too. Keep the attention check
+  // on this workload rather than assuming it sorts before every other user.
+  await search.fill("scale-");
   await page.getByRole("tab", { name: /^Внимание/ }).click();
   await expect(page.getByTestId("user-card-scale-0000")).toBeVisible();
   expect(await rows.count()).toBeLessThan(40);
@@ -111,7 +115,8 @@ test("2000 users keep bounded rows, navigation and fresh data after reconnect", 
     await expect(page).toHaveURL(/\/pulse\/diag\/counters$/);
     await expect.poll(() => activeStreams.size).toBe(1);
     await page.getByRole("link", { name: "Пользователи", exact: true }).click();
-    await expect(all).toContainText(String(initialCount + 2000));
+    await expect.poll(totalCount).toBe(initialCount+2000);
+    await openUsersSearch(page);
     await search.fill("scale-1999");
     await expect(last).toBeVisible();
     await expect.poll(() => activeStreams.size).toBe(1);
@@ -134,6 +139,7 @@ test("2000 users keep bounded rows, navigation and fresh data after reconnect", 
       await expect.poll(() => activeStreams.size, { timeout: 10000 }).toBe(0);
       // Leaving Users resets its search, even offline. Cached rows remain
       // available and filtering them must not depend on a network request.
+      await openUsersSearch(page);
       await expect(search).toHaveValue("");
       await expect(page.getByTestId("user-card-alice")).toBeVisible();
       await search.fill("scale-1999");
@@ -152,7 +158,7 @@ test("2000 users keep bounded rows, navigation and fresh data after reconnect", 
     const before = receivedFrames;
     await expect.poll(() => receivedFrames, { timeout: 25000 }).toBeGreaterThan(before);
     await expect.poll(() => activeStreams.size, { timeout: 10000 }).toBe(1);
-    await expect(all).toContainText(String(initialCount + 2001), { timeout: 15000 });
+    await expect.poll(totalCount,{timeout:15000}).toBe(initialCount+2001);
     await search.fill("scale-reconnected");
     await expect(page.getByTestId("user-card-scale-reconnected")).toBeVisible();
     await expect(rows).toHaveCount(1);

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AsyncState } from "../components/AsyncState";
@@ -7,7 +7,8 @@ import { IconArrowDown, IconArrowUp, IconClose, IconPlus, IconSearch, IconSort }
 import { PageHeader } from "../ui/PageHeader";
 import { CardList, CardRow } from "../ui/Card";
 import { Sheet } from "../ui/Sheet";
-import { pluralTemplate, useStrings, type Dict } from "../i18n";
+import { formatNumber, pluralTemplate, useStrings, type Dict } from "../i18n";
+import {formatBytes} from "../lib/format";
 import { useConnectionState } from "../realtime";
 import { useUsersTopic, findQuotaEntry } from "./useUsersTopic";
 import { useDebouncedValue } from "./useDebouncedValue";
@@ -16,6 +17,7 @@ import { UserCard } from "./UserCard";
 import { UserActionSheet, type ActionSheetIntent } from "./UserActionSheet";
 import { PeopleContext } from "./PeopleContext";
 import { useBulkQuota } from "./bulkQuotaContext";
+import {userListSummary} from "./userList.helpers";
 import { IconMore } from "../ui/icons";
 import type { SwipeSide } from "./useUserRowGestures";
 import {
@@ -35,9 +37,10 @@ import {
   type UserSortPreset,
 } from "./users.helpers";
 import type { UsersTopicUser } from "../realtime/topics";
+import "./userList.css";
 
 const FILTER_ORDER: readonly UserFilter[] = ["all", "online", "issues"];
-const PHONE_LIST_QUERY = "(max-width: 650px)";
+const PHONE_LIST_QUERY = "(max-width: 699px)";
 
 export function PeopleList() {
   const s = useStrings();
@@ -49,6 +52,9 @@ export function PeopleList() {
   const now = useNow();
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollOffsetRef=useRef(savedView.scrollOffset);
+  const restoringLayoutRef=useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const phoneListLayout = usePhoneListLayout();
   const [search, setSearch] = useState(savedView.search);
@@ -62,6 +68,10 @@ export function PeopleList() {
   const [swiped, setSwiped] = useState<{username:string;side:SwipeSide}|null>(null);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [gestureHintVisible, setGestureHintVisible] = useState(true);
+  const [searchOpen,setSearchOpen] = useState(savedView.search.length>0);
+  const [width,setWidth] = useState(0);
+  const layoutRef=useRef<{columns:number;rowHeight:number}|null>(null);
+  const table=width>=960,columns=table||width<640?1:2,rowHeight=table?98:260;
   const activePreset = sortPresetOf(sort);
   const sortAscending = sort.direction === "asc";
   const sortChipLabel = sortLabelFor(s, activePreset, true, sortAscending);
@@ -82,6 +92,7 @@ export function PeopleList() {
     [topic.users, topic.quota, now, webUsernames],
   );
   const counts = useMemo(() => countUserFilters(entries), [entries]);
+  const summary=useMemo(()=>userListSummary(topic.users,topic.quota),[topic.users,topic.quota]);
   const visibleUsers = useMemo(() => {
     const kept = entries.filter((entry) => matchesUserFilter(entry, filter)).map((entry) => entry.user);
     return sortUsers(filterUsersByQuery(kept, debouncedSearch), sort);
@@ -91,40 +102,70 @@ export function PeopleList() {
   // must leave this component un-memoized rather than freeze its measurements.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
-    count: visibleUsers.length,
+    count: Math.ceil(visibleUsers.length/columns),
     getScrollElement: () => scrollRef.current,
-    // The phone card has two metric rows; desktop/tablet keep one compact
-    // table row. Matching the first estimate to the CSS layout prevents the
-    // virtualizer from shifting the saved position while those rows measure.
-    estimateSize: () => 84,
-    overscan: 6,
+    estimateSize: () => rowHeight,
+    overscan: 4,
     initialOffset: savedView.scrollOffset,
-    getItemKey: (index) => visibleUsers[index]?.username ?? index,
+    getItemKey: (index) => visibleUsers[index*columns]?.username ?? index,
   });
+  useLayoutEffect(()=>{
+    const container=containerRef.current;if(!container)return;
+    const observer=new ResizeObserver(([entry])=>{if(entry)setWidth(entry.contentRect.width);});
+    observer.observe(container);return()=>observer.disconnect();
+  },[]);
+  useLayoutEffect(()=>{
+    if(width===0)return;
+    const previous=layoutRef.current;
+    layoutRef.current={columns,rowHeight};
+    if(previous?.columns===columns&&previous.rowHeight===rowHeight)return;
+    const offset=scrollOffsetRef.current;
+    const remainder=previous?offset%previous.rowHeight:0;
+    const inGap=previous!==null&&remainder>=previous.rowHeight-10;
+    const index=previous?Math.min(visibleUsers.length-1,(Math.floor(offset/previous.rowHeight)+(inGap?1:0))*previous.columns):0;
+    const fraction=previous&&!inGap?remainder/(previous.rowHeight-10):0;
+    restoringLayoutRef.current=previous!==null;
+    virtualizer.measure();
+    if(!previous||index<0||savedView.returnUsername){restoringLayoutRef.current=false;return;}
+    // Keep the same topmost person when a table becomes a grouped card grid.
+    // Apply after the measured canvas commits, otherwise the browser can
+    // clamp a near-bottom offset against the previous layout's shorter height.
+    const frame=requestAnimationFrame(()=>{
+      virtualizer.scrollToOffset(Math.floor(index/columns)*rowHeight+fraction*(rowHeight-10));
+      scrollOffsetRef.current=scrollRef.current?.scrollTop??0;
+      savedView.scrollOffset=scrollOffsetRef.current;
+      restoringLayoutRef.current=false;
+    });
+    return()=>{cancelAnimationFrame(frame);restoringLayoutRef.current=false;};
+  },[columns,rowHeight,virtualizer,width,visibleUsers.length,savedView]);
   useEffect(()=>{setSwiped(null);},[phoneListLayout]);
   useEffect(()=>{if(!swiped)return;const close=(event:KeyboardEvent)=>{if(event.key!=="Escape"||document.querySelector('[role="dialog"]'))return;setSwiped(null);const row=[...(scrollRef.current?.querySelectorAll<HTMLElement>('[data-user]')??[])].find(row=>row.dataset["user"]===swiped.username);row?.querySelector<HTMLButtonElement>('button.user-identity')?.focus();};document.addEventListener("keydown",close);return()=>document.removeEventListener("keydown",close);},[swiped]);
 
   useEffect(() => {
     const username = savedView.returnUsername;
-    if (!username || topic.isPending || visibleUsers.length === 0) return;
+    if (!username || topic.isPending || width===0 || visibleUsers.length === 0) return;
     const index = visibleUsers.findIndex((user) => user.username === username);
-    savedView.returnUsername = null;
-    if (index < 0) return;
+    if (index < 0) {savedView.returnUsername=null;return;}
 
     // After a mobile detail route unmounts the list, return to the person the
     // operator opened. Anchoring to identity is stable even when live activity
     // changes the sort order while the detail screen is open.
     const frame = window.requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(index, { align: "center" });
+      savedView.returnUsername = null;
+      virtualizer.scrollToIndex(Math.floor(index/columns), { align: "center" });
       savedView.scrollOffset = scrollRef.current?.scrollTop ?? savedView.scrollOffset;
+      scrollOffsetRef.current=savedView.scrollOffset;
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [topic.isPending, visibleUsers, virtualizer, savedView]);
+  }, [topic.isPending, visibleUsers, virtualizer, savedView,columns,width]);
+
+  useEffect(()=>{if(searchOpen)searchRef.current?.focus();},[searchOpen]);
 
   useEffect(() => {
     function focusSearch(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        setSearchOpen(true);
         searchRef.current?.focus();
       }
     }
@@ -137,6 +178,7 @@ export function PeopleList() {
     savedView.search = value;
     savedView.returnUsername = null;
     savedView.scrollOffset = 0;
+    scrollOffsetRef.current=0;
     setSearch(value);
     virtualizer.scrollToOffset(0);
   }
@@ -145,6 +187,7 @@ export function PeopleList() {
     setSwiped(null);
     savedView.filter = value;
     savedView.scrollOffset = 0;
+    scrollOffsetRef.current=0;
     setFilter(value);
     virtualizer.scrollToOffset(0);
   }
@@ -163,30 +206,43 @@ export function PeopleList() {
   const edit = (user:UsersTopicUser)=>void navigate({to:"/people/$username",params:{username:user.username},search:{tab:"settings"}});
 
   return (
-    <div className="users-workspace flex min-h-0 flex-1 flex-col p-4">
-      <PageHeader title={s.people.title} titleMeta={<span className="font-mono text-meta tabular-nums text-text-muted">{counts.all}</span>} actions={
-        <div className="flex shrink-0 gap-2"><Button aria-label={s.people.create} disabled={access.readOnly} onClick={create}><IconPlus className="h-4 w-4" /><span className="hidden min-[440px]:inline">{s.people.create}</span></Button><button type="button" className="user-menu-trigger" aria-label={s.people.bulkQuota.menu} onClick={e=>bulkQuota.openMenu(e.currentTarget.getBoundingClientRect())}><IconMore/></button></div>
+    <div ref={containerRef} className="users-workspace users-reference-list flex min-h-0 flex-1 flex-col p-4" data-layout={table?"table":"cards"}>
+      <PageHeader title={s.people.title} actions={
+        <div className="flex shrink-0 gap-2"><Button className="user-create-desktop" aria-label={s.people.create} disabled={access.readOnly||topic.stale} onClick={create}><IconPlus className="h-4 w-4" /><span>{s.people.create}</span></Button><button type="button" className="user-menu-trigger" aria-label={s.people.bulkQuota.menu} onClick={e=>bulkQuota.openMenu(e.currentTarget.getBoundingClientRect())}><IconMore/></button></div>
       } />
+
+      <div className="user-list-summary" aria-label={s.people.list.summary}>
+        <span><i/><strong>{topic.isPending?"—":formatNumber(s,counts.all)}</strong><small>{s.people.list.users}</small></span>
+        <span><i className="green"/><strong>{topic.isPending?"—":formatNumber(s,counts.online)}</strong><small>{s.people.online}</small><em>{topic.isPending?"—":formatNumber(s,summary.connections)} {s.people.list.connectionsShort}</em></span>
+        <span title={s.people.list.monthHint}><i className="purple"/><strong>{topic.isPending||summary.monthBytes===null?"—":formatBytes(summary.monthBytes,s)}</strong><small>{s.people.list.month}</small></span>
+        <span title={s.people.list.nearQuotaHint}><i className="amber"/><strong>{topic.isPending?"—":formatNumber(s,summary.nearQuota)}</strong><small>{s.people.list.nearQuota}</small></span>
+      </div>
+      {!topic.isPending&&access.readOnly&&<p className="user-list-readonly">{s.people.workspace.readOnly}</p>}
 
       <div className="flex min-h-0 flex-1 gap-3">
         <section className="people-list-pane flex min-w-0 flex-1 flex-col">
           <div className="people-toolbar">
+            <div className={`user-search-filters ${searchOpen?"search-open":""}`}>
+            {(!phoneListLayout||searchOpen)&&
             <div className="people-search-control">
               <IconSearch className="h-4 w-4 shrink-0" />
               <input ref={searchRef} value={search} onChange={(event) => setSearchValue(event.target.value)} placeholder={s.people.searchPlaceholder} aria-label={s.people.searchPlaceholder} autoCapitalize="off" autoCorrect="off" />
-              {search ? <button type="button" className="people-search-clear" aria-label={s.people.clearSearch} onClick={()=>{setSearchValue("");searchRef.current?.focus();}}><IconClose className="h-4 w-4"/></button> : <kbd>⌘ K</kbd>}
-            </div>
+              {search ? <button type="button" className="people-search-clear" aria-label={s.people.clearSearch} onClick={()=>{setSearchValue("");searchRef.current?.focus();}}><IconClose className="h-4 w-4"/></button> : !phoneListLayout&&<kbd>⌘ K</kbd>}
+              {phoneListLayout&&<button type="button" className="people-search-clear" aria-label={s.people.list.closeSearch} onClick={()=>{setSearchValue("");setSearchOpen(false);}}><IconClose className="h-4 w-4"/></button>}
+            </div>}
             <div className="people-filter-group no-scrollbar" role="tablist" aria-label={s.people.filterLabel}>
-              {filterOrder.map((key) => <button key={key} type="button" role="tab" className="people-filter-button" aria-selected={filter === key} onClick={() => setFilterValue(key)}>{s.people.filter[key]}<b>{counts[key]}</b></button>)}
+              {filterOrder.filter(key=>!phoneListLayout||key!=="web").map((key) => <button key={key} type="button" role="tab" className="people-filter-button" aria-selected={filter === key} onClick={() => setFilterValue(key)}><span>{s.people.filter[key]}</span><b>{formatNumber(s,counts[key])}</b></button>)}
             </div>
-            <button type="button" className="people-sort-button" aria-label={sortChipLabel} onClick={() => setSortSheetOpen(true)}><IconSort className="h-4 w-4" /><span>{s.people.sortPreset[activePreset]}</span><SortArrow ascending={sortAscending} /></button>
+            {phoneListLayout&&!searchOpen&&<button type="button" className="user-search-open" aria-label={s.people.list.openSearch} onClick={()=>setSearchOpen(true)}><IconSearch className="h-4 w-4"/></button>}
+            </div>
+            {phoneListLayout?<button type="button" className="user-create-phone" aria-label={s.people.create} disabled={access.readOnly||topic.stale} onClick={create}><IconPlus/></button>:<button type="button" className="people-sort-button" aria-label={sortChipLabel} onClick={() => setSortSheetOpen(true)}><IconSort className="h-4 w-4" /><span>{s.people.sortPreset[activePreset]}</span><SortArrow ascending={sortAscending} /></button>}
           </div>
 
-          {gestureHintVisible && phoneListLayout && <div className="user-gesture-hint"><p>{s.people.workspace.swipeHint}</p><button type="button" aria-label={s.common.close} onClick={() => setGestureHintVisible(false)}>×</button></div>}
+          {phoneListLayout&&<div className="user-mobile-tools">{gestureHintVisible?<p>{s.people.workspace.swipeHint}</p>:<span/>}{access.profiles.size>0&&<button type="button" aria-pressed={filter==="web"} onClick={()=>setFilterValue(filter==="web"?"all":"web")}>WEB {counts.web}</button>}<button type="button" className="people-sort-button" aria-label={sortChipLabel} onClick={()=>setSortSheetOpen(true)}>{s.people.sortPreset[activePreset]}<SortArrow ascending={sortAscending}/></button>{gestureHintVisible&&<button type="button" aria-label={s.common.close} onClick={()=>setGestureHintVisible(false)}><IconClose className="h-3 w-3"/></button>}</div>}
 
-          <div className="user-table-head" aria-hidden="true"><span>{s.people.tableUser}</span><span>{s.people.connections} / IP</span><span>{s.people.workspace.totalTraffic} / {s.people.form.quota}</span><span>{s.people.form.expiry}</span><span>{s.people.actions.menu}</span></div>
+          {table&&<div className="user-table-head" aria-hidden="true"><span>{s.people.tableUser}</span><span>{s.people.connections}</span><span>{s.people.workspace.totalTraffic} / {s.people.form.quota}</span><span>{s.people.form.expiry}</span><span>{s.people.workspace.quickLinks} / {s.people.actions.menu}</span></div>}
 
-          <div ref={scrollRef} className="people-list-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={(event) => { savedView.scrollOffset = event.currentTarget.scrollTop; }}>
+          <div ref={scrollRef} className="people-list-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain" onScroll={(event) => {if(!restoringLayoutRef.current){scrollOffsetRef.current=event.currentTarget.scrollTop;savedView.scrollOffset=scrollOffsetRef.current;}}}>
             <AsyncState
               isPending={topic.isPending}
               isError={topic.isError}
@@ -203,11 +259,11 @@ export function PeopleList() {
               {(users) => (
                 <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
                   {virtualizer.getVirtualItems().map((item) => {
-                    const user = users[item.index];
-                    if (!user) return null;
                     return (
-                      <div key={item.key} ref={virtualizer.measureElement} data-index={item.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${item.start}px)` }}>
+                      <div key={item.key} data-index={item.index} className="user-virtual-row" style={{ transform: `translateY(${item.start}px)`,height:rowHeight,gridTemplateColumns:`repeat(${columns},minmax(0,1fr))` }}>
+                        {users.slice(item.index*columns,(item.index+1)*columns).map(user=>
                         <UserCard
+                          key={user.username}
                           user={user}
                           quotaEntry={findQuotaEntry(topic.quota, user.username)}
                           now={now}
@@ -221,6 +277,7 @@ export function PeopleList() {
                           onToggle={()=>openActions(user,"toggle-enabled")}
                           onSwipeChange={side=>setSwiped(prev=>side?{username:user.username,side}:prev?.username===user.username?null:prev)}
                         />
+                        )}
                       </div>
                     );
                   })}
@@ -229,7 +286,7 @@ export function PeopleList() {
             </AsyncState>
           </div>
 
-          <footer className="flex min-h-14 shrink-0 items-center border-t border-border px-4 text-micro text-text-faint">
+          <footer className="user-list-footer">
             <span>{isNarrowed ? `${visibleUsers.length} / ${counts.all}` : pluralTemplate(s, counts.all, s.people.recordsCount)}<span className="hidden sm:inline"> · {s.people.searchWholeSet}</span></span>
           </footer>
         </section>
