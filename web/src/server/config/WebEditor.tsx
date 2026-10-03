@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import {withBasePath} from "../../lib/base-path";
+import {isWebBasePath} from "../../people/connectionLinks";
 import type { TelemtConfigField } from "../../lib/api/generated/types.gen";
 import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
@@ -44,7 +46,7 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
   const ready = hasWebListener && vhostsReady;
   const update = (path: string, value: unknown) => onChange(setConfigValue(sections, path, value));
   const updateVhosts = (next: Array<Record<string, unknown>>) => update("web.vhosts", next);
-  const rootField = (path: string) => {
+  const rootField = (path: string, hint?: string) => {
     const field = fieldsByPath.get(path);
     if (!field) return null;
     return (
@@ -52,6 +54,7 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
         key={path}
         instance={{ field, concretePath: path, value: getConfigValue(sections, path) }}
         advanced={advanced}
+        hint={hint}
         onChange={(value) => update(path, value)}
       />
     );
@@ -108,6 +111,8 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
 
         <div className="mt-3 rounded-xl border border-border bg-bg/25 px-3 sm:px-4">
           {rootField("web.carrier")}
+          {advanced && rootField("web.carrier_method",copy.webCarrierMethodHint)}
+          {advanced && rootField("web.conveyor",copy.webConveyorHint)}
           {negotiatedCarriers !== null && (
             <div className="border-b border-border/75 py-4">
               <div>
@@ -219,6 +224,8 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
 
       {rootField("web.debug.enabled")}
 
+      {advanced&&<>{rootField("web.decoy_fasttrack_mode")}{rootField("web.http_connection_capacity_action")}</>}
+
       {advanced && advancedGroups.map((group) => group.fields.length > 0 && (
         <WebAdvancedSection key={group.id} title={group.title} hint={group.hint} count={group.fields.length}>
           <GenericFields fields={group.fields} sections={sections} advanced onChange={onChange} />
@@ -264,7 +271,7 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
       <div key={concretePath} className="grid min-h-[74px] gap-2 border-b border-border/75 py-3.5 sm:grid-cols-[minmax(180px,1fr)_minmax(170px,225px)] sm:items-center sm:gap-4">
         <div className="min-w-0">
           <strong className="text-sm font-semibold text-text">{label}</strong>
-          <p className="mt-1 text-meta leading-relaxed text-text-muted">{advanced ? configFieldDescription(field, { restart: copy.applyRestart, conditional: copy.applyConditional, reload: copy.applyReload }) : `${copy.currentValue} · ${field.data_type}`}</p>
+          <p className="mt-1 text-meta leading-relaxed text-text-muted">{catalogPath==="web.vhosts[].base_path"?copy.webBasePathHint:advanced ? configFieldDescription(field, { restart: copy.applyRestart, conditional: copy.applyConditional, reload: copy.applyReload }) : `${copy.currentValue} · ${field.data_type}`}</p>
           {advanced && <code className="mt-1 block break-all font-mono text-micro text-accent/80">{concretePath}</code>}
         </div>
         <Input value={String(getConfigValue(sections, concretePath) ?? "")} placeholder={placeholder} autoCapitalize="off" spellCheck={false} aria-label={label} onChange={(event) => onChange(setConfigValue(sections, concretePath, event.target.value))} />
@@ -275,6 +282,7 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
   return (
     <div className="min-w-0">
       {textFieldRow("web.vhosts[].host", vhostPath("host"), "proxy.example.com")}
+      {textFieldRow("web.vhosts[].base_path", vhostPath("base_path"), "telegram/relay")}
       {textFieldRow("web.vhosts[].public_addr", vhostPath("public_addr"), "203.0.113.10:443")}
 
       <div className="py-4">
@@ -309,7 +317,7 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
             <strong className="block text-sm font-semibold text-text">{copy.webProfileCount.replace("{count}", String(profiles.length))}</strong>
             <small className="mt-1 block text-meta leading-relaxed text-text-muted">{profiles.length === 0 ? copy.webNoProfiles : copy.webProfilesManagedInPeople}</small>
           </span>
-          <a href="/people" className="flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 px-4 text-meta font-semibold text-accent hover:border-accent/40 hover:bg-accent/[0.05]">
+          <a href={withBasePath("/people")} className="flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 px-4 text-meta font-semibold text-accent hover:border-accent/40 hover:bg-accent/[0.05]">
             {copy.webManageProfiles}
           </a>
         </div>
@@ -347,6 +355,7 @@ function webVhostReady(vhost: Record<string, unknown>): boolean {
     : mode === "static_directory" && String(decoy["directory"] ?? "").trim() !== "";
   const profiles = asRecordArray(vhost["profiles"]);
   return String(vhost["host"] ?? "").trim() !== ""
+    && isWebBasePath(String(vhost["base_path"]??""))
     && String(vhost["public_addr"] ?? "").trim() !== ""
     && decoyReady
     && profiles.length > 0

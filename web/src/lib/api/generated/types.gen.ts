@@ -288,7 +288,13 @@ export type UserCreate = {
     max_unique_ips?: number;
     data_quota_bytes?: number;
     expiration_rfc3339?: string;
+    /**
+     * Bits per second; 0 is unlimited. Telemt 3.5.8+ accepts at most 100000000000.
+     */
     rate_limit_up_bps?: number;
+    /**
+     * Bits per second; 0 is unlimited. Telemt 3.5.8+ accepts at most 100000000000.
+     */
     rate_limit_down_bps?: number;
     enabled?: boolean;
 };
@@ -303,7 +309,13 @@ export type UserPatch = {
     max_unique_ips?: number | null;
     data_quota_bytes?: number | null;
     expiration_rfc3339?: string | null;
+    /**
+     * Bits per second; 0/null removes the rate limit. Telemt 3.5.8+ accepts at most 100000000000.
+     */
     rate_limit_up_bps?: number | null;
+    /**
+     * Bits per second; 0/null removes the rate limit. Telemt 3.5.8+ accepts at most 100000000000.
+     */
     rate_limit_down_bps?: number | null;
     enabled?: boolean | null;
 };

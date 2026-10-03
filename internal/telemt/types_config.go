@@ -8,11 +8,9 @@ import "encoding/json"
 // 3.5.3 `web`), each held as raw JSON so integers round-trip exactly rather
 // than going through a decode/re-encode that could turn a large u64 into a
 // float (07-telemt-sdk.md §Config: "Целые числа обязаны переживать
-// round-trip как целые"). A section absent from the config file is an
-// absent map key, never an explicit JSON null (API.md: "Sections absent
-// from the config file are absent from the response (not null)") — and a
-// section Telemt did send as null stays a literal `null` value rather than
-// being synthesized into something else.
+// round-trip как целые"). Telemt returns normalized editable sections,
+// including defaults for omitted TOML fields. Any absent map keys or literal
+// nulls in a server response are preserved rather than synthesized here.
 //
 // A map rather than a fixed struct so a section added by a newer Telemt
 // passes through untouched instead of being silently dropped on the way to

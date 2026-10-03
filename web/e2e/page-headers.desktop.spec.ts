@@ -31,20 +31,21 @@ for (const locale of ["ru", "en"] as const) {
           await expect(header, path).not.toContainText(/Загрузка|Loading/);
           if (path === "/people") await expect(page.getByTestId("user-card-alice")).toBeVisible();
           await expect(header, path).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-          const box = (await header.boundingBox())!;
-          const title = (await heading.boundingBox())!;
-          expect(Math.abs(title.x - box.x), path).toBeLessThan(1);
-          // The heading is outside the content card, at the common page gutter.
-          expect(box.x, path).toBe(width >= 1180 ? 256 : width >= 600 ? 80 : 16);
-          expect(box.x + box.width, path).toBeLessThanOrEqual(width - 15);
-          const clipping = await header.evaluate(element => {
-            const bounds = element.getBoundingClientRect();
-            return [...element.querySelectorAll("h1, button, a")].some(child => {
-              const rect = child.getBoundingClientRect();
-              return rect.width > 0 && (rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
+          // Async detail data can replace its skeleton header between two
+          // locator calls. Measure one attached header atomically instead.
+          await expect(async()=>{
+            const geometry=await header.evaluate(element=>{
+              const title=element.querySelector("h1");
+              const box=element.getBoundingClientRect();
+              if(!element.isConnected||!title||box.width===0)return null;
+              return {x:box.x,width:box.width,titleX:title.getBoundingClientRect().x,clipping:[...element.querySelectorAll("h1, button, a")].some(child=>{const rect=child.getBoundingClientRect();return rect.width>0&&(rect.left<box.left-1||rect.right>box.right+1);})};
             });
-          });
-          expect(clipping, path).toBe(false);
+            expect(geometry,path).not.toBeNull();
+            expect(Math.abs(geometry!.titleX-geometry!.x),path).toBeLessThan(1);
+            expect(geometry!.x,path).toBe(width>=1180?256:width>=600?80:16);
+            expect(geometry!.x+geometry!.width,path).toBeLessThanOrEqual(width-15);
+            expect(geometry!.clipping,path).toBe(false);
+          }).toPass({timeout:5000});
           expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), path).toBeLessThanOrEqual(1);
           if (["/overview", "/people", "/journal", "/pulse/diag/connections", "/server/settings"].includes(path)) {
             await page.screenshot({ path: testInfo.outputPath(`${path.replaceAll("/", "-")}-${width}.png`) });

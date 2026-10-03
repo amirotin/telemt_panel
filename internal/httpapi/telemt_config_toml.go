@@ -192,7 +192,7 @@ func (s *Server) buildTelemtConfigTOMLPreview(ctx context.Context, expectedRevis
 	if err != nil {
 		return telemtConfigTOMLPreview{}, nil, err
 	}
-	if err := validateTelemtConfigPatch(desiredRaw, currentRaw); err != nil {
+	if err := validateTelemtConfigPatch(desiredRaw, currentRaw, s.telemtConfigVersion(ctx)); err != nil {
 		return telemtConfigTOMLPreview{}, nil, &telemtConfigTOMLError{code: "invalid_config_path", message: err.Error()}
 	}
 	// BurntSushi/toml represents arrays of tables as []map[string]any,

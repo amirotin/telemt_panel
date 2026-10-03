@@ -372,6 +372,31 @@ describe("StructuredSettingsForm record editors", () => {
     expect(onChange.mock.calls[0][0].web.vhosts).toHaveLength(1);
   });
 
+  it("keeps the panel prefix on the WEB profile management link",()=>{
+    window.__BASE_PATH__="/panel-secret";
+    try{
+      const fields=[field("web.vhosts","structure","web"),field("web.vhosts[].host","string","web")];
+      const sections={web:{vhosts:[{host:"web.example.org",public_addr:"203.0.113.1:443",decoy:{mode:"http_upstream",upstream:"http://127.0.0.1:8080"},profiles:[]}]}};
+      act(()=>root.render(<StructuredSettingsForm catalog={catalog("web",fields)} sections={sections} mode="normal" onChange={()=>{}}/>));
+      const link=[...container.querySelectorAll<HTMLAnchorElement>("a")].find(link=>link.textContent===getStrings().server.config.catalog.webManageProfiles);
+      expect(link?.getAttribute("href")).toBe("/panel-secret/people");
+    }finally{delete window.__BASE_PATH__;}
+  });
+
+  it("edits the exact WEB prefix while preserving every vhost/profile",()=>{
+    const fields=[field("web.vhosts","structure","web"),field("web.vhosts[].host","string","web"),field("web.vhosts[].base_path","string","web")];
+    const sections={web:{vhosts:[{host:"web.example.org",base_path:"Old/relay",public_addr:"203.0.113.1:443",profiles:[{user:"alice",secret_mode:"plain"}],future_vhost:123},{host:"other.example.org",base_path:"other",profiles:[{user:"bob",secret_mode:"dd"}]}]}};
+    const onChange=vi.fn();
+    act(()=>root.render(<StructuredSettingsForm catalog={catalog("web",fields)} sections={sections} mode="normal" onChange={onChange}/>));
+    const input=container.querySelector<HTMLInputElement>('input[value="Old/relay"]');
+    expect(input).not.toBeNull();
+    act(()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,"MixedCase/relay");input!.dispatchEvent(new Event("input",{bubbles:true}));});
+    const next=onChange.mock.calls[0]![0].web.vhosts;
+    expect(next[0]).toEqual({...sections.web.vhosts[0],base_path:"MixedCase/relay"});
+    expect(next[1]).toEqual(sections.web.vhosts[1]);
+    expect(sections.web.vhosts[0]?.base_path).toBe("Old/relay");
+  });
+
   it("blocks WEB activation until a listener and complete vhost exist", () => {
     const fields = [
       field("web.enabled", "boolean", "web", "bool"),
@@ -425,5 +450,27 @@ describe("StructuredSettingsForm record editors", () => {
     expect(container.querySelector("textarea")).toBeNull();
     act(() => limitSection?.click());
     expect(container.textContent).toContain("web.limits.max_sessions_global");
+  });
+
+  it("edits the newer HTTP method and conveyor without touching profiles or changing defaults on render",()=>{
+    const fields=[
+      {...field("web.carrier_method","enum","web"),options:["post","put"],default_value:"post",tier:"advanced" as const},
+      {...field("web.conveyor","boolean","web","bool"),default_value:"true",tier:"advanced" as const},
+    ];
+    const sections={web:{carrier_method:"post",conveyor:true,vhosts:[{host:"web.example.org",profiles:[{user:"alice",secret_mode:"dd"}]}]}};
+    const original=structuredClone(sections),onChange=vi.fn();
+    act(()=>root.render(<StructuredSettingsForm catalog={catalog("web",fields)} sections={sections} mode="advanced" onChange={onChange}/>));
+    const labels=getStrings().server.config.catalog.labels;
+    const method=container.querySelector<HTMLSelectElement>(`select[aria-label="${labels["web.carrier_method"]}"]`);
+    expect(method).not.toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+    act(()=>{method!.value="put";method!.dispatchEvent(new Event("change",{bubbles:true}));});
+    expect(onChange.mock.calls[0]![0]).toEqual({web:{...original.web,carrier_method:"put"}});
+    const conveyor=container.querySelector<HTMLButtonElement>(`button[role="switch"][aria-label="${labels["web.conveyor"]}"]`);
+    expect(conveyor).not.toBeNull();
+    act(()=>conveyor!.click());
+    expect(onChange.mock.calls[1]![0]).toEqual({web:{...original.web,conveyor:false}});
+    expect(sections).toEqual(original);
+    expect(container.querySelectorAll('button[aria-expanded="false"]')).not.toHaveLength(0);
   });
 });

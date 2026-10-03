@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Sheet, type SheetProps } from "../ui/Sheet";
 import { Button } from "../ui/Button";
@@ -29,6 +29,8 @@ import { apiErrorMessage } from "./apiError";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
 import { useRefreshTopic } from "../realtime";
 import type { UsersTopicUser } from "../realtime/topics";
+import { useCaps } from "../caps";
+import { userRateLimitMaxMbps } from "./rateLimit.helpers";
 
 export interface UserFormSheetProps {
   open: boolean;
@@ -115,6 +117,10 @@ function initialEditState(user: UsersTopicUser): FormState {
 // state with the original user so untouched values remain omitted from PATCH.
 export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureWeb, inline, disabled=false, onDirtyChange }: UserFormSheetProps) {
   const s = useStrings();
+  const caps = useCaps();
+  const rateMaxMbps = userRateLimitMaxMbps(caps.data?.version);
+  const rateUpInput = useRef<HTMLInputElement>(null);
+  const rateDownInput = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<FormState>(() =>
     mode === "edit" && user ? initialEditState(user) : initialCreateState(),
   );
@@ -179,9 +185,17 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     return diffLimitField(f.mode === "set" ? f.value : undefined, original);
   }
 
+  function rateInputMax(f: FieldState<number>, original: number | undefined) {
+    if (rateMaxMbps === undefined) return undefined;
+    // Untouched legacy values are omitted from PATCH, not clamped or resent.
+    const unchangedLegacy = mode === "edit" && f.mode === "set" && f.value === original && f.value > rateMaxMbps * 1_000_000;
+    return unchangedLegacy ? undefined : rateMaxMbps;
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit || pending) return;
+    if (rateMaxMbps !== undefined && (!rateUpInput.current?.reportValidity() || !rateDownInput.current?.reportValidity())) return;
 
     const quotaBytesField: FieldState<number> = {
       mode: state.quotaAmount.mode,
@@ -354,8 +368,9 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
           <details className="people-form-section">
             <summary className="people-form-advanced-toggle"><span><strong>{s.people.form.advancedParameters}</strong><small>{s.people.form.advancedHint}</small></span><i>⌄</i></summary>
             <div className="people-form-grid pt-4">
-              <label className="people-form-field"><span>{s.people.form.rateUpShort}</span><div className="people-form-compound"><input type="number" inputMode="decimal" min={0} value={rateUpMbps} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, rateLimitUpBps: value === "" ? { ...prev.rateLimitUpBps, mode: "clear" } : field(Number(value) * 1_000_000, "set") })); }} /><span>{s.people.form.mbps}</span></div></label>
-              <label className="people-form-field"><span>{s.people.form.rateDownShort}</span><div className="people-form-compound"><input type="number" inputMode="decimal" min={0} value={rateDownMbps} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, rateLimitDownBps: value === "" ? { ...prev.rateLimitDownBps, mode: "clear" } : field(Number(value) * 1_000_000, "set") })); }} /><span>{s.people.form.mbps}</span></div></label>
+              <label className="people-form-field"><span>{s.people.form.rateUpShort}</span><div className="people-form-compound"><input ref={rateUpInput} type="number" inputMode="decimal" min={0} max={rateInputMax(state.rateLimitUpBps, baseUser?.rate_limit_up_bps)} step={rateMaxMbps === undefined ? undefined : "any"} value={rateUpMbps} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, rateLimitUpBps: value === "" ? { ...prev.rateLimitUpBps, mode: "clear" } : field(Number(value) * 1_000_000, "set") })); }} /><span>{s.people.form.mbps}</span></div></label>
+              <label className="people-form-field"><span>{s.people.form.rateDownShort}</span><div className="people-form-compound"><input ref={rateDownInput} type="number" inputMode="decimal" min={0} max={rateInputMax(state.rateLimitDownBps, baseUser?.rate_limit_down_bps)} step={rateMaxMbps === undefined ? undefined : "any"} value={rateDownMbps} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, rateLimitDownBps: value === "" ? { ...prev.rateLimitDownBps, mode: "clear" } : field(Number(value) * 1_000_000, "set") })); }} /><span>{s.people.form.mbps}</span></div></label>
+              {rateMaxMbps !== undefined && <small className="people-form-field-wide text-text-muted">{s.people.form.rateLimitMaxHint}</small>}
               <label className="people-form-field people-form-field-wide"><span>{s.people.adTag}</span><input value={state.userAdTag.mode === "set" ? state.userAdTag.value : ""} autoComplete="off" placeholder={s.people.form.notSet} onChange={(event) => { const value = event.target.value; setState((prev) => ({ ...prev, userAdTag: value === "" ? { ...prev.userAdTag, mode: "clear" } : field(value, "set") })); }} /></label>
             </div>
           </details>

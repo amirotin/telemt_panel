@@ -54,7 +54,7 @@ func joinConfigPath(parent, key string) string {
 	return parent + "." + key
 }
 
-func telemtConfigPaths(snapshot telemt.ConfigSections) (telemtConfigPathSet, error) {
+func telemtConfigPaths(snapshot telemt.ConfigSections, version ...string) (telemtConfigPathSet, error) {
 	paths := make(telemtConfigPathSet)
 	for section, raw := range snapshot {
 		var value any
@@ -63,14 +63,18 @@ func telemtConfigPaths(snapshot telemt.ConfigSections) (telemtConfigPathSet, err
 		}
 		collectTelemtConfigPaths(value, section, paths)
 	}
-	for _, path := range telemt355ConfigPaths {
-		paths.add(path)
+	serverVersion := ""
+	if len(version) > 0 {
+		serverVersion = version[0]
+	}
+	for _, field := range telemtConfigCatalogForVersion(serverVersion).Fields {
+		paths.add(field.Path)
 	}
 	return paths, nil
 }
 
-func validateTelemtConfigPatch(sections map[string]json.RawMessage, snapshot telemt.ConfigSections) error {
-	paths, err := telemtConfigPaths(snapshot)
+func validateTelemtConfigPatch(sections map[string]json.RawMessage, snapshot telemt.ConfigSections, version ...string) error {
+	paths, err := telemtConfigPaths(snapshot, version...)
 	if err != nil {
 		return err
 	}
@@ -94,7 +98,7 @@ func validateTelemtConfigValue(value any, path string, paths telemtConfigPathSet
 		return validateStringMap(value, path)
 	}
 	if _, ok := paths[path]; !ok {
-		return fmt.Errorf("unknown Telemt 3.5.5 config field: %s", path)
+		return fmt.Errorf("unknown or unsupported Telemt config field: %s", path)
 	}
 
 	switch value := value.(type) {
@@ -109,7 +113,7 @@ func validateTelemtConfigValue(value any, path string, paths telemtConfigPathSet
 		for _, child := range value {
 			if object, ok := child.(map[string]any); ok {
 				if _, known := paths[itemPath]; !known {
-					return fmt.Errorf("unknown Telemt 3.5.5 config field: %s", itemPath)
+					return fmt.Errorf("unknown or unsupported Telemt config field: %s", itemPath)
 				}
 				if err := validateTelemtConfigValue(object, itemPath, paths); err != nil {
 					return err

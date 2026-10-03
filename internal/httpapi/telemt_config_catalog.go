@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -69,6 +70,8 @@ func configCatalogPaths(catalog telemtConfigCatalog) []string {
 	return paths
 }
 
-func (s *Server) handleGetTelemtConfigCatalog(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, telemt355ConfigCatalog)
+func (s *Server) handleGetTelemtConfigCatalog(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), telemtConfigRequestTimeout)
+	defer cancel()
+	writeJSON(w, http.StatusOK, telemtConfigCatalogForVersion(s.telemtConfigVersion(ctx)))
 }

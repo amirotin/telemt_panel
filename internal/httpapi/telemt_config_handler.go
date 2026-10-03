@@ -182,7 +182,7 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 		writeTelemtConfigError(w, err)
 		return
 	}
-	if err := validateTelemtConfigPatch(req.Sections, snapshot); err != nil {
+	if err := validateTelemtConfigPatch(req.Sections, snapshot, s.telemtConfigVersion(ctx)); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}

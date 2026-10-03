@@ -1954,8 +1954,8 @@ components:
         max_unique_ips: { type: integer, minimum: 1 }
         data_quota_bytes: { type: integer, format: int64, minimum: 1 }
         expiration_rfc3339: { type: string, format: date-time }
-        rate_limit_up_bps: { type: integer, format: int64, minimum: 1 }
-        rate_limit_down_bps: { type: integer, format: int64, minimum: 1 }
+        rate_limit_up_bps: { type: integer, format: int64, minimum: 0, description: "Bits per second; 0 is unlimited. Telemt 3.5.8+ accepts at most 100000000000." }
+        rate_limit_down_bps: { type: integer, format: int64, minimum: 0, description: "Bits per second; 0 is unlimited. Telemt 3.5.8+ accepts at most 100000000000." }
         enabled: { type: boolean, default: true }
 
     UserPatch:
@@ -1968,8 +1968,8 @@ components:
         max_unique_ips: { type: [integer, "null"] }
         data_quota_bytes: { type: [integer, "null"], format: int64 }
         expiration_rfc3339: { type: [string, "null"] }
-        rate_limit_up_bps: { type: [integer, "null"], format: int64 }
-        rate_limit_down_bps: { type: [integer, "null"], format: int64 }
+        rate_limit_up_bps: { type: [integer, "null"], format: int64, minimum: 0, description: "Bits per second; 0/null removes the rate limit. Telemt 3.5.8+ accepts at most 100000000000." }
+        rate_limit_down_bps: { type: [integer, "null"], format: int64, minimum: 0, description: "Bits per second; 0/null removes the rate limit. Telemt 3.5.8+ accepts at most 100000000000." }
         enabled: { type: [boolean, "null"] }
 
     Sublink:
