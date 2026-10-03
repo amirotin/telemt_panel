@@ -16,7 +16,8 @@ listen = "0.0.0.0:8080"
 # Forward Host, X-Forwarded-For and X-Forwarded-Proto; see docs/CONFIG.md.
 # (proxy_buffering off keeps the /api/events SSE stream flowing through nginx.)
 # base_path = "/panel"
-# public_url is optional for login behind a prefix-preserving reverse proxy.
+# public_url is optional with authentication enabled behind a prefix-preserving proxy.
+# Without authentication, domain access requires public_url (DNS rebinding protection).
 # public_url = "https://panel.example.com"
 
 # Reverse proxies whose X-Forwarded-For / X-Forwarded-Proto headers are
@@ -51,8 +52,10 @@ auth_header = ""
 # config_edit_mode = "api" # api | file
 
 [auth]
-# Disable only behind an independently protected network/proxy. Full admin
-# access without a session; restart required. For a domain, set public_url.
+# true disables login; false keeps authentication enabled. Restart required.
+# Disable only behind an independently protected network/proxy: access is full admin.
+# Empty root public_url permits IP/localhost only; a configured URL permits only
+# its host and port, not alternate domains/IPs. This prevents DNS rebinding.
 # disabled = false
 # Password login is the base method; optional passkeys are enabled from the
 # UI and live in panel-state.json, not here.

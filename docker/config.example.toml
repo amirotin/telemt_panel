@@ -1,11 +1,16 @@
 listen = "127.0.0.1:8080"
 data_dir = "/var/lib/telemt-panel"
+# Required for domain access if [auth].disabled = true; keep this key at the root.
+# public_url = "https://panel.example.com"
 
 [telemt]
 url = "http://127.0.0.1:9091"
 auth_header = ""
 
 [auth]
+# true disables login; use only behind independent network/proxy protection.
+# Without root public_url, this mode accepts only IP/localhost Host headers.
+# disabled = false
 username = "admin"
 # Generate interactively: docker run --rm -it IMAGE hash-password
 password_hash = "REPLACE_WITH_BCRYPT_HASH"
