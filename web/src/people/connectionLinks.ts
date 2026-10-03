@@ -4,7 +4,7 @@ import {parseLink} from "./parseLink";
 
 export type ConnectionKind = "tls" | "secure" | "classic" | "web";
 export type LinkFormat = "tg" | "tme";
-export interface WebLinkProfile { host: string; mode: "plain" | "dd" }
+export interface WebLinkProfile { host: string; basePath?:string; mode: "plain" | "dd" }
 export interface ConnectionLink {
   kind: ConnectionKind; url: string; endpoint: string; domain: string | null;
   profileMode?: "plain" | "dd"; primary: boolean;
@@ -16,7 +16,7 @@ export function webProfileIndex(view: WebAccessView | undefined): Map<string, We
   for (const vhost of view.vhosts) for (const profile of vhost.profiles) {
     if (profile.secret_mode !== "plain" && profile.secret_mode !== "dd") continue;
     const entries = index.get(profile.user) ?? [];
-    entries.push({host: vhost.host, mode: profile.secret_mode});
+    entries.push({host: vhost.host, ...(vhost.base_path!==undefined?{basePath:vhost.base_path}:{}), mode: profile.secret_mode});
     index.set(profile.user, entries);
   }
   return index;
@@ -56,15 +56,28 @@ export function collectConnectionLinks(links: UserLinksWire, profiles: readonly 
   if (secret && !conflictingSecrets) for (const [i, p] of profiles.entries()) {
     // WEB uses the vhost hostname, never public_addr or a synthetic port.
     if (!p.host || /[\s/:?#@]/.test(p.host)) continue;
-    const url = `tg://webproxy?${new URLSearchParams({server:p.host,secret:(p.mode === "dd" ? "dd" : "")+secret})}`;
+    const path=p.basePath??"";
+    if(!isWebBasePath(path))continue;
+    const endpoint=path?`${p.host}/${path}`:p.host;
+    let clientSecret=(p.mode==="dd"?"dd":"")+secret;
+    if(path){
+      // Telegram Desktop's path marker precedes the raw client-secret bytes.
+      const bytes=[0x70,...(p.mode==="dd"?[0xdd]:[]),...secret.match(/../g)!.map(hex=>Number.parseInt(hex,16))];
+      clientSecret=btoa(String.fromCharCode(...bytes)).replaceAll("+","-").replaceAll("/","_").replace(/=+$/,"");
+    }
+    const url = `tg://webproxy?${new URLSearchParams({server:endpoint,secret:clientSecret})}`;
     if (seen.has(url)) continue;
-    seen.add(url);result.push({kind:"web", url, endpoint:p.host, domain:null, profileMode:p.mode, primary:i===0});
+    seen.add(url);result.push({kind:"web", url, endpoint, domain:null, profileMode:p.mode, primary:i===0});
   }
   return result;
 }
 
 export function formatConnectionLink(link: ConnectionLink, format: LinkFormat): string {
   return format === "tme" && link.kind !== "web" ? link.url.replace(/^tg:\/\/proxy\?/, "https://t.me/proxy?") : link.url;
+}
+
+export function isWebBasePath(value:string):boolean {
+  return value===""||value.length<=128&&/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\/[A-Za-z0-9][A-Za-z0-9_-]*)*$/.test(value);
 }
 
 function connectionDomain(value: unknown): string | null {

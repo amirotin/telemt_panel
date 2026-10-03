@@ -46,6 +46,29 @@ func TestProjectWebAccess(t *testing.T) {
 	}
 }
 
+func TestProjectWebAccessPreservesBasePath(t *testing.T) {
+	raw := json.RawMessage(`{"enabled":true,"vhosts":[{"host":"web.example.org","base_path":"MixedCase/relay","public_addr":"203.0.113.1:443","profiles":[{"user":"alice","secret_mode":"plain"}]}]}`)
+	view, err := projectWebAccess(raw, "rev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Vhosts []struct {
+			BasePath string `json:"base_path"`
+		} `json:"vhosts"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Vhosts) != 1 || decoded.Vhosts[0].BasePath != "MixedCase/relay" {
+		t.Fatalf("WEB base path lost: %s", encoded)
+	}
+}
+
 func TestReplaceWebUserProfilesPreservesUnrelatedAndUnknownFields(t *testing.T) {
 	maxStreams := uint64(64)
 	patch, err := replaceWebUserProfiles(json.RawMessage(webAccessFixture), "alice", []webUserAccessProfile{

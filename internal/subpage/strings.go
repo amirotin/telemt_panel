@@ -18,6 +18,8 @@ type uiStrings struct {
 	GroupTLS             string
 	GroupSecure          string
 	GroupClassic         string
+	GroupWEB             string
+	WEBHint              string
 	NoLinks              string
 	OpenInTelegram       string
 	OpenViaTMe           string
@@ -54,6 +56,8 @@ var stringsRU = uiStrings{
 	GroupTLS:             "TLS (маскировка под сайт)",
 	GroupSecure:          "Secure",
 	GroupClassic:         "Classic",
+	GroupWEB:             "WEB",
+	WEBHint:              "Подключение через tg://webproxy. Нужна поддержка WEB-прокси в клиенте Telegram; аналога t.me нет.",
 	NoLinks:              "Ссылки для подключения недоступны.",
 	OpenInTelegram:       "Подключить в Telegram",
 	OpenViaTMe:           "Открыть через t.me",
@@ -82,6 +86,8 @@ var stringsEN = uiStrings{
 	GroupTLS:             "TLS (disguised as a website)",
 	GroupSecure:          "Secure",
 	GroupClassic:         "Classic",
+	GroupWEB:             "WEB",
+	WEBHint:              "Connect via tg://webproxy. The Telegram client must support WEB proxies; there is no t.me equivalent.",
 	NoLinks:              "No connection links are available.",
 	OpenInTelegram:       "Connect in Telegram",
 	OpenViaTMe:           "Open via t.me",

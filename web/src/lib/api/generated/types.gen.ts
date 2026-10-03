@@ -417,6 +417,10 @@ export type WebAccessProfile = {
 
 export type WebAccessVhost = {
     host: string;
+    /**
+     * Telemt WEB prefix without surrounding slashes; case-sensitive, available since 3.5.8.
+     */
+    base_path?: string;
     public_addr: string;
     profiles: Array<WebAccessProfile>;
 };

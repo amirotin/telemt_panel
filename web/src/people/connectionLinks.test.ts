@@ -41,4 +41,26 @@ describe("connection link projection",()=>{
     const view={revision:"r",enabled:true,vhosts:[{host:"a.example",public_addr:"198.51.100.1:443",profiles:[{user:"alice",secret_mode:"plain" as const},{user:"bob",secret_mode:"dd" as const}]},{host:"b.example",public_addr:"198.51.100.2:443",profiles:[{user:"alice",secret_mode:"dd" as const}]}]};
     expect(webProfileIndex(view).get("alice")).toEqual([{host:"a.example",mode:"plain"},{host:"b.example",mode:"dd"}]);expect(webProfileIndex({...view,enabled:false}).size).toBe(0);
   });
+
+  it("preserves a WEB vhost's exact case-sensitive path in the account projection",()=>{
+    const view={revision:"r",enabled:true,vhosts:[{host:"web.example.org",base_path:"MixedCase/relay",public_addr:"203.0.113.1:443",profiles:[{user:"alice",secret_mode:"dd" as const}]}]};
+    expect(webProfileIndex(view).get("alice")).toEqual([{host:"web.example.org",basePath:"MixedCase/relay",mode:"dd"}]);
+  });
+
+  it.each([
+    ["plain","cAABAgMEBQYHCAkKCwwNDg8"],
+    ["dd","cN0AAQIDBAUGBwgJCgsMDQ4P"],
+  ] as const)("matches Telemt 3.5.8's path-aware WEB %s reference vector",(mode,encoded)=>{
+    const original=links({classic:["tg://proxy?server=proxy.example.com&port=443&secret=000102030405060708090a0b0c0d0e0f"]});
+    const profiles=webProfileIndex({revision:"r",enabled:true,vhosts:[{host:"proxy.example.com",base_path:"dobry-cola/super_app",public_addr:"203.0.113.1:443",profiles:[{user:"alice",secret_mode:mode}]}]});
+    const web=collectConnectionLinks(original,profiles.get("alice")).find(link=>link.kind==="web")!;
+    expect(web.url).toBe(`tg://webproxy?server=proxy.example.com%2Fdobry-cola%2Fsuper_app&secret=${encoded}`);
+    expect(web.endpoint).toBe("proxy.example.com/dobry-cola/super_app");
+    expect(formatConnectionLink(web,"tme")).toBe(web.url);
+  });
+
+  it.each(["/relay","relay/","relay//app","relay%2Fapp","../relay","_relay","пути","relay?other", "a".repeat(129)])("does not generate a WEB link for invalid path %s",base_path=>{
+    const profiles=webProfileIndex({revision:"r",enabled:true,vhosts:[{host:"proxy.example.com",base_path,public_addr:"203.0.113.1:443",profiles:[{user:"alice",secret_mode:"plain"}]}]});
+    expect(collectConnectionLinks(links({classic:[link()]}),profiles.get("alice")).filter(link=>link.kind==="web")).toEqual([]);
+  });
 });

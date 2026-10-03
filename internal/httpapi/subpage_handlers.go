@@ -131,8 +131,16 @@ func (s *Server) handleSubpage(w http.ResponseWriter, r *http.Request) {
 	// a real error status: writing 200 before rendering (the previous
 	// behavior) means a failure partway through leaves the client with a
 	// 200 and a truncated or empty body instead of a clear error.
+	var webLinks []string
+	if caps, err := s.tc.Capabilities(ctx); err == nil && caps.ConfigAPI {
+		if sections, _, err := s.tc.GetConfig(ctx); err == nil {
+			webLinks = subpage.WebLinksForUser(sections["web"], username, secret)
+		} else {
+			slog.Warn("subpage: WEB profile lookup unavailable", "username", username, "err", err)
+		}
+	}
 	var buf bytes.Buffer
-	if err := subpage.RenderPage(&buf, u, entry, r.Header.Get("Accept-Language"), time.Now()); err != nil {
+	if err := subpage.RenderPage(&buf, u, entry, r.Header.Get("Accept-Language"), time.Now(), webLinks...); err != nil {
 		slog.Error("subpage: render", "username", username, "err", err)
 		writeSubpageRenderError(w)
 		return

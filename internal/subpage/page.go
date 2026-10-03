@@ -72,6 +72,7 @@ type linkVariantView struct {
 	Port      string
 	Secret    string
 	QRDataURI template.URL
+	Web       bool
 }
 
 // RenderPage renders u's subscription page to w, choosing RU or EN chrome
@@ -83,9 +84,9 @@ type linkVariantView struct {
 // quota_exhausted status, since TotalOctets is a lifetime counter that a
 // quota reset does not affect (u.TotalOctets alone would keep showing
 // "quota exhausted" forever after a reset).
-func RenderPage(w io.Writer, u telemt.UserInfo, quota *telemt.QuotaEntry, acceptLanguage string, now time.Time) error {
+func RenderPage(w io.Writer, u telemt.UserInfo, quota *telemt.QuotaEntry, acceptLanguage string, now time.Time, webLinks ...string) error {
 	lang := detectLanguage(acceptLanguage)
-	data, err := buildPageData(u, quota, lang, now)
+	data, err := buildPageData(u, quota, lang, now, webLinks...)
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,7 @@ func detectLanguage(acceptLanguage string) string {
 	return "en"
 }
 
-func buildPageData(u telemt.UserInfo, quota *telemt.QuotaEntry, lang string, now time.Time) (pageData, error) {
+func buildPageData(u telemt.UserInfo, quota *telemt.QuotaEntry, lang string, now time.Time, webLinks ...string) (pageData, error) {
 	s := stringsEN
 	if lang == "ru" {
 		s = stringsRU
@@ -111,6 +112,26 @@ func buildPageData(u telemt.UserInfo, quota *telemt.QuotaEntry, lang string, now
 	groups, err := buildGroups(u.Username, u.Links, s)
 	if err != nil {
 		return pageData{}, err
+	}
+	var webVariants []linkVariantView
+	for _, link := range webLinks {
+		parsed, err := url.Parse(link)
+		if err != nil || parsed.Scheme != "tg" || parsed.Host != "webproxy" || parsed.Path != "" || parsed.User != nil || parsed.Fragment != "" {
+			continue
+		}
+		q := parsed.Query()
+		server, secret := q.Get("server"), q.Get("secret")
+		if server == "" || secret == "" || len(q["server"]) != 1 || len(q["secret"]) != 1 || q.Has("port") {
+			continue
+		}
+		qr, err := qrDataURI(link)
+		if err != nil {
+			return pageData{}, err
+		}
+		webVariants = append(webVariants, linkVariantView{Domain: server, TgURL: template.URL(link), Server: server, Secret: secret, QRDataURI: template.URL(qr), Web: true})
+	}
+	if len(webVariants) > 0 {
+		groups = append(groups, linkGroupView{Title: s.GroupWEB, Variants: webVariants})
 	}
 
 	return pageData{

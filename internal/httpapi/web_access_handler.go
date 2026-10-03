@@ -22,6 +22,7 @@ type webAccessView struct {
 
 type webAccessVhostView struct {
 	Host       string                 `json:"host"`
+	BasePath   string                 `json:"base_path,omitempty"`
 	PublicAddr string                 `json:"public_addr"`
 	Profiles   []webAccessProfileView `json:"profiles"`
 }
@@ -190,6 +191,7 @@ func projectWebAccess(raw json.RawMessage, revision string) (webAccessView, erro
 		Enabled bool `json:"enabled"`
 		Vhosts  []struct {
 			Host       string                 `json:"host"`
+			BasePath   string                 `json:"base_path"`
 			PublicAddr string                 `json:"public_addr"`
 			Profiles   []webAccessProfileView `json:"profiles"`
 		} `json:"vhosts"`
@@ -203,7 +205,7 @@ func projectWebAccess(raw json.RawMessage, revision string) (webAccessView, erro
 		if profiles == nil {
 			profiles = []webAccessProfileView{}
 		}
-		view.Vhosts = append(view.Vhosts, webAccessVhostView{Host: vhost.Host, PublicAddr: vhost.PublicAddr, Profiles: profiles})
+		view.Vhosts = append(view.Vhosts, webAccessVhostView{Host: vhost.Host, BasePath: vhost.BasePath, PublicAddr: vhost.PublicAddr, Profiles: profiles})
 	}
 	return view, nil
 }

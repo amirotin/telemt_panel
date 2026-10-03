@@ -2083,6 +2083,7 @@ components:
       required: [host, public_addr, profiles]
       properties:
         host: { type: string }
+        base_path: { type: string, maxLength: 128, description: "Telemt WEB prefix without surrounding slashes; case-sensitive, available since 3.5.8." }
         public_addr: { type: string }
         profiles: { type: array, items: { $ref: "#/components/schemas/WebAccessProfile" } }
 
