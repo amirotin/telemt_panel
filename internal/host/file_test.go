@@ -280,6 +280,17 @@ func TestFile_Stream_EmitsAppendedLines(t *testing.T) {
 	}
 }
 
+func TestFile_StreamRejectsMissingAndNonRegularSources(t *testing.T) {
+	for _, path := range []string{filepath.Join(t.TempDir(), "missing.log"), t.TempDir()} {
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err := NewFile(path, time.Millisecond).Stream(ctx, "telemt")
+		cancel()
+		if err == nil {
+			t.Errorf("Stream(%q) accepted an unreadable log source", path)
+		}
+	}
+}
+
 func TestFile_Stream_HandlesTruncation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "telemt.log")
@@ -467,16 +478,48 @@ func appendLine(t *testing.T, path, s string) {
 }
 
 // recvLine2 waits up to timeout for the next LogLine off ch.
-func recvLine2(t *testing.T, ch <-chan LogLine, timeout time.Duration) LogLine {
+func recvLine2(t *testing.T, ch <-chan LogEvent, timeout time.Duration) LogLine {
 	t.Helper()
 	select {
 	case l, ok := <-ch:
 		if !ok {
 			t.Fatal("channel closed unexpectedly")
 		}
-		return l
+		if l.Err != nil {
+			t.Fatal(l.Err)
+		}
+		return l.LogLine
 	case <-time.After(timeout):
 		t.Fatal("timed out waiting for a log line")
 	}
 	panic("unreachable")
+}
+
+func followFile(ctx context.Context, path string, interval time.Duration) <-chan string {
+	ticker := time.NewTicker(interval)
+	return followFileTicks(ctx, path, ticker.C, ticker.Stop)
+}
+
+func followFileTicks(ctx context.Context, path string, ticks <-chan time.Time, stop func()) <-chan string {
+	events, err := followFileEventTicks(ctx, path, ticks, stop)
+	if err != nil {
+		panic(err)
+	}
+	lines := make(chan string)
+	go func() {
+		defer close(lines)
+		for event := range events {
+			if event.err != nil {
+				return
+			}
+			select {
+			case lines <- event.line:
+			case <-ctx.Done():
+				for range events {
+				}
+				return
+			}
+		}
+	}()
+	return lines
 }

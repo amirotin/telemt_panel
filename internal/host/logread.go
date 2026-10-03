@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"fmt"
-	"strings"
 )
 
 // Logread reads Telemt/panel logs via OpenWrt's logread on procd hosts.
@@ -31,7 +29,10 @@ func (l *Logread) Kind() string { return LogKindLogread }
 func (l *Logread) Tail(ctx context.Context, service string, lines int) ([]LogLine, error) {
 	out, stderr, err := l.run(ctx, "logread", "-e", service)
 	if err != nil {
-		return nil, fmt.Errorf("logread -e %s: %s: %w", service, strings.TrimSpace(string(stderr)), err)
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return nil, newLogSourceError(err, commandLogReason(string(stderr)))
 	}
 	all := parseLogreadLines(out)
 	if lines >= 0 && len(all) > lines {
@@ -41,26 +42,14 @@ func (l *Logread) Tail(ctx context.Context, service string, lines int) ([]LogLin
 }
 
 // Stream implements LogSource.
-func (l *Logread) Stream(ctx context.Context, service string) (<-chan LogLine, error) {
+func (l *Logread) Stream(ctx context.Context, service string) (<-chan LogEvent, error) {
 	rc, err := l.start(ctx, "logread", "-f")
 	if err != nil {
-		return nil, fmt.Errorf("logread -f: %w", err)
+		return nil, newLogSourceError(err, "")
 	}
-	ch := make(chan LogLine)
-	go func() {
-		defer close(ch)
-		defer rc.Close()
-		scanner := bufio.NewScanner(rc)
-		scanner.Buffer(make([]byte, 64*1024), 1<<20)
-		for scanner.Scan() {
-			select {
-			case ch <- parseSyslogishLine(scanner.Text()):
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return ch, nil
+	return streamCommandLogs(ctx, rc, func(raw []byte) (LogLine, bool) {
+		return parseSyslogishLine(string(raw)), true
+	}), nil
 }
 
 // Caps implements LogSource.

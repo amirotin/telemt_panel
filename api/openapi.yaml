@@ -1327,15 +1327,17 @@ paths:
       tags: [realtime]
       operationId: streamLogs
       description: >
-        SSE stream of LogLine events (`event: log`), plus the same `event: heartbeat`
-        frame as /api/events during quiet periods.
+        SSE stream of LogLine events (`event: log`) and quiet-period heartbeats.
+        Source startup/runtime failures are `event: log_source_error` with a
+        LogSourceDiagnostic payload after HTTP 200; normal source EOF is
+        `event: log_end`. Authentication, validation and capability errors
+        remain HTTP errors before streaming begins.
       parameters:
         - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
       responses:
-        "200": { description: SSE of LogLine events, content: { text/event-stream: { schema: { type: string } } } }
+        "200": { description: "SSE of log, heartbeat, log_source_error and log_end events", content: { text/event-stream: { schema: { type: string } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: log_stream_unavailable — host cap log_stream=false, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "502": { description: log_source_error — the log source failed to start streaming, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/snapshot:
     get:
@@ -1444,7 +1446,7 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/LogLine" } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: log_tail_unavailable — host cap log_tail=false, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "502": { description: log_source_error — the log source failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: log_source_error — the log source failed, content: { application/json: { schema: { $ref: "#/components/schemas/LogSourceDiagnostic" } } } }
 
   /api/audit:
     get:
@@ -2527,6 +2529,18 @@ components:
       properties:
         flow_id: { type: string }
         credential: { type: object, additionalProperties: true }
+
+    LogSourceDiagnostic:
+      type: object
+      required: [code, message, source, service, reason]
+      properties:
+        code: { type: string, enum: [log_source_error] }
+        message: { type: string, description: "Safe source diagnostic; no arbitrary command stderr or service log payload." }
+        source: { type: string, enum: [journald, docker, file, syslog, logread] }
+        service: { type: string, enum: [telemt, panel] }
+        target: { type: string, description: "Resolved log unit, container, tag or file path; authenticated administration only." }
+        reason: { type: string, enum: [file_missing, permission_denied, command_missing, target_missing, daemon_unavailable, source_timeout, read_failed, command_failed] }
+        exit_code: { type: integer }
 
     LogLine:
       type: object

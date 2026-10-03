@@ -38,14 +38,18 @@ func (f *File) Tail(ctx context.Context, service string, lines int) ([]LogLine, 
 }
 
 // Stream implements LogSource.
-func (f *File) Stream(ctx context.Context, service string) (<-chan LogLine, error) {
-	raw := followFile(ctx, f.path, f.pollInterval)
-	ch := make(chan LogLine)
+func (f *File) Stream(ctx context.Context, service string) (<-chan LogEvent, error) {
+	raw, err := followFileEvents(ctx, f.path, f.pollInterval)
+	if err != nil {
+		return nil, err
+	}
+	ch := make(chan LogEvent)
 	go func() {
 		defer close(ch)
 		for line := range raw {
+			event := LogEvent{LogLine: newLogLine(line.line, service), Err: line.err}
 			select {
-			case ch <- newLogLine(line, service):
+			case ch <- event:
 			case <-ctx.Done():
 				return
 			}

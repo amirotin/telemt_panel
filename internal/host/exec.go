@@ -63,7 +63,12 @@ func OSProcessStarter(ctx context.Context, name string, args ...string) (io.Read
 		return nil, err
 	}
 	go func() {
-		pw.CloseWithError(cmd.Wait())
+		err := cmd.Wait()
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			err = &ExitError{Code: exitErr.ExitCode()}
+		}
+		pw.CloseWithError(err)
 	}()
 	return pr, nil
 }

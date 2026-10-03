@@ -839,6 +839,22 @@ export type WebAuthnFinishRequest = {
     };
 };
 
+export type LogSourceDiagnostic = {
+    code: 'log_source_error';
+    /**
+     * Safe source diagnostic; no arbitrary command stderr or service log payload.
+     */
+    message: string;
+    source: 'journald' | 'docker' | 'file' | 'syslog' | 'logread';
+    service: 'telemt' | 'panel';
+    /**
+     * Resolved log unit, container, tag or file path; authenticated administration only.
+     */
+    target?: string;
+    reason: 'file_missing' | 'permission_denied' | 'command_missing' | 'target_missing' | 'daemon_unavailable' | 'source_timeout' | 'read_failed' | 'command_failed';
+    exit_code?: number;
+};
+
 export type LogLine = {
     ts: string;
     level?: 'debug' | 'info' | 'warn' | 'error' | 'unknown';
@@ -3996,17 +4012,13 @@ export type StreamLogsErrors = {
      * log_stream_unavailable — host cap log_stream=false
      */
     501: Error;
-    /**
-     * log_source_error — the log source failed to start streaming
-     */
-    502: Error;
 };
 
 export type StreamLogsError = StreamLogsErrors[keyof StreamLogsErrors];
 
 export type StreamLogsResponses = {
     /**
-     * SSE of LogLine events
+     * SSE of log, heartbeat, log_source_error and log_end events
      */
     200: string;
 };
@@ -4157,7 +4169,7 @@ export type TailLogsErrors = {
     /**
      * log_source_error — the log source failed
      */
-    502: Error;
+    502: LogSourceDiagnostic;
 };
 
 export type TailLogsError = TailLogsErrors[keyof TailLogsErrors];

@@ -54,7 +54,7 @@ func (n *NoneLog) Tail(ctx context.Context, service string, lines int) ([]LogLin
 }
 
 // Stream implements LogSource. Always fails: Caps().CanStream is false.
-func (n *NoneLog) Stream(ctx context.Context, service string) (<-chan LogLine, error) {
+func (n *NoneLog) Stream(ctx context.Context, service string) (<-chan LogEvent, error) {
 	return nil, ErrLogUnavailable
 }
 

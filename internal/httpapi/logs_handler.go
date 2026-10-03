@@ -38,6 +38,38 @@ type apiLogLine struct {
 	Msg   string    `json:"msg"`
 }
 
+type apiLogSourceDiagnostic struct {
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Source   string `json:"source"`
+	Service  string `json:"service"`
+	Target   string `json:"target,omitempty"`
+	Reason   string `json:"reason"`
+	ExitCode *int   `json:"exit_code,omitempty"`
+}
+
+func (s *Server) logSourceDiagnostic(err error, logical, name string) apiLogSourceDiagnostic {
+	diagnostic := host.LogDiagnostic(err)
+	if s.logSrc.Kind() == host.LogKindFile {
+		name = s.cfg.Host.LogFile
+	}
+	name = stripLogControls(name)
+	if len(name) > 1024 {
+		runes := []rune(name)
+		name = string(runes[:min(256, len(runes))])
+	}
+	return apiLogSourceDiagnostic{Code: "log_source_error", Message: diagnostic.Error(), Source: s.logSrc.Kind(), Service: logical, Target: name, Reason: diagnostic.Reason, ExitCode: diagnostic.ExitCode}
+}
+
+func writeLogSourceErrorEvent(w io.Writer, diagnostic apiLogSourceDiagnostic) error {
+	payload, err := json.Marshal(diagnostic)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "event: log_source_error\ndata: %s\n\n", payload)
+	return err
+}
+
 func toAPILogLine(l host.LogLine, logical string) apiLogLine {
 	l.Msg = stripLogControls(l.Msg)
 	if logical == "telemt" {
@@ -89,7 +121,7 @@ func (s *Server) handleLogsTail(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	result, err := s.logSrc.Tail(ctx, name, lines)
 	if err != nil {
-		auth.WriteError(w, http.StatusBadGateway, "log_source_error", err.Error())
+		writeJSON(w, http.StatusBadGateway, s.logSourceDiagnostic(err, logical, name))
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPILogLines(result, logical))
@@ -131,10 +163,6 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 	defer deregister()
 
 	ch, err := s.logSrc.Stream(ctx, name)
-	if err != nil {
-		auth.WriteError(w, http.StatusBadGateway, "log_source_error", err.Error())
-		return
-	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -148,6 +176,15 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 	extendSSEWriteDeadline(rc)
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
+	if err != nil {
+		if ctx.Err() == nil {
+			extendSSEWriteDeadline(rc)
+			if writeLogSourceErrorEvent(w, s.logSourceDiagnostic(err, logical, name)) == nil {
+				flusher.Flush()
+			}
+		}
+		return
+	}
 
 	heartbeat := time.NewTicker(s.logStreamHeartbeat)
 	defer heartbeat.Stop()
@@ -158,10 +195,22 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		case line, open := <-ch:
 			if !open {
+				if ctx.Err() == nil {
+					extendSSEWriteDeadline(rc)
+					if _, err := fmt.Fprint(w, "event: log_end\ndata: {}\n\n"); err == nil {
+						flusher.Flush()
+					}
+				}
 				return
 			}
 			extendSSEWriteDeadline(rc)
-			if err := writeLogSSEEvent(w, line, logical); err != nil {
+			if line.Err != nil {
+				if ctx.Err() == nil && writeLogSourceErrorEvent(w, s.logSourceDiagnostic(line.Err, logical, name)) == nil {
+					flusher.Flush()
+				}
+				return
+			}
+			if err := writeLogSSEEvent(w, line.LogLine, logical); err != nil {
 				return
 			}
 			flusher.Flush()

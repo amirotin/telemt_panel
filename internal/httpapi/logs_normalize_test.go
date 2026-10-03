@@ -97,9 +97,9 @@ func TestLogTailAndStreamNormalizeIdentically(t *testing.T) {
 			source.CapsValue = host.LogCaps{CanTail: true, CanStream: true}
 			input := host.LogLine{TS: time.Unix(1234, 0).UTC(), Level: "info", Unit: "custom-unit", Msg: coloredTelemtWarning}
 			source.TailResult = []host.LogLine{input}
-			source.StreamFunc = func(context.Context, string) (<-chan host.LogLine, error) {
-				ch := make(chan host.LogLine, 1)
-				ch <- input
+			source.StreamFunc = func(context.Context, string) (<-chan host.LogEvent, error) {
+				ch := make(chan host.LogEvent, 1)
+				ch <- host.LogEvent{LogLine: input}
 				close(ch)
 				return ch, nil
 			}
@@ -118,7 +118,8 @@ func TestLogTailAndStreamNormalizeIdentically(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := request("/api/events/logs").Body.String()
-			data := strings.TrimSpace(strings.TrimPrefix(body, "event: log\ndata: "))
+			frame := strings.SplitN(body, "\n\n", 2)[0]
+			data := strings.TrimSpace(strings.TrimPrefix(frame, "event: log\ndata: "))
 			var streamed apiLogLine
 			if err := json.Unmarshal([]byte(data), &streamed); err != nil {
 				t.Fatalf("stream frame %q: %v", body, err)

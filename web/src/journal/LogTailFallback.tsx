@@ -13,6 +13,8 @@ import { filterLogLines } from "./logFilter.helpers";
 import { useDefaultLevels } from "./useDefaultLevels";
 import { LogToolbar } from "./LogToolbar";
 import { LogList } from "./LogList";
+import { LogSourceErrorNotice } from "./LogSourceErrorNotice";
+import { logSourceDiagnostic } from "./logSourceDiagnostic";
 import type { LogicalService } from "./types";
 import type { RingLine } from "./logRing";
 
@@ -55,6 +57,7 @@ export function LogTailFallback({
 
   const hasLoadedOnce =
     query.data !== undefined || query.isFetching || query.isError;
+  const diagnostic = logSourceDiagnostic(query.error);
 
   return (
     <div className="flex flex-col gap-3">
@@ -107,7 +110,7 @@ export function LogTailFallback({
               </Button>
             </div>
           )}
-          <AsyncState
+          {query.isError && diagnostic ? <LogSourceErrorNotice diagnostic={diagnostic} onRetry={() => void query.refetch()} retryLabel={s.common.retry} /> : <AsyncState
             isPending={query.isFetching && query.data === undefined}
             isError={query.isError}
             errorCode={query.error?.code}
@@ -129,7 +132,7 @@ export function LogTailFallback({
                 />
               )
             }
-          </AsyncState>
+          </AsyncState>}
         </>
       )}
     </div>

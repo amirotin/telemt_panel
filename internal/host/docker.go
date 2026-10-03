@@ -101,7 +101,10 @@ func (d *DockerLog) Kind() string { return LogKindDocker }
 func (d *DockerLog) Tail(ctx context.Context, container string, lines int) ([]LogLine, error) {
 	stdout, stderr, err := d.run(ctx, "docker", "logs", "--tail", strconv.Itoa(lines), container)
 	if err != nil {
-		return nil, fmt.Errorf("docker logs %s: %s: %w", container, strings.TrimSpace(string(stderr)), err)
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return nil, newLogSourceError(err, commandLogReason(string(stderr)))
 	}
 	out := splitDockerLines(stdout, container)
 	out = append(out, splitDockerLines(stderr, container)...)
@@ -111,26 +114,14 @@ func (d *DockerLog) Tail(ctx context.Context, container string, lines int) ([]Lo
 // Stream implements LogSource via `docker logs -f <ctr>`, which the
 // ProcessStarter runs with stdout and stderr merged into one stream (see
 // ProcessStarter's doc comment in exec.go).
-func (d *DockerLog) Stream(ctx context.Context, container string) (<-chan LogLine, error) {
+func (d *DockerLog) Stream(ctx context.Context, container string) (<-chan LogEvent, error) {
 	rc, err := d.start(ctx, "docker", "logs", "-f", container)
 	if err != nil {
-		return nil, fmt.Errorf("docker logs -f %s: %w", container, err)
+		return nil, newLogSourceError(err, "")
 	}
-	ch := make(chan LogLine)
-	go func() {
-		defer close(ch)
-		defer rc.Close()
-		scanner := bufio.NewScanner(rc)
-		scanner.Buffer(make([]byte, 64*1024), 1<<20)
-		for scanner.Scan() {
-			select {
-			case ch <- LogLine{Level: "unknown", Unit: container, Msg: scanner.Text()}:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return ch, nil
+	return streamCommandLogs(ctx, rc, func(raw []byte) (LogLine, bool) {
+		return LogLine{Level: "unknown", Unit: container, Msg: string(raw)}, true
+	}), nil
 }
 
 // Caps implements LogSource.

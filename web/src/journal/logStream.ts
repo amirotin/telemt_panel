@@ -1,5 +1,6 @@
 import { withBasePath } from "../lib/base-path";
-import type { LogLine } from "../lib/api/generated/types.gen";
+import type { LogLine, LogSourceDiagnostic } from "../lib/api/generated/types.gen";
+import { logSourceDiagnostic } from "./logSourceDiagnostic";
 
 // DEFAULT_STALE_MS mirrors sseClient.ts's 40s global-stale watchdog
 // (02-hub-sse.md's heartbeat contract is shared by /api/events and
@@ -13,12 +14,13 @@ const DEFAULT_STALE_MS = 40_000;
 // the global EventSource.
 const READY_STATE_CLOSED = 2;
 
-export type LogStreamStatus = "connecting" | "open" | "reconnecting" | "closed";
+export type LogStreamStatus = "connecting" | "open" | "reconnecting" | "closed" | "error" | "ended";
 
 export interface LogStreamSnapshot {
   status: LogStreamStatus;
   /** No frame (log line or heartbeat) received for staleMs. */
   stale: boolean;
+  error?: LogSourceDiagnostic;
 }
 
 export interface LogStreamOptions {
@@ -31,7 +33,7 @@ export interface LogStreamClient {
   getSnapshot(): LogStreamSnapshot;
   subscribe(cb: () => void): () => void;
   onLine(cb: (line: LogLine) => void): () => void;
-  /** Closes any live connection and opens a fresh one — for a visible "reconnect" action once status is "closed". */
+  /** Opens a fresh connection after a source error, normal EOF or transport failure. */
   retry(): void;
   /** Stops the stream for good; no further snapshot/line callbacks fire. */
   close(): void;
@@ -47,9 +49,10 @@ export interface LogStreamClient {
 // Reconnection on a transient drop is left to the browser's own EventSource
 // retry (Task 7 brief B: "reconnect via browser") — this client does not
 // implement sseClient.ts's own backoff/polling fallback. It only surfaces
-// status="closed" (and a manual retry()) for the case the browser itself
-// gives up on: a non-2xx/non-event-stream response (e.g. an expired
-// session), which sets EventSource.readyState to CLOSED with no auto-retry.
+// Source errors and normal EOF have named events and stop automatic retries;
+// the viewer keeps received lines and exposes an explicit retry action.
+// A non-2xx/non-event-stream response (e.g. an expired session) instead sets
+// EventSource.readyState to CLOSED with no auto-retry.
 export function createLogStream(service: string, options: LogStreamOptions = {}): LogStreamClient {
   const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
   const eventSourceFactory =
@@ -68,7 +71,7 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
 
   function setSnapshot(patch: Partial<LogStreamSnapshot>) {
     const next: LogStreamSnapshot = { ...snapshot, ...patch };
-    if (next.status === snapshot.status && next.stale === snapshot.stale) return;
+    if (next.status === snapshot.status && next.stale === snapshot.stale && next.error === snapshot.error) return;
     snapshot = next;
     notify();
   }
@@ -81,6 +84,12 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
   function onFrame() {
     resetStaleWatchdog();
     setSnapshot({ stale: false });
+  }
+
+  function stopConnection() {
+    if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; }
+    es?.close();
+    es = null;
   }
 
   function open() {
@@ -106,6 +115,20 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
     next.addEventListener("heartbeat", () => {
       if (es !== next) return;
       onFrame();
+    });
+
+    next.addEventListener("log_source_error", (ev) => {
+      if (es !== next) return;
+      const diagnostic = logSourceDiagnostic(parseJSON<unknown>((ev as MessageEvent).data));
+      if (!diagnostic || diagnostic.service !== service) return;
+      stopConnection();
+      setSnapshot({ status: "error", stale: false, error: diagnostic });
+    });
+
+    next.addEventListener("log_end", () => {
+      if (es !== next) return;
+      stopConnection();
+      setSnapshot({ status: "ended", stale: false, error: undefined });
     });
 
     next.addEventListener("error", () => {
@@ -138,7 +161,8 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
         es.close();
         es = null;
       }
-      setSnapshot({ status: "connecting" });
+      if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; }
+      setSnapshot({ status: "connecting", stale: false, error: undefined });
       open();
     },
     close() {

@@ -77,9 +77,10 @@ type LogSource struct {
 	TailResult []host.LogLine
 	TailErr    error
 
-	StreamFunc   func(ctx context.Context, service string) (<-chan host.LogLine, error)
-	StreamResult []host.LogLine
-	StreamErr    error
+	StreamFunc        func(ctx context.Context, service string) (<-chan host.LogEvent, error)
+	StreamResult      []host.LogLine
+	StreamErr         error
+	StreamTerminalErr error
 
 	mu          sync.Mutex
 	TailCalls   []TailCall
@@ -101,7 +102,7 @@ func (f *LogSource) Tail(ctx context.Context, service string, lines int) ([]host
 }
 
 // Stream implements host.LogSource, recording the call.
-func (f *LogSource) Stream(ctx context.Context, service string) (<-chan host.LogLine, error) {
+func (f *LogSource) Stream(ctx context.Context, service string) (<-chan host.LogEvent, error) {
 	f.mu.Lock()
 	f.StreamCalls = append(f.StreamCalls, service)
 	f.mu.Unlock()
@@ -111,14 +112,20 @@ func (f *LogSource) Stream(ctx context.Context, service string) (<-chan host.Log
 	if f.StreamErr != nil {
 		return nil, f.StreamErr
 	}
-	ch := make(chan host.LogLine)
+	ch := make(chan host.LogEvent)
 	go func() {
 		defer close(ch)
 		for _, line := range f.StreamResult {
 			select {
-			case ch <- line:
+			case ch <- host.LogEvent{LogLine: line}:
 			case <-ctx.Done():
 				return
+			}
+		}
+		if f.StreamTerminalErr != nil {
+			select {
+			case ch <- host.LogEvent{Err: f.StreamTerminalErr}:
+			case <-ctx.Done():
 			}
 		}
 	}()

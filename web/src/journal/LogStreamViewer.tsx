@@ -11,6 +11,7 @@ import { useDefaultLevels } from "./useDefaultLevels";
 import { useLogStream } from "./useLogStream";
 import { LogToolbar } from "./LogToolbar";
 import { LogList } from "./LogList";
+import { LogSourceErrorNotice } from "./LogSourceErrorNotice";
 import type { LogicalService } from "./types";
 
 export interface LogStreamViewerProps {
@@ -64,6 +65,7 @@ export function LogStreamViewer({
   const hasStreamNotice =
     streamState.status === "reconnecting" ||
     streamState.status === "closed" ||
+    streamState.status === "ended" ||
     streamState.stale;
 
   return (
@@ -85,6 +87,8 @@ export function LogStreamViewer({
         onClear={() => dispatch({ type: "clear" })}
       />
 
+      {streamState.error && <LogSourceErrorNotice diagnostic={streamState.error} onRetry={streamState.retry} />}
+
       {hasStreamNotice && (
         <div className="journal-stream-notice">
           {streamState.status === "reconnecting" && (
@@ -93,10 +97,10 @@ export function LogStreamViewer({
           {streamState.stale && streamState.status !== "reconnecting" && (
             <StatePill state="warn">{s.common.stale}</StatePill>
           )}
-          {streamState.status === "closed" && (
+          {(streamState.status === "closed" || streamState.status === "ended") && (
             <>
-              <StatePill state="error">
-                {s.journal.streamClosedTitle}
+              <StatePill state={streamState.status === "ended" ? "muted" : "error"}>
+                {streamState.status === "ended" ? s.journal.streamEndedTitle : s.journal.streamClosedTitle}
               </StatePill>
               <Button variant="secondary" size="sm" onClick={streamState.retry}>
                 {s.journal.retryStream}
@@ -119,11 +123,17 @@ export function LogStreamViewer({
         </div>
       )}
 
-      {state.lines.length === 0 ? (
+      {state.lines.length === 0 && streamState.status === "error" ? null : state.lines.length === 0 ? (
         <div className="journal-empty-state">
           <IconActivity aria-hidden="true" />
-          <h2>{s.journal.emptyTitle}</h2>
-          <p>{s.journal.emptyDescription}</p>
+          <h2>{streamState.status === "connecting" ? s.journal.connectingTitle
+            : streamState.status === "ended" ? s.journal.streamEndedTitle
+            : streamState.status === "closed" ? s.journal.streamClosedTitle
+            : streamState.status === "reconnecting" ? s.journal.reconnecting
+            : s.journal.emptyTitle}</h2>
+          {streamState.status === "open" && <p>{s.journal.emptyDescription}</p>}
+          {streamState.status === "connecting" && <p>{s.journal.connectingDescription}</p>}
+          {streamState.status === "ended" && <p>{s.journal.streamEndedDescription}</p>}
         </div>
       ) : filtered.length === 0 ? (
         <div className="journal-empty-state">

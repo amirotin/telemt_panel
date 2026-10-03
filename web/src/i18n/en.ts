@@ -2335,6 +2335,10 @@ export const en: Dict = {
     },
   },
   journal: {
+    connectingTitle:"Connecting to logs",connectingDescription:"Waiting for the source to connect. No lines yet does not mean the log is empty.",
+    streamEndedTitle:"Log stream ended",streamEndedDescription:"The source is no longer sending lines. Received entries are kept; you can reconnect.",
+    sourceErrorTitle:"Logs unavailable",sourceErrorSource:"Source",sourceErrorTarget:"Service, container or file",sourceErrorExitCode:"Exit code",
+    sourceErrors:{file_missing:"Log file not found. Check the path and Telemt logging settings.",permission_denied:"Log access denied. Check the panel service user's permissions for the file or service.",command_missing:"The log-reading command is not installed on this system.",target_missing:"The configured source was not found. Check the service or container name.",daemon_unavailable:"The log daemon is unavailable. Check daemon status and access permissions.",source_timeout:"The log source did not respond before the timeout.",read_failed:"Could not read logs. Check source availability.",command_failed:"The log-reading command failed. Check the source and exit code."},
     eyebrow: "Diagnostics and history",
     tabs: { logs: "Logs", actions: "Actions" },
     tabDescriptions: {

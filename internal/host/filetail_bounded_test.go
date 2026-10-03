@@ -287,13 +287,22 @@ func TestFollowFileResetsPartialAndTruncatedGenerations(t *testing.T) {
 	}
 }
 
-func TestFollowFileMissingPathAndClosedTicks(t *testing.T) {
+func TestFollowFileRotationGapAndClosedTicks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "later")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ticks := make(chan time.Time)
 	stops := 0
-	lines := followFileTicks(ctx, path, ticks, func() { stops++ })
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	events, err := followFileEventTicks(ctx, path, ticks, func() { stops++ })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
 	followTestTick(t, ticks)
 	followTestTick(t, ticks)
 	if err := os.WriteFile(path, []byte("created\n"), 0o600); err != nil {
@@ -302,8 +311,12 @@ func TestFollowFileMissingPathAndClosedTicks(t *testing.T) {
 	var got string
 	select {
 	case ticks <- time.Now():
-		got = recvLine(t, lines, 2*time.Second)
-	case got = <-lines:
+		got = (<-events).line
+	case event := <-events:
+		if event.err != nil {
+			t.Fatal(event.err)
+		}
+		got = event.line
 	case <-time.After(2 * time.Second):
 		t.Fatal("new path not observed")
 	}
@@ -312,7 +325,7 @@ func TestFollowFileMissingPathAndClosedTicks(t *testing.T) {
 	}
 	close(ticks)
 	select {
-	case _, ok := <-lines:
+	case _, ok := <-events:
 		if ok {
 			t.Fatal("unexpected line after tick closure")
 		}

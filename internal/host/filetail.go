@@ -3,6 +3,7 @@ package host
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -25,7 +26,7 @@ func tailFileLines(path string, n int) ([]string, error) {
 	if n <= 0 {
 		return nil, nil
 	}
-	f, err := os.Open(path)
+	f, err := openLogFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +93,7 @@ func newLogLine(line, service string) LogLine {
 // that happens entirely between two ticks (see overlapStillMatches).
 const tailOverlapBytes = 256
 
-// followFile polls path for growth every pollInterval, emitting each new
+// followFileEvents polls path for growth every pollInterval, emitting each new
 // complete line as it appears; Stream only delivers new lines going
 // forward (Tail already covers history), so it starts from the file's
 // current end — captured synchronously here, before the polling goroutine
@@ -109,34 +110,73 @@ const tailOverlapBytes = 256
 // resuming from the new content at offset 0 rather than reading stale
 // bytes at a now-meaningless offset or erroring. A bounded partial prefix
 // is retained until its newline arrives; only a small overlap is reread.
-// The returned channel closes when ctx is done.
-func followFile(ctx context.Context, path string, pollInterval time.Duration) <-chan string {
-	ticker := time.NewTicker(pollInterval)
-	return followFileTicks(ctx, path, ticker.C, ticker.Stop)
+// The returned channel closes when ctx is done or after a terminal source error.
+type fileFollowEvent struct {
+	line string
+	err  error
 }
 
-// followFileTicks is followFile's implementation, parameterized on the
+func openLogFile(path string) (*os.File, error) {
+	// Nonblocking open also prevents a replaced path from hanging on a FIFO.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := f.Stat()
+	if err == nil && !fi.Mode().IsRegular() {
+		err = errors.New("log source is not a regular file")
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+func followFileEvents(ctx context.Context, path string, pollInterval time.Duration) (<-chan fileFollowEvent, error) {
+	ticker := time.NewTicker(pollInterval)
+	return followFileEventTicks(ctx, path, ticker.C, ticker.Stop)
+}
+
+// followFileEventTicks is followFileEvents' implementation, parameterized on the
 // tick source so tests can drive it deterministically — send exactly one
 // value on tickCh to force exactly one poll — instead of racing a real
 // wall-clock ticker.
-func followFileTicks(ctx context.Context, path string, tickCh <-chan time.Time, stop func()) <-chan string {
+func followFileEventTicks(ctx context.Context, path string, tickCh <-chan time.Time, stop func()) (<-chan fileFollowEvent, error) {
 	var cursor fileFollowCursor
 	var ino uint64
 	var haveIno bool
-	if f, err := os.Open(path); err == nil {
-		if fi, err := f.Stat(); err == nil {
-			cursor.offset = fi.Size()
-			ino, haveIno = fileIno(fi)
-			cursor.remember(readTailOverlapFromFile(f, cursor.offset))
-		}
-		f.Close()
+	f, err := openLogFile(path)
+	if err != nil {
+		stop()
+		return nil, newLogSourceError(err, "")
 	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		stop()
+		return nil, newLogSourceError(err, "")
+	}
+	cursor.offset = fi.Size()
+	ino, haveIno = fileIno(fi)
+	cursor.remember(readTailOverlapFromFile(f, cursor.offset))
+	f.Close()
 
-	out := make(chan string)
+	out := make(chan fileFollowEvent)
 	go func() {
 		defer close(out)
 		defer stop()
 		scratch := make([]byte, followChunkBytes)
+		missingTicks := 0
+		fail := func(err error) {
+			if ctx.Err() != nil {
+				return
+			}
+			select {
+			case out <- fileFollowEvent{err: newLogSourceError(err, "")}:
+			case <-ctx.Done():
+			}
+		}
 
 		for {
 			select {
@@ -148,16 +188,25 @@ func followFileTicks(ctx context.Context, path string, tickCh <-chan time.Time, 
 				}
 			}
 
-			f, err := os.Open(path)
+			f, err := openLogFile(path)
 			if err != nil {
-				// Transient (e.g. mid-rotation, momentarily missing) —
-				// retry on the next tick instead of ending the stream.
-				continue
+				// Allow a brief rename/create gap during rotation. Persistent
+				// absence and other read failures must reach the viewer.
+				if errors.Is(err, os.ErrNotExist) {
+					missingTicks++
+					if missingTicks < 3 {
+						continue
+					}
+				}
+				fail(err)
+				return
 			}
+			missingTicks = 0
 			fi, err := f.Stat()
 			if err != nil {
 				f.Close()
-				continue
+				fail(err)
+				return
 			}
 			curIno, curHaveIno := fileIno(fi)
 			rotated := haveIno && curHaveIno && curIno != ino
@@ -177,18 +226,22 @@ func followFileTicks(ctx context.Context, path string, tickCh <-chan time.Time, 
 			}
 			// A fixed end bounds this poll even if the writer keeps growing.
 			// Partial reads retain their consumed offset for the next poll.
-			_ = readNewLines(ctx, f, fi.Size(), &cursor, scratch, func(line string) bool {
+			readErr := readNewLines(ctx, f, fi.Size(), &cursor, scratch, func(line string) bool {
 				select {
-				case out <- line:
+				case out <- fileFollowEvent{line: line}:
 					return true
 				case <-ctx.Done():
 					return false
 				}
 			})
 			f.Close()
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				fail(readErr)
+				return
+			}
 		}
 	}()
-	return out
+	return out, nil
 }
 
 // fileIno extracts the inode number from a FileInfo on platforms where

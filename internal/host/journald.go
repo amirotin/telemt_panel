@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -33,36 +32,21 @@ func (j *Journald) Kind() string { return LogKindJournald }
 func (j *Journald) Tail(ctx context.Context, service string, lines int) ([]LogLine, error) {
 	out, stderr, err := j.run(ctx, "journalctl", "-u", service, "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
 	if err != nil {
-		return nil, fmt.Errorf("journalctl -u %s: %s: %w", service, strings.TrimSpace(string(stderr)), err)
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return nil, newLogSourceError(err, commandLogReason(string(stderr)))
 	}
 	return parseJournaldLines(out), nil
 }
 
 // Stream implements LogSource.
-func (j *Journald) Stream(ctx context.Context, service string) (<-chan LogLine, error) {
+func (j *Journald) Stream(ctx context.Context, service string) (<-chan LogEvent, error) {
 	rc, err := j.start(ctx, "journalctl", "-u", service, "-f", "-o", "json")
 	if err != nil {
-		return nil, fmt.Errorf("journalctl -u %s -f: %w", service, err)
+		return nil, newLogSourceError(err, "")
 	}
-	ch := make(chan LogLine)
-	go func() {
-		defer close(ch)
-		defer rc.Close()
-		scanner := bufio.NewScanner(rc)
-		scanner.Buffer(make([]byte, 64*1024), 1<<20)
-		for scanner.Scan() {
-			line, ok := parseJournaldLine(scanner.Bytes())
-			if !ok {
-				continue
-			}
-			select {
-			case ch <- line:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return ch, nil
+	return streamCommandLogs(ctx, rc, parseJournaldLine), nil
 }
 
 // Caps implements LogSource.

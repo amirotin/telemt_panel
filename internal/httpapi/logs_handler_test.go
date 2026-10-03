@@ -273,8 +273,8 @@ func TestHandleEventsLogs_StreamsAndEndsOnDisconnect(t *testing.T) {
 
 	lineCh := make(chan host.LogLine)
 	streamCtxDone := make(chan struct{})
-	logSrc.StreamFunc = func(ctx context.Context, service string) (<-chan host.LogLine, error) {
-		out := make(chan host.LogLine)
+	logSrc.StreamFunc = func(ctx context.Context, service string) (<-chan host.LogEvent, error) {
+		out := make(chan host.LogEvent)
 		go func() {
 			defer close(out)
 			defer close(streamCtxDone)
@@ -282,7 +282,7 @@ func TestHandleEventsLogs_StreamsAndEndsOnDisconnect(t *testing.T) {
 				select {
 				case l := <-lineCh:
 					select {
-					case out <- l:
+					case out <- host.LogEvent{LogLine: l}:
 					case <-ctx.Done():
 						return
 					}
@@ -341,8 +341,8 @@ func TestHandleEventsLogs_HeartbeatIsObservableEvent(t *testing.T) {
 	logSrc.CapsValue = host.LogCaps{CanStream: true}
 	srv.logStreamHeartbeat = 15 * time.Millisecond
 
-	logSrc.StreamFunc = func(ctx context.Context, service string) (<-chan host.LogLine, error) {
-		out := make(chan host.LogLine)
+	logSrc.StreamFunc = func(ctx context.Context, service string) (<-chan host.LogEvent, error) {
+		out := make(chan host.LogEvent)
 		go func() {
 			defer close(out)
 			<-ctx.Done() // never sends a line — only heartbeats should flow
@@ -373,17 +373,89 @@ func TestHandleEventsLogs_HeartbeatIsObservableEvent(t *testing.T) {
 	}
 }
 
-func TestHandleEventsLogs_StreamStartErrorReturns502(t *testing.T) {
+func TestHandleEventsLogs_StreamStartErrorIsReadableSSE(t *testing.T) {
 	srv, cookie, _, logSrc := newHostTestServer(t)
 	logSrc.CapsValue = host.LogCaps{CanStream: true}
-	logSrc.StreamErr = errors.New("logread: not found")
+	logSrc.StreamErr = errors.New("PRIVATE_SERVICE_OUTPUT")
 
 	r := httptest.NewRequest("GET", "/api/events/logs?service=telemt", nil)
 	r.AddCookie(cookie)
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, r)
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, want 502", w.Code)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "event: log_source_error\n") {
+		t.Fatalf("source startup error is not readable by EventSource: %d %s", w.Code, w.Body)
+	}
+	if strings.Contains(w.Body.String(), "PRIVATE_SERVICE_OUTPUT") {
+		t.Fatal("source diagnostic leaked arbitrary process output")
+	}
+}
+
+func TestHandleLogsTailErrorHasSafeSourceDiagnostic(t *testing.T) {
+	srv, cookie, _, logSrc := newHostTestServer(t)
+	logSrc.CapsValue = host.LogCaps{CanTail: true}
+	logSrc.KindValue = host.LogKindDocker
+	logSrc.TailErr = errors.New("PRIVATE_SERVICE_OUTPUT")
+	r := httptest.NewRequest("GET", "/api/logs/tail?service=telemt", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	var diagnostic map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &diagnostic); err != nil {
+		t.Fatal(err)
+	}
+	if diagnostic["reason"] != "read_failed" || diagnostic["source"] != "docker" || diagnostic["service"] != "telemt" {
+		t.Fatalf("missing structured diagnostic: %s", w.Body)
+	}
+	if strings.Contains(w.Body.String(), "PRIVATE_SERVICE_OUTPUT") {
+		t.Fatal("raw source output was exposed")
+	}
+}
+
+func TestHandleEventsLogsRuntimeErrorKeepsLineBeforeDiagnostic(t *testing.T) {
+	srv, cookie, _, source := newHostTestServer(t)
+	source.CapsValue = host.LogCaps{CanStream: true}
+	source.StreamResult = []host.LogLine{{Msg: "last readable line"}}
+	source.StreamTerminalErr = &host.ExitError{Code: 17}
+	r := httptest.NewRequest("GET", "/api/events/logs?service=telemt", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	body := w.Body.String()
+	lineAt, errorAt := strings.Index(body, "last readable line"), strings.Index(body, "event: log_source_error")
+	if lineAt < 0 || errorAt <= lineAt || !strings.Contains(body, `"exit_code":17`) || !strings.Contains(body, `"reason":"command_failed"`) {
+		t.Fatalf("lost ordered terminal diagnostic: %s", body)
+	}
+	if strings.Contains(body, "event: log_end") {
+		t.Fatal("failed source was also reported as normal EOF")
+	}
+}
+
+func TestHandleEventsLogsNormalEmptySourceEndsWithoutError(t *testing.T) {
+	srv, cookie, _, source := newHostTestServer(t)
+	source.CapsValue = host.LogCaps{CanStream: true}
+	r := httptest.NewRequest("GET", "/api/events/logs?service=panel", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, r)
+	if w.Body.String() != "event: log_end\ndata: {}\n\n" {
+		t.Fatalf("normal EOF: %s", w.Body)
+	}
+}
+
+func TestHandleLogsTailReadableEmptySourceReturnsEmptyArray(t *testing.T) {
+	for _, kind := range []string{host.LogKindFile, host.LogKindJournald, host.LogKindDocker} {
+		t.Run(kind, func(t *testing.T) {
+			srv, cookie, _, source := newHostTestServer(t)
+			source.KindValue = kind
+			source.CapsValue = host.LogCaps{CanTail: true}
+			r := httptest.NewRequest("GET", "/api/logs/tail?service=telemt", nil)
+			r.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(w, r)
+			if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" {
+				t.Fatalf("empty source: %d %s", w.Code, w.Body)
+			}
+		})
 	}
 }
 
@@ -414,8 +486,8 @@ func TestServer_Run_ShutsDownPromptlyWithAnOpenLogStream(t *testing.T) {
 	t.Cleanup(srv.subLimiter.Stop)
 
 	logSrc := &hosttest.LogSource{CapsValue: host.LogCaps{CanStream: true}}
-	logSrc.StreamFunc = func(ctx context.Context, service string) (<-chan host.LogLine, error) {
-		out := make(chan host.LogLine)
+	logSrc.StreamFunc = func(ctx context.Context, service string) (<-chan host.LogEvent, error) {
+		out := make(chan host.LogEvent)
 		go func() {
 			<-ctx.Done()
 			close(out)

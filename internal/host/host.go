@@ -128,6 +128,13 @@ type LogLine struct {
 	Msg   string
 }
 
+// LogEvent carries a line or a terminal source error in stream order.
+// A closed channel without an error means the source ended normally.
+type LogEvent struct {
+	LogLine
+	Err error
+}
+
 // LogSource reads a service's log: a bounded tail and a live stream.
 // Implementations: journald.go, logread.go, syslog.go, file.go, docker.go
 // (DockerLog), plus the NoneLog fallback in none.go.
@@ -137,9 +144,9 @@ type LogSource interface {
 	Kind() string
 	// Tail returns up to the last `lines` log entries.
 	Tail(ctx context.Context, service string, lines int) ([]LogLine, error)
-	// Stream pushes lines as they arrive; the channel closes when ctx is
-	// done or the underlying source ends.
-	Stream(ctx context.Context, service string) (<-chan LogLine, error)
+	// Stream pushes lines and a terminal source error in order. Channel closure
+	// without an error means normal EOF or cancellation, never failed access.
+	Stream(ctx context.Context, service string) (<-chan LogEvent, error)
 	// Caps reports what this implementation can actually do on this
 	// host.
 	Caps() LogCaps
