@@ -87,8 +87,17 @@ type Server struct {
 	webUI http.Handler
 }
 
+// EngineOptions supplies process lifecycle information to the update engine.
+type EngineOptions struct {
+	PanelLifecycleContext context.Context
+}
+
 // New builds the handler tree.
-func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, version string) *Server {
+func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, version string, options ...EngineOptions) *Server {
+	var engineOptions EngineOptions
+	if len(options) > 0 {
+		engineOptions = options[0]
+	}
 	probe := host.DefaultProbe()
 	svcMgr := configuredServiceManager(cfg.Host, cfg.Host.ServiceManager, probe, host.OSCmdRunner)
 	logSrc := host.NewLogSource(cfg.Host.LogSource, cfg.Host.LogFile, svcMgr.Kind(), probe, host.OSCmdRunner, host.OSProcessStarter, host.DefaultLogPollInterval)
@@ -176,13 +185,14 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		ServiceName_: panelServiceName,
 	}
 	updateEngine := update.NewEngine(update.EngineConfig{
-		Runner:       runner,
-		Store:        st,
-		Targets:      map[string]update.Target{update.TargetTelemt: telemtTarget, update.TargetPanel: panelTarget},
-		StagingDir:   allow.StagingPrefix,
-		GithubToken:  cfg.Updates.GithubToken,
-		Hub:          hb,
-		BuildVariant: store.Variant,
+		Runner:                runner,
+		Store:                 st,
+		Targets:               map[string]update.Target{update.TargetTelemt: telemtTarget, update.TargetPanel: panelTarget},
+		StagingDir:            allow.StagingPrefix,
+		GithubToken:           cfg.Updates.GithubToken,
+		Hub:                   hb,
+		BuildVariant:          store.Variant,
+		PanelLifecycleContext: engineOptions.PanelLifecycleContext,
 	})
 
 	appearance := branding.New(st, cfg.BasePath)

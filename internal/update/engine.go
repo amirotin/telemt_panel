@@ -146,6 +146,9 @@ type EngineConfig struct {
 	// Hub publishes run status into the SSE "update" topic; nil disables
 	// publishing (tests that don't care about it).
 	Hub UpdatePublisher
+	// PanelLifecycleContext observes the panel's shutdown independently of a
+	// run's background context. Nil retains ordinary restart-error handling.
+	PanelLifecycleContext context.Context
 
 	// HTTPClient downloads release assets; defaults to a client with a 5
 	// minute timeout (release tarballs are small, but a stalled connection
@@ -180,6 +183,7 @@ type Engine struct {
 	github       *Client
 	githubToken  string
 	hub          UpdatePublisher
+	panelCtx     context.Context
 	httpClient   *http.Client
 	arch         string
 	variant      string
@@ -206,6 +210,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		github:       cfg.Github,
 		githubToken:  cfg.GithubToken,
 		hub:          cfg.Hub,
+		panelCtx:     cfg.PanelLifecycleContext,
 		httpClient:   cfg.HTTPClient,
 		arch:         cfg.Arch,
 		variant:      cfg.Variant,
@@ -681,6 +686,18 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 	if _, err := e.runner.Run(ctx, host.Op{Kind: host.OpRestartService, Args: map[string]string{
 		host.ArgService: target.ServiceName(),
 	}}); err != nil {
+		var exitErr *host.ExitError
+		if targetName == TargetPanel && e.panelCtx != nil && e.panelCtx.Err() != nil && errors.As(err, &exitErr) && exitErr.Code == -1 {
+			// The service stop can signal its own restart command too. Leave
+			// the durable handoff for the next process rather than restoring
+			// a binary from the old process while it is shutting down.
+			detail := err.Error()
+			if len(detail) > 512 {
+				detail = detail[:512]
+			}
+			slog.Warn("update: panel stopped during restart; awaiting startup confirmation", "run_id", rc.RunID, "err", detail)
+			return nil
+		}
 		return e.rollback(ctx, rc, target, backupPath, PhaseRestarting, err)
 	}
 

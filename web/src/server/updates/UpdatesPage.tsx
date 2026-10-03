@@ -25,6 +25,7 @@ import {
 } from "./updatePhase.helpers";
 import { pickLatestRelease } from "./releases.helpers";
 import { formatAuditTimestamp } from "../../journal/timestamp.helpers";
+import { selectUpdateRun } from "./updateRun.helpers";
 
 // UpdatesPage keeps the two update targets in one compact version surface.
 // The active target expands in place; the auto-update policy and the merged
@@ -80,8 +81,7 @@ export function UpdatesPage() {
   ).length;
   const catalogUnavailable=targets.some(target=>!!target.releases_error);
   const activeTarget = targets.find((target) => {
-    const event = sse.data?.target === target.target ? sse.data : null;
-    const run = event ?? target.active_run;
+    const run = selectUpdateRun(target, sse.data);
     return run && !isTerminalUpdatePhase(run.phase as UpdatePhase);
   });
 
@@ -239,11 +239,11 @@ function UpdateHistory({
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-meta font-semibold text-text">{s.server.updates.phases[run.phase]}</p>
-                  <p className="mt-0.5 truncate text-micro text-text-muted">
+                    <p className="mt-0.5 truncate text-micro text-text-muted">
                     {s.server.updates.targetNames[target]}
                     {run.version_from ? ` · ${run.version_from} → ${run.version_to}` : ` · ${run.version_to}`}
-                    {run.detail ? ` · ${run.detail}` : ""}
-                  </p>
+                    </p>
+                    {run.detail && <p className="mt-1 whitespace-pre-wrap break-words font-mono text-micro leading-relaxed text-text-muted">{run.detail}</p>}
                 </div>
                 <time className="max-w-28 text-right text-micro tabular-nums text-text-faint">
                   {formatAuditTimestamp(run.started_at, s)}

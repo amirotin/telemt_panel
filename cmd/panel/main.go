@@ -103,7 +103,7 @@ func main() {
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
 	hb := hub.New(hub.Config{}, tc, st)
 	hb.StartPersistentCollectors()
-	srv := httpapi.New(cfg, tc, st, hb, version)
+	srv := httpapi.New(cfg, tc, st, hb, version, httpapi.EngineOptions{PanelLifecycleContext: ctx})
 	srv.SetTLSConfigPath(*configPath)
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)

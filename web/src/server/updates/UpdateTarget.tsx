@@ -20,6 +20,7 @@ import {ReleasePicker,ReleaseConfirmation} from './ReleasePicker';
 import { isTerminalUpdatePhase, type UpdatePhase } from "./updatePhase.helpers";
 import { UpdateStepper } from "./UpdateStepper";
 import { usePanelRestartWatch } from "./usePanelRestartWatch";
+import { selectUpdateRun } from "./updateRun.helpers";
 
 export type TargetName = "telemt" | "panel";
 type TargetStatus = UpdatesStatus["targets"][number];
@@ -56,6 +57,7 @@ export function UpdateTarget({
   const [picked,setPicked]=useState<{version:string;from:string;newer:boolean}|null>(null);
   const [confirming,setConfirming]=useState<{release:ReleaseItem;from:string}|null>(null);
   const [capabilityOpen, setCapabilityOpen] = useState(false);
+  const [panelRunID, setPanelRunID] = useState<string | null>(null);
 
   const applyMutation = useMutation({
     ...applyUpdateMutation(),
@@ -68,8 +70,7 @@ export function UpdateTarget({
   });
 
   const latest = pickLatestRelease(data.releases);
-  const liveRun = sseEvent && sseEvent.target === target ? sseEvent : null;
-  const activeRun = liveRun ?? data.active_run ?? null;
+  const activeRun = selectUpdateRun(data, sseEvent);
   const phase = activeRun?.phase as UpdatePhase | undefined;
   const runIsActive = Boolean(phase && !isTerminalUpdatePhase(phase));
   const canApply = hostCaps?.self_update ?? false;
@@ -79,9 +80,13 @@ export function UpdateTarget({
   const validSelection=!!selected&&!catalogError;
   const confirmationChanged=!validSelection||confirming?.from!==data.current_version||confirming?.release.version!==selected?.version||Boolean(confirming?.release.prerelease)!==Boolean(selected?.prerelease);
 
-  const restarting = target === "panel" && phase === "restarting";
+  if (target === "panel" && runIsActive && panelRunID !== activeRun?.run_id) {
+    setPanelRunID(activeRun?.run_id ?? null);
+  }
+  const restarting = target === "panel" && (phase === "restarting" || (phase === "done" && panelRunID === activeRun?.run_id));
   const restartWatch = usePanelRestartWatch(
     restarting,
+    activeRun?.run_id ?? "",
     activeRun?.version_to ?? "",
   );
   useEffect(() => {
@@ -133,8 +138,8 @@ export function UpdateTarget({
       {activeRun && (
         <div className="border-t border-border bg-surface-sunken px-4 py-3 sm:pl-[4.5rem]">
           <UpdateStepper
-            phase={activeRun.phase as UpdatePhase}
-            detail={activeRun.detail}
+            phase={(restartWatch.failure ?? activeRun).phase as UpdatePhase}
+            detail={(restartWatch.failure ?? activeRun).detail}
             streamFallback={streamFallback && runIsActive}
           />
         </div>
