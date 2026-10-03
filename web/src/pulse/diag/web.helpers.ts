@@ -84,7 +84,10 @@ export interface WebPageSessions {
   partial: string[];
 }
 
-export interface WebPagePayload {
+export interface WebPagePayload extends Pick<WebStatus,
+  "ingress" | "capacity" | "decoy_upstream" | "decoy_fasttrack" |
+  "carrier_negotiation" | "lifecycle_counters" | "operator_lifecycle"
+> {
   lifecycle: string;
   lifecycle_epoch: number;
   lifecycle_age_ms: number;
@@ -145,6 +148,13 @@ export function webPagePayload(
     ...(status.reason !== undefined ? { reason: status.reason } : {}),
     listeners: status.listeners,
     effective_config_enabled: status.effective_config_enabled,
+    ...(status.ingress !== undefined ? { ingress: status.ingress } : {}),
+    ...(status.capacity !== undefined ? { capacity: status.capacity } : {}),
+    ...(status.decoy_upstream !== undefined ? { decoy_upstream: status.decoy_upstream } : {}),
+    ...(status.decoy_fasttrack !== undefined ? { decoy_fasttrack: status.decoy_fasttrack } : {}),
+    ...(status.carrier_negotiation !== undefined ? { carrier_negotiation: status.carrier_negotiation } : {}),
+    ...(status.lifecycle_counters !== undefined ? { lifecycle_counters: status.lifecycle_counters } : {}),
+    ...(status.operator_lifecycle !== undefined ? { operator_lifecycle: status.operator_lifecycle } : {}),
     ...(runtime
       ? {
           runtime: {

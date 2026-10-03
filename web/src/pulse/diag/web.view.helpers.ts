@@ -6,12 +6,16 @@ export type WebSessionFilter = "all" | "healthy" | "provisional" | "https-lanes"
 export type WebCapacityTone = "calm" | "warn" | "bad" | "busy";
 
 export interface WebCapacityReading {
-  id: "sessions" | "streams" | "http" | "queue" | "websocket";
+  id: string;
   value: number | null;
   limit: number | null;
   percent: number | null;
   tone: WebCapacityTone;
   bytes: boolean;
+  resource?: string;
+  unit?: string;
+  available?: number | null;
+  closed?: boolean;
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -47,7 +51,7 @@ function reading(
 export function webCapacityReadings(payload: WebPagePayload | null): WebCapacityReading[] {
   const runtime = payload?.runtime;
   const http = runtime?.permits.find((permit) => permit.name === "http_connections");
-  return [
+  const registries = [
     reading(
       "sessions",
       finiteNumber(runtime?.manager?.sessions),
@@ -58,6 +62,37 @@ export function webCapacityReadings(payload: WebPagePayload | null): WebCapacity
       finiteNumber(runtime?.streams?.live),
       webLimit(runtime, "max_streams_global"),
     ),
+  ];
+  if (payload?.capacity) {
+    const aliases: Record<string, string> = {
+      http_connections: "http",
+      pending_bytes: "queue",
+      websocket_bytes: "websocket",
+    };
+    return [
+      ...registries,
+      ...payload.capacity.resources.map((resource) => {
+        const result = reading(
+          aliases[resource.resource] ?? resource.resource,
+          finiteNumber(resource.used),
+          finiteNumber(resource.limit),
+          resource.unit === "bytes",
+        );
+        return {
+          ...result,
+          resource: resource.resource,
+          unit: resource.unit,
+          available: finiteNumber(resource.available),
+          closed: resource.closed,
+          ...(resource.closed ? { percent: null, tone: "busy" as const } : {}),
+        };
+      }),
+    ];
+  }
+  const queueBytes = finiteNumber(runtime?.budget?.queue_bytes);
+  const websocketBytes = finiteNumber(runtime?.budget?.websocket_bytes);
+  return [
+    ...registries,
     reading(
       "http",
       finiteNumber(http?.used),
@@ -65,7 +100,7 @@ export function webCapacityReadings(payload: WebPagePayload | null): WebCapacity
     ),
     reading(
       "queue",
-      finiteNumber(runtime?.budget?.queue_bytes),
+      queueBytes !== null && websocketBytes !== null ? queueBytes + websocketBytes : null,
       webLimit(runtime, "pending_bytes_global"),
       true,
     ),
@@ -107,6 +142,14 @@ export function webSessionStateTone(state: string): "good" | "warn" | "neutral" 
   return "neutral";
 }
 
-export function webHasCapacityPressure(readings: readonly WebCapacityReading[]): boolean {
+export function webHasCapacityPressure(
+  readings: readonly WebCapacityReading[],
+  payload?: WebPagePayload | null,
+): boolean {
+  if (payload?.capacity) {
+    return payload.capacity.saturated_resources.some((name) =>
+      !payload.capacity!.resources.some((resource) => resource.resource === name && resource.closed),
+    );
+  }
   return readings.some((item) => item.tone === "warn" || item.tone === "bad");
 }

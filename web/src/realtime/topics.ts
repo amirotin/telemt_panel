@@ -844,6 +844,96 @@ export type WebLifecycle =
   | "drained"
   | "deadline_exceeded";
 
+/** Private Telemt ingress, separate from external TLS or client reachability. */
+export interface WebIngressStatus {
+  configured_listeners: number;
+  live_acceptors: number;
+  accepting_connections: boolean;
+  reason?: string;
+  tcp_accept_total: number;
+  tcp_accept_error_total: number;
+}
+
+export interface WebCapacityResourceStatus {
+  resource: string;
+  unit: string;
+  used: number;
+  /** Unretained capacity before class-specific reserves. */
+  available: number;
+  limit: number;
+  closed: boolean;
+}
+
+/** Totals below are monotonic process-lifetime counters, not sliding windows. */
+export interface WebRejectionCounter {
+  reason: string;
+  total: number;
+}
+
+export interface WebOutcomeCounter {
+  outcome: string;
+  total: number;
+}
+
+export interface WebCapacityStatus {
+  http_connection_capacity_action: string;
+  max_http_overload_connections: number;
+  http_overload_timeout_ms: number;
+  resources: WebCapacityResourceStatus[];
+  saturated_resources: string[];
+  /** Omitted observation planes, such as budget contention or no runtime. */
+  partial: string[];
+  rejections: WebRejectionCounter[];
+  http_connection_overload_outcomes: WebOutcomeCounter[];
+}
+
+export interface WebDecoyUpstreamStatus {
+  outcomes: WebOutcomeCounter[];
+  last_outcome?: string;
+  last_outcome_age_ms?: number;
+}
+
+export interface WebDecoyFastTrackStatus {
+  mode: string;
+  requests: Array<{ disposition: string; total: number }>;
+}
+
+export interface WebCarrierNegotiationStatus {
+  selections: Array<{ carrier: string; disposition: string; total: number }>;
+  reported_failures: Array<{ carrier: string; phase: string; reason: string; total: number }>;
+  learning_outcomes: Array<{ carrier: string; outcome: string; total: number }>;
+}
+
+export interface WebLifecycleCountersStatus {
+  bridge_recovery_secs: number;
+  session_closures: Array<{ carrier: string; reason: string; total: number }>;
+  session_observations: Array<{ carrier: string; observation: string; total: number }>;
+  bridge_recovery_events: Array<{ event: string; total: number }>;
+}
+
+export interface WebOperatorDrainStatus {
+  operation_id: string;
+  state: string;
+  outcome?: string;
+  timeout_secs: number;
+  started_epoch_millis: number;
+  deadline_epoch_millis: number;
+  completed_epoch_millis?: number;
+  remaining_sessions: number;
+  remaining_streams: number;
+  remaining_websockets: number;
+  force_close_signalled: boolean;
+}
+
+export interface WebOperatorLifecycleStatus {
+  state: string;
+  epoch: number;
+  age_ms: number;
+  admission_open: boolean;
+  effective_new_work_admission: boolean;
+  drain?: WebOperatorDrainStatus;
+}
+
 export interface WebStatus {
   lifecycle: WebLifecycle | string;
   lifecycle_epoch: number;
@@ -853,6 +943,14 @@ export interface WebStatus {
   reason?: string;
   listeners: string[];
   effective_config_enabled: boolean;
+  /** Telemt 3.5.6 adds these process-owned status groups; older builds omit them. */
+  ingress?: WebIngressStatus | null;
+  capacity?: WebCapacityStatus | null;
+  decoy_upstream?: WebDecoyUpstreamStatus | null;
+  decoy_fasttrack?: WebDecoyFastTrackStatus | null;
+  carrier_negotiation?: WebCarrierNegotiationStatus | null;
+  lifecycle_counters?: WebLifecycleCountersStatus | null;
+  operator_lifecycle?: WebOperatorLifecycleStatus | null;
   runtime?: WebRuntimeStatus | null;
 }
 

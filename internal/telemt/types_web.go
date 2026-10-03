@@ -70,10 +70,19 @@ type WebStatusData struct {
 	// Reason is omitted while Available is true. Values: starting,
 	// no_web_listener, runtime_released, drained, deadline_exceeded —
 	// note runtime_released is a reason, not a lifecycle.
-	Reason                 string            `json:"reason,omitempty"`
-	Listeners              []string          `json:"listeners"`
-	EffectiveConfigEnabled bool              `json:"effective_config_enabled"`
-	Runtime                *WebRuntimeStatus `json:"runtime,omitempty"`
+	Reason                 string                  `json:"reason,omitempty"`
+	Listeners              []string                `json:"listeners"`
+	EffectiveConfigEnabled bool                    `json:"effective_config_enabled"`
+	Ingress                *WebIngressStatus       `json:"ingress,omitempty"`
+	Capacity               *WebCapacityStatus      `json:"capacity,omitempty"`
+	DecoyUpstream          *WebDecoyUpstreamStatus `json:"decoy_upstream,omitempty"`
+	// These process-lifetime counter domains are retained verbatim, including
+	// open future tokens and optional operator drain fields.
+	DecoyFasttrack     json.RawMessage   `json:"decoy_fasttrack,omitempty"`
+	CarrierNegotiation json.RawMessage   `json:"carrier_negotiation,omitempty"`
+	LifecycleCounters  json.RawMessage   `json:"lifecycle_counters,omitempty"`
+	OperatorLifecycle  json.RawMessage   `json:"operator_lifecycle,omitempty"`
+	Runtime            *WebRuntimeStatus `json:"runtime,omitempty"`
 }
 
 // WebRuntimeStatus is the live process state behind WebStatusData.Runtime.
@@ -224,32 +233,38 @@ type WebDebugStatus struct {
 	LatestSeq        *uint64         `json:"latest_seq"`
 }
 
-// WebSessionStatus is the 23-field status block of one live WEB session
+// WebSessionStatus is the status block of one live WEB session
 // (src/web/session/status.rs). It is FLATTENED into WebSessionRow on the
 // wire (`#[serde(flatten)]`), which the embedded field below reproduces.
 type WebSessionStatus struct {
-	TraceSessionID            uint64 `json:"trace_session_id"`
-	ClientIP                  string `json:"client_ip"`
-	Host                      string `json:"host"`
-	User                      string `json:"user"`
-	KeyID                     string `json:"key_id"`
-	Carrier                   string `json:"carrier"`
-	Attempt                   uint8  `json:"attempt"`
-	ClientClass               string `json:"client_class"`
-	Automatic                 bool   `json:"automatic"`
-	State                     string `json:"state"`
-	Streams                   int    `json:"streams"`
-	Tasks                     int    `json:"tasks"`
-	Lanes                     int    `json:"lanes"`
-	LaneOpenWaits             int    `json:"lane_open_waits"`
-	WebsocketLaneReservations int    `json:"websocket_lane_reservations"`
-	WebsocketActive           bool   `json:"websocket_active"`
-	PendingBytes              int    `json:"pending_bytes"`
-	PendingItems              int    `json:"pending_items"`
-	ControlBytes              int    `json:"control_bytes"`
-	ControlItems              int    `json:"control_items"`
-	AgeMs                     uint64 `json:"age_ms"`
-	IdleMs                    uint64 `json:"idle_ms"`
+	TraceSessionID uint64 `json:"trace_session_id"`
+	ClientIP       string `json:"client_ip"`
+	Host           string `json:"host"`
+	User           string `json:"user"`
+	KeyID          string `json:"key_id"`
+	Carrier        string `json:"carrier"`
+	Attempt        uint8  `json:"attempt"`
+	ClientClass    string `json:"client_class"`
+	Automatic      bool   `json:"automatic"`
+	State          string `json:"state"`
+	// Telemt 3.5.6 adds these observations. Pointers preserve absence on
+	// older builds and distinguish a measured zero from an omitted field.
+	HealthPublication         *string `json:"health_publication,omitempty"`
+	Streams                   int     `json:"streams"`
+	Tasks                     int     `json:"tasks"`
+	Lanes                     int     `json:"lanes"`
+	LaneOpenWaits             int     `json:"lane_open_waits"`
+	WebsocketLaneReservations int     `json:"websocket_lane_reservations"`
+	WebsocketActive           bool    `json:"websocket_active"`
+	PendingBytes              int     `json:"pending_bytes"`
+	PendingItems              int     `json:"pending_items"`
+	ControlBytes              int     `json:"control_bytes"`
+	ControlItems              int     `json:"control_items"`
+	AgeMs                     uint64  `json:"age_ms"`
+	IdleMs                    uint64  `json:"idle_ms"`
+	PeerIdleMs                *uint64 `json:"peer_idle_ms,omitempty"`
+	ReconnectGraceMs          *uint64 `json:"reconnect_grace_ms,omitempty"`
+	PeerDeadlineRemainingMs   *uint64 `json:"peer_deadline_remaining_ms,omitempty"`
 	// NegotiationRemainingMs is omitted once the carrier chain is settled.
 	NegotiationRemainingMs *uint64 `json:"negotiation_remaining_ms,omitempty"`
 }
@@ -284,9 +299,12 @@ type WebSessionPage struct {
 // success envelope for a session that has already closed but whose record
 // is retained. It is a result, not an error — see Client.WebSession.
 type WebSessionClosed struct {
-	SessionRef string `json:"session_ref"`
-	State      string `json:"state"`
-	Attempt    uint8  `json:"attempt"`
+	SessionRef  string  `json:"session_ref"`
+	State       string  `json:"state"`
+	Attempt     uint8   `json:"attempt"`
+	Carrier     *string `json:"carrier,omitempty"`
+	Reason      *string `json:"reason,omitempty"`
+	ClosedAgeMs *uint64 `json:"closed_age_ms,omitempty"`
 }
 
 // WebSessionResult is the three-way outcome of GET

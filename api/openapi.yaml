@@ -2115,8 +2115,9 @@ components:
       type: object
       description: >
         One live WEB session. `session_ref` plus the optional user-agent pair sit at the
-        same level as the 23 WebSessionStatus fields — Telemt flattens the status struct
-        into the row (`#[serde(flatten)]`, src/web/session/status.rs).
+        same level as the WebSessionStatus fields — Telemt flattens the status struct
+        into the row (`#[serde(flatten)]`, src/web/session/status.rs). The health
+        publication and peer inactivity observations are optional for builds before 3.5.6.
       required: [session_ref, trace_session_id, client_ip, host, user, key_id, carrier, attempt, client_class, automatic, state, streams, tasks, lanes, lane_open_waits, websocket_lane_reservations, websocket_active, pending_bytes, pending_items, control_bytes, control_items, age_ms, idle_ms]
       properties:
         session_ref: { type: string }
@@ -2132,6 +2133,9 @@ components:
         client_class: { type: string }
         automatic: { type: boolean }
         state: { type: string }
+        health_publication:
+          type: string
+          description: Manager-confirmed health publication phase; tokens remain open to future values.
         streams: { type: integer }
         tasks: { type: integer }
         lanes: { type: integer }
@@ -2143,7 +2147,18 @@ components:
         control_bytes: { type: integer }
         control_items: { type: integer }
         age_ms: { type: integer }
-        idle_ms: { type: integer }
+        idle_ms:
+          type: integer
+          description: Time since the latest peer or carrier progress.
+        peer_idle_ms:
+          type: integer
+          description: Time since the latest validated peer operation.
+        reconnect_grace_ms:
+          type: integer
+          description: Session-frozen authenticated peer inactivity allowance.
+        peer_deadline_remaining_ms:
+          type: integer
+          description: Remaining time before peer inactivity makes the session eligible for cleanup.
         negotiation_remaining_ms: { type: integer }
 
     WebSessionPage:
@@ -2164,12 +2179,17 @@ components:
 
     WebSessionClosed:
       type: object
-      description: The retained tombstone of a session that has already closed.
+      description: >
+        The retained tombstone of a session that has already closed. Carrier, reason,
+        and closure age are optional for builds before Telemt 3.5.6.
       required: [session_ref, state, attempt]
       properties:
         session_ref: { type: string }
         state: { type: string }
         attempt: { type: integer }
+        carrier: { type: string }
+        reason: { type: string }
+        closed_age_ms: { type: integer }
 
     WebSessionLookup:
       type: object

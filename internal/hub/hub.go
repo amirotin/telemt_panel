@@ -1447,13 +1447,13 @@ const volatileTimestampKey = "generated_at_epoch_secs"
 // names are generic enough to mean something stable elsewhere, and zeroing
 // a meaningful field would make push-on-change MISS a real update.
 //
-// "web": WebStatusData.lifecycle_age_ms and the learning plane's age_ms are
-// both `SystemTime::now() - epoch` re-read per request
-// (src/api/web_runtime.rs, src/web/manager/status.rs), so without them a
+// "web": lifecycle, learning, operator state and last-decoy-outcome ages
+// are re-read per request (Telemt src/api/web_runtime/observability.rs and
+// src/web/manager/status.rs), so without them a
 // poll of an idle WEB runtime would broadcast a "change" every 10 s with
 // every other field byte-identical.
 var volatileKeysByTopic = map[string][]string{
-	"web": {"lifecycle_age_ms", "age_ms"},
+	"web": {"lifecycle_age_ms", "age_ms", "last_outcome_age_ms"},
 }
 
 // volatileKeySets is volatileKeysByTopic resolved once, at init, into the

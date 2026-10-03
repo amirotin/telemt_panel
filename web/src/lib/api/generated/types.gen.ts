@@ -456,7 +456,7 @@ export type WebUserAccessUpdate = {
 };
 
 /**
- * One live WEB session. `session_ref` plus the optional user-agent pair sit at the same level as the 23 WebSessionStatus fields — Telemt flattens the status struct into the row (`#[serde(flatten)]`, src/web/session/status.rs).
+ * One live WEB session. `session_ref` plus the optional user-agent pair sit at the same level as the WebSessionStatus fields — Telemt flattens the status struct into the row (`#[serde(flatten)]`, src/web/session/status.rs). The health publication and peer inactivity observations are optional for builds before 3.5.6.
  *
  */
 export type WebSessionRow = {
@@ -473,6 +473,10 @@ export type WebSessionRow = {
     client_class: string;
     automatic: boolean;
     state: string;
+    /**
+     * Manager-confirmed health publication phase; tokens remain open to future values.
+     */
+    health_publication?: string;
     streams: number;
     tasks: number;
     lanes: number;
@@ -484,7 +488,22 @@ export type WebSessionRow = {
     control_bytes: number;
     control_items: number;
     age_ms: number;
+    /**
+     * Time since the latest peer or carrier progress.
+     */
     idle_ms: number;
+    /**
+     * Time since the latest validated peer operation.
+     */
+    peer_idle_ms?: number;
+    /**
+     * Session-frozen authenticated peer inactivity allowance.
+     */
+    reconnect_grace_ms?: number;
+    /**
+     * Remaining time before peer inactivity makes the session eligible for cleanup.
+     */
+    peer_deadline_remaining_ms?: number;
     negotiation_remaining_ms?: number;
 };
 
@@ -502,12 +521,16 @@ export type WebSessionPage = {
 };
 
 /**
- * The retained tombstone of a session that has already closed.
+ * The retained tombstone of a session that has already closed. Carrier, reason, and closure age are optional for builds before Telemt 3.5.6.
+ *
  */
 export type WebSessionClosed = {
     session_ref: string;
     state: string;
     attempt: number;
+    carrier?: string;
+    reason?: string;
+    closed_age_ms?: number;
 };
 
 /**
