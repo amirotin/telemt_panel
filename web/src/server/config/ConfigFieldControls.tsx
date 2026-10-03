@@ -7,6 +7,8 @@ import { Select } from "../../ui/Select";
 import { Toggle } from "../../ui/Toggle";
 import { fieldInstances, setConfigValue, type ConfigFieldInstance } from "./configCatalog.helpers";
 import { configFieldDescription, configFieldLabel } from "./configFieldPresentation";
+import { formatConfigNumber } from "./configNumber.helpers";
+import { HelpHint } from "../../ui/HelpHint";
 
 export function GenericFields({ fields, sections, advanced, catalog, onChange }: {
   fields: TelemtConfigField[];
@@ -32,10 +34,11 @@ export function GenericFields({ fields, sections, advanced, catalog, onChange }:
   );
 }
 
-export function ConfigFieldRow({ instance, advanced, groupName, onChange }: {
+export function ConfigFieldRow({ instance, advanced, groupName, hint, onChange }: {
   instance: ConfigFieldInstance;
   advanced: boolean;
   groupName?: string;
+  hint?: string;
   onChange: (value: unknown) => void;
 }) {
   const copy = useStrings().server.config.catalog;
@@ -47,6 +50,7 @@ export function ConfigFieldRow({ instance, advanced, groupName, onChange }: {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-sm font-semibold text-text">{label}</span>
+          {hint && <HelpHint label={label}>{hint}</HelpHint>}
           {recordLabel && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-micro font-semibold text-text-faint">{recordLabel}</span>}
           {advanced && groupName && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-micro font-semibold text-text-faint">{groupName}</span>}
           {requiresRestart && <span className="rounded bg-warn/10 px-1.5 py-0.5 text-micro font-bold text-warn">restart</span>}
@@ -71,7 +75,7 @@ export function FieldControl({ field, value, label, onChange }: { field: TelemtC
   }
   if (field.kind === "integer" || field.kind === "decimal") {
     const unsafe = typeof value === "number" && !Number.isSafeInteger(value) && field.kind === "integer";
-    return <div><Input value={value === undefined ? "" : String(value)} inputMode={field.kind === "integer" ? "numeric" : "decimal"} monospace disabled={unsafe} aria-label={label} onChange={(event) => { const parsed = Number(event.target.value); if (event.target.value !== "" && Number.isFinite(parsed) && (field.kind !== "integer" || Number.isSafeInteger(parsed))) onChange(parsed); }} />{unsafe && <p className="mt-1 text-micro text-warn">{copy.exactToml}</p>}</div>;
+    return <div><Input value={formatConfigNumber(value, field.kind === "decimal" ? field.data_type : "")} inputMode={field.kind === "integer" ? "numeric" : "decimal"} monospace disabled={unsafe} aria-label={label} onChange={(event) => { const parsed = Number(event.target.value); if (event.target.value !== "" && Number.isFinite(parsed) && (field.kind !== "integer" || Number.isSafeInteger(parsed))) onChange(parsed); }} />{unsafe && <p className="mt-1 text-micro text-warn">{copy.exactToml}</p>}</div>;
   }
   if (field.kind === "string_list" || field.kind === "integer_list") {
     const list = Array.isArray(value) ? value : [];
