@@ -7,6 +7,8 @@ import { HeaderMenu } from "./HeaderMenu";
 import {
   MANAGEMENT_NAV_ITEMS,
   OPERATIONAL_NAV_ITEMS,
+  SIDEBAR_MANAGEMENT_NAV_ITEMS,
+  SIDEBAR_OVERVIEW_NAV_ITEMS,
   isNavItemActive,
   type NavItem,
 } from "./nav";
@@ -46,7 +48,7 @@ export function Shell({ children }: { children: ReactNode }) {
   }, [railMoreOpen]);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden min-[600px]:flex-row">
+    <div data-panel-shell="" className="flex h-dvh flex-col overflow-hidden min-[600px]:flex-row">
       <FullSidebar pathname={pathname} />
 
       <aside data-testid="navigation-rail" className="relative hidden w-16 shrink-0 flex-col items-center border-r border-border bg-surface py-3 min-[600px]:flex min-[1180px]:hidden">
@@ -164,10 +166,10 @@ function FullSidebar({ pathname }: { pathname: string }) {
         <BrandMark />
         <span title={branding.title} className="min-w-0 flex-1 truncate text-sm font-bold text-text">{branding.title}</span>
       </div>
-      <SidebarGroup label={s.shell.overviewGroup} items={OPERATIONAL_NAV_ITEMS} pathname={pathname} />
+      <SidebarGroup label={s.shell.overviewGroup} items={SIDEBAR_OVERVIEW_NAV_ITEMS} pathname={pathname} />
       <SidebarGroup
         label={s.shell.managementGroup}
-        items={MANAGEMENT_NAV_ITEMS}
+        items={SIDEBAR_MANAGEMENT_NAV_ITEMS}
         pathname={pathname}
         className="mt-5"
       />

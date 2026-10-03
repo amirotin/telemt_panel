@@ -6,6 +6,8 @@ import {
   MANAGEMENT_NAV_ITEMS,
   NAV_ITEMS,
   OPERATIONAL_NAV_ITEMS,
+  SIDEBAR_MANAGEMENT_NAV_ITEMS,
+  SIDEBAR_OVERVIEW_NAV_ITEMS,
   isNavItemActive,
 } from "./nav";
 
@@ -34,6 +36,27 @@ describe("the grouped navigation", () => {
       ...MANAGEMENT_SECTIONS,
     ]);
     expect(NAV_ITEMS.map(({ to, labelKey }) => ({ to, labelKey }))).toEqual([...SECTIONS]);
+  });
+
+  it("places WEB in the sidebar overview group and Server in management", () => {
+    expect(SIDEBAR_OVERVIEW_NAV_ITEMS.map(({ to }) => to)).toEqual([
+      "/overview",
+      "/people",
+      "/pulse",
+      "/journal",
+      "/web",
+    ]);
+    expect(SIDEBAR_MANAGEMENT_NAV_ITEMS.map(({ to }) => to)).toEqual(["/server"]);
+  });
+
+  it("keeps WEB behind More and four primary destinations on compact navigation", () => {
+    expect(OPERATIONAL_NAV_ITEMS.map(({ to }) => to)).toEqual([
+      "/overview",
+      "/people",
+      "/pulse",
+      "/journal",
+    ]);
+    expect(MANAGEMENT_NAV_ITEMS.map(({ to }) => to)).toEqual(["/server", "/web"]);
   });
 
   it("gives every section its own icon", () => {

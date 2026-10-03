@@ -362,6 +362,17 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* Installed apps keep scrolling in the authenticated shell's scrollers.
+     Public pages retain normal document scrolling after the shell unmounts. */
+  @media (display-mode: standalone) {
+    html:has([data-panel-shell]) {
+      overscroll-behavior: none;
+    }
+    [data-panel-shell] main {
+      overscroll-behavior: contain;
+    }
+  }
+
   /* 16px minimum on inputs is the iOS Safari rule that stops the page from
      zooming in on focus — enforced here as a base-layer floor in addition
      to Input's own explicit text-base, in case a future primitive forgets. */

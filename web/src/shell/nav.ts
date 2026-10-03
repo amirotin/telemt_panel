@@ -21,9 +21,8 @@ export interface NavItem {
   Icon: ComponentType<IconProps>;
 }
 
-// One information architecture, rendered as bottom bar, rail or sidebar.
-// Operational sections always remain one tap away; management moves behind
-// «Ещё» when the viewport cannot carry the full sidebar.
+// Compact navigation keeps four primary destinations and a separate «Ещё»
+// action. Desktop sidebar groups may differ without adding a sixth tab.
 //
 // Люди is still the LANDING section (routes/index.tsx): being second in the
 // bar and being where a login lands are two different decisions, and the
@@ -44,6 +43,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
   ...OPERATIONAL_NAV_ITEMS,
   ...MANAGEMENT_NAV_ITEMS,
 ];
+
+export const SIDEBAR_OVERVIEW_NAV_ITEMS: readonly NavItem[] = [
+  ...OPERATIONAL_NAV_ITEMS,
+  ...MANAGEMENT_NAV_ITEMS.filter((item) => item.to === "/web"),
+];
+
+export const SIDEBAR_MANAGEMENT_NAV_ITEMS: readonly NavItem[] =
+  MANAGEMENT_NAV_ITEMS.filter((item) => item.to !== "/web");
 
 // isNavItemActive — a tab is current for its own path and for everything
 // nested under it (/people/$username, /pulse/diag/$domain, /server/config),
