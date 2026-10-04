@@ -9,6 +9,6 @@ it("joins the complete ISO mapping to atlas IDs, including leading zeroes", () =
   expect(alpha2ForNumeric("-99")).toBeNull();
   expect(hasGeometry("XK")).toBe(false);
   expect(hasGeometry("XX")).toBe(false);
-  const missing = features.filter(f => alpha2ForNumeric(f.id) === null).map(f => String(f.id));
+  const missing = features.filter((f) => alpha2ForNumeric(f.id) === null).map((f) => String(f.id));
   expect([...new Set(missing)]).toEqual(["undefined"]);
 });
