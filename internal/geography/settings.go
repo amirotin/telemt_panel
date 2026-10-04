@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"math"
 	"net/netip"
 	"strings"
@@ -71,18 +72,18 @@ func cloneConfig(c ServerLocationConfig) ServerLocationConfig {
 	return c
 }
 
-func (s *Service) restoreSettings() {
-	s.config = ServerLocationConfig{Mode: "hidden"}
+func (s *Service) restoreSettings() ServerLocationConfig {
+	hidden := ServerLocationConfig{Mode: "hidden"}
 	if s.deps.State == nil {
-		return
+		return hidden
 	}
 	raw, ok, err := s.deps.State.GetSetting(serverLocationKey)
 	if err != nil {
-		s.settingsErr = err
-		return
+		slog.Warn("geography: stored server location ignored", "err", "setting_read_failed")
+		return hidden
 	}
 	if !ok {
-		return
+		return hidden
 	}
 	d := json.NewDecoder(strings.NewReader(raw))
 	d.DisallowUnknownFields()
@@ -97,10 +98,11 @@ func (s *Service) restoreSettings() {
 		c, err = validateServerLocation(c)
 	}
 	if err != nil {
-		s.settingsErr = err
-		return
+		// Decoder errors can include private values embedded in unknown field names.
+		slog.Warn("geography: stored server location ignored", "err", "invalid_configuration")
+		return hidden
 	}
-	s.config = c
+	return c
 }
 
 // Settings returns an owned copy of the persisted position configuration.
@@ -109,9 +111,6 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 		return Settings{}, err
 	}
 	version := s.settingsSnapshot.Load()
-	if version.err != nil {
-		return Settings{}, version.err
-	}
 	return Settings{ServerLocation: cloneConfig(version.config)}, nil
 }
 
@@ -136,8 +135,6 @@ func (s *Service) PutSettings(ctx context.Context, c ServerLocationConfig) (Sett
 	if err = s.deps.State.SetSetting(serverLocationKey, string(raw)); err != nil {
 		return Settings{}, err
 	}
-	s.config = c
-	s.settingsErr = nil
 	s.settingsSnapshot.Store(&settingsVersion{config: c})
 	s.settingsEpoch.Add(1)
 	return Settings{ServerLocation: cloneConfig(c)}, nil

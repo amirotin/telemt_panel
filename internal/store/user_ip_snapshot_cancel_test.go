@@ -49,3 +49,20 @@ func TestUserIPSnapshotCancelWhileWaiting(t *testing.T) {
 		t.Fatal("snapshot read ignored cancellation while waiting for the store lock")
 	}
 }
+
+func TestSnapshotLockBacksOffUntilAcquired(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	started := time.Now()
+	attempts := 0
+	err := lockSnapshot(ctx, func() bool {
+		attempts++
+		return attempts == 7
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed < 40*time.Millisecond {
+		t.Fatalf("seven lock attempts took %v; retries are still polling each millisecond", elapsed)
+	}
+}

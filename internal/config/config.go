@@ -36,6 +36,7 @@ type Config struct {
 	Telemt     TelemtConfig     `toml:"telemt"`
 	Auth       AuthConfig       `toml:"auth"`
 	Store      StoreConfig      `toml:"store"`
+	Geography  GeographyConfig  `toml:"geography"`
 	Subpage    SubpageConfig    `toml:"subpage"`
 	Host       HostConfig       `toml:"host"`
 	Updates    UpdatesConfig    `toml:"updates"`
@@ -81,6 +82,11 @@ func (a AuthConfig) SessionTTLDuration() time.Duration {
 type StoreConfig struct {
 	Driver string `toml:"driver"` // memory (default) | sqlite
 	Path   string `toml:"path"`
+}
+
+// GeographyConfig sets the budget for demand-driven connection-map builds.
+type GeographyConfig struct {
+	BuildTimeoutSecs int64 `toml:"build_timeout_secs"`
 }
 
 // SubpageConfig controls the per-user subscription page.
@@ -153,10 +159,11 @@ func Load(path string) (*Config, error) {
 
 func decode(data []byte, path string) (*Config, error) {
 	cfg := &Config{
-		Listen:  "0.0.0.0:8080",
-		Store:   StoreConfig{Driver: "memory"},
-		DataDir: "/var/lib/telemt-panel",
-		Telemt:  TelemtConfig{ConfigEditMode: "api"},
+		Listen:    "0.0.0.0:8080",
+		Store:     StoreConfig{Driver: "memory"},
+		DataDir:   "/var/lib/telemt-panel",
+		Telemt:    TelemtConfig{ConfigEditMode: "api"},
+		Geography: GeographyConfig{BuildTimeoutSecs: 10},
 		Host: HostConfig{
 			ServiceManager:  "auto",
 			LogSource:       "auto",
@@ -213,6 +220,9 @@ func decode(data []byte, path string) (*Config, error) {
 		if d <= 0 {
 			return nil, fmt.Errorf("auth.session_ttl: must be positive, got %q", cfg.Auth.SessionTTL)
 		}
+	}
+	if cfg.Geography.BuildTimeoutSecs < 1 || cfg.Geography.BuildTimeoutSecs > 120 {
+		return nil, fmt.Errorf("geography.build_timeout_secs: must be between 1 and 120, got %d", cfg.Geography.BuildTimeoutSecs)
 	}
 
 	switch cfg.Store.Driver {

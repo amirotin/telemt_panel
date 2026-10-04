@@ -74,6 +74,11 @@ password_hash = "$2a$10$CHANGE_ME"
 driver = "sqlite"
 path = "/var/lib/telemt-panel/panel.db"
 
+[geography]
+# Connection-map snapshot build budget in seconds (1..120, default 10).
+# Increase for slower hosts; reverse-proxy timeouts must allow this plus 5 seconds.
+build_timeout_secs = 10
+
 [subpage]
 # Separate client-only listener. Configure public reachability before sharing links.
 enabled = false

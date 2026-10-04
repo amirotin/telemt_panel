@@ -27,7 +27,8 @@ func (m *Manager) LookupBatch(ctx context.Context, ips []string, expected uint64
 		return Status{}, nil, err
 	}
 	if !m.mu.TryRLock() {
-		timer := time.NewTicker(time.Millisecond)
+		delay := time.Millisecond
+		timer := time.NewTimer(delay)
 		defer timer.Stop()
 		for {
 			select {
@@ -38,6 +39,8 @@ func (m *Manager) LookupBatch(ctx context.Context, ips []string, expected uint64
 			if m.mu.TryRLock() {
 				break
 			}
+			delay = min(delay*2, 50*time.Millisecond)
+			timer.Reset(delay)
 		}
 	}
 	defer m.mu.RUnlock()

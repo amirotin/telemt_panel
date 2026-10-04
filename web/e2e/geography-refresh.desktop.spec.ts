@@ -32,7 +32,7 @@ for (const view of ["map", "globe"] as const) {
     const row = page.locator(".geo-place-row").first();
     await row.focus();
     const originalRow = await row.elementHandle();
-    await page.clock.pauseAt(new Date());
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 5000));
     refreshing = true;
     await page.clock.runFor(15_000);
     await expect.poll(async () => { await page.clock.runFor(100); return selectionPending; }).toBe(true);
@@ -43,5 +43,34 @@ for (const view of ["map", "globe"] as const) {
     await expect.poll(async () => { await page.clock.runFor(100); return page.locator('[data-geography-stat="ips"] strong').textContent(); }).toBe("2");
     expect(await original!.evaluate(node => node.isConnected)).toBe(true);
     expect(await originalRow!.evaluate(node => node.isConnected && document.activeElement === node)).toBe(true);
+  });
+}
+
+for (const code of ["geography_source_changed", "geography_snapshot_expired"]) {
+  test(`root ${code} recovers without replacing the map`, async ({ page, login }) => {
+    await login();
+    const first = overview();
+    const next = overview({ snapshot_id: "00000000000000000000000000000002", totals: { unique_ips: 2, accounts: 2, country_count: 1, location_count: 1 } });
+    let refreshing = false, failures = 0;
+    await page.route("**/api/geography**", async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/locations")) return route.fulfill({ json: { snapshot_id: url.searchParams.get("snapshot_id"), items: first.countries, total: 1, next_cursor: null } });
+      if (refreshing && failures < 2) {
+        failures++;
+        return route.fulfill({ status: 409, json: { code, message: "source changed" } });
+      }
+      return route.fulfill({ json: refreshing ? next : first });
+    });
+    await page.goto("/geography");
+    await expect(page.locator(".geo-vector")).toBeVisible();
+    const original = await page.locator(".geo-vector").elementHandle();
+    refreshing = true;
+    await expect.poll(() => failures, { timeout: 20_000 }).toBeGreaterThan(0);
+    await expect(page.locator(".geo-source-line strong")).toHaveText("Последний снимок");
+    expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+    await expect(page.locator(".geo-error")).toHaveCount(0);
+    await expect(page.locator('[data-geography-stat="ips"] strong')).toHaveText("2");
+    expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+    await expect(page.locator(".geo-error")).toHaveCount(0);
   });
 }

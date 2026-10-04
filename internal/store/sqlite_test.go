@@ -45,8 +45,8 @@ func TestSQLiteRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if info := reopened.Info(); info.Schema != 11 {
-		t.Fatalf("schema version = %d, want 11", info.Schema)
+	if info := reopened.Info(); info.Schema != 12 {
+		t.Fatalf("schema version = %d, want 12", info.Schema)
 	}
 	if got, err := reopened.MetricRange("connections", 0); err != nil || len(got) != 1 || got[0].Value != 42 {
 		t.Fatalf("MetricRange = %+v, %v", got, err)

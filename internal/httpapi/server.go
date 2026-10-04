@@ -239,7 +239,11 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	}
 	s.quotaResets = quotareset.New(tc, s.quotaResetEvent)
 	s.quotaSchedules = quotareset.NewScheduler(st, s.quotaResets)
-	geoDeps := geography.Dependencies{History: st, GeoIP: s.geoip, State: st}
+	buildTimeout := time.Duration(cfg.Geography.BuildTimeoutSecs) * time.Second
+	geoDeps := geography.Dependencies{
+		History: st, GeoIP: s.geoip, State: st,
+		BuildTimeout: buildTimeout, RequestTimeout: buildTimeout + 2*time.Second,
+	}
 	if hb != nil {
 		geoDeps.Live = hb
 	}

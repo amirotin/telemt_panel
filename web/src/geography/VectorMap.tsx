@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { geoGraticule10, geoNaturalEarth1, geoPath } from "d3-geo";
 import { useStrings } from "../i18n";
 import { features, alpha2ForNumeric } from "./world";
@@ -16,7 +16,8 @@ export function VectorMap({model,expanded,onSelect,cameraRef,controlsRef}:Render
   const oceanId=useId();
   const svg=useRef<SVGSVGElement>(null);
   const [pose,setPose]=useState<CameraState>({zoom:1,x:0,y:0});
-  useLayoutEffect(()=>{let active=true;const saved=cameraRef?.current;if(saved)queueMicrotask(()=>{if(active)setPose(saved)});return()=>{active=false}},[cameraRef]);
+  const poseRef=useRef(pose);
+  useLayoutEffect(()=>{let active=true;const saved=cameraRef?.current;if(saved)queueMicrotask(()=>{if(active){poseRef.current=saved;setPose(saved)}});return()=>{active=false}},[cameraRef]);
   const [cssScale,setCssScale]=useState(1);
   const pointers=useRef(new Map<number,{x:number;y:number}>());
   const gesture=useRef<{distance:number;centerX:number;centerY:number;pose:CameraState}|null>(null);
@@ -24,7 +25,14 @@ export function VectorMap({model,expanded,onSelect,cameraRef,controlsRef}:Render
   const max=Math.max(0,...model.countries.map(c=>c.unique_ips));
   const pointMax=Math.max(0,...model.points.map(p=>p.unique_ips));
   const countries=new Map(model.countries.map(c=>[c.country_code,c]));
-  function change(next:CameraState) { if(cameraRef)cameraRef.current=next;setPose(next); }
+  const change=useCallback((next:CameraState)=>{poseRef.current=next;if(cameraRef)cameraRef.current=next;setPose(next)},[cameraRef]);
+  useEffect(()=>{
+    const element=svg.current;
+    if(!expanded||!element)return;
+    const wheel=(event:WheelEvent)=>{event.preventDefault();const current=poseRef.current;change({...current,zoom:Math.max(1,Math.min(8,current.zoom*Math.exp(-event.deltaY*.001)))})};
+    element.addEventListener("wheel",wheel,{passive:false});
+    return()=>element.removeEventListener("wheel",wheel);
+  },[expanded,change]);
   useEffect(()=>{
     const element=svg.current;
     if(!element)return;
@@ -35,18 +43,21 @@ export function VectorMap({model,expanded,onSelect,cameraRef,controlsRef}:Render
   useEffect(()=>{
     if(!controlsRef)return;
     controlsRef.current={
-      zoom:factor=>setPose(current=>{const next={...current,zoom:Math.max(1,Math.min(8,current.zoom*factor))};if(cameraRef)cameraRef.current=next;return next;}),
-      reset:()=>{const next={zoom:1,x:0,y:0};if(cameraRef)cameraRef.current=next;setPose(next);},
-      focus:()=>{const target=model.points.find(p=>p.id===model.selection.location)?.location;if(!target)return;const xy=projection([target.longitude,target.latitude]);if(!xy)return;const zoom=3;const next={zoom,x:(width/2-xy[0])*zoom,y:(height/2-xy[1])*zoom};if(cameraRef)cameraRef.current=next;setPose(next);},
+      zoom:factor=>{const current=poseRef.current;change({...current,zoom:Math.max(1,Math.min(8,current.zoom*factor))})},
+      reset:()=>change({zoom:1,x:0,y:0}),
+      focus:()=>{const target=model.points.find(p=>p.id===model.selection.location)?.location;if(!target)return;const xy=projection([target.longitude,target.latitude]);if(!xy)return;const zoom=3;change({zoom,x:(width/2-xy[0])*zoom,y:(height/2-xy[1])*zoom})},
     };
     return ()=>{controlsRef.current=null;};
-  },[controlsRef,cameraRef,model]);
+  },[controlsRef,change,model]);
+  function rebaseGesture(){
+    const points=[...pointers.current.values()];
+    gesture.current=points.length?{pose:poseRef.current,distance:points.length>=2?Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y):0,centerX:points.reduce((n,p)=>n+p.x,0)/points.length,centerY:points.reduce((n,p)=>n+p.y,0)/points.length}:null;
+  }
   function begin(event:PointerEvent<SVGSVGElement>) {
     dragged.current=false;
     if(!expanded)return;
     pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY});if(event.target instanceof Element)event.target.setPointerCapture?.(event.pointerId);dragged.current=false;
-    const points=[...pointers.current.values()];
-    gesture.current={pose,distance:points.length===2?Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y):0,centerX:points.reduce((n,p)=>n+p.x,0)/points.length,centerY:points.reduce((n,p)=>n+p.y,0)/points.length};
+    rebaseGesture();
   }
   function move(event:PointerEvent<SVGSVGElement>) {
     if(!expanded||!pointers.current.has(event.pointerId)||!gesture.current)return;
@@ -57,12 +68,11 @@ export function VectorMap({model,expanded,onSelect,cameraRef,controlsRef}:Render
     const ratio=points.length===2&&g.distance>0?Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)/g.distance:1;
     change({...g.pose,zoom:Math.max(1,Math.min(8,g.pose.zoom*ratio)),x:g.pose.x+deltaX*cssScale,y:g.pose.y+deltaY*cssScale});
   }
-  function end(event:PointerEvent<SVGSVGElement>) {pointers.current.delete(event.pointerId);if(!pointers.current.size)gesture.current=null;}
+  function end(event:PointerEvent<SVGSVGElement>) {pointers.current.delete(event.pointerId);rebaseGesture();}
   const select=(selection:RendererProps["model"]["selection"])=>{if(!dragged.current)onSelect(selection);};
   const radiusScale=cssScale/pose.zoom;
   return <svg ref={svg} viewBox={`0 0 ${width} ${height}`} className="geo-vector" aria-label={s.geography.mapLabel}
-    style={{touchAction:expanded?"none":"pan-y pinch-zoom"}} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}
-    onWheel={event=>{if(expanded){event.preventDefault();change({...pose,zoom:Math.max(1,Math.min(8,pose.zoom*Math.exp(-event.deltaY*.001)))})}}}>
+    style={{touchAction:expanded?"none":"pan-y pinch-zoom"}} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
     <defs><radialGradient id={oceanId} cx="45%" cy="35%" r="75%"><stop offset="0" stopColor="color-mix(in srgb, rgb(var(--geo-ocean)) 92%, rgb(var(--geo-land)))"/><stop offset="1" stopColor="rgb(var(--geo-ocean))"/></radialGradient></defs>
     <g transform={`translate(${width/2+pose.x} ${height/2+pose.y}) scale(${pose.zoom}) translate(${-width/2} ${-height/2})`}>
       <path d={outline} fill={`url(#${oceanId})`} stroke="rgb(var(--geo-border))" strokeOpacity=".5" strokeWidth="1" vectorEffect="non-scaling-stroke"/>

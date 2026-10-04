@@ -15,7 +15,7 @@ func (s *SQLite) UserIPRetention() time.Duration {
 }
 
 func (s *SQLite) PruneUserIPHistory(now int64) error {
-	return s.withUserIPTx(func(tx *sql.Tx) error {
+	return s.withUserIPWriteTx(func(tx *sql.Tx) error {
 		_, err := tx.Exec("DELETE FROM user_ip_history WHERE last_ts < ?", now-int64(s.UserIPRetention()/time.Second))
 		return err
 	})
@@ -34,6 +34,16 @@ func (s *SQLite) withUserIPTx(fn func(*sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *SQLite) withUserIPWriteTx(fn func(*sql.Tx) error) error {
+	s.userIPWriters.Add(1)
+	defer s.userIPWriters.Add(-1)
+	err := s.withUserIPTx(fn)
+	if err == nil {
+		s.userIPRevision.Add(1)
+	}
+	return err
 }
 
 func readUserIPCollection(tx *sql.Tx) (UserIPCollection, error) {
@@ -81,7 +91,7 @@ func (s *SQLite) ApplyUserIPBatch(b UserIPBatch) error {
 	if err := validateUserIPBatch(b); err != nil {
 		return err
 	}
-	return s.withUserIPTx(func(tx *sql.Tx) error {
+	return s.withUserIPWriteTx(func(tx *sql.Tx) error {
 		c, err := readUserIPCollection(tx)
 		if err != nil {
 			return err

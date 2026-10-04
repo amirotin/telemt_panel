@@ -21,10 +21,11 @@ export function GeographySettings(){
   }
   return <section className="geo-settings" aria-labelledby={`${id}-title`}>
     <header><h2 id={`${id}-title`}>{s.settingsTitle}</h2><p>{s.settingsNote}</p></header>
-    {!active?<p role={query.isError?"alert":"status"}>{query.isError?s.error:strings.common.loading}</p>:<form onSubmit={event=>{event.preventDefault();apply()}}>
+    {query.isError&&<div role="alert" className="geo-banner geo-error">{s.error}<Button variant="ghost" onClick={()=>{void query.refetch()}}>{strings.common.retry}</Button></div>}
+    {!active?!query.isError&&<p role="status">{strings.common.loading}</p>:<form onSubmit={event=>{event.preventDefault();apply()}}>
       <fieldset disabled={mutation.isPending} className="geo-form"><legend className="sr-only">{s.settingsTitle}</legend>
         <div className="geo-segments">{(["hidden","manual","ip"] as const).map(mode=><label key={mode}><input type="radio" name={`${id}-mode`} checked={active.mode===mode} onChange={()=>edit({...active,mode,public_ip:mode==="ip"?"":null,latitude:mode==="manual"?0:null,longitude:mode==="manual"?0:null})}/><span>{s.modes[mode]}</span></label>)}</div>
-        <label>{s.label}<input value={active.label} maxLength={160} onChange={event=>edit({...active,label:event.target.value})}/></label>
+        <label>{s.label}<input value={active.label} maxLength={80} onChange={event=>edit({...active,label:event.target.value})}/></label>
         {active.mode==="manual"&&<div className="geo-coordinate-fields"><label>{s.latitude}<input type="number" step="any" min={-90} max={90} value={active.latitude??""} onChange={event=>edit({...active,latitude:event.target.value===""?null:Number(event.target.value)})}/></label><label>{s.longitude}<input type="number" step="any" min={-180} max={180} value={active.longitude??""} onChange={event=>edit({...active,longitude:event.target.value===""?null:Number(event.target.value)})}/></label></div>}
         {active.mode==="ip"&&<><label>{s.publicIP}<input type="text" autoComplete="off" spellCheck={false} value={active.public_ip??""} onChange={event=>edit({...active,public_ip:event.target.value})}/></label><p className="geo-note">{s.ipNote}</p></>}
       </fieldset>

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/host/hosttest"
@@ -14,20 +15,24 @@ import (
 
 func TestApply_InterruptedSelfRestart(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		target     string
-		stopping   bool
-		noContext  bool
-		signaled   bool
-		wantPhase  string
-		wantBinary string
-		wantCalls  int
+		name          string
+		target        string
+		stopping      bool
+		noContext     bool
+		signaled      bool
+		wantPhase     string
+		wantBinary    string
+		wantCalls     int
+		cancelDelay   time.Duration
+		wantGraceWait time.Duration
 	}{
-		{"stopping panel hands off interrupted restart", TargetPanel, true, false, true, PhaseRestarting, "new-binary", 1},
-		{"live panel rolls back interrupted restart", TargetPanel, false, false, true, PhaseRolledBack, "old-binary", 2},
-		{"nil lifecycle context retains rollback", TargetPanel, false, true, true, PhaseRolledBack, "old-binary", 2},
-		{"ordinary restart failure still rolls back during shutdown", TargetPanel, true, false, false, PhaseRolledBack, "old-binary", 2},
-		{"telemt interrupted restart still rolls back during shutdown", TargetTelemt, true, false, true, PhaseRolledBack, "old-binary", 2},
+		{"stopping panel hands off interrupted restart", TargetPanel, true, false, true, PhaseRestarting, "new-binary", 1, 0, 0},
+		{"live panel rolls back interrupted restart", TargetPanel, false, false, true, PhaseRolledBack, "old-binary", 2, 0, 0},
+		{"nil lifecycle context retains rollback", TargetPanel, false, true, true, PhaseRolledBack, "old-binary", 2, 0, 0},
+		{"ordinary restart failure still rolls back during shutdown", TargetPanel, true, false, false, PhaseRolledBack, "old-binary", 2, 0, 0},
+		{"telemt interrupted restart still rolls back during shutdown", TargetTelemt, true, false, true, PhaseRolledBack, "old-binary", 2, 0, 0},
+		{"signal before lifecycle cancellation hands off restart", TargetPanel, false, false, true, PhaseRestarting, "new-binary", 1, 50 * time.Millisecond, 0},
+		{"live panel rolls back after shutdown grace", TargetPanel, false, false, true, PhaseRolledBack, "old-binary", 2, 0, 100 * time.Millisecond},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -49,6 +54,7 @@ func TestApply_InterruptedSelfRestart(t *testing.T) {
 				panelContext = nil
 			}
 			calls := 0
+			var interruptedAt time.Time
 			manager := &hosttest.ServiceManager{RestartFunc: func(string) error {
 				calls++
 				if calls > 1 {
@@ -63,7 +69,20 @@ func TestApply_InterruptedSelfRestart(t *testing.T) {
 					}
 					return host.OSCmdRunner(ctx, "false")
 				})
-				return systemd.Restart(context.Background(), "panel")
+				err := systemd.Restart(context.Background(), "panel")
+				interruptedAt = time.Now()
+				if tc.cancelDelay > 0 {
+					go func() {
+						timer := time.NewTimer(tc.cancelDelay)
+						defer timer.Stop()
+						select {
+						case <-timer.C:
+							cancel()
+						case <-lifecycle.Done():
+						}
+					}()
+				}
+				return err
 			}}
 			runner := host.NewDirectRunner(host.AllowLists{
 				StagingPrefix: staging, BinaryPaths: []string{binaryPath, binaryPath + ".bak"}, Services: []string{"panel"},
@@ -73,10 +92,15 @@ func TestApply_InterruptedSelfRestart(t *testing.T) {
 			fixture.releases[0].Tag = "v1.0.0-rc.2"
 			github := NewClient()
 			github.BaseURL = fixture.URL
+			shutdownGrace := 100 * time.Millisecond
+			if tc.cancelDelay > 0 {
+				shutdownGrace = 0
+			}
 			e := NewEngine(EngineConfig{
 				Runner: runner, Store: st, StagingDir: staging, Github: github, Arch: "x86_64", Variant: "musl",
 				Targets:               map[string]Target{tc.target: &fakeTarget{name: tc.target, repo: "owner/repo", binaryPath: binaryPath, serviceName: "panel", version: "1.0.0-rc.1"}},
 				PanelLifecycleContext: panelContext,
+				PanelShutdownGrace:    shutdownGrace,
 			})
 			if tc.wantPhase == PhaseRestarting {
 				err = e.StartApply(tc.target, "v1.0.0-rc.2")
@@ -91,6 +115,9 @@ func TestApply_InterruptedSelfRestart(t *testing.T) {
 			}
 			if tc.wantPhase == PhaseRolledBack && err == nil {
 				t.Fatal("expected the genuine restart failure to remain an error")
+			}
+			if tc.wantGraceWait > 0 && time.Since(interruptedAt) < tc.wantGraceWait {
+				t.Fatalf("rolled back before shutdown grace elapsed: waited %s; want at least %s", time.Since(interruptedAt), tc.wantGraceWait)
 			}
 			entries, err := st.ListUpdateJournal(tc.target, 20)
 			if err != nil || len(entries) == 0 || entries[0].Phase != tc.wantPhase {

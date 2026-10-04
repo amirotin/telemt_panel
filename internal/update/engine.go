@@ -149,6 +149,9 @@ type EngineConfig struct {
 	// PanelLifecycleContext observes the panel's shutdown independently of a
 	// run's background context. Nil retains ordinary restart-error handling.
 	PanelLifecycleContext context.Context
+	// PanelShutdownGrace bounds the wait for lifecycle cancellation after a
+	// signaled self-restart; defaults to 3 seconds.
+	PanelShutdownGrace time.Duration
 
 	// HTTPClient downloads release assets; defaults to a client with a 5
 	// minute timeout (release tarballs are small, but a stalled connection
@@ -193,6 +196,8 @@ type Engine struct {
 	now          func() time.Time
 	newRunID     func() string
 
+	panelShutdownGrace time.Duration
+
 	mu           sync.Mutex
 	running      bool
 	activeTarget string
@@ -220,6 +225,11 @@ func NewEngine(cfg EngineConfig) *Engine {
 		now:          cfg.Now,
 		newRunID:     cfg.NewRunID,
 		runs:         make(map[string]RunStatus),
+
+		panelShutdownGrace: cfg.PanelShutdownGrace,
+	}
+	if e.panelShutdownGrace <= 0 {
+		e.panelShutdownGrace = 3 * time.Second
 	}
 	if e.github == nil {
 		e.github = NewClient()
@@ -687,16 +697,22 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 		host.ArgService: target.ServiceName(),
 	}}); err != nil {
 		var exitErr *host.ExitError
-		if targetName == TargetPanel && e.panelCtx != nil && e.panelCtx.Err() != nil && errors.As(err, &exitErr) && exitErr.Code == -1 {
-			// The service stop can signal its own restart command too. Leave
-			// the durable handoff for the next process rather than restoring
-			// a binary from the old process while it is shutting down.
-			detail := err.Error()
-			if len(detail) > 512 {
-				detail = detail[:512]
+		if targetName == TargetPanel && e.panelCtx != nil && errors.As(err, &exitErr) && exitErr.Code == -1 {
+			// The service stop can signal its own restart command before the
+			// panel's lifecycle context observes shutdown. Wait briefly to
+			// leave the durable handoff for the next process in that case.
+			timer := time.NewTimer(e.panelShutdownGrace)
+			defer timer.Stop()
+			select {
+			case <-e.panelCtx.Done():
+				detail := err.Error()
+				if len(detail) > 512 {
+					detail = detail[:512]
+				}
+				slog.Warn("update: panel stopped during restart; awaiting startup confirmation", "run_id", rc.RunID, "err", detail)
+				return nil
+			case <-timer.C:
 			}
-			slog.Warn("update: panel stopped during restart; awaiting startup confirmation", "run_id", rc.RunID, "err", detail)
-			return nil
 		}
 		return e.rollback(ctx, rc, target, backupPath, PhaseRestarting, err)
 	}

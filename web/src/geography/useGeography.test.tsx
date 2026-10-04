@@ -8,7 +8,7 @@ import { useGeography } from "./useGeography";
 import { client as apiClient } from "../lib/api/client";
 import { invalidateGeography } from "./queries";
 
-function Probe({country=null,paused=true}:{country?:string|null;paused?:boolean}){const state=useGeography({range:"now",family:"all",country,location:null,view:"map"},paused);return <div data-state>{JSON.stringify({hasData:!!state.base,expired:state.expired,stale:state.stale,error:state.error})}</div>}
+function Probe({country=null,paused=true}:{country?:string|null;paused?:boolean}){const state=useGeography({range:"now",family:"all",country,location:null,view:"map"},paused);return <div data-state>{JSON.stringify({hasData:!!state.base,expired:state.expired,stale:state.stale,error:state.error,ips:state.base?.totals?.unique_ips})}</div>}
 async function fixture(){const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}});const data=overview();client.setQueryData(getGeographyQueryKey({query:{range:"now",family:"all"}}),data);const view=document.createElement("div");document.body.append(view);const root=createRoot(view);await act(async()=>root.render(<QueryClientProvider client={client}><Probe/></QueryClientProvider>));return {client,data,view,root};}
 
 it("revokes the whole snapshot after an expired personal-list request",async()=>{
@@ -19,6 +19,28 @@ it("revokes the whole snapshot after an expired personal-list request",async()=>
   await act(async()=>{await client.fetchQuery({queryKey:key,queryFn:async()=>{throw {code:"geography_snapshot_expired",message:"expired"}},staleTime:0}).catch(()=>{})});
   expect(view.textContent).toContain('"hasData":false');expect(view.textContent).toContain('"expired":true');expect(client.getQueryData(key)).toBeUndefined();
  }finally{act(()=>root.unmount());view.remove();client.clear()}
+});
+
+it.each(["geography_source_changed","geography_snapshot_expired"])("recovers root %s in the background and keeps polling",async(code)=>{
+ vi.useFakeTimers({toFake:["Date","performance","setInterval","clearInterval","setTimeout","clearTimeout"]});
+ const config=apiClient.getConfig();let requests=0;
+ const first=overview(),next=overview({snapshot_id:"00000000000000000000000000000002",totals:{unique_ips:2,accounts:2,country_count:1,location_count:1}});
+ apiClient.setConfig({baseUrl:"http://localhost",fetch:async()=>++requests<=2?Response.json({code,message:"retry"},{status:409}):Response.json(next)});
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+ const key=getGeographyQueryKey({query:{range:"now",family:"all"}});client.setQueryData(key,first);
+ const view=document.createElement("div");document.body.append(view);const root=createRoot(view);
+ try{
+  await act(async()=>root.render(<QueryClientProvider client={client}><Probe paused={false}/></QueryClientProvider>));
+  await act(async()=>{void client.refetchQueries({queryKey:key,exact:true});await vi.advanceTimersByTimeAsync(20)});
+  expect(view.textContent).toContain('"hasData":true');expect(view.textContent).toContain('"stale":true');expect(view.textContent).toContain('"error":null');
+  await act(async()=>vi.advanceTimersByTimeAsync(1000));
+  expect(view.textContent).toContain('"hasData":true');expect(view.textContent).toContain('"error":null');
+  await act(async()=>vi.advanceTimersByTimeAsync(2000));
+  expect(view.textContent).toContain('"ips":2');expect(view.textContent).toContain('"error":null');expect(view.textContent).toContain('"expired":false');
+  const recoveredRequests=requests;
+  await act(async()=>vi.advanceTimersByTimeAsync(15000));
+  expect(requests).toBeGreaterThan(recoveredRequests);expect(view.textContent).toContain('"ips":2');
+ }finally{act(()=>root.unmount());view.remove();client.clear();apiClient.setConfig(config);vi.useRealTimers()}
 });
 
 it("uses monotonic elapsed time for TTL and paused live freshness",async()=>{
@@ -51,4 +73,17 @@ it("discards the retained frame when settings invalidate the snapshot",async()=>
   await act(async()=>{release();await new Promise(resolve=>setTimeout(resolve,20))});
   expect(view.textContent).toContain('"hasData":true');
  }finally{release();act(()=>root.unmount());view.remove();client.clear();apiClient.setConfig(config)}
+});
+
+it("still revokes a selected snapshot after its pinned request expires",async()=>{
+ const config=apiClient.getConfig();apiClient.setConfig({baseUrl:"http://localhost",fetch:async()=>Response.json({code:"geography_snapshot_expired",message:"expired"},{status:409})});
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+ const key=getGeographyQueryKey({query:{range:"now",family:"all"}});client.setQueryData(key,overview());
+ const view=document.createElement("div");document.body.append(view);const root=createRoot(view);
+ try{
+  await act(async()=>root.render(<QueryClientProvider client={client}><Probe country="DE" paused={false}/></QueryClientProvider>));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,30))});
+  expect(view.textContent).toContain('"hasData":false');expect(view.textContent).toContain('"expired":true');expect(view.textContent).toContain('"error":"geography_snapshot_expired"');
+  expect(client.getQueryData(key)).toBeUndefined();
+ }finally{act(()=>root.unmount());view.remove();client.clear();apiClient.setConfig(config)}
 });

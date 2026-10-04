@@ -26,10 +26,12 @@ type SQLite struct {
 	path   string
 	schema int
 
-	policyMu    sync.RWMutex
-	policies    map[StorageCategory]StoragePolicy
-	userIPMu    sync.RWMutex
-	userIPEpoch atomic.Uint64
+	policyMu       sync.RWMutex
+	policies       map[StorageCategory]StoragePolicy
+	userIPMu       sync.RWMutex
+	userIPEpoch    atomic.Uint64
+	userIPRevision atomic.Uint64
+	userIPWriters  atomic.Int64
 
 	liveMu         sync.RWMutex
 	liveMetrics    map[string][]MetricPoint

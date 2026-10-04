@@ -34,6 +34,21 @@ describe("connection link projection",()=>{
     const conflict=link("dd").replace(secret,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     expect(collectConnectionLinks(links({classic:[link()],secure:[conflict]}),profiles).some(l=>l.kind==="web")).toBe(false);
   });
+  it.each(["classic", "secure", "tls", "tls_domains"] as const)("rejects non-hex %s secrets before deriving plain or path-mounted WEB links",kind=>{
+    const raw=link(kind==="classic"?"":kind==="secure"?"dd":"ee","proxy.example.org",kind==="tls"||kind==="tls_domains"?"mask.example.org":"").replace(secret,"gg"+secret.slice(2));
+    const original=kind==="tls_domains"?links({tls_domains:[{domain:"mask.example.org",link:raw}]}):links({[kind]:[raw]});
+    const profiles=[{host:"web.example.org",mode:"plain" as const},{host:"web.example.org",mode:"dd" as const,basePath:"MixedCase/relay"}];
+    expect(collectConnectionLinks(original,profiles)).toEqual([]);
+  });
+  it.each(["classic", "secure", "tls", "tls_domains"] as const)("accepts uppercase %s secrets for plain and path-mounted WEB links",kind=>{
+    const raw=link(kind==="classic"?"":kind==="secure"?"dd":"ee","proxy.example.org",kind==="tls"||kind==="tls_domains"?"mask.example.org":"").replace(secret,secret.toUpperCase());
+    const original=kind==="tls_domains"?links({tls_domains:[{domain:"mask.example.org",link:raw}]}):links({[kind]:[raw]});
+    const profiles=[{host:"web.example.org",mode:"plain" as const},{host:"web.example.org",mode:"dd" as const,basePath:"MixedCase/relay"}];
+    expect(collectConnectionLinks(original,profiles).filter(link=>link.kind==="web").map(link=>link.url)).toEqual([
+      "tg://webproxy?server=web.example.org&secret=0123456789abcdef0123456789abcdef",
+      "tg://webproxy?server=web.example.org%2FMixedCase%2Frelay&secret=cN0BI0VniavN7wEjRWeJq83v",
+    ]);
+  });
   it.each(["javascript:alert(1)","tg://resolve?domain=example",`https://evil.example/proxy?server=h&port=443&secret=${secret}`,link()+"&secret="+secret,link().replace("port=443","port=0"),link().replace("port=443","port=65536"),link("ee","p.example","mask.example").slice(0,-1)])("rejects invalid or unrelated proxy URLs: %s",raw=>{
     expect(collectConnectionLinks(links({classic:[raw],tls:[raw]}))).toEqual([]);
   });

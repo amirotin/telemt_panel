@@ -13,6 +13,11 @@ const DEFAULT_STALE_MS = 40_000;
 // see sseClient.ts's identical constant for why this isn't a reference to
 // the global EventSource.
 const READY_STATE_CLOSED = 2;
+const READY_STATE_CONNECTING = 0;
+const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000];
+const TRANSIENT_SOURCE_REASONS = new Set([
+  "source_timeout", "read_failed", "command_failed", "daemon_unavailable", "target_missing", "file_missing",
+]);
 
 export type LogStreamStatus = "connecting" | "open" | "reconnecting" | "closed" | "error" | "ended";
 
@@ -46,11 +51,12 @@ export interface LogStreamClient {
 // there's no topic union to manage — useLogStream.ts owns exactly one of
 // these per (service) and recreates it on service switch or unmount.
 //
-// Reconnection on a transient drop is left to the browser's own EventSource
-// retry (Task 7 brief B: "reconnect via browser") — this client does not
-// implement sseClient.ts's own backoff/polling fallback. It only surfaces
-// Source errors and normal EOF have named events and stop automatic retries;
-// the viewer keeps received lines and exposes an explicit retry action.
+// Visible transport reconnection is left to the browser's EventSource retry.
+// CONNECTING sources pause while hidden and reopen immediately on visibility;
+// healthy OPEN sources keep streaming in the background.
+// Normal EOF and transient source errors reopen with capped backoff while
+// the tab is visible; configuration errors require an explicit retry.
+// The viewer keeps received lines and shows source errors until a new frame.
 // A non-2xx/non-event-stream response (e.g. an expired session) instead sets
 // EventSource.readyState to CLOSED with no auto-retry.
 export function createLogStream(service: string, options: LogStreamOptions = {}): LogStreamClient {
@@ -62,6 +68,9 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
   const lineListeners = new Set<(line: LogLine) => void>();
   let snapshot: LogStreamSnapshot = { status: "connecting", stale: false };
   let staleTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectPending = false;
+  let reconnectStep = 0;
   let closed = false;
   let es: EventSource | null = null;
 
@@ -82,14 +91,50 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
   }
 
   function onFrame() {
+    reconnectStep = 0;
     resetStaleWatchdog();
-    setSnapshot({ stale: false });
+    setSnapshot({ stale: false, error: undefined });
   }
 
   function stopConnection() {
     if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; }
     es?.close();
     es = null;
+  }
+
+  function clearReconnectTimer() {
+    if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  function reconnect() {
+    clearReconnectTimer();
+    if (closed || !reconnectPending || document.visibilityState === "hidden") return;
+    reconnectPending = false;
+    open();
+  }
+
+  function scheduleReconnect() {
+    reconnectPending = true;
+    const delay = RECONNECT_DELAYS_MS[Math.min(reconnectStep, RECONNECT_DELAYS_MS.length - 1)];
+    reconnectStep = Math.min(reconnectStep + 1, RECONNECT_DELAYS_MS.length - 1);
+    setSnapshot({ status: "reconnecting", stale: false });
+    if (document.visibilityState !== "hidden") reconnectTimer = setTimeout(reconnect, delay);
+  }
+
+  function onVisibilityChange() {
+    if (document.visibilityState === "hidden") {
+      clearReconnectTimer();
+      pauseConnecting();
+    }
+    else if (reconnectPending) reconnect();
+  }
+
+  function pauseConnecting() {
+    if (es?.readyState !== READY_STATE_CONNECTING) return;
+    stopConnection();
+    reconnectPending = true;
+    setSnapshot({ status: "reconnecting", stale: false });
   }
 
   function open() {
@@ -100,8 +145,8 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
 
     next.addEventListener("open", () => {
       if (es !== next) return;
-      setSnapshot({ status: "open" });
-      onFrame();
+      setSnapshot({ status: "open", stale: false });
+      resetStaleWatchdog();
     });
 
     next.addEventListener("log", (ev) => {
@@ -123,12 +168,13 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
       if (!diagnostic || diagnostic.service !== service) return;
       stopConnection();
       setSnapshot({ status: "error", stale: false, error: diagnostic });
+      if (TRANSIENT_SOURCE_REASONS.has(diagnostic.reason)) scheduleReconnect();
     });
 
     next.addEventListener("log_end", () => {
       if (es !== next) return;
       stopConnection();
-      setSnapshot({ status: "ended", stale: false, error: undefined });
+      scheduleReconnect();
     });
 
     next.addEventListener("error", () => {
@@ -137,10 +183,13 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
         setSnapshot({ status: "closed" });
       } else {
         setSnapshot({ status: "reconnecting" });
+        if (document.visibilityState === "hidden") pauseConnecting();
       }
     });
+    if (document.visibilityState === "hidden") pauseConnecting();
   }
 
+  document.addEventListener("visibilitychange", onVisibilityChange);
   open();
 
   return {
@@ -157,21 +206,19 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
     },
     retry() {
       if (closed) return;
-      if (es) {
-        es.close();
-        es = null;
-      }
-      if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; }
+      clearReconnectTimer();
+      reconnectPending = false;
+      reconnectStep = 0;
+      stopConnection();
       setSnapshot({ status: "connecting", stale: false, error: undefined });
       open();
     },
     close() {
       closed = true;
-      if (staleTimer) clearTimeout(staleTimer);
-      if (es) {
-        es.close();
-        es = null;
-      }
+      clearReconnectTimer();
+      reconnectPending = false;
+      stopConnection();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     },
   };
 }

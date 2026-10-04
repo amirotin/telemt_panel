@@ -44,7 +44,7 @@ func (s *Service) pinned(id string) (*snapshot, error) {
 }
 
 func (s *Service) acquire(ctx context.Context, k key) (*snapshot, error) {
-	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, s.deps.RequestTimeout)
 	defer cancel()
 	enrolled := false
 	defer func() {
@@ -89,7 +89,7 @@ func (s *Service) acquire(ctx context.Context, k key) (*snapshot, error) {
 			enrolled = true
 		}
 		if s.work == nil {
-			buildCtx, buildCancel := context.WithTimeout(s.ctx, 10*time.Second)
+			buildCtx, buildCancel := context.WithTimeout(s.ctx, s.deps.BuildTimeout)
 			work := &buildWork{key: k, done: make(chan struct{}), cancel: buildCancel}
 			s.work = work
 			s.wg.Add(1)

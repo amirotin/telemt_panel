@@ -13,11 +13,14 @@ func streamCommandLogs(ctx context.Context, reader io.ReadCloser, parse func([]b
 		defer reader.Close()
 		scanner := bufio.NewScanner(reader)
 		scanner.Buffer(make([]byte, 64*1024), 1<<20)
-		var reason string
+		var recent [8]string
+		next := 0
 		for scanner.Scan() {
-			if candidate := commandLogReason(scanner.Text()); candidate != "" {
-				reason = candidate
+			recent[next] = ""
+			if len(scanner.Bytes()) <= 4096 {
+				recent[next] = scanner.Text()
 			}
+			next = (next + 1) % len(recent)
 			line, ok := parse(scanner.Bytes())
 			if !ok {
 				continue
@@ -29,6 +32,12 @@ func streamCommandLogs(ctx context.Context, reader io.ReadCloser, parse func([]b
 			}
 		}
 		if err := scanner.Err(); err != nil && ctx.Err() == nil {
+			var reason string
+			for i := 1; i <= len(recent); i++ {
+				if reason = commandLogReason(recent[(next+len(recent)-i)%len(recent)]); reason != "" {
+					break
+				}
+			}
 			select {
 			case events <- LogEvent{Err: newLogSourceError(err, reason)}:
 			case <-ctx.Done():

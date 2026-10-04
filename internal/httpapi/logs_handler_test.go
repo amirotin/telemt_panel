@@ -411,6 +411,32 @@ func TestHandleLogsTailErrorHasSafeSourceDiagnostic(t *testing.T) {
 	}
 }
 
+func TestLogSourceDiagnosticLimitsTargetTo256Runes(t *testing.T) {
+	srv, _, _, source := newHostTestServer(t)
+	for _, test := range []struct {
+		name   string
+		kind   string
+		target string
+		want   string
+	}{
+		{"ASCII boundary", host.LogKindDocker, strings.Repeat("a", 256), strings.Repeat("a", 256)},
+		{"ASCII overflow", host.LogKindDocker, strings.Repeat("a", 257), strings.Repeat("a", 256)},
+		{"multibyte overflow", host.LogKindDocker, strings.Repeat("я", 257), strings.Repeat("я", 256)},
+		{"file target overflow", host.LogKindFile, strings.Repeat("я", 257), strings.Repeat("я", 256)},
+		{"four-byte boundary", host.LogKindDocker, strings.Repeat("🌍", 256), strings.Repeat("🌍", 256)},
+		{"controls removed before limit", host.LogKindDocker, strings.Repeat("a\x00", 256), strings.Repeat("a", 256)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source.KindValue = test.kind
+			srv.cfg.Host.LogFile = test.target
+			diagnostic := srv.logSourceDiagnostic(errors.New("read failure"), "telemt", test.target)
+			if diagnostic.Target != test.want {
+				t.Fatalf("target = %q, want %q", diagnostic.Target, test.want)
+			}
+		})
+	}
+}
+
 func TestHandleEventsLogsRuntimeErrorKeepsLineBeforeDiagnostic(t *testing.T) {
 	srv, cookie, _, source := newHostTestServer(t)
 	source.CapsValue = host.LogCaps{CanStream: true}

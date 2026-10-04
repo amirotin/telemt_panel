@@ -3,6 +3,7 @@ package hub
 import (
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -45,6 +46,86 @@ func TestLiveGeographyCopyDoesNotWaitForFlush(t *testing.T) {
 		<-finished
 		<-result
 		t.Fatal("active snapshot blocked on the history flush")
+	}
+}
+
+func TestLiveGeographyFlushPublishesStatusWithoutCopyingRecords(t *testing.T) {
+	m, err := store.NewMemoryHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	st := &heldFlushStore{HistoryStore: m, started: make(chan struct{}), release: make(chan struct{})}
+	now := time.Unix(1800000000, 0)
+	h := &Hub{st: st, now: func() time.Time { return now }}
+	finished := make(chan struct{})
+	go func() {
+		h.observeUserIPs([]telemt.UserInfo{{Username: "alice", ActiveIPList: []string{"1.1.1.1"}, RecentIPList: []string{}}}, 0)
+		close(finished)
+	}()
+	<-st.started
+	before := h.ips.snapshot.Load()
+	close(st.release)
+	<-finished
+	after := h.ips.snapshot.Load()
+	if before == nil || after == nil || len(before.Records) != 1 || len(after.Records) != 1 {
+		t.Fatal("flush lost the published active observation")
+	}
+	if !before.Source.Pending || after.Source.Pending || before == after {
+		t.Fatalf("flush status was not replaced independently: before=%+v after=%+v", before.Source, after.Source)
+	}
+	if &before.Records[0] != &after.Records[0] {
+		t.Fatal("flush rebuilt the immutable active record snapshot")
+	}
+	h.flushUserIPs()
+	final := h.ips.snapshot.Load()
+	if final.Source.Pending || &final.Records[0] != &after.Records[0] {
+		t.Fatal("final flush rebuilt records or changed their pending status")
+	}
+}
+
+func TestLiveGeographyCopiesAreSortedAndCallerOwned(t *testing.T) {
+	m, err := store.NewMemoryHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	now := time.Unix(1800000000, 0)
+	h := &Hub{st: m, now: func() time.Time { return now }}
+	h.observeUserIPs([]telemt.UserInfo{
+		{Username: "bob", ActiveIPList: []string{"2001:db8::1", "2.2.2.2"}, RecentIPList: []string{}},
+		{Username: "alice", ActiveIPList: []string{"8.8.8.8", "2.2.2.2", "1.1.1.1"}, RecentIPList: []string{}},
+	}, 0)
+	want := []string{"alice/1.1.1.1", "alice/2.2.2.2", "alice/8.8.8.8", "bob/2.2.2.2", "bob/2001:db8::1"}
+	keys := func(records []store.UserIPRecord) []string {
+		out := make([]string, len(records))
+		for i, record := range records {
+			out[i] = record.Username + "/" + record.IP
+		}
+		return out
+	}
+	// Publication must sort independently of Go's map iteration order.
+	for i := 0; i < 20; i++ {
+		h.ips.mu.Lock()
+		published := h.copyUserIPSnapshotLocked(now.Unix())
+		h.ips.mu.Unlock()
+		if got := keys(published.Records); !reflect.DeepEqual(got, want) {
+			t.Fatalf("published records = %v; want %v", got, want)
+		}
+	}
+	first := h.UserIPSnapshot(now.Unix())
+	if got := keys(first.Records); !reflect.DeepEqual(got, want) {
+		t.Fatalf("copied records = %v; want %v", got, want)
+	}
+	first.Records[0].Username = "changed"
+	first.Records[1] = store.UserIPRecord{}
+	*first.Source.AgeSeconds = 999
+	second := h.UserIPSnapshot(now.Unix())
+	if got := keys(second.Records); !reflect.DeepEqual(got, want) || *second.Source.AgeSeconds != 0 {
+		t.Fatalf("caller changed the published snapshot: records=%v source=%+v", got, second.Source)
+	}
+	if &first.Records[0] == &second.Records[0] {
+		t.Fatal("snapshot callers share mutable records")
 	}
 }
 

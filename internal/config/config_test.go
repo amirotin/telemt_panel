@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -80,6 +81,42 @@ func TestLoadDataDirEmptyMakesStateProcessLocal(t *testing.T) {
 	}
 	if cfg.DataDir != "" {
 		t.Errorf("data_dir = %q, want empty (process-local state)", cfg.DataDir)
+	}
+}
+
+func TestLoadGeographyBuildTimeout(t *testing.T) {
+	cases := []struct {
+		name, section string
+		want          int64
+	}{
+		{"omitted", "", 10},
+		{"empty section", "\n[geography]\n", 10},
+		{"minimum", "\n[geography]\nbuild_timeout_secs = 1\n", 1},
+		{"default explicit", "\n[geography]\nbuild_timeout_secs = 10\n", 10},
+		{"larger budget", "\n[geography]\nbuild_timeout_secs = 45\n", 45},
+		{"maximum", "\n[geography]\nbuild_timeout_secs = 120\n", 120},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := load(t, minimal+tc.section)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.Geography.BuildTimeoutSecs; got != tc.want {
+				t.Fatalf("geography.build_timeout_secs = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsOutOfRangeGeographyBuildTimeout(t *testing.T) {
+	for _, value := range []int64{-1, 0, 121, 1<<63 - 1} {
+		t.Run(fmt.Sprint(value), func(t *testing.T) {
+			_, err := load(t, minimal+fmt.Sprintf("\n[geography]\nbuild_timeout_secs = %d\n", value))
+			if err == nil || !strings.Contains(err.Error(), "geography.build_timeout_secs: must be between 1 and 120") {
+				t.Fatalf("want a geography budget range error, got %v", err)
+			}
+		})
 	}
 }
 

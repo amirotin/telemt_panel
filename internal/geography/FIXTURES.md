@@ -21,3 +21,18 @@ The service fixture has 2000 invented usernames with 50 pairs each. IP index
 is (account*50+offset)%20000+1, so every IP belongs to five accounts. SQLite
 keeps all 100000 pairs; Memory retains a clearly disclosed 20000-pair subset.
 Each cold/warm/live profile runs 20 iterations using this actual local MMDB.
+
+Scale correctness/profile tests inject a120s build budget and130s request
+budget, so race instrumentation does not turn a resource profile into a
+production-deadline assertion. Ordinary services retain10s/12s defaults;
+`[geography] build_timeout_secs` allows1–120s for slower devices. Payload,
+account/IP/location totals and iteration assertions are unchanged.
+
+The isolated SQLite race baseline at33da0d5 on the available local machine
+passed20 iterations: cold p955.573538774s, warm p95331.062us, live
+p95573.642253ms; total131.43s. This does not reproduce the external review's
+timeout on that machine/load combination and does not predict other CPUs.
+
+Physical aarch64 performance remains **NOT CHECKED**: the owner confirmed
+that no ARM test device is available. Cross-compilation or emulation is not
+reported as a device performance measurement.

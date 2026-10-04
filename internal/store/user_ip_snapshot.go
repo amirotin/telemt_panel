@@ -15,7 +15,8 @@ func lockSnapshot(ctx context.Context, try func() bool) error {
 	if try() {
 		return nil
 	}
-	timer := time.NewTicker(time.Millisecond)
+	delay := time.Millisecond
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	for {
 		select {
@@ -25,6 +26,8 @@ func lockSnapshot(ctx context.Context, try func() bool) error {
 			if try() {
 				return nil
 			}
+			delay = min(delay*2, 50*time.Millisecond)
+			timer.Reset(delay)
 		}
 	}
 }
@@ -35,7 +38,9 @@ type UserIPReadSnapshot struct {
 	Collection         UserIPCollection
 	Retention          time.Duration
 	Durable, Truncated bool
-	Epoch              uint64
+	// Partial reports ordinary history writes overlapping a paged read.
+	Partial bool
+	Epoch   uint64
 }
 
 func validateSnapshotRange(from, now int64) error {
@@ -55,10 +60,17 @@ func recordBefore(a, b UserIPRecord) bool {
 type userIPMaxHeap []UserIPRecord
 
 func (h userIPMaxHeap) Len() int           { return len(h) }
-func (h userIPMaxHeap) Less(i, j int) bool { return recordBefore(h[j], h[i]) }
+func (h userIPMaxHeap) Less(i, j int) bool { return recordNewer(h[j], h[i]) }
 func (h userIPMaxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 func (h *userIPMaxHeap) Push(x any)        { *h = append(*h, x.(UserIPRecord)) }
 func (h *userIPMaxHeap) Pop() any          { old := *h; x := old[len(old)-1]; *h = old[:len(old)-1]; return x }
+
+func recordNewer(a, b UserIPRecord) bool {
+	if a.Last != b.Last {
+		return a.Last > b.Last
+	}
+	return recordBefore(a, b)
+}
 
 // ReadUserIPSnapshot copies history under one lock without calling enrichment.
 func (m *Memory) ReadUserIPSnapshot(ctx context.Context, from, now int64) (UserIPReadSnapshot, error) {
@@ -88,16 +100,16 @@ func (m *Memory) ReadUserIPSnapshot(ctx context.Context, from, now int64) (UserI
 		}
 		if len(records) < UserIPMemoryLimit+1 {
 			heap.Push(&records, r)
-		} else if recordBefore(r, records[0]) {
+		} else if recordNewer(r, records[0]) {
 			records[0] = r
 			heap.Fix(&records, 0)
 		}
 	}
 	out.Truncated = len(records) > UserIPMemoryLimit
-	sort.Slice(records, func(i, j int) bool { return recordBefore(records[i], records[j]) })
 	if out.Truncated {
-		records = records[:UserIPMemoryLimit]
+		heap.Pop(&records)
 	}
+	sort.Slice(records, func(i, j int) bool { return recordBefore(records[i], records[j]) })
 	out.Records = []UserIPRecord(records)
 	return out, ctx.Err()
 }

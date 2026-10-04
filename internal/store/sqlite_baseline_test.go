@@ -7,9 +7,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -33,19 +35,47 @@ var frozenSQLiteSchema11 = map[string]string{
 	"table:user_traffic_users":                "CREATE TABLE user_traffic_users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, total_bytes INTEGER NOT NULL CHECK(total_bytes >= 0), since_ts INTEGER NOT NULL, updated_ts INTEGER NOT NULL, month_key INTEGER NOT NULL, month_bytes INTEGER NOT NULL CHECK(month_bytes >= 0), last_raw_octets INTEGER CHECK(last_raw_octets >= 0), last_source_started_at INTEGER, deleted_ts INTEGER, continuity TEXT NOT NULL CHECK(continuity IN ('normal', 'partial'))) STRICT",
 }
 
-func TestSQLiteFreshBaselineMatchesFrozenSchema11(t *testing.T) {
+const snapshotSQLiteIndexDDL = "CREATE INDEX user_ip_history_snapshot ON user_ip_history(last_ts DESC, username ASC, ip ASC)"
+
+func currentSQLiteSchema() map[string]string {
+	schema := maps.Clone(frozenSQLiteSchema11)
+	schema["index:user_ip_history_snapshot"] = snapshotSQLiteIndexDDL
+	return schema
+}
+
+func createFrozenSQLite11(t *testing.T, path string) {
+	t.Helper()
+	keys := make([]string, 0, len(frozenSQLiteSchema11))
+	for key := range frozenSQLiteSchema11 {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	statements := make([]string, 0, len(keys))
+	for _, prefix := range []string{"table:", "index:"} {
+		for _, key := range keys {
+			if strings.HasPrefix(key, prefix) {
+				statements = append(statements, frozenSQLiteSchema11[key])
+			}
+		}
+	}
+	createSQLiteFixture(t, path, 11, statements...)
+}
+
+func TestSQLiteFreshSchema12ExtendsFrozenSchema11(t *testing.T) {
 	store, _ := newSQLite(t)
-	if got := sqliteLogicalSchema(t, store); !reflect.DeepEqual(got, frozenSQLiteSchema11) {
-		t.Fatalf("fresh logical schema differs from frozen schema 11\n got: %#v\nwant: %#v", got, frozenSQLiteSchema11)
+	if got := sqliteLogicalSchema(t, store); !reflect.DeepEqual(got, currentSQLiteSchema()) {
+		t.Fatalf("fresh logical schema differs from schema 12\n got: %#v\nwant: %#v", got, currentSQLiteSchema())
 	}
 }
 
-func TestSQLiteVersion11PreservesSchemaAndEveryHistoryTable(t *testing.T) {
+func TestSQLiteVersion11AddsSnapshotIndexAndPreservesEveryHistoryTable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.db")
-	store, err := NewSQLite(path)
+	createFrozenSQLite11(t, path)
+	db, err := sqlitedriver.Open("file:" + path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	store := newSQLStore(db, path)
 	for _, statement := range []string{
 		`INSERT INTO metric_points(name,category,tier,ts,value,max,samples,last_ts,min_value,first_ts,first_value,delta,observed_seconds,gaps) VALUES('connections','technical','5m',1900000000,7.5,9,3,1900000010,NULL,1899999990,6,NULL,20,2)`,
 		`INSERT INTO history_events(seq,ts_ns,category,kind,entity,state,previous_state,severity,attributes_json) VALUES(41,1900000000000000000,'events','route.changed','route','direct','me','warning','{"reason":"test"}')`,
@@ -61,6 +91,7 @@ func TestSQLiteVersion11PreservesSchemaAndEveryHistoryTable(t *testing.T) {
 		}
 	}
 	wantSchema := sqliteLogicalSchema(t, store)
+	wantSchema["index:user_ip_history_snapshot"] = snapshotSQLiteIndexDDL
 	wantRows := sqliteHistoryRows(t, store.db)
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
@@ -71,14 +102,41 @@ func TestSQLiteVersion11PreservesSchemaAndEveryHistoryTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if got := reopened.Info().Schema; got != 11 {
-		t.Fatalf("schema version = %d, want 11", got)
+	if got := reopened.Info().Schema; got != 12 {
+		t.Fatalf("schema version = %d, want 12", got)
 	}
 	if got := sqliteLogicalSchema(t, reopened); !reflect.DeepEqual(got, wantSchema) {
-		t.Fatalf("schema 11 was rewritten\n got: %#v\nwant: %#v", got, wantSchema)
+		t.Fatalf("schema 11 upgrade changed more than its new index\n got: %#v\nwant: %#v", got, wantSchema)
 	}
 	if got := sqliteHistoryRows(t, reopened.db); !reflect.DeepEqual(got, wantRows) {
 		t.Fatalf("schema 11 rows changed\n got: %#v\nwant: %#v", got, wantRows)
+	}
+}
+
+func TestSQLiteIndexUpgradeFailureLeavesVersion11Intact(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.db")
+	createFrozenSQLite11(t, path)
+	db, err := sqlitedriver.Open("file:" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE INDEX user_ip_history_snapshot ON user_ip_history(ip)"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before := inspectRawSQLiteState(t, path)
+	opened, err := NewSQLite(path)
+	if opened != nil {
+		opened.Close()
+	}
+	if err == nil {
+		t.Fatal("conflicting snapshot index did not fail migration")
+	}
+	if after := inspectRawSQLiteState(t, path); !reflect.DeepEqual(after, before) {
+		t.Fatalf("failed migration changed schema or version: before=%+v after=%+v", before, after)
 	}
 }
 
@@ -130,7 +188,7 @@ func TestSQLiteRejectsVersionZeroWithUserSchemaObjectsWithoutMutation(t *testing
 
 func TestSQLiteRejectsFutureSchemaWithoutMutation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.db")
-	createSQLiteFixture(t, path, 12, `CREATE TABLE future_marker(value TEXT)`, `INSERT INTO future_marker VALUES('keep')`)
+	createSQLiteFixture(t, path, 13, `CREATE TABLE future_marker(value TEXT)`, `INSERT INTO future_marker VALUES('keep')`)
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +197,7 @@ func TestSQLiteRejectsFutureSchemaWithoutMutation(t *testing.T) {
 	if opened != nil {
 		opened.Close()
 	}
-	assertUnsupportedSQLiteSchema(t, openErr, 12)
+	assertUnsupportedSQLiteSchema(t, openErr, 13)
 	assertFileUnchanged(t, path, before)
 }
 
@@ -223,7 +281,7 @@ func TestSQLiteConcurrentFreshInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if got := sqliteLogicalSchema(t, store); !reflect.DeepEqual(got, frozenSQLiteSchema11) {
+	if got := sqliteLogicalSchema(t, store); !reflect.DeepEqual(got, currentSQLiteSchema()) {
 		t.Fatalf("parallel initialization schema = %#v", got)
 	}
 }
@@ -372,8 +430,8 @@ func assertUnsupportedSQLiteSchema(t *testing.T, err error, current int) {
 		t.Fatalf("schema %d error type = %T, want unsupported schema classification", current, err)
 	}
 	gotCurrent, supported := unsupported.UnsupportedSchemaVersions()
-	if gotCurrent != current || supported != 11 {
-		t.Fatalf("unsupported schema versions = (%d, %d), want (%d, 11)", gotCurrent, supported, current)
+	if gotCurrent != current || supported != 12 {
+		t.Fatalf("unsupported schema versions = (%d, %d), want (%d, 12)", gotCurrent, supported, current)
 	}
 }
 

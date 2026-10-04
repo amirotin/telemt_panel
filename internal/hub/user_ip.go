@@ -67,12 +67,12 @@ func (h *Hub) pollPeriodic(t *topicState) bool {
 	if !ok {
 		h.ips.failed = true
 		h.ips.gap = true
-		h.publishUserIPSnapshotLocked()
+		h.publishUserIPSnapshotStatusLocked()
 		if h.now().Unix()-h.ips.flushed >= 60 {
 			if err := h.flushUserIPsLocked(); err != nil {
 				slog.Warn("hub: pending IP history batch not saved")
 			}
-			h.publishUserIPSnapshotLocked()
+			h.publishUserIPSnapshotStatusLocked()
 		}
 	}
 	refresh := h.now().Unix()-h.ips.windowChecked >= 60
@@ -238,7 +238,7 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 		if err := h.flushUserIPsLocked(); err != nil {
 			slog.Warn("hub: IP history batch not saved")
 		}
-		h.publishUserIPSnapshotLocked()
+		h.publishUserIPSnapshotStatusLocked()
 	}
 }
 
@@ -281,7 +281,7 @@ func (h *Hub) flushUserIPs() {
 	if err := h.flushUserIPsLocked(); err != nil {
 		slog.Warn("hub: final IP history batch not saved")
 	}
-	h.publishUserIPSnapshotLocked()
+	h.publishUserIPSnapshotStatusLocked()
 }
 
 // Reset serializes with pending writes. Generation invalidates any fetch that

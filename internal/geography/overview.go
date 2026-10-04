@@ -3,7 +3,6 @@ package geography
 import (
 	"context"
 	"github.com/amirotin/telemt_panel/internal/geoip"
-	"github.com/amirotin/telemt_panel/internal/hub"
 )
 
 func copyPointer[T any](p *T) *T {
@@ -132,14 +131,7 @@ func (s *Service) view(ctx context.Context, entry *snapshot, q OverviewQuery) (O
 		}
 	}
 	if entry.key.window == "now" && s.deps.Live != nil {
-		var state string
-		if source, ok := s.deps.Live.(interface {
-			UserIPSnapshotStatus(int64) hub.UserIPSourceStatus
-		}); ok {
-			state = source.UserIPSnapshotStatus(out.ServedAt).State
-		} else {
-			state = s.deps.Live.UserIPSnapshot(out.ServedAt).Source.State
-		}
+		state := s.deps.Live.UserIPSnapshotStatus(out.ServedAt).State
 		stale = stale || state == "stale" || state == "unavailable"
 	}
 	out.State = "ready"

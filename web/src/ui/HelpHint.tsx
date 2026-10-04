@@ -55,6 +55,8 @@ export function HelpHint({ label, children }: { label: string; children: ReactNo
       tip.current.style.top = `${Math.max(top + 12, anchor.bottom + box.height + 8 <= top + height - 12 ? anchor.bottom + 8 : anchor.top - box.height - 8)}px`;
     };
     place();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    if (tip.current) observer?.observe(tip.current);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     window.visualViewport?.addEventListener("resize", place);
@@ -68,6 +70,7 @@ export function HelpHint({ label, children }: { label: string; children: ReactNo
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", escape);
     return () => {
+      observer?.disconnect();
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
       window.visualViewport?.removeEventListener("resize", place);
@@ -75,7 +78,7 @@ export function HelpHint({ label, children }: { label: string; children: ReactNo
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("keydown", escape);
     };
-  }, [open, children]);
+  }, [open]);
 
   return <>
     <button {...mergeProps(hoverProps, focusProps, pressProps)} ref={trigger} type="button" aria-label={label} aria-expanded={open} aria-describedby={open ? id : undefined}

@@ -40,6 +40,12 @@ func (l *testLive) UserIPSnapshot(now int64) hub.UserIPLiveSnapshot {
 }
 func (l *testLive) UserIPResetEpoch() uint64 { l.mu.Lock(); defer l.mu.Unlock(); return l.epoch }
 
+func (l *testLive) UserIPSnapshotStatus(now int64) hub.UserIPSourceStatus {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.snapshot.Source
+}
+
 type testResolver struct {
 	generation atomic.Uint64
 	calls      atomic.Int32

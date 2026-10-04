@@ -22,19 +22,13 @@ func (h *Hub) UserIPSnapshot(now int64) UserIPLiveSnapshot {
 		return UserIPLiveSnapshot{Records: []store.UserIPRecord{}, Source: UserIPSourceStatus{State: "unavailable"}}
 	}
 	out := *stored
-	out.Records = append([]store.UserIPRecord{}, stored.Records...)
 	out.Source = liveSnapshotStatus(stored, now)
-	sort.Slice(out.Records, func(i, j int) bool {
-		a, b := out.Records[i], out.Records[j]
-		if a.Username != b.Username {
-			return a.Username < b.Username
-		}
-		return a.IP < b.IP
-	})
-	if len(out.Records) > store.UserIPMemoryLimit {
-		out.Records = out.Records[:store.UserIPMemoryLimit]
+	records := stored.Records
+	if len(records) > store.UserIPMemoryLimit {
+		records = records[:store.UserIPMemoryLimit]
 		out.Truncated, out.Partial = true, true
 	}
+	out.Records = append([]store.UserIPRecord{}, records...)
 	return out
 }
 
@@ -70,22 +64,45 @@ func (h *Hub) publishUserIPSnapshotLocked() {
 	h.ips.snapshot.Store(&copy)
 }
 
+func (h *Hub) publishUserIPSnapshotStatusLocked() {
+	next := UserIPLiveSnapshot{Records: []store.UserIPRecord{}, Epoch: h.ips.generation}
+	if stored := h.ips.snapshot.Load(); stored != nil {
+		// Observations own this immutable backing array; status updates reuse it.
+		next = *stored
+	}
+	next.Source = h.userIPSnapshotStatusLocked(h.now().Unix())
+	h.ips.snapshot.Store(&next)
+}
+
+func (h *Hub) userIPSnapshotStatusLocked(now int64) UserIPSourceStatus {
+	c := &h.ips
+	status := UserIPSourceStatus{State: "unavailable", Limited: c.livePartial, Gap: c.liveInvalidUsers > 0, Pending: len(c.pending) > 0 || c.retry != nil}
+	if c.live == nil || !c.liveKnown {
+		return status
+	}
+	status.LastSuccess = c.through
+	age := now - c.through
+	if age >= 0 {
+		status.AgeSeconds = &age
+	}
+	status.State = "collecting"
+	if c.failed || age < 0 || age > 30 {
+		status.State = "stale"
+	}
+	return status
+}
+
 func (h *Hub) copyUserIPSnapshotLocked(now int64) UserIPLiveSnapshot {
 	c := &h.ips
-	out := UserIPLiveSnapshot{Records: make([]store.UserIPRecord, 0), Epoch: c.generation, Partial: c.livePartial, Truncated: c.liveTruncated, InvalidUsers: c.liveInvalidUsers}
-	out.Source = UserIPSourceStatus{State: "unavailable", Limited: c.livePartial, Gap: c.liveInvalidUsers > 0, Pending: len(c.pending) > 0 || c.retry != nil}
+	out := UserIPLiveSnapshot{Records: []store.UserIPRecord{}, Source: h.userIPSnapshotStatusLocked(now), Epoch: c.generation, Partial: c.livePartial, Truncated: c.liveTruncated, InvalidUsers: c.liveInvalidUsers}
 	if c.live == nil || !c.liveKnown {
 		return out
 	}
-	out.Source.LastSuccess = c.through
-	age := now - c.through
-	if age >= 0 {
-		out.Source.AgeSeconds = &age
+	count := 0
+	for _, live := range c.live {
+		count += len(live.active)
 	}
-	out.Source.State = "collecting"
-	if c.failed || age < 0 || age > 30 {
-		out.Source.State = "stale"
-	}
+	out.Records = make([]store.UserIPRecord, 0, count)
 	for username, live := range c.live {
 		for ip := range live.active {
 			family := 4
@@ -95,6 +112,13 @@ func (h *Hub) copyUserIPSnapshotLocked(now int64) UserIPLiveSnapshot {
 			out.Records = append(out.Records, store.UserIPRecord{Username: username, IP: ip, Family: family, First: live.at, Last: live.at, LastActive: live.at, Observations: 1, Source: 1})
 		}
 	}
+	sort.Slice(out.Records, func(i, j int) bool {
+		a, b := out.Records[i], out.Records[j]
+		if a.Username != b.Username {
+			return a.Username < b.Username
+		}
+		return a.IP < b.IP
+	})
 	return out
 }
 

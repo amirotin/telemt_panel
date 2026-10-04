@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/geography"
@@ -64,6 +65,12 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
+		writeGeographyError(w, err)
+		return
+	}
+	// Allow the configured build plus response overhead without changing other routes.
+	writeBudget := time.Duration(max(60, s.cfg.Geography.BuildTimeoutSecs+5)) * time.Second
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(writeBudget)); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		writeGeographyError(w, err)
 		return
 	}

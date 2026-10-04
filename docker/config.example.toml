@@ -19,6 +19,11 @@ password_hash = "REPLACE_WITH_BCRYPT_HASH"
 driver = "sqlite"
 path = "/var/lib/telemt-panel/panel.db"
 
+[geography]
+# Connection-map snapshot build budget in seconds (1..120, default 10).
+# Reverse-proxy timeouts must allow this plus 5 seconds.
+build_timeout_secs = 10
+
 [host]
 service_manager = "none"
 

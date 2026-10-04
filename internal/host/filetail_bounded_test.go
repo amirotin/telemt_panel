@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 	"unicode/utf8"
 )
@@ -375,37 +376,55 @@ func TestFollowFileCancellationReleasesBlockedDescriptor(t *testing.T) {
 }
 
 func TestFollowFileRetainsPendingPrefixDuringTemporaryAbsence(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "log")
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ticks := make(chan time.Time)
-	lines := followFileTicks(ctx, path, ticks, func() {})
-	appendLine(t, path, "pending")
-	followTestTick(t, ticks)
-	followTestTick(t, ticks)
-	if err := os.Rename(path, path+".away"); err != nil {
-		t.Fatal(err)
-	}
-	followTestTick(t, ticks)
-	followTestTick(t, ticks)
-	if err := os.Rename(path+".away", path); err != nil {
-		t.Fatal(err)
-	}
-	appendLine(t, path, " finished\n")
-	var got string
-	select {
-	case ticks <- time.Now():
-		got = recvLine(t, lines, 2*time.Second)
-	case got = <-lines:
-	case <-time.After(2 * time.Second):
-		t.Fatal("restored file not read")
-	}
-	if got != "pending finished" {
-		t.Fatalf("temporary absence lost pending prefix: %q", got)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "log")
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		ticks := make(chan time.Time)
+		events, err := followFileEventTicks(ctx, path, ticks, func() {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		appendLine(t, path, "pending")
+		followTestTick(t, ticks)
+		synctest.Wait()
+		followTestTick(t, ticks)
+		// Receiving a tick does not acknowledge its poll; finish it before renaming.
+		synctest.Wait()
+		if err := os.Rename(path, path+".away"); err != nil {
+			t.Fatal(err)
+		}
+		followTestTick(t, ticks)
+		synctest.Wait()
+		followTestTick(t, ticks)
+		synctest.Wait()
+		if err := os.Rename(path+".away", path); err != nil {
+			t.Fatal(err)
+		}
+		appendLine(t, path, " finished\n")
+		var got fileFollowEvent
+		var open bool
+		select {
+		case ticks <- time.Now():
+			select {
+			case got, open = <-events:
+			case <-time.After(2 * time.Second):
+				t.Fatal("restored file not read")
+			}
+		case got, open = <-events:
+		case <-time.After(2 * time.Second):
+			t.Fatal("restored file not read")
+		}
+		if !open || got.err != nil {
+			t.Fatalf("temporary absence ended the source: open=%v error=%v", open, got.err)
+		}
+		if got.line != "pending finished" {
+			t.Fatalf("temporary absence lost pending prefix: %q", got.line)
+		}
+	})
 }
 
 func TestReadNewLinesAndOverlapUseOpenedDescriptor(t *testing.T) {

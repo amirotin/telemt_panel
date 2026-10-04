@@ -14,12 +14,13 @@ var migrationFiles embed.FS
 
 const (
 	statementSeparator         = "-- statement"
-	sqliteSchemaVersion        = 11
+	sqliteSchemaVersion        = 12
+	sqliteBaselineVersion      = 11
 	sqliteBaselineMigrationSQL = "migrations/sqlite/0011_baseline.sql"
+	sqliteSnapshotMigrationSQL = "migrations/sqlite/0012_user_ip_snapshot_index.sql"
 )
 
-// UnsupportedSchemaError reports a SQLite schema which this development
-// baseline cannot open without an explicitly supported future upgrade.
+// UnsupportedSchemaError reports a SQLite schema without a supported upgrade path.
 type UnsupportedSchemaError struct {
 	Current   int
 	Supported int
@@ -39,12 +40,16 @@ func (e *UnsupportedSchemaError) UnsupportedSchemaVersions() (int, int) {
 	return e.Current, e.Supported
 }
 
-// Migrate initializes an empty SQLite history store at the sole supported
-// schema baseline. Development schemas are deliberately not converted.
+// Migrate initializes the frozen SQLite baseline and applies supported upgrades.
+// Earlier development schemas are deliberately not converted.
 func Migrate(ctx context.Context, db *sql.DB) (int, error) {
 	baseline, err := migrationFiles.ReadFile(sqliteBaselineMigrationSQL)
 	if err != nil {
 		return 0, fmt.Errorf("read SQLite baseline: %w", err)
+	}
+	snapshotIndex, err := migrationFiles.ReadFile(sqliteSnapshotMigrationSQL)
+	if err != nil {
+		return 0, fmt.Errorf("read SQLite snapshot index migration: %w", err)
 	}
 	version := 0
 	err = WithTx(ctx, db, nil, func(tx *sql.Tx) error {
@@ -61,38 +66,44 @@ func Migrate(ctx context.Context, db *sql.DB) (int, error) {
 				Current: current, Supported: sqliteSchemaVersion,
 				Reason: "newer than supported",
 			}
-		case current != 0:
+		case current != 0 && current != sqliteBaselineVersion:
 			return &UnsupportedSchemaError{
 				Current: current, Supported: sqliteSchemaVersion,
 				Reason: "an unsupported development schema",
 			}
 		}
 
-		var hasUserObjects bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+		migrations := [][]byte{snapshotIndex}
+		if current == 0 {
+			var hasUserObjects bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
 			SELECT 1 FROM sqlite_schema
 			WHERE type IN ('table', 'view', 'trigger')
 			  AND substr(name, 1, 7) != 'sqlite_'
 		)`).Scan(&hasUserObjects); err != nil {
-			return fmt.Errorf("inspect empty SQLite schema: %w", err)
-		}
-		if hasUserObjects {
-			return &UnsupportedSchemaError{
-				Current: 0, Supported: sqliteSchemaVersion,
-				Reason: "unversioned and contains user schema objects",
+				return fmt.Errorf("inspect empty SQLite schema: %w", err)
 			}
-		}
-		for _, statement := range strings.Split(string(baseline), statementSeparator) {
-			statement = strings.TrimSpace(statement)
-			if statement == "" {
-				continue
+			if hasUserObjects {
+				return &UnsupportedSchemaError{
+					Current: 0, Supported: sqliteSchemaVersion,
+					Reason: "unversioned and contains user schema objects",
+				}
 			}
-			if _, err := tx.ExecContext(ctx, statement); err != nil {
-				return fmt.Errorf("apply SQLite schema baseline: %w", err)
+			migrations = append([][]byte{baseline}, migrations...)
+		}
+		for _, migration := range migrations {
+			for _, statement := range strings.Split(string(migration), statementSeparator) {
+				statement = strings.TrimSpace(statement)
+				if statement == "" {
+					continue
+				}
+				if _, err := tx.ExecContext(ctx, statement); err != nil {
+					return fmt.Errorf("apply SQLite schema migration: %w", err)
+				}
 			}
 		}
 		if err := setSQLiteSchemaVersion(ctx, tx, sqliteSchemaVersion); err != nil {
-			return fmt.Errorf("set SQLite schema baseline version: %w", err)
+			return fmt.Errorf("set SQLite schema version: %w", err)
 		}
 		version = sqliteSchemaVersion
 		return nil

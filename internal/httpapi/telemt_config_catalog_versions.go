@@ -8,6 +8,8 @@ import (
 
 // The 3.5.5 inventory remains the legacy baseline. New fields are offered
 // only on an identified compatible server, including absent optional tables.
+// The me_bind_stale_mode default correction applies to every version,
+// including the baseline inventory.
 func telemtConfigCatalogForVersion(version string) telemtConfigCatalog {
 	catalog := telemt355ConfigCatalog
 	catalog.Fields = append([]telemtConfigField(nil), catalog.Fields...)

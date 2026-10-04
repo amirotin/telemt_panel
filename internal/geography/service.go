@@ -19,6 +19,7 @@ import (
 // LiveSource copies active observations and exposes the collector reset barrier.
 type LiveSource interface {
 	UserIPSnapshot(int64) hub.UserIPLiveSnapshot
+	UserIPSnapshotStatus(int64) hub.UserIPSourceStatus
 	UserIPResetEpoch() uint64
 }
 
@@ -47,6 +48,9 @@ type Dependencies struct {
 	GeoIP   Resolver
 	State   SettingsStore
 	Now     func() time.Time
+	// Nonpositive budgets use the defaults; requests always outlast builds.
+	BuildTimeout   time.Duration
+	RequestTimeout time.Duration
 }
 
 // OverviewQuery selects a source, or a view of an existing opaque snapshot.
@@ -106,15 +110,12 @@ type Service struct {
 	wg               sync.WaitGroup
 	closeOnce        sync.Once
 	settingsMu       sync.RWMutex
-	config           ServerLocationConfig
-	settingsErr      error
 	settingsEpoch    atomic.Uint64
 	settingsSnapshot atomic.Pointer[settingsVersion]
 }
 
 type settingsVersion struct {
 	config ServerLocationConfig
-	err    error
 }
 
 // NewService restores state without querying Telemt or building projections.
@@ -122,10 +123,15 @@ func NewService(deps Dependencies) *Service {
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
+	if deps.BuildTimeout <= 0 {
+		deps.BuildTimeout = 10 * time.Second
+	}
+	if deps.RequestTimeout <= deps.BuildTimeout {
+		deps.RequestTimeout = deps.BuildTimeout + 2*time.Second
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{deps: deps, now: deps.Now, ctx: ctx, cancel: cancel}
-	s.restoreSettings()
-	s.settingsSnapshot.Store(&settingsVersion{config: s.config, err: s.settingsErr})
+	s.settingsSnapshot.Store(&settingsVersion{config: s.restoreSettings()})
 	return s
 }
 
@@ -220,7 +226,7 @@ func (s *Service) buildVersion(ctx context.Context, k key, e epochs) (*snapshot,
 			days := int64(history.Retention / (24 * time.Hour))
 			durable := history.Durable
 			src.EffectiveFrom, src.RetentionDays, src.Durable = &effective, &days, &durable
-			src.Partial = history.Truncated || history.Collection.Limited || history.Collection.Gap
+			src.Partial = history.Partial || history.Truncated || history.Collection.Limited || history.Collection.Gap
 			src.InputTruncated, src.CollectionGap = history.Truncated, history.Collection.Gap
 			if history.Collection.Through > 0 {
 				observed := history.Collection.Through
@@ -230,7 +236,7 @@ func (s *Service) buildVersion(ctx context.Context, k key, e epochs) (*snapshot,
 			}
 		}
 		if s.deps.Live != nil {
-			src.Pending = s.deps.Live.UserIPSnapshot(asOf).Source.Pending
+			src.Pending = s.deps.Live.UserIPSnapshotStatus(asOf).Pending
 		}
 	}
 	settings, err := s.Settings(ctx)

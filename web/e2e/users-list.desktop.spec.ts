@@ -6,13 +6,14 @@ test("reference user cards adapt without hiding data or expanding 2000 accounts 
   const snapshot=await (await page.request.get("/api/snapshot?topics=users,stats")).json();
   const base=snapshot.users.users.find((user:{username:string})=>user.username==="alice");
   const secret="0123456789abcdef0123456789abcdef";
+  const longUsername="long-account-"+"a".repeat(51);
   base.links={classic:[],secure:[`tg://proxy?server=proxy.example.org&port=443&secret=dd${secret}`],tls:[`tg://proxy?server=proxy.example.org&port=443&secret=ee${secret}6578616d706c652e6f7267`],tls_domains:[]};
-  const users=Array.from({length:2000},(_,i)=>({...base,username:i===0?"alice":`reference-${String(i).padStart(4,"0")}`,current_connections:2000-i,active_unique_ips:1000,expiration_rfc3339:"2015-10-03T00:00:00Z",data_quota_bytes:2048,traffic:{observed_total_bytes:8192,current_month_bytes:4096,month_key:202610,observed_since_epoch_secs:1,last_activity_epoch_secs:2,continuity:"normal"}}));
+  const users=Array.from({length:2000},(_,i)=>({...base,username:i===0?"alice":i===1?longUsername:`reference-${String(i).padStart(4,"0")}`,current_connections:2000-i,active_unique_ips:1000,expiration_rfc3339:"2015-10-03T00:00:00Z",data_quota_bytes:2048,traffic:{observed_total_bytes:8192,current_month_bytes:4096,month_key:202610,observed_since_epoch_secs:1,last_activity_epoch_secs:2,continuity:"normal"}}));
   snapshot.users={...snapshot.users,users,quota:Object.fromEntries(users.map(user=>[user.username,{used_bytes:1024,data_quota_bytes:2048,last_reset_epoch_secs:1}]))};
-  await page.route("**/api/telemt/web-access",route=>route.fulfill({json:{revision:"test",enabled:true,vhosts:[{host:"web.example.org",public_addr:"198.51.100.1:443",profiles:[{user:"alice",secret_mode:"plain"}]}]}}));
+  await page.route("**/api/telemt/web-access",route=>route.fulfill({json:{revision:"test",enabled:true,vhosts:[{host:"web.example.org",public_addr:"198.51.100.1:443",profiles:[{user:"alice",secret_mode:"plain"},{user:longUsername,secret_mode:"plain"}]}]}}));
   await page.route("**/api/events?*",route=>route.fulfill({contentType:"text/event-stream",body:"retry: 60000\n\n"+Object.entries(snapshot).map(([topic,v])=>`event: ${topic}\ndata: ${JSON.stringify({ts:Math.floor(Date.now()/1000),v})}\n\n`).join("")}));
   await page.goto("/people");
-  for(const width of [320,390,768,1280,2560,3840]){
+  for(const width of [320,390,639,640,704,768,959,1023,1280,2560,3840]){
     await page.setViewportSize({width,height:900});
     const search=await openUsersSearch(page);await search.fill("");
     const row=page.locator('[data-user="alice"]');await expect(row).toBeVisible();
@@ -24,6 +25,22 @@ test("reference user cards adapt without hiding data or expanding 2000 accounts 
     const dimensions=await row.evaluate(node=>({width:node.clientWidth,height:node.clientHeight,faceWidth:node.querySelector(".user-row-face")!.scrollWidth,faceHeight:node.querySelector(".user-row-face")!.scrollHeight}));
     expect(dimensions.faceWidth).toBeLessThanOrEqual(dimensions.width+1);
     expect(dimensions.faceHeight).toBeLessThanOrEqual(dimensions.height+1);
+    const longRow=page.locator(`[data-user="${longUsername}"]`);
+    await expect(longRow).toBeVisible();
+    await expect(longRow.locator(".user-copy-kind")).toHaveText(["EE","DD","WEB"]);
+    const longDimensions=await longRow.evaluate(node=>{
+      const rect=node.getBoundingClientRect(),face=node.querySelector(".user-row-face")!;
+      const controls=[...node.querySelectorAll(".user-row-actions button")].map(button=>{const box=button.getBoundingClientRect();return {left:box.left,right:box.right,top:box.top,bottom:box.bottom};});
+      return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,width:node.clientWidth,height:node.clientHeight,faceWidth:face.scrollWidth,faceHeight:face.scrollHeight,controls};
+    });
+    expect(longDimensions.faceWidth).toBeLessThanOrEqual(longDimensions.width+1);
+    expect(longDimensions.faceHeight).toBeLessThanOrEqual(longDimensions.height+1);
+    for(const control of longDimensions.controls){
+      expect(control.left).toBeGreaterThanOrEqual(longDimensions.left);
+      expect(control.right).toBeLessThanOrEqual(longDimensions.right);
+      expect(control.top).toBeGreaterThanOrEqual(longDimensions.top);
+      expect(control.bottom).toBeLessThanOrEqual(longDimensions.bottom);
+    }
     const traffic=await row.locator(".user-col-traffic").boundingBox();
     const connections=await row.locator(".user-col-now").boundingBox();
     if(width<1280)expect(connections!.y+connections!.height).toBeLessThanOrEqual(traffic!.y);

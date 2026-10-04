@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"testing"
+	"time"
 )
 
 func TestLookupBatchGeneration(t *testing.T) {
@@ -54,6 +55,38 @@ func TestLookupBatchGeneration(t *testing.T) {
 	m.Close()
 	if _, _, err = m.LookupBatch(context.Background(), ips, disabled); !errors.Is(err, ErrGenerationChanged) {
 		t.Fatalf("closed generation = %v", err)
+	}
+}
+
+func TestLookupBatchCancellationWhileWriterHeld(t *testing.T) {
+	m := NewManager(t.TempDir(), newMemorySettings())
+	defer m.Close()
+	generation := m.Generation()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		close(started)
+		_, _, err := m.LookupBatch(ctx, []string{"1.1.1.1"}, generation)
+		result <- err
+	}()
+	<-started
+	select {
+	case err := <-result:
+		t.Fatalf("batch completed while the writer held its lock: %v", err)
+	case <-time.After(65 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiting batch cancellation = %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("canceled batch kept waiting for the writer")
 	}
 }
 

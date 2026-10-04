@@ -180,3 +180,57 @@ func TestStructuredServiceLogsDoNotClassifySourceFailure(t *testing.T) {
 		t.Fatalf("application message became source diagnostic %q", got)
 	}
 }
+
+func TestCommandLogStreamClassifiesOnlyRecentRawLinesAtFailure(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		raw    string
+		err    error
+		reason string
+	}{
+		{"expired permission text", "permission denied\n" + strings.Repeat("service line\n", 8), &ExitError{Code: 7}, "command_failed"},
+		{"oldest retained permission text", "permission denied\n" + strings.Repeat("service line\n", 7), &ExitError{Code: 7}, "permission_denied"},
+		{"newest matching reason", "permission denied\nNo such container: telemt\nservice line\n", &ExitError{Code: 7}, "target_missing"},
+		{"large raw lines still evict old text", "permission denied\n" + strings.Repeat(strings.Repeat("x", 4097)+"\n", 8), &ExitError{Code: 7}, "command_failed"},
+		{"large diagnostic is ignored", strings.Repeat("x", 4096) + "permission denied\n", &ExitError{Code: 7}, "command_failed"},
+		{"recent scanner failure", "permission denied\n", errors.New("scanner read failure"), "permission_denied"},
+		{"normal EOF", "permission denied\n", nil, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			reader, writer := io.Pipe()
+			events := streamCommandLogs(ctx, reader, func(raw []byte) (LogLine, bool) {
+				return LogLine{Msg: string(raw)}, true
+			})
+			go func() {
+				io.WriteString(writer, test.raw)
+				writer.CloseWithError(test.err)
+			}()
+			var terminal error
+			var lines int
+			for event := range events {
+				if event.Err != nil {
+					terminal = event.Err
+				} else {
+					lines++
+				}
+			}
+			if ctx.Err() != nil {
+				t.Fatal("stream did not terminate")
+			}
+			if lines != strings.Count(test.raw, "\n") {
+				t.Fatalf("received %d lines, want %d", lines, strings.Count(test.raw, "\n"))
+			}
+			if test.reason == "" {
+				if terminal != nil {
+					t.Fatalf("normal EOF emitted source error: %v", terminal)
+				}
+				return
+			}
+			if terminal == nil || LogDiagnostic(terminal).Reason != test.reason {
+				t.Fatalf("terminal diagnostic = %v, want reason %q", terminal, test.reason)
+			}
+		})
+	}
+}

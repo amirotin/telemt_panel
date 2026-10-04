@@ -98,7 +98,7 @@ func runScaleProjection(t *testing.T, history store.HistoryStore, expectedAccoun
 	}
 	clock := &testClock{t: time.Unix(1800000004, 0)}
 	live := &testLive{snapshot: hub.UserIPLiveSnapshot{Records: records[:20000], Source: hub.UserIPSourceStatus{State: "collecting", LastSuccess: 1800000004}}}
-	service := NewService(Dependencies{History: history, Live: live, GeoIP: resolver, State: state, Now: clock.now})
+	service := NewService(Dependencies{History: history, Live: live, GeoIP: resolver, State: state, Now: clock.now, BuildTimeout: 120 * time.Second, RequestTimeout: 130 * time.Second})
 	defer service.Close()
 	var cold, warm, nowSamples []time.Duration
 	var maxOverview, maxPage int

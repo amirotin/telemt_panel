@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/host"
@@ -54,9 +55,8 @@ func (s *Server) logSourceDiagnostic(err error, logical, name string) apiLogSour
 		name = s.cfg.Host.LogFile
 	}
 	name = stripLogControls(name)
-	if len(name) > 1024 {
-		runes := []rune(name)
-		name = string(runes[:min(256, len(runes))])
+	if utf8.RuneCountInString(name) > 256 {
+		name = string([]rune(name)[:256])
 	}
 	return apiLogSourceDiagnostic{Code: "log_source_error", Message: diagnostic.Error(), Source: s.logSrc.Kind(), Service: logical, Target: name, Reason: diagnostic.Reason, ExitCode: diagnostic.ExitCode}
 }

@@ -121,3 +121,34 @@ func TestUserIPSnapshotCapsAndCancel(t *testing.T) {
 		t.Fatalf("cap length=%d truncated=%v err=%v", len(s.Records), s.Truncated, err)
 	}
 }
+
+func TestUserIPSnapshotCapKeepsFreshestRecordsWithStableTies(t *testing.T) {
+	m, _ := NewMemoryHistory()
+	defer m.Close()
+	const now int64 = 1800000000
+	m.userIPs = make(map[userIPKey]UserIPRecord)
+	for i := 0; i < UserIPMemoryLimit+2; i++ {
+		at := now - 1
+		if i == 0 {
+			at = now - 2
+		} else if i == UserIPMemoryLimit+1 {
+			at = now
+		}
+		r := snapshotRecord(fmt.Sprintf("user%05d", i), "1.1.1.1", at)
+		m.userIPs[userIPKey{r.Username, r.IP}] = r
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		snap, err := m.ReadUserIPSnapshot(context.Background(), 0, now)
+		if err != nil || !snap.Truncated || len(snap.Records) != UserIPMemoryLimit {
+			t.Fatalf("snapshot cap: %d truncated=%v err=%v", len(snap.Records), snap.Truncated, err)
+		}
+		if snap.Records[0].Username != "user00001" || snap.Records[len(snap.Records)-1].Username != "user20001" {
+			t.Fatalf("selected range %s..%s omitted fresh history", snap.Records[0].Username, snap.Records[len(snap.Records)-1].Username)
+		}
+		for _, record := range snap.Records {
+			if record.Username == "user20000" {
+				t.Fatal("timestamp tie did not keep the first username/IP keys")
+			}
+		}
+	}
+}
