@@ -30,6 +30,14 @@
   --surface-2: 28 36 46; /* #1c242e */
   --surface-3: 35 45 56; /* #232d38 — hover/active step above surface-2 */
 
+  /* Cartographic fills need more separation than adjacent UI surfaces. */
+  --geo-backdrop: 8 22 34;
+  --geo-ocean: 15 40 60;
+  --geo-land: 98 127 151;
+  --geo-border: 147 175 195;
+  --geo-grid: 126 161 188;
+  --geo-data: 77 197 251;
+
   --border: 31 39 49; /* #1f2731 */
   --border-strong: 42 53 66; /* #2a3542 */
 
@@ -165,6 +173,13 @@
   --surface-2: 231 236 241; /* #e7ecf1 */
   --surface-3: 219 226 234; /* #dbe2ea */
 
+  --geo-backdrop: 211 227 241;
+  --geo-ocean: 151 184 214;
+  --geo-land: 244 248 252;
+  --geo-border: 93 125 154;
+  --geo-grid: 87 126 162;
+  --geo-data: 14 86 143;
+
   --border: 219 226 234; /* #dbe2ea */
   --border-strong: 196 206 218;
 
@@ -240,6 +255,13 @@
     --surface: 255 255 255;
     --surface-2: 231 236 241;
     --surface-3: 219 226 234;
+
+    --geo-backdrop: 211 227 241;
+    --geo-ocean: 151 184 214;
+    --geo-land: 244 248 252;
+    --geo-border: 93 125 154;
+    --geo-grid: 87 126 162;
+    --geo-data: 14 86 143;
 
     --border: 219 226 234;
     --border-strong: 196 206 218;
@@ -321,6 +343,13 @@
   --surface: 42 38 34; /* #2a2622 */
   --surface-2: 50 46 39; /* #322e27 */
   --surface-3: 60 54 46; /* #3c362e */
+
+  --geo-backdrop: 27 23 18;
+  --geo-ocean: 52 43 33;
+  --geo-land: 138 121 96;
+  --geo-border: 189 167 132;
+  --geo-grid: 168 143 109;
+  --geo-data: 242 191 83;
 
   --border: 51 46 39; /* #332e27 */
   --border-strong: 70 63 54; /* #463f36 */
@@ -413,6 +442,13 @@
   --surface: 251 246 234; /* #fbf6ea */
   --surface-2: 235 223 199; /* #ebdfc7 */
   --surface-3: 224 210 180; /* #e0d2b4 */
+
+  --geo-backdrop: 232 219 190;
+  --geo-ocean: 200 182 142;
+  --geo-land: 254 247 230;
+  --geo-border: 143 122 78;
+  --geo-grid: 144 121 80;
+  --geo-data: 120 80 15;
 
   --border: 221 206 176; /* #ddceb0 */
   --border-strong: 198 180 141; /* #c6b48d */

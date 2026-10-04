@@ -36,7 +36,7 @@ describe("PersonIPHistory",()=>{
   it("retains local geography when Telemt is unavailable and distinguishes reserved addresses",async()=>{
     const data=history(); data.source.state="unavailable";
     data.geoip={state:"ready",available:true,active_source:"files",databases:[],last_error:null};
-    const geo={state:"found" as const,country_code:"NL",country_name:"Netherlands",country_name_ru:"Нидерланды",city:"Amsterdam",city_ru:"Амстердам",asn:64500,organization:"Example network"};
+    const geo={state:"found" as const,country_code:"NL",country_name:"Netherlands",country_name_ru:"Нидерланды",city:"Amsterdam",city_ru:"Амстердам",asn:64500,city_id:null,location:null,organization:"Example network"};
     data.items=[{...data.items[0],geo},{...data.items[0],ip:"192.168.1.1",family:4,geo:{...geo,state:"private"}}];
     await mount(data);
     expect(container.querySelectorAll('[data-ip-geo]')).toHaveLength(2);
@@ -53,7 +53,7 @@ describe("PersonIPHistory",()=>{
     setLocalePreference(locale);
     const data=history();
     data.geoip={state:"ready",available:true,active_source:"files",databases:[{kind:"asn",build_epoch_secs:1700000000,loaded_epoch_secs:1700001000}],last_error:null};
-    data.items=[{...data.items[0],geo:{state:"found",country_code:"",country_name:"",country_name_ru:"",city:"",city_ru:"",asn:64500,organization:"Example network"}}];
+    data.items=[{...data.items[0],geo:{state:"found",country_code:"",country_name:"",country_name_ru:"",city:"",city_ru:"",asn:64500,city_id:null,location:null,organization:"Example network"}}];
     await mount(data);
     const columns=container.querySelector(".person-ip-columns")!;
     expect(columns.textContent).toContain(header);

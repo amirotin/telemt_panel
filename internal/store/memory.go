@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -36,6 +37,7 @@ type Memory struct {
 	mu               sync.Mutex
 	userIPs          map[userIPKey]UserIPRecord
 	userIPCollection UserIPCollection
+	userIPEpoch      atomic.Uint64
 
 	sessions             map[string]Session
 	audit                []AuditEntry
@@ -911,6 +913,9 @@ func (m *Memory) ReplaceStoragePolicies(policies []StoragePolicy) error {
 		m.audit = previousAudit
 		return err
 	}
+	if previous[StorageUserIPHistory] != m.policies[StorageUserIPHistory] {
+		m.userIPEpoch.Add(1)
+	}
 	return nil
 }
 
@@ -923,13 +928,18 @@ func (m *Memory) ApplyStoragePolicies(policies []StoragePolicy) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.policies = policyMap(policies)
+	next := policyMap(policies)
+	if m.policies[StorageUserIPHistory] != next[StorageUserIPHistory] {
+		m.userIPEpoch.Add(1)
+	}
+	m.policies = next
 	return nil
 }
 
 func (m *Memory) rollbackImportedHistory() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.userIPEpoch.Add(1)
 	m.metrics = make(map[string][]MetricPoint)
 	m.userIPs = nil
 	m.userIPCollection = UserIPCollection{}

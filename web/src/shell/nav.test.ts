@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { en, ru, type Dict } from "../i18n/testing";
 import {
   MANAGEMENT_NAV_ITEMS,
+  COMPACT_NAV_ITEMS,
+  MORE_NAV_ITEMS,
   NAV_ITEMS,
   OPERATIONAL_NAV_ITEMS,
   SIDEBAR_MANAGEMENT_NAV_ITEMS,
@@ -19,6 +21,7 @@ const OPERATIONAL_SECTIONS = [
   { to: "/overview", labelKey: "overview" },
   { to: "/people", labelKey: "people" },
   { to: "/pulse", labelKey: "pulse" },
+  { to: "/geography", labelKey: "geography" },
   { to: "/journal", labelKey: "journal" },
 ] as const;
 const MANAGEMENT_SECTIONS = [
@@ -43,6 +46,7 @@ describe("the grouped navigation", () => {
       "/overview",
       "/people",
       "/pulse",
+      "/geography",
       "/journal",
       "/web",
     ]);
@@ -50,13 +54,14 @@ describe("the grouped navigation", () => {
   });
 
   it("keeps WEB behind More and four primary destinations on compact navigation", () => {
-    expect(OPERATIONAL_NAV_ITEMS.map(({ to }) => to)).toEqual([
+    expect(COMPACT_NAV_ITEMS.map(({ to }) => to)).toEqual([
       "/overview",
       "/people",
       "/pulse",
       "/journal",
     ]);
     expect(MANAGEMENT_NAV_ITEMS.map(({ to }) => to)).toEqual(["/server", "/web"]);
+    expect(MORE_NAV_ITEMS.map(({ to }) => to)).toEqual(["/geography", "/server", "/web"]);
   });
 
   it("gives every section its own icon", () => {
@@ -74,6 +79,7 @@ describe("the grouped navigation", () => {
       "Сводка",
       "Пользователи",
       "Пульс",
+      "География",
       "Журнал",
       "Сервер",
       "WEB",
@@ -91,6 +97,8 @@ describe("the grouped navigation", () => {
     expect(isNavItemActive("/pulse", "/pulseX")).toBe(false);
     expect(isNavItemActive("/overview", "/people")).toBe(false);
     expect(isNavItemActive("/server", "/")).toBe(false);
+    expect(isNavItemActive("/pulse", "/geography")).toBe(false);
+    expect(MORE_NAV_ITEMS.some(item => isNavItemActive(item.to, "/geography"))).toBe(true);
   });
 });
 

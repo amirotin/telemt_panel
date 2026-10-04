@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
@@ -25,8 +26,10 @@ type SQLite struct {
 	path   string
 	schema int
 
-	policyMu sync.RWMutex
-	policies map[StorageCategory]StoragePolicy
+	policyMu    sync.RWMutex
+	policies    map[StorageCategory]StoragePolicy
+	userIPMu    sync.RWMutex
+	userIPEpoch atomic.Uint64
 
 	liveMu         sync.RWMutex
 	liveMetrics    map[string][]MetricPoint
@@ -218,8 +221,14 @@ func (s *SQLite) ApplyStoragePolicies(policies []StoragePolicy) error {
 	}
 	s.liveMu.Lock()
 	defer s.liveMu.Unlock()
+	s.userIPMu.Lock()
+	defer s.userIPMu.Unlock()
 	s.policyMu.Lock()
-	s.policies = policyMap(policies)
+	next := policyMap(policies)
+	if s.policies[StorageUserIPHistory] != next[StorageUserIPHistory] {
+		s.userIPEpoch.Add(1)
+	}
+	s.policies = next
 	s.policyMu.Unlock()
 	for name := range s.pendingMetrics {
 		if !s.policy(metricCategory(name)).Enabled {

@@ -32,6 +32,7 @@ import { SessionSheet } from "./SessionSheet";
 import { SessionIcon as SessionGlyph } from "./SessionIcon";
 import { StorageSettings } from "./StorageSettings";
 import { GeoIPSettings } from "./GeoIPSettings";
+import { GeographySettings } from "../../geography/GeographySettings";
 import { PasskeySettings } from "./PasskeySettings";
 import { TransportStatus } from "./TransportStatus";
 
@@ -349,6 +350,7 @@ export function SettingsPage() {
         <StorageSettings />
       </div>
       <GeoIPSettings />
+      <GeographySettings />
 
       {sessionSheetOpen && (
         <SessionSheet

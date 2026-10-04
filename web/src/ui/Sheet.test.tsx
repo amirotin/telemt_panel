@@ -4,6 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import { Sheet } from "./Sheet";
 
 describe("Sheet focus lifecycle", () => {
+  it("allows label-forwarded control clicks within one pointer interaction",async()=>{
+    const container=document.createElement("div");document.body.append(container);const root=createRoot(container),control=vi.fn(),foreign=vi.fn();
+    try{act(()=>root.render(<Sheet open onClose={()=>{}} title="Form"><label><span data-label>Mode</span><input type="radio" onClick={control}/></label><button data-foreign onClick={foreign}>Other</button></Sheet>));
+      const label=document.querySelector("[data-label]")!;
+      await act(async()=>{label.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true}));label.dispatchEvent(new MouseEvent("click",{bubbles:true,detail:1}));});
+      expect(control).toHaveBeenCalledTimes(1);
+      act(()=>document.querySelector("[data-foreign]")!.dispatchEvent(new MouseEvent("click",{bubbles:true,detail:1})));
+      expect(foreign).not.toHaveBeenCalled();
+    }finally{act(()=>root.unmount());container.remove()}
+  });
   it("focuses the requested field once and restores the opener after close", () => {
     const container = document.createElement("div");
     const opener = document.createElement("button");

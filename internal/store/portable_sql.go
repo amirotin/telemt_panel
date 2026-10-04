@@ -107,6 +107,8 @@ func (s *SQLite) ImportData(data PortableData) error {
 	if err := s.flushMetrics(); err != nil {
 		return err
 	}
+	s.userIPMu.Lock()
+	defer s.userIPMu.Unlock()
 	err = sqlstore.WithTx(context.Background(), s.db, nil, func(tx *sql.Tx) error {
 		empty, err := portableSQLiteHistoryEmpty(tx)
 		if err != nil {
@@ -192,11 +194,14 @@ func (s *SQLite) ImportData(data PortableData) error {
 	if err != nil {
 		return fmt.Errorf("import sqlite history: %w", err)
 	}
+	s.userIPEpoch.Add(1)
 	return nil
 }
 
 func (s *SQLite) rollbackImportedHistory() error {
-	return sqlstore.WithTx(context.Background(), s.db, nil, func(tx *sql.Tx) error {
+	s.userIPMu.Lock()
+	defer s.userIPMu.Unlock()
+	err := sqlstore.WithTx(context.Background(), s.db, nil, func(tx *sql.Tx) error {
 		if _, err := tx.Exec("DELETE FROM user_ip_history"); err != nil {
 			return err
 		}
@@ -218,6 +223,10 @@ func (s *SQLite) rollbackImportedHistory() error {
 		_, err := tx.Exec(`DELETE FROM metric_points`)
 		return err
 	})
+	if err == nil {
+		s.userIPEpoch.Add(1)
+	}
+	return err
 }
 
 func walkPortableUserTrafficUsers(s *SQLite, tx *sql.Tx, emit func(PortableUserTrafficUser) error) (err error) {

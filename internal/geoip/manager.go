@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -64,6 +65,7 @@ type Manager struct {
 	config      Config
 	status      Status
 	active      *bundle
+	generation  atomic.Uint64
 	closed      bool
 	operation   bool
 	lastAttempt time.Time
@@ -139,6 +141,7 @@ func (m *Manager) restore() {
 		return
 	}
 	m.active = b
+	m.generation.Add(1)
 	if !matches {
 		m.status = errorStatus(b, ErrorActivationFailed)
 	} else {
@@ -217,6 +220,7 @@ func (m *Manager) PutConfig(cfg Config) (Settings, error) {
 	if !cfg.Enabled {
 		old := m.active
 		m.active = nil
+		m.generation.Add(1)
 		m.clearCache()
 		m.status = DisabledStatus()
 		if old != nil {
@@ -272,6 +276,7 @@ func (m *Manager) startOperationLocked(cfg Config) {
 		}
 		old := m.active
 		m.active = next
+		m.generation.Add(1)
 		m.clearCache()
 		source := next.source
 		m.status = Status{State: StateReady, Available: true, ActiveSource: &source, Databases: next.statuses()}
@@ -320,7 +325,7 @@ func (m *Manager) lookupLocked(rawIP string) *Result {
 		m.cacheOrder.MoveToFront(element)
 		result := element.Value.(cacheItem).result
 		m.cacheMu.Unlock()
-		return &result
+		return cloneResult(result)
 	}
 	m.cacheMu.Unlock()
 	result, err := m.active.lookup(addr)
@@ -341,12 +346,13 @@ func (m *Manager) lookupLocked(rawIP string) *Result {
 		}
 	}
 	m.cacheMu.Unlock()
-	return &result
+	return cloneResult(result)
 }
 
 var carrierGradeNAT = netip.MustParsePrefix("100.64.0.0/10")
 
 func isNonPublic(addr netip.Addr) bool {
+	addr = addr.Unmap()
 	return !addr.IsValid() || addr.IsPrivate() || addr.IsLoopback() ||
 		addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() ||
 		addr.IsMulticast() || addr.IsUnspecified() ||
@@ -410,6 +416,7 @@ func (m *Manager) Close() {
 		return
 	}
 	m.closed = true
+	m.generation.Add(1)
 	m.cancel()
 	m.mu.Unlock()
 	m.wg.Wait()

@@ -128,6 +128,21 @@ The tree is deliberately *not* Prettier-clean — do not run `--write` across it
 
 ## Dependencies
 
+The standalone `/geography` route uses locked `d3-geo@3.1.1`,
+`topojson-client@3.1.0`, `world-atlas@2.0.2` and lazy `three@0.185.1`.
+SVG is the default. Both renderers share the same projection DTO/selection;
+neither requests IP enrichment. Globe initialization happens only on explicit
+selection, with WebGL2, a local 2048×1024 atlas texture, DPR≤1.5 and demand
+rendering capped at 30 FPS. Expansion moves one renderer host into the existing
+Sheet; context loss falls back to SVG. Provenance and licenses:
+[`src/geography/ASSETS.md`](src/geography/ASSETS.md) and
+[`public/geography-licenses.txt`](public/geography-licenses.txt).
+
+Geography REST uses generated client options, abort signals, pinned snapshot
+IDs and server-relative monotonic TTL. Personal lists disappear on expiry or
+confirmed 409 from any feature endpoint. Snapshot IDs/cursors are never put
+in URL or localStorage. Source mutation and logout/401 clear feature data.
+
 Pinned to the plan's approved list (React, Vite, TanStack Router/Query,
 Tailwind v4, hey-api, vitest) plus:
 

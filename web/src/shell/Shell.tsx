@@ -5,8 +5,8 @@ import { useStrings } from "../i18n";
 import { StatusStrip } from "./StatusStrip";
 import { HeaderMenu } from "./HeaderMenu";
 import {
-  MANAGEMENT_NAV_ITEMS,
-  OPERATIONAL_NAV_ITEMS,
+  MORE_NAV_ITEMS,
+  COMPACT_NAV_ITEMS,
   SIDEBAR_MANAGEMENT_NAV_ITEMS,
   SIDEBAR_OVERVIEW_NAV_ITEMS,
   isNavItemActive,
@@ -36,7 +36,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [railMoreOpen, setRailMoreOpen] = useState(false);
   const ownsLayout = pathname === "/people" || pathname.startsWith("/people/");
-  const managementActive = MANAGEMENT_NAV_ITEMS.some((item) => isNavItemActive(item.to, pathname));
+  const managementActive = MORE_NAV_ITEMS.some((item) => isNavItemActive(item.to, pathname));
 
   useEffect(() => {
     if (!railMoreOpen) return;
@@ -54,7 +54,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <aside data-testid="navigation-rail" className="relative hidden w-16 shrink-0 flex-col items-center border-r border-border bg-surface py-3 min-[600px]:flex min-[1180px]:hidden">
         <BrandMark className="h-8 w-8" />
         <nav className="mt-5 flex flex-col gap-2" aria-label={s.shell.navLabel}>
-          {OPERATIONAL_NAV_ITEMS.map((item) => (
+          {COMPACT_NAV_ITEMS.map((item) => (
             <RailLink key={item.to} item={item} active={isNavItemActive(item.to, pathname)} />
           ))}
         </nav>
@@ -116,7 +116,7 @@ export function Shell({ children }: { children: ReactNode }) {
           style={{ bottom: keyboardInset }}
           aria-label={s.shell.navLabel}
         >
-          {OPERATIONAL_NAV_ITEMS.map((item) => (
+          {COMPACT_NAV_ITEMS.map((item) => (
             <BottomLink key={item.to} item={item} active={isNavItemActive(item.to, pathname)} />
           ))}
           <button
@@ -282,7 +282,7 @@ function SecondaryLinks({ onNavigate }: { onNavigate: () => void }) {
   const authDisabled = useAuthDisabled();
   return (
     <div role="menu" className="flex flex-col gap-1">
-      {MANAGEMENT_NAV_ITEMS.map(({ to, labelKey, Icon }) => (
+      {MORE_NAV_ITEMS.map(({ to, labelKey, Icon }) => (
         <Link
           key={to}
           to={to}

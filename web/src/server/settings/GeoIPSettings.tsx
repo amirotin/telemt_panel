@@ -11,6 +11,7 @@ import { Skeleton } from "../../ui/Skeleton";
 import { apiErrorMessage } from "../../people/apiError";
 import { geoIPConfigError, geoIPKinds, normalizeGeoIPConfig, sameGeoIPConfig, switchGeoIPSource } from "./geoip.helpers";
 import "./geoip.css";
+import { invalidateGeography } from "../../geography/queries";
 
 export function GeoIPSettings() {
   const strings = useStrings();
@@ -26,6 +27,7 @@ export function GeoIPSettings() {
     if (previousStatus.current !== query.data?.status) {
       previousStatus.current = query.data?.status;
       void client.invalidateQueries({ queryKey: [{ _id: "getUserIpHistory" }] });
+      void invalidateGeography(client);
     }
   }, [query.data?.status, client]);
 
@@ -33,6 +35,7 @@ export function GeoIPSettings() {
     client.setQueryData(getGeoIpSettingsQueryKey(), data);
     setDraft(null); setError(""); setFeedback(true);
     void client.invalidateQueries({ queryKey: [{ _id: "getUserIpHistory" }] });
+    void invalidateGeography(client);
   }
   const save = useMutation({ ...putGeoIpSettingsMutation(), onSuccess: accepted, onError: error => setError(apiErrorMessage(error, strings)) });
   const update = useMutation({ ...updateGeoIpMutation(), onSuccess: accepted, onError: error => setError(apiErrorMessage(error, strings)) });

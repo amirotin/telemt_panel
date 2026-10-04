@@ -3,6 +3,7 @@ package geoip
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/netip"
 	"os"
 	"strings"
@@ -114,6 +115,11 @@ func verifyRecordSchema(reader *maxminddb.Reader, kind Kind) error {
 		if err := result.Decode(record); err != nil {
 			return err
 		}
+		if city, ok := record.(*cityRecord); ok {
+			if _, err := city.location(); err != nil {
+				return err
+			}
+		}
 		seen[offset] = struct{}{}
 	}
 	return nil
@@ -151,7 +157,50 @@ type cityRecord struct {
 	} `maxminddb:"country"`
 	City struct {
 		Names map[string]string `maxminddb:"names"`
+		ID    *uint32           `maxminddb:"geoname_id"`
 	} `maxminddb:"city"`
+	Location struct {
+		Latitude       *float64 `maxminddb:"latitude"`
+		Longitude      *float64 `maxminddb:"longitude"`
+		AccuracyRadius *uint16  `maxminddb:"accuracy_radius"`
+	} `maxminddb:"location"`
+}
+
+func (r cityRecord) location() (*Location, error) {
+	for _, coordinate := range []struct {
+		value *float64
+		bound float64
+	}{
+		{r.Location.Latitude, 90}, {r.Location.Longitude, 180},
+	} {
+		if coordinate.value != nil && (math.IsNaN(*coordinate.value) || math.IsInf(*coordinate.value, 0) || math.Abs(*coordinate.value) > coordinate.bound) {
+			return nil, errors.New("geoip: invalid City coordinates")
+		}
+	}
+	if r.Location.Latitude == nil || r.Location.Longitude == nil {
+		return nil, nil
+	}
+	return &Location{Latitude: *r.Location.Latitude, Longitude: *r.Location.Longitude, AccuracyRadiusKM: r.Location.AccuracyRadius}, nil
+}
+
+func applyCity(out *Result, record cityRecord) error {
+	location, err := record.location()
+	if err != nil {
+		return err
+	}
+	if out.CountryCode != "" && record.Country.ISOCode != "" && out.CountryCode != record.Country.ISOCode {
+		out.CountryConflict = true
+		return nil
+	}
+	if out.CountryCode == "" {
+		applyCountry(out, record.Country.ISOCode, record.Country.Names)
+	}
+	out.City, out.CityRU = record.City.Names["en"], record.City.Names["ru"]
+	if record.City.ID != nil && *record.City.ID > 0 {
+		out.CityID = record.City.ID
+	}
+	out.Location = location
+	return nil
 }
 
 type asnRecord struct {
@@ -174,11 +223,9 @@ func (b *bundle) lookup(addr netip.Addr) (Result, error) {
 		if err := db.reader.Lookup(addr).Decode(&record); err != nil {
 			return Result{}, err
 		}
-		if out.CountryCode == "" {
-			applyCountry(&out, record.Country.ISOCode, record.Country.Names)
+		if err := applyCity(&out, record); err != nil {
+			return Result{}, err
 		}
-		out.City = record.City.Names["en"]
-		out.CityRU = record.City.Names["ru"]
 	}
 	if db := b.databases[KindASN]; db != nil {
 		var record asnRecord
@@ -189,7 +236,7 @@ func (b *bundle) lookup(addr netip.Addr) (Result, error) {
 		out.Organization = record.Organization
 	}
 	if out.CountryCode != "" || out.CountryName != "" || out.CountryNameRU != "" ||
-		out.City != "" || out.CityRU != "" || out.ASN != 0 || out.Organization != "" {
+		out.City != "" || out.CityRU != "" || out.CityID != nil || out.Location != nil || out.ASN != 0 || out.Organization != "" {
 		out.State = ResultFound
 	}
 	return out, nil

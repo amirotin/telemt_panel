@@ -10,6 +10,7 @@
 // i18n/plural.ts's plural()/countLabel()/pluralTemplate(); Russian uses all
 // three slots, English repeats the plural in the last two.
 import { geoipRu } from "./geoip.ru";
+import { geographyRu } from "./geography.ru";
 import { quotaScheduleRu } from "./quotaSchedule.ru";
 import {releasePickerRu} from './releasePicker.ru';
 import {serviceControlRu} from './serviceControl.ru';
@@ -21,6 +22,7 @@ export const ru = {
   releasePicker:releasePickerRu,
   quotaSchedule: quotaScheduleRu,
   geoip: geoipRu,
+  geography: geographyRu,
   // The dictionary carries its own BCP-47 tag so a helper only ever needs
   // ONE parameter (`s: Dict`) to both look a string up and pick the right
   // plural form / Intl formatter — see i18n/plural.ts's localeOf.
@@ -117,6 +119,7 @@ export const ru = {
     overview: "Сводка",
     people: "Пользователи",
     pulse: "Пульс",
+    geography: "География",
     journal: "Журнал",
     server: "Сервер",
     web: "WEB",
@@ -3815,6 +3818,11 @@ export const ru = {
       "Клик копирует через Clipboard API (HTTPS/localhost), иначе через execCommand, иначе выделяет значение и показывает тост «{manual}» — см. src/lib/copyText.ts.",
   },
   errors: {
+    geography_snapshot_expired: "Снимок обновился. Обновите географию.",
+    geography_source_changed: "Источники изменились. Повторите запрос.",
+    geography_busy: "География занята. Повторите запрос через несколько секунд.",
+    geography_capacity: "Превышен ресурсный предел географии.",
+    geography_timeout: "Построение географии заняло слишком много времени.",
     branding_invalid_title: "Введите название от 1 до 80 символов без переносов строки.",
     branding_invalid_mode: "Выберите режим логотипа.",
     branding_invalid_path: "Укажите абсолютный путь к файлу на сервере.",
@@ -3940,6 +3948,7 @@ export const ru = {
     "branding.settings_change": "Изменено оформление панели",
     "links.settings_change": "Изменены настройки адресов в ссылках",
     "geoip.settings_change": "Изменены настройки географии IP",
+    "geography.settings_change": "Изменено положение сервера Telemt",
     "geoip.update": "Запрошено обновление баз GeoIP",
     login: "Вход",
     "login.failed": "Неудачный вход",

@@ -21,9 +21,13 @@
     "@tanstack/react-query": "5.102.3",
     "@tanstack/react-router": "1.170.32",
     "@tanstack/react-virtual": "3.14.10",
+    "d3-geo": "3.1.1",
     "qrcode": "1.5.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "three": "0.185.1",
+    "topojson-client": "3.1.0",
+    "world-atlas": "2.0.2"
   },
   "overrides": {
     "js-yaml": "4.3.2"
@@ -34,9 +38,13 @@
     "@playwright/test": "1.62.1",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/router-plugin": "1.168.35",
+    "@types/d3-geo": "3.1.1",
     "@types/qrcode": "1.5.6",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
+    "@types/three": "0.186.0",
+    "@types/topojson-client": "3.1.5",
+    "@types/topojson-specification": "1.0.5",
     "@vitejs/plugin-react": "6.1.0",
     "eslint": "10.9.1",
     "eslint-plugin-react-hooks": "7.1.1",

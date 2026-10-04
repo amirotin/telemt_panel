@@ -1291,6 +1291,141 @@ export type GeoIpSettings = {
     status: GeoIpStatus;
 };
 
+export type GeographyRange = 'now' | '24h' | '7d' | '30d';
+
+export type GeographyFamily = 'all' | '4' | '6';
+
+export type GeographyTotals = {
+    unique_ips: number;
+    accounts: number;
+    country_count: number;
+    location_count: number;
+};
+
+export type GeographyQuality = {
+    located: number;
+    country_only: number;
+    private: number;
+    not_found: number;
+    unavailable: number;
+    coordinate_coverage: number | null;
+    geo_conflicts: number;
+};
+
+export type GeographySource = {
+    kind: 'live' | 'history';
+    observed_at: number | null;
+    age_secs: number | null;
+    requested_from: number | null;
+    effective_from: number | null;
+    retention_days: number | null;
+    durable: boolean | null;
+    partial: boolean;
+    input_truncated: boolean;
+    collection_gap: boolean;
+    pending: boolean;
+    invalid_users: number;
+};
+
+export type GeographyCountry = {
+    id: string;
+    country_code: string;
+    name: string;
+    name_ru: string;
+    unique_ips: number;
+    accounts: number;
+};
+
+export type GeographyPosition = {
+    latitude: number;
+    longitude: number;
+    accuracy_radius_km: number | null;
+};
+
+export type GeographyLocation = {
+    id: string;
+    country_code: string | null;
+    name: string | null;
+    name_ru: string | null;
+    city_id: number | null;
+    location: GeographyPosition | null;
+    unique_ips: number;
+    accounts: number;
+};
+
+export type GeographyVisible = {
+    points: number;
+    total_coordinate_locations: number;
+    omitted_points: number;
+    countries: number;
+    total_countries: number;
+    omitted_countries: number;
+};
+
+export type GeographyServer = {
+    state: 'hidden' | 'ready' | 'unresolved';
+    origin: 'manual' | 'geoip' | null;
+    label: string;
+    location: GeoIpLocation | null;
+};
+
+export type GeographyOverview = {
+    snapshot_id: string;
+    generated_at: number;
+    expires_at: number;
+    as_of: number;
+    served_at: number;
+    range: GeographyRange;
+    family: GeographyFamily;
+    state: 'ready' | 'partial' | 'empty' | 'stale' | 'unavailable';
+    totals: GeographyTotals | null;
+    quality: GeographyQuality | null;
+    source: GeographySource;
+    geoip: GeoIpStatus;
+    countries: Array<GeographyCountry>;
+    points: Array<GeographyLocation>;
+    visible: GeographyVisible;
+    selection: GeographyCountry | GeographyLocation | null;
+    server: GeographyServer;
+};
+
+export type GeographyLocationPage = {
+    snapshot_id: string;
+    items: Array<GeographyCountry | GeographyLocation>;
+    total: number;
+    next_cursor: string | null;
+};
+
+export type GeographyUser = {
+    username: string;
+    unique_ips: number;
+};
+
+export type GeographyUserPage = {
+    snapshot_id: string;
+    group_id: string;
+    items: Array<GeographyUser>;
+    total: number;
+    next_cursor: string | null;
+};
+
+export type ServerLocationConfig = {
+    mode: 'hidden' | 'manual' | 'ip';
+    label: string;
+    public_ip: string | null;
+    latitude: number | null;
+    longitude: number | null;
+};
+
+export type GeographySettings = {
+    server_location: ServerLocationConfig;
+};
+
+export type GeographyError = {
+    code: 'bad_request' | 'not_found' | 'geography_snapshot_expired' | 'geography_source_changed' | 'geography_busy' | 'geography_capacity' | 'geography_timeout' | 'internal_error';
+    message: string;
+};
+
 export type GeoIpResult = {
     state: 'found' | 'private' | 'not_found';
     country_code: string;
@@ -1300,6 +1435,14 @@ export type GeoIpResult = {
     city_ru: string;
     asn: number;
     organization: string;
+    city_id: number | null;
+    location: GeoIpLocation | null;
+};
+
+export type GeoIpLocation = {
+    latitude: number;
+    longitude: number;
+    accuracy_radius_km: number | null;
 };
 
 export type Username = string;
@@ -3914,6 +4057,288 @@ export type PurgeStorageHistoryResponses = {
 };
 
 export type PurgeStorageHistoryResponse = PurgeStorageHistoryResponses[keyof PurgeStorageHistoryResponses];
+
+export type GetGeographyData = {
+    body?: never;
+    path?: never;
+    query?: {
+        range?: 'now' | '24h' | '7d' | '30d';
+        family?: 'all' | '4' | '6';
+        country?: string;
+        location?: string;
+        snapshot_id?: string;
+    };
+    url: '/api/geography';
+};
+
+export type GetGeographyErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * unauthorized
+     */
+    401: Error;
+    /**
+     * forbidden
+     */
+    403: Error;
+    /**
+     * Unknown country or group in the current snapshot
+     */
+    404: GeographyError;
+    /**
+     * geography_snapshot_expired or geography_source_changed; explicitly refresh
+     */
+    409: GeographyError;
+    /**
+     * internal_error
+     */
+    500: GeographyError;
+    /**
+     * geography_busy or geography_capacity; no automatic retry
+     */
+    503: GeographyError;
+    /**
+     * geography_timeout; no automatic retry
+     */
+    504: GeographyError;
+};
+
+export type GetGeographyError = GetGeographyErrors[keyof GetGeographyErrors];
+
+export type GetGeographyResponses = {
+    /**
+     * Bounded, immutable snapshot view
+     */
+    200: GeographyOverview;
+};
+
+export type GetGeographyResponse = GetGeographyResponses[keyof GetGeographyResponses];
+
+export type GetGeographyLocationsData = {
+    body?: never;
+    path?: never;
+    query: {
+        snapshot_id: string;
+        kind: 'country' | 'location';
+        country?: string;
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/geography/locations';
+};
+
+export type GetGeographyLocationsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * unauthorized
+     */
+    401: Error;
+    /**
+     * forbidden
+     */
+    403: Error;
+    /**
+     * Unknown country or group in the current snapshot
+     */
+    404: GeographyError;
+    /**
+     * geography_snapshot_expired or geography_source_changed; explicitly refresh
+     */
+    409: GeographyError;
+    /**
+     * internal_error
+     */
+    500: GeographyError;
+    /**
+     * geography_busy or geography_capacity; no automatic retry
+     */
+    503: GeographyError;
+    /**
+     * geography_timeout; no automatic retry
+     */
+    504: GeographyError;
+};
+
+export type GetGeographyLocationsError = GetGeographyLocationsErrors[keyof GetGeographyLocationsErrors];
+
+export type GetGeographyLocationsResponses = {
+    /**
+     * Bounded, immutable snapshot view
+     */
+    200: GeographyLocationPage;
+};
+
+export type GetGeographyLocationsResponse = GetGeographyLocationsResponses[keyof GetGeographyLocationsResponses];
+
+export type GetGeographyUsersData = {
+    body?: never;
+    path?: never;
+    query: {
+        snapshot_id: string;
+        group_id: string;
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/geography/users';
+};
+
+export type GetGeographyUsersErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * unauthorized
+     */
+    401: Error;
+    /**
+     * forbidden
+     */
+    403: Error;
+    /**
+     * Unknown country or group in the current snapshot
+     */
+    404: GeographyError;
+    /**
+     * geography_snapshot_expired or geography_source_changed; explicitly refresh
+     */
+    409: GeographyError;
+    /**
+     * internal_error
+     */
+    500: GeographyError;
+    /**
+     * geography_busy or geography_capacity; no automatic retry
+     */
+    503: GeographyError;
+    /**
+     * geography_timeout; no automatic retry
+     */
+    504: GeographyError;
+};
+
+export type GetGeographyUsersError = GetGeographyUsersErrors[keyof GetGeographyUsersErrors];
+
+export type GetGeographyUsersResponses = {
+    /**
+     * Bounded, immutable snapshot view
+     */
+    200: GeographyUserPage;
+};
+
+export type GetGeographyUsersResponse = GetGeographyUsersResponses[keyof GetGeographyUsersResponses];
+
+export type GetGeographySettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/geography';
+};
+
+export type GetGeographySettingsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * unauthorized
+     */
+    401: Error;
+    /**
+     * forbidden
+     */
+    403: Error;
+    /**
+     * Unknown country or group in the current snapshot
+     */
+    404: GeographyError;
+    /**
+     * geography_snapshot_expired or geography_source_changed; explicitly refresh
+     */
+    409: GeographyError;
+    /**
+     * internal_error
+     */
+    500: GeographyError;
+    /**
+     * geography_busy or geography_capacity; no automatic retry
+     */
+    503: GeographyError;
+    /**
+     * geography_timeout; no automatic retry
+     */
+    504: GeographyError;
+};
+
+export type GetGeographySettingsError = GetGeographySettingsErrors[keyof GetGeographySettingsErrors];
+
+export type GetGeographySettingsResponses = {
+    /**
+     * Bounded, immutable snapshot view
+     */
+    200: GeographySettings;
+};
+
+export type GetGeographySettingsResponse = GetGeographySettingsResponses[keyof GetGeographySettingsResponses];
+
+export type PutGeographySettingsData = {
+    body: GeographySettings;
+    path?: never;
+    query?: never;
+    url: '/api/settings/geography';
+};
+
+export type PutGeographySettingsErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * unauthorized
+     */
+    401: Error;
+    /**
+     * forbidden
+     */
+    403: Error;
+    /**
+     * Unknown country or group in the current snapshot
+     */
+    404: GeographyError;
+    /**
+     * geography_snapshot_expired or geography_source_changed; explicitly refresh
+     */
+    409: GeographyError;
+    /**
+     * internal_error
+     */
+    500: GeographyError;
+    /**
+     * geography_busy or geography_capacity; no automatic retry
+     */
+    503: GeographyError;
+    /**
+     * geography_timeout; no automatic retry
+     */
+    504: GeographyError;
+};
+
+export type PutGeographySettingsError = PutGeographySettingsErrors[keyof PutGeographySettingsErrors];
+
+export type PutGeographySettingsResponses = {
+    /**
+     * Bounded, immutable snapshot view
+     */
+    200: GeographySettings;
+};
+
+export type PutGeographySettingsResponse = PutGeographySettingsResponses[keyof PutGeographySettingsResponses];
 
 export type GetGeoIpSettingsData = {
     body?: never;

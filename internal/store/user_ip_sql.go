@@ -219,7 +219,9 @@ func (s *SQLite) UserIPCollectionState() (UserIPCollection, error) {
 }
 
 func (s *SQLite) ResetUserIPHistory(username string) error {
-	return s.withUserIPTx(func(tx *sql.Tx) error {
+	s.userIPMu.Lock()
+	defer s.userIPMu.Unlock()
+	err := s.withUserIPTx(func(tx *sql.Tx) error {
 		if username != "" {
 			_, err := tx.Exec("DELETE FROM user_ip_history WHERE username=?", username)
 			return err
@@ -230,4 +232,8 @@ func (s *SQLite) ResetUserIPHistory(username string) error {
 		_, err := tx.Exec("UPDATE user_ip_history_collection SET since_ts=0,limited=0,gap=0")
 		return err
 	})
+	if err == nil {
+		s.userIPEpoch.Add(1)
+	}
+	return err
 }

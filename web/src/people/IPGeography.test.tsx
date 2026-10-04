@@ -7,7 +7,7 @@ import { IPGeography } from "./IPGeography";
 
 let root: Root | undefined;
 let view: HTMLDivElement;
-const record: GeoIpResult = { state: "found", country_code: "NL", country_name: "Netherlands", country_name_ru: "Нидерланды", city: "", city_ru: "", asn: 64500, organization: "Example network" };
+const record: GeoIpResult = { state: "found", country_code: "NL", country_name: "Netherlands", country_name_ru: "Нидерланды", city: "", city_ru: "", asn: 64500, city_id:null,location:null,organization: "Example network" };
 async function mount(geo: GeoIpResult | null) {
   view = document.createElement("div"); document.body.append(view); root = createRoot(view);
   await act(async () => root!.render(<IPGeography geo={geo} />));

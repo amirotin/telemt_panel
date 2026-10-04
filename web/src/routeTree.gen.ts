@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedGeographyRouteImport } from './routes/_authed/geography'
 import { Route as AuthedJournalRouteImport } from './routes/_authed/journal'
 import { Route as AuthedOverviewRouteImport } from './routes/_authed/overview'
 import { Route as AuthedPeopleRouteRouteImport } from './routes/_authed/people/route'
@@ -43,6 +44,11 @@ const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedGeographyRoute = AuthedGeographyRouteImport.update({
+  id: '/geography',
+  path: '/geography',
+  getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedJournalRoute = AuthedJournalRouteImport.update({
   id: '/journal',
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/people': typeof AuthedPeopleRouteRouteWithChildren
   '/pulse': typeof AuthedPulseRouteRouteWithChildren
   '/server': typeof AuthedServerRouteRouteWithChildren
+  '/geography': typeof AuthedGeographyRoute
   '/journal': typeof AuthedJournalRoute
   '/overview': typeof AuthedOverviewRoute
   '/web': typeof AuthedWebRoute
@@ -154,6 +161,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/geography': typeof AuthedGeographyRoute
   '/journal': typeof AuthedJournalRoute
   '/overview': typeof AuthedOverviewRoute
   '/web': typeof AuthedWebRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/_authed/people': typeof AuthedPeopleRouteRouteWithChildren
   '/_authed/pulse': typeof AuthedPulseRouteRouteWithChildren
   '/_authed/server': typeof AuthedServerRouteRouteWithChildren
+  '/_authed/geography': typeof AuthedGeographyRoute
   '/_authed/journal': typeof AuthedJournalRoute
   '/_authed/overview': typeof AuthedOverviewRoute
   '/_authed/web': typeof AuthedWebRoute
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/people'
     | '/pulse'
     | '/server'
+    | '/geography'
     | '/journal'
     | '/overview'
     | '/web'
@@ -218,6 +228,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/geography'
     | '/journal'
     | '/overview'
     | '/web'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/_authed/people'
     | '/_authed/pulse'
     | '/_authed/server'
+    | '/_authed/geography'
     | '/_authed/journal'
     | '/_authed/overview'
     | '/_authed/web'
@@ -285,6 +297,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authed/geography': {
+      id: '/_authed/geography'
+      path: '/geography'
+      fullPath: '/geography'
+      preLoaderRoute: typeof AuthedGeographyRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/_authed/journal': {
       id: '/_authed/journal'
@@ -459,6 +478,7 @@ interface AuthedRouteChildren {
   AuthedPeopleRouteRoute: typeof AuthedPeopleRouteRouteWithChildren
   AuthedPulseRouteRoute: typeof AuthedPulseRouteRouteWithChildren
   AuthedServerRouteRoute: typeof AuthedServerRouteRouteWithChildren
+  AuthedGeographyRoute: typeof AuthedGeographyRoute
   AuthedJournalRoute: typeof AuthedJournalRoute
   AuthedOverviewRoute: typeof AuthedOverviewRoute
   AuthedWebRoute: typeof AuthedWebRoute
@@ -468,6 +488,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedPeopleRouteRoute: AuthedPeopleRouteRouteWithChildren,
   AuthedPulseRouteRoute: AuthedPulseRouteRouteWithChildren,
   AuthedServerRouteRoute: AuthedServerRouteRouteWithChildren,
+  AuthedGeographyRoute: AuthedGeographyRoute,
   AuthedJournalRoute: AuthedJournalRoute,
   AuthedOverviewRoute: AuthedOverviewRoute,
   AuthedWebRoute: AuthedWebRoute,

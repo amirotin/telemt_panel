@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { Dict } from "../i18n";
 import {
   IconGlobe,
+  IconMap,
   IconJournal,
   IconPeople,
   IconPulse,
@@ -31,12 +32,19 @@ export const OPERATIONAL_NAV_ITEMS: readonly NavItem[] = [
   { to: "/overview", labelKey: "overview", Icon: IconSummary },
   { to: "/people", labelKey: "people", Icon: IconPeople },
   { to: "/pulse", labelKey: "pulse", Icon: IconPulse },
+  { to: "/geography", labelKey: "geography", Icon: IconMap },
   { to: "/journal", labelKey: "journal", Icon: IconJournal },
 ];
 
 export const MANAGEMENT_NAV_ITEMS: readonly NavItem[] = [
   { to: "/server", labelKey: "server", Icon: IconServer },
   { to: "/web", labelKey: "web", Icon: IconGlobe },
+];
+
+export const COMPACT_NAV_ITEMS: readonly NavItem[] = OPERATIONAL_NAV_ITEMS.filter(item => item.to !== "/geography");
+export const MORE_NAV_ITEMS: readonly NavItem[] = [
+  ...OPERATIONAL_NAV_ITEMS.filter(item => item.to === "/geography"),
+  ...MANAGEMENT_NAV_ITEMS,
 ];
 
 export const NAV_ITEMS: readonly NavItem[] = [

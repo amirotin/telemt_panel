@@ -19,6 +19,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/branding"
 	"github.com/amirotin/telemt_panel/internal/config"
+	"github.com/amirotin/telemt_panel/internal/geography"
 	"github.com/amirotin/telemt_panel/internal/geoip"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/hub"
@@ -76,6 +77,7 @@ type Server struct {
 	updateEngine *update.Engine
 	autoUpdater  *update.AutoUpdater
 	geoip        *geoip.Manager
+	geography    *geography.Service
 	branding     *branding.Manager
 
 	// webUI serves the embedded SPA (internal/webui) — registered as the
@@ -237,6 +239,11 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	}
 	s.quotaResets = quotareset.New(tc, s.quotaResetEvent)
 	s.quotaSchedules = quotareset.NewScheduler(st, s.quotaResets)
+	geoDeps := geography.Dependencies{History: st, GeoIP: s.geoip, State: st}
+	if hb != nil {
+		geoDeps.Live = hb
+	}
+	s.geography = geography.NewService(geoDeps)
 	return s
 }
 
@@ -427,6 +434,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/settings/geoip", protect(s.handleGetGeoIPSettings))
 	mux.Handle("PUT /api/settings/geoip", protect(s.handlePutGeoIPSettings))
 	mux.Handle("POST /api/settings/geoip/update", protect(s.handleUpdateGeoIP))
+	mux.Handle("GET /api/geography", protect(s.handleGetGeography))
+	mux.Handle("GET /api/geography/locations", protect(s.handleGetGeographyLocations))
+	mux.Handle("GET /api/geography/users", protect(s.handleGetGeographyUsers))
+	mux.Handle("GET /api/settings/geography", protect(s.handleGetGeographySettings))
+	mux.Handle("PUT /api/settings/geography", protect(s.handlePutGeographySettings))
 
 	mux.Handle("GET /api/updates", protect(s.handleGetUpdates))
 	mux.Handle("POST /api/updates/{target}/apply", protect(s.handleApplyUpdate))
@@ -579,6 +591,9 @@ func (s *Server) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	defer func() {
 		cancel()
+		if s.geography != nil {
+			s.geography.Close()
+		}
 		if s.geoip != nil {
 			s.geoip.Close()
 		}

@@ -78,6 +78,7 @@ export function Sheet({
 }: SheetProps) {
   const s = useStrings();
   const panelRef = useRef<HTMLDivElement>(null);
+  const pointerLabelRef=useRef<HTMLLabelElement|null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const closeRef=useRef(onClose);
   const pointerStartedHere=useRef(false);
@@ -144,7 +145,7 @@ export function Sheet({
   if (!open) return null;
 
   return createPortal(
-    <div className={cn("fixed inset-0 z-50", CONTAINER_CLASSES[placement])} onPointerDownCapture={()=>{pointerStartedHere.current=true;}} onClickCapture={event=>{if(event.detail>0&&!pointerStartedHere.current){event.preventDefault();event.stopPropagation();}}} onClick={()=>{pointerStartedHere.current=false;}}>
+    <div className={cn("fixed inset-0 z-50", CONTAINER_CLASSES[placement])} onPointerDownCapture={event=>{pointerStartedHere.current=true;pointerLabelRef.current=event.target instanceof Element?event.target.closest("label"):null;}} onClickCapture={event=>{const forwarded=pointerLabelRef.current?.control===event.target;if(event.detail>0&&!pointerStartedHere.current&&!forwarded){event.preventDefault();event.stopPropagation();}}} onClick={event=>{pointerStartedHere.current=false;if(pointerLabelRef.current?.control===event.target)pointerLabelRef.current=null;else{const label=pointerLabelRef.current;setTimeout(()=>{if(pointerLabelRef.current===label)pointerLabelRef.current=null;},0);}}}>
       <div
         className="absolute inset-0 bg-scrim/60"
         onClick={onClose}

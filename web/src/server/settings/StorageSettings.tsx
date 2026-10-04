@@ -33,6 +33,7 @@ import type {
 } from "../../lib/api/generated/types.gen";
 import { retentionReductions, sameStoragePolicies } from "./storage.helpers";
 import { invalidateTrafficQueries } from "../../traffic/trafficInvalidation";
+import { invalidateGeography } from "../../geography/queries";
 
 const retentionOptions = [1, 3, 7, 14, 30, 90, 180, 365, 730];
 
@@ -74,6 +75,7 @@ export function StorageSettings() {
     ...putStorageSettingsMutation(),
     onSuccess: async () => {
       setPendingPolicies(null);
+      await invalidateGeography(queryClient);
       pushToast(s.server.settings.storageSaved, "ok");
       await queryClient.invalidateQueries({ queryKey: getStorageSettingsQueryKey() });
       setDraft({ source: null, policies: [] });
@@ -84,6 +86,7 @@ export function StorageSettings() {
     ...purgeStorageHistoryMutation(),
     onSuccess: async () => {
       setPurgeCategory(null);
+      await invalidateGeography(queryClient);
       pushToast(s.server.settings.storagePurged, "ok");
       await queryClient.invalidateQueries({ queryKey: getStorageSettingsQueryKey() });
     },

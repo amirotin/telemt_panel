@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"math"
 	"net/netip"
@@ -72,6 +73,8 @@ type UserIPStore interface {
 	UserIPCollectionState() (UserIPCollection, error)
 	ResetUserIPHistory(username string) error
 	UserIPRetention() time.Duration
+	ReadUserIPSnapshot(context.Context, int64, int64) (UserIPReadSnapshot, error)
+	UserIPEpoch() uint64
 }
 
 // UserIPSummary is intentionally small enough for the users index and SSE.
@@ -324,6 +327,7 @@ func (m *Memory) UserIPCollectionState() (UserIPCollection, error) {
 func (m *Memory) ResetUserIPHistory(username string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.userIPEpoch.Add(1)
 	for key := range m.userIPs {
 		if username == "" || key.username == username {
 			delete(m.userIPs, key)

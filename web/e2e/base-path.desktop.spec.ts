@@ -31,7 +31,7 @@ test("secret panel prefix survives all navigation and WEB profile link; log fail
     await expect(page).toHaveURL(base+"/people");
     for(const width of [390,1280]){
       await page.setViewportSize({width,height:900});
-      for(const route of ["/overview","/people","/pulse","/journal","/server","/server/config","/server/settings","/web"]){
+      for(const route of ["/overview","/people","/pulse","/geography","/journal","/server","/server/config","/server/settings","/web"]){
         await page.goto(base+route);await expect(page.locator("main h1")).toBeVisible();
         const wrong=await page.locator("a[href]").evaluateAll((links,{origin,prefix})=>links.map(link=>(link as HTMLAnchorElement).href).filter(href=>{const url=new URL(href);return url.origin===origin&&!url.pathname.startsWith(prefix+"/")&&url.pathname!==prefix;}),{origin,prefix});
         expect(wrong,route).toEqual([]);

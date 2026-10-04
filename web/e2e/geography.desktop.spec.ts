@@ -1,0 +1,31 @@
+import { test, expect } from "./fixtures";
+
+test("standalone geography uses real protected handlers and preserves view state",async({page,login})=>{
+  await login();
+  const geodata:string[]=[];
+  page.on("request",request=>{if(new URL(request.url()).pathname.startsWith("/api/geography"))geodata.push(request.url())});
+  await expect(page.getByTestId("full-sidebar").getByRole("link",{name:"География",exact:true})).toBeVisible();
+  expect(geodata).toEqual([]);
+  await page.getByTestId("full-sidebar").getByRole("link",{name:"География",exact:true}).click();
+  await expect(page).toHaveURL(/\/geography/);
+  await expect(page.locator(".geo-vector")).toBeVisible();
+  const response=await page.request.get("/api/geography?range=24h");expect(response.status()).toBe(200);
+  const dto=await response.json();expect(response.headers()["cache-control"]).toBe("no-store");expect(dto).toHaveProperty("snapshot_id");expect(dto).not.toHaveProperty("ips");
+  await page.getByRole("button",{name:"Точка Telemt",exact:true}).click();
+  const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();
+  await dialog.getByText("Координаты",{exact:true}).click();
+  await dialog.getByLabel("Подпись",{exact:true}).fill("Synthetic Telemt");
+  await dialog.getByLabel("Широта",{exact:true}).fill("0");await dialog.getByLabel("Долгота",{exact:true}).fill("0");
+  await dialog.getByRole("button",{name:"Сохранить",exact:true}).click();await expect(dialog.getByRole("status")).toContainText("Точка Telemt сохранена");
+  await page.keyboard.press("Escape");await expect(dialog).toHaveCount(0);
+  await page.getByRole("combobox",{name:"Период",exact:true}).selectOption("7d");
+  await expect(page).toHaveURL(/range=7d/);await expect(page.locator(".geo-vector")).toBeVisible();
+  const before=geodata.length;
+  await page.getByRole("button",{name:"Глобус",exact:true}).click();
+  await expect(page.locator(".geo-globe canvas").or(page.locator(".geo-banner").filter({hasText:"3D недоступен. Открыта SVG-карта."}))).toBeVisible();
+  await page.getByRole("button",{name:"Карта",exact:true}).click();await expect(page.locator(".geo-vector")).toBeVisible();
+  expect(geodata.length).toBe(before);
+  expect(new URL(page.url()).searchParams.has("snapshot_id")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("cursor")).toBe(false);
+  await page.request.put("/api/settings/geography",{data:{server_location:{mode:"hidden",label:"",public_ip:null,latitude:null,longitude:null}},headers:{"Sec-Fetch-Site":"same-origin"}});
+});

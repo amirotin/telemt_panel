@@ -161,12 +161,38 @@ type Settings struct {
 
 // Result contains the local enrichment for one IP address.
 type Result struct {
-	State         string `json:"state"`
-	CountryCode   string `json:"country_code"`
-	CountryName   string `json:"country_name"`
-	CountryNameRU string `json:"country_name_ru"`
-	City          string `json:"city"`
-	CityRU        string `json:"city_ru"`
-	ASN           uint   `json:"asn"`
-	Organization  string `json:"organization"`
+	State           string    `json:"state"`
+	CountryCode     string    `json:"country_code"`
+	CountryName     string    `json:"country_name"`
+	CountryNameRU   string    `json:"country_name_ru"`
+	City            string    `json:"city"`
+	CityRU          string    `json:"city_ru"`
+	ASN             uint      `json:"asn"`
+	Organization    string    `json:"organization"`
+	CityID          *uint32   `json:"city_id"`
+	Location        *Location `json:"location"`
+	CountryConflict bool      `json:"-"`
+}
+
+// Location describes an approximate network position from a City database.
+type Location struct {
+	Latitude         float64 `json:"latitude"`
+	Longitude        float64 `json:"longitude"`
+	AccuracyRadiusKM *uint16 `json:"accuracy_radius_km"`
+}
+
+func cloneResult(result Result) *Result {
+	if result.CityID != nil {
+		id := *result.CityID
+		result.CityID = &id
+	}
+	if result.Location != nil {
+		location := *result.Location
+		if location.AccuracyRadiusKM != nil {
+			radius := *location.AccuracyRadiusKM
+			location.AccuracyRadiusKM = &radius
+		}
+		result.Location = &location
+	}
+	return &result
 }

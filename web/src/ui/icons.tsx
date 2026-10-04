@@ -424,6 +424,10 @@ export function IconGlobe(props: IconProps) {
   );
 }
 
+export function IconMap(props: IconProps) {
+  return <Icon {...props}><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5Z" /><path d="M9 3v16M15 5v16" /></Icon>;
+}
+
 export function IconDevice(props: IconProps) {
   return (
     <Icon {...props}>

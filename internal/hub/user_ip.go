@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
@@ -19,19 +21,24 @@ type userIPLiveState struct {
 	active map[string]bool
 }
 type userIPCollector struct {
-	mu            sync.Mutex
-	generation    uint64
-	pending       map[observedIPKey]store.UserIPRecord
-	retry         *store.UserIPBatch
-	live          map[string]userIPLiveState
-	through       int64
-	flushed       int64
-	limited       bool
-	gap           bool
-	failed        bool
-	window        *uint64
-	windowChecked int64
-	lastPrune     int64
+	mu               sync.Mutex
+	snapshot         atomic.Pointer[UserIPLiveSnapshot]
+	generation       uint64
+	pending          map[observedIPKey]store.UserIPRecord
+	retry            *store.UserIPBatch
+	live             map[string]userIPLiveState
+	through          int64
+	flushed          int64
+	limited          bool
+	gap              bool
+	failed           bool
+	window           *uint64
+	windowChecked    int64
+	lastPrune        int64
+	liveKnown        bool
+	livePartial      bool
+	liveTruncated    bool
+	liveInvalidUsers int
 }
 
 func (h *Hub) pollPeriodic(t *topicState) bool {
@@ -60,10 +67,12 @@ func (h *Hub) pollPeriodic(t *topicState) bool {
 	if !ok {
 		h.ips.failed = true
 		h.ips.gap = true
+		h.publishUserIPSnapshotLocked()
 		if h.now().Unix()-h.ips.flushed >= 60 {
 			if err := h.flushUserIPsLocked(); err != nil {
 				slog.Warn("hub: pending IP history batch not saved")
 			}
+			h.publishUserIPSnapshotLocked()
 		}
 	}
 	refresh := h.now().Unix()-h.ips.windowChecked >= 60
@@ -126,6 +135,12 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 		c.pending = make(map[observedIPKey]store.UserIPRecord)
 	}
 	c.live = make(map[string]userIPLiveState)
+	c.liveKnown = len(users) == 0
+	c.livePartial, c.liveTruncated, c.liveInvalidUsers = false, false, 0
+	// Canonical ordering makes the bounded active overlay a stable prefix even
+	// when Telemt changes the order of users or addresses in its response.
+	users = append([]telemt.UserInfo(nil), users...)
+	sort.SliceStable(users, func(i, j int) bool { return users[i].Username < users[j].Username })
 	retryKeys := make(map[observedIPKey]bool)
 	if c.retry != nil {
 		for _, r := range c.retry.Records {
@@ -138,15 +153,29 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 	for _, user := range users {
 		if user.Username == "" || len(user.Username) > 256 {
 			c.gap = true
+			c.livePartial = true
+			c.liveInvalidUsers++
 			continue
 		}
 		if len(c.live) >= store.UserIPMemoryLimit {
 			c.limited = true
+			c.livePartial, c.liveTruncated = true, true
 			break
 		}
 		live := userIPLiveState{at: now, valid: user.ActiveIPList != nil, active: make(map[string]bool)}
+		c.liveKnown = c.liveKnown || user.ActiveIPList != nil
+		var active []string
+		if user.ActiveIPList != nil {
+			active = append([]string{}, user.ActiveIPList...)
+		}
+		for i, raw := range active {
+			if ip, _, err := store.NormalizeUserIP(raw); err == nil {
+				active[i] = ip
+			}
+		}
+		sort.Strings(active)
 		union := make(map[string]int)
-		for index, list := range [][]string{user.ActiveIPList, user.RecentIPList} {
+		for index, list := range [][]string{active, user.RecentIPList} {
 			if list == nil {
 				c.gap = true
 			}
@@ -156,6 +185,7 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 					c.gap = true
 					if index == 0 {
 						live.valid = false
+						c.livePartial = true
 					}
 					continue
 				}
@@ -163,20 +193,26 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 					c.limited = true
 					if index == 0 {
 						live.valid = false
+						c.livePartial, c.liveTruncated = true, true
 					}
 					continue
 				}
 				union[ip] |= 1 << index
 				if index == 0 {
-					if liveCount >= store.UserIPMemoryLimit {
+					if liveCount >= store.UserIPMemoryLimit && !live.active[ip] {
 						c.limited = true
 						live.valid = false
+						c.livePartial, c.liveTruncated = true, true
 					} else if !live.active[ip] {
 						live.active[ip] = true
 						liveCount++
 					}
 				}
 			}
+		}
+		if !live.valid {
+			c.livePartial = true
+			c.liveInvalidUsers++
 		}
 		c.live[user.Username] = live
 		for ip, source := range union {
@@ -197,10 +233,12 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 			}
 		}
 	}
+	h.publishUserIPSnapshotLocked()
 	if !h.st.Info().Durable || c.flushed == 0 || now-c.flushed >= 60 {
 		if err := h.flushUserIPsLocked(); err != nil {
 			slog.Warn("hub: IP history batch not saved")
 		}
+		h.publishUserIPSnapshotLocked()
 	}
 }
 
@@ -243,6 +281,7 @@ func (h *Hub) flushUserIPs() {
 	if err := h.flushUserIPsLocked(); err != nil {
 		slog.Warn("hub: final IP history batch not saved")
 	}
+	h.publishUserIPSnapshotLocked()
 }
 
 // Reset serializes with pending writes. Generation invalidates any fetch that
@@ -259,11 +298,15 @@ func (h *Hub) ResetUserIPHistory(username string) error {
 	h.ips.generation++
 	if username == "" {
 		h.ips.live = nil
+		h.ips.liveKnown = false
+		h.ips.livePartial, h.ips.liveTruncated, h.ips.liveInvalidUsers = false, false, 0
 		h.ips.limited = false
 		h.ips.gap = false
 	} else {
 		delete(h.ips.live, username)
+		h.ips.livePartial = true
 	}
+	h.publishUserIPSnapshotLocked()
 	return nil
 }
 

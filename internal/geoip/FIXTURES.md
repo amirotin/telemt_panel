@@ -34,6 +34,25 @@ Create the tree with `mmdbwriter.New`, insert the network and record using
 These fixtures contain no downloaded geolocation data and add no runtime or
 test module dependency on the writer.
 
+`location_fixture_test.go` adds eight synthetic City databases generated with
+the same writer and options, using `DatabaseType: "GeoIP2-City-Test"` and
+description `"Synthetic Telemt location fixture"`. Each contains the same
+invented network, country code GB and city geoname_id 2643743. Location variants
+cover explicit (0,0), absent/one-sided coordinates, out-of-range coordinates,
+and incorrect latitude/radius types. The explicit-zero record uses radius
+65535; absent radius remains optional. SHA-256 of uncompressed databases:
+
+| Variant | SHA-256 |
+| --- | --- |
+| absent | c357961c58262d0d2b15d3d24e18adafa5f46f3b83e95f32824b988df4a112b6 |
+| latitude-only | cbbcca3ebe6ee8a9b362637ffba25c46eae7aea110dcda02cfdd0e615313463e |
+| longitude-only | e85a9d0cebf3bbee4bf3c94d27f4a2ef70cdf6d539dfae7b7d05f117185b83e4 |
+| zero | 3bfe2d899c36f30ed298d0b4a18bca75a938fc0421ebaa367eca0e95dbdc2ca7 |
+| bad-latitude | 22b0d14d50efbe27daa023d8e8cbf450be586dae23d43f728e06fc53dfcc548a |
+| bad-longitude | 39efa3d1f3784a6f963bc9b67fbb1c9ce362532f19912c4707b3ee03499de5ff |
+| bad-type | 5eb61cf8a0df5ea4830b1899d5ac216c0d82b94889667b550e9c8394bc7d794c |
+| bad-radius | 81556313ca1a589062f6b856a37ad215aa1a2fc46c2bcdaf807ebdcfcd00889c |
+
 For an optional measurement against real local files (not committed here), run:
 
 ```sh

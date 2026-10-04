@@ -201,6 +201,7 @@ func (m *Memory) ImportData(data PortableData) error {
 		m.webauthnChallenges = make(map[string]WebAuthnChallenge)
 		return fmt.Errorf("persist imported memory store: %w", err)
 	}
+	m.userIPEpoch.Add(1)
 	return nil
 }
 

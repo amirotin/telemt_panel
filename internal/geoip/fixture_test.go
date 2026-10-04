@@ -31,6 +31,9 @@ func writeFixture(t *testing.T, name string) string {
 		"asn":              asnFixtureGzipBase64,
 		"city":             cityFixtureGzipBase64,
 	}[name]
+	if strings.HasPrefix(name, "location:") {
+		encoded = locationFixtures[strings.TrimPrefix(name, "location:")]
+	}
 	compressed, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		t.Fatal(err)

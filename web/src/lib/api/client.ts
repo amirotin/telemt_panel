@@ -3,6 +3,7 @@ import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
 import { getBasePath, withBasePath } from "../base-path";
 import { getRouterInstance } from "../router-instance";
 import { queryClient } from "../query-client";
+import { removeGeography } from "../../geography/queries";
 
 // Wires the hey-api generated client to this deployment: same-origin
 // requests carry the session cookie (`credentials: "include"` — the panel
@@ -42,6 +43,7 @@ client.interceptors.response.use((response, request) => {
   }
 
   const requestUrl = new URL(request.url);
+  removeGeography(queryClient);
   if (EXCLUDED_PATHS.some((p) => requestUrl.pathname.endsWith(p))) {
     return response;
   }

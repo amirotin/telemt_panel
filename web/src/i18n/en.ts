@@ -1,5 +1,6 @@
 import type { Dict } from "./dict";
 import { geoipEn } from "./geoip.en";
+import { geographyEn } from "./geography.en";
 import { quotaScheduleEn } from "./quotaSchedule.en";
 import {releasePickerEn} from './releasePicker.en';
 import {serviceControlEn} from './serviceControl.en';
@@ -20,6 +21,7 @@ export const en: Dict = {
   releasePicker:releasePickerEn,
   quotaSchedule: quotaScheduleEn,
   geoip: geoipEn,
+  geography: geographyEn,
   locale: "en",
   app: {
     title: "Telemt Panel",
@@ -99,6 +101,7 @@ export const en: Dict = {
     overview: "Overview",
     people: "Users",
     pulse: "Pulse",
+    geography: "Geography",
     journal: "Journal",
     server: "Server",
     web: "WEB",
@@ -3599,6 +3602,11 @@ export const en: Dict = {
       "A click copies through the Clipboard API (HTTPS/localhost), else execCommand, else it selects the value and shows the “{manual}” toast — see src/lib/copyText.ts.",
   },
   errors: {
+    geography_snapshot_expired: "Snapshot changed. Refresh geography.",
+    geography_source_changed: "Sources changed. Try again.",
+    geography_busy: "Geography is busy. Try again in a few seconds.",
+    geography_capacity: "Geography resource capacity exceeded.",
+    geography_timeout: "Geography took too long to build.",
     branding_invalid_title: "Enter a name of 1–80 characters without line breaks.",
     branding_invalid_mode: "Select a logo mode.",
     branding_invalid_path: "Enter an absolute server file path.",
@@ -3712,6 +3720,7 @@ export const en: Dict = {
     "branding.settings_change": "Panel branding changed",
     "links.settings_change": "Connection link address settings changed",
     "geoip.settings_change": "IP geography settings changed",
+    "geography.settings_change": "Telemt server position changed",
     "geoip.update": "GeoIP database update requested",
     login: "Signed in",
     "login.failed": "Failed sign-in",

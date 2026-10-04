@@ -1264,6 +1264,469 @@ paths:
         "204": { description: History deleted }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /api/geography:
+    get:
+      tags: ["geography"]
+      operationId: "getGeography"
+      description: "Project observed IP networks with local MMDB; never query Telemt, geocode remotely, or return raw addresses. Only range/family create a projection; selection uses the same totals. Pinned requests inherit omitted range/family. Live reuse 10s, history 60s, immutable lifetime 120s."
+      parameters: [{"name":"range","in":"query","required":false,"schema":{"type":"string","enum":["now","24h","7d","30d"]}},{"name":"family","in":"query","required":false,"schema":{"type":"string","enum":["all","4","6"]}},{"name":"country","in":"query","required":false,"schema":{"type":"string","pattern":"^[A-Z]{2}$"}},{"name":"location","in":"query","required":false,"schema":{"type":"string","maxLength":160}},{"name":"snapshot_id","in":"query","required":false,"schema":{"type":"string","maxLength":160}}]
+      responses:
+        "200":
+          description: "Bounded, immutable snapshot view"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyOverview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: "unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Unknown country or group in the current snapshot"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "409":
+          description: "geography_snapshot_expired or geography_source_changed; explicitly refresh"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "500":
+          description: "internal_error"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "503":
+          description: "geography_busy or geography_capacity; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+            Retry-After:
+              description: "5 for geography_busy"
+              schema:
+                type: "integer"
+                enum: [5]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "504":
+          description: "geography_timeout; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+  /api/geography/locations:
+    get:
+      tags: ["geography"]
+      operationId: "getGeographyLocations"
+      description: "Stable groups ordered by unique_ips descending then ID. Country filter only for kind=location. Coordinate-less and unknown service groups remain accessible."
+      parameters: [{"name":"snapshot_id","in":"query","required":true,"schema":{"type":"string","maxLength":160}},{"name":"kind","in":"query","required":true,"schema":{"type":"string","enum":["country","location"]}},{"name":"country","in":"query","required":false,"schema":{"type":"string","pattern":"^[A-Z]{2}$"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":50}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string","maxLength":1024}}]
+      responses:
+        "200":
+          description: "Bounded, immutable snapshot view"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyLocationPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: "unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Unknown country or group in the current snapshot"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "409":
+          description: "geography_snapshot_expired or geography_source_changed; explicitly refresh"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "500":
+          description: "internal_error"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "503":
+          description: "geography_busy or geography_capacity; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+            Retry-After:
+              description: "5 for geography_busy"
+              schema:
+                type: "integer"
+                enum: [5]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "504":
+          description: "geography_timeout; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+  /api/geography/users:
+    get:
+      tags: ["geography"]
+      operationId: "getGeographyUsers"
+      description: "One row per account in a pinned group, sorted by unique_ips descending then username. No IPs, secrets or subscription URLs."
+      parameters: [{"name":"snapshot_id","in":"query","required":true,"schema":{"type":"string","maxLength":160}},{"name":"group_id","in":"query","required":true,"schema":{"type":"string","maxLength":160}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":50}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string","maxLength":1024}}]
+      responses:
+        "200":
+          description: "Bounded, immutable snapshot view"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyUserPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: "unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Unknown country or group in the current snapshot"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "409":
+          description: "geography_snapshot_expired or geography_source_changed; explicitly refresh"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "500":
+          description: "internal_error"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "503":
+          description: "geography_busy or geography_capacity; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+            Retry-After:
+              description: "5 for geography_busy"
+              schema:
+                type: "integer"
+                enum: [5]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "504":
+          description: "geography_timeout; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+  /api/settings/geography:
+    get:
+      tags: ["geography"]
+      operationId: "getGeographySettings"
+      responses:
+        "200":
+          description: "Bounded, immutable snapshot view"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographySettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: "unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Unknown country or group in the current snapshot"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "409":
+          description: "geography_snapshot_expired or geography_source_changed; explicitly refresh"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "500":
+          description: "internal_error"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "503":
+          description: "geography_busy or geography_capacity; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+            Retry-After:
+              description: "5 for geography_busy"
+              schema:
+                type: "integer"
+                enum: [5]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "504":
+          description: "geography_timeout; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+    put:
+      tags: ["geography"]
+      operationId: "putGeographySettings"
+      description: "Full strict body up to 4 KiB. Explicit Telemt server position in panel state. Persist before publishing; audit excludes IPs and coordinates."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeographySettings"
+      responses:
+        "200":
+          description: "Bounded, immutable snapshot view"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographySettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: "unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "forbidden"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Unknown country or group in the current snapshot"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "409":
+          description: "geography_snapshot_expired or geography_source_changed; explicitly refresh"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "500":
+          description: "internal_error"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "503":
+          description: "geography_busy or geography_capacity; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+            Retry-After:
+              description: "5 for geography_busy"
+              schema:
+                type: "integer"
+                enum: [5]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+        "504":
+          description: "geography_timeout; no automatic retry"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum: ["no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeographyError"
+
   /api/settings/geoip:
     get:
       tags: [misc]
@@ -2948,9 +3411,378 @@ components:
         config: { $ref: "#/components/schemas/GeoIpConfig" }
         status: { $ref: "#/components/schemas/GeoIpStatus" }
 
+    GeographyRange:
+      type: "string"
+      enum: ["now","24h","7d","30d"]
+    GeographyFamily:
+      type: "string"
+      enum: ["all","4","6"]
+    GeographyTotals:
+      type: "object"
+      additionalProperties: false
+      required: ["unique_ips","accounts","country_count","location_count"]
+      properties:
+        unique_ips:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        accounts:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        country_count:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        location_count:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    GeographyQuality:
+      type: "object"
+      additionalProperties: false
+      required: ["located","country_only","private","not_found","unavailable","coordinate_coverage","geo_conflicts"]
+      properties:
+        located:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        country_only:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        private:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        not_found:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        unavailable:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        coordinate_coverage:
+          type: ["number","null"]
+          minimum: 0
+          maximum: 1
+        geo_conflicts:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    GeographySource:
+      type: "object"
+      additionalProperties: false
+      required: ["kind","observed_at","age_secs","requested_from","effective_from","retention_days","durable","partial","input_truncated","collection_gap","pending","invalid_users"]
+      properties:
+        kind:
+          type: "string"
+          enum: ["live","history"]
+        observed_at:
+          type: ["integer","null"]
+          format: "int64"
+          minimum: 1
+        age_secs:
+          type: ["integer","null"]
+          format: "int64"
+          minimum: 0
+        requested_from:
+          type: ["integer","null"]
+          format: "int64"
+          minimum: 1
+        effective_from:
+          type: ["integer","null"]
+          format: "int64"
+          minimum: 1
+        retention_days:
+          type: ["integer","null"]
+          format: "int64"
+          minimum: 0
+        durable:
+          type: ["boolean","null"]
+        partial:
+          type: "boolean"
+        input_truncated:
+          type: "boolean"
+        collection_gap:
+          type: "boolean"
+        pending:
+          type: "boolean"
+        invalid_users:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    GeographyCountry:
+      type: "object"
+      additionalProperties: false
+      required: ["id","country_code","name","name_ru","unique_ips","accounts"]
+      properties:
+        id:
+          type: "string"
+        country_code:
+          type: "string"
+          pattern: "^[A-Z]{2}$"
+        name:
+          type: "string"
+          maxLength: 80
+        name_ru:
+          type: "string"
+          maxLength: 80
+        unique_ips:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        accounts:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    GeographyPosition:
+      type: "object"
+      additionalProperties: false
+      required: ["latitude","longitude","accuracy_radius_km"]
+      properties:
+        latitude:
+          type: "number"
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: "number"
+          minimum: -180
+          maximum: 180
+        accuracy_radius_km:
+          type: ["integer","null"]
+          format: "int64"
+          minimum: 0
+          maximum: 4294967295
+    GeographyLocation:
+      type: "object"
+      additionalProperties: false
+      required: ["id","country_code","name","name_ru","city_id","location","unique_ips","accounts"]
+      properties:
+        id:
+          type: "string"
+          maxLength: 160
+        country_code:
+          type: ["string","null"]
+          pattern: "^[A-Z]{2}$"
+        name:
+          type: ["string","null"]
+          maxLength: 80
+        name_ru:
+          type: ["string","null"]
+          maxLength: 80
+        city_id:
+          type: ["integer","null"]
+          minimum: 1
+          maximum: 4294967295
+        location:
+          anyOf: [{"$ref":"#/components/schemas/GeographyPosition"},{"type":"null"}]
+        unique_ips:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        accounts:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    GeographyVisible:
+      type: "object"
+      additionalProperties: false
+      required: ["points","total_coordinate_locations","omitted_points","countries","total_countries","omitted_countries"]
+      properties:
+        points:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+          maximum: 200
+        total_coordinate_locations:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        omitted_points:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        countries:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+          maximum: 250
+        total_countries:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        omitted_countries:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    GeographyServer:
+      type: "object"
+      additionalProperties: false
+      required: ["state","origin","label","location"]
+      properties:
+        state:
+          type: "string"
+          enum: ["hidden","ready","unresolved"]
+        origin:
+          type: ["string","null"]
+          enum: ["manual","geoip",null]
+        label:
+          type: "string"
+          maxLength: 80
+        location:
+          anyOf: [{"$ref":"#/components/schemas/GeoIpLocation"},{"type":"null"}]
+    GeographyOverview:
+      type: "object"
+      additionalProperties: false
+      required: ["snapshot_id","generated_at","expires_at","as_of","served_at","range","family","state","totals","quality","source","geoip","countries","points","visible","selection","server"]
+      properties:
+        snapshot_id:
+          type: "string"
+          pattern: "^[a-f0-9]{32}$"
+        generated_at:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        expires_at:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        as_of:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        served_at:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        range:
+          $ref: "#/components/schemas/GeographyRange"
+        family:
+          $ref: "#/components/schemas/GeographyFamily"
+        state:
+          type: "string"
+          enum: ["ready","partial","empty","stale","unavailable"]
+        totals:
+          anyOf: [{"$ref":"#/components/schemas/GeographyTotals"},{"type":"null"}]
+        quality:
+          anyOf: [{"$ref":"#/components/schemas/GeographyQuality"},{"type":"null"}]
+        source:
+          $ref: "#/components/schemas/GeographySource"
+        geoip:
+          $ref: "#/components/schemas/GeoIpStatus"
+        countries:
+          type: "array"
+          maxItems: 250
+          items:
+            $ref: "#/components/schemas/GeographyCountry"
+        points:
+          type: "array"
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/GeographyLocation"
+        visible:
+          $ref: "#/components/schemas/GeographyVisible"
+        selection:
+          oneOf: [{"$ref":"#/components/schemas/GeographyCountry"},{"$ref":"#/components/schemas/GeographyLocation"},{"type":"null"}]
+        server:
+          $ref: "#/components/schemas/GeographyServer"
+    GeographyLocationPage:
+      type: "object"
+      additionalProperties: false
+      required: ["snapshot_id","items","total","next_cursor"]
+      properties:
+        snapshot_id:
+          type: "string"
+        items:
+          type: "array"
+          maxItems: 100
+          items:
+            oneOf: [{"$ref":"#/components/schemas/GeographyCountry"},{"$ref":"#/components/schemas/GeographyLocation"}]
+        total:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        next_cursor:
+          type: ["string","null"]
+          maxLength: 1024
+    GeographyUser:
+      type: "object"
+      additionalProperties: false
+      required: ["username","unique_ips"]
+      properties:
+        username:
+          type: "string"
+          maxLength: 256
+        unique_ips:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    GeographyUserPage:
+      type: "object"
+      additionalProperties: false
+      required: ["snapshot_id","group_id","items","total","next_cursor"]
+      properties:
+        snapshot_id:
+          type: "string"
+        group_id:
+          type: "string"
+        items:
+          type: "array"
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/GeographyUser"
+        total:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        next_cursor:
+          type: ["string","null"]
+          maxLength: 1024
+    ServerLocationConfig:
+      type: "object"
+      additionalProperties: false
+      required: ["mode","label","public_ip","latitude","longitude"]
+      properties:
+        mode:
+          type: "string"
+          enum: ["hidden","manual","ip"]
+        label:
+          type: "string"
+          maxLength: 80
+        public_ip:
+          type: ["string","null"]
+          maxLength: 45
+        latitude:
+          type: ["number","null"]
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: ["number","null"]
+          minimum: -180
+          maximum: 180
+    GeographySettings:
+      type: "object"
+      additionalProperties: false
+      required: ["server_location"]
+      properties:
+        server_location:
+          $ref: "#/components/schemas/ServerLocationConfig"
+    GeographyError:
+      type: "object"
+      additionalProperties: false
+      required: ["code","message"]
+      properties:
+        code:
+          type: "string"
+          enum: ["bad_request","not_found","geography_snapshot_expired","geography_source_changed","geography_busy","geography_capacity","geography_timeout","internal_error"]
+        message:
+          type: "string"
+
     GeoIpResult:
       type: object
-      required: [state, country_code, country_name, country_name_ru, city, city_ru, asn, organization]
+      required: [state, country_code, country_name, country_name_ru, city, city_ru, asn, organization, city_id, location]
       properties:
         state: { type: string, enum: [found, private, not_found] }
         country_code: { type: string }
@@ -2960,3 +3792,14 @@ components:
         city_ru: { type: string }
         asn: { type: integer, format: int64, minimum: 0 }
         organization: { type: string }
+        city_id: { type: [integer, "null"], format: int64, minimum: 1, maximum: 4294967295 }
+        location:
+          anyOf: [{ $ref: '#/components/schemas/GeoIpLocation' }, { type: "null" }]
+
+    GeoIpLocation:
+      type: object
+      required: [latitude, longitude, accuracy_radius_km]
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        accuracy_radius_km: { type: [integer, "null"], minimum: 0, maximum: 65535 }
