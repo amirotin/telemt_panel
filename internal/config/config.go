@@ -138,8 +138,7 @@ type UpdatesConfig struct {
 // PrivilegesConfig selects how the panel executes the five privileged
 // host operations (installing/restoring a binary, restarting a service,
 // tailing a journal, rewriting a config file): in-process (the panel
-// already runs as root), narrow non-interactive sudo, or manually. See
-// v2/specs/01-host-matrix.md §Привилегии.
+// already runs as root), narrow non-interactive sudo, or manually.
 type PrivilegesConfig struct {
 	// Mode: "auto" (default) picks direct when the panel's effective
 	// UID is 0, otherwise a complete sudo policy, otherwise manual mode.

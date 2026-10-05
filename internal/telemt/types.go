@@ -1,7 +1,7 @@
 package telemt
 
 // Response shapes mirror the serde structs in Telemt's src/api/model.rs
-// (verified against the 3.5.2 sources; see workspace v2/specs/07-telemt-sdk.md).
+// (verified against the 3.5.2 sources).
 // Optional response fields are omitted by Telemt, not null — except the
 // gated-wrapper `data` fields, which are explicit null when unavailable.
 

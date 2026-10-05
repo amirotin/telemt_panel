@@ -1,6 +1,6 @@
 // Package update implements the release-lookup half of the host update
 // engine: listing GitHub releases, semver comparison, libc/arch variant
-// detection, and asset matching. See v2/specs/03-update-engine.md.
+// detection, and asset matching.
 package update
 
 import (

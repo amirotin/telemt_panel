@@ -1,5 +1,5 @@
 // Package hub polls Telemt on behalf of every connected client and fans
-// out changes over Server-Sent Events. See v2/specs/02-hub-sse.md: one
+// out changes over Server-Sent Events. It uses one
 // poller per topic no matter how many subscribers, the client never picks
 // the interval, and a push happens only when the topic's comparison snapshot
 // actually changes.
@@ -19,7 +19,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/userprojection"
 )
 
-// Default poll intervals and lifecycle timings (spec 02-hub-sse.md). Tests
+// Default poll intervals and lifecycle timings. Tests
 // override these via Config with millisecond-scale values.
 const (
 	defaultUsersInterval     = 10 * time.Second
@@ -682,7 +682,7 @@ func fetchRuntime(ctx context.Context, tc *telemt.Client) (runtimeSnapshot, erro
 }
 
 // upstreamsSnapshot is the "upstreams" topic's composite payload: Upstreams
-// + DCs + MeWriters (spec 02-hub-sse.md / M3 task-2 brief). Any one failing
+// + DCs + MeWriters. Any one failing
 // leaves its field null and the topic still publishes; all three failing is
 // treated as Telemt being unreachable.
 type upstreamsSnapshot struct {
@@ -730,7 +730,7 @@ func fetchUpstreams(ctx context.Context, tc *telemt.Client) (upstreamsSnapshot, 
 }
 
 // securitySnapshot is the "security" topic's composite payload: Posture +
-// Whitelist + EffectiveLimits (spec 02-hub-sse.md / M3 task-2 brief). Any
+// Whitelist + EffectiveLimits. Any
 // one failing leaves its field null and the topic still publishes; all
 // three failing is treated as Telemt being unreachable.
 //
@@ -1400,8 +1400,8 @@ func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage, gauges *us
 // caches — independent of whether the underlying data changed at all. The
 // hub's poll intervals (10-30s for runtime/upstreams/security, 5s for
 // stats) are comparable to or longer than those cache windows, so without
-// this normalization, spec 02-hub-sse.md principle #3 ("push only on
-// change") would be routinely defeated: nearly every poll of runtime,
+// this normalization, pushing only on change would be routinely defeated:
+// nearly every poll of runtime,
 // upstreams, security (and stats when runtime_edge is on) would broadcast
 // a "changed" event purely because Telemt re-stamped the time, even when
 // every other field is byte-identical.
@@ -1544,7 +1544,7 @@ func (h *Hub) appendRingLocked(ev Event) {
 // broadcastLocked fans ev out to every subscriber interested in its topic.
 // A subscriber whose buffer is full is a slow client: broadcastLocked
 // closes it rather than blocking, so one stuck client never stalls the
-// poller or other subscribers (spec 02-hub-sse.md).
+// poller or other subscribers.
 func (h *Hub) broadcastLocked(ev Event) {
 	for id, sub := range h.subscribers {
 		if _, want := sub.topics[ev.Topic]; !want {

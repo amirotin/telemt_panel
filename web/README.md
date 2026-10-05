@@ -23,12 +23,14 @@ make dev-backend    # go run ./cmd/panel --config config.toml, :8080
 # 3. Frontend dev server
 cd web
 npm install
-npm run dev          # :5173, proxies /api and /sub to :8080 (see vite.config.ts)
+npm run dev          # :5173, proxies /api to :8080 and default /sub to :8081
 ```
 
 Open http://localhost:5173. The panel backend never needs `internal/webui/dist`
 built for this workflow — Vite serves the SPA itself and proxies API/SSE calls
 through to `make dev-backend`.
+The subscription listener is disabled by default. Enable it separately for
+`/sub` development; if you change its port or base_path, adjust the Vite proxy.
 
 To instead exercise the real embedded build end to end, `make web` (from `src/`)
 builds the frontend into `internal/webui/dist`, then `make dev-backend` (or the

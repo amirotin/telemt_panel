@@ -140,9 +140,8 @@ func parseTelemtReloadQuery(q url.Values) (telemt.ReloadQuery, error) {
 
 // handlePatchTelemtConfig implements PATCH /api/telemt/config: a
 // passthrough of telemt.PatchConfig, with the caller's revision sent as
-// If-Match (required — see 07-telemt-sdk.md §SDK-5: "SDK шлёт If-Match
-// всегда, когда у вызывающего кода есть ревизия"; the panel client always
-// has one, from a prior GET) and an optional inline reload via query
+// If-Match (required: the panel client has a revision from its prior GET)
+// and an optional inline reload via query
 // parameters.
 func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request) {
 	if !s.requireConfigAPI(w, r) {

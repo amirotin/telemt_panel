@@ -125,17 +125,17 @@ type sseErrorPayload struct {
 	Code  string `json:"code"`
 }
 
-// sseHeartbeatFrame is the observable heartbeat frame spec 02-hub-sse.md
-// defines — `event: heartbeat` + `data: {}` — sent during quiet periods to
+// sseHeartbeatFrame is an observable `event: heartbeat` + `data: {}` frame
+// sent during quiet periods to
 // keep intermediary proxies from timing the connection out and to let
 // clients drive a liveness indicator. Shared by handleEvents and
 // handleEventsLogs (logs_handler.go) so both SSE endpoints stay consistent;
 // this replaced an earlier `: hb` comment-only heartbeat, which a client
-// could not observe at all (spec 02-hub-sse.md's "Heartbeat" note).
+// could not observe at all.
 const sseHeartbeatFrame = "event: heartbeat\ndata: {}\n\n"
 
 // writeSSEEvent renders one hub.Event as an SSE frame: `id`/`event`/`data`
-// lines followed by a blank line. See v2/specs/02-hub-sse.md.
+// lines followed by a blank line.
 func writeSSEEvent(w io.Writer, e hub.Event) error {
 	if e.Err != "" {
 		payload, err := json.Marshal(sseErrorPayload{Topic: e.Topic, Code: e.Err})

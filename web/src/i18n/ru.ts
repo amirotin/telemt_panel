@@ -3289,9 +3289,9 @@ export const ru = {
       installUnavailableTitle: "Почему установка недоступна",
       installUnavailableDetail:
         "Панель может проверить доступную версию, но текущей установке не хватает прав для безопасной замены бинарников и перезапуска сервисов.",
-      installerPendingTitle: "Команда пока не публикуется",
+      installerPendingTitle: "Восстановление прав установки",
       installerPendingDetail:
-        "Команда восстановления зависит от менеджера сервисов и режима привилегий хоста. Здесь появится проверенная инструкция для конкретной платформы, а не универсальная shell-команда.",
+        "Для native или Entware-службы с sudo запустите от root sh install.sh repair-privileges --user SERVICE_USER с текущим установщиком и пользователем службы. Пути policy описаны в docs/CONFIG.md. Для Docker обновите образ контейнера.",
       dismiss: "Понятно",
       autoUpdate: {
         title: "Автообновление",

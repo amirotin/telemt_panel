@@ -18,7 +18,7 @@ import (
 // exposed. `POST /v1/runtime/web/debug/clear` and
 // `POST /v1/runtime/web/carrier-learning/reset` are deliberately absent:
 // they are request-capture and carrier-learning controls, which is Panvex's
-// half of the boundary (v2/plans/2026-08-26-m4-details.md, Task 8b) — an
+// half of the boundary — an
 // operator who needs them has `/web-status` on the Telemt API itself.
 //
 // The status snapshot is NOT here either: it is polled by the hub as the

@@ -3079,9 +3079,9 @@ export const en: Dict = {
       installUnavailableTitle: "Why installation is unavailable",
       installUnavailableDetail:
         "The panel can check available versions, but this installation does not currently have enough privileges to replace binaries and restart services safely.",
-      installerPendingTitle: "No command is published yet",
+      installerPendingTitle: "Restore installation privileges",
       installerPendingDetail:
-        "The repair command depends on the host's service manager and privilege mode. This surface will link to verified platform-specific instructions instead of showing a generic shell command.",
+        "For a native or Entware service using sudo, run sh install.sh repair-privileges --user SERVICE_USER as root with the current installer and your service account. See docs/CONFIG.md for policy paths. For Docker, update the container image.",
       dismiss: "Got it",
       autoUpdate: {
         title: "Auto-update",

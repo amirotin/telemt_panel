@@ -27,14 +27,28 @@
 артефакты. Они не должны попадать в Git.
 
 ```sh
-make release VERSION=1.0.0-rc.2
-RELEASE_DIR="$PWD/release" RELEASE_VERSION=1.0.0-rc.2 \
+make release VERSION=1.0.0-rc.audit
+RELEASE_DIR="$PWD/release" RELEASE_VERSION=1.0.0-rc.audit \
   go test -count=1 -run '^TestReleaseContract$' ./internal/update/
 ```
 
 Команды не создают тег и не публикуют релиз. `make release` очищает свой
 disposable `release/` перед сборкой; сохраните нужные старые результаты в
 отдельном каталоге. Контракт отвергает лишние файлы и каталоги.
+
+Все проверки должны относиться к одному снимку исходников и свежим артефактам.
+Перед выпуском повторите full/lite tests и vet, CGO race, frontend tests/lint/
+typecheck/build, SDK drift, Staticcheck и dependency scanners. Для lite задавайте
+`GOEXPERIMENT=nojsonv2` и `-tags lite`, как в CI. Браузерная проверка включает
+сохранение черновиков при задержанных ответах, proxy/base_path, RU/EN, 320/390 px,
+reduced motion, 2000 пользователей и бюджет загрузки assets.
+
+Отдельно нужны установка, native update/rollback и восстановление прав с
+предыдущего поддержанного профиля, Docker nonroot/mounts и обе архитектуры.
+Контейнер или эмуляция размеров экрана не подтверждают физический телефон,
+ARM-хост и реальный service manager. Записывайте непроверенные сценарии явно.
+До публикации обновите README, Compose, DOCKER и примеры workflow согласованным
+проверенным тегом; локальное имя `rc.audit` не является опубликованным релизом.
 
 ## Переходная матрица 0.6.2 → 1.0
 

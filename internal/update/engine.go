@@ -3,7 +3,7 @@
 // detection (variant.go), asset matching (assets.go), and — in this file
 // plus targets.go/download.go/auto.go/startup.go — the state machine that
 // downloads, verifies, installs and health-gates Telemt and panel-self
-// updates. See v2/specs/03-update-engine.md.
+// updates. Panel updates are confirmed by the replacement process after readiness.
 package update
 
 import (
@@ -51,7 +51,7 @@ const (
 
 // ErrBusy is returned by Apply/StartApply when another run already holds
 // the engine's global lock — one update run per process across both
-// targets at once (spec 03-update-engine.md).
+// targets at once.
 var ErrBusy = errors.New("update: another run is in progress")
 
 // ErrUnknownTarget is returned for a target name that isn't "telemt" or
@@ -183,7 +183,7 @@ type EngineConfig struct {
 
 // Engine runs the update state machine for both targets, sharing one
 // global lock so a Telemt update and a panel self-update can never race
-// each other (spec 03-update-engine.md).
+// each other.
 type Engine struct {
 	runner       host.Runner
 	st           store.Store
@@ -626,8 +626,7 @@ func stageBinaryBackup(sourcePath, destinationPath string) (retErr error) {
 	return nil
 }
 
-// runPhases drives one run through the full state machine. See engine.go's
-// package doc and v2/specs/03-update-engine.md for the phase diagram.
+// runPhases drives one run through verification, publication and health checking.
 func (e *Engine) runPhases(ctx context.Context, targetName string, target Target, version string) error {
 	rc := &runCtx{RunID: e.newRunID(), Target: targetName, VersionTo: version, StartedAt: e.now()}
 	if cv, err := target.CurrentVersion(ctx); err == nil {

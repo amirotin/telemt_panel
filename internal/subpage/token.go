@@ -1,7 +1,6 @@
 // Package subpage implements the token-addressed, no-login subscription
 // page at /sub/{token} — a user's self-serve connection page — plus the
-// admin-side link builder it shares with the users API (spec
-// v2/specs/04-subpage.md).
+// admin-side link builder it shares with the users API.
 package subpage
 
 import (

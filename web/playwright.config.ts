@@ -1,8 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import { BASE_URL } from "./e2e/env";
 
-// playwright.config.ts — Task 9 deliverable A (v2/plans/2026-08-25-m3-frontend.md,
-// Ruling R4): chromium only, against the real built panel binary +
+// Chromium only, against the real built panel binary +
 // cmd/telemt-mock (e2e/stack.ts), never a mocked fetch layer or the vite
 // dev server. Two built-stack projects: `mobile` (360×640, the primary target —
 // every flow in the brief), `desktop` (1280×800 smoke — sidebar, raw

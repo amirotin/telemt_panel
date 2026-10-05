@@ -121,9 +121,7 @@ func validateAutoMode(m string) error {
 
 // AutoUpdater is the single per-process scheduler that ticks at the
 // configured interval and, per target, checks (publishing an availability
-// notice) or applies (via the same Engine lock manual Apply uses) —
-// spec 03-update-engine.md: "один тикер на процесс (не по горутине на
-// цель)".
+// notice) or applies via the same Engine lock manual Apply uses.
 type AutoUpdater struct {
 	st     store.Store
 	engine *Engine

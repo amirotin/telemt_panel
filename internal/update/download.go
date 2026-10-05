@@ -234,8 +234,8 @@ func (e *Engine) ReleasesView(ctx context.Context, targetName string) (ReleasesV
 // matching newer asset).
 //
 // This is the auto-update picker (auto.go's tickTarget "apply" case, and
-// CheckAndPublish's "check" notice) — spec 08-migration.md treats
-// prereleases as opt-in betas the updater never auto-offers, so skipping
+// CheckAndPublish's "check" notice). Prereleases are opt-in betas the
+// updater never auto-offers, so skipping
 // them here (rather than in BuildReleasesView/ReleasesView) is
 // deliberate: manual apply still lists and can install an RC, since
 // handleApplyUpdate takes an explicit version from the operator rather

@@ -9,10 +9,8 @@ import (
 )
 
 // defaultHealthTimeout/defaultHealthInterval are TelemtTarget.PostRestart's
-// defaults: poll for up to 90s, every 2s, per spec 03-update-engine.md
-// ("N попыток с backoff" — a fixed short interval within a bounded total
-// window; there is nothing to back off from since Health is cheap and
-// idempotent).
+// defaults: poll for up to 90s, every 2s. Health is cheap and idempotent,
+// so the fixed short interval stays within a bounded total window.
 const (
 	defaultHealthTimeout  = 90 * time.Second
 	defaultHealthInterval = 2 * time.Second

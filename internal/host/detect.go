@@ -32,7 +32,7 @@ func DefaultProbe() Probe {
 
 // DetectServiceManagerKind returns the init system kind to use: configured
 // verbatim when it's not "auto" (config override wins), otherwise the
-// first match from p in spec order (01-host-matrix.md §Матрица): systemd,
+// first match from p in priority order: systemd,
 // openrc, procd, sysvinit, else none. Docker is never auto-detected — it's
 // selected only by explicit config, since a container name has to be
 // configured for it to mean anything.
