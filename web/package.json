@@ -31,7 +31,7 @@
     "world-atlas": "2.0.2"
   },
   "overrides": {
-    "js-yaml": "4.3.2",
+    "js-yaml": "5.4.2",
     "brace-expansion": "5.0.12",
     "undici": "8.11.2"
   },
@@ -54,7 +54,7 @@
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.4",
     "globals": "17.11.0",
-    "js-yaml": "4.3.2",
+    "js-yaml": "5.4.2",
     "jsdom": "30.0.1",
     "knip": "6.39.0",
     "tailwindcss": "4.3.3",
