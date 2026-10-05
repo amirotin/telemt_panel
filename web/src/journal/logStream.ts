@@ -1,6 +1,7 @@
 import { withBasePath } from "../lib/base-path";
 import type { LogLine, LogSourceDiagnostic } from "../lib/api/generated/types.gen";
 import { logSourceDiagnostic } from "./logSourceDiagnostic";
+import { probeLogStream } from "../lib/api/generated/sdk.gen";
 
 // DEFAULT_STALE_MS mirrors sseClient.ts's 40s global-stale watchdog
 // (02-hub-sse.md's heartbeat contract is shared by /api/events and
@@ -26,12 +27,16 @@ export interface LogStreamSnapshot {
   /** No frame (log line or heartbeat) received for staleMs. */
   stale: boolean;
   error?: LogSourceDiagnostic;
+  errorCode?: string;
 }
+
+export interface LogCapacityProbe { status: number; retryAfter: string | null; code?: string }
 
 export interface LogStreamOptions {
   /** Test seam: defaults to `new EventSource(url, {withCredentials: true})`. */
   eventSourceFactory?: (url: string) => EventSource;
   staleMs?: number;
+  probeCapacity?: (service: string, signal: AbortSignal) => Promise<LogCapacityProbe>;
 }
 
 export interface LogStreamClient {
@@ -63,6 +68,7 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
   const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
   const eventSourceFactory =
     options.eventSourceFactory ?? ((url: string) => new EventSource(url, { withCredentials: true }));
+  const probeCapacity = options.probeCapacity ?? defaultCapacityProbe;
 
   const listeners = new Set<() => void>();
   const lineListeners = new Set<(line: LogLine) => void>();
@@ -73,6 +79,9 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
   let reconnectStep = 0;
   let closed = false;
   let es: EventSource | null = null;
+  let generation = 0;
+  let probeAbort: AbortController | null = null;
+  let retryNotBefore = 0;
 
   function notify() {
     for (const cb of listeners) cb();
@@ -80,7 +89,7 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
 
   function setSnapshot(patch: Partial<LogStreamSnapshot>) {
     const next: LogStreamSnapshot = { ...snapshot, ...patch };
-    if (next.status === snapshot.status && next.stale === snapshot.stale && next.error === snapshot.error) return;
+    if (next.status === snapshot.status && next.stale === snapshot.stale && next.error === snapshot.error && next.errorCode === snapshot.errorCode) return;
     snapshot = next;
     notify();
   }
@@ -93,10 +102,13 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
   function onFrame() {
     reconnectStep = 0;
     resetStaleWatchdog();
-    setSnapshot({ stale: false, error: undefined });
+    retryNotBefore = 0;
+    setSnapshot({ stale: false, error: undefined, errorCode: undefined });
   }
 
   function stopConnection() {
+    generation++;
+    probeAbort?.abort(); probeAbort = null;
     if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; }
     es?.close();
     es = null;
@@ -110,13 +122,15 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
   function reconnect() {
     clearReconnectTimer();
     if (closed || !reconnectPending || document.visibilityState === "hidden") return;
+    const remaining = retryNotBefore - Date.now();
+    if (remaining > 0) { reconnectTimer = setTimeout(reconnect, remaining); return; }
     reconnectPending = false;
     open();
   }
 
   function scheduleReconnect() {
     reconnectPending = true;
-    const delay = RECONNECT_DELAYS_MS[Math.min(reconnectStep, RECONNECT_DELAYS_MS.length - 1)];
+    const delay = Math.max(RECONNECT_DELAYS_MS[Math.min(reconnectStep, RECONNECT_DELAYS_MS.length - 1)], retryNotBefore - Date.now());
     reconnectStep = Math.min(reconnectStep + 1, RECONNECT_DELAYS_MS.length - 1);
     setSnapshot({ status: "reconnecting", stale: false });
     if (document.visibilityState !== "hidden") reconnectTimer = setTimeout(reconnect, delay);
@@ -145,7 +159,8 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
 
     next.addEventListener("open", () => {
       if (es !== next) return;
-      setSnapshot({ status: "open", stale: false });
+      retryNotBefore = 0;
+      setSnapshot({ status: "open", stale: false, errorCode: undefined });
       resetStaleWatchdog();
     });
 
@@ -180,7 +195,26 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
     next.addEventListener("error", () => {
       if (es !== next) return;
       if (next.readyState === READY_STATE_CLOSED) {
+        stopConnection();
         setSnapshot({ status: "closed" });
+        const ticket = generation;
+        const abort = new AbortController();
+        probeAbort = abort;
+        void probeCapacity(service, abort.signal).then(result => {
+          if (closed || generation !== ticket || abort.signal.aborted) return;
+          probeAbort = null;
+          if (result.status === 429) {
+            retryNotBefore = Date.now() + retryAfterMilliseconds(result.retryAfter);
+            setSnapshot({ errorCode: "logs_stream_limit" });
+            scheduleReconnect();
+          } else if (result.status === 204) {
+            scheduleReconnect();
+          } else if (result.code) {
+            setSnapshot({ errorCode: result.code });
+          }
+        }).catch(() => {
+          if (generation === ticket) probeAbort = null;
+        });
       } else {
         setSnapshot({ status: "reconnecting" });
         if (document.visibilityState === "hidden") pauseConnecting();
@@ -206,11 +240,16 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
     },
     retry() {
       if (closed) return;
+      if (retryNotBefore > Date.now()) {
+        clearReconnectTimer(); reconnectPending = true;
+        if (document.visibilityState !== "hidden") reconnectTimer = setTimeout(reconnect, retryNotBefore - Date.now());
+        return;
+      }
       clearReconnectTimer();
       reconnectPending = false;
       reconnectStep = 0;
       stopConnection();
-      setSnapshot({ status: "connecting", stale: false, error: undefined });
+      setSnapshot({ status: "connecting", stale: false, error: undefined, errorCode: undefined });
       open();
     },
     close() {
@@ -221,6 +260,20 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
       document.removeEventListener("visibilitychange", onVisibilityChange);
     },
   };
+}
+
+async function defaultCapacityProbe(service: string, signal: AbortSignal): Promise<LogCapacityProbe> {
+  const { response } = await probeLogStream({ query: { service: service as "telemt" | "panel" }, signal, throwOnError: false });
+  if (!response) throw new Error("log stream capacity probe unavailable");
+  const codes: Record<number, string> = { 400: "bad_request", 401: "session_expired", 403: "forbidden", 429: "logs_stream_limit", 501: "log_stream_unavailable", 503: "capability_unavailable" };
+  return { status: response.status, retryAfter: response.headers.get("Retry-After"), code: codes[response.status] };
+}
+
+function retryAfterMilliseconds(value: string | null): number {
+  if (!value) return 5000;
+  const seconds = Number(value);
+  const milliseconds = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+  return Number.isFinite(milliseconds) ? Math.max(5000, milliseconds) : 5000;
 }
 
 function parseJSON<T>(raw: string): T | null {

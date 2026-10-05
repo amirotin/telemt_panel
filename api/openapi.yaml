@@ -1799,6 +1799,20 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
 
   /api/events/logs:
+    head:
+      tags: [realtime]
+      operationId: probeLogStream
+      description: Checks authentication, log capability and current capacity without opening a source or reserving a slot. GET atomically checks capacity again.
+      parameters:
+        - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
+      responses:
+        "204": { description: A log stream can currently be attempted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { description: Session expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: Host or request rejected, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: "logs_stream_limit — at most 4 process streams and 2 per session; anonymous shares one key", headers: { Retry-After: { schema: { type: integer, minimum: 5 }, description: Retry no earlier than this many seconds } }, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: log_stream_unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: Server is shutting down, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     get:
       tags: [realtime]
       operationId: streamLogs
@@ -1812,6 +1826,7 @@ paths:
         - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
       responses:
         "200": { description: "SSE of log, heartbeat, log_source_error and log_end events", content: { text/event-stream: { schema: { type: string } } } }
+        "429": { description: "logs_stream_limit — capacity exhausted before streaming starts", headers: { Retry-After: { schema: { type: integer, minimum: 5 }, description: Retry no earlier than this many seconds } }, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: log_stream_unavailable — host cap log_stream=false, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
@@ -2248,6 +2263,7 @@ components:
             - rate_limited
             - session_expired
             - session_revoke_failed
+            - logs_stream_limit
             - telemt_response_too_large
             - csrf_rejected
             - auth_disabled
@@ -2958,6 +2974,8 @@ components:
                     published_at: { type: string, format: date-time }
                     prerelease: { type: boolean }
                     newer: { type: boolean }
+                    checksum_required: { type: boolean, description: Panel releases require an exact checksum asset; Telemt compatibility permits omission. }
+                    checksum_available: { type: boolean, description: A checksum asset is present; this does not claim that its contents have already been verified. }
               active_run: { $ref: "#/components/schemas/UpdateRun" }
               journal: { type: array, items: { $ref: "#/components/schemas/UpdateRun" } }
 

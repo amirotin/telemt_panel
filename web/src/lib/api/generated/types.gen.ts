@@ -213,7 +213,7 @@ export type Error = {
      * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, session_revoke_failed, csrf_rejected, auth_disabled, internal_error, not_found, telemt_response_too_large, history_timeout, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, invalid_webauthn_origin, invalid_webauthn_challenge, invalid_webauthn_response, webauthn_credential_exists, passkey_unavailable, quota_reset_busy, quota_confirmation_expired, quota_operation_unavailable, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
      *
      */
-    code: 'bad_request' | 'tls_invalid_candidate' | 'tls_manual_required' | 'tls_prepare_busy' | 'tls_prepare_unavailable' | 'tls_listener_unavailable' | 'tls_challenge_unavailable' | 'tls_cache_unavailable' | 'tls_certificate_invalid' | 'tls_certificate_untrusted' | 'tls_acquisition_failed' | 'tls_prepare_failed' | 'tls_prepare_timeout' | 'tls_config_changed' | 'tls_receipt_invalid' | 'tls_save_failed' | 'tls_restart_not_pending' | 'tls_restart_failed' | 'conflict' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'session_revoke_failed' | 'telemt_response_too_large' | 'csrf_rejected' | 'auth_disabled' | 'quota_reset_busy' | 'invalid_quota_schedule' | 'quota_schedule_conflict' | 'quota_schedule_storage' | 'quota_schedule_unavailable' | 'quota_confirmation_expired' | 'quota_operation_unavailable' | 'internal_error' | 'history_timeout' | 'branding_invalid_title' | 'branding_invalid_mode' | 'branding_invalid_path' | 'branding_logo_unreadable' | 'branding_invalid_image' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'manual_service_control_required' | 'service_action_unconfirmed' | 'update_locked' | 'update_version_unsupported' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
+    code: 'bad_request' | 'tls_invalid_candidate' | 'tls_manual_required' | 'tls_prepare_busy' | 'tls_prepare_unavailable' | 'tls_listener_unavailable' | 'tls_challenge_unavailable' | 'tls_cache_unavailable' | 'tls_certificate_invalid' | 'tls_certificate_untrusted' | 'tls_acquisition_failed' | 'tls_prepare_failed' | 'tls_prepare_timeout' | 'tls_config_changed' | 'tls_receipt_invalid' | 'tls_save_failed' | 'tls_restart_not_pending' | 'tls_restart_failed' | 'conflict' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'session_revoke_failed' | 'logs_stream_limit' | 'telemt_response_too_large' | 'csrf_rejected' | 'auth_disabled' | 'quota_reset_busy' | 'invalid_quota_schedule' | 'quota_schedule_conflict' | 'quota_schedule_storage' | 'quota_schedule_unavailable' | 'quota_confirmation_expired' | 'quota_operation_unavailable' | 'internal_error' | 'history_timeout' | 'branding_invalid_title' | 'branding_invalid_mode' | 'branding_invalid_path' | 'branding_logo_unreadable' | 'branding_invalid_image' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'manual_service_control_required' | 'service_action_unconfirmed' | 'update_locked' | 'update_version_unsupported' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
     message: string;
 };
 
@@ -801,6 +801,14 @@ export type UpdatesStatus = {
             published_at: string;
             prerelease?: boolean;
             newer?: boolean;
+            /**
+             * Panel releases require an exact checksum asset; Telemt compatibility permits omission.
+             */
+            checksum_required?: boolean;
+            /**
+             * A checksum asset is present; this does not claim that its contents have already been verified.
+             */
+            checksum_available?: boolean;
         }>;
         active_run?: UpdateRun;
         journal?: Array<UpdateRun>;
@@ -4552,6 +4560,10 @@ export type StreamLogsErrors = {
      */
     400: Error;
     /**
+     * logs_stream_limit — capacity exhausted before streaming starts
+     */
+    429: Error;
+    /**
      * log_stream_unavailable — host cap log_stream=false
      */
     501: Error;
@@ -4567,6 +4579,53 @@ export type StreamLogsResponses = {
 };
 
 export type StreamLogsResponse = StreamLogsResponses[keyof StreamLogsResponses];
+
+export type ProbeLogStreamData = {
+    body?: never;
+    path?: never;
+    query: {
+        service: 'telemt' | 'panel';
+    };
+    url: '/api/events/logs';
+};
+
+export type ProbeLogStreamErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Session expired
+     */
+    401: Error;
+    /**
+     * Host or request rejected
+     */
+    403: Error;
+    /**
+     * logs_stream_limit — at most 4 process streams and 2 per session; anonymous shares one key
+     */
+    429: Error;
+    /**
+     * log_stream_unavailable
+     */
+    501: Error;
+    /**
+     * Server is shutting down
+     */
+    503: Error;
+};
+
+export type ProbeLogStreamError = ProbeLogStreamErrors[keyof ProbeLogStreamErrors];
+
+export type ProbeLogStreamResponses = {
+    /**
+     * A log stream can currently be attempted
+     */
+    204: void;
+};
+
+export type ProbeLogStreamResponse = ProbeLogStreamResponses[keyof ProbeLogStreamResponses];
 
 export type GetSnapshotData = {
     body?: never;

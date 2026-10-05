@@ -456,6 +456,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /api/events", protect(s.handleEvents))
 	mux.Handle("GET /api/events/logs", protect(s.handleEventsLogs))
+	mux.Handle("HEAD /api/events/logs", protect(s.handleProbeLogStream))
 	mux.Handle("GET /api/snapshot", protect(s.handleSnapshot))
 
 	mux.Handle("GET /api/users", protect(s.handleListUsers))
@@ -660,14 +661,7 @@ func (s *Server) Run(ctx context.Context) error {
 	challengeHandler = paneltls.CombineChallenges(challengeHandler, subChallenge)
 	s.access.mux = paneltls.NewChallengeMux(challengeHandler)
 
-	srv := &http.Server{
-		TLSConfig:    tlsConfig,
-		Addr:         s.cfg.Listen,
-		Handler:      s.Handler(),
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
+	srv := s.panelHTTPServer(tlsConfig)
 	// Shutdown waits for every in-flight handler to return, but an SSE
 	// handler only returns when its subscriber channel closes or the
 	// client disconnects — neither of which "drain connections" below
@@ -705,6 +699,10 @@ func (s *Server) Run(ctx context.Context) error {
 		s.updateEngine.MarkReady()
 		return nil
 	}, subscription)
+}
+
+func (s *Server) panelHTTPServer(tlsConfig *tls.Config) *http.Server {
+	return &http.Server{TLSConfig: tlsConfig, Addr: s.cfg.Listen, Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

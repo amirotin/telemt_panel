@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -145,35 +146,89 @@ func writeLogSSEEvent(w io.Writer, l host.LogLine, logical string) error {
 // logStreamRegistry so a server shutdown ends it immediately instead of
 // stalling http.Server.Shutdown on an open client (see server.go's Run and
 // sse.go's handleEvents for the equivalent /api/events case).
-func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
+func (s *Server) resolveLogStream(w http.ResponseWriter, r *http.Request) (string, string, bool) {
 	logical := r.URL.Query().Get("service")
 	name, ok := resolveLogicalService(logical, s.logSrc.Kind(), s.cfg.Host)
 	if !ok {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", fmt.Sprintf("unknown service %q (want telemt or panel)", logical))
-		return
+		return "", "", false
 	}
 	if !s.logSrc.Caps().CanStream {
 		auth.WriteError(w, http.StatusNotImplemented, "log_stream_unavailable", noLogSourceHint)
+		return "", "", false
+	}
+	return logical, name, true
+}
+
+func writeLogAdmissionError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrLogStreamLimit) {
+		w.Header().Set("Retry-After", "5")
+		auth.WriteError(w, http.StatusTooManyRequests, "logs_stream_limit", "too many active log streams")
 		return
 	}
+	auth.WriteError(w, http.StatusServiceUnavailable, "capability_unavailable", "log streams are shutting down")
+}
 
-	stream, release, allowed := s.trackSessionStream(w, r)
+func (s *Server) handleProbeLogStream(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.resolveLogStream(w, r); !ok {
+		return
+	}
+	hash, _ := auth.SessionIDHashFromContext(r.Context())
+	if err := s.logStreams.capacityError(hash); err != nil {
+		writeLogAdmissionError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
+	logical, name, ok := s.resolveLogStream(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	stream, release, allowed := s.trackSessionStream(w, r.WithContext(ctx))
 	if !allowed {
 		return
 	}
 	defer release()
-	ctx, cancel := context.WithCancel(stream.ctx)
-	defer cancel()
-	deregister := s.logStreams.register(cancel)
+	ctx = stream.ctx
+	hash, _ := auth.SessionIDHashFromContext(r.Context())
+	deregister, err := s.logStreams.TryRegister(hash, cancel)
+	if err != nil {
+		writeLogAdmissionError(w, err)
+		return
+	}
 	defer deregister()
-
-	ch, err := s.logSrc.Stream(ctx, name)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "streaming unsupported")
 		return
 	}
+	ch, err := s.logSrc.Stream(ctx, name)
+	defer func() {
+		cancel()
+		if ch == nil {
+			return
+		}
+		// Retain admission until the source has finished stopping. Source
+		// channels close after their process/watcher exits on cancellation.
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		for {
+			select {
+			case _, open := <-ch:
+				if !open {
+					return
+				}
+			case <-deadline.C:
+				return
+			}
+		}
+	}()
 	rc := stream.rc
 
 	w.Header().Set("Content-Type", "text/event-stream")

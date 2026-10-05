@@ -30,9 +30,9 @@ class JournalEventSource extends EventTarget {
   }
 }
 
-function makeJournalClient(service = "telemt") {
+function makeJournalClient(service = "telemt",extra: Record<string,unknown>={}) {
   const sources: JournalEventSource[] = [];
-  client = createLogStream(service, { eventSourceFactory: () => {
+  client = createLogStream(service, { ...extra,eventSourceFactory: () => {
     const source = new JournalEventSource();
     sources.push(source);
     return source as unknown as EventSource;
@@ -41,6 +41,40 @@ function makeJournalClient(service = "telemt") {
 }
 
 describe("createLogStream", () => {
+  it("probes terminal errors and respects stream quota Retry-After on retry and visibility", async()=>{
+    const probe=vi.fn().mockResolvedValue({status:429,retryAfter:"5",code:"logs_stream_limit"});
+    const sources=makeJournalClient("telemt",{probeCapacity:probe});
+    sources[0].readyState=2;sources[0].emit("error",{});
+    await Promise.resolve();await Promise.resolve();
+    expect(probe).toHaveBeenCalledOnce();
+    expect(client!.getSnapshot()).toMatchObject({status:"reconnecting",errorCode:"logs_stream_limit"});
+    client!.retry();
+    vi.spyOn(document,"visibilityState","get").mockReturnValue("hidden");document.dispatchEvent(new Event("visibilitychange"));
+    vi.spyOn(document,"visibilityState","get").mockReturnValue("visible");document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(4999);expect(sources).toHaveLength(1);
+    vi.advanceTimersByTime(1);expect(sources).toHaveLength(2);
+    sources[1].emit("open",{});
+    expect(client!.getSnapshot().errorCode).toBeUndefined();
+  });
+
+  it("retries an available HEAD response without reserving a client-side source",async()=>{
+    const probe=vi.fn().mockResolvedValue({status:204,retryAfter:null});
+    const sources=makeJournalClient("panel",{probeCapacity:probe});
+    sources[0].readyState=2;sources[0].emit("error",{});
+    await Promise.resolve();await Promise.resolve();
+    vi.advanceTimersByTime(999);expect(sources).toHaveLength(1);
+    vi.advanceTimersByTime(1);expect(sources).toHaveLength(2);
+  });
+
+  it("ignores a capacity probe that resolves after close",async()=>{
+    let resolve!:(value:{status:number;retryAfter:null})=>void;
+    const probe=()=>new Promise<{status:number;retryAfter:null}>(r=>{resolve=r});
+    const sources=makeJournalClient("telemt",{probeCapacity:probe});
+    sources[0].readyState=2;sources[0].emit("error",{});
+    client!.close();resolve({status:204,retryAfter:null});
+    await Promise.resolve();await Promise.resolve();vi.advanceTimersByTime(10000);
+    expect(sources).toHaveLength(1);
+  });
   it.each(["permission_denied", "command_missing"])("keeps %s failures manual until retry", reason => {
     const sources = makeJournalClient();
     sources[0].emit("log_source_error", {

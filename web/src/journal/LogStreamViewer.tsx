@@ -13,6 +13,7 @@ import { LogToolbar } from "./LogToolbar";
 import { LogList } from "./LogList";
 import { LogSourceErrorNotice } from "./LogSourceErrorNotice";
 import type { LogicalService } from "./types";
+import { apiErrorMessage } from "../people/apiError";
 
 export interface LogStreamViewerProps {
   service: LogicalService;
@@ -88,6 +89,7 @@ export function LogStreamViewer({
       />
 
       {streamState.error && <LogSourceErrorNotice diagnostic={streamState.error} onRetry={streamState.retry} />}
+      {streamState.errorCode && <p className="rounded-xl border border-warn/25 bg-warn/5 p-3 text-meta text-warn" role="alert">{apiErrorMessage({ code: streamState.errorCode }, s)}</p>}
 
       {hasStreamNotice && (
         <div className="journal-stream-notice">
