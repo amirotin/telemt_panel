@@ -1,7 +1,7 @@
 # Third-party notices
 
 The application is MIT licensed; the components below retain their own licenses and copyrights.
-This inventory covers Go modules linked into full/lite binaries and npm modules retained in the production SPA chunks.
+This inventory covers Go modules and bundled source linked into full/lite binaries and npm modules retained in the production SPA chunks.
 Development-only npm packages, the tools module, and unused npm CLI modules are not embedded.
 SQLite modules and julianday are full-only; the shared SPA, passkeys and geography ship in both profiles.
 
@@ -36,6 +36,14 @@ SQLite modules and julianday are full-only; the shared SPA, passkeys and geograp
 
 SQLite itself is in the public domain (https://www.sqlite.org/copyright.html). The Go driver and generated wrapper have the licenses listed above.
 The specialized branding interpolation retains arithmetic adapted from x/image/draw under BSD-3-Clause.
+
+## Bundled source
+
+| Component and version | License | Profile | Source |
+| --- | --- | --- | --- |
+| wasm2go libc/TLSF sources at v0.4.15 | MIT | full | https://github.com/ncruces/wasm2go/tree/v0.4.15/libc-gen/c |
+
+The SQLite wrapper includes translated libc and TLSF allocator sources from wasm2go v0.4.15. Their MIT license remains in effect; wasm2go is a build tool, not a Go module linked into the panel.
 
 ## Production browser modules
 
@@ -563,6 +571,34 @@ in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### wasm2go libc/TLSF sources at v0.4.15
+
+LICENSE (https://github.com/ncruces/wasm2go/blob/v0.4.15/LICENSE)
+
+```text
+MIT License
+
+Copyright (c) 2026 Nuno Cruces
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
