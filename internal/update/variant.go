@@ -1,10 +1,15 @@
 package update
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
+	"time"
+
+	"github.com/amirotin/telemt_panel/internal/host"
 )
 
 // Probe holds the filesystem and command checks libc variant detection
@@ -20,14 +25,31 @@ type Probe struct {
 
 // DefaultProbe checks the real filesystem and shells out to ldd.
 func DefaultProbe() Probe {
+	return DefaultProbeWithContext(context.Background())
+}
+
+// DefaultProbeWithContext bounds libc detection while honoring startup cancellation.
+func DefaultProbeWithContext(ctx context.Context) Probe {
+	return defaultProbe(ctx, host.OSCmdRunner)
+}
+
+func defaultProbe(ctx context.Context, run host.CmdRunner) Probe {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return Probe{
 		Stat: func(path string) bool {
 			_, err := os.Stat(path)
 			return err == nil
 		},
 		LddVersion: func() (string, error) {
-			out, err := exec.Command("ldd", "--version").CombinedOutput()
-			return string(out), err
+			probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			stdout, stderr, err := run(probeCtx, "ldd", "--version")
+			if probeCtx.Err() != nil {
+				err = probeCtx.Err()
+			}
+			return string(stdout) + string(stderr), err
 		},
 	}
 }
@@ -52,15 +74,23 @@ func DetectLibc(p Probe) string {
 	}
 	out, err := p.LddVersion()
 	if err != nil {
+		reason := "command unavailable"
+		if errors.Is(err, context.DeadlineExceeded) {
+			reason = "timeout"
+		} else if errors.Is(err, context.Canceled) {
+			reason = "startup canceled"
+		}
+		slog.Warn("libc detection uses musl fallback", "reason", reason)
 		return "musl"
 	}
-	if strings.Contains(out, "musl") {
+	if strings.Contains(strings.ToLower(out), "musl") {
 		return "musl"
 	}
 	lower := strings.ToLower(out)
 	if strings.Contains(lower, "gnu") || strings.Contains(lower, "glibc") {
 		return "gnu"
 	}
+	slog.Warn("libc detection uses musl fallback", "reason", "unrecognized output")
 	return "musl"
 }
 

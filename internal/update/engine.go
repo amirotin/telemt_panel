@@ -258,7 +258,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		e.arch = DetectArch()
 	}
 	if e.variant == "" {
-		e.variant = DetectLibc(DefaultProbe())
+		e.variant = DetectLibc(DefaultProbeWithContext(e.runContext))
 	}
 	if e.buildVariant == "" {
 		e.buildVariant = "full"
