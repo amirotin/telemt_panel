@@ -43,8 +43,9 @@ test:
 
 # The race detector requires cgo and a C toolchain, unlike release binaries.
 # Rerun tests even when a previous successful result is cached.
+# Package serialization keeps hashing/SQLite fixtures within their deadlines.
 test-race:
-	go test -race -count=1 ./...
+	go test -race -p 1 -count=1 ./...
 
 # Dev-only fake Telemt API (internal/telemt/telemttest), replacing the 0.x
 # panel's .claude/mock-server.mjs — point telemt.url at it (default
