@@ -59,11 +59,11 @@ The specialized branding interpolation retains arithmetic adapted from x/image/d
 | d3-geo@3.1.1 | ISC | https://www.npmjs.com/package/d3-geo/v/3.1.1 |
 | dijkstrajs@1.0.3 | MIT | https://www.npmjs.com/package/dijkstrajs/v/1.0.3 |
 | qrcode@1.5.4 | MIT | https://www.npmjs.com/package/qrcode/v/1.5.4 |
-| react@19.2.8 | MIT | https://www.npmjs.com/package/react/v/19.2.8 |
+| react@19.3.0 | MIT | https://www.npmjs.com/package/react/v/19.2.8 |
 | react-aria@3.51.0 | Apache-2.0 | https://www.npmjs.com/package/react-aria/v/3.51.0 |
-| react-dom@19.2.8 | MIT | https://www.npmjs.com/package/react-dom/v/19.2.8 |
+| react-dom@19.3.0 | MIT | https://www.npmjs.com/package/react-dom/v/19.2.8 |
 | react-stately@3.49.0 | Apache-2.0 | https://www.npmjs.com/package/react-stately/v/3.49.0 |
-| scheduler@0.27.0 | MIT | https://www.npmjs.com/package/scheduler/v/0.27.0 |
+| scheduler@0.28.0 | MIT | https://www.npmjs.com/package/scheduler/v/0.27.0 |
 | style-mod@4.1.3 | MIT | https://www.npmjs.com/package/style-mod/v/4.1.3 |
 | three@0.185.1 | MIT | https://www.npmjs.com/package/three/v/0.185.1 |
 | topojson-client@3.1.0 | ISC | https://www.npmjs.com/package/topojson-client/v/3.1.0 |
@@ -1601,7 +1601,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### react@19.2.8
+### react@19.3.0
 
 LICENSE
 
@@ -1837,7 +1837,7 @@ LICENSE
    limitations under the License.
 ```
 
-### react-dom@19.2.8
+### react-dom@19.3.0
 
 LICENSE
 
@@ -2073,7 +2073,7 @@ LICENSE
    limitations under the License.
 ```
 
-### scheduler@0.27.0
+### scheduler@0.28.0
 
 LICENSE
 

@@ -15,6 +15,17 @@ updates:
     target-branch: main
     schedule:
       interval: weekly
+    groups:
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+      router:
+        patterns:
+          - "@tanstack/react-router"
+          - "@tanstack/router-plugin"
   - package-ecosystem: github-actions
     directory: /
     target-branch: main
