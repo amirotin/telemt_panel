@@ -1,20 +1,23 @@
 package httpapi
 
 import (
+	"compress/gzip"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 )
 
-// telemtConfigCatalogJSON is generated from the audited Telemt 3.5.5
+// telemtConfigCatalogPacked is generated from the audited Telemt 3.5.5
 // inventory. It is the single field-path source used by validation and the
 // settings UI; keeping a second hand-maintained list here would inevitably
 // make one of those surfaces incomplete.
 //
-//go:embed telemt_config_catalog_3_5_5.json
-var telemtConfigCatalogJSON []byte
+//go:embed telemt_config_catalog_3_5_5.json.gz
+var telemtConfigCatalogPacked string
 
 type telemtConfigCatalog struct {
 	Version          string              `json:"version"`
@@ -48,14 +51,32 @@ type telemtConfigField struct {
 var telemt355ConfigCatalog = mustLoadTelemtConfigCatalog()
 
 func mustLoadTelemtConfigCatalog() telemtConfigCatalog {
-	var catalog telemtConfigCatalog
-	if err := json.Unmarshal(telemtConfigCatalogJSON, &catalog); err != nil {
+	catalog, err := decodeTelemtConfigCatalog(telemtConfigCatalogPacked)
+	if err != nil {
 		panic(fmt.Sprintf("decode embedded Telemt config catalog: %v", err))
 	}
-	if catalog.Version == "" || len(catalog.Groups) == 0 || len(catalog.Fields) == 0 {
-		panic("embedded Telemt config catalog is empty")
-	}
 	return catalog
+}
+
+func decodeTelemtConfigCatalog(packed string) (telemtConfigCatalog, error) {
+	var catalog telemtConfigCatalog
+	reader, err := gzip.NewReader(strings.NewReader(packed))
+	if err != nil {
+		return catalog, err
+	}
+	defer reader.Close()
+	// Read through EOF so a valid JSON prefix cannot hide a bad gzip checksum.
+	raw, err := io.ReadAll(reader)
+	if err != nil {
+		return catalog, err
+	}
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		return catalog, err
+	}
+	if catalog.Version == "" || len(catalog.Groups) == 0 || len(catalog.Fields) == 0 {
+		return catalog, fmt.Errorf("embedded Telemt config catalog is empty")
+	}
+	return catalog, nil
 }
 
 func (s *Server) handleGetTelemtConfigCatalog(w http.ResponseWriter, r *http.Request) {
