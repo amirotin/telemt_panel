@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "../lib/cn";
 import { useStrings } from "../i18n";
 import {
   getTelemtWebAccessOptions,
   getTelemtWebAccessQueryKey,
-  putTelemtUserWebAccessMutation,
 } from "../lib/api/generated/@tanstack/react-query.gen";
-import type { WebUserAccessProfile } from "../lib/api/generated/types.gen";
+import { putTelemtUserWebAccess } from "../lib/api/generated/sdk.gen";
+import type { PutTelemtUserWebAccessError, WebUserAccessProfile } from "../lib/api/generated/types.gen";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
@@ -17,6 +17,17 @@ import { pushToast } from "../ui/Toast";
 import { IconGlobe, IconPlus, IconTrash } from "../ui/icons";
 import { apiErrorMessage } from "./apiError";
 import { hasDuplicateWebProfiles, webProfilesForUser } from "./webAccess.helpers";
+import { acknowledgeSubmitted, discardToRemote, type SubmittedDraft } from "../lib/draftSession";
+import { useDraftSession } from "../lib/draftSessionReact";
+import { DraftSessionActions } from "../lib/draftSessionActions";
+import { apiErrorCode } from "./apiError";
+
+function equalProfiles(a: WebUserAccessProfile[], b: WebUserAccessProfile[]): boolean {
+  return a.length === b.length && a.every((profile, index) => {
+    const other = b[index];
+    return profile.vhost === other.vhost && profile.secret_mode === other.secret_mode && profile.max_sessions === other.max_sessions && profile.max_streams === other.max_streams && profile.max_streams_per_session === other.max_streams_per_session;
+  });
+}
 
 export function WebAccessPanel({ username, readOnly = false }: { username: string; readOnly?: boolean }) {
   const s = useStrings();
@@ -25,7 +36,7 @@ export function WebAccessPanel({ username, readOnly = false }: { username: strin
 
   if (query.isPending) return <Skeleton className="h-28 w-full rounded-xl" />;
 
-  if (query.isError) {
+  if (!query.data) {
     return (
       <div className="rounded-xl border border-border bg-bg/35 px-3.5 py-3 text-meta leading-relaxed text-text-muted">
         <strong className="block text-sm text-text">{s.people.webAccess.title}</strong>
@@ -78,6 +89,7 @@ export function WebAccessPanel({ username, readOnly = false }: { username: strin
       </div>
 
       <WebAccessEditor
+        key={`${username}:${editing ? "open" : "closed"}`}
         open={editing}
         readOnly={readOnly}
         username={username}
@@ -101,22 +113,38 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
 }) {
   const s = useStrings();
   const queryClient = useQueryClient();
-  const [profiles, setProfiles] = useState<WebUserAccessProfile[]>(initialProfiles);
-  const openKey = open ? `${username}:${revision}` : null;
-  const [lastOpenKey, setLastOpenKey] = useState<string | null>(null);
-  if (openKey !== null && openKey !== lastOpenKey) {
-    setLastOpenKey(openKey);
-    setProfiles(initialProfiles);
-  }
+  const { session, update, current } = useDraftSession(username, { value: initialProfiles, revision }, equalProfiles);
+  const profiles = session.draft;
+  const setProfiles = (change: (value: WebUserAccessProfile[]) => WebUserAccessProfile[]) => update((state) => ({ ...state, draft: change(state.draft) }));
+  const [conflict, setConflict] = useState(false);
+  const requestSequence = useRef(0);
+  const activeSave = useRef<number | null>(null);
+  useEffect(() => () => { activeSave.current = null; }, []);
+  const dirty = !equalProfiles(profiles, session.baseline.value);
 
   const mutation = useMutation({
-    ...putTelemtUserWebAccessMutation(),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: getTelemtWebAccessQueryKey() });
-      pushToast(s.people.webAccess.saved, "ok");
-      onClose();
+    mutationFn: async (submitted: SubmittedDraft<WebUserAccessProfile[]>) => {
+      const { data } = await putTelemtUserWebAccess({ path: { username: submitted.sessionKey }, headers: { "If-Match": submitted.revision! }, body: { profiles: submitted.value }, throwOnError: true });
+      return data;
     },
-    onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
+    onSuccess: async (next, submitted) => {
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: next.revision }, equalProfiles));
+      setConflict(false);
+      await queryClient.invalidateQueries({ queryKey: getTelemtWebAccessQueryKey() });
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      activeSave.current = null;
+      if (equalProfiles(current.current.draft, current.current.baseline.value) && !current.current.remote) {
+        pushToast(s.people.webAccess.saved, "ok");
+        onClose();
+      }
+    },
+    onError: (error: PutTelemtUserWebAccessError, submitted) => {
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      activeSave.current = null;
+      if (apiErrorCode(error) === "revision_conflict") { setConflict(true); void queryClient.invalidateQueries({ queryKey: getTelemtWebAccessQueryKey() }); }
+      pushToast(apiErrorMessage(error, s), "error");
+    },
   });
 
   const duplicate = hasDuplicateWebProfiles(profiles);
@@ -143,16 +171,15 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
-          if (readOnly || duplicate || invalid || mutation.isPending) return;
-          mutation.mutate({
-            path: { username },
-            headers: { "If-Match": revision },
-            body: { profiles },
-          });
+          if (readOnly || duplicate || invalid || !dirty || activeSave.current !== null) return;
+          const submitted = { sessionKey: session.sessionKey, value: profiles.map((profile) => ({ ...profile })), revision: session.baseline.revision, requestId: ++requestSequence.current };
+          activeSave.current = submitted.requestId;
+          mutation.mutate(submitted);
         }}
       >
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5">
           <p className="text-meta leading-relaxed text-text-muted">{s.people.webAccess.editorHint}</p>
+          {(session.remote || conflict) && <DraftSessionActions conflict onDiscard={() => { update(discardToRemote); setConflict(false); }} disabled={mutation.isPending || (conflict && !session.remote)} />}
 
           {profiles.length === 0 && (
             <div className="rounded-xl border border-dashed border-border-strong px-4 py-8 text-center">
@@ -211,7 +238,7 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
 
         <footer className="flex shrink-0 gap-2 border-t border-border bg-surface px-4 py-3 pb-safe sm:px-5">
           <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>{s.common.cancel}</Button>
-          <Button type="submit" className="flex-1" disabled={readOnly || duplicate || invalid || mutation.isPending}>{mutation.isPending ? s.common.loading : s.common.save}</Button>
+          <Button type="submit" className="flex-1" disabled={readOnly || duplicate || invalid || !dirty || mutation.isPending}>{mutation.isPending ? s.common.loading : s.common.save}</Button>
         </footer>
       </form>
     </Sheet>

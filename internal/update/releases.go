@@ -147,13 +147,14 @@ func (c *Client) fetch(ctx context.Context, repo, token string) ([]Release, erro
 // ReleaseView is one release as presented to callers, with the
 // current-version comparison and asset selection already applied.
 type ReleaseView struct {
-	Version       string
-	Name          string
-	PublishedAt   time.Time
-	Prerelease    bool
-	Newer         bool
-	Asset         Asset
-	ChecksumAsset *Asset
+	Version          string
+	Name             string
+	PublishedAt      time.Time
+	Prerelease       bool
+	Newer            bool
+	Asset            Asset
+	ChecksumAsset    *Asset
+	ChecksumRequired bool `json:"checksum_required"`
 }
 
 // ReleasesView is the filtered, sorted release list for one target.

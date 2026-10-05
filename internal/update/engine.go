@@ -61,6 +61,10 @@ var ErrUnknownTarget = errors.New("update: unknown target")
 // ErrUnsupportedVersion rejects panel branches with incompatible state/config.
 var ErrUnsupportedVersion = errors.New("update: only panel 1.x releases are supported")
 
+func requireChecksum(target string) bool {
+	return target == TargetPanel
+}
+
 func versionAllowed(target, version string) bool {
 	if target != TargetPanel {
 		return true
@@ -608,6 +612,9 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 	if bin == nil {
 		return e.fail(rc, PhaseChecking, "no release asset matches this host's arch/libc")
 	}
+	if requireChecksum(targetName) && sum == nil {
+		return e.fail(rc, PhaseVerifying, "required checksum asset missing for "+bin.Name)
+	}
 
 	runDir := StagingRunDir(e.stagingDir, targetName)
 	if err := os.RemoveAll(runDir); err != nil {
@@ -644,7 +651,11 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 		}
 	}
 
-	e.transition(rc, PhaseVerifying, "")
+	verificationDetail := ""
+	if sum == nil {
+		verificationDetail = "integrity not verified: release has no checksum asset"
+	}
+	e.transition(rc, PhaseVerifying, verificationDetail)
 	if sum != nil {
 		actual, err := sha256File(tarPath)
 		if err != nil {
@@ -654,9 +665,6 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 			return e.fail(rc, PhaseVerifying, "checksum mismatch")
 		}
 	}
-	// No published checksum asset: proceed without verification rather
-	// than failing every update for a release that simply didn't publish
-	// one (AssetMatcher already treats the checksum as optional).
 
 	e.transition(rc, PhaseStaging, "")
 	binPath, err := extractSingleBinary(tarPath, runDir)

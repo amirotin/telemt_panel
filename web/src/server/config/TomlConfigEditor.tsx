@@ -45,6 +45,7 @@ export function TomlConfigEditor({
   labelledBy?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {
@@ -65,11 +66,18 @@ export function TomlConfigEditor({
       ],
     });
     const view = new EditorView({ state, parent: hostRef.current });
-    return () => view.destroy();
-    // The editor owns its document until the projection revision changes
-    // and its parent intentionally remounts it with a new key.
+    viewRef.current = view;
+    return () => { viewRef.current = null; view.destroy(); };
+    // Create the view once; confirmed refreshes update its document below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view && view.state.doc.toString() !== initialText) {
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: initialText } });
+    }
+  }, [initialText]);
 
   return (
     <div

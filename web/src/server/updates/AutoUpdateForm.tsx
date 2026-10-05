@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage, useStrings } from "../../i18n";
 import { Button } from "../../ui/Button";
@@ -11,44 +11,28 @@ import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import {
   getAutoUpdateOptions,
   getAutoUpdateQueryKey,
-  putAutoUpdateMutation,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
+import { putAutoUpdate } from "../../lib/api/generated/sdk.gen";
 import {
   serializeAutoUpdateForm,
   toAutoUpdateFormState,
   type AutoUpdateFormState,
 } from "./autoUpdate.helpers";
+import { acknowledgeSubmitted, discardToRemote, type SubmittedDraft } from "../../lib/draftSession";
+import { useDraftSession } from "../../lib/draftSessionReact";
+import { DraftSessionActions } from "../../lib/draftSessionActions";
+import type { AutoUpdateSettings, PutAutoUpdateError } from "../../lib/api/generated/types.gen";
 
 const MODES = ["off", "check", "apply"] as const;
 const INTERVALS = [1, 6, 12, 24];
 type Mode = (typeof MODES)[number];
+const equalForm = (a: AutoUpdateFormState, b: AutoUpdateFormState) => a.telemt === b.telemt && a.panel === b.panel && a.intervalHours === b.intervalHours;
 
 export function AutoUpdateForm({ canApply }: { canApply: boolean }) {
   const s = useStrings();
-  const queryClient = useQueryClient();
   const query = useQuery(getAutoUpdateOptions());
-  const [form, setForm] = useState<AutoUpdateFormState | null>(null);
-  const [baseline, setBaseline] = useState<AutoUpdateFormState | null>(null);
-  const [capabilityOpen, setCapabilityOpen] = useState(false);
-
-  if (query.data && !form) {
-    const seeded = toAutoUpdateFormState(query.data);
-    setForm(seeded);
-    setBaseline(seeded);
-  }
-
-  const saveMutation = useMutation({
-    ...putAutoUpdateMutation(),
-    onSuccess: () => {
-      if (form) setBaseline(form);
-      pushToast(s.server.updates.autoUpdate.saved, "ok");
-      queryClient.invalidateQueries({ queryKey: getAutoUpdateQueryKey() });
-    },
-    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
-  });
-
   if (query.isPending) return <Skeleton className="h-64 w-full" />;
-  if (query.isError) {
+  if (query.isError && !query.data) {
     return (
       <ErrorState
         message={errorMessage(s, apiErrorCode(query.error) ?? "internal_error")}
@@ -56,12 +40,39 @@ export function AutoUpdateForm({ canApply }: { canApply: boolean }) {
       />
     );
   }
-  if (!form || !baseline) return null;
+  if (!query.data) return null;
+  return <AutoUpdateSession initial={query.data} canApply={canApply} />;
+}
 
-  const dirty =
-    form.telemt !== baseline.telemt ||
-    form.panel !== baseline.panel ||
-    form.intervalHours !== baseline.intervalHours;
+function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings; canApply: boolean }) {
+  const s = useStrings();
+  const queryClient = useQueryClient();
+  const { session, update, current } = useDraftSession("auto-update", { value: toAutoUpdateFormState(initial), revision: null }, equalForm);
+  const form = session.draft;
+  const setForm = (next: AutoUpdateFormState) => update((state) => ({ ...state, draft: next }));
+  const [capabilityOpen, setCapabilityOpen] = useState(false);
+  const requestSequence = useRef(0);
+  const activeSave = useRef<number | null>(null);
+  useEffect(() => () => { activeSave.current = null; }, []);
+  const saveMutation = useMutation({
+    mutationFn: (submitted: SubmittedDraft<AutoUpdateFormState>) => putAutoUpdate({ body: serializeAutoUpdateForm(submitted.value), throwOnError: true }),
+    onSuccess: async (_next, submitted) => {
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: null }, equalForm));
+      await queryClient.invalidateQueries({ queryKey: getAutoUpdateQueryKey() });
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      activeSave.current = null;
+      const confirmed = current.current;
+      if (equalForm(confirmed.draft, confirmed.baseline.value) && !confirmed.remote) pushToast(s.server.updates.autoUpdate.saved, "ok");
+    },
+    onError: (err: PutAutoUpdateError, submitted) => {
+      if (activeSave.current !== submitted.requestId) return;
+      activeSave.current = null;
+      pushToast(apiErrorMessage(err, s), "error");
+    },
+  });
+
+  const dirty = !equalForm(form, session.baseline.value);
   const modes = [form.telemt, form.panel];
   const summary = modes.every((mode) => mode === "off")
     ? s.server.updates.autoUpdate.states.off
@@ -93,6 +104,7 @@ export function AutoUpdateForm({ canApply }: { canApply: boolean }) {
         </div>
 
         <div className="px-4 py-3">
+          {session.remote && <DraftSessionActions conflict onDiscard={() => update(discardToRemote)} disabled={saveMutation.isPending} />}
           <p className="mb-3 text-micro leading-relaxed text-text-muted">{intro}</p>
           <ModeRow
             label={s.server.updates.targetNames.telemt}
@@ -137,11 +149,16 @@ export function AutoUpdateForm({ canApply }: { canApply: boolean }) {
 
           <Button
             variant={dirty ? "primary" : "secondary"}
-            onClick={() => saveMutation.mutate({ body: serializeAutoUpdateForm(form) })}
+            onClick={() => {
+              if (activeSave.current !== null) return;
+              const submitted = { sessionKey: session.sessionKey, value: { ...form }, revision: null, requestId: ++requestSequence.current };
+              activeSave.current = submitted.requestId;
+              saveMutation.mutate(submitted);
+            }}
             disabled={!dirty || saveMutation.isPending}
             className="mt-3"
           >
-            {dirty ? s.server.updates.autoUpdate.save : s.server.updates.autoUpdate.savedShort}
+            {dirty || session.remote ? s.server.updates.autoUpdate.save : s.server.updates.autoUpdate.savedShort}
           </Button>
         </div>
       </Card>

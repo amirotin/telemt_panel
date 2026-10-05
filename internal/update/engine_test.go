@@ -292,6 +292,15 @@ func TestApply_AbsentChecksumAsset_PreservesOptionalPolicy(t *testing.T) {
 	if len(entries) == 0 || entries[0].Phase != PhaseDone {
 		t.Fatalf("last journal entry = %+v, want phase=done", entries)
 	}
+	unchecked := false
+	for _, entry := range entries {
+		if entry.Phase == PhaseVerifying && strings.Contains(entry.Detail, "integrity not verified") {
+			unchecked = true
+		}
+	}
+	if !unchecked {
+		t.Fatal("optional checksum omission must be visible in the verification journal")
+	}
 	if calls := runner.CallsSnapshot(); len(calls) != 3 {
 		t.Fatalf("runner calls = %+v, want backup install, binary install and restart", calls)
 	}

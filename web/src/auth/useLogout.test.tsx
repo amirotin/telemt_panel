@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
@@ -17,7 +17,11 @@ vi.mock("../ui/Toast", () => ({ pushToast: mocks.toast }));
 let root: Root | undefined;
 let container: HTMLElement | undefined;
 let operation: ReturnType<typeof useLogout>;
-function Probe() { operation = useLogout(); return null; }
+function Probe() {
+  const current = useLogout();
+  useEffect(() => { operation = current; }, [current]);
+  return null;
+}
 
 function mount() {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });

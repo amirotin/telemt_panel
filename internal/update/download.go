@@ -221,7 +221,11 @@ func (e *Engine) ReleasesView(ctx context.Context, targetName string) (ReleasesV
 		}
 		releases = allowed
 	}
-	return BuildReleasesView(current, releases, matcher, e.maxNewer, e.maxOlder), nil
+	view := BuildReleasesView(current, releases, matcher, e.maxNewer, e.maxOlder)
+	for i := range view.Releases {
+		view.Releases[i].ChecksumRequired = requireChecksum(targetName)
+	}
+	return view, nil
 }
 
 // LatestVersion returns the newest STABLE release version newer than

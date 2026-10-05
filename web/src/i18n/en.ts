@@ -2980,6 +2980,13 @@ export const en: Dict = {
         patchTitle: "Show exact JSON PATCH",
         reloadAccepted: "Config reload accepted",
         restartAccepted: "Telemt restart started",
+        remoteChanged: "Settings changed on the server",
+        draftKept: "Your draft is preserved. Choose whether to keep it or load the server version.",
+        loadRemote: "Load server version",
+        discardConfirm: "Replace the draft? Unsaved changes will be lost.",
+        keepDraft: "Keep draft",
+        copyDraft: "Copy TOML",
+        copied: "Draft copied",
       },
       reload: {
         title: "Reload status",
