@@ -42,12 +42,12 @@ The specialized branding interpolation retains arithmetic adapted from x/image/d
 | Package and version | License | Source |
 | --- | --- | --- |
 | @codemirror/state@6.7.6 | MIT | https://www.npmjs.com/package/@codemirror/state/v/6.7.6 |
-| @codemirror/view@6.43.9 | MIT | https://www.npmjs.com/package/@codemirror/view/v/6.43.9 |
+| @codemirror/view@6.43.13 | MIT | https://www.npmjs.com/package/@codemirror/view/v/6.43.13 |
 | @marijn/find-cluster-break@1.0.4 | MIT | https://www.npmjs.com/package/@marijn/find-cluster-break/v/1.0.4 |
-| @react-aria/utils@3.33.1 | Apache-2.0 | https://www.npmjs.com/package/@react-aria/utils/v/3.33.1 |
+| @react-aria/utils@3.34.1 | Apache-2.0 | https://www.npmjs.com/package/@react-aria/utils/v/3.34.1 |
 | @tanstack/history@1.162.4 | MIT | https://www.npmjs.com/package/@tanstack/history/v/1.162.4 |
-| @tanstack/query-core@5.102.3 | MIT | https://www.npmjs.com/package/@tanstack/query-core/v/5.102.3 |
-| @tanstack/react-query@5.102.3 | MIT | https://www.npmjs.com/package/@tanstack/react-query/v/5.102.3 |
+| @tanstack/query-core@5.104.1 | MIT | https://www.npmjs.com/package/@tanstack/query-core/v/5.104.1 |
+| @tanstack/react-query@5.104.1 | MIT | https://www.npmjs.com/package/@tanstack/react-query/v/5.104.1 |
 | @tanstack/react-router@1.170.41 | MIT | https://www.npmjs.com/package/@tanstack/react-router/v/1.170.41 |
 | @tanstack/react-store@0.11.2 | MIT | https://www.npmjs.com/package/@tanstack/react-store/v/0.11.2 |
 | @tanstack/react-virtual@3.14.10 | MIT | https://www.npmjs.com/package/@tanstack/react-virtual/v/3.14.10 |
@@ -966,7 +966,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @codemirror/view@6.43.9
+### @codemirror/view@6.43.13
 
 LICENSE
 
@@ -1022,12 +1022,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @react-aria/utils@3.33.1
+### @react-aria/utils@3.34.1
 
 LICENSE
 
 ```text
-                                 Apache License
+Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
 
@@ -1258,7 +1258,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/query-core@5.102.3
+### @tanstack/query-core@5.104.1
 
 LICENSE
 
@@ -1286,7 +1286,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/react-query@5.102.3
+### @tanstack/react-query@5.104.1
 
 LICENSE
 
