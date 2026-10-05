@@ -2,22 +2,8 @@ package store
 
 import (
 	"context"
-	"errors"
-	"sync"
 	"time"
 )
-
-type historyReadMutex struct{ mu *sync.RWMutex }
-
-func (m historyReadMutex) TryLock() bool { return m.mu.TryRLock() }
-func (m historyReadMutex) Unlock()       { m.mu.RUnlock() }
-
-func historyContextError(ctx context.Context, err error) error {
-	if err != nil && ctx.Err() != nil {
-		return errors.Join(err, ctx.Err())
-	}
-	return err
-}
 
 const historyOperationTimeout = 10 * time.Second
 

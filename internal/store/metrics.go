@@ -1,37 +1,12 @@
 package store
 
-import (
-	"strings"
-	"time"
-)
-
-func persistentMetricHistory(name string) bool {
-	switch name {
-	case "health", "telemt.available", "telemt.unavailable", "mode.route", "dc.coverage_pct", "upstream.healthy_total", "upstream.unhealthy_total":
-		return false
-	}
-	return !strings.HasPrefix(name, "upstream.") || (!strings.HasSuffix(name, ".healthy") && !strings.HasSuffix(name, ".unhealthy"))
-}
+import "time"
 
 const (
 	metricRawRetention       = LiveMetricRetention
 	metricMinuteRetention    = 24 * time.Hour
 	userTrafficFineRetention = 24 * time.Hour
 )
-
-func metricTierSQL(tier MetricTier) string {
-	if tier == MetricTierRaw {
-		return metricTierRawSQL
-	}
-	return string(tier)
-}
-
-func metricTierFromSQL(tier string) MetricTier {
-	if tier == metricTierRawSQL {
-		return MetricTierRaw
-	}
-	return MetricTier(tier)
-}
 
 func metricBucket(ts int64, width time.Duration) int64 {
 	seconds := int64(width / time.Second)
