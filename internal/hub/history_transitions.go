@@ -204,7 +204,7 @@ func (h *Hub) appendHistoryTransition(event store.HistoryEvent) bool {
 		now = h.now
 	}
 	event.TS = now().UTC()
-	if err := h.st.AppendHistoryEvent(event); err != nil {
+	if err := h.st.AppendHistoryEventContext(h.historyContext(), event); err != nil {
 		slog.Warn("hub: record history transition", "kind", event.Kind, "entity", event.Entity, "err", err)
 		return false
 	}

@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -26,17 +28,17 @@ type destructiveConfirmationRequest struct {
 }
 
 // handleGetStorageSettings implements GET /api/settings/storage.
-func (s *Server) handleGetStorageSettings(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleGetStorageSettings(w http.ResponseWriter, r *http.Request) {
 	policies, err := s.st.ListStoragePolicies()
 	if err != nil {
 		slog.Error("read storage policies", "err", err)
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read storage settings")
+		writeHistoryError(w, err, "could not read storage settings")
 		return
 	}
-	stats, err := s.st.StorageStats()
+	stats, err := s.st.StorageStatsContext(r.Context())
 	if err != nil {
 		slog.Error("read storage stats", "err", err)
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read storage usage")
+		writeHistoryError(w, err, "could not read storage usage")
 		return
 	}
 	writeJSON(w, http.StatusOK, storageSettingsView{
@@ -62,7 +64,7 @@ func (s *Server) handlePutStorageSettings(w http.ResponseWriter, r *http.Request
 	}
 	previous, err := s.st.ListStoragePolicies()
 	if err != nil {
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read storage settings")
+		writeHistoryError(w, err, "could not read storage settings")
 		return
 	}
 	if !req.ConfirmRetentionReduction {
@@ -75,8 +77,12 @@ func (s *Server) handlePutStorageSettings(w http.ResponseWriter, r *http.Request
 			}
 		}
 	}
-	if err := s.st.ReplaceStoragePolicies(req.Policies); err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+	if err := s.st.ReplaceStoragePoliciesContext(r.Context(), req.Policies); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrHistoryTimeout) {
+			writeHistoryError(w, err, "could not save storage settings")
+		} else {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		}
 		return
 	}
 	s.appendAudit(r, "storage.policy_change", "storage", "")
@@ -96,12 +102,16 @@ func (s *Server) handlePurgeStorageHistory(w http.ResponseWriter, r *http.Reques
 	}
 	var err error
 	if req.Category == store.StorageUserIPHistory {
-		err = s.resetUserIPHistory("")
+		err = s.resetUserIPHistoryContext(r.Context(), "")
 	} else {
-		err = s.st.PurgeHistory(req.Category)
+		err = s.st.PurgeHistoryContext(r.Context(), req.Category)
 	}
 	if err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrHistoryTimeout) {
+			writeHistoryError(w, err, "could not purge history")
+		} else {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		}
 		return
 	}
 	s.appendAudit(r, "storage.history_purge", string(req.Category), "")
@@ -119,8 +129,8 @@ func (s *Server) handleResetUserTraffic(w http.ResponseWriter, r *http.Request) 
 	if !decodeDestructiveConfirmation(w, r, "user traffic reset requires explicit confirmation") {
 		return
 	}
-	if err := s.st.DeleteUserHistory(username); err != nil {
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not reset user traffic")
+	if err := s.st.DeleteUserHistoryContext(r.Context(), username); err != nil {
+		writeHistoryError(w, err, "could not reset user traffic")
 		return
 	}
 	s.appendAudit(r, "user.traffic_reset", username, "")
@@ -136,8 +146,8 @@ func (s *Server) handleResetAllUserTraffic(w http.ResponseWriter, r *http.Reques
 	if !decodeDestructiveConfirmation(w, r, "user traffic reset requires explicit confirmation") {
 		return
 	}
-	if err := s.st.ResetUserTraffic(); err != nil {
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not reset user traffic")
+	if err := s.st.ResetUserTrafficContext(r.Context()); err != nil {
+		writeHistoryError(w, err, "could not reset user traffic")
 		return
 	}
 	s.appendAudit(r, "traffic.reset", "user_traffic", "")

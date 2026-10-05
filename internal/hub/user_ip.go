@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
@@ -242,10 +243,11 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 	}
 }
 
-func (h *Hub) flushUserIPsLocked() error {
+func (h *Hub) flushUserIPsLocked() error { return h.flushUserIPsLockedContext(h.historyContext()) }
+func (h *Hub) flushUserIPsLockedContext(ctx context.Context) error {
 	c := &h.ips
 	if c.retry != nil {
-		if err := h.st.ApplyUserIPBatch(*c.retry); err != nil {
+		if err := h.st.ApplyUserIPBatchContext(ctx, *c.retry); err != nil {
 			return err
 		}
 		c.flushed = c.retry.Through
@@ -264,7 +266,7 @@ func (h *Hub) flushUserIPsLocked() error {
 	}
 	c.pending = make(map[observedIPKey]store.UserIPRecord)
 	c.retry = &b
-	if err := h.st.ApplyUserIPBatch(b); err != nil {
+	if err := h.st.ApplyUserIPBatchContext(ctx, b); err != nil {
 		return err
 	}
 	c.flushed = b.Through
@@ -276,9 +278,13 @@ func (h *Hub) flushUserIPs() {
 	if h.st == nil {
 		return
 	}
-	h.ips.mu.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := lockUserIPHistory(ctx, &h.ips.mu); err != nil {
+		return
+	}
 	defer h.ips.mu.Unlock()
-	if err := h.flushUserIPsLocked(); err != nil {
+	if err := h.flushUserIPsLockedContext(ctx); err != nil {
 		slog.Warn("hub: final IP history batch not saved")
 	}
 	h.publishUserIPSnapshotStatusLocked()
@@ -287,12 +293,19 @@ func (h *Hub) flushUserIPs() {
 // Reset serializes with pending writes. Generation invalidates any fetch that
 // started before the reset; a subsequent periodic observation starts anew.
 func (h *Hub) ResetUserIPHistory(username string) error {
-	h.ips.mu.Lock()
-	defer h.ips.mu.Unlock()
-	if err := h.flushUserIPsLocked(); err != nil {
+	return h.ResetUserIPHistoryContext(context.Background(), username)
+}
+func (h *Hub) ResetUserIPHistoryContext(parent context.Context, username string) error {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	if err := lockUserIPHistory(ctx, &h.ips.mu); err != nil {
 		return err
 	}
-	if err := h.st.ResetUserIPHistory(username); err != nil {
+	defer h.ips.mu.Unlock()
+	if err := h.flushUserIPsLockedContext(ctx); err != nil {
+		return err
+	}
+	if err := h.st.ResetUserIPHistoryContext(ctx, username); err != nil {
 		return err
 	}
 	h.ips.generation++
@@ -364,4 +377,29 @@ func (h *Hub) UserIPSourceStatus() UserIPSourceStatus {
 		window = &v
 	}
 	return UserIPSourceStatus{State: state, LastSuccess: c.through, AgeSeconds: ageSeconds, RecentWindow: window, Pending: len(c.pending) > 0 || c.retry != nil, Limited: c.limited, Gap: c.gap}
+}
+
+func lockUserIPHistory(ctx context.Context, mu *sync.Mutex) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if mu.TryLock() {
+		return nil
+	}
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+		if mu.TryLock() {
+			if err := ctx.Err(); err != nil {
+				mu.Unlock()
+				return err
+			}
+			return nil
+		}
+	}
 }

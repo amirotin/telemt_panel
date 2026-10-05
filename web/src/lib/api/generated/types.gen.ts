@@ -2824,6 +2824,10 @@ export type ResetUserIpHistoryErrors = {
      * Internal panel error
      */
     500: Error;
+    /**
+     * history_timeout — history operation exceeded its deadline or was cancelled. A timed out mutation has no confirmed successful result.
+     */
+    504: Error;
 };
 
 export type ResetUserIpHistoryError = ResetUserIpHistoryErrors[keyof ResetUserIpHistoryErrors];
@@ -2884,6 +2888,10 @@ export type ResetUserTrafficErrors = {
      * Invalid input
      */
     400: Error;
+    /**
+     * history_timeout — history operation exceeded its deadline or was cancelled. A timed out mutation has no confirmed successful result.
+     */
+    504: Error;
 };
 
 export type ResetUserTrafficError = ResetUserTrafficErrors[keyof ResetUserTrafficErrors];
@@ -2974,6 +2982,10 @@ export type ResetAllUserTrafficErrors = {
      * Invalid input
      */
     400: Error;
+    /**
+     * history_timeout — history operation exceeded its deadline or was cancelled. A timed out mutation has no confirmed successful result.
+     */
+    504: Error;
 };
 
 export type ResetAllUserTrafficError = ResetAllUserTrafficErrors[keyof ResetAllUserTrafficErrors];
@@ -4049,6 +4061,15 @@ export type GetStorageSettingsData = {
     url: '/api/settings/storage';
 };
 
+export type GetStorageSettingsErrors = {
+    /**
+     * history_timeout — history operation exceeded its deadline or was cancelled. A timed out mutation has no confirmed successful result.
+     */
+    504: Error;
+};
+
+export type GetStorageSettingsError = GetStorageSettingsErrors[keyof GetStorageSettingsErrors];
+
 export type GetStorageSettingsResponses = {
     /**
      * Storage settings
@@ -4070,6 +4091,10 @@ export type PutStorageSettingsErrors = {
      * Invalid input
      */
     400: Error;
+    /**
+     * history_timeout — history operation exceeded its deadline or was cancelled. A timed out mutation has no confirmed successful result.
+     */
+    504: Error;
 };
 
 export type PutStorageSettingsError = PutStorageSettingsErrors[keyof PutStorageSettingsErrors];

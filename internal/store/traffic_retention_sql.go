@@ -3,12 +3,13 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"time"
 )
 
-func pruneTrafficSummariesTx(tx *sql.Tx, now int64, retention time.Duration) error {
-	rows, err := tx.Query(`SELECT id,deleted_ts,EXISTS(SELECT 1 FROM user_traffic_buckets WHERE user_id=user_traffic_users.id)
+func pruneTrafficSummariesTx(ctx context.Context, tx *sql.Tx, now int64, retention time.Duration) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id,deleted_ts,EXISTS(SELECT 1 FROM user_traffic_buckets WHERE user_id=user_traffic_users.id)
 		FROM user_traffic_users WHERE deleted_ts IS NOT NULL AND deleted_ts < ?`, now-int64(retention/time.Second))
 	if err != nil {
 		return err
@@ -33,7 +34,7 @@ func pruneTrafficSummariesTx(tx *sql.Tx, now int64, retention time.Duration) err
 		return err
 	}
 	for _, id := range ids {
-		if _, err := tx.Exec(`DELETE FROM user_traffic_users WHERE id = ?`, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM user_traffic_users WHERE id = ?`, id); err != nil {
 			return err
 		}
 	}

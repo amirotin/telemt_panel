@@ -47,13 +47,18 @@ type StateStore interface {
 // unavailable without affecting StateStore or the administration plane.
 type HistoryStore interface {
 	UserIPStore
+	ApplyUserIPBatchContext(context.Context, UserIPBatch) error
+	ResetUserIPHistoryContext(context.Context, string) error
 	Driver() string
 	Info() Info
 	RecordMetric(string, MetricPoint) error
 	RecordMetrics([]NamedMetricPoint) error
+	RecordMetricsContext(context.Context, []NamedMetricPoint) error
 	MetricRange(string, int64) ([]MetricPoint, error)
+	MetricRangeContext(context.Context, string, int64) ([]MetricPoint, error)
 	MetricRetention(string) time.Duration
 	ApplyUserTrafficSnapshot(UserTrafficSnapshot) (UserTrafficApplyResult, error)
+	ApplyUserTrafficSnapshotContext(context.Context, UserTrafficSnapshot) (UserTrafficApplyResult, error)
 	UserTrafficSummaries() (map[string]UserTrafficSummary, error)
 	UserTrafficCollectorState() (UserTrafficCollectorState, error)
 	UserTrafficRange(string, int64) ([]UserTrafficPoint, error)
@@ -62,12 +67,19 @@ type HistoryStore interface {
 	UserTrafficRetention() time.Duration
 	BeginTrafficRead(context.Context) (TrafficReadSnapshot, error)
 	DeleteUserHistory(string) error
+	DeleteUserHistoryContext(context.Context, string) error
 	ResetUserTraffic() error
+	ResetUserTrafficContext(context.Context) error
 	AppendHistoryEvent(HistoryEvent) error
+	AppendHistoryEventContext(context.Context, HistoryEvent) error
 	ListHistoryEvents(HistoryEventFilter) ([]HistoryEvent, error)
+	ListHistoryEventsContext(context.Context, HistoryEventFilter) ([]HistoryEvent, error)
 	ApplyStoragePolicies([]StoragePolicy) error
+	ApplyStoragePoliciesContext(context.Context, []StoragePolicy) error
 	PurgeHistory(StorageCategory) error
+	PurgeHistoryContext(context.Context, StorageCategory) error
 	StorageStats() (StorageStats, error)
+	StorageStatsContext(context.Context) (StorageStats, error)
 	Close() error
 }
 
@@ -200,56 +212,21 @@ func (s *Composite) ListStoragePolicies() ([]StoragePolicy, error) {
 }
 
 func (s *Composite) ReplaceStoragePolicies(policies []StoragePolicy) error {
-	s.policyMu.Lock()
-	defer s.policyMu.Unlock()
-	if err := ValidateStoragePolicies(policies); err != nil {
-		return err
-	}
-	previous, err := s.state.ListStoragePolicies()
-	if err != nil {
-		return err
-	}
-	// Persist the administrator's choice before exposing shorter retention
-	// to maintenance or dropping pending observations on disable.
-	if err := s.state.ReplaceStoragePolicies(policies); err != nil {
-		return err
-	}
-	if err := s.history.ApplyStoragePolicies(policies); err != nil {
-		return errors.Join(err, s.history.ApplyStoragePolicies(previous), s.state.ReplaceStoragePolicies(previous))
-	}
-	return nil
+	return s.ReplaceStoragePoliciesContext(context.Background(), policies)
 }
 
-// ApplyStoragePolicies keeps Composite compatible with HistoryStore while
-// preserving the state file as the authoritative policy source.
 func (s *Composite) ApplyStoragePolicies(policies []StoragePolicy) error {
 	return s.ReplaceStoragePolicies(policies)
 }
 
 func (s *Composite) PurgeHistory(category StorageCategory) error {
-	if category == StorageAudit {
-		return s.state.PurgeAudit()
-	}
-	return s.history.PurgeHistory(category)
+	return s.PurgeHistoryContext(context.Background(), category)
 }
 
 func (s *Composite) PurgeAudit() error { return s.state.PurgeAudit() }
 
 func (s *Composite) StorageStats() (StorageStats, error) {
-	stats, err := s.history.StorageStats()
-	if err != nil {
-		return StorageStats{}, err
-	}
-	audit, err := s.state.ListAudit(0)
-	if err != nil {
-		return StorageStats{}, err
-	}
-	for i := range stats.Categories {
-		if stats.Categories[i].Category == StorageAudit {
-			stats.Categories[i].Records = int64(len(audit))
-		}
-	}
-	return stats, nil
+	return s.StorageStatsContext(context.Background())
 }
 
 func (s *Composite) GetSubpageNonce(username string) (string, error) {

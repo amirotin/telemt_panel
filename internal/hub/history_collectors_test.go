@@ -35,11 +35,25 @@ func (s *historyCapture) RecordMetrics(batch []store.NamedMetricPoint) error {
 	return nil
 }
 
+func (s *historyCapture) RecordMetricsContext(ctx context.Context, batch []store.NamedMetricPoint) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.RecordMetrics(batch)
+}
+
 func (s *historyCapture) AppendHistoryEvent(event store.HistoryEvent) error {
 	if s.failEvent {
 		return errors.New("history write failed")
 	}
 	return s.HistoryStore.AppendHistoryEvent(event)
+}
+
+func (s *historyCapture) AppendHistoryEventContext(ctx context.Context, event store.HistoryEvent) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.AppendHistoryEvent(event)
 }
 
 func TestHistoryFallbackRequiresFreshUsersObservation(t *testing.T) {

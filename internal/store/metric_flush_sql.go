@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -23,7 +24,14 @@ func (s *SQLite) RecordMetric(name string, point MetricPoint) error {
 // I/O. Already flushed timestamps are immutable; duplicates and late samples
 // still in the pending batch are replaced and sorted before aggregation.
 func (s *SQLite) RecordMetrics(batch []NamedMetricPoint) error {
-	s.liveMu.Lock()
+	return s.RecordMetricsContext(context.Background(), batch)
+}
+func (s *SQLite) RecordMetricsContext(parent context.Context, batch []NamedMetricPoint) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &s.liveMu); err != nil {
+		return err
+	}
 	defer s.liveMu.Unlock()
 	if s.metricsClosed {
 		return sql.ErrConnDone
@@ -49,13 +57,18 @@ func (s *SQLite) RecordMetrics(batch []NamedMetricPoint) error {
 // flushMetrics commits each pending observation to a five-minute bucket and
 // an hourly bucket in one transaction. A failed transaction keeps the pending
 // batch for retry. Existing bucket watermarks prevent replay after a restart.
-func (s *SQLite) flushMetrics() error {
-	s.liveMu.Lock()
+func (s *SQLite) flushMetrics() error { return s.flushMetricsContext(context.Background()) }
+func (s *SQLite) flushMetricsContext(parent context.Context) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &s.liveMu); err != nil {
+		return err
+	}
 	defer s.liveMu.Unlock()
 	if len(s.pendingMetrics) == 0 {
 		return nil
 	}
-	err := s.withOperationTx(func(tx *sql.Tx) error {
+	err := s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
 		for _, name := range sortedKeys(s.pendingMetrics) {
 			if !s.policy(metricCategory(name)).Enabled {
 				continue
@@ -63,7 +76,7 @@ func (s *SQLite) flushMetrics() error {
 			fine := groupMetricSamples(s.pendingMetrics[name], 5*time.Minute)
 			hours := make(map[int64][]MetricPoint)
 			for _, ts := range sortedMetricBuckets(fine) {
-				previous, err := readMetricAggregate(tx, name, MetricTierFive, ts)
+				previous, err := readMetricAggregateContext(ctx, tx, name, MetricTierFive, ts)
 				if err != nil {
 					return err
 				}
@@ -80,12 +93,12 @@ func (s *SQLite) flushMetrics() error {
 				}
 				point := mergeMetricAggregates(name, previous, aggregateMetricSamples(name, accepted))
 				point.TS, point.Tier = ts, MetricTierFive
-				if err := s.writeMetricAggregate(tx, name, point); err != nil {
+				if err := s.writeMetricAggregateContext(ctx, tx, name, point); err != nil {
 					return err
 				}
 			}
 			for _, ts := range sortedMetricBuckets(hours) {
-				previous, err := readMetricAggregate(tx, name, MetricTierHour, ts)
+				previous, err := readMetricAggregateContext(ctx, tx, name, MetricTierHour, ts)
 				if err != nil {
 					return err
 				}
@@ -103,7 +116,7 @@ func (s *SQLite) flushMetrics() error {
 				}
 				point := mergeMetricAggregates(name, previous, aggregateMetricSamples(name, accepted))
 				point.TS, point.Tier = ts, MetricTierHour
-				if err := s.writeMetricAggregate(tx, name, point); err != nil {
+				if err := s.writeMetricAggregateContext(ctx, tx, name, point); err != nil {
 					return err
 				}
 			}
@@ -118,7 +131,10 @@ func (s *SQLite) flushMetrics() error {
 }
 
 func readMetricAggregate(tx *sql.Tx, name string, tier MetricTier, ts int64) (MetricPoint, error) {
-	point, err := scanMetricPoint(tx.QueryRow("SELECT "+metricPointColumns+" FROM metric_points WHERE name = ? AND tier = ? AND ts = ?", name, tier, ts))
+	return readMetricAggregateContext(context.Background(), tx, name, tier, ts)
+}
+func readMetricAggregateContext(ctx context.Context, tx *sql.Tx, name string, tier MetricTier, ts int64) (MetricPoint, error) {
+	point, err := scanMetricPoint(tx.QueryRowContext(ctx, "SELECT "+metricPointColumns+" FROM metric_points WHERE name = ? AND tier = ? AND ts = ?", name, tier, ts))
 	if errors.Is(err, sql.ErrNoRows) {
 		return MetricPoint{}, nil
 	}
@@ -138,10 +154,13 @@ func scanMetricPoint(row interface{ Scan(...any) error }) (MetricPoint, error) {
 }
 
 func (s *SQLite) writeMetricAggregate(tx *sql.Tx, name string, point MetricPoint) error {
+	return s.writeMetricAggregateContext(context.Background(), tx, name, point)
+}
+func (s *SQLite) writeMetricAggregateContext(ctx context.Context, tx *sql.Tx, name string, point MetricPoint) error {
 	query := sqlstore.Upsert("metric_points", []string{"name", "tier", "ts"}, []string{
 		"category", "value", "max", "samples", "last_ts", "min_value", "first_ts", "first_value", "delta", "observed_seconds", "gaps",
 	})
-	_, err := tx.Exec(query, name, metricTierSQL(point.Tier), point.TS, metricCategory(name),
+	_, err := tx.ExecContext(ctx, query, name, metricTierSQL(point.Tier), point.TS, metricCategory(name),
 		point.Value, point.Max, point.Samples, point.LastTS, point.Min, point.FirstTS, point.FirstValue,
 		point.Delta, point.ObservedSeconds, point.Gaps)
 	return err

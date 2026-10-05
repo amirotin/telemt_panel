@@ -78,6 +78,13 @@ func (s *retryIPStore) ApplyUserIPBatch(b store.UserIPBatch) error {
 	return nil
 }
 
+func (s *retryIPStore) ApplyUserIPBatchContext(ctx context.Context, b store.UserIPBatch) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.ApplyUserIPBatch(b)
+}
+
 func TestUserIPRetryDoesNotDoubleCount(t *testing.T) {
 	m, _ := store.NewMemoryHistory()
 	defer m.Close()

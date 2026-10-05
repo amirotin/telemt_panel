@@ -14,6 +14,7 @@ import (
 
 type memoryTrafficReadSnapshot struct {
 	ctx       context.Context
+	cancel    context.CancelFunc
 	asOf      int64
 	collector UserTrafficCollectorState
 	summaries map[string]UserTrafficSummary
@@ -23,13 +24,18 @@ type memoryTrafficReadSnapshot struct {
 }
 
 // BeginTrafficRead copies bounded traffic data under one lock.
-func (m *Memory) BeginTrafficRead(ctx context.Context) (TrafficReadSnapshot, error) {
+func (m *Memory) BeginTrafficRead(parent context.Context) (TrafficReadSnapshot, error) {
+	ctx, cancel := historyOperationContext(parent)
 	if err := ctx.Err(); err != nil {
+		cancel()
 		return nil, err
 	}
-	m.mu.Lock()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		cancel()
+		return nil, err
+	}
 	defer m.mu.Unlock()
-	r := &memoryTrafficReadSnapshot{ctx: ctx, asOf: time.Now().Unix(), collector: m.userTrafficCollector,
+	r := &memoryTrafficReadSnapshot{ctx: ctx, cancel: cancel, asOf: time.Now().Unix(), collector: m.userTrafficCollector,
 		summaries: make(map[string]UserTrafficSummary, len(m.userTraffic)), buckets: maps.Clone(m.userTrafficBuckets)}
 	if !m.hasTrafficCollector {
 		r.collector = UserTrafficCollectorState{SourceState: UserTrafficUnavailable, Continuity: UserTrafficNormal}
@@ -45,11 +51,23 @@ func (m *Memory) BeginTrafficRead(ctx context.Context) (TrafficReadSnapshot, err
 	if m.policies[StorageUserTraffic].Enabled {
 		r.tiers = []TrafficTierPolicy{{Tier: MetricTierQuarter, WidthSecs: 900, RetentionSecs: int64(userTrafficMemoryRetention / time.Second)}}
 	}
+	if err := ctx.Err(); err != nil {
+		cancel()
+		return nil, err
+	}
 	return r, nil
 }
 
-func (r *memoryTrafficReadSnapshot) AsOf() int64  { return r.asOf }
-func (r *memoryTrafficReadSnapshot) Close() error { r.closed = true; return nil }
+func (r *memoryTrafficReadSnapshot) AsOf() int64 { return r.asOf }
+func (r *memoryTrafficReadSnapshot) Close() error {
+	if r.closed {
+		return nil
+	}
+	r.closed = true
+	err := r.ctx.Err()
+	r.cancel()
+	return err
+}
 func (r *memoryTrafficReadSnapshot) CollectorState() (UserTrafficCollectorState, error) {
 	return r.collector, trafficContextError(r.ctx, r.closed)
 }
@@ -69,6 +87,9 @@ func (r *memoryTrafficReadSnapshot) Range(username string, from, to int64) ([]Us
 	}
 	points := make([]UserTrafficPoint, 0)
 	for key, bytes := range r.buckets {
+		if err := r.ctx.Err(); err != nil {
+			return nil, coverage, err
+		}
 		if key.username == username && trafficWindowContains(windows, MetricTierQuarter, key.ts) {
 			points = append(points, UserTrafficPoint{TS: key.ts, Bytes: bytes, Tier: MetricTierQuarter})
 		}
@@ -87,6 +108,9 @@ func (r *memoryTrafficReadSnapshot) Aggregate(from, to int64) (int64, []UserTraf
 	byTS := make(map[int64]int64)
 	var total int64
 	for key, bytes := range r.buckets {
+		if err := r.ctx.Err(); err != nil {
+			return 0, nil, coverage, err
+		}
 		if !trafficWindowContains(windows, MetricTierQuarter, key.ts) {
 			continue
 		}
@@ -114,6 +138,9 @@ func (r *memoryTrafficReadSnapshot) Ranking(from, to int64, includeDeleted bool,
 	period := make(map[string]int64)
 	if limit > 0 {
 		for key, bytes := range r.buckets {
+			if err := r.ctx.Err(); err != nil {
+				return nil, coverage, err
+			}
 			if !trafficWindowContains(windows, MetricTierQuarter, key.ts) {
 				continue
 			}

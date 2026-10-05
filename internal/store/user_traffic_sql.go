@@ -29,14 +29,20 @@ type userTrafficBucket struct {
 // ApplyUserTrafficSnapshot atomically advances baselines, totals and buckets
 // for one coherent Telemt observation.
 func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTrafficApplyResult, error) {
+	return s.ApplyUserTrafficSnapshotContext(context.Background(), snapshot)
+}
+
+func (s *SQLite) ApplyUserTrafficSnapshotContext(parent context.Context, snapshot UserTrafficSnapshot) (UserTrafficApplyResult, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	if err := validateUserTrafficSnapshot(snapshot); err != nil {
 		return UserTrafficApplyResult{}, err
 	}
 	historyEnabled := s.policy(StorageUserTraffic).Enabled
 	retention := retentionDuration(s.policy(StorageUserTraffic))
 	var result UserTrafficApplyResult
-	err := s.withOperationTx(func(tx *sql.Tx) error {
-		collector, found, err := s.readUserTrafficCollectorTx(tx)
+	err := s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
+		collector, found, err := s.readUserTrafficCollectorTx(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -46,10 +52,10 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 
 		continuity := nextUserTrafficContinuity(collector, found, snapshot)
 
-		if err := pruneTrafficSummariesTx(tx, snapshot.ObservedAt, retention); err != nil {
+		if err := pruneTrafficSummariesTx(ctx, tx, snapshot.ObservedAt, retention); err != nil {
 			return err
 		}
-		stored, err := s.readUserTrafficUsersTx(tx)
+		stored, err := s.readUserTrafficUsersTx(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -75,7 +81,7 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 					ObservedSinceEpochSecs: snapshot.ObservedAt,
 					Continuity:             continuity,
 				}}
-				id, err := s.insertUserTrafficBaselineTx(tx, current.summary, raw, snapshot.SourceStartedAt)
+				id, err := s.insertUserTrafficBaselineTx(ctx, tx, current.summary, raw, snapshot.SourceStartedAt)
 				if err != nil {
 					return err
 				}
@@ -96,7 +102,7 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 				if wasDeleted || continuityChanged {
 					current.summary.DeletedEpochSecs = 0
 					current.summary.Continuity = userContinuity
-					if err := s.updateUserTrafficSummaryTx(tx, current, current.lastRaw, current.lastSourceStart); err != nil {
+					if err := s.updateUserTrafficSummaryTx(ctx, tx, current, current.lastRaw, current.lastSourceStart); err != nil {
 						return err
 					}
 				}
@@ -147,7 +153,7 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 			lastSource := sql.NullInt64{Int64: snapshot.SourceStartedAt, Valid: true}
 			if delta > 0 || current.lastRaw != lastRaw || current.lastSourceStart != lastSource ||
 				wasDeleted || continuityChanged {
-				if err := s.updateUserTrafficSummaryTx(tx, current, lastRaw, lastSource); err != nil {
+				if err := s.updateUserTrafficSummaryTx(ctx, tx, current, lastRaw, lastSource); err != nil {
 					return err
 				}
 			}
@@ -157,18 +163,18 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 			if _, ok := seen[username]; ok || current.summary.DeletedEpochSecs != 0 {
 				continue
 			}
-			if _, err := tx.Exec(`UPDATE user_traffic_users SET deleted_ts = ? WHERE id = ?`, snapshot.ObservedAt, current.id); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE user_traffic_users SET deleted_ts = ? WHERE id = ?`, snapshot.ObservedAt, current.id); err != nil {
 				return fmt.Errorf("mark deleted user traffic: %w", err)
 			}
 		}
 		if historyEnabled && len(buckets) > 0 {
-			if err := s.upsertUserTrafficBucketsTx(tx, buckets); err != nil {
+			if err := s.upsertUserTrafficBucketsTx(ctx, tx, buckets); err != nil {
 				return err
 			}
 		}
 
 		sourceState := userTrafficSourceState(snapshot.TelemetryEnabled)
-		if _, err := tx.Exec(`INSERT INTO user_traffic_collector
+		if _, err := tx.ExecContext(ctx, `INSERT INTO user_traffic_collector
 			(singleton, last_success_ts, source_started_at, source_state, continuity)
 			VALUES (1, ?, ?, ?, ?)
 			ON CONFLICT(singleton) DO UPDATE SET
@@ -178,7 +184,7 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 			continuity = excluded.continuity`, snapshot.ObservedAt, snapshot.SourceStartedAt, sourceState, continuity); err != nil {
 			return fmt.Errorf("update user traffic collector: %w", err)
 		}
-		return pruneTrafficSummariesTx(tx, snapshot.ObservedAt, retention)
+		return pruneTrafficSummariesTx(ctx, tx, snapshot.ObservedAt, retention)
 	})
 	if err != nil {
 		return UserTrafficApplyResult{}, fmt.Errorf("apply user traffic snapshot: %w", err)
@@ -193,9 +199,9 @@ func appendUserTrafficBuckets(rows []userTrafficBucket, userID, ts, bytes int64)
 	return rows
 }
 
-func (s *SQLite) readUserTrafficCollectorTx(tx *sql.Tx) (UserTrafficCollectorState, bool, error) {
+func (s *SQLite) readUserTrafficCollectorTx(ctx context.Context, tx *sql.Tx) (UserTrafficCollectorState, bool, error) {
 	var state UserTrafficCollectorState
-	err := tx.QueryRow(`SELECT last_success_ts, source_started_at, source_state, continuity
+	err := tx.QueryRowContext(ctx, `SELECT last_success_ts, source_started_at, source_state, continuity
 		FROM user_traffic_collector WHERE singleton = 1`).Scan(
 		&state.LastSuccessTS, &state.SourceStartedAt, &state.SourceState, &state.Continuity,
 	)
@@ -208,8 +214,8 @@ func (s *SQLite) readUserTrafficCollectorTx(tx *sql.Tx) (UserTrafficCollectorSta
 	return state, true, nil
 }
 
-func (s *SQLite) readUserTrafficUsersTx(tx *sql.Tx) (map[string]storedUserTraffic, error) {
-	rows, err := tx.Query(`SELECT id, username, total_bytes, since_ts, updated_ts,
+func (s *SQLite) readUserTrafficUsersTx(ctx context.Context, tx *sql.Tx) (map[string]storedUserTraffic, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id, username, total_bytes, since_ts, updated_ts,
 		month_key, month_bytes, last_raw_octets, last_source_started_at, deleted_ts, continuity
 		FROM user_traffic_users`)
 	if err != nil {
@@ -246,8 +252,8 @@ func (s *SQLite) readUserTrafficUsersTx(tx *sql.Tx) (map[string]storedUserTraffi
 	return result, nil
 }
 
-func (s *SQLite) insertUserTrafficBaselineTx(tx *sql.Tx, summary UserTrafficSummary, raw, sourceStart int64) (int64, error) {
-	result, err := tx.Exec(`INSERT INTO user_traffic_users
+func (s *SQLite) insertUserTrafficBaselineTx(ctx context.Context, tx *sql.Tx, summary UserTrafficSummary, raw, sourceStart int64) (int64, error) {
+	result, err := tx.ExecContext(ctx, `INSERT INTO user_traffic_users
 		(username, total_bytes, since_ts, updated_ts, month_key, month_bytes,
 		 last_raw_octets, last_source_started_at, deleted_ts, continuity)
 		VALUES (?, 0, ?, 0, ?, 0, ?, ?, NULL, ?)`,
@@ -262,12 +268,12 @@ func (s *SQLite) insertUserTrafficBaselineTx(tx *sql.Tx, summary UserTrafficSumm
 	return id, nil
 }
 
-func (s *SQLite) updateUserTrafficSummaryTx(tx *sql.Tx, current storedUserTraffic, raw, sourceStart sql.NullInt64) error {
+func (s *SQLite) updateUserTrafficSummaryTx(ctx context.Context, tx *sql.Tx, current storedUserTraffic, raw, sourceStart sql.NullInt64) error {
 	var deleted any
 	if current.summary.DeletedEpochSecs != 0 {
 		deleted = current.summary.DeletedEpochSecs
 	}
-	_, err := tx.Exec(`UPDATE user_traffic_users SET
+	_, err := tx.ExecContext(ctx, `UPDATE user_traffic_users SET
 		total_bytes = ?, updated_ts = ?, month_key = ?, month_bytes = ?,
 		last_raw_octets = ?, last_source_started_at = ?, deleted_ts = ?, continuity = ?
 		WHERE id = ?`,
@@ -287,7 +293,7 @@ func (s *SQLite) updateUserTrafficSummaryTx(tx *sql.Tx, current storedUserTraffi
 	return nil
 }
 
-func (s *SQLite) upsertUserTrafficBucketsTx(tx *sql.Tx, rows []userTrafficBucket) error {
+func (s *SQLite) upsertUserTrafficBucketsTx(ctx context.Context, tx *sql.Tx, rows []userTrafficBucket) error {
 	for start := 0; start < len(rows); start += userTrafficBatchRows {
 		end := min(start+userTrafficBatchRows, len(rows))
 		var query strings.Builder
@@ -302,7 +308,7 @@ func (s *SQLite) upsertUserTrafficBucketsTx(tx *sql.Tx, rows []userTrafficBucket
 		}
 		query.WriteString(` ON CONFLICT(user_id, tier, ts)
 			DO UPDATE SET bytes = user_traffic_buckets.bytes + excluded.bytes`)
-		if _, err := tx.Exec(query.String(), args...); err != nil {
+		if _, err := tx.ExecContext(ctx, query.String(), args...); err != nil {
 			return fmt.Errorf("upsert user traffic buckets: %w", err)
 		}
 	}
@@ -430,20 +436,32 @@ func (s *SQLite) UserTrafficRetention() time.Duration {
 
 // DeleteUserHistory removes a user's totals, baseline and buckets.
 func (s *SQLite) DeleteUserHistory(username string) error {
-	_, err := s.exec(`DELETE FROM user_traffic_users WHERE username = ?`, username)
+	return s.DeleteUserHistoryContext(context.Background(), username)
+}
+
+func (s *SQLite) DeleteUserHistoryContext(parent context.Context, username string) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	_, err := s.execContext(ctx, `DELETE FROM user_traffic_users WHERE username = ?`, username)
 	return wrapSQLError("delete user history", err)
 }
 
 // ResetUserTraffic removes all accumulated user traffic and collector state.
 // The next coherent snapshot establishes fresh baselines for every account.
 func (s *SQLite) ResetUserTraffic() error {
-	return s.withOperationTx(func(tx *sql.Tx) error {
+	return s.ResetUserTrafficContext(context.Background())
+}
+
+func (s *SQLite) ResetUserTrafficContext(parent context.Context) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	return s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
 		for _, statement := range []string{
 			`DELETE FROM user_traffic_buckets`,
 			`DELETE FROM user_traffic_users`,
 			`DELETE FROM user_traffic_collector`,
 		} {
-			if _, err := tx.Exec(statement); err != nil {
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
 				return fmt.Errorf("reset user traffic: %w", err)
 			}
 		}

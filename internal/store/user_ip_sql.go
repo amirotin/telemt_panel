@@ -23,23 +23,29 @@ func (s *SQLite) PruneUserIPHistory(now int64) error {
 
 // A bounded transaction also bounds shutdown when a final batch is flushed.
 func (s *SQLite) withUserIPTx(fn func(*sql.Tx) error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	return s.withUserIPTxContext(context.Background(), fn)
+}
+func (s *SQLite) withUserIPTxContext(parent context.Context, fn func(*sql.Tx) error) error {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return historySQLContextError(ctx, err)
 	}
 	defer tx.Rollback()
 	if err = fn(tx); err != nil {
-		return err
+		return historySQLContextError(ctx, err)
 	}
-	return tx.Commit()
+	return historySQLContextError(ctx, tx.Commit())
 }
 
 func (s *SQLite) withUserIPWriteTx(fn func(*sql.Tx) error) error {
+	return s.withUserIPWriteTxContext(context.Background(), fn)
+}
+func (s *SQLite) withUserIPWriteTxContext(ctx context.Context, fn func(*sql.Tx) error) error {
 	s.userIPWriters.Add(1)
 	defer s.userIPWriters.Add(-1)
-	err := s.withUserIPTx(fn)
+	err := s.withUserIPTxContext(ctx, fn)
 	if err == nil {
 		s.userIPRevision.Add(1)
 	}
@@ -47,8 +53,11 @@ func (s *SQLite) withUserIPWriteTx(fn func(*sql.Tx) error) error {
 }
 
 func readUserIPCollection(tx *sql.Tx) (UserIPCollection, error) {
+	return readUserIPCollectionContext(context.Background(), tx)
+}
+func readUserIPCollectionContext(ctx context.Context, tx *sql.Tx) (UserIPCollection, error) {
 	var c UserIPCollection
-	err := tx.QueryRow("SELECT batch_id,since_ts,through_ts,limited,gap FROM user_ip_history_collection WHERE singleton=1").Scan(&c.BatchID, &c.Since, &c.Through, &c.Limited, &c.Gap)
+	err := tx.QueryRowContext(ctx, "SELECT batch_id,since_ts,through_ts,limited,gap FROM user_ip_history_collection WHERE singleton=1").Scan(&c.BatchID, &c.Since, &c.Through, &c.Limited, &c.Gap)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
 	}
@@ -82,17 +91,26 @@ func walkPortableUserIPs(tx *sql.Tx, cutoff int64, emit func(UserIPRecord) error
 }
 
 func writeUserIPCollection(tx *sql.Tx, c UserIPCollection) error {
-	_, err := tx.Exec(`INSERT INTO user_ip_history_collection(singleton,batch_id,since_ts,through_ts,limited,gap) VALUES(1,?,?,?,?,?)
+	return writeUserIPCollectionContext(context.Background(), tx, c)
+}
+func writeUserIPCollectionContext(ctx context.Context, tx *sql.Tx, c UserIPCollection) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO user_ip_history_collection(singleton,batch_id,since_ts,through_ts,limited,gap) VALUES(1,?,?,?,?,?)
 	ON CONFLICT(singleton) DO UPDATE SET batch_id=excluded.batch_id,since_ts=excluded.since_ts,through_ts=excluded.through_ts,limited=excluded.limited,gap=excluded.gap`, c.BatchID, c.Since, c.Through, c.Limited, c.Gap)
 	return err
 }
 
 func (s *SQLite) ApplyUserIPBatch(b UserIPBatch) error {
+	return s.ApplyUserIPBatchContext(context.Background(), b)
+}
+
+func (s *SQLite) ApplyUserIPBatchContext(parent context.Context, b UserIPBatch) error {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
 	if err := validateUserIPBatch(b); err != nil {
 		return err
 	}
-	return s.withUserIPWriteTx(func(tx *sql.Tx) error {
-		c, err := readUserIPCollection(tx)
+	return s.withUserIPWriteTxContext(ctx, func(tx *sql.Tx) error {
+		c, err := readUserIPCollectionContext(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -103,10 +121,10 @@ func (s *SQLite) ApplyUserIPBatch(b UserIPBatch) error {
 			return errors.New("stale user IP batch")
 		}
 		// Expire before merging so a returning address cannot revive old history.
-		if _, err := tx.Exec("DELETE FROM user_ip_history WHERE last_ts < ?", b.Through-int64(s.UserIPRetention()/time.Second)); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM user_ip_history WHERE last_ts < ?", b.Through-int64(s.UserIPRetention()/time.Second)); err != nil {
 			return err
 		}
-		stmt, err := tx.Prepare(`INSERT INTO user_ip_history(username,ip,family,first_ts,last_ts,observations,last_active_ts,source) VALUES(?,?,?,?,?,?,?,?)
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO user_ip_history(username,ip,family,first_ts,last_ts,observations,last_active_ts,source) VALUES(?,?,?,?,?,?,?,?)
 		ON CONFLICT(username,ip) DO UPDATE SET first_ts=min(first_ts,excluded.first_ts),last_ts=max(last_ts,excluded.last_ts),
 		observations=CASE WHEN observations>9223372036854775807-excluded.observations THEN 9223372036854775807 ELSE observations+excluded.observations END,
 		last_active_ts=max(last_active_ts,excluded.last_active_ts),source=CASE WHEN excluded.last_ts>=last_ts THEN excluded.source ELSE source END`)
@@ -116,18 +134,18 @@ func (s *SQLite) ApplyUserIPBatch(b UserIPBatch) error {
 		defer stmt.Close()
 		users := make(map[string]bool)
 		for _, r := range b.Records {
-			if _, err := stmt.Exec(r.Username, r.IP, r.Family, r.First, r.Last, r.Observations, r.LastActive, r.Source); err != nil {
+			if _, err := stmt.ExecContext(ctx, r.Username, r.IP, r.Family, r.First, r.Last, r.Observations, r.LastActive, r.Source); err != nil {
 				return err
 			}
 			users[r.Username] = true
 		}
 		// Expiration is indexed; it never scans the retained address payloads.
-		if _, err := tx.Exec("DELETE FROM user_ip_history WHERE last_ts < ?", b.Through-int64(s.UserIPRetention()/time.Second)); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM user_ip_history WHERE last_ts < ?", b.Through-int64(s.UserIPRetention()/time.Second)); err != nil {
 			return err
 		}
 		c = nextUserIPCollection(c, b)
 		for username := range users {
-			result, err := tx.Exec(`DELETE FROM user_ip_history WHERE username=? AND ip IN
+			result, err := tx.ExecContext(ctx, `DELETE FROM user_ip_history WHERE username=? AND ip IN
 			(SELECT ip FROM user_ip_history WHERE username=? ORDER BY last_ts DESC,ip DESC LIMIT -1 OFFSET ?)`, username, username, UserIPPerUserLimit)
 			if err != nil {
 				return err
@@ -139,16 +157,16 @@ func (s *SQLite) ApplyUserIPBatch(b UserIPBatch) error {
 			c.Limited = c.Limited || n > 0
 		}
 		var count int
-		if err := tx.QueryRow("SELECT count(*) FROM user_ip_history").Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM user_ip_history").Scan(&count); err != nil {
 			return err
 		}
 		if count > UserIPSQLiteLimit {
-			if _, err := tx.Exec(`DELETE FROM user_ip_history WHERE (username,ip) IN (SELECT username,ip FROM user_ip_history ORDER BY last_ts,username,ip LIMIT ?)`, count-UserIPSQLiteLimit); err != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM user_ip_history WHERE (username,ip) IN (SELECT username,ip FROM user_ip_history ORDER BY last_ts,username,ip LIMIT ?)`, count-UserIPSQLiteLimit); err != nil {
 				return err
 			}
 			c.Limited = true
 		}
-		return writeUserIPCollection(tx, c)
+		return writeUserIPCollectionContext(ctx, tx, c)
 	})
 }
 
@@ -229,17 +247,25 @@ func (s *SQLite) UserIPCollectionState() (UserIPCollection, error) {
 }
 
 func (s *SQLite) ResetUserIPHistory(username string) error {
-	s.userIPMu.Lock()
+	return s.ResetUserIPHistoryContext(context.Background(), username)
+}
+
+func (s *SQLite) ResetUserIPHistoryContext(parent context.Context, username string) error {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &s.userIPMu); err != nil {
+		return err
+	}
 	defer s.userIPMu.Unlock()
-	err := s.withUserIPTx(func(tx *sql.Tx) error {
+	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error {
 		if username != "" {
-			_, err := tx.Exec("DELETE FROM user_ip_history WHERE username=?", username)
+			_, err := tx.ExecContext(ctx, "DELETE FROM user_ip_history WHERE username=?", username)
 			return err
 		}
-		if _, err := tx.Exec("DELETE FROM user_ip_history"); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM user_ip_history"); err != nil {
 			return err
 		}
-		_, err := tx.Exec("UPDATE user_ip_history_collection SET since_ts=0,limited=0,gap=0")
+		_, err := tx.ExecContext(ctx, "UPDATE user_ip_history_collection SET since_ts=0,limited=0,gap=0")
 		return err
 	})
 	if err == nil {

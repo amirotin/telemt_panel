@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -165,8 +166,8 @@ func (s *Server) handleResetUserIPHistory(w http.ResponseWriter, r *http.Request
 		auth.WriteError(w, 400, "bad_request", "username is required")
 		return
 	}
-	if err := s.resetUserIPHistory(username); err != nil {
-		auth.WriteError(w, 500, "internal_error", "could not reset IP history")
+	if err := s.resetUserIPHistoryContext(r.Context(), username); err != nil {
+		writeHistoryError(w, err, "could not reset IP history")
 		return
 	}
 	s.appendAudit(r, "user.ip_history_reset", username, "")
@@ -174,8 +175,12 @@ func (s *Server) handleResetUserIPHistory(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) resetUserIPHistory(username string) error {
+	return s.resetUserIPHistoryContext(context.Background(), username)
+}
+
+func (s *Server) resetUserIPHistoryContext(ctx context.Context, username string) error {
 	if s.hub != nil {
-		return s.hub.ResetUserIPHistory(username)
+		return s.hub.ResetUserIPHistoryContext(ctx, username)
 	}
-	return s.st.ResetUserIPHistory(username)
+	return s.st.ResetUserIPHistoryContext(ctx, username)
 }

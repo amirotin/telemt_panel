@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"github.com/amirotin/telemt_panel/internal/store"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 	"reflect"
@@ -18,6 +19,16 @@ func (s *heldFlushStore) ApplyUserIPBatch(batch store.UserIPBatch) error {
 	close(s.started)
 	<-s.release
 	return s.HistoryStore.ApplyUserIPBatch(batch)
+}
+
+func (s *heldFlushStore) ApplyUserIPBatchContext(ctx context.Context, batch store.UserIPBatch) error {
+	close(s.started)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.release:
+	}
+	return s.HistoryStore.ApplyUserIPBatchContext(ctx, batch)
 }
 
 func TestLiveGeographyCopyDoesNotWaitForFlush(t *testing.T) {

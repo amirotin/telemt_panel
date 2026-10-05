@@ -676,6 +676,7 @@ paths:
               properties:
                 confirm: { type: boolean, const: true }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "204": { description: IP history cleared }
         "400": { $ref: "#/components/responses/BadRequest" }
         "500": { $ref: "#/components/responses/InternalError" }
@@ -712,6 +713,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DestructiveConfirmationRequest" }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "204": { description: User traffic reset }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -754,6 +756,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DestructiveConfirmationRequest" }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "204": { description: All user traffic reset }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -1247,6 +1250,7 @@ paths:
       operationId: getStorageSettings
       description: Returns optional history policies and the active store footprint. Mandatory panel state is not configurable here.
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "200": { description: Storage settings, content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettings" } } } }
     put:
       tags: [misc]
@@ -1256,6 +1260,7 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettingsUpdate" } } }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "204": { description: Saved }
         "400": { $ref: "#/components/responses/BadRequest" }
 

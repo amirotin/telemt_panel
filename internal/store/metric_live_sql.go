@@ -2,8 +2,17 @@
 
 package store
 
+import "context"
+
 func (s *SQLite) liveMetricRange(name string, fromTS int64) []MetricPoint {
-	s.liveMu.RLock()
+	points, _ := s.liveMetricRangeContext(context.Background(), name, fromTS)
+	return points
+}
+
+func (s *SQLite) liveMetricRangeContext(ctx context.Context, name string, fromTS int64) ([]MetricPoint, error) {
+	if err := lockHistoryMutex(ctx, historyReadMutex{&s.liveMu}); err != nil {
+		return nil, err
+	}
 	defer s.liveMu.RUnlock()
 	out := make([]MetricPoint, 0, len(s.liveMetrics[name]))
 	for _, point := range s.liveMetrics[name] {
@@ -11,7 +20,7 @@ func (s *SQLite) liveMetricRange(name string, fromTS int64) []MetricPoint {
 			out = append(out, point)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // mergeLiveMetrics replaces persisted raw samples with their current live

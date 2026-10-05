@@ -212,10 +212,18 @@ func (m *Memory) PruneUserIPHistory(now int64) error {
 func (s *Composite) PruneUserIPHistory(now int64) error { return s.history.PruneUserIPHistory(now) }
 
 func (m *Memory) ApplyUserIPBatch(b UserIPBatch) error {
+	return m.ApplyUserIPBatchContext(context.Background(), b)
+}
+
+func (m *Memory) ApplyUserIPBatchContext(parent context.Context, b UserIPBatch) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	if err := validateUserIPBatch(b); err != nil {
 		return err
 	}
-	m.mu.Lock()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	if b.ID == m.userIPCollection.BatchID {
 		return nil
@@ -325,7 +333,15 @@ func (m *Memory) UserIPCollectionState() (UserIPCollection, error) {
 }
 
 func (m *Memory) ResetUserIPHistory(username string) error {
-	m.mu.Lock()
+	return m.ResetUserIPHistoryContext(context.Background(), username)
+}
+
+func (m *Memory) ResetUserIPHistoryContext(parent context.Context, username string) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	m.userIPEpoch.Add(1)
 	for key := range m.userIPs {

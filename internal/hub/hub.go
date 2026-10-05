@@ -421,7 +421,7 @@ func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (
 	}
 	var traffic map[string]store.UserTrafficSummary
 	if st != nil {
-		traffic, err = st.UserTrafficSummaries()
+		traffic, err = trafficSummariesContext(ctx, st)
 		if err != nil {
 			slog.Warn("hub: users topic: traffic summaries", "err", err)
 			traffic = nil
@@ -882,7 +882,7 @@ func (h *Hub) recordStatsHistory(snap statsSnapshot) {
 		add(metricRefusals, float64(h.refusals.observe(refusalsTotal(snap.Summary), uptime)))
 		add(metricAttempts, float64(h.attempts.observe(snap.Summary.ConnectionsTotal, uptime)))
 	}
-	if err := h.st.RecordMetrics(batch); err != nil {
+	if err := h.st.RecordMetricsContext(h.historyContext(), batch); err != nil {
 		slog.Warn("hub: record metrics", "count", len(batch), "err", err)
 	}
 }
@@ -978,7 +978,7 @@ func (h *Hub) collectUserTraffic(ctx context.Context) bool {
 	for i, user := range snapshot.Users {
 		users[i] = store.UserTrafficObservation{Username: user.Username, RawOctets: user.TotalOctets}
 	}
-	_, err = h.st.ApplyUserTrafficSnapshot(store.UserTrafficSnapshot{
+	_, err = h.st.ApplyUserTrafficSnapshotContext(ctx, store.UserTrafficSnapshot{
 		ObservedAt:       snapshot.ObservedAt,
 		SourceStartedAt:  snapshot.SourceStartedAt,
 		TelemetryEnabled: snapshot.TelemetryEnabled,
@@ -991,7 +991,7 @@ func (h *Hub) collectUserTraffic(ctx context.Context) bool {
 
 	// Keep the existing aggregate chart compatible while exact per-user
 	// accounting remains integer-only in the dedicated store tables.
-	summaries, err := h.st.UserTrafficSummaries()
+	summaries, err := trafficSummariesContext(ctx, h.st)
 	if err != nil {
 		slog.Warn("hub: read user traffic totals", "err", err)
 		return true
@@ -1004,7 +1004,7 @@ func (h *Hub) collectUserTraffic(ctx context.Context) bool {
 		}
 		total += summary.ObservedTotalBytes
 	}
-	if err := h.st.RecordMetric(metricTraffic, store.MetricPoint{TS: snapshot.ObservedAt, Value: float64(total)}); err != nil {
+	if err := h.st.RecordMetricsContext(ctx, []store.NamedMetricPoint{{Name: metricTraffic, Point: store.MetricPoint{TS: snapshot.ObservedAt, Value: float64(total)}}}); err != nil {
 		slog.Warn("hub: record aggregate user traffic", "err", err)
 	}
 	return true
@@ -1265,7 +1265,7 @@ func (h *Hub) pollWithProfile(ctx context.Context, t *topicState, profile pollPr
 	}
 	// The shared deadline starts only after this poll owns the topic gate and
 	// has rechecked whether work is still needed. It bounds active Telemt SDK
-	// fetches; later non-context-aware history/store writes may take longer.
+	// fetches; history writes receive a separate bounded lifecycle context.
 	fetchCtx, cancel := context.WithTimeout(ctx, h.cfg.PollTimeout)
 	snapshot, err := fetch(fetchCtx)
 	cancel()

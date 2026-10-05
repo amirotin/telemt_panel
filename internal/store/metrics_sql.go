@@ -3,7 +3,9 @@
 package store
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -19,12 +21,26 @@ const (
 // MetricRange selects live samples, five-minute detail or hourly history.
 // Existing raw/minute/quarter rows remain readable as a migration fallback.
 func (s *SQLite) MetricRange(name string, fromTS int64) ([]MetricPoint, error) {
-	live := s.liveMetricRange(name, fromTS)
+	return s.MetricRangeContext(context.Background(), name, fromTS)
+}
+func (s *SQLite) MetricRangeContext(parent context.Context, name string, fromTS int64) ([]MetricPoint, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	live, err := s.liveMetricRangeContext(ctx, name, fromTS)
+	if err != nil {
+		return nil, err
+	}
 	if !persistentMetricHistory(name) || !s.policy(metricCategory(name)).Enabled {
 		return live, nil
 	}
-	rows, err := s.query("SELECT "+metricPointColumns+" FROM metric_points WHERE name = ? AND ts >= ? ORDER BY ts, tier", name, fromTS)
+	rows, err := s.queryContext(ctx, "SELECT "+metricPointColumns+" FROM metric_points WHERE name = ? AND ts >= ? ORDER BY ts, tier", name, fromTS)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrHistoryTimeout) {
+			return nil, err
+		}
 		if len(live) > 0 {
 			return live, nil
 		}
@@ -110,12 +126,14 @@ type staleUserTrafficKey struct {
 }
 
 func (s *SQLite) pruneUserTrafficBatch(now time.Time, limit int) (int, error) {
+	ctx, cancel := historyOperationContext(context.Background())
+	defer cancel()
 	if limit <= 0 {
 		return 0, nil
 	}
 	policy := s.policy(StorageUserTraffic)
 	retention := retentionDuration(policy)
-	rows, err := s.query(`SELECT user_id, tier, ts FROM user_traffic_buckets
+	rows, err := s.queryContext(ctx, `SELECT user_id, tier, ts FROM user_traffic_buckets
 		WHERE (tier = 0 AND ts < ?)
 		   OR (tier = 1 AND ts < ?)
 		   OR (tier = 2 AND ts < ?)
@@ -144,13 +162,13 @@ func (s *SQLite) pruneUserTrafficBatch(now time.Time, limit int) (int, error) {
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
-	if err := s.withOperationTx(func(tx *sql.Tx) error {
+	if err := s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
 		for _, key := range keys {
-			if _, err := tx.Exec(`DELETE FROM user_traffic_buckets WHERE user_id = ? AND tier = ? AND ts = ?`, key.userID, key.tier, key.ts); err != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM user_traffic_buckets WHERE user_id = ? AND tier = ? AND ts = ?`, key.userID, key.tier, key.ts); err != nil {
 				return err
 			}
 		}
-		return pruneTrafficSummariesTx(tx, now.Unix(), retention)
+		return pruneTrafficSummariesTx(ctx, tx, now.Unix(), retention)
 	}); err != nil {
 		return 0, fmt.Errorf("prune user traffic batch: %w", err)
 	}

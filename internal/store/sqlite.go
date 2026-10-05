@@ -16,8 +16,16 @@ import (
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/store/sqlstore"
+	"github.com/ncruces/go-sqlite3"
 	sqlitedriver "github.com/ncruces/go-sqlite3/driver"
 )
+
+func historySQLContextError(ctx context.Context, err error) error {
+	if errors.Is(err, sqlite3.BUSY) || errors.Is(err, sqlite3.LOCKED) {
+		err = errors.Join(err, ErrHistoryTimeout)
+	}
+	return historyContextError(ctx, err)
+}
 
 // SQLite contains observability history only; control-plane state lives in the
 // local panel-state.json store.
@@ -46,22 +54,26 @@ type SQLite struct {
 
 type queryRows struct {
 	*sql.Rows
+	ctx    context.Context
 	cancel context.CancelFunc
 }
 
+func (rows *queryRows) Err() error { return historySQLContextError(rows.ctx, rows.Rows.Err()) }
+
 func (rows *queryRows) Close() error {
-	rows.cancel()
+	defer rows.cancel()
 	return rows.Rows.Close()
 }
 
 type queryRow struct {
 	row    *sql.Row
+	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 func (row queryRow) Scan(dest ...any) error {
 	defer row.cancel()
-	return row.row.Scan(dest...)
+	return historySQLContextError(row.ctx, row.row.Scan(dest...))
 }
 
 // NewSQLite opens or creates a durable observability-history store at path.
@@ -87,6 +99,9 @@ func NewSQLite(path string) (*SQLite, error) {
 	u := &url.URL{Scheme: "file", Path: path}
 	query := u.Query()
 	query.Set("_txlock", "immediate")
+	for _, pragma := range []string{"busy_timeout(5000)", "synchronous(FULL)", "foreign_keys(ON)", "cache_size(-20480)", "journal_size_limit(16777216)"} {
+		query.Add("_pragma", pragma)
+	}
 	u.RawQuery = query.Encode()
 	db, err := sqlitedriver.Open(u.String())
 	if err != nil {
@@ -133,34 +148,52 @@ func newSQLStore(db *sql.DB, path string) *SQLite {
 }
 
 func (s *SQLite) exec(query string, args ...any) (sql.Result, error) {
-	ctx, cancel := s.operationContext()
+	return s.execContext(context.Background(), query, args...)
+}
+
+func (s *SQLite) execContext(parent context.Context, query string, args ...any) (sql.Result, error) {
+	ctx, cancel := historyOperationContext(parent)
 	defer cancel()
-	return s.db.ExecContext(ctx, query, args...)
+	result, err := s.db.ExecContext(ctx, query, args...)
+	return result, historySQLContextError(ctx, err)
 }
 
 func (s *SQLite) query(query string, args ...any) (*queryRows, error) {
-	ctx, cancel := s.operationContext()
+	return s.queryContext(context.Background(), query, args...)
+}
+
+func (s *SQLite) queryContext(parent context.Context, query string, args ...any) (*queryRows, error) {
+	ctx, cancel := historyOperationContext(parent)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		err = historySQLContextError(ctx, err)
 		cancel()
 		return nil, err
 	}
-	return &queryRows{Rows: rows, cancel: cancel}, nil
+	return &queryRows{Rows: rows, ctx: ctx, cancel: cancel}, nil
 }
 
 func (s *SQLite) queryRow(query string, args ...any) queryRow {
-	ctx, cancel := s.operationContext()
-	return queryRow{row: s.db.QueryRowContext(ctx, query, args...), cancel: cancel}
+	return s.queryRowContext(context.Background(), query, args...)
+}
+
+func (s *SQLite) queryRowContext(parent context.Context, query string, args ...any) queryRow {
+	ctx, cancel := historyOperationContext(parent)
+	return queryRow{row: s.db.QueryRowContext(ctx, query, args...), ctx: ctx, cancel: cancel}
 }
 
 func (s *SQLite) operationContext() (context.Context, context.CancelFunc) {
-	return context.WithCancel(context.Background())
+	return historyOperationContext(context.Background())
 }
 
 func (s *SQLite) withOperationTx(fn func(*sql.Tx) error) error {
-	ctx, cancel := s.operationContext()
+	return s.withOperationTxContext(context.Background(), fn)
+}
+
+func (s *SQLite) withOperationTxContext(parent context.Context, fn func(*sql.Tx) error) error {
+	ctx, cancel := historyOperationContext(parent)
 	defer cancel()
-	return sqlstore.WithTx(ctx, s.db, nil, fn)
+	return historySQLContextError(ctx, sqlstore.WithTx(ctx, s.db, nil, fn))
 }
 
 func (s *SQLite) initialize() error {
@@ -218,10 +251,18 @@ func (s *SQLite) ListStoragePolicies() ([]StoragePolicy, error) {
 // ApplyStoragePolicies configures history writes and retention. The
 // authoritative policy set is persisted by the separate state store.
 func (s *SQLite) ApplyStoragePolicies(policies []StoragePolicy) error {
+	return s.ApplyStoragePoliciesContext(context.Background(), policies)
+}
+
+func (s *SQLite) ApplyStoragePoliciesContext(parent context.Context, policies []StoragePolicy) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	if err := ValidateStoragePolicies(policies); err != nil {
 		return err
 	}
-	s.liveMu.Lock()
+	if err := lockHistoryMutex(ctx, &s.liveMu); err != nil {
+		return err
+	}
 	defer s.liveMu.Unlock()
 	s.userIPMu.Lock()
 	defer s.userIPMu.Unlock()
@@ -237,14 +278,20 @@ func (s *SQLite) ApplyStoragePolicies(policies []StoragePolicy) error {
 			delete(s.pendingMetrics, name)
 		}
 	}
-	return s.withOperationTx(func(tx *sql.Tx) error {
-		return pruneTrafficSummariesTx(tx, time.Now().Unix(), retentionDuration(next[StorageUserTraffic]))
+	return s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
+		return pruneTrafficSummariesTx(ctx, tx, time.Now().Unix(), retentionDuration(next[StorageUserTraffic]))
 	})
 }
 
 func (s *SQLite) PurgeHistory(category StorageCategory) error {
+	return s.PurgeHistoryContext(context.Background(), category)
+}
+
+func (s *SQLite) PurgeHistoryContext(parent context.Context, category StorageCategory) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	if category == StorageUserIPHistory {
-		return s.ResetUserIPHistory("")
+		return s.ResetUserIPHistoryContext(ctx, "")
 	}
 	if _, ok := defaultPolicyMap()[category]; !ok {
 		return fmt.Errorf("unknown storage category %q", category)
@@ -252,22 +299,24 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 	if category == StorageAudit {
 		return nil
 	}
-	s.liveMu.Lock()
+	if err := lockHistoryMutex(ctx, &s.liveMu); err != nil {
+		return err
+	}
 	defer s.liveMu.Unlock()
-	err := s.withOperationTx(func(tx *sql.Tx) error {
+	err := s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
 		if category == StorageEvents {
-			if _, err := tx.Exec(`DELETE FROM history_events`); err != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM history_events`); err != nil {
 				return fmt.Errorf("purge event history: %w", err)
 			}
 		}
-		if _, err := tx.Exec(`DELETE FROM metric_points WHERE category = ?`, category); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM metric_points WHERE category = ?`, category); err != nil {
 			return fmt.Errorf("purge metric history: %w", err)
 		}
 		if category == StorageUserTraffic {
-			if _, err := tx.Exec(`DELETE FROM user_traffic_buckets`); err != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM user_traffic_buckets`); err != nil {
 				return fmt.Errorf("purge user traffic buckets: %w", err)
 			}
-			return pruneTrafficSummariesTx(tx, time.Now().Unix(), retentionDuration(s.policy(StorageUserTraffic)))
+			return pruneTrafficSummariesTx(ctx, tx, time.Now().Unix(), retentionDuration(s.policy(StorageUserTraffic)))
 		}
 		return nil
 	})
@@ -283,8 +332,14 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 }
 
 func (s *SQLite) StorageStats() (StorageStats, error) {
+	return s.StorageStatsContext(context.Background())
+}
+
+func (s *SQLite) StorageStatsContext(parent context.Context) (StorageStats, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	counts := make(map[StorageCategory]int64, len(storageCategoryOrder))
-	rows, err := s.query(`SELECT category, count(*) FROM metric_points GROUP BY category`)
+	rows, err := s.queryContext(ctx, `SELECT category, count(*) FROM metric_points GROUP BY category`)
 	if err != nil {
 		return StorageStats{}, fmt.Errorf("count metric history: %w", err)
 	}
@@ -301,22 +356,22 @@ func (s *SQLite) StorageStats() (StorageStats, error) {
 		return StorageStats{}, fmt.Errorf("close metric history count: %w", err)
 	}
 	var eventCount int64
-	if err := s.queryRow(`SELECT count(*) FROM history_events`).Scan(&eventCount); err != nil {
+	if err := s.queryRowContext(ctx, `SELECT count(*) FROM history_events`).Scan(&eventCount); err != nil {
 		return StorageStats{}, fmt.Errorf("count event history: %w", err)
 	}
 	counts[StorageEvents] = eventCount
 	var ipCount int64
-	if err := s.queryRow("SELECT count(*) FROM user_ip_history WHERE last_ts>=?", time.Now().Unix()-int64(s.UserIPRetention()/time.Second)).Scan(&ipCount); err != nil {
+	if err := s.queryRowContext(ctx, "SELECT count(*) FROM user_ip_history WHERE last_ts>=?", time.Now().Unix()-int64(s.UserIPRetention()/time.Second)).Scan(&ipCount); err != nil {
 		return StorageStats{}, err
 	}
 	counts[StorageUserIPHistory] = ipCount
 	var userTrafficCount int64
-	if err := s.queryRow(`SELECT count(*) FROM user_traffic_buckets`).Scan(&userTrafficCount); err != nil {
+	if err := s.queryRowContext(ctx, `SELECT count(*) FROM user_traffic_buckets`).Scan(&userTrafficCount); err != nil {
 		return StorageStats{}, fmt.Errorf("count user traffic history: %w", err)
 	}
 	counts[StorageUserTraffic] += userTrafficCount
 	var userTrafficUsers int64
-	if err := s.queryRow(`SELECT count(*) FROM user_traffic_users`).Scan(&userTrafficUsers); err != nil {
+	if err := s.queryRowContext(ctx, `SELECT count(*) FROM user_traffic_users`).Scan(&userTrafficUsers); err != nil {
 		return StorageStats{}, fmt.Errorf("count user traffic users: %w", err)
 	}
 	collector, err := s.UserTrafficCollectorState()
@@ -370,7 +425,9 @@ func (s *SQLite) closeStore() error {
 	if err := s.flushMetrics(); err != nil {
 		errs = append(errs, err.Error())
 	}
-	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+	ctx, cancel := historyOperationContext(context.Background())
+	defer cancel()
+	if _, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 		errs = append(errs, err.Error())
 	}
 	if err := s.db.Close(); err != nil {

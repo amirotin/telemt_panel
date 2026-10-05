@@ -15,6 +15,7 @@ import (
 
 type sqlTrafficReadSnapshot struct {
 	ctx       context.Context
+	cancel    context.CancelFunc
 	tx        *sql.Tx
 	asOf      int64
 	collector UserTrafficCollectorState
@@ -24,20 +25,23 @@ type sqlTrafficReadSnapshot struct {
 }
 
 // BeginTrafficRead establishes a read transaction before capturing its time.
-func (s *SQLite) BeginTrafficRead(ctx context.Context) (TrafficReadSnapshot, error) {
+func (s *SQLite) BeginTrafficRead(parent context.Context) (TrafficReadSnapshot, error) {
+	ctx, cancel := historyOperationContext(parent)
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, fmt.Errorf("begin traffic read: %w", err)
+		cancel()
+		return nil, fmt.Errorf("begin traffic read: %w", historySQLContextError(ctx, err))
 	}
-	collector, found, err := s.readUserTrafficCollectorTx(tx)
+	collector, found, err := s.readUserTrafficCollectorTx(ctx, tx)
 	if err != nil {
 		_ = tx.Rollback()
+		cancel()
 		return nil, err
 	}
 	if !found {
 		collector = UserTrafficCollectorState{SourceState: UserTrafficUnavailable, Continuity: UserTrafficNormal}
 	}
-	r := &sqlTrafficReadSnapshot{ctx: ctx, tx: tx, asOf: time.Now().Unix(), collector: collector}
+	r := &sqlTrafficReadSnapshot{ctx: ctx, cancel: cancel, tx: tx, asOf: time.Now().Unix(), collector: collector}
 	retention := int64(s.UserTrafficRetention() / time.Second)
 	if retention > 0 {
 		r.tiers = []TrafficTierPolicy{
@@ -54,7 +58,11 @@ func (r *sqlTrafficReadSnapshot) Close() error {
 		return nil
 	}
 	r.closed = true
+	defer r.cancel()
 	err := r.tx.Rollback()
+	if r.ctx.Err() != nil {
+		return r.ctx.Err()
+	}
 	if errors.Is(err, sql.ErrTxDone) {
 		return nil
 	}
@@ -70,7 +78,7 @@ func (r *sqlTrafficReadSnapshot) Summaries() (map[string]UserTrafficSummary, err
 	if r.summaries == nil {
 		rows, err := r.tx.QueryContext(r.ctx, `SELECT username,total_bytes,since_ts,updated_ts,month_key,month_bytes,deleted_ts,continuity FROM user_traffic_users`)
 		if err != nil {
-			return nil, fmt.Errorf("read traffic snapshot summaries: %w", err)
+			return nil, fmt.Errorf("read traffic snapshot summaries: %w", historySQLContextError(r.ctx, err))
 		}
 		defer rows.Close()
 		summaries := make(map[string]UserTrafficSummary)
@@ -90,7 +98,7 @@ func (r *sqlTrafficReadSnapshot) Summaries() (map[string]UserTrafficSummary, err
 			summaries[summary.Username] = summary
 		}
 		if err := rows.Err(); err != nil {
-			return nil, err
+			return nil, historySQLContextError(r.ctx, err)
 		}
 		r.summaries = summaries
 	}
@@ -127,7 +135,7 @@ func (r *sqlTrafficReadSnapshot) Range(username string, from, to int64) ([]UserT
 	args = append(args, username)
 	rows, err := r.tx.QueryContext(r.ctx, `SELECT buckets.tier,buckets.ts,buckets.bytes FROM user_traffic_buckets AS buckets JOIN user_traffic_users AS users ON users.id=buckets.user_id WHERE `+predicate+` AND users.username = ? ORDER BY buckets.ts`, args...)
 	if err != nil {
-		return nil, coverage, fmt.Errorf("read traffic snapshot range: %w", err)
+		return nil, coverage, fmt.Errorf("read traffic snapshot range: %w", historySQLContextError(r.ctx, err))
 	}
 	defer rows.Close()
 	points := make([]UserTrafficPoint, 0)
@@ -140,7 +148,10 @@ func (r *sqlTrafficReadSnapshot) Range(username string, from, to int64) ([]UserT
 		point.Tier = userTrafficMetricTier(tier)
 		points = append(points, point)
 	}
-	return points, coverage, rows.Err()
+	if err := historySQLContextError(r.ctx, rows.Err()); err != nil {
+		return nil, coverage, err
+	}
+	return points, coverage, nil
 }
 func (r *sqlTrafficReadSnapshot) Aggregate(from, to int64) (int64, []UserTrafficPoint, TrafficCoverage, error) {
 	windows, coverage, err := PlanTrafficWindows(from, to, r.asOf, r.tiers)
@@ -153,7 +164,7 @@ func (r *sqlTrafficReadSnapshot) Aggregate(from, to int64) (int64, []UserTraffic
 	predicate, args := trafficSQLPredicate(windows)
 	rows, err := r.tx.QueryContext(r.ctx, `SELECT buckets.tier,buckets.ts,sum(buckets.bytes) FROM user_traffic_buckets AS buckets WHERE `+predicate+` GROUP BY buckets.tier,buckets.ts ORDER BY buckets.ts`, args...)
 	if err != nil {
-		return 0, nil, coverage, fmt.Errorf("aggregate traffic snapshot: %w", err)
+		return 0, nil, coverage, fmt.Errorf("aggregate traffic snapshot: %w", historySQLContextError(r.ctx, err))
 	}
 	defer rows.Close()
 	points := make([]UserTrafficPoint, 0)
@@ -172,7 +183,7 @@ func (r *sqlTrafficReadSnapshot) Aggregate(from, to int64) (int64, []UserTraffic
 		points = append(points, point)
 	}
 	if err := rows.Err(); err != nil {
-		return 0, nil, coverage, err
+		return 0, nil, coverage, historySQLContextError(r.ctx, err)
 	}
 	return total, points, coverage, nil
 }
@@ -203,7 +214,7 @@ func (r *sqlTrafficReadSnapshot) Ranking(from, to int64, includeDeleted bool, li
 	args = append(args, limit)
 	rows, err := r.tx.QueryContext(r.ctx, query, args...)
 	if err != nil {
-		return nil, coverage, fmt.Errorf("rank traffic snapshot: %w", err)
+		return nil, coverage, fmt.Errorf("rank traffic snapshot: %w", historySQLContextError(r.ctx, err))
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -219,7 +230,7 @@ func (r *sqlTrafficReadSnapshot) Ranking(from, to int64, includeDeleted bool, li
 		ranks = append(ranks, rank)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, coverage, err
+		return nil, coverage, historySQLContextError(r.ctx, err)
 	}
 	return ranks, coverage, nil
 }

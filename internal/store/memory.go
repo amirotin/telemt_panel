@@ -425,7 +425,18 @@ func (m *Memory) ListAudit(limit int) ([]AuditEntry, error) {
 
 // AppendHistoryEvent records one bounded, structured transition.
 func (m *Memory) AppendHistoryEvent(event HistoryEvent) error {
-	m.mu.Lock()
+	return m.AppendHistoryEventContext(context.Background(), event)
+}
+
+func (m *Memory) AppendHistoryEventContext(parent context.Context, event HistoryEvent) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	if event.Category == "" {
 		event.Category = StorageEvents
@@ -452,7 +463,18 @@ func (m *Memory) AppendHistoryEvent(event HistoryEvent) error {
 
 // ListHistoryEvents returns matching events newest first.
 func (m *Memory) ListHistoryEvents(filter HistoryEventFilter) ([]HistoryEvent, error) {
-	m.mu.Lock()
+	return m.ListHistoryEventsContext(context.Background(), filter)
+}
+
+func (m *Memory) ListHistoryEventsContext(parent context.Context, filter HistoryEventFilter) ([]HistoryEvent, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return nil, err
+	}
 	defer m.mu.Unlock()
 	out := make([]HistoryEvent, 0)
 	for i := len(m.events) - 1; i >= 0; i-- {
@@ -531,7 +553,18 @@ func (m *Memory) RecordMetric(name string, p MetricPoint) error {
 
 // RecordMetrics appends a poll's samples under one lock.
 func (m *Memory) RecordMetrics(batch []NamedMetricPoint) error {
-	m.mu.Lock()
+	return m.RecordMetricsContext(context.Background(), batch)
+}
+
+func (m *Memory) RecordMetricsContext(parent context.Context, batch []NamedMetricPoint) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	for _, named := range batch {
 		if named.Name == "" {
@@ -545,7 +578,18 @@ func (m *Memory) RecordMetrics(batch []NamedMetricPoint) error {
 // MetricRange returns the points of the named series with TS >= fromTS,
 // oldest first.
 func (m *Memory) MetricRange(name string, fromTS int64) ([]MetricPoint, error) {
-	m.mu.Lock()
+	return m.MetricRangeContext(context.Background(), name, fromTS)
+}
+
+func (m *Memory) MetricRangeContext(parent context.Context, name string, fromTS int64) ([]MetricPoint, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return nil, err
+	}
 	defer m.mu.Unlock()
 	all := m.metrics[name]
 	out := make([]MetricPoint, 0, len(all))
@@ -578,10 +622,21 @@ type memoryUserTrafficBucketKey struct {
 // ApplyUserTrafficSnapshot applies the durable-store accounting rules to the
 // bounded process-local fallback.
 func (m *Memory) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTrafficApplyResult, error) {
+	return m.ApplyUserTrafficSnapshotContext(context.Background(), snapshot)
+}
+
+func (m *Memory) ApplyUserTrafficSnapshotContext(parent context.Context, snapshot UserTrafficSnapshot) (UserTrafficApplyResult, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return UserTrafficApplyResult{}, err
+	}
 	if err := validateUserTrafficSnapshot(snapshot); err != nil {
 		return UserTrafficApplyResult{}, err
 	}
-	m.mu.Lock()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return UserTrafficApplyResult{}, err
+	}
 	defer m.mu.Unlock()
 	if m.hasTrafficCollector && snapshot.ObservedAt <= m.userTrafficCollector.LastSuccessTS {
 		return UserTrafficApplyResult{}, fmt.Errorf("user traffic snapshot is stale: observed=%d last=%d", snapshot.ObservedAt, m.userTrafficCollector.LastSuccessTS)
@@ -603,6 +658,9 @@ func (m *Memory) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 	monthKey := utcMonthKey(snapshot.ObservedAt)
 	var result UserTrafficApplyResult
 	for _, observation := range snapshot.Users {
+		if err := ctx.Err(); err != nil {
+			return UserTrafficApplyResult{}, err
+		}
 		seen[observation.Username] = struct{}{}
 		raw, _ := userTrafficInt64(observation.RawOctets)
 		current, exists := traffic[observation.Username]
@@ -685,6 +743,9 @@ func (m *Memory) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 	}
 	pruneMemoryUserTrafficBuckets(buckets, snapshot.ObservedAt)
 	pruneMemoryTrafficSummaries(traffic, buckets, snapshot.ObservedAt, min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic])))
+	if err := ctx.Err(); err != nil {
+		return UserTrafficApplyResult{}, err
+	}
 	m.userTraffic = traffic
 	m.userTrafficBuckets = buckets
 	m.userTrafficCollector = UserTrafficCollectorState{
@@ -744,23 +805,21 @@ func pruneMemoryUserTrafficBuckets(buckets map[memoryUserTrafficBucketKey]int64,
 
 // UserTrafficSummaries returns a copy of every process-local account total.
 func (m *Memory) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	monthKey := utcMonthKey(time.Now().Unix())
-	result := make(map[string]UserTrafficSummary, len(m.userTraffic))
-	for username, current := range m.userTraffic {
-		summary := current.summary
-		if summary.MonthKey != monthKey {
-			summary.CurrentMonthBytes = 0
-		}
-		result[username] = summary
+	read, err := m.BeginTrafficRead(context.Background())
+	if err != nil {
+		return nil, err
 	}
-	return result, nil
+	defer read.Close()
+	return read.Summaries()
 }
 
 // UserTrafficCollectorState returns the last process-local source observation.
 func (m *Memory) UserTrafficCollectorState() (UserTrafficCollectorState, error) {
-	m.mu.Lock()
+	ctx, cancel := historyOperationContext(context.Background())
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return UserTrafficCollectorState{}, err
+	}
 	defer m.mu.Unlock()
 	if !m.hasTrafficCollector {
 		return UserTrafficCollectorState{SourceState: UserTrafficUnavailable, Continuity: UserTrafficNormal}, nil
@@ -811,7 +870,18 @@ func (m *Memory) UserTrafficRetention() time.Duration {
 
 // DeleteUserHistory removes a user's totals, baseline and buckets.
 func (m *Memory) DeleteUserHistory(username string) error {
-	m.mu.Lock()
+	return m.DeleteUserHistoryContext(context.Background(), username)
+}
+
+func (m *Memory) DeleteUserHistoryContext(parent context.Context, username string) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	delete(m.userTraffic, username)
 	for key := range m.userTrafficBuckets {
@@ -825,7 +895,18 @@ func (m *Memory) DeleteUserHistory(username string) error {
 // ResetUserTraffic removes every accumulated total, baseline, bucket and
 // collector marker. The next coherent snapshot establishes fresh baselines.
 func (m *Memory) ResetUserTraffic() error {
-	m.mu.Lock()
+	return m.ResetUserTrafficContext(context.Background())
+}
+
+func (m *Memory) ResetUserTrafficContext(parent context.Context) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	clear(m.userTraffic)
 	clear(m.userTrafficBuckets)
@@ -842,10 +923,18 @@ func (m *Memory) ListStoragePolicies() ([]StoragePolicy, error) {
 
 // ReplaceStoragePolicies validates and stores the complete policy set.
 func (m *Memory) ReplaceStoragePolicies(policies []StoragePolicy) error {
+	return m.ReplaceStoragePoliciesContext(context.Background(), policies)
+}
+
+func (m *Memory) ReplaceStoragePoliciesContext(parent context.Context, policies []StoragePolicy) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	if err := ValidateStoragePolicies(policies); err != nil {
 		return err
 	}
-	m.mu.Lock()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	previous := m.policies
 	previousAudit := append([]AuditEntry(nil), m.audit...)
@@ -866,10 +955,21 @@ func (m *Memory) ReplaceStoragePolicies(policies []StoragePolicy) error {
 // persisting the policy copy. The authoritative policy set belongs to the
 // state store.
 func (m *Memory) ApplyStoragePolicies(policies []StoragePolicy) error {
+	return m.ApplyStoragePoliciesContext(context.Background(), policies)
+}
+
+func (m *Memory) ApplyStoragePoliciesContext(parent context.Context, policies []StoragePolicy) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := ValidateStoragePolicies(policies); err != nil {
 		return err
 	}
-	m.mu.Lock()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	next := policyMap(policies)
 	if m.policies[StorageUserIPHistory] != next[StorageUserIPHistory] {
@@ -911,8 +1011,17 @@ func (m *Memory) PurgeAudit() error {
 
 // PurgeHistory removes the selected in-memory history family.
 func (m *Memory) PurgeHistory(category StorageCategory) error {
+	return m.PurgeHistoryContext(context.Background(), category)
+}
+
+func (m *Memory) PurgeHistoryContext(parent context.Context, category StorageCategory) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if category == StorageUserIPHistory {
-		return m.ResetUserIPHistory("")
+		return m.ResetUserIPHistoryContext(ctx, "")
 	}
 	if _, ok := defaultPolicyMap()[category]; !ok {
 		return fmt.Errorf("unknown storage category %q", category)
@@ -920,7 +1029,9 @@ func (m *Memory) PurgeHistory(category StorageCategory) error {
 	if category == StorageAudit {
 		return m.PurgeAudit()
 	}
-	m.mu.Lock()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return err
+	}
 	defer m.mu.Unlock()
 	if category == StorageEvents {
 		m.events = nil
@@ -939,7 +1050,18 @@ func (m *Memory) PurgeHistory(category StorageCategory) error {
 
 // StorageStats reports volatile record counts. DatabaseBytes is always zero.
 func (m *Memory) StorageStats() (StorageStats, error) {
-	m.mu.Lock()
+	return m.StorageStatsContext(context.Background())
+}
+
+func (m *Memory) StorageStatsContext(parent context.Context) (StorageStats, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return StorageStats{}, err
+	}
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return StorageStats{}, err
+	}
 	defer m.mu.Unlock()
 	counts := make(map[StorageCategory]int64, len(storageCategoryOrder))
 	counts[StorageAudit] = int64(len(m.audit))

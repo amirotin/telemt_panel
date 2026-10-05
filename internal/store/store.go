@@ -2,11 +2,14 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"time"
 )
 
 var (
+	// ErrHistoryTimeout identifies a bounded history operation that could not complete.
+	ErrHistoryTimeout             = errors.New("history operation timed out")
 	ErrWebAuthnCredentialExists   = errors.New("WebAuthn credential already exists")
 	ErrWebAuthnCredentialNotFound = errors.New("WebAuthn credential not found")
 	ErrWebAuthnCredentialChanged  = errors.New("WebAuthn credential changed concurrently")
@@ -230,4 +233,5 @@ const (
 type Store interface {
 	StateStore
 	HistoryStore
+	ReplaceStoragePoliciesContext(context.Context, []StoragePolicy) error
 }

@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,12 @@ import (
 // enabled. Empty categories default to the independently configurable events
 // family.
 func (s *SQLite) AppendHistoryEvent(event HistoryEvent) error {
+	return s.AppendHistoryEventContext(context.Background(), event)
+}
+
+func (s *SQLite) AppendHistoryEventContext(parent context.Context, event HistoryEvent) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	if event.Category == "" {
 		event.Category = StorageEvents
 	}
@@ -32,7 +39,7 @@ func (s *SQLite) AppendHistoryEvent(event HistoryEvent) error {
 	if event.TS.IsZero() {
 		event.TS = time.Now()
 	}
-	if _, err := s.exec(`INSERT INTO history_events(ts_ns, category, kind, entity, state, previous_state, severity, attributes_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+	if _, err := s.execContext(ctx, `INSERT INTO history_events(ts_ns, category, kind, entity, state, previous_state, severity, attributes_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.TS.UnixNano(), event.Category, event.Kind, event.Entity, event.State, event.PreviousState, event.Severity, string(attributes)); err != nil {
 		return fmt.Errorf("append history event: %w", err)
 	}
@@ -87,6 +94,12 @@ func (s *SQLite) pruneHistoryEventBatch(now time.Time, limit int) (int, error) {
 
 // ListHistoryEvents returns matching structured events newest first.
 func (s *SQLite) ListHistoryEvents(filter HistoryEventFilter) ([]HistoryEvent, error) {
+	return s.ListHistoryEventsContext(context.Background(), filter)
+}
+
+func (s *SQLite) ListHistoryEventsContext(parent context.Context, filter HistoryEventFilter) ([]HistoryEvent, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	query := `SELECT seq, ts_ns, category, kind, entity, state, previous_state, severity, attributes_json FROM history_events`
 	where := make([]string, 0, 4)
 	args := make([]any, 0, 5)
@@ -114,7 +127,7 @@ func (s *SQLite) ListHistoryEvents(filter HistoryEventFilter) ([]HistoryEvent, e
 		query += ` LIMIT ?`
 		args = append(args, filter.Limit)
 	}
-	rows, err := s.query(query, args...)
+	rows, err := s.queryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list history events: %w", err)
 	}

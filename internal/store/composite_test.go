@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -237,6 +238,13 @@ func (s *rejectingPolicyHistory) ApplyStoragePolicies(policies []StoragePolicy) 
 		return errors.New("history policy failure")
 	}
 	return s.HistoryStore.ApplyStoragePolicies(policies)
+}
+
+func (s *rejectingPolicyHistory) ApplyStoragePoliciesContext(ctx context.Context, policies []StoragePolicy) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.ApplyStoragePolicies(policies)
 }
 
 func TestCompositeDoesNotPersistRejectedHistoryPolicies(t *testing.T) {

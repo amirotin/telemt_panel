@@ -25,7 +25,7 @@ func (h *Hub) recordTelemtAvailability(available bool) {
 		value = 1
 	}
 	ts := time.Now().Unix()
-	if err := h.st.RecordMetrics([]store.NamedMetricPoint{
+	if err := h.st.RecordMetricsContext(h.historyContext(), []store.NamedMetricPoint{
 		{Name: metricTelemtAvailable, Point: store.MetricPoint{TS: ts, Value: value}},
 		{Name: metricTelemtUnavailable, Point: store.MetricPoint{TS: ts, Value: 1 - value}},
 	}); err != nil {
@@ -52,7 +52,7 @@ func (h *Hub) recordRuntimeHistory(snap runtimeSnapshot) {
 		if quality != nil && !quality.Enabled {
 			h.resetUpstreamHealthBaseline()
 		}
-		if err := h.st.RecordMetrics(batch); err != nil {
+		if err := h.st.RecordMetricsContext(h.historyContext(), batch); err != nil {
 			slog.Warn("hub: record route history", "err", err)
 		}
 		return
@@ -72,7 +72,7 @@ func (h *Hub) recordRuntimeHistory(snap runtimeSnapshot) {
 		}
 	}
 	h.observeUpstreamHealth(quality.Upstreams)
-	if err := h.st.RecordMetrics(batch); err != nil {
+	if err := h.st.RecordMetricsContext(h.historyContext(), batch); err != nil {
 		slog.Warn("hub: record runtime history", "count", len(batch), "err", err)
 	}
 }
@@ -121,7 +121,7 @@ func (h *Hub) recordUpstreamsHistory(snap upstreamsSnapshot) {
 		}
 		add("dc.coverage_pct", coverage)
 	}
-	if err := h.st.RecordMetrics(batch); err != nil {
+	if err := h.st.RecordMetricsContext(h.historyContext(), batch); err != nil {
 		slog.Warn("hub: record DC history", "count", len(batch), "err", err)
 	}
 }
