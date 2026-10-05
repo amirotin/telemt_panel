@@ -97,8 +97,8 @@ describe("WEB decoy DNS policy", () => {
     sections = { web: { vhosts: [{ host: "proxy.example.com", public_addr: "203.0.113.10:443", profiles: [], decoy: { mode: "static_directory", directory: "/fresh", index: "index.html" } }] } };
     act(render);
     changeMode("http_upstream");
-    const decoy = (sections.web as { vhosts: Array<{ decoy: Record<string, unknown> }> }).vhosts[0].decoy;
-    expect(decoy.resolve).not.toBe("startup");
-    expect(decoy.upstream).not.toBe("http://backend.internal:8080");
+    const decoy = (sections["web"] as { vhosts: Array<{ decoy: Record<string, unknown> }> }).vhosts[0].decoy;
+    expect(decoy["resolve"]).not.toBe("startup");
+    expect(decoy["upstream"]).not.toBe("http://backend.internal:8080");
   });
 });
