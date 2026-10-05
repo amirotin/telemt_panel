@@ -9,7 +9,7 @@ export interface SectionLabelProps {
 // SectionLabel — the uppercase caption the prototype sets above every block
 // ("АКТИВНЫЕ IP", "ПОЛЯ — КЛИК ДОБАВЛЯЕТ ФИЛЬТР", "ИСТОРИЯ ОБНОВЛЕНИЙ").
 // Lives in ui/ because Люди, Пульс, Журнал and Сервер all caption blocks
-// the same way; people/PersonSections re-exports it for its own callers.
+// the same way.
 export function SectionLabel({ children, className }: SectionLabelProps) {
   return (
     <h2

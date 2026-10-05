@@ -12,7 +12,7 @@ const ORDER: Record<DisplayMode, number> = { critical: 0, basic: 1, extended: 2 
 const STORAGE_KEY = "telemt-panel:display-mode:v1";
 const DEFAULT_MODE: DisplayMode = "basic";
 
-export function isDisplayMode(value: unknown): value is DisplayMode {
+function isDisplayMode(value: unknown): value is DisplayMode {
   return value === "critical" || value === "basic" || value === "extended";
 }
 

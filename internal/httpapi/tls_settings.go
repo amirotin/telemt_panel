@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -188,19 +186,16 @@ func (s *Server) handleGetTLSConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, state)
+	writeJSON(w, http.StatusOK, state)
 }
 
 func decodeTLSBody(w http.ResponseWriter, r *http.Request, value any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(value); err != nil {
-		auth.WriteError(w, 400, "bad_request", "invalid transport request body")
-		return false
-	}
-	if decoder.Decode(new(any)) != io.EOF {
-		auth.WriteError(w, 400, "bad_request", "one JSON object is required")
+	if err := decodeJSONBody(w, r, value, jsonBodyOptions{MaxBytes: 16 << 10, RejectUnknown: true, ClassifyReadErrors: true}); err != nil {
+		message := "invalid transport request body"
+		if errors.Is(err, errJSONBodyTrailingData) {
+			message = "one JSON object is required"
+		}
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", message)
 		return false
 	}
 	return true
@@ -222,13 +217,13 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	if a.state == "preparing" || a.saved {
 		a.mu.Unlock()
-		auth.WriteError(w, 409, "tls_prepare_busy", "a preparation or saved restart is already pending")
+		auth.WriteError(w, http.StatusConflict, "tls_prepare_busy", "a preparation or saved restart is already pending")
 		return
 	}
 	caps, _ := s.tlsCapabilitiesLocked()
 	if !caps.Prepare {
 		a.mu.Unlock()
-		auth.WriteError(w, 503, "tls_manual_required", "configuration write and panel restart privileges are required; apply transport manually")
+		auth.WriteError(w, http.StatusServiceUnavailable, "tls_manual_required", "configuration write and panel restart privileges are required; apply transport manually")
 		return
 	}
 	candidate := request.TLSCandidate
@@ -241,23 +236,23 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := candidate.Normalize(s.accessCache(subscription)); err != nil {
 		a.mu.Unlock()
-		auth.WriteError(w, 400, "tls_invalid_candidate", err.Error())
+		auth.WriteError(w, http.StatusBadRequest, "tls_invalid_candidate", err.Error())
 		return
 	}
 	if (!subscription || candidate.Enabled) && candidate.TLS.Mode == "http" && (!loopbackListen(candidate.Listen) || strings.HasPrefix(candidate.PublicURL, "http://")) && !request.ConfirmHTTP {
 		a.mu.Unlock()
-		auth.WriteError(w, 400, "confirmation_required", "confirm unencrypted HTTP before preparation")
+		auth.WriteError(w, http.StatusBadRequest, "confirmation_required", "confirm unencrypted HTTP before preparation")
 		return
 	}
 	snapshot, err := a.file.Read()
 	if err != nil {
 		a.mu.Unlock()
-		auth.WriteError(w, 409, "tls_config_changed", "startup configuration is no longer readable and valid")
+		auth.WriteError(w, http.StatusConflict, "tls_config_changed", "startup configuration is no longer readable and valid")
 		return
 	}
 	if err := validateAccessCandidate(snapshot.Config, candidate, subscription); err != nil {
 		a.mu.Unlock()
-		auth.WriteError(w, 400, "tls_invalid_candidate", err.Error())
+		auth.WriteError(w, http.StatusBadRequest, "tls_invalid_candidate", err.Error())
 		return
 	}
 	a.state = "preparing"
@@ -272,7 +267,7 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		a.state = "idle"
 		a.mu.Unlock()
-		auth.WriteError(w, 503, "tls_prepare_unavailable", "unable to extend response deadline for certificate preparation")
+		auth.WriteError(w, http.StatusServiceUnavailable, "tls_prepare_unavailable", "unable to extend response deadline for certificate preparation")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), paneltls.PrepareTimeout)
@@ -311,7 +306,7 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	latest, err := a.file.Read()
 	if err != nil || latest.Revision != snapshot.Revision {
-		auth.WriteError(w, 409, "tls_config_changed", "configuration changed during preparation; prepare again")
+		auth.WriteError(w, http.StatusConflict, "tls_config_changed", "configuration changed during preparation; prepare again")
 		return
 	}
 	var nonce [32]byte
@@ -320,7 +315,7 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	a.pending = prepared
 	a.state = "prepared"
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, prepared)
+	writeJSON(w, http.StatusOK, prepared)
 }
 
 func loopbackListen(listen string) bool {
@@ -405,12 +400,12 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 	defer a.mu.Unlock()
 	p := a.pending
 	if p == nil || p.subscription != subscription || p.Receipt != request.Receipt || time.Now().After(p.ExpiresAt) || request.Candidate != p.Candidate {
-		auth.WriteError(w, 409, "tls_receipt_invalid", "prepare this exact candidate again; receipt is stale, changed or already used")
+		auth.WriteError(w, http.StatusConflict, "tls_receipt_invalid", "prepare this exact candidate again; receipt is stale, changed or already used")
 		return
 	}
 	caps, _ := s.tlsCapabilitiesLocked()
 	if !caps.Prepare {
-		auth.WriteError(w, 503, "tls_manual_required", "write/restart permissions are unavailable; configuration was not saved")
+		auth.WriteError(w, http.StatusServiceUnavailable, "tls_manual_required", "write/restart permissions are unavailable; configuration was not saved")
 		return
 	}
 	if (!subscription || p.Candidate.Enabled) && p.Candidate.TLS.Mode == "certificate" {
@@ -433,9 +428,9 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.file.SaveAccess(p.revision, p.Candidate, subscription, true); err != nil {
 		if errors.Is(err, config.ErrTLSRevision) {
-			auth.WriteError(w, 409, "tls_config_changed", "configuration changed after preparation; prepare again")
+			auth.WriteError(w, http.StatusConflict, "tls_config_changed", "configuration changed after preparation; prepare again")
 		} else {
-			auth.WriteError(w, 503, "tls_save_failed", "unable to save startup configuration; check file and directory permissions")
+			auth.WriteError(w, http.StatusServiceUnavailable, "tls_save_failed", "unable to save startup configuration; check file and directory permissions")
 		}
 		return
 	}
@@ -453,7 +448,7 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 		auditTarget = "subscription"
 	}
 	s.appendAudit(r, "panel.tls.save", "", auditTarget+":"+p.Candidate.TLS.Mode)
-	writeJSON(w, 200, map[string]any{"new_url": a.newURL, "restart_required": true})
+	writeJSON(w, http.StatusOK, map[string]any{"new_url": a.newURL, "restart_required": true})
 }
 
 func (s *Server) handleRestartTLS(w http.ResponseWriter, r *http.Request) {
@@ -461,18 +456,18 @@ func (s *Server) handleRestartTLS(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	if !a.saved || a.state == "restarting" {
 		a.mu.Unlock()
-		auth.WriteError(w, 409, "tls_restart_not_pending", "save a prepared transport change before restarting")
+		auth.WriteError(w, http.StatusConflict, "tls_restart_not_pending", "save a prepared transport change before restarting")
 		return
 	}
 	if !s.tlsRestartAvailable() {
 		a.mu.Unlock()
-		auth.WriteError(w, 503, "tls_manual_required", "restart the panel service manually")
+		auth.WriteError(w, http.StatusServiceUnavailable, "tls_manual_required", "restart the panel service manually")
 		return
 	}
 	snapshot, err := a.file.Read()
 	if err != nil || snapshot.Revision != a.savedRevision {
 		a.mu.Unlock()
-		auth.WriteError(w, 409, "tls_config_changed", "saved configuration changed; inspect it and restart manually")
+		auth.WriteError(w, http.StatusConflict, "tls_config_changed", "saved configuration changed; inspect it and restart manually")
 		return
 	}
 	name, _ := resolveLogicalService("panel", s.svcMgr.Kind(), s.cfg.Host)
@@ -481,7 +476,7 @@ func (s *Server) handleRestartTLS(w http.ResponseWriter, r *http.Request) {
 	newURL := a.newURL
 	a.mu.Unlock()
 	s.appendAudit(r, "panel.tls.restart", "", "")
-	writeJSON(w, 202, map[string]any{"new_url": newURL, "restart_required": true})
+	writeJSON(w, http.StatusAccepted, map[string]any{"new_url": newURL, "restart_required": true})
 	if err := http.NewResponseController(w).Flush(); err != nil {
 		a.mu.Lock()
 		a.state = "restart_failed"

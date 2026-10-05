@@ -47,10 +47,6 @@ type telemtConfigField struct {
 
 var telemt355ConfigCatalog = mustLoadTelemtConfigCatalog()
 
-// telemt355ConfigPaths remains the input consumed by the validator, but is
-// derived from the same catalog returned to the browser rather than copied.
-var telemt355ConfigPaths = configCatalogPaths(telemt355ConfigCatalog)
-
 func mustLoadTelemtConfigCatalog() telemtConfigCatalog {
 	var catalog telemtConfigCatalog
 	if err := json.Unmarshal(telemtConfigCatalogJSON, &catalog); err != nil {
@@ -60,14 +56,6 @@ func mustLoadTelemtConfigCatalog() telemtConfigCatalog {
 		panic("embedded Telemt config catalog is empty")
 	}
 	return catalog
-}
-
-func configCatalogPaths(catalog telemtConfigCatalog) []string {
-	paths := make([]string, 0, len(catalog.Fields))
-	for _, field := range catalog.Fields {
-		paths = append(paths, field.Path)
-	}
-	return paths
 }
 
 func (s *Server) handleGetTelemtConfigCatalog(w http.ResponseWriter, r *http.Request) {

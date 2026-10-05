@@ -1,4 +1,5 @@
 import type { Dict, Locale } from "./dict";
+import { getNumberFormatter } from "./formatters";
 
 // PluralForms is the uniform 3-slot shape every countable string in the
 // dictionaries uses: [one, few, many]. Russian needs all three (1 запись /
@@ -38,7 +39,7 @@ export function plural(s: Dict, n: number, forms: PluralForms): string {
 // (ru: 1 234, en: 1,234). The tabular-nums styling on stat readouts is
 // unaffected by which separator lands between the groups.
 export function formatNumber(s: Dict, n: number): string {
-  return new Intl.NumberFormat(localeOf(s)).format(n);
+  return getNumberFormatter(localeOf(s)).format(n);
 }
 
 // fill substitutes {name} placeholders in a dictionary template. The

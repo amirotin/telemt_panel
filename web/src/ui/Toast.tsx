@@ -41,7 +41,7 @@ export function pushToast(message: string, variant: ToastVariant = "default", du
   return id;
 }
 
-export function dismissToast(id: number) {
+function dismissToast(id: number) {
   toasts = toasts.filter((t) => t.id !== id);
   notify();
 }

@@ -401,19 +401,6 @@ func (s *SQLite) UserTrafficRanking(fromTS, toTS int64, includeDeleted bool, lim
 	return ranks, err
 }
 
-func userTrafficTierCutoffs(now time.Time) (fineFrom, hourFrom int64) {
-	return ceilUserTrafficBoundary(now.Add(-24*time.Hour).Unix(), 3600),
-		ceilUserTrafficBoundary(now.Add(-30*24*time.Hour).Unix(), 86400)
-}
-
-func ceilUserTrafficBoundary(ts, width int64) int64 {
-	remainder := ts % width
-	if remainder == 0 {
-		return ts
-	}
-	return ts + width - remainder
-}
-
 func userTrafficMetricTier(tier int) MetricTier {
 	switch tier {
 	case 0:

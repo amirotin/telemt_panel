@@ -37,7 +37,7 @@ export function splitPanelListen(listen: string): { host: string; port: string }
   return { host: listen.slice(0, separator), port: listen.slice(separator + 1) };
 }
 
-export function joinPanelListen(host: string, port: string): string {
+function joinPanelListen(host: string, port: string): string {
   const cleanHost = host.trim();
   const formattedHost = cleanHost.includes(":") && !cleanHost.startsWith("[") ? `[${cleanHost}]` : cleanHost;
   return `${formattedHost}:${port.trim()}`;

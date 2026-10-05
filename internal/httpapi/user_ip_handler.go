@@ -174,10 +174,6 @@ func (s *Server) handleResetUserIPHistory(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) resetUserIPHistory(username string) error {
-	return s.resetUserIPHistoryContext(context.Background(), username)
-}
-
 func (s *Server) resetUserIPHistoryContext(ctx context.Context, username string) error {
 	if s.hub != nil {
 		return s.hub.ResetUserIPHistoryContext(ctx, username)

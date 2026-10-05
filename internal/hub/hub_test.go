@@ -182,20 +182,6 @@ func (f *fakeTelemt) assertNoRequest(t *testing.T, path string, timeout time.Dur
 	}
 }
 
-// drainFor discards requests for the given duration without asserting
-// anything about them — used to let a poller run through a legitimate
-// window (e.g. a grace period) before checking it has actually stopped.
-func (f *fakeTelemt) drainFor(d time.Duration) {
-	deadline := time.After(d)
-	for {
-		select {
-		case <-f.requests:
-		case <-deadline:
-			return
-		}
-	}
-}
-
 // drainUntilQuiet discards requests until none arrives for a full quiet
 // window, then returns. Unlike a fixed-duration drain, this is robust to
 // race-detector slowdown: a still-running poller (interval far below quiet)

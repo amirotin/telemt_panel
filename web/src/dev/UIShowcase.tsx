@@ -35,7 +35,7 @@ import { fill, useStrings } from "../i18n";
 // import.meta.env.DEV guard in routes/dev.ui.tsx, so this whole module
 // (and its only-here-for-the-showcase code) is tree-shaken out of
 // production builds.
-export function UIShowcase() {
+function UIShowcase() {
   const s = useStrings();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [cardToggle, setCardToggle] = useState(true);

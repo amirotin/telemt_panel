@@ -4,11 +4,6 @@ package store
 
 import "context"
 
-func (s *SQLite) liveMetricRange(name string, fromTS int64) []MetricPoint {
-	points, _ := s.liveMetricRangeContext(context.Background(), name, fromTS)
-	return points
-}
-
 func (s *SQLite) liveMetricRangeContext(ctx context.Context, name string, fromTS int64) ([]MetricPoint, error) {
 	if err := lockHistoryMutex(ctx, historyReadMutex{&s.liveMu}); err != nil {
 		return nil, err

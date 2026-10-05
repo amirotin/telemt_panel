@@ -13,6 +13,9 @@ type jsonBodyOptions struct {
 	MaxBytes      int64
 	RejectUnknown bool
 	AllowEmpty    bool
+	// ClassifyReadErrors preserves legacy transport errors after a complete
+	// first value, while the default rejects oversized bodies before parsing.
+	ClassifyReadErrors bool
 }
 
 var errJSONBodyTrailingData = errors.New("request body must contain exactly one JSON value")
@@ -25,11 +28,11 @@ func (e *jsonBodyReadError) Error() string { return e.err.Error() }
 func (e *jsonBodyReadError) Unwrap() error { return e.err }
 
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, opts jsonBodyOptions) error {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, opts.MaxBytes))
-	if err != nil {
-		return &jsonBodyReadError{err: err}
+	body, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, opts.MaxBytes))
+	if readErr != nil && !opts.ClassifyReadErrors {
+		return &jsonBodyReadError{err: readErr}
 	}
-	if len(body) == 0 && opts.AllowEmpty {
+	if len(body) == 0 && opts.AllowEmpty && readErr == nil {
 		return nil
 	}
 
@@ -38,7 +41,13 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, opts jsonBo
 		decoder.DisallowUnknownFields()
 	}
 	if err := decoder.Decode(dst); err != nil {
+		if readErr != nil {
+			return &jsonBodyReadError{err: readErr}
+		}
 		return err
+	}
+	if readErr != nil {
+		return fmt.Errorf("%w: %w", errJSONBodyTrailingData, &jsonBodyReadError{err: readErr})
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {

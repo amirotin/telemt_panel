@@ -8,7 +8,7 @@
 // Deliberately read on every call rather than cached: the preference can
 // change while the tab is open (a11y settings, a display switch), and this
 // costs one matchMedia lookup on a user gesture, never in a render loop.
-export function prefersReducedMotion(): boolean {
+function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

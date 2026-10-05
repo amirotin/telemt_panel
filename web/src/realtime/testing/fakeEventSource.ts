@@ -4,9 +4,9 @@
 // under fake timers — no real network, no jsdom EventSource dependency.
 // Shared between sseClient.test.ts (the client's own unit tests) and
 // context.test.tsx (the React hook layer built on top of it).
-export const READY_STATE_CONNECTING = 0;
-export const READY_STATE_OPEN = 1;
-export const READY_STATE_CLOSED = 2;
+const READY_STATE_CONNECTING = 0;
+const READY_STATE_OPEN = 1;
+const READY_STATE_CLOSED = 2;
 
 export class FakeEventSource {
   static instances: FakeEventSource[] = [];

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
-	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/subpage"
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
@@ -299,19 +298,4 @@ func findUser(users []telemt.UserInfo, username string) (telemt.UserInfo, bool) 
 		}
 	}
 	return telemt.UserInfo{}, false
-}
-
-// absoluteURL builds the externally visible absolute URL for a
-// base-path-relative path, using the same trusted-proxy X-Forwarded-Host
-// handling as auth.CSRF's Origin check.
-func absoluteURL(r *http.Request, cfg *config.Config, path string) string {
-	scheme := "http"
-	if auth.RequestIsSecure(r, cfg.TrustedProxyPrefixes) {
-		scheme = "https"
-	}
-	host, err := auth.RequestHost(r, cfg.TrustedProxyPrefixes)
-	if err != nil {
-		return ""
-	}
-	return scheme + "://" + host + path
 }

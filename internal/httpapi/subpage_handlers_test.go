@@ -178,17 +178,17 @@ func TestSublinkExternalOrigin(t *testing.T) {
 	for _, tc := range []struct {
 		name, peer, forwardedHost, forwardedProto, want string
 	}{
-		{"direct", "192.0.2.1:1234", "", "", "http://panel.example:8080/panel/sub/token"},
-		{"trusted proxy", "127.0.0.1:1234", "public.example", "https", "https://public.example/panel/sub/token"},
-		{"untrusted headers", "192.0.2.1:1234", "spoofed.example", "https", "http://panel.example:8080/panel/sub/token"},
+		{"direct", "192.0.2.1:1234", "", "", "https://panel.example:8081/panel/sub/token"},
+		{"trusted proxy", "127.0.0.1:1234", "public.example", "https", "https://public.example:8081/panel/sub/token"},
+		{"untrusted headers", "192.0.2.1:1234", "spoofed.example", "https", "https://panel.example:8081/panel/sub/token"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest("GET", "http://panel.example:8080/api/users/alice/sublink", nil)
 			r.RemoteAddr = tc.peer
 			r.Header.Set("X-Forwarded-Host", tc.forwardedHost)
 			r.Header.Set("X-Forwarded-Proto", tc.forwardedProto)
-			cfg := &config.Config{TrustedProxyPrefixes: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}}
-			if got := absoluteURL(r, cfg, "/panel/sub/token"); got != tc.want {
+			cfg := &config.Config{TrustedProxyPrefixes: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, Subpage: config.SubpageConfig{Listen: ":8081", TLS: config.TLSConfig{Mode: "certificate"}}}
+			if got := (&Server{cfg: cfg}).subscriptionURL(r, "/panel/sub/token"); got != tc.want {
 				t.Fatalf("URL = %q, want %q", got, tc.want)
 			}
 		})

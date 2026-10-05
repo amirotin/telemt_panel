@@ -64,9 +64,6 @@ func TestTelemtConfigCatalogCompleteness(t *testing.T) {
 	if _, ok := paths["censorship.exclusive_mask"]; !ok {
 		t.Fatal("runtime field censorship.exclusive_mask is missing")
 	}
-	if len(telemt355ConfigPaths) != len(paths) {
-		t.Fatalf("validator paths = %d, catalog paths = %d", len(telemt355ConfigPaths), len(paths))
-	}
 }
 
 func TestHandleGetTelemtConfigCatalog(t *testing.T) {

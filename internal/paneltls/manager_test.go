@@ -435,7 +435,9 @@ func TestModesAndRedirect(t *testing.T) {
 }
 
 func TestCheckHTTPDeadlineAndNoRedirect(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "http://example.com", 302) }))
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.com", http.StatusFound)
+	}))
 	defer s.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

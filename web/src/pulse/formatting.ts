@@ -21,6 +21,7 @@
 
 import type { Dict } from "../i18n";
 import { fill, formatNumber, localeOf } from "../i18n";
+import { getNumberFormatter } from "../i18n/formatters";
 import { formatBytes } from "../lib/format";
 
 export type FieldUnit = "percent" | "milliseconds" | "seconds" | "bytes" | "timestamp";
@@ -111,13 +112,13 @@ function numeric(value: NumericValue): value is number {
 export function formatRtt(value: NumericValue, s: Dict, options: { precision: number | "adaptive" }): string {
   if (!numeric(value)) return "—";
   const precision = options.precision === "adaptive" ? (value < 10 ? 1 : 0) : options.precision;
-  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: precision }).format(value)} ${s.details.value.ms}`;
+  return `${getNumberFormatter(localeOf(s), { maximumFractionDigits: precision }).format(value)} ${s.details.value.ms}`;
 }
 
 /** Percent values are already percentage points; this formatter never rescales them. */
 export function formatPercent(value: NumericValue, s: Dict, options: { precision: number; space?: boolean }): string {
   if (!numeric(value)) return "—";
-  const number = new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: options.precision }).format(value);
+  const number = getNumberFormatter(localeOf(s), { maximumFractionDigits: options.precision }).format(value);
   return `${number}${options.space === false ? "" : " "}${s.details.value.percentSuffix}`;
 }
 
@@ -144,7 +145,7 @@ export function formatDiagnosticDuration(value: NumericValue, s: Dict, options: 
     : units.reduce((current, entry, index) => index <= minimum || Math.abs(ms) >= entry[1] ? entry : current, units[0]!);
   const amount = ms / selected[1];
   const rounded = options.rounding === "floor" ? Math.floor(amount) : amount;
-  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: options.precision }).format(rounded)} ${selected[2]}`;
+  return `${getNumberFormatter(localeOf(s), { maximumFractionDigits: options.precision }).format(rounded)} ${selected[2]}`;
 }
 
 /** Preserve the diagnostic age policy: whole units, with a minimum of one minute. */
@@ -187,7 +188,7 @@ export function absent(kind: AbsenceKind, s: Dict): FormattedValue {
 // formatDecimal keeps at most two fraction digits and groups the integer
 // part per locale — the "decimal with tabular numerals" family of §13.
 function formatDecimal(n: number, s: Dict): string {
-  return new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: 2 }).format(n);
+  return getNumberFormatter(localeOf(s), { maximumFractionDigits: 2 }).format(n);
 }
 
 // The catalog's duration policy keeps integer ms, two fractional seconds,

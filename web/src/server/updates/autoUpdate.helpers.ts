@@ -8,7 +8,7 @@ export interface AutoUpdateFormState {
   intervalHours: number;
 }
 
-export const DEFAULT_INTERVAL_HOURS = 6;
+const DEFAULT_INTERVAL_HOURS = 6;
 
 // parseIntervalHours reads AutoUpdateSettings.interval into whole hours for
 // the form's numeric input. This PUTs a bare "<n>h" string, but Go's

@@ -4,15 +4,7 @@
 // SHAPE; en.ts is typed against it.
 export type { Dict, Locale, LocalePreference } from "./dict";
 export {
-  LOCALES,
   applyDocumentLocale,
-  getStoredLocalePreference,
-  isLocale,
-  isLocalePreference,
-  localeFromLanguages,
-  resolveInitialLocale,
-  resolveLocale,
-  setStoredLocalePreference,
 } from "./locale";
 export type { PluralForms } from "./plural";
 export {
@@ -20,20 +12,15 @@ export {
   fill,
   formatNumber,
   localeOf,
-  plural,
-  pluralIndex,
   pluralTemplate,
 } from "./plural";
 export {
   getLocale,
-  getLocalePreference,
   getStrings,
   resetLocaleForTests,
   setLocalePreference,
-  subscribeLocale,
   useLocale,
   useLocalePreference,
   useStrings,
 } from "./store";
 export { auditActionLabel, errorMessage } from "./messages";
-export { LanguageToggle } from "./LanguageToggle";

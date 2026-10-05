@@ -22,7 +22,7 @@ import { HistoryNotice } from "./HistoryNotice";
 import { PanelLogo } from "../branding/branding";
 import { useBranding } from "../branding/useBranding";
 
-export function BrandMark({ className }: { className?: string }) {
+function BrandMark({ className }: { className?: string }) {
   const branding = useBranding();
   return <PanelLogo branding={branding} className={cn("h-10 w-10 shrink-0 rounded-xl object-contain", className)} />;
 }

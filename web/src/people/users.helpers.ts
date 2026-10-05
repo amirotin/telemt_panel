@@ -110,7 +110,7 @@ export function filterUsersByQuery(users: UsersTopicUser[], query: string): User
 // running proxy), which is exactly the prototype's own segment.
 export type UserFilter = "all" | "online" | "issues" | "web";
 
-export function hasIssues(status: UserStatus): boolean {
+function hasIssues(status: UserStatus): boolean {
   return status !== "active";
 }
 
@@ -295,14 +295,14 @@ export function formatBitsPerSecond(bps: number, s: Dict): string {
 
 // USERNAME_PATTERN mirrors api/openapi.yaml's Username parameter and
 // UserCreate.username pattern exactly.
-export const USERNAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
+const USERNAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
 
 export function isValidUsername(name: string): boolean {
   return USERNAME_PATTERN.test(name);
 }
 
 // SECRET_PATTERN mirrors UserCreate.secret / UserPatch.secret's pattern.
-export const SECRET_PATTERN = /^[0-9a-fA-F]{32}$/;
+const SECRET_PATTERN = /^[0-9a-fA-F]{32}$/;
 
 export function isValidSecret(secret: string): boolean {
   return SECRET_PATTERN.test(secret);

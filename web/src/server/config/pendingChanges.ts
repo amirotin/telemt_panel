@@ -86,7 +86,7 @@ export interface ResolvedPendingChanges {
   processRestart: boolean;
 }
 
-export const NOTHING_PENDING: ResolvedPendingChanges = {
+const NOTHING_PENDING: ResolvedPendingChanges = {
   runtimeReload: false,
   processRestart: false,
 };

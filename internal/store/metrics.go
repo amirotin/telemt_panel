@@ -19,18 +19,6 @@ const (
 	userTrafficFineRetention = 24 * time.Hour
 )
 
-var metricTierRetention = []struct {
-	tier MetricTier
-	sql  string
-	keep time.Duration
-}{
-	{tier: MetricTierRaw, sql: metricTierRawSQL, keep: metricRawRetention},
-	{tier: MetricTierMinute, sql: string(MetricTierMinute), keep: metricMinuteRetention},
-	{tier: MetricTierFive, sql: string(MetricTierFive), keep: 7 * 24 * time.Hour},
-	{tier: MetricTierQuarter, sql: string(MetricTierQuarter)},
-	{tier: MetricTierHour, sql: string(MetricTierHour)},
-}
-
 func metricTierSQL(tier MetricTier) string {
 	if tier == MetricTierRaw {
 		return metricTierRawSQL

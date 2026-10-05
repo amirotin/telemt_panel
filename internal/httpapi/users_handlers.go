@@ -119,6 +119,11 @@ func (s *Server) quotaListOrDegrade(ctx context.Context) (map[string]telemt.Quot
 	return quota, hasQuota
 }
 
+func (s *Server) loadUserEnrichment(ctx context.Context) (map[string]telemt.QuotaEntry, bool, map[string]store.UserTrafficSummary) {
+	quota, hasQuota := s.quotaListOrDegrade(ctx)
+	return quota, hasQuota, s.userTrafficOrDegrade()
+}
+
 // handleListUsers implements GET /api/users.
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), subpageRequestTimeout)
@@ -129,8 +134,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeTelemtError(w, err, false)
 		return
 	}
-	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	traffic := s.userTrafficOrDegrade()
+	quota, hasQuota, traffic := s.loadUserEnrichment(ctx)
 
 	out := make([]userResponse, len(users))
 	ips, err := store.UserIPSummaryMap(s.st, time.Now().Unix())
@@ -162,8 +166,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	s.appendAudit(r, "user.create", u.Username, "")
 	s.pokeUsersAfterMutation()
 
-	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	traffic := s.userTrafficOrDegrade()
+	quota, hasQuota, traffic := s.loadUserEnrichment(ctx)
 	writeJSON(w, http.StatusCreated, userSecretResponse{
 		User:   s.buildUserResponse(r, u, quota, hasQuota, traffic, nil),
 		Secret: secret,
@@ -187,8 +190,8 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusNotFound, "not_found", "user not found")
 		return
 	}
-	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade(), nil))
+	quota, hasQuota, traffic := s.loadUserEnrichment(ctx)
+	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, traffic, nil))
 }
 
 // handlePatchUser implements PATCH /api/users/{username}.
@@ -234,8 +237,8 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade(), nil))
+	quota, hasQuota, traffic := s.loadUserEnrichment(ctx)
+	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, traffic, nil))
 }
 
 // handleDeleteUser implements DELETE /api/users/{username}.
@@ -328,8 +331,7 @@ func (s *Server) handleRotateSecret(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("rotate-secret: index refresh", "username", username, "err", err)
 	}
 
-	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	traffic := s.userTrafficOrDegrade()
+	quota, hasQuota, traffic := s.loadUserEnrichment(ctx)
 	writeJSON(w, http.StatusOK, userSecretResponse{
 		User:   s.buildUserResponse(r, u, quota, hasQuota, traffic, nil),
 		Secret: secret,
@@ -369,8 +371,8 @@ func (s *Server) handleSetEnabled(w http.ResponseWriter, r *http.Request) {
 	s.appendAudit(r, "user.enabled", username, fmt.Sprintf("enabled=%t", enabled))
 	s.pokeUsersAfterMutation()
 
-	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, s.userTrafficOrDegrade(), nil))
+	quota, hasQuota, traffic := s.loadUserEnrichment(ctx)
+	writeJSON(w, http.StatusOK, s.buildUserResponse(r, u, quota, hasQuota, traffic, nil))
 }
 
 // decodeEnabledRequest parses the PUT /api/users/{username}/enabled body's

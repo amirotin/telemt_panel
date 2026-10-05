@@ -9,13 +9,11 @@ const STORAGE_KEY = "telemt-panel:locale:v1";
 // panel doesn't ship (06-ui.md: "дефолт — по языку браузера, fallback en").
 const FALLBACK_LOCALE: Locale = "en";
 
-export const LOCALES: readonly Locale[] = ["ru", "en"];
-
-export function isLocale(value: unknown): value is Locale {
+function isLocale(value: unknown): value is Locale {
   return value === "ru" || value === "en";
 }
 
-export function isLocalePreference(value: unknown): value is LocalePreference {
+function isLocalePreference(value: unknown): value is LocalePreference {
   return value === "auto" || isLocale(value);
 }
 
