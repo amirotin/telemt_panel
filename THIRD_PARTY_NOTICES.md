@@ -45,14 +45,14 @@ The specialized branding interpolation retains arithmetic adapted from x/image/d
 | @codemirror/view@6.43.9 | MIT | https://www.npmjs.com/package/@codemirror/view/v/6.43.9 |
 | @marijn/find-cluster-break@1.0.4 | MIT | https://www.npmjs.com/package/@marijn/find-cluster-break/v/1.0.4 |
 | @react-aria/utils@3.33.1 | Apache-2.0 | https://www.npmjs.com/package/@react-aria/utils/v/3.33.1 |
-| @tanstack/history@1.162.1 | MIT | https://www.npmjs.com/package/@tanstack/history/v/1.162.1 |
+| @tanstack/history@1.162.4 | MIT | https://www.npmjs.com/package/@tanstack/history/v/1.162.1 |
 | @tanstack/query-core@5.102.3 | MIT | https://www.npmjs.com/package/@tanstack/query-core/v/5.102.3 |
 | @tanstack/react-query@5.102.3 | MIT | https://www.npmjs.com/package/@tanstack/react-query/v/5.102.3 |
-| @tanstack/react-router@1.170.32 | MIT | https://www.npmjs.com/package/@tanstack/react-router/v/1.170.32 |
-| @tanstack/react-store@0.9.3 | MIT | https://www.npmjs.com/package/@tanstack/react-store/v/0.9.3 |
+| @tanstack/react-router@1.170.41 | MIT | https://www.npmjs.com/package/@tanstack/react-router/v/1.170.32 |
+| @tanstack/react-store@0.11.2 | MIT | https://www.npmjs.com/package/@tanstack/react-store/v/0.9.3 |
 | @tanstack/react-virtual@3.14.10 | MIT | https://www.npmjs.com/package/@tanstack/react-virtual/v/3.14.10 |
-| @tanstack/router-core@1.171.27 | MIT | https://www.npmjs.com/package/@tanstack/router-core/v/1.171.27 |
-| @tanstack/store@0.9.3 | MIT | https://www.npmjs.com/package/@tanstack/store/v/0.9.3 |
+| @tanstack/router-core@1.171.34 | MIT | https://www.npmjs.com/package/@tanstack/router-core/v/1.171.27 |
+| @tanstack/store@0.11.2 | MIT | https://www.npmjs.com/package/@tanstack/store/v/0.9.3 |
 | @tanstack/virtual-core@3.17.8 | MIT | https://www.npmjs.com/package/@tanstack/virtual-core/v/3.17.8 |
 | clsx@2.1.1 | MIT | https://www.npmjs.com/package/clsx/v/2.1.1 |
 | d3-array@3.2.4 | ISC | https://www.npmjs.com/package/d3-array/v/3.2.4 |
@@ -1230,7 +1230,7 @@ LICENSE
    limitations under the License.
 ```
 
-### @tanstack/history@1.162.1
+### @tanstack/history@1.162.4
 
 LICENSE
 
@@ -1314,7 +1314,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/react-router@1.170.32
+### @tanstack/react-router@1.170.41
 
 LICENSE
 
@@ -1342,7 +1342,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/react-store@0.9.3
+### @tanstack/react-store@0.11.2
 
 LICENSE
 
@@ -1398,7 +1398,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/router-core@1.171.27
+### @tanstack/router-core@1.171.34
 
 LICENSE
 
@@ -1426,7 +1426,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/store@0.9.3
+### @tanstack/store@0.11.2
 
 LICENSE
 
