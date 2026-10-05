@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -45,18 +44,19 @@ type Client struct {
 	caps      Caps
 	capsAt    time.Time
 	capsValid bool
+	// Version changes invalidate both probed flags and negative observations.
+	// The generation prevents requests started before an upgrade from
+	// publishing their old observations after the new version is known.
+	telemtVersion  string
+	capsGeneration uint64
 	// capabilityProbeGate serializes the actual Telemt probe round while
-	// allowing waiters to honor their own context. capsMu only guards the
-	// cached snapshot; see probeCapsSingleFlight in capabilities.go.
+	// allowing waiters to honor their own context. capsMu guards the cached
+	// snapshot, version and mutation observations.
 	capabilityProbeGate chan struct{}
 
-	// userEnableDisableAbsent and rotateSecretAbsent latch true the first
-	// time SetEnabled/RotateSecret sees a real 404/405 from Telemt —
-	// probing these mutating routes ahead of time would be unsafe, so
-	// Capabilities instead defaults both true and lets a live call flip
-	// them lazily (07-telemt-sdk.md §SDK-3).
-	userEnableDisableAbsent atomic.Bool
-	rotateSecretAbsent      atomic.Bool
+	// Mutating routes are only observed through explicit user actions.
+	userEnableDisableAbsent negativeCapabilityObservation
+	rotateSecretAbsent      negativeCapabilityObservation
 }
 
 // New creates a client for the given API base URL (no trailing slash).
@@ -254,7 +254,12 @@ func (c *Client) Health(ctx context.Context) (HealthData, error) {
 // SystemInfo calls GET /v1/system/info. Works with both enveloped and
 // legacy flat responses (call already falls back to the raw body).
 func (c *Client) SystemInfo(ctx context.Context) (SystemInfoData, error) {
-	return get[SystemInfoData](ctx, c, "/v1/system/info")
+	generation := c.capabilityGeneration()
+	info, err := get[SystemInfoData](ctx, c, "/v1/system/info")
+	if err == nil {
+		c.observeTelemtVersion(info.Version, generation)
+	}
+	return info, err
 }
 
 // Users calls GET /v1/users.
@@ -358,13 +363,12 @@ func (c *Client) ResetQuotaWithRevision(ctx context.Context, username, revision 
 // RotateSecret calls POST /v1/users/{username}/rotate-secret, returning the
 // new secret exactly once. On Telemt builds that predate this route, the
 // request 404s/405s as an *APIError the caller maps to capability_absent;
-// that same response latches the rotate_secret capability false for future
-// Capabilities calls (07-telemt-sdk.md §SDK-3).
+// that same response marks rotate_secret absent until an upgrade, a
+// successful explicit call or the negative observation's TTL expires.
 func (c *Client) RotateSecret(ctx context.Context, username string) (UserInfo, string, error) {
+	generation := c.capabilityGeneration()
 	out, err := mutate[userSecret](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/rotate-secret", nil)
-	if isRouteAbsent(err) {
-		c.rotateSecretAbsent.Store(true)
-	}
+	c.observeMutation(&c.rotateSecretAbsent, generation, err)
 	if err != nil {
 		return UserInfo{}, "", err
 	}
@@ -374,17 +378,16 @@ func (c *Client) RotateSecret(ctx context.Context, username string) (UserInfo, s
 // SetEnabled calls POST /v1/users/{username}/enable or .../disable. On
 // Telemt builds that predate these routes, the request 404s/405s as an
 // *APIError the caller maps to capability_absent; that same response
-// latches the user_enable_disable capability false for future Capabilities
-// calls (07-telemt-sdk.md §SDK-3).
+// marks user_enable_disable absent until an upgrade, a successful explicit
+// call or the negative observation's TTL expires.
 func (c *Client) SetEnabled(ctx context.Context, username string, enabled bool) (UserInfo, error) {
+	generation := c.capabilityGeneration()
 	action := "disable"
 	if enabled {
 		action = "enable"
 	}
 	out, err := mutate[UserInfo](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/"+action, nil)
-	if isRouteAbsent(err) {
-		c.userEnableDisableAbsent.Store(true)
-	}
+	c.observeMutation(&c.userEnableDisableAbsent, generation, err)
 	return out, err
 }
 

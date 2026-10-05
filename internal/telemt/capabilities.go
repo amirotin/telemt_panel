@@ -13,6 +13,11 @@ import (
 // Capabilities re-probes Telemt (07-telemt-sdk.md §SDK-3: "кешируется").
 const capabilityCacheTTL = 5 * time.Minute
 
+type negativeCapabilityObservation struct {
+	ObservedAt time.Time
+	Version    string
+}
+
 // Caps mirrors api/openapi.yaml TelemtInfo.capabilities: the feature flags
 // 07-telemt-sdk.md §SDK-3 defines, letting the panel show "unavailable on
 // this Telemt build" instead of a dead control or a failed request.
@@ -39,9 +44,9 @@ type runtimeEdgeGate struct {
 // check must not make GET /api/telemt/info itself unusable. user_enable_disable
 // and rotate_secret are never probed (a probe would have to call a mutating
 // route, which is unsafe): both default true and flip to false lazily, the
-// first time SetEnabled/RotateSecret sees a real 404/405 — see isRouteAbsent
-// — independently of the cache below, so a flip is visible immediately
-// rather than waiting out capabilityCacheTTL.
+// time SetEnabled/RotateSecret sees a real 404/405 — see isRouteAbsent.
+// These observations expire independently of the probed cache and reset
+// on a version change or a successful explicit mutation.
 func (c *Client) Capabilities(ctx context.Context) (Caps, error) {
 	if err := ctx.Err(); err != nil {
 		return Caps{}, err
@@ -56,8 +61,11 @@ func (c *Client) Capabilities(ctx context.Context) (Caps, error) {
 		}
 	}
 
-	caps.UserEnableDisable = !c.userEnableDisableAbsent.Load()
-	caps.RotateSecret = !c.rotateSecretAbsent.Load()
+	c.capsMu.Lock()
+	defer c.capsMu.Unlock()
+	now := c.now()
+	caps.UserEnableDisable = !c.negativeObservationActive(&c.userEnableDisableAbsent, now)
+	caps.RotateSecret = !c.negativeObservationActive(&c.rotateSecretAbsent, now)
 	return caps, nil
 }
 
@@ -75,18 +83,22 @@ func (c *Client) probeCapsSingleFlight(ctx context.Context) (Caps, error) {
 	}
 	defer func() { c.capabilityProbeGate <- struct{}{} }()
 
-	if caps, cached := c.cachedCaps(); cached {
-		return caps, nil
+	for {
+		if caps, cached := c.cachedCaps(); cached {
+			return caps, nil
+		}
+		generation := c.capabilityGeneration()
+		caps := c.probeCaps(ctx)
+		if err := ctx.Err(); err != nil {
+			// Context failures are not five-minute capability observations.
+			return Caps{}, err
+		}
+		if c.storeCaps(caps, generation) {
+			return caps, nil
+		}
+		// An upgrade happened during this round. Retry the read-only probes
+		// rather than returning or caching an older build's observations.
 	}
-	caps := c.probeCaps(ctx)
-	if err := ctx.Err(); err != nil {
-		// A canceled round contains defaults produced by context failures, not
-		// a five-minute capability observation. Leave the cache cold so the
-		// next live caller performs a complete probe.
-		return Caps{}, err
-	}
-	c.storeCaps(caps)
-	return caps, nil
 }
 
 func (c *Client) cachedCaps() (Caps, bool) {
@@ -98,17 +110,68 @@ func (c *Client) cachedCaps() (Caps, bool) {
 	return Caps{}, false
 }
 
-func (c *Client) storeCaps(caps Caps) {
+func (c *Client) storeCaps(caps Caps, generation uint64) bool {
 	c.capsMu.Lock()
 	defer c.capsMu.Unlock()
+	if generation != c.capsGeneration {
+		return false
+	}
 	c.caps = caps
 	c.capsAt = c.now()
 	c.capsValid = true
+	return true
+}
+
+func (c *Client) capabilityGeneration() uint64 {
+	c.capsMu.Lock()
+	defer c.capsMu.Unlock()
+	return c.capsGeneration
+}
+
+func (c *Client) observeTelemtVersion(version string, generation uint64) {
+	if version == "" {
+		return
+	}
+	c.capsMu.Lock()
+	defer c.capsMu.Unlock()
+	if generation != c.capsGeneration || version == c.telemtVersion {
+		return
+	}
+	c.telemtVersion = version
+	c.capsGeneration++
+	c.capsValid = false
+	c.userEnableDisableAbsent = negativeCapabilityObservation{}
+	c.rotateSecretAbsent = negativeCapabilityObservation{}
+}
+
+func (c *Client) observeMutation(observation *negativeCapabilityObservation, generation uint64, err error) {
+	c.capsMu.Lock()
+	defer c.capsMu.Unlock()
+	if generation != c.capsGeneration {
+		return
+	}
+	if err == nil {
+		*observation = negativeCapabilityObservation{}
+	} else if isRouteAbsent(err) {
+		*observation = negativeCapabilityObservation{ObservedAt: c.now(), Version: c.telemtVersion}
+	}
+}
+
+// negativeObservationActive is called with capsMu held.
+func (c *Client) negativeObservationActive(observation *negativeCapabilityObservation, now time.Time) bool {
+	if observation.ObservedAt.IsZero() {
+		return false
+	}
+	if observation.Version != c.telemtVersion || !now.Before(observation.ObservedAt.Add(capabilityCacheTTL)) {
+		*observation = negativeCapabilityObservation{}
+		return false
+	}
+	return true
 }
 
 // probeCaps runs every probed capability check against Telemt. The
 // user_enable_disable/rotate_secret fields of the result are meaningless
-// zero values — Capabilities overwrites them from the lazy atomic flags
+// zero values — Capabilities overwrites them from mutation observations
 // after calling this.
 func (c *Client) probeCaps(ctx context.Context) Caps {
 	var caps Caps
