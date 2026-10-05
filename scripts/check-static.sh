@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-PRODUCT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+PRODUCT_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 CHECK_TMP=$(mktemp -d "${TMPDIR:-/tmp}/telemt-panel-static.XXXXXX")
 trap 'rm -rf "$CHECK_TMP"' EXIT HUP INT TERM
 

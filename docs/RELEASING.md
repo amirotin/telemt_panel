@@ -5,7 +5,7 @@
 - `CI` на push/PR выполняет full/lite tests, lint, обязательный Staticcheck,
   проверку reachable Go advisories, frontend-тесты, TypeScript, SDK drift и
   сборку четырёх релизных целей, строгий size gate и проверку удаления методов
-  линкером. Размеры и дельта с base SHA сохраняются в summary и JSON;
+  линкером. Размеры обеих ревизий сохраняются в JSON, дельта с base SHA — в summary;
   обе ревизии используют один компилятор, строку версии и флаги сборки.
   При недоступном base SHA дельта явно не рассчитывается.
   Deadcode/Knip сохраняют отчёты для review с test/plugin entries;
