@@ -3,9 +3,9 @@
 # Conventions (differ from v1 — no {ok,data} envelope):
 #   - plain HTTP status codes; success bodies are the resource itself
 #   - errors: application/json {code, message} with proper status (schema Error)
-#   - auth: opaque session id in HttpOnly cookie "panel_session" (see 05-auth.md)
+#   - auth: opaque session id in HttpOnly cookie "panel_session"
 #   - realtime is SSE (/api/events*), documented here as text/event-stream;
-#     event payload shapes live in 02-hub-sse.md and the generated topic types
+#     event payload shapes follow the generated topic types
 #   - x-status: planned marks a path with no route registered yet in
 #     internal/httpapi/server.go (M3 backlog) — audited against the actual
 #     route table, not aspirational; absence of the tag means implemented
@@ -15,7 +15,7 @@ info:
   version: 2.0.0-draft1
   description: >
     Admin API of Telemt Panel v2 plus the unauthenticated subscription page.
-    Telemt-shaped payloads follow the upstream source catalog (specs/07-telemt-sdk.md).
+    Telemt-shaped payloads follow the upstream API models.
 
 servers:
   - url: /
@@ -1968,13 +1968,24 @@ paths:
 
   # ───────────────────────── subpage ─────────────────────────
   /sub/{token}:
+    servers:
+      - url: "{subscription_origin}"
+        description: Independent subscription listener; this is not the panel API origin.
+        variables:
+          subscription_origin:
+            default: http://localhost:8081
+            description: External subscription origin, including its own scheme and port.
     get:
       tags: [subpage]
       security: []
       operationId: getSubscriptionPage
       description: >
-        Unauthenticated per-user subscription page (04-subpage.md). Server-rendered HTML,
-        no required JS; uniform 404 for unknown tokens; rate limited per IP.
+        Unauthenticated per-user subscription page on the independent subscription
+        listener. This path describes the default subpage.base_path=/sub only.
+        For a custom path or public_url, use the complete URL returned by the user
+        subscription-link API instead of prepending the panel base_path. Server-rendered
+        HTML, no required JS; uniform 404 for unknown tokens; 30 requests per 60 seconds
+        per client IP.
       parameters:
         - { name: token, in: path, required: true, schema: { type: string } }
       responses:
@@ -3428,7 +3439,11 @@ components:
       required: [enabled, source, schedule, country, asn, city]
       properties:
         enabled: { type: boolean, default: false }
-        source: { type: string, enum: [community, urls, files], default: community }
+        source:
+          type: string
+          enum: [community, urls, files]
+          default: urls
+          description: Operator-supplied HTTPS URLs or local files. Community is retained for legacy settings and bundles; new community downloads are unavailable until redistribution conditions are established.
         schedule: { type: string, enum: [weekly, daily, manual], default: weekly }
         country: { $ref: "#/components/schemas/GeoIpDatabaseConfig" }
         asn: { $ref: "#/components/schemas/GeoIpDatabaseConfig" }
@@ -3440,7 +3455,9 @@ components:
       required: [enabled, location]
       properties:
         enabled: { type: boolean }
-        location: { type: string }
+        location:
+          type: string
+          description: Operator URL or absolute server path; may be empty while GeoIP is disabled.
 
     GeoIpDatabaseStatus:
       type: object
@@ -3449,6 +3466,32 @@ components:
         kind: { type: string, enum: [country, asn, city] }
         build_epoch_secs: { type: integer, format: int64 }
         loaded_epoch_secs: { type: integer, format: int64 }
+        provenance:
+          description: Acquisition metadata for the active verified file. Null or absent for legacy bundles with unknown provenance.
+          anyOf: [{ $ref: "#/components/schemas/GeoIpDatabaseProvenance" }, { type: "null" }]
+
+    GeoIpDatabaseProvenance:
+      type: object
+      additionalProperties: false
+      required: [original_location, final_location, fetched_epoch_secs, sha256, database_type]
+      properties:
+        original_location:
+          type: string
+          description: Original operator URL or local source path. URL userinfo, all query parameters and fragments are omitted; this identity is not a reusable signed URL.
+        final_location:
+          type: string
+          description: Final redirect URL identity, with the same sanitization, or the local source path.
+        fetched_epoch_secs:
+          type: integer
+          format: int64
+          description: Time the selected file finished downloading or was copied from a local source.
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Locally computed SHA-256 of the saved database file, checked on restore. It is not a publisher signature or proof of source authenticity.
+        database_type:
+          type: string
+          description: Database type read from verified MMDB metadata.
 
     GeoIpStatus:
       type: object
@@ -3460,6 +3503,7 @@ components:
         databases: { type: array, items: { $ref: "#/components/schemas/GeoIpDatabaseStatus" } }
         last_error:
           type: [string, "null"]
+          enum: [data_dir_required, source_unavailable, source_unconfirmed, source_not_regular, source_too_large, download_failed, download_too_large, database_invalid, database_type_mismatch, activation_failed, null]
           description: Stable safe GeoIP error code; never a URL, filesystem path, query, or exception text.
 
     GeoIpSettings:

@@ -11,7 +11,7 @@ import (
 
 func TestDefaultConfigAndValidation(t *testing.T) {
 	got := DefaultConfig()
-	if got.Enabled || got.Source != SourceCommunity || got.Schedule != ScheduleWeekly {
+	if got.Enabled || got.Source != SourceURLs || got.Schedule != ScheduleWeekly {
 		t.Fatalf("defaults = %+v", got)
 	}
 	if !got.Country.Enabled || !got.ASN.Enabled || got.City.Enabled {
@@ -19,6 +19,10 @@ func TestDefaultConfigAndValidation(t *testing.T) {
 	}
 	if err := got.Validate(); err != nil {
 		t.Fatalf("default config: %v", err)
+	}
+	got.Enabled = true
+	if err := got.Validate(); err == nil {
+		t.Fatal("enabled default accepted missing operator URLs")
 	}
 
 	tests := []Config{

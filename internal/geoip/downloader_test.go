@@ -160,7 +160,7 @@ func TestDownloaderBoundsResponseAndUsesPerFileDeadline(t *testing.T) {
 					Body: io.NopCloser(strings.NewReader(test.body)), Header: make(http.Header),
 				}, nil
 			})}}
-			err := d.download(context.Background(), "https://example.test/db.mmdb", t.TempDir()+"/db.mmdb")
+			_, err := d.download(context.Background(), "https://example.test/db.mmdb", t.TempDir()+"/db.mmdb")
 			if errorCode(err) != test.wantCode {
 				t.Fatalf("error = %v code=%q", err, errorCode(err))
 			}
@@ -177,7 +177,7 @@ func TestDownloaderRemovesPartialFileOnFailure(t *testing.T) {
 		return &http.Response{StatusCode: 200, ContentLength: -1, Body: io.NopCloser(strings.NewReader("too long"))}, nil
 	})}}
 	path := t.TempDir() + "/db.mmdb"
-	if err := d.download(context.Background(), "https://example.test/db.mmdb", path); err == nil {
+	if _, err := d.download(context.Background(), "https://example.test/db.mmdb", path); err == nil {
 		t.Fatal("oversized response accepted")
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {

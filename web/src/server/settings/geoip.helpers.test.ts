@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { defaultGeoIPConfig, geoIPConfigError, normalizeGeoIPConfig, sameGeoIPConfig, switchGeoIPSource } from "./geoip.helpers";
 
 describe("GeoIP draft validation", () => {
-  it("defaults to an inactive community source without city", () => {
+  it("defaults to inactive operator URLs without city", () => {
     const config = defaultGeoIPConfig();
     expect(config.enabled).toBe(false);
-    expect(config.source).toBe("community");
+    expect(config.source).toBe("urls");
     expect(config.country.enabled && config.asn.enabled).toBe(true);
     expect(config.city.enabled).toBe(false);
-    expect(geoIPConfigError({ ...config, enabled: true })).toBeNull();
+    expect(geoIPConfigError(config)).toBeNull();
+    expect(geoIPConfigError({ ...config, enabled: true })).toBe("url");
   });
   it("requires a dataset only when enabling", () => {
     const config = defaultGeoIPConfig();

@@ -71,10 +71,9 @@ export function GeoIPSettings() {
             <div className="geoip-section">
               <h3>{s.sourceTitle}</h3><p className="geoip-muted">{s.sourceNote}</p>
               <fieldset className="geoip-sources"><legend className="sr-only">{s.sourceLegend}</legend>
-                {(["community", "urls", "files"] as const).map(source => <label key={source}>
+                {(["urls", "files"] as const).map(source => <label key={source}>
                   <input type="radio" name="geoip-source" value={source} checked={config.source === source} onChange={() => edit(switchGeoIPSource(config, source))} />
                   <span><strong>{s.sources[source]}</strong><small>{s.sourceHints[source]}</small></span>
-                  {source === "community" && <em>{s.defaultSource}</em>}
                 </label>)}
               </fieldset>
               <p className="geoip-source-note">{s.sourceNotes[config.source]}</p>
@@ -115,14 +114,23 @@ export function GeoIPSettings() {
             {status.active_source && <p className="geoip-active-source" data-geoip-active-source>{s.sources[status.active_source]}</p>}
             {status.databases.map(db => <div className="geoip-db" key={db.kind}><strong>{s.kinds[db.kind]}</strong>
               <span>{fill(s.built, { date: date(db.build_epoch_secs) })}</span><small>{fill(s.loaded, { date: date(db.loaded_epoch_secs) })}</small>
+              {db.provenance ? <details className="geoip-provenance"><summary>{s.provenance.title}</summary>
+                <dl>
+                  <dt>{s.provenance.original}</dt><dd>{db.provenance.original_location}</dd>
+                  <dt>{s.provenance.final}</dt><dd>{db.provenance.final_location}</dd>
+                  <dt>{s.provenance.fetched}</dt><dd>{date(db.provenance.fetched_epoch_secs)}</dd>
+                  <dt>{s.provenance.databaseType}</dt><dd>{db.provenance.database_type}</dd>
+                  <dt>{s.provenance.localHash}</dt><dd><code>{db.provenance.sha256}</code></dd>
+                </dl><p>{s.provenance.hashNote}</p><p>{s.provenance.locationNote}</p>
+              </details> : <small>{s.provenance.unknown}</small>}
             </div>)}
             {status.databases.length > 0 && <p className="geoip-age-note">{s.ageNote}</p>}
-            {data.config.enabled && <div className="geoip-status-actions"><Button type="button" variant="secondary" data-geoip-update disabled={busy || changed} onClick={() => update.mutate({})}>{data.config.source === "files" ? s.reload : s.update}</Button>
+            {data.config.enabled && <div className="geoip-status-actions">{data.config.source !== "community" && <Button type="button" variant="secondary" data-geoip-update disabled={busy || changed} onClick={() => update.mutate({})}>{data.config.source === "files" ? s.reload : s.update}</Button>}
               <Button type="button" variant="ghost" disabled={busy} onClick={() => save.mutate({ body: { ...data.config, enabled: false } })}>{s.disable}</Button></div>}
           </section>
           <section className="geoip-privacy"><h3>{s.privacyTitle}</h3><p>{s.privacyNote}</p><p>{s.independent}</p></section>
         </aside>
       </div>}
-    <p className="geoip-attribution">{s.attribution} <a href="https://github.com/P3TERX/GeoLite.mmdb" target="_blank" rel="noreferrer">{s.sourceLink} ↗</a></p>
+    <p className="geoip-attribution">{s.attribution} <a href="https://www.maxmind.com/en/geolite/eula" target="_blank" rel="noreferrer">{s.termsLink} ↗</a>{" · "}<a href="https://support.maxmind.com/knowledge-base/articles/maintain-up-to-date-data" target="_blank" rel="noreferrer">{s.updateLink} ↗</a>{" · "}<a href="https://github.com/P3TERX/GeoLite.mmdb" target="_blank" rel="noreferrer">{s.sourceLink} ↗</a></p>
   </section>;
 }

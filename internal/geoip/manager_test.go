@@ -164,12 +164,12 @@ type blockingDownloader struct {
 	release   chan struct{}
 }
 
-func (d *blockingDownloader) download(ctx context.Context, _, _ string) error {
+func (d *blockingDownloader) download(ctx context.Context, _, _ string) (string, error) {
 	close(d.started)
 	<-ctx.Done()
 	close(d.cancelled)
 	<-d.release
-	return ctx.Err()
+	return "", ctx.Err()
 }
 
 func TestConcurrentCloseCancelsAndWaitsForOperation(t *testing.T) {

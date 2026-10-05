@@ -1249,7 +1249,7 @@ export const getAudit = <ThrowOnError extends boolean = false>(options?: Options
 });
 
 /**
- * Unauthenticated per-user subscription page (04-subpage.md). Server-rendered HTML, no required JS; uniform 404 for unknown tokens; rate limited per IP.
+ * Unauthenticated per-user subscription page on the independent subscription listener. This path describes the default subpage.base_path=/sub only. For a custom path or public_url, use the complete URL returned by the user subscription-link API instead of prepending the panel base_path. Server-rendered HTML, no required JS; uniform 404 for unknown tokens; 30 requests per 60 seconds per client IP.
  *
  */
 export const getSubscriptionPage = <ThrowOnError extends boolean = false>(options: Options<GetSubscriptionPageData, ThrowOnError>): RequestResult<GetSubscriptionPageResponses, GetSubscriptionPageErrors, ThrowOnError> => (options.client ?? client).get<GetSubscriptionPageResponses, GetSubscriptionPageErrors, ThrowOnError>({ url: '/sub/{token}', ...options });

@@ -13,10 +13,11 @@ import (
 type Source string
 
 const (
-	// SourceCommunity, SourceURLs, and SourceFiles are supported database sources.
+	// SourceCommunity is retained for previously saved configurations and bundles.
 	SourceCommunity Source = "community"
-	SourceURLs      Source = "urls"
-	SourceFiles     Source = "files"
+	// SourceURLs and SourceFiles use locations supplied by the operator.
+	SourceURLs  Source = "urls"
+	SourceFiles Source = "files"
 )
 
 // Schedule controls automatic GeoIP database refreshes.
@@ -78,10 +79,10 @@ type Config struct {
 	City     DatabaseConfig `json:"city"`
 }
 
-// DefaultConfig returns the initial disabled community configuration.
+// DefaultConfig returns the initial disabled operator-URL configuration.
 func DefaultConfig() Config {
 	return Config{
-		Source: SourceCommunity, Schedule: ScheduleWeekly,
+		Source: SourceURLs, Schedule: ScheduleWeekly,
 		Country: DatabaseConfig{Enabled: true},
 		ASN:     DatabaseConfig{Enabled: true},
 	}
@@ -107,6 +108,9 @@ func (c Config) Validate() error {
 			continue
 		}
 		if database.config.Location == "" {
+			if !c.Enabled {
+				continue
+			}
 			return fmt.Errorf("%w: %s location is required", ErrInvalidConfig, database.kind)
 		}
 		switch c.Source {
@@ -139,9 +143,20 @@ func (c Config) databases() []configuredDatabase {
 
 // DatabaseStatus describes one database in the active bundle.
 type DatabaseStatus struct {
-	Kind            Kind  `json:"kind"`
-	BuildEpochSecs  int64 `json:"build_epoch_secs"`
-	LoadedEpochSecs int64 `json:"loaded_epoch_secs"`
+	Kind            Kind                `json:"kind"`
+	BuildEpochSecs  int64               `json:"build_epoch_secs"`
+	LoadedEpochSecs int64               `json:"loaded_epoch_secs"`
+	Provenance      *DatabaseProvenance `json:"provenance"`
+}
+
+// DatabaseProvenance records the acquired file, without authenticating its publisher.
+// URL identities omit all query parameters, userinfo and fragments.
+type DatabaseProvenance struct {
+	OriginalLocation string `json:"original_location"`
+	FinalLocation    string `json:"final_location"`
+	FetchedEpochSecs int64  `json:"fetched_epoch_secs"`
+	SHA256           string `json:"sha256"`
+	DatabaseType     string `json:"database_type"`
 }
 
 // Status describes GeoIP availability and the active database bundle.

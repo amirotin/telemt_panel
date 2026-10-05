@@ -36,10 +36,11 @@ const type = async (selector: string, value: string) => {
 };
 
 describe("GeoIPSettings", () => {
-  it("does not download or save on mount and defaults to community Country + ASN", async () => {
+  it("does not download or save on mount and offers operator URLs and files", async () => {
     await mount();
     expect(api.save).not.toHaveBeenCalled(); expect(api.update).not.toHaveBeenCalled();
-    expect(view.querySelector<HTMLInputElement>('[value="community"]')?.checked).toBe(true);
+    expect(view.querySelector('[value="community"]')).toBeNull();
+    expect(view.querySelector<HTMLInputElement>('[value="urls"]')?.checked).toBe(true);
     expect(view.querySelectorAll('input[type="checkbox"]:checked')).toHaveLength(2);
     expect(view.textContent).not.toMatch(/Account ID|License Key/);
   });
@@ -47,7 +48,7 @@ describe("GeoIPSettings", () => {
     const data = empty(); data.config.enabled = true;
     data.status = { ...data.status, state: "ready", available: true, active_source: "community" };
     await mount(data); await click('[value="files"]');
-    expect(view.querySelector('[data-geoip-active-source]')?.textContent).toBe("P3TERX");
+    expect(view.querySelector('[data-geoip-active-source]')?.textContent).toContain("P3TERX");
     expect(view.querySelector('[data-geoip-schedule]')).toBeNull();
     expect(view.querySelectorAll('input[type="text"]')).toHaveLength(2);
     expect(api.save).not.toHaveBeenCalled();
@@ -59,9 +60,12 @@ describe("GeoIPSettings", () => {
     expect(api.save).not.toHaveBeenCalled();
   });
   it("connects only on explicit submission", async () => {
-    const data = empty(); const result = { ...data, config: { ...data.config, enabled: true }, status: { ...data.status, state: "updating" } };
+    const data = empty();
+    data.config.country.location = "https://example.org/country.mmdb";
+    data.config.asn.location = "https://example.org/asn.mmdb";
+    const result = { ...data, config: { ...data.config, enabled: true }, status: { ...data.status, state: "updating" } };
     api.save.mockResolvedValue(result);
-    await mount(); await click('button[type="submit"]');
+    await mount(data); await click('button[type="submit"]');
     expect(api.save).toHaveBeenCalledWith({ body: { ...data.config, enabled: true } }, expect.anything());
   });
   it.each([
@@ -104,5 +108,28 @@ describe("GeoIPSettings", () => {
     data.status = { state: "ready", available: true, active_source: "files", databases: [{ kind: "country", build_epoch_secs: Number.MAX_SAFE_INTEGER, loaded_epoch_secs: 0 }], last_error: null };
     await mount(data);
     expect(view.querySelector(".geoip-db")?.textContent).toContain("—");
+  });
+  it.each(["ru", "en"] as const)("shows legacy mirror policy and keeps disable available in %s", async locale => {
+    setLocalePreference(locale);
+    const data = empty();
+    data.config = { ...data.config, enabled: true, source: "community" };
+    data.status = { ...data.status, state: "ready", available: true, active_source: "community" };
+    await mount(data);
+    expect(view.querySelector('[value="community"]')).toBeNull();
+    expect(view.querySelector('[data-geoip-update]')).toBeNull();
+    expect(view.textContent).toContain(locale === "ru" ? "Соответствие условий распространения" : "Redistribution compliance");
+    expect([...view.querySelectorAll('button')].find(button => button.textContent === (locale === "ru" ? "Отключить GeoIP" : "Disable GeoIP"))?.disabled).toBe(false);
+  });
+  it.each(["ru", "en"] as const)("labels saved-file hashes and unknown legacy provenance honestly in %s", async locale => {
+    setLocalePreference(locale);
+    const data = empty();
+    data.status = { state: "ready", available: true, active_source: "urls", databases: [{ kind: "country", build_epoch_secs: 1700000000, loaded_epoch_secs: 1700001000, ...{ provenance: { original_location: "https://origin.test/country.mmdb", final_location: "https://mirror.test/db.mmdb", fetched_epoch_secs: 1700000900, sha256: "a".repeat(64), database_type: "GeoLite2-Country" } } }, { kind: "asn", build_epoch_secs: 1700000000, loaded_epoch_secs: 1700001000 }], last_error: null };
+    await mount(data);
+    expect(view.textContent).toContain("https://origin.test/country.mmdb");
+    expect(view.textContent).toContain("https://mirror.test/db.mmdb");
+    expect(view.textContent).toContain("a".repeat(64));
+    expect(view.textContent).toContain("GeoLite2-Country");
+    expect(view.textContent).toContain(locale === "ru" ? "не подпись издателя" : "not a publisher signature");
+    expect(view.textContent).toContain(locale === "ru" ? "Происхождение старого набора неизвестно" : "Legacy bundle provenance is unknown");
   });
 });

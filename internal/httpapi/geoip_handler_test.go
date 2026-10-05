@@ -34,7 +34,7 @@ func TestGeoIPSettingsDefaultAndStrictRequests(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &initial); err != nil {
 		t.Fatal(err)
 	}
-	if initial.Config.Enabled || initial.Status.Available || initial.Config.Source != "community" {
+	if initial.Config.Enabled || initial.Status.Available || initial.Config.Source != "urls" {
 		t.Fatalf("defaults %+v", initial)
 	}
 	before := s.geoip.Settings()

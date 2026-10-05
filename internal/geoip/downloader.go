@@ -19,7 +19,7 @@ const (
 )
 
 type downloader interface {
-	download(context.Context, string, string) error
+	download(context.Context, string, string) (string, error)
 }
 
 type ipResolver interface {
@@ -125,34 +125,34 @@ func validateRemoteURL(raw string) error {
 	return nil
 }
 
-func (d *secureDownloader) download(ctx context.Context, rawURL, destination string) (err error) {
+func (d *secureDownloader) download(ctx context.Context, rawURL, destination string) (string, error) {
 	if err := validateRemoteURL(rawURL); err != nil {
-		return coded(ErrorDownloadFailed, err)
+		return "", coded(ErrorDownloadFailed, err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, downloadDeadline)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return coded(ErrorDownloadFailed, err)
+		return "", coded(ErrorDownloadFailed, err)
 	}
 	response, err := d.client.Do(request)
 	if err != nil {
-		return coded(ErrorDownloadFailed, err)
+		return "", coded(ErrorDownloadFailed, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return coded(ErrorDownloadFailed, nil)
+		return "", coded(ErrorDownloadFailed, nil)
 	}
 	limit := d.maxBytes
 	if limit <= 0 {
 		limit = maxDatabaseBytes
 	}
 	if response.ContentLength > limit {
-		return coded(ErrorDownloadTooLarge, nil)
+		return "", coded(ErrorDownloadTooLarge, nil)
 	}
 	out, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o400)
 	if err != nil {
-		return coded(ErrorActivationFailed, err)
+		return "", coded(ErrorActivationFailed, err)
 	}
 	complete := false
 	defer func() {
@@ -163,14 +163,18 @@ func (d *secureDownloader) download(ctx context.Context, rawURL, destination str
 	written, copyErr := io.Copy(out, io.LimitReader(response.Body, limit+1))
 	closeErr := out.Close()
 	if copyErr != nil {
-		return coded(ErrorDownloadFailed, copyErr)
+		return "", coded(ErrorDownloadFailed, copyErr)
 	}
 	if closeErr != nil {
-		return coded(ErrorActivationFailed, closeErr)
+		return "", coded(ErrorActivationFailed, closeErr)
 	}
 	if written > limit {
-		return coded(ErrorDownloadTooLarge, nil)
+		return "", coded(ErrorDownloadTooLarge, nil)
 	}
 	complete = true
-	return nil
+	finalURL := request.URL.String()
+	if response.Request != nil {
+		finalURL = response.Request.URL.String()
+	}
+	return locationIdentity(finalURL, SourceURLs), nil
 }

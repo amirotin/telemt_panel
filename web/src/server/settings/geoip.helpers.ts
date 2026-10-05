@@ -4,7 +4,7 @@ export const geoIPKinds = ["country", "asn", "city"] as const;
 
 export function defaultGeoIPConfig(): GeoIpConfig {
   return {
-    enabled: false, source: "community", schedule: "weekly",
+    enabled: false, source: "urls", schedule: "weekly",
     country: { enabled: true, location: "" },
     asn: { enabled: true, location: "" },
     city: { enabled: false, location: "" },

@@ -25,6 +25,7 @@ const (
 	// ErrorDataDirRequired through ErrorActivationFailed are stable status error codes.
 	ErrorDataDirRequired   = "data_dir_required"
 	ErrorSourceUnavailable = "source_unavailable"
+	ErrorSourceUnconfirmed = "source_unconfirmed"
 	ErrorSourceNotRegular  = "source_not_regular"
 	ErrorSourceTooLarge    = "source_too_large"
 	ErrorDownloadFailed    = "download_failed"
@@ -32,12 +33,6 @@ const (
 	ErrorDatabaseInvalid   = "database_invalid"
 	ErrorDatabaseType      = "database_type_mismatch"
 	ErrorActivationFailed  = "activation_failed"
-)
-
-const (
-	communityCountryURL = "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
-	communityASNURL     = "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-ASN.mmdb"
-	communityCityURL    = "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
 )
 
 // SettingsStore persists panel settings used by Manager.
@@ -179,6 +174,12 @@ func (m *Manager) Status() Status {
 func (m *Manager) statusLocked() Status {
 	out := m.status
 	out.Databases = append([]DatabaseStatus(nil), m.status.Databases...)
+	for i := range out.Databases {
+		if out.Databases[i].Provenance != nil {
+			provenance := *out.Databases[i].Provenance
+			out.Databases[i].Provenance = &provenance
+		}
+	}
 	if out.Databases == nil {
 		out.Databases = []DatabaseStatus{}
 	}
@@ -369,9 +370,6 @@ func (m *Manager) clearCache() {
 // Run checks scheduled refreshes until ctx is canceled or the manager is closed.
 func (m *Manager) Run(ctx context.Context) {
 	for {
-		if m.refreshDue() {
-			_, _ = m.Update()
-		}
 		timer := time.NewTimer(time.Hour)
 		select {
 		case <-ctx.Done():
@@ -382,6 +380,9 @@ func (m *Manager) Run(ctx context.Context) {
 			timer.Stop()
 			return
 		case <-timer.C:
+			if m.refreshDue() {
+				_, _ = m.Update()
+			}
 		}
 	}
 }
@@ -389,7 +390,7 @@ func (m *Manager) Run(ctx context.Context) {
 func (m *Manager) refreshDue() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m.closed || m.operation || !m.config.Enabled || m.config.Source == SourceFiles || m.config.Schedule == ScheduleManual {
+	if m.closed || m.operation || !m.config.Enabled || m.config.Source != SourceURLs || m.config.Schedule == ScheduleManual {
 		return false
 	}
 	interval := 7 * 24 * time.Hour
@@ -537,6 +538,9 @@ func databaseError(err error) error {
 }
 
 func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string, error) {
+	if cfg.Source == SourceCommunity {
+		return nil, "", coded(ErrorSourceUnconfirmed, nil)
+	}
 	if m.dataDir == "" {
 		return nil, "", coded(ErrorDataDirRequired, nil)
 	}
@@ -561,20 +565,18 @@ func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string,
 		return nil, "", coded(ErrorActivationFailed, err)
 	}
 	paths := make(map[Kind]string)
+	provenance := make(map[Kind]DatabaseProvenance)
 	for _, item := range cfg.databases() {
 		if !item.config.Enabled {
 			continue
 		}
 		destination := filepath.Join(staging, string(item.kind)+".mmdb")
+		finalLocation := item.config.Location
 		switch cfg.Source {
 		case SourceFiles:
 			err = copyRegularFile(ctx, item.config.Location, destination)
-		case SourceURLs, SourceCommunity:
-			location := item.config.Location
-			if cfg.Source == SourceCommunity {
-				location = communityURL(item.kind)
-			}
-			err = m.client.download(ctx, location, destination)
+		case SourceURLs:
+			finalLocation, err = m.client.download(ctx, item.config.Location, destination)
 		}
 		if err != nil {
 			return nil, "", err
@@ -583,11 +585,25 @@ func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string,
 			return nil, "", coded(ErrorActivationFailed, err)
 		}
 		paths[item.kind] = destination
+		provenance[item.kind] = DatabaseProvenance{
+			OriginalLocation: locationIdentity(item.config.Location, cfg.Source),
+			FinalLocation:    locationIdentity(finalLocation, cfg.Source), FetchedEpochSecs: m.now().Unix(),
+		}
 	}
 	loadedAt := m.now().Unix()
 	next, err := m.openBundle(paths, loadedAt)
 	if err != nil {
 		return nil, "", databaseError(err)
+	}
+	for kind, db := range next.databases {
+		metadata := provenance[kind]
+		metadata.SHA256, err = databaseSHA256(paths[kind])
+		if err != nil {
+			next.close()
+			return nil, "", coded(ErrorActivationFailed, err)
+		}
+		metadata.DatabaseType = db.reader.Metadata.DatabaseType
+		db.status.Provenance = &metadata
 	}
 	transferred := false
 	defer func() {
@@ -629,17 +645,4 @@ func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string,
 	keepFinal = true
 	transferred = true
 	return next, oldDir, nil
-}
-
-func communityURL(kind Kind) string {
-	switch kind {
-	case KindCountry:
-		return communityCountryURL
-	case KindASN:
-		return communityASNURL
-	case KindCity:
-		return communityCityURL
-	default:
-		return ""
-	}
 }

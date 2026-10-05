@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestManagerDirectorySyncFailurePreservesRecoverableBundles(t *testing.T) {
 			if _, err := manager.PutConfig(fileConfig(writeFixture(t, "country"), "", "")); err != nil {
 				t.Fatal(err)
 			}
-			waitState(t, manager, StateReady)
+			initial := waitState(t, manager, StateReady)
 			oldManifest, err := os.ReadFile(filepath.Join(root, "active.json"))
 			if err != nil {
 				t.Fatal(err)
@@ -46,6 +47,9 @@ func TestManagerDirectorySyncFailurePreservesRecoverableBundles(t *testing.T) {
 			status := waitState(t, manager, StateError)
 			if !status.Available || status.LastError == nil || *status.LastError != ErrorActivationFailed {
 				t.Fatalf("sync failure status: %+v", status)
+			}
+			if !reflect.DeepEqual(status.Databases, initial.Databases) {
+				t.Fatalf("failed activation changed in-memory provenance: %+v", status.Databases)
 			}
 			if got := manager.Lookup("81.2.69.142"); got == nil || got.CountryCode != "GB" || got.CountryName == "" {
 				t.Fatalf("old in-memory generation lost: %+v", got)
@@ -78,6 +82,14 @@ func TestManagerDirectorySyncFailurePreservesRecoverableBundles(t *testing.T) {
 				restored.syncDir = func(string) error { return errors.New("restore directory sync failed") }
 			}
 			restored.restore()
+			selected, err := readManifest(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantProvenance := selected.Provenance[KindCountry]
+			if !reflect.DeepEqual(restored.Status().Databases[0].Provenance, &wantProvenance) {
+				t.Fatalf("crash recovery/rollback changed provenance: %+v", restored.Status())
+			}
 			if got := restored.Lookup("81.2.69.142"); got == nil || got.CountryCode != "GB" {
 				t.Fatalf("restart lookup lost: %+v", got)
 			}

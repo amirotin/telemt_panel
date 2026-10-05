@@ -78,6 +78,9 @@ Natural Earth map data is public domain; world-atlas distribution, D3/TopoJSON/T
 The complete original notices, including the ISO mapping LGPL text, are preserved in `web/public/geography-licenses.txt` and are available in the binary at `geography-licenses.txt`.
 Downloaded GeoIP databases remain under their providers' licenses; this application does not redistribute a GeoIP database.
 
+GeoLite2 data is created by [MaxMind](https://www.maxmind.com/); its use and redistribution are subject to the [GeoLite EULA](https://www.maxmind.com/en/geolite/eula) and the provider's [update/deletion guidance](https://support.maxmind.com/knowledge-base/articles/maintain-up-to-date-data).
+The legacy [P3TERX/GeoLite.mmdb](https://github.com/P3TERX/GeoLite.mmdb) source is a third-party mirror. Its README attribution and license links do not establish complete redistribution compliance; new automatic mirror downloads are unavailable. Operators provide their own permitted URLs or local files. Saved-file SHA-256 metadata is a local integrity check, not publisher authentication. See [GeoIP source and provenance configuration](docs/CONFIG.md#geoip--источники-и-происхождение-баз).
+
 ## Preserved license texts
 
 ### Go standard library 1.27
@@ -2273,4 +2276,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-

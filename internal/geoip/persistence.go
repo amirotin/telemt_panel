@@ -12,15 +12,16 @@ import (
 	"strings"
 )
 
-const manifestVersion = 1
+const manifestVersion = 2
 
 type activeManifest struct {
-	Version         int    `json:"version"`
-	Source          Source `json:"source"`
-	Directory       string `json:"directory"`
-	ConfigHash      string `json:"config_hash"`
-	LoadedEpochSecs int64  `json:"loaded_epoch_secs"`
-	Databases       []Kind `json:"databases"`
+	Version         int                         `json:"version"`
+	Source          Source                      `json:"source"`
+	Directory       string                      `json:"directory"`
+	ConfigHash      string                      `json:"config_hash"`
+	LoadedEpochSecs int64                       `json:"loaded_epoch_secs"`
+	Databases       []Kind                      `json:"databases"`
+	Provenance      map[Kind]DatabaseProvenance `json:"provenance,omitempty"`
 }
 
 func configHash(cfg Config) string {
@@ -44,9 +45,13 @@ func writeActiveManifest(ctx context.Context, root string, b *bundle, cfg Config
 	manifest := activeManifest{
 		Version: manifestVersion, Source: b.source, Directory: filepath.Base(b.dir),
 		ConfigHash: configHash(cfg), Databases: make([]Kind, 0, len(b.databases)),
+		Provenance: make(map[Kind]DatabaseProvenance, len(b.databases)),
 	}
 	for _, status := range b.statuses() {
 		manifest.Databases = append(manifest.Databases, status.Kind)
+		if status.Provenance != nil {
+			manifest.Provenance[status.Kind] = *status.Provenance
+		}
 		if status.LoadedEpochSecs > manifest.LoadedEpochSecs {
 			manifest.LoadedEpochSecs = status.LoadedEpochSecs
 		}
@@ -108,6 +113,15 @@ func restoreActiveBundle(root string, cfg Config) (*bundle, bool, error) {
 	}
 	b.dir = directory
 	b.source = manifest.Source
+	for kind, provenance := range manifest.Provenance {
+		db := b.databases[kind]
+		hash, err := databaseSHA256(paths[kind])
+		if err != nil || hash != provenance.SHA256 || db.reader.Metadata.DatabaseType != provenance.DatabaseType {
+			b.close()
+			return nil, false, errors.New("geoip: saved database provenance does not match file")
+		}
+		db.status.Provenance = &provenance
+	}
 	return b, manifest.ConfigHash == configHash(cfg), nil
 }
 
@@ -131,7 +145,7 @@ func readManifest(root string) (activeManifest, error) {
 }
 
 func validManifest(manifest activeManifest) bool {
-	if manifest.Version != manifestVersion || manifest.LoadedEpochSecs <= 0 ||
+	if (manifest.Version != 1 && manifest.Version != manifestVersion) || manifest.LoadedEpochSecs <= 0 ||
 		!validManifestName(manifest.Directory, "bundle-") || len(manifest.Databases) == 0 ||
 		len(manifest.ConfigHash) != sha256.Size*2 {
 		return false
@@ -147,6 +161,18 @@ func validManifest(manifest activeManifest) bool {
 			return false
 		}
 		seen[kind] = true
+	}
+	if manifest.Version == manifestVersion && len(manifest.Provenance) != len(manifest.Databases) {
+		return false
+	}
+	for kind, provenance := range manifest.Provenance {
+		decoded, err := hex.DecodeString(provenance.SHA256)
+		if !seen[kind] || provenance.FetchedEpochSecs <= 0 || err != nil || len(decoded) != sha256.Size ||
+			provenance.DatabaseType == "" || provenance.OriginalLocation == "" || provenance.FinalLocation == "" ||
+			locationIdentity(provenance.OriginalLocation, manifest.Source) != provenance.OriginalLocation ||
+			locationIdentity(provenance.FinalLocation, manifest.Source) != provenance.FinalLocation {
+			return false
+		}
 	}
 	return true
 }

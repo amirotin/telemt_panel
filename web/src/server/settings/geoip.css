@@ -11,7 +11,7 @@
 .geoip-section+.geoip-section { border-top:1px solid rgb(var(--border)); }
 .geoip-section h3,.geoip-privacy h3 { font-size:18px; font-weight:600; margin-bottom:10px; }
 .geoip-muted { color:rgb(var(--text-muted)); font-size:14px; line-height:1.6; margin-bottom:18px; }
-.geoip-sources { position:relative; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; border:0; padding:0; margin:20px 0 16px; }
+.geoip-sources { position:relative; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; border:0; padding:0; margin:20px 0 16px; }
 .geoip-sources label { position:relative; display:flex; align-items:start; gap:9px; border:1px solid rgb(var(--border-strong)); border-radius:12px; padding:15px 12px 34px; cursor:pointer; }
 .geoip-sources label:has(input:checked) { border-color:rgb(var(--accent)); background:linear-gradient(135deg,rgb(var(--accent) / .12),transparent); }
 .geoip-sources strong { display:block; font-size:14px; line-height:1.5; }
@@ -48,6 +48,13 @@
 .geoip-db { padding:14px 0; border-top:1px solid rgb(var(--border)); display:grid; gap:6px; font-size:14px; }
 .geoip-db strong { font-weight:550; }
 .geoip-db small,.geoip-db span { font-size:13px; color:rgb(var(--text-muted)); }
+.geoip-provenance { min-width:0; font-size:12px; color:rgb(var(--text-muted)); }
+.geoip-provenance summary { cursor:pointer; min-height:44px; display:flex; align-items:center; color:rgb(var(--accent)); }
+.geoip-provenance dl { display:grid; gap:5px; }
+.geoip-provenance dt { font-weight:600; margin-top:8px; }
+.geoip-provenance dd { margin:0; overflow-wrap:anywhere; }
+.geoip-provenance code { font:inherit; }
+.geoip-provenance p { margin-top:12px; line-height:1.7; }
 .geoip-age-note { font-size:13px; line-height:1.6; color:rgb(var(--text-muted)); margin-top:12px; }
 .geoip-status-actions { display:grid; gap:8px; margin-top:20px; }
 .geoip-privacy { padding:24px 6px; }
