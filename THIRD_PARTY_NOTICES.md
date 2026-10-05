@@ -22,7 +22,7 @@ SQLite modules and julianday are full-only; the shared SPA, passkeys and geograp
 | github.com/ncruces/go-sqlite3-wasm/v5@v5.0.35304 | MIT-0 | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3-wasm/v5@v5.0.35304 |
 | github.com/ncruces/go-sqlite3@v0.35.4 | MIT | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3@v0.35.4 |
 | github.com/ncruces/julianday@v1.0.0 | MIT | full | https://pkg.go.dev/github.com/ncruces/julianday@v1.0.0 |
-| github.com/oschwald/maxminddb-golang/v2@v2.5.0 | ISC | full, lite | https://pkg.go.dev/github.com/oschwald/maxminddb-golang/v2@v2.5.0 |
+| github.com/oschwald/maxminddb-golang/v2@v2.7.0 | ISC | full, lite | https://pkg.go.dev/github.com/oschwald/maxminddb-golang/v2@v2.7.0 |
 | github.com/philhofer/fwd@v1.2.0 | MIT | full, lite | https://pkg.go.dev/github.com/philhofer/fwd@v1.2.0 |
 | github.com/skip2/go-qrcode@v0.0.0-20200617195104-da1b6568686e | MIT | full, lite | https://pkg.go.dev/github.com/skip2/go-qrcode@v0.0.0-20200617195104-da1b6568686e |
 | github.com/tinylib/msgp@v1.6.4 | MIT AND BSD-3-Clause | full, lite | https://pkg.go.dev/github.com/tinylib/msgp@v1.6.4 |
@@ -629,7 +629,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### github.com/oschwald/maxminddb-golang/v2@v2.5.0
+### github.com/oschwald/maxminddb-golang/v2@v2.7.0
 
 LICENSE
 
