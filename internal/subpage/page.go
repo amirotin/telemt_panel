@@ -3,7 +3,6 @@ package subpage
 import (
 	"encoding/base64"
 	"fmt"
-	"html/template"
 	"io"
 	"log/slog"
 	"net/url"
@@ -17,7 +16,7 @@ import (
 // qrSize is the QR code's pixel width/height (spec: 256px).
 const qrSize = 256
 
-// pageData is the subpage template's root data model.
+// pageData is the subscription page's root data model.
 type pageData struct {
 	Lang           string
 	S              uiStrings
@@ -59,19 +58,17 @@ type linkGroupView struct {
 
 // linkVariantView is one connectable link (a TLS domain, or the single
 // secure/classic link) with its raw fields and QR code. TgURL, TMeURL and
-// QRDataURI are template.URL, not string: they hold server-built content
-// (Telemt's own links, or a data: URI we encoded ourselves) that
-// html/template's URL sanitizer would otherwise mangle — tg:// and data:
-// are not on its default safe-scheme allowlist. None of this is
-// user-supplied input.
+// QRDataURI hold Telemt links or a PNG data URI built by this package.
+// The renderer normalizes these URLs and escapes their quoted attributes
+// while preserving the tg:// and data: schemes required by the page.
 type linkVariantView struct {
 	Domain    string
-	TgURL     template.URL
-	TMeURL    template.URL
+	TgURL     string
+	TMeURL    string
 	Server    string
 	Port      string
 	Secret    string
-	QRDataURI template.URL
+	QRDataURI string
 	Web       bool
 }
 
@@ -90,7 +87,7 @@ func RenderPage(w io.Writer, u telemt.UserInfo, quota *telemt.QuotaEntry, accept
 	if err != nil {
 		return err
 	}
-	return pageTemplate.Execute(w, data)
+	return renderPageData(w, data)
 }
 
 // detectLanguage implements the brief's rule verbatim: an Accept-Language
@@ -128,7 +125,7 @@ func buildPageData(u telemt.UserInfo, quota *telemt.QuotaEntry, lang string, now
 		if err != nil {
 			return pageData{}, err
 		}
-		webVariants = append(webVariants, linkVariantView{Domain: server, TgURL: template.URL(link), Server: server, Secret: secret, QRDataURI: template.URL(qr), Web: true})
+		webVariants = append(webVariants, linkVariantView{Domain: server, TgURL: link, Server: server, Secret: secret, QRDataURI: qr, Web: true})
 	}
 	if len(webVariants) > 0 {
 		groups = append(groups, linkGroupView{Title: s.GroupWEB, Variants: webVariants})
@@ -356,12 +353,12 @@ func buildVariant(username, kind string, index int, tgLink, domain string) (link
 
 	return linkVariantView{
 		Domain:    domain,
-		TgURL:     template.URL(tgLink),
-		TMeURL:    template.URL("https://t.me/proxy?" + u.RawQuery),
+		TgURL:     tgLink,
+		TMeURL:    "https://t.me/proxy?" + u.RawQuery,
 		Server:    server,
 		Port:      port,
 		Secret:    secret,
-		QRDataURI: template.URL(qr),
+		QRDataURI: qr,
 	}, true, nil
 }
 
