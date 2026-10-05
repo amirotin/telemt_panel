@@ -22,9 +22,6 @@ func (s *SQLite) PruneUserIPHistory(now int64) error {
 }
 
 // A bounded transaction also bounds shutdown when a final batch is flushed.
-func (s *SQLite) withUserIPTx(fn func(*sql.Tx) error) error {
-	return s.withUserIPTxContext(context.Background(), fn)
-}
 func (s *SQLite) withUserIPTxContext(parent context.Context, fn func(*sql.Tx) error) error {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
@@ -171,15 +168,22 @@ func (s *SQLite) ApplyUserIPBatchContext(parent context.Context, b UserIPBatch) 
 }
 
 func (s *SQLite) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
+	return s.UserIPHistoryContext(context.Background(), q)
+}
+
+// UserIPHistoryContext cancels the transaction and queries with the request.
+func (s *SQLite) UserIPHistoryContext(parent context.Context, q UserIPQuery) (UserIPPage, error) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
 	page := UserIPPage{Items: []UserIPRecord{}}
 	if err := validateUserIPQuery(q); err != nil {
 		return page, err
 	}
-	err := s.withUserIPTx(func(tx *sql.Tx) error {
+	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error {
 		from := max(q.From, q.Now-int64(s.UserIPRetention()/time.Second))
 		where := "username=? AND last_ts>=?"
 		args := []any{q.Username, from}
-		if err := tx.QueryRow("SELECT count(*),coalesce(sum(first_ts>=?),0) FROM user_ip_history WHERE "+where, q.From, q.Username, from).Scan(&page.Total, &page.New); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT count(*),coalesce(sum(first_ts>=?),0) FROM user_ip_history WHERE "+where, q.From, q.Username, from).Scan(&page.Total, &page.New); err != nil {
 			return err
 		}
 		if q.Family != 0 {
@@ -190,7 +194,7 @@ func (s *SQLite) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
 			where += " AND ip LIKE ? ESCAPE '\\'"
 			args = append(args, "%"+strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(strings.ToLower(q.Search))+"%")
 		}
-		if err := tx.QueryRow("SELECT count(*) FROM user_ip_history WHERE "+where, args...).Scan(&page.Matched); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM user_ip_history WHERE "+where, args...).Scan(&page.Matched); err != nil {
 			return err
 		}
 		if q.Before != 0 {
@@ -198,7 +202,7 @@ func (s *SQLite) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
 			args = append(args, q.Before, q.Before, q.AfterIP)
 		}
 		args = append(args, q.Limit+1)
-		rows, err := tx.Query("SELECT username,ip,family,first_ts,last_ts,observations,last_active_ts,source FROM user_ip_history WHERE "+where+" ORDER BY last_ts DESC,ip ASC LIMIT ?", args...)
+		rows, err := tx.QueryContext(ctx, "SELECT username,ip,family,first_ts,last_ts,observations,last_active_ts,source FROM user_ip_history WHERE "+where+" ORDER BY last_ts DESC,ip ASC LIMIT ?", args...)
 		if err != nil {
 			return err
 		}

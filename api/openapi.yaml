@@ -657,6 +657,7 @@ paths:
         "200": { description: Observed addresses and collection limitations, content: { application/json: { schema: { $ref: "#/components/schemas/UserIPHistory" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
 
   /api/users/{username}/ip-history/reset:
     post:

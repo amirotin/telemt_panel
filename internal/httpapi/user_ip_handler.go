@@ -114,14 +114,14 @@ func (s *Server) handleGetUserIPHistory(w http.ResponseWriter, r *http.Request) 
 		auth.WriteError(w, 400, "bad_request", err.Error())
 		return
 	}
-	page, err := s.st.UserIPHistory(q)
+	page, err := s.st.UserIPHistoryContext(r.Context(), q)
 	if err != nil {
-		auth.WriteError(w, 500, "internal_error", "could not read IP history")
+		writeHistoryError(w, err, "could not read IP history")
 		return
 	}
-	collection, err := s.st.UserIPCollectionState()
+	collection, err := s.st.UserIPCollectionStateContext(r.Context())
 	if err != nil {
-		auth.WriteError(w, 500, "internal_error", "could not read IP collection state")
+		writeHistoryError(w, err, "could not read IP collection state")
 		return
 	}
 	result := userIPHistoryView{Items: make([]userIPHistoryItem, 0, len(page.Items)), Total: page.Total, Matched: page.Matched, New: page.New, Range: span, RetentionDays: int(s.st.UserIPRetention() / (24 * time.Hour)), Durable: s.st.Info().Durable, Collection: collection, Source: hub.UserIPSourceStatus{State: "unavailable"}}

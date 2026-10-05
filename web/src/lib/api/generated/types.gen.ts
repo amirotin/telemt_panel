@@ -2832,6 +2832,10 @@ export type GetUserIpHistoryErrors = {
      * Internal panel error
      */
     500: Error;
+    /**
+     * history_timeout — history operation exceeded its deadline or was cancelled. A timed out mutation has no confirmed successful result.
+     */
+    504: Error;
 };
 
 export type GetUserIpHistoryError = GetUserIpHistoryErrors[keyof GetUserIpHistoryErrors];

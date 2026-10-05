@@ -69,6 +69,7 @@ type UserIPStore interface {
 	PruneUserIPHistory(now int64) error
 	ApplyUserIPBatch(UserIPBatch) error
 	UserIPHistory(UserIPQuery) (UserIPPage, error)
+	UserIPHistoryContext(context.Context, UserIPQuery) (UserIPPage, error)
 	UserIPSummaries(from, now int64) (map[string]int64, error)
 	UserIPSummariesContext(context.Context, int64, int64) (map[string]int64, error)
 	UserIPCollectionState() (UserIPCollection, error)
@@ -284,14 +285,26 @@ func (m *Memory) pruneUserIPsLocked(now int64) {
 }
 
 func (m *Memory) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
+	return m.UserIPHistoryContext(context.Background(), q)
+}
+
+// UserIPHistoryContext bounds the scan and lock wait by the caller's context.
+func (m *Memory) UserIPHistoryContext(parent context.Context, q UserIPQuery) (UserIPPage, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
 	page := UserIPPage{Items: []UserIPRecord{}}
 	if err := validateUserIPQuery(q); err != nil {
 		return page, err
 	}
-	m.mu.Lock()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return page, err
+	}
 	defer m.mu.Unlock()
 	from := max(q.From, q.Now-int64(m.UserIPRetention()/time.Second))
 	for _, r := range m.userIPs {
+		if err := ctx.Err(); err != nil {
+			return UserIPPage{}, err
+		}
 		if r.Username != q.Username || r.Last < from {
 			continue
 		}
@@ -318,7 +331,7 @@ func (m *Memory) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
 	if page.HasMore {
 		page.Items = page.Items[:q.Limit]
 	}
-	return page, nil
+	return page, ctx.Err()
 }
 
 func (m *Memory) UserIPSummaries(from, now int64) (map[string]int64, error) {
@@ -390,6 +403,11 @@ func (m *Memory) ResetUserIPHistoryContext(parent context.Context, username stri
 func (s *Composite) ApplyUserIPBatch(b UserIPBatch) error { return s.history.ApplyUserIPBatch(b) }
 func (s *Composite) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
 	return s.history.UserIPHistory(q)
+}
+
+// UserIPHistoryContext delegates the request's history deadline.
+func (s *Composite) UserIPHistoryContext(ctx context.Context, q UserIPQuery) (UserIPPage, error) {
+	return s.history.UserIPHistoryContext(ctx, q)
 }
 func (s *Composite) UserIPSummaries(from, now int64) (map[string]int64, error) {
 	return s.history.UserIPSummaries(from, now)
