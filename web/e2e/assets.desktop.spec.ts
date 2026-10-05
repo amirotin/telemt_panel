@@ -24,23 +24,35 @@ test("provided menu logo loads in full sidebar and tablet rail", async ({ page, 
   }
 });
 
-test("people loads within the script request budget after a full navigation", async ({ page, login }) => {
+test("people loads within the script request budget after a full navigation", async ({ page, context, login }, testInfo) => {
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Page.enable");
+  const cpuThrottlingRate = Number(process.env["TELEMT_PANEL_ASSET_CPU"] ?? 1);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottlingRate });
+  const trace: Array<Record<string, unknown>> = [];
+  cdp.on("Network.requestWillBeSent", event => {
+    if (event.type === "Document" || event.type === "Script") {
+      trace.push({ event: "request", requestId: event.requestId, loaderId: event.loaderId, type: event.type, url: event.request.url, timestamp: event.timestamp });
+    }
+  });
+  cdp.on("Network.responseReceived", event => {
+    if (event.type === "Document" || event.type === "Script") {
+      trace.push({ event: "response", requestId: event.requestId, loaderId: event.loaderId, type: event.type, url: event.response.url, status: event.response.status, fromDiskCache: event.response.fromDiskCache ?? false, fromServiceWorker: event.response.fromServiceWorker ?? false, contentLength: Object.entries(event.response.headers).find(([name]) => name.toLowerCase() === "content-length")?.[1], encodedDataLength: event.response.encodedDataLength });
+    }
+  });
+  cdp.on("Network.loadingFinished", event => trace.push({ event: "finished", requestId: event.requestId, encodedDataLength: event.encodedDataLength }));
+  cdp.on("Page.frameNavigated", event => trace.push({ event: "navigation", frameId: event.frame.id, loaderId: event.frame.loaderId, url: event.frame.url }));
   await login();
-  const scripts: string[] = [];
-  let compressedBytes = 0;
-  page.on("request", request => {
-    if (request.resourceType() === "script" && new URL(request.url()).pathname.includes("/assets/")) {
-      scripts.push(request.url());
-    }
-  });
-  page.on("response", response => {
-    if (response.request().resourceType() === "script" && new URL(response.url()).pathname.includes("/assets/")) {
-      compressedBytes += Number(response.headers()["content-length"] ?? 0);
-    }
-  });
   await page.reload({ waitUntil: "networkidle" });
   await expect(page.getByRole("button", { name: "Создать", exact: true })).toBeVisible();
-  // Includes cached requests: catching excessive fragmentation, not measuring bandwidth.
+  const { frameTree } = await cdp.send("Page.getFrameTree");
+  const loadedScripts = trace.filter(event => event["loaderId"] === frameTree.frame.loaderId && event["type"] === "Script" && typeof event["url"] === "string" && new URL(event["url"]).pathname.includes("/assets/"));
+  const scripts = loadedScripts.filter(event => event["event"] === "request").map(event => String(event["url"]));
+  const compressedBytes = loadedScripts.filter(event => event["event"] === "response").reduce((total, event) => total + Number(event["contentLength"] ?? 0), 0);
+  await testInfo.attach("asset-document-trace", { body: JSON.stringify({ profile: { cpuThrottlingRate, network: "Playwright default; no emulated network throttling", serviceWorkers: "allowed", viewport: page.viewportSize() }, loadedDocument: frameTree.frame, measured: { scripts, compressedBytes }, trace }, null, 2), contentType: "application/json" });
+  // Include cached requests, but only for the reloaded document. Login's in-flight
+  // lazy imports can finish after reload and belong to a different loader.
   expect(scripts.length).toBeGreaterThan(0);
   expect(scripts.length).toBeLessThanOrEqual(32);
   expect(new Set(scripts).size).toBe(scripts.length);
