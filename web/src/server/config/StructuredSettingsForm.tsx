@@ -12,7 +12,7 @@ import { RoutingEditor } from "./RoutingEditor";
 import { MeEditor } from "./MeEditor";
 import { UpstreamsEditor } from "./UpstreamsEditor";
 import { TlsEditor } from "./TlsEditor";
-import { WebEditor } from "./WebEditor";
+import { WebEditor, type DecoyModeDrafts } from "./WebEditor";
 import { ListenersEditor } from "./ListenersEditor";
 import { GenericFields } from "./ConfigFieldControls";
 import { asRecordArray } from "./configRecords";
@@ -24,6 +24,7 @@ export interface StructuredSettingsFormProps {
   sections: Record<string, unknown>;
   mode: SettingsMode;
   changedCount?: number;
+  documentVersion?: number;
   onChange: (next: Record<string, unknown>) => void;
 }
 
@@ -32,6 +33,7 @@ export function StructuredSettingsForm({
   sections,
   mode,
   changedCount = 0,
+  documentVersion = 0,
   onChange,
 }: StructuredSettingsFormProps) {
   const copy = useStrings().server.config.catalog;
@@ -41,6 +43,8 @@ export function StructuredSettingsForm({
   const [groupSheetOpen, setGroupSheetOpen] = useState(false);
   const [query, setQuery] = useState("");
   const editorRef = useRef<HTMLElement>(null);
+  const [decoyDrafts, setDecoyDrafts] = useState<{ version: number; drafts: DecoyModeDrafts }>({ version: documentVersion, drafts: [] });
+  if (decoyDrafts.version !== documentVersion) setDecoyDrafts({ version: documentVersion, drafts: [] });
   const activeQuery = mode === "advanced" ? query.trim() : "";
   const group = catalog.groups.find((item) => item.id === selectedGroup) ?? catalog.groups[0];
 
@@ -139,7 +143,7 @@ export function StructuredSettingsForm({
         ) : group.id === "listeners" ? (
           <ListenersEditor fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
         ) : group.id === "web" ? (
-          <WebEditor fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
+          <WebEditor key={documentVersion} decoyDrafts={decoyDrafts.version === documentVersion ? decoyDrafts.drafts : []} onDecoyDraftsChange={(drafts) => setDecoyDrafts({ version: documentVersion, drafts })} fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
         ) : (
           <GenericFields fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
         )}

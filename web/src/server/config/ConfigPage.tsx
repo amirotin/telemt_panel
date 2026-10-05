@@ -10,7 +10,7 @@ import { Gated } from "../../caps/Gated";
 import { Card } from "../../ui/Card";
 import { Notice } from "../Notice";
 import { pushToast } from "../../ui/Toast";
-import { apiErrorMessage } from "../../people/apiError";
+import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { StructuredSettingsForm } from "./StructuredSettingsForm";
 import { ReloadPolicyPicker } from "./ReloadPolicyPicker";
 import { ReloadStepper } from "./ReloadStepper";
@@ -87,8 +87,24 @@ export function ConfigPage() {
 
   const reloadStatusQuery = useReloadPolling(activeReloadId);
 
+  async function inspectConfigConflict() {
+    if (!editor.baseline) return;
+    try {
+      const fresh = await getTelemtConfig();
+      if (!fresh.data) return;
+      const changedKeys = diffChangedSectionKeys(editor.baseline.sections, fresh.data.sections);
+      const latestDraft = editor.getEdited() ?? editor.baseline.sections;
+      const latestPatch = buildConfigPatch(editor.baseline.sections, latestDraft);
+      const { edited: rebased, overlapping } = rebaseEdits(fresh.data.sections, latestPatch, changedKeys);
+      setConflict({ changedKeys, fresh: fresh.data, rebased, overlapping });
+    } catch {
+      pushToast(errorMessage(s, "telemt_unreachable"), "error");
+    }
+  }
+
   const patchMutation = useMutation({
     ...patchTelemtConfigMutation(),
+    retry: false,
     onSuccess: async (result) => {
       setSavePreviewOpen(false);
       setPatchResult(result);
@@ -127,25 +143,9 @@ export function ConfigPage() {
     },
     onError: async (err) => {
       setSavePreviewOpen(false);
-      if (err.code === "revision_conflict" && editor.baseline) {
-        const fresh = await getTelemtConfig();
-        if (fresh.data) {
-          const changedKeys = diffChangedSectionKeys(
-            editor.baseline.sections,
-            fresh.data.sections,
-          );
-          const latestDraft = editor.getEdited() ?? editor.baseline.sections;
-          const latestPatch = buildConfigPatch(
-            editor.baseline.sections,
-            latestDraft,
-          );
-          const { edited: rebased, overlapping } = rebaseEdits(
-            fresh.data.sections,
-            latestPatch,
-            changedKeys,
-          );
-          setConflict({ changedKeys, fresh: fresh.data, rebased, overlapping });
-        }
+      const code = apiErrorCode(err) ?? "telemt_config_outcome_unknown";
+      if (code === "revision_conflict" && editor.baseline) {
+        await inspectConfigConflict();
         return;
       }
       // Every other failure — read_only, the 422 "not editable"/ambiguous-
@@ -153,7 +153,7 @@ export function ConfigPage() {
       // inline banner (below), not just a toast: read_only in particular
       // describes an ongoing state (Telemt stays read-only until its own
       // config changes), so a 4s toast alone would under-communicate it.
-      setPatchErrorCode(err.code ?? "internal_error");
+      setPatchErrorCode(code);
     },
   });
 
@@ -276,8 +276,9 @@ export function ConfigPage() {
               conflict.fresh.sections,
               conflict.rebased,
             );
-            editor.seed(rebasedConfig);
+            editor.seed(conflict.fresh, conflict.rebased);
             setConflict(null);
+            setPatchErrorCode(null);
             // Nothing left to send only when the admin's pending edit
             // turned out to already match the fresh server state exactly
             // (rare) — otherwise this is the actual retry with the
@@ -289,12 +290,15 @@ export function ConfigPage() {
           onDiscard={() => {
             editor.seed(conflict.fresh);
             setConflict(null);
+            setPatchErrorCode(null);
           }}
         />
       )}
 
       {patchErrorCode && (
-        <Notice tone="error" title={errorMessage(s, patchErrorCode)} />
+        <Notice tone="error" title={errorMessage(s, patchErrorCode)}>
+          {patchErrorCode === "telemt_config_outcome_unknown" && <Button variant="secondary" onClick={() => void inspectConfigConflict()}>{s.server.config.checkWrite}</Button>}
+        </Notice>
       )}
 
       {patchResult && (
@@ -356,9 +360,10 @@ export function ConfigPage() {
             sections={editor.edited}
             mode={tab}
             changedCount={changedCount}
+            documentVersion={editor.documentVersion}
             onChange={(next) => {
               setPatchResult(null);
-              setPatchErrorCode(null);
+              if (patchErrorCode !== "telemt_config_outcome_unknown") setPatchErrorCode(null);
               editor.setEdited(next);
             }}
           />

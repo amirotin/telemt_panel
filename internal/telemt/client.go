@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -153,7 +154,13 @@ func (c *Client) requestStatus(ctx context.Context, method, path string, body an
 		req.Header.Set("If-Match", revision)
 	}
 
-	resp, err := c.http.Do(req)
+	client := c.http
+	if method == http.MethodPatch && (path == "/v1/config" || strings.HasPrefix(path, "/v1/config?")) {
+		scoped := *client
+		scoped.Timeout = ConfigMutationTimeout
+		client = &scoped
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("telemt: %w", err)
 	}

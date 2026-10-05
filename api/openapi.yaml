@@ -858,6 +858,9 @@ paths:
         reload can be requested via query parameters, forwarded to Telemt's own
         `reload`/`timeout_secs`/`failure_policy` query (07-telemt-sdk.md §Config);
         omitting `reload` patches without reloading.
+        Configuration writes have a bounded 60-second wait for DNS preparation and
+        reload. An unconfirmed transport outcome must be checked with GET before
+        an explicit retry; the panel never automatically repeats the write.
       parameters:
         - { name: If-Match, in: header, required: true, schema: { type: string } }
         - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
@@ -880,8 +883,9 @@ paths:
             config_patch_not_atomic | ambiguous_listeners — the patch itself is not
             applicable, regardless of the HTTP status Telemt used internally.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
-        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "502": { description: Preflight upstream failure or telemt_config_outcome_unknown after an unconfirmed write, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: capability_unavailable — this Telemt build/config does not expose the config API, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "504": { description: telemt_config_outcome_unknown — timed out waiting for write confirmation; check current configuration before retrying, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/config/toml:
     get:
@@ -903,6 +907,8 @@ paths:
         Parses the normalized TOML on the panel backend, validates managed paths,
         builds a sparse patch against the current revision and forwards it to Telemt.
         Removing map keys is rejected because the current Config API cannot unset them.
+        The write uses the same bounded 60-second wait and unconfirmed-outcome
+        handling as the structured configuration PATCH.
       parameters:
         - { name: If-Match, in: header, required: true, schema: { type: string } }
         - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
@@ -918,7 +924,8 @@ paths:
         "409": { description: revision_conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "422": { description: Telemt rejected the generated patch, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "502": { description: Preflight upstream failure or telemt_config_outcome_unknown after an unconfirmed write, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "504": { description: telemt_config_outcome_unknown — timed out waiting for write confirmation; check current configuration before retrying, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/config/catalog:
     get:

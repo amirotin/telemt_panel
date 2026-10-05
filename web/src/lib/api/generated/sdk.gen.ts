@@ -637,7 +637,7 @@ export const getTelemtConfig = <ThrowOnError extends boolean = false>(options?: 
 });
 
 /**
- * Passthrough of Telemt's PATCH /v1/config. The revision travels as an `If-Match` header (required — from a prior GET's `revision`), not a body field. An inline reload can be requested via query parameters, forwarded to Telemt's own `reload`/`timeout_secs`/`failure_policy` query (07-telemt-sdk.md §Config); omitting `reload` patches without reloading.
+ * Passthrough of Telemt's PATCH /v1/config. The revision travels as an `If-Match` header (required — from a prior GET's `revision`), not a body field. An inline reload can be requested via query parameters, forwarded to Telemt's own `reload`/`timeout_secs`/`failure_policy` query (07-telemt-sdk.md §Config); omitting `reload` patches without reloading. Configuration writes have a bounded 60-second wait for DNS preparation and reload. An unconfirmed transport outcome must be checked with GET before an explicit retry; the panel never automatically repeats the write.
  *
  */
 export const patchTelemtConfig = <ThrowOnError extends boolean = false>(options: Options<PatchTelemtConfigData, ThrowOnError>): RequestResult<PatchTelemtConfigResponses, PatchTelemtConfigErrors, ThrowOnError> => (options.client ?? client).patch<PatchTelemtConfigResponses, PatchTelemtConfigErrors, ThrowOnError>({
@@ -669,7 +669,7 @@ export const getTelemtConfigToml = <ThrowOnError extends boolean = false>(option
 });
 
 /**
- * Parses the normalized TOML on the panel backend, validates managed paths, builds a sparse patch against the current revision and forwards it to Telemt. Removing map keys is rejected because the current Config API cannot unset them.
+ * Parses the normalized TOML on the panel backend, validates managed paths, builds a sparse patch against the current revision and forwards it to Telemt. Removing map keys is rejected because the current Config API cannot unset them. The write uses the same bounded 60-second wait and unconfirmed-outcome handling as the structured configuration PATCH.
  *
  */
 export const patchTelemtConfigToml = <ThrowOnError extends boolean = false>(options: Options<PatchTelemtConfigTomlData, ThrowOnError>): RequestResult<PatchTelemtConfigTomlResponses, PatchTelemtConfigTomlErrors, ThrowOnError> => (options.client ?? client).patch<PatchTelemtConfigTomlResponses, PatchTelemtConfigTomlErrors, ThrowOnError>({

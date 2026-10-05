@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useStrings } from "../../i18n";
+import { errorMessage, useStrings } from "../../i18n";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { acknowledgeSubmitted, discardToRemote, type SubmittedDraft } from "../../lib/draftSession";
 import { useDraftSession } from "../../lib/draftSessionReact";
@@ -78,6 +78,7 @@ function TomlSettingsSession({
   const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(DEFAULT_RELOAD_POLICY);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   const requestSequence = useRef(0);
   const activePreview = useRef<number | null>(null);
   const activeSave = useRef<number | null>(null);
@@ -110,6 +111,7 @@ function TomlSettingsSession({
   });
 
   const patchMutation = useMutation({
+    retry: false,
     mutationFn: async (submitted: SubmittedDraft<string> & { reloadPolicy: ReloadPolicyState }) => {
       const { data } = await patchTelemtConfigToml({ headers: { "If-Match": submitted.revision! }, query: toPatchReloadQuery(submitted.reloadPolicy), body: { toml_projection: submitted.value }, throwOnError: true });
       return data;
@@ -123,6 +125,7 @@ function TomlSettingsSession({
       setPreview(null);
       setValidatedDraft(null);
       setConflict(false);
+      setUnknownOutcome(false);
       queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() });
       queryClient.invalidateQueries({ queryKey: getTelemtConfigQueryKey() });
       await onApplied?.(next);
@@ -130,8 +133,14 @@ function TomlSettingsSession({
     onError: (error: PatchTelemtConfigTomlError, submitted) => {
       if (activeSave.current !== submitted.requestId) return;
       activeSave.current = null;
-      if (apiErrorCode(error) === "revision_conflict") { setConflict(true); void queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() }); }
-      pushToast(apiErrorMessage(error, s), "error");
+      const code = apiErrorCode(error) ?? "telemt_config_outcome_unknown";
+      if (code === "telemt_config_outcome_unknown") {
+        setUnknownOutcome(true);
+        setPreview(null);
+        setValidatedDraft(null);
+      }
+      if (code === "revision_conflict") { setConflict(true); void queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() }); }
+      pushToast(errorMessage(s, code), "error");
     },
   });
 
@@ -168,7 +177,7 @@ function TomlSettingsSession({
   }
 
   function discard() {
-    update(discardToRemote); setConflict(false); setPreview(null); setValidatedDraft(null); setResult(null);
+    update(discardToRemote); setConflict(false); setUnknownOutcome(false); setPreview(null); setValidatedDraft(null); setResult(null);
   }
   async function copyDraft() {
     try { await navigator.clipboard.writeText(current.current.draft); pushToast(s.server.config.toml.copied, "ok"); }
@@ -185,6 +194,9 @@ function TomlSettingsSession({
 
   return (
     <div className="flex flex-col gap-3" data-testid="toml-settings-panel">
+      {unknownOutcome && <Notice tone="warn" title={errorMessage(s, "telemt_config_outcome_unknown")}>
+        <Button variant="secondary" onClick={() => void queryClient.refetchQueries({ queryKey: getTelemtConfigTomlQueryKey() })}>{s.server.config.checkWrite}</Button>
+      </Notice>}
       <Notice tone="info" title={s.server.config.toml.projectionTitle}>
         <p className="text-meta leading-relaxed text-text-muted">{s.server.config.toml.projectionNote}</p>
         <p className="text-micro text-text-faint">{s.server.config.toml.projectionDetail}</p>

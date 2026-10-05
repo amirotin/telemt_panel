@@ -111,8 +111,11 @@ func (s *Server) handlePatchTelemtConfigTOML(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	ctx, cancel := contextWithTelemtConfigTimeout(r)
+	ctx, cancel := context.WithTimeout(r.Context(), telemt.ConfigMutationTimeout)
 	defer cancel()
+	if !allowTelemtConfigMutationResponse(w, ctx) {
+		return
+	}
 	preview, patch, err := s.buildTelemtConfigTOMLPreview(ctx, revision, req.TOMLProjection)
 	if err != nil {
 		writeTelemtConfigTOMLError(w, err)
@@ -124,7 +127,7 @@ func (s *Server) handlePatchTelemtConfigTOML(w http.ResponseWriter, r *http.Requ
 	}
 	result, status, _, err := s.tc.PatchConfig(ctx, patch, revision, reload)
 	if err != nil {
-		writeTelemtConfigError(w, err)
+		writeTelemtConfigMutationError(w, err)
 		return
 	}
 	s.appendAudit(r, "config.patch.toml", "", strings.Join(preview.ChangedPaths, ","))

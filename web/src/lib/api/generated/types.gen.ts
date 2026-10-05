@@ -3288,13 +3288,17 @@ export type PatchTelemtConfigErrors = {
      */
     422: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Preflight upstream failure or telemt_config_outcome_unknown after an unconfirmed write
      */
     502: Error;
     /**
      * capability_unavailable — this Telemt build/config does not expose the config API
      */
     503: Error;
+    /**
+     * telemt_config_outcome_unknown — timed out waiting for write confirmation; check current configuration before retrying
+     */
+    504: Error;
 };
 
 export type PatchTelemtConfigError = PatchTelemtConfigErrors[keyof PatchTelemtConfigErrors];
@@ -3377,9 +3381,13 @@ export type PatchTelemtConfigTomlErrors = {
      */
     422: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Preflight upstream failure or telemt_config_outcome_unknown after an unconfirmed write
      */
     502: Error;
+    /**
+     * telemt_config_outcome_unknown — timed out waiting for write confirmation; check current configuration before retrying
+     */
+    504: Error;
 };
 
 export type PatchTelemtConfigTomlError = PatchTelemtConfigTomlErrors[keyof PatchTelemtConfigTomlErrors];

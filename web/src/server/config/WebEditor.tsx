@@ -25,11 +25,15 @@ const WEB_STRUCTURE_PATHS = new Set([
   "web.vhosts[].profiles",
 ]);
 
-export function WebEditor({ fields, sections, advanced, onChange }: {
+export type DecoyModeDrafts = Array<Record<string, Record<string, unknown>>>;
+
+export function WebEditor({ fields, sections, advanced, onChange, decoyDrafts, onDecoyDraftsChange }: {
   fields: TelemtConfigField[];
   sections: Record<string, unknown>;
   advanced: boolean;
   onChange: (next: Record<string, unknown>) => void;
+  decoyDrafts?: DecoyModeDrafts;
+  onDecoyDraftsChange?: (drafts: DecoyModeDrafts) => void;
 }) {
   const copy = useStrings().server.config.catalog;
   const labels = copy.labels as Record<string, string>;
@@ -37,6 +41,9 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
   const vhosts = asRecordArray(getConfigValue(sections, "web.vhosts"));
   const listeners = asRecordArray(getConfigValue(sections, "server.listeners"));
   const [expandedVhosts, setExpandedVhosts] = useState<number[]>([0]);
+  const [localDecoyDrafts, setLocalDecoyDrafts] = useState<DecoyModeDrafts>([]);
+  const currentDecoyDrafts = () => Array.from({ length: vhosts.length }, (_, index) => (decoyDrafts ?? localDecoyDrafts)[index] ?? {});
+  const storeDecoyDrafts = onDecoyDraftsChange ?? setLocalDecoyDrafts;
   const enabled = getConfigValue(sections, "web.enabled") === true;
   const fixedCarrier = String(getConfigValue(sections, "web.carrier") ?? "https");
   const rawCarriers = getConfigValue(sections, "web.carriers");
@@ -164,10 +171,16 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
             const profiles = asRecordArray(vhost["profiles"]);
             const complete = webVhostReady(vhost);
             const duplicate = () => {
+              const drafts = currentDecoyDrafts();
+              drafts.splice(index + 1, 0, Object.fromEntries(Object.entries(drafts[index] ?? {}).map(([mode, draft]) => [mode, cloneConfigRecord(draft)])));
+              storeDecoyDrafts(drafts);
               updateVhosts([...vhosts.slice(0, index + 1), cloneConfigRecord(vhost), ...vhosts.slice(index + 1)]);
               setExpandedVhosts([index + 1]);
             };
             const remove = () => {
+              const drafts = currentDecoyDrafts();
+              drafts.splice(index, 1);
+              storeDecoyDrafts(drafts);
               updateVhosts(vhosts.filter((_, itemIndex) => itemIndex !== index));
               setExpandedVhosts((current) => current.filter((item) => item !== index).map((item) => item > index ? item - 1 : item));
             };
@@ -201,6 +214,16 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
                       profiles={profiles}
                       advanced={advanced}
                       onChange={onChange}
+                      onDecoyModeChange={(mode) => {
+                        const decoy = typeof vhost["decoy"] === "object" && vhost["decoy"] !== null && !Array.isArray(vhost["decoy"]) ? vhost["decoy"] as Record<string, unknown> : {};
+                        const cache = currentDecoyDrafts();
+                        const drafts = { ...cache[index] };
+                        drafts[String(decoy["mode"] ?? "http_upstream")] = cloneConfigRecord(decoy);
+                        cache[index] = drafts;
+                        storeDecoyDrafts(cache);
+                        const next = cloneConfigRecord(drafts[mode] ?? decoyForMode(decoy, mode));
+                        onChange(setConfigValue(sections, `web.vhosts[${index}].decoy`, next));
+                      }}
                     />
                     <div className="mt-3 flex gap-2 border-t border-border/70 pt-3 sm:hidden">
                       <button type="button" className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-surface-2 px-3 text-meta font-semibold text-text-muted" onClick={duplicate}>
@@ -217,6 +240,7 @@ export function WebEditor({ fields, sections, advanced, onChange }: {
           })}
         </div>
         <AddRecordButton onClick={() => {
+          storeDecoyDrafts([...currentDecoyDrafts(), {}]);
           updateVhosts([...vhosts, newWebVhost()]);
           setExpandedVhosts([vhosts.length]);
         }}>{copy.webAddVhost}</AddRecordButton>
@@ -247,7 +271,7 @@ function WebRequirement({ ready, title, hint }: { ready: boolean; title: string;
   );
 }
 
-function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, advanced, onChange }: {
+function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, advanced, onChange, onDecoyModeChange }: {
   fieldsByPath: Map<string, TelemtConfigField>;
   sections: Record<string, unknown>;
   vhostIndex: number;
@@ -255,6 +279,7 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
   profiles: Array<Record<string, unknown>>;
   advanced: boolean;
   onChange: (next: Record<string, unknown>) => void;
+  onDecoyModeChange: (mode: string) => void;
 }) {
   const copy = useStrings().server.config.catalog;
   const labels = copy.labels as Record<string, string>;
@@ -293,7 +318,7 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
               <strong className="text-sm font-semibold text-text">{labels["web.vhosts.decoy.mode"] ?? copy.webDecoyMode}</strong>
               <p className="mt-1 text-meta leading-relaxed text-text-muted">{copy.webDecoyModeHint}</p>
             </div>
-            <Select value={decoyMode} aria-label={labels["web.vhosts.decoy.mode"] ?? copy.webDecoyMode} onChange={(event) => onChange(setConfigValue(sections, vhostPath("decoy"), decoyForMode(decoy, event.target.value)))}>
+            <Select value={decoyMode} aria-label={labels["web.vhosts.decoy.mode"] ?? copy.webDecoyMode} onChange={(event) => onDecoyModeChange(event.target.value)}>
               <option value="http_upstream">{copy.webDecoyHttp}</option>
               <option value="static_directory">{copy.webDecoyStatic}</option>
             </Select>
@@ -303,7 +328,21 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
               {textFieldRow("web.vhosts[].decoy.directory", vhostPath("decoy.directory"), "/var/www/html")}
               {textFieldRow("web.vhosts[].decoy.index", vhostPath("decoy.index"), "index.html")}
             </>
-          ) : textFieldRow("web.vhosts[].decoy.upstream", vhostPath("decoy.upstream"), "http://127.0.0.1:8080")}
+          ) : <>
+            {textFieldRow("web.vhosts[].decoy.upstream", vhostPath("decoy.upstream"), "http://127.0.0.1:8080")}
+            {fieldsByPath.has("web.vhosts[].decoy.resolve") && (
+              <div className="grid min-h-[74px] gap-2 py-3.5 sm:grid-cols-[minmax(180px,1fr)_minmax(170px,225px)] sm:items-center sm:gap-4">
+                <div>
+                  <strong className="text-sm font-semibold text-text">{labels["web.vhosts.decoy.resolve"]}</strong>
+                  <p className="mt-1 text-meta leading-relaxed text-text-muted">{copy.webDecoyResolveHint}</p>
+                </div>
+                <Select value={String(decoy["resolve"] ?? "never")} aria-label={labels["web.vhosts.decoy.resolve"]} onChange={(event) => onChange(setConfigValue(sections, vhostPath("decoy.resolve"), event.target.value))}>
+                  <option value="never">{copy.webDecoyResolveNever}</option>
+                  <option value="startup">{copy.webDecoyResolveStartup}</option>
+                </Select>
+              </div>
+            )}
+          </>}
         </div>
       </div>
 

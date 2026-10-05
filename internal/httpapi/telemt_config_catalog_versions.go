@@ -57,6 +57,14 @@ func telemtConfigCatalogForVersion(version string) telemtConfigCatalog {
 		catalog.SourceCommit = "d3de9865cf5d088809fdf728059bcb2b0841db67"
 		appendFields(versionedConfigField("web.conveyor", "bool", "boolean", "true", "web", "normal", "runtime reload"))
 	}
+	if update.CompareVersions(version, "3.5.14") >= 0 {
+		catalog.Version = "3.5.14"
+		catalog.SourceCommit = "9d5b896bb695c55e2905b82f276da84e45a0a2ec"
+		appendFields(
+			versionedConfigField("web.vhosts[].decoy.resolve", "WebDecoyResolve", "enum", "never", "web", "normal", "runtime reload", "never", "startup"),
+			versionedConfigField("web.timeouts.decoy_resolve_secs", "u64", "integer", "5", "web", "advanced", "runtime reload"),
+		)
+	}
 	return catalog
 }
 

@@ -130,7 +130,8 @@ export async function startStack(): Promise<Stack> {
   // screenshot matrix, which is exactly where the degraded builds have to be
   // looked at (`SCENARIO=edge-off npm run screenshots`).
   const scenario = process.env["SCENARIO"] ?? "full";
-  const mock = spawn(mockBinary, ["-listen", `:${MOCK_PORT}`, "-scenario", scenario], {
+  const versionArgs = ["-telemt-version", process.env["TELEMT_MOCK_VERSION"] ?? "3.5.14"];
+  const mock = spawn(mockBinary, ["-listen", `:${MOCK_PORT}`, "-scenario", scenario, ...versionArgs], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const panel = spawn(PANEL_BINARY, ["--config", configPath], {

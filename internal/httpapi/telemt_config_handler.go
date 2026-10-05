@@ -15,8 +15,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
 
-// telemtConfigRequestTimeout bounds every handler in this file: config
-// reads/patches and reload submissions are all single round-trips to
+// telemtConfigRequestTimeout bounds config reads and reload submissions to
 // Telemt, not the kind of long-running operation update.Engine models.
 const telemtConfigRequestTimeout = 15 * time.Second
 
@@ -173,8 +172,11 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), telemtConfigRequestTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), telemt.ConfigMutationTimeout)
 	defer cancel()
+	if !allowTelemtConfigMutationResponse(w, ctx) {
+		return
+	}
 
 	snapshot, _, err := s.tc.GetConfig(ctx)
 	if err != nil {
@@ -192,11 +194,35 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 	}
 	result, status, _, err := s.tc.PatchConfig(ctx, patch, revision, reload)
 	if err != nil {
-		writeTelemtConfigError(w, err)
+		writeTelemtConfigMutationError(w, err)
 		return
 	}
 	s.appendAudit(r, "config.patch", "", strings.Join(result.Changed, ","))
 	writeJSON(w, status, result)
+}
+
+// writeTelemtConfigMutationError keeps an unconfirmed write distinct from rejection.
+func writeTelemtConfigMutationError(w http.ResponseWriter, err error) {
+	var apiErr *telemt.APIError
+	if errors.As(err, &apiErr) && apiErr.Code != "http_error" {
+		writeTelemtConfigError(w, err)
+		return
+	}
+	status := http.StatusBadGateway
+	if errors.Is(err, context.DeadlineExceeded) || (apiErr != nil && apiErr.Status == http.StatusGatewayTimeout) {
+		status = http.StatusGatewayTimeout
+	}
+	auth.WriteError(w, status, "telemt_config_outcome_unknown", "Telemt did not confirm the configuration write; check the current configuration before retrying")
+}
+
+func allowTelemtConfigMutationResponse(w http.ResponseWriter, ctx context.Context) bool {
+	deadline, _ := ctx.Deadline()
+	err := http.NewResponseController(w).SetWriteDeadline(deadline.Add(5 * time.Second))
+	if err != nil && !errors.Is(err, http.ErrNotSupported) {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not prepare configuration response deadline")
+		return false
+	}
+	return true
 }
 
 // writeTelemtConfigError maps a telemt.APIError from GetConfig/PatchConfig

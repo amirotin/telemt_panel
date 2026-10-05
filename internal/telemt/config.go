@@ -5,7 +5,12 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
+
+// ConfigMutationTimeout bounds DNS preparation and inline reload for config writes.
+// Ordinary reads retain the client's shorter request timeout.
+const ConfigMutationTimeout = 60 * time.Second
 
 // GetConfig calls GET /v1/config, returning the editable config sections
 // plus the response envelope's revision — callers chain that revision into

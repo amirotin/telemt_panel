@@ -94,6 +94,7 @@ var scenarios = map[string]telemttest.Scenario{
 
 func main() {
 	listen := flag.String("listen", ":9091", "address to listen on")
+	version := flag.String("telemt-version", "", "system/info version override (default 3.5.5)")
 	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off|web-busy")
 	flag.Parse()
 
@@ -103,6 +104,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	scenario.Version = *version
 	fake := telemttest.New(scenario)
 	// New already started its own httptest.Server on an OS-assigned port —
 	// unused here beyond Close, since this command hosts fake.Handler() on

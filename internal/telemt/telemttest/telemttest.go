@@ -20,6 +20,8 @@ import (
 // Scenario toggles the fake's behavior to exercise the panel's degraded-mode
 // handling against realistic Telemt build/config variations.
 type Scenario struct {
+	// Version overrides system/info without changing the legacy fixture default.
+	Version string
 	// OldBuild simulates a Telemt build that predates the quota, reload and
 	// config-API routes: those paths 404 with a bare body (no {ok,error}
 	// envelope) — capability probes must read this as "route absent", not a
@@ -264,8 +266,12 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		}, s.revision())
 		return
 	case r.Method == http.MethodGet && path == "/v1/system/info":
+		version := s.scenario.Version
+		if version == "" {
+			version = "3.5.5"
+		}
 		writeOK(w, http.StatusOK, telemt.SystemInfoData{
-			Version: "3.5.5", TargetArch: "x86_64", TargetOS: "linux", BuildProfile: "release",
+			Version: version, TargetArch: "x86_64", TargetOS: "linux", BuildProfile: "release",
 			ProcessStartedAtEpochSec: 1000, UptimeSeconds: 3600,
 			ConfigPath: "/etc/telemt/telemt.toml", ConfigHash: s.revision(), ConfigReloadCount: 1,
 		}, s.revision())

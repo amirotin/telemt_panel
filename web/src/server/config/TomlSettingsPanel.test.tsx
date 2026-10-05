@@ -19,13 +19,38 @@ const initial = { revision: "r1", toml_projection: original, source_sections: ["
 const preview = { revision: "r1", patch: { general: { log_level: "debug" } }, patch_json: '{"general":{"log_level":"debug"}}', changed_paths: ["general.log_level"], materialized_sections: [], array_replacements: [] };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 const originalConfig = apiClient.getConfig();
+
+it.each(["envelope", "network", "html"])("keeps the draft and requires fresh validation after an unconfirmed %s failure; checking never repeats PATCH", async (failure) => {
+  let writes = 0;
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    const req = request as Request;
+    if (req.method === "POST") return Response.json(preview);
+    if (req.method === "PATCH") {
+      writes++;
+      if (failure === "network") throw new TypeError("Failed to fetch");
+      if (failure === "html") return new Response("gateway timeout", { status: 504, headers: { "Content-Type": "text/html" } });
+      return Response.json({ code: "telemt_config_outcome_unknown" }, { status: 504 });
+    }
+    return Response.json({ ...initial, revision: "r2", toml_projection: first });
+  } });
+  await renderPanel(true); await type(first);
+  await act(async () => { button("Проверить").click(); await settle(); });
+  await act(async () => { button("Сохранить проверенное").click(); await settle(); });
+  expect(document.querySelector("textarea")!.value).toBe(first);
+  expect(button("Сохранить проверенное").disabled).toBe(true);
+  const check = button("Проверить серверную конфигурацию");
+  expect(check).toBeDefined();
+  await act(async () => { check.click(); await settle(); });
+  expect(writes).toBe(1);
+  expect(document.querySelector("textarea")!.value).toBe(first);
+});
 let root: Root;
 let container: HTMLDivElement;
 let cache: QueryClient;
 const button = (text: string) => [...document.querySelectorAll("button")].find((item) => item.textContent === text)!;
 
-async function renderPanel() {
-  cache = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+async function renderPanel(retryWrites = false) {
+  cache = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: retryWrites ? 1 : false, retryDelay: 0 } } });
   cache.setQueryData(getTelemtConfigTomlQueryKey(), initial);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   await act(async () => root.render(<QueryClientProvider client={cache}><TomlSettingsPanel canRestartTelemt={false} /></QueryClientProvider>));
