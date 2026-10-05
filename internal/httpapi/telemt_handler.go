@@ -40,9 +40,10 @@ type telemtInfoView struct {
 }
 
 // handleTelemtInfo implements GET /api/telemt/info: connectivity, version,
-// and the capability flags 07-telemt-sdk.md §SDK-3 defines. Never fails —
-// an unreachable Telemt is reported as reachable:false with an actionable
-// hint, not an HTTP error, per the API-only degradation invariant: the hint
+// and the capability flags 07-telemt-sdk.md §SDK-3 defines. An unreachable
+// Telemt is reported as reachable:false with an actionable hint, per the
+// API-only degradation invariant. An oversized upstream response instead
+// returns an explicit 502 error. The connectivity hint
 // always names the Telemt API (telemt.url/telemt.auth_header), never a
 // file or config path, so it can never be confused with a host-privileges
 // diagnostic (GET /api/host).
@@ -52,6 +53,10 @@ func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
 
 	sysInfo, err := s.tc.SystemInfo(ctx)
 	if err != nil {
+		if errors.Is(err, telemt.ErrResponseTooLarge) {
+			writeTelemtError(w, err, false)
+			return
+		}
 		var apiErr *telemt.APIError
 		hint := "telemt api is unreachable — check telemt.url"
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {

@@ -18,6 +18,11 @@ import (
 	"time"
 )
 
+// ErrResponseTooLarge reports an upstream body exceeding the 8 MiB limit.
+var ErrResponseTooLarge = errors.New("telemt: response exceeds 8 MiB limit")
+
+const maxResponseBytes = 8 * 1024 * 1024
+
 // APIError is a non-2xx Telemt response decoded from the error envelope.
 type APIError struct {
 	Status    int
@@ -143,7 +148,13 @@ func (c *Client) callStatus(ctx context.Context, method, path string, body any, 
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if resp.ContentLength > maxResponseBytes {
+		return nil, 0, "", ErrResponseTooLarge
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if len(raw) > maxResponseBytes {
+		return nil, 0, "", ErrResponseTooLarge
+	}
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("telemt: read response: %w", err)
 	}

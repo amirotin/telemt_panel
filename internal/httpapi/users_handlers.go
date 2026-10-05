@@ -491,6 +491,10 @@ func decodeUserPatch(body []byte) (map[string]any, error) {
 // 502 telemt_unreachable, so it passes through with Telemt's own status,
 // code and message.
 func writeTelemtError(w http.ResponseWriter, err error, capabilityGated bool) {
+	if errors.Is(err, telemt.ErrResponseTooLarge) {
+		auth.WriteError(w, http.StatusBadGateway, "telemt_response_too_large", "telemt response exceeds the 8 MiB limit")
+		return
+	}
 	var apiErr *telemt.APIError
 	if !errors.As(err, &apiErr) {
 		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", "could not reach telemt")

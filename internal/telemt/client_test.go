@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -217,4 +220,188 @@ func TestNonJSONErrorResponse(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.Status != 502 {
 		t.Fatalf("want APIError 502, got %v", err)
 	}
+}
+
+const testUpstreamBodyLimit = 8 * 1024 * 1024
+
+type testWhitespaceReader struct{}
+
+func (testWhitespaceReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = ' '
+	}
+	return len(p), nil
+}
+
+func paddedUpstreamBody(payload string, size int) io.Reader {
+	return io.MultiReader(strings.NewReader(payload), io.LimitReader(testWhitespaceReader{}, int64(size-len(payload))))
+}
+
+type trackedUpstreamBody struct {
+	io.Reader
+	bytesRead int
+	closed    bool
+}
+
+func (b *trackedUpstreamBody) Read(p []byte) (int, error) {
+	n, err := b.Reader.Read(p)
+	b.bytesRead += n
+	return n, err
+}
+
+func (b *trackedUpstreamBody) Close() error {
+	b.closed = true
+	return nil
+}
+
+func newBodyLimitTestClient(reader io.Reader, contentLength int64, status int) (*Client, *trackedUpstreamBody) {
+	body := &trackedUpstreamBody{Reader: reader}
+	c := New("http://telemt.test", "")
+	c.http.Transport = testRoundTripper(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: body, ContentLength: contentLength}, nil
+	})
+	return c, body
+}
+
+func TestBodyLimitResponseTooLargeBoundaries(t *testing.T) {
+	const success = `{"ok":true,"data":{"status":"ok"}}`
+	const flat = `{"status":"ok"}`
+	const malformed = `{"ok":true,"data":{"status":`
+	for _, tc := range []struct {
+		name          string
+		payload       string
+		bodyBytes     int
+		contentLength int64
+		status        int
+		wantLarge     bool
+		wantSyntax    bool
+	}{
+		{"exact limit with length", success, testUpstreamBodyLimit, testUpstreamBodyLimit, 200, false, false},
+		{"exact limit without length", success, testUpstreamBodyLimit, -1, 200, false, false},
+		{"legacy flat exact limit", flat, testUpstreamBodyLimit, -1, 200, false, false},
+		{"small body overclaimed within limit", success, len(success), testUpstreamBodyLimit, 200, false, false},
+		{"limit plus one with length", success, testUpstreamBodyLimit + 1, testUpstreamBodyLimit + 1, 200, true, false},
+		{"limit plus one without length", success, testUpstreamBodyLimit + 1, -1, 200, true, false},
+		{"limit plus one underclaimed length", success, testUpstreamBodyLimit + 1, 1, 200, true, false},
+		{"limit plus one zero length", success, testUpstreamBodyLimit + 1, 0, 200, true, false},
+		{"small body claimed over limit", success, len(success), testUpstreamBodyLimit + 1, 200, true, false},
+		{"malformed below limit", malformed, len(malformed), -1, 200, false, true},
+		{"truncated JSON exact limit", malformed, testUpstreamBodyLimit, testUpstreamBodyLimit, 200, false, true},
+		{"oversized non-JSON error", "UPSTREAM_SECRET", testUpstreamBodyLimit + 1, -1, 404, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, body := newBodyLimitTestClient(paddedUpstreamBody(tc.payload, tc.bodyBytes), tc.contentLength, tc.status)
+			health, err := c.Health(context.Background())
+			if tc.wantLarge {
+				if !errors.Is(err, ErrResponseTooLarge) {
+					t.Fatalf("error = %v, want ErrResponseTooLarge (read %d bytes)", err, body.bytesRead)
+				}
+				if strings.Contains(err.Error(), "UPSTREAM_SECRET") {
+					t.Fatal("size error exposed the upstream body")
+				}
+			} else if tc.wantSyntax {
+				var syntaxErr *json.SyntaxError
+				if errors.Is(err, ErrResponseTooLarge) || !errors.As(err, &syntaxErr) {
+					t.Fatalf("error = %v, want JSON syntax error below or at limit", err)
+				}
+			} else if err != nil || health.Status != "ok" {
+				t.Fatalf("health = %+v, error = %v, want valid response", health, err)
+			}
+			if body.bytesRead > testUpstreamBodyLimit+1 {
+				t.Fatalf("read %d bytes, maximum is limit+1", body.bytesRead)
+			}
+			if !body.closed {
+				t.Fatal("response body was not closed")
+			}
+		})
+	}
+}
+
+func TestResponseTooLargeReadBound(t *testing.T) {
+	for _, contentLength := range []int64{-1, 1, testUpstreamBodyLimit + 1} {
+		t.Run(fmt.Sprint(contentLength), func(t *testing.T) {
+			c, body := newBodyLimitTestClient(testWhitespaceReader{}, contentLength, http.StatusOK)
+			_, err := c.Health(context.Background())
+			if !errors.Is(err, ErrResponseTooLarge) {
+				t.Fatalf("error = %v, want ErrResponseTooLarge", err)
+			}
+			wantRead := testUpstreamBodyLimit + 1
+			if contentLength > testUpstreamBodyLimit {
+				wantRead = 0
+			}
+			if body.bytesRead != wantRead {
+				t.Fatalf("read %d bytes, want %d with unbounded upstream", body.bytesRead, wantRead)
+			}
+			if !body.closed {
+				t.Fatal("unbounded body was not closed")
+			}
+		})
+	}
+}
+
+func TestResponseTooLargeChunkedWithoutLength(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.(http.Flusher).Flush()
+		_, _ = io.Copy(w, paddedUpstreamBody(`{"ok":true,"data":{"status":"ok"}}`, testUpstreamBodyLimit+1))
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "")
+	var chunked bool
+	c.http.Transport = testRoundTripper(func(r *http.Request) (*http.Response, error) {
+		resp, err := http.DefaultTransport.RoundTrip(r)
+		if err == nil {
+			chunked = resp.ContentLength == -1 && len(resp.TransferEncoding) == 1 && resp.TransferEncoding[0] == "chunked"
+		}
+		return resp, err
+	})
+	_, err := c.Health(context.Background())
+	if !chunked {
+		t.Fatal("fixture did not return a chunked response without Content-Length")
+	}
+	if !errors.Is(err, ErrResponseTooLarge) {
+		t.Fatalf("chunked response error = %v, want ErrResponseTooLarge", err)
+	}
+}
+
+func TestBodyLimitUsersScaleFixture(t *testing.T) {
+	// Match the 2,000-user fixture in web/src/people/users.helpers.test.ts.
+	users := make([]UserInfo, 2000)
+	for i := range users {
+		users[i] = UserInfo{
+			Username: fmt.Sprintf("scale-%04d", i), Enabled: true, InRuntime: true,
+			ActiveIPList: []string{}, RecentIPList: []string{},
+			Links: UserLinks{Classic: []string{}, Secure: []string{}, TLS: []string{}, TLSDomains: []TLSDomainLink{}},
+		}
+	}
+	raw, err := json.Marshal(struct {
+		OK   bool       `json:"ok"`
+		Data []UserInfo `json:"data"`
+	}{true, users})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) > testUpstreamBodyLimit {
+		t.Fatalf("scale fixture has %d bytes, exceeds retained 8 MiB limit", len(raw))
+	}
+	c, body := newBodyLimitTestClient(strings.NewReader(string(raw)), int64(len(raw)), http.StatusOK)
+	got, err := c.Users(context.Background())
+	if err != nil || len(got) != 2000 || got[0].Username != "scale-0000" || got[1999].Username != "scale-1999" {
+		t.Fatalf("scale users count = %d, error = %v", len(got), err)
+	}
+	t.Logf("current scale fixture: %d users, %d response bytes, %d bytes read", len(got), len(raw), body.bytesRead)
+}
+
+func BenchmarkResponseTooLargeReadBound(b *testing.B) {
+	c, body := newBodyLimitTestClient(testWhitespaceReader{}, -1, http.StatusOK)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		body.bytesRead = 0
+		_, err := c.Health(context.Background())
+		if !errors.Is(err, ErrResponseTooLarge) || body.bytesRead != testUpstreamBodyLimit+1 {
+			b.Fatalf("error = %v, read %d bytes", err, body.bytesRead)
+		}
+	}
+	b.ReportMetric(float64(body.bytesRead), "read-B/op")
 }
