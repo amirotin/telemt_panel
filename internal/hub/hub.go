@@ -429,7 +429,7 @@ func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (
 	}
 	var ips map[string]store.UserIPSummary
 	if st != nil {
-		ips, err = store.UserIPSummaryMap(st, time.Now().Unix())
+		ips, err = store.UserIPSummaryMapContext(ctx, st, time.Now().Unix())
 		if err != nil {
 			slog.Warn("hub: IP summaries unavailable")
 		}

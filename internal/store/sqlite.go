@@ -261,7 +261,9 @@ func (s *SQLite) ApplyStoragePoliciesContext(parent context.Context, policies []
 		return err
 	}
 	defer s.liveMu.Unlock()
-	s.userIPMu.Lock()
+	if err := lockHistoryMutex(ctx, &s.userIPMu); err != nil {
+		return err
+	}
 	defer s.userIPMu.Unlock()
 	s.policyMu.Lock()
 	next := policyMap(policies)

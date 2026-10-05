@@ -97,10 +97,20 @@ func (s *Server) buildUserResponse(r *http.Request, u telemt.UserInfo, quota map
 	return resp
 }
 
-func (s *Server) userTrafficOrDegrade() map[string]store.UserTrafficSummary {
-	summaries, err := s.st.UserTrafficSummaries()
+func (s *Server) userTrafficOrDegrade(ctx context.Context) map[string]store.UserTrafficSummary {
+	read, err := s.st.BeginTrafficRead(ctx)
 	if err != nil {
 		slog.Warn("users: traffic summaries", "err", err)
+		return nil
+	}
+	summaries, err := read.Summaries()
+	closeErr := read.Close()
+	if err != nil {
+		slog.Warn("users: traffic summaries", "err", err)
+		return nil
+	}
+	if closeErr != nil {
+		slog.Warn("users: traffic summaries", "err", closeErr)
 		return nil
 	}
 	return summaries
@@ -121,7 +131,7 @@ func (s *Server) quotaListOrDegrade(ctx context.Context) (map[string]telemt.Quot
 
 func (s *Server) loadUserEnrichment(ctx context.Context) (map[string]telemt.QuotaEntry, bool, map[string]store.UserTrafficSummary) {
 	quota, hasQuota := s.quotaListOrDegrade(ctx)
-	return quota, hasQuota, s.userTrafficOrDegrade()
+	return quota, hasQuota, s.userTrafficOrDegrade(ctx)
 }
 
 // handleListUsers implements GET /api/users.
@@ -137,7 +147,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	quota, hasQuota, traffic := s.loadUserEnrichment(ctx)
 
 	out := make([]userResponse, len(users))
-	ips, err := store.UserIPSummaryMap(s.st, time.Now().Unix())
+	ips, err := store.UserIPSummaryMapContext(ctx, s.st, time.Now().Unix())
 	if err != nil {
 		slog.Warn("user IP summaries unavailable")
 	}

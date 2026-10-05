@@ -70,7 +70,9 @@ type UserIPStore interface {
 	ApplyUserIPBatch(UserIPBatch) error
 	UserIPHistory(UserIPQuery) (UserIPPage, error)
 	UserIPSummaries(from, now int64) (map[string]int64, error)
+	UserIPSummariesContext(context.Context, int64, int64) (map[string]int64, error)
 	UserIPCollectionState() (UserIPCollection, error)
+	UserIPCollectionStateContext(context.Context) (UserIPCollection, error)
 	ResetUserIPHistory(username string) error
 	UserIPRetention() time.Duration
 	ReadUserIPSnapshot(context.Context, int64, int64) (UserIPReadSnapshot, error)
@@ -86,8 +88,14 @@ type UserIPSummary struct {
 	Gap     bool  `json:"collection_gap"`
 }
 
+// UserIPSummaryMap retains the context-free compatibility read.
 func UserIPSummaryMap(st HistoryStore, now int64) (map[string]UserIPSummary, error) {
-	c, err := st.UserIPCollectionState()
+	return UserIPSummaryMapContext(context.Background(), st, now)
+}
+
+// UserIPSummaryMapContext reads count and collection metadata under the caller's deadline.
+func UserIPSummaryMapContext(ctx context.Context, st HistoryStore, now int64) (map[string]UserIPSummary, error) {
+	c, err := st.UserIPCollectionStateContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +103,7 @@ func UserIPSummaryMap(st HistoryStore, now int64) (map[string]UserIPSummary, err
 		return nil, nil
 	}
 	from := max(now-30*86400, now-int64(st.UserIPRetention()/time.Second))
-	counts, err := st.UserIPSummaries(from, now)
+	counts, err := st.UserIPSummariesContext(ctx, from, now)
 	if err != nil {
 		return nil, err
 	}
@@ -314,11 +322,23 @@ func (m *Memory) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
 }
 
 func (m *Memory) UserIPSummaries(from, now int64) (map[string]int64, error) {
-	m.mu.Lock()
+	return m.UserIPSummariesContext(context.Background(), from, now)
+}
+
+// UserIPSummariesContext counts retained addresses without outliving the caller.
+func (m *Memory) UserIPSummariesContext(parent context.Context, from, now int64) (map[string]int64, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return nil, err
+	}
 	defer m.mu.Unlock()
 	from = max(from, now-int64(m.UserIPRetention()/time.Second))
 	result := make(map[string]int64)
 	for _, r := range m.userIPs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if r.Last >= from {
 			result[r.Username]++
 		}
@@ -327,7 +347,16 @@ func (m *Memory) UserIPSummaries(from, now int64) (map[string]int64, error) {
 }
 
 func (m *Memory) UserIPCollectionState() (UserIPCollection, error) {
-	m.mu.Lock()
+	return m.UserIPCollectionStateContext(context.Background())
+}
+
+// UserIPCollectionStateContext reads collection metadata without an unbounded lock wait.
+func (m *Memory) UserIPCollectionStateContext(parent context.Context) (UserIPCollection, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
+		return UserIPCollection{}, err
+	}
 	defer m.mu.Unlock()
 	return m.userIPCollection, nil
 }
@@ -365,8 +394,18 @@ func (s *Composite) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
 func (s *Composite) UserIPSummaries(from, now int64) (map[string]int64, error) {
 	return s.history.UserIPSummaries(from, now)
 }
+
+// UserIPSummariesContext delegates a bounded count read to history.
+func (s *Composite) UserIPSummariesContext(ctx context.Context, from, now int64) (map[string]int64, error) {
+	return s.history.UserIPSummariesContext(ctx, from, now)
+}
 func (s *Composite) UserIPCollectionState() (UserIPCollection, error) {
 	return s.history.UserIPCollectionState()
+}
+
+// UserIPCollectionStateContext delegates bounded collection metadata to history.
+func (s *Composite) UserIPCollectionStateContext(ctx context.Context) (UserIPCollection, error) {
+	return s.history.UserIPCollectionStateContext(ctx)
 }
 func (s *Composite) ResetUserIPHistory(username string) error {
 	return s.history.ResetUserIPHistory(username)

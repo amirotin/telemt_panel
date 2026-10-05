@@ -220,9 +220,16 @@ func (s *SQLite) UserIPHistory(q UserIPQuery) (UserIPPage, error) {
 }
 
 func (s *SQLite) UserIPSummaries(from, now int64) (map[string]int64, error) {
+	return s.UserIPSummariesContext(context.Background(), from, now)
+}
+
+// UserIPSummariesContext keeps address aggregation in SQL under the caller's deadline.
+func (s *SQLite) UserIPSummariesContext(parent context.Context, from, now int64) (map[string]int64, error) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
 	result := make(map[string]int64)
-	err := s.withUserIPTx(func(tx *sql.Tx) error {
-		rows, err := tx.Query("SELECT username,count(*) FROM user_ip_history WHERE last_ts>=? GROUP BY username", max(from, now-int64(s.UserIPRetention()/time.Second)))
+	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, "SELECT username,count(*) FROM user_ip_history WHERE last_ts>=? GROUP BY username", max(from, now-int64(s.UserIPRetention()/time.Second)))
 		if err != nil {
 			return err
 		}
@@ -241,8 +248,15 @@ func (s *SQLite) UserIPSummaries(from, now int64) (map[string]int64, error) {
 }
 
 func (s *SQLite) UserIPCollectionState() (UserIPCollection, error) {
+	return s.UserIPCollectionStateContext(context.Background())
+}
+
+// UserIPCollectionStateContext reads metadata under the caller's deadline.
+func (s *SQLite) UserIPCollectionStateContext(parent context.Context) (UserIPCollection, error) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
 	var c UserIPCollection
-	err := s.withUserIPTx(func(tx *sql.Tx) error { var err error; c, err = readUserIPCollection(tx); return err })
+	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error { var err error; c, err = readUserIPCollectionContext(ctx, tx); return err })
 	return c, err
 }
 
