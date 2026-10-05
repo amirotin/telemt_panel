@@ -7,8 +7,10 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # revisit when Go removes the documented nojsonv2 compatibility opt-out.
 LITE_GOEXPERIMENT := nojsonv2
 RELEASE_CHECK_SIZE ?= 1
+FULL_SIZE_LIMIT := 33554432
+LITE_SIZE_LIMIT := 16777216
 
-.PHONY: build build-lite test test-race lint release release-size clean mock web dev-frontend dev-backend
+.PHONY: build build-lite test test-race lint release release-binaries release-size clean mock web dev-frontend dev-backend
 
 # Builds the SPA straight into internal/webui/dist (web/vite.config.ts's
 # outDir) — the package's go:embed directive picks it up with no
@@ -81,11 +83,7 @@ lint:
 release:
 	@rm -rf release
 	$(MAKE) web
-	@for path in full/x86_64 full/aarch64 lite/x86_64 lite/aarch64; do mkdir -p "release/.stage/$$path"; done
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/x86_64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/aarch64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
+	$(MAKE) release-binaries
 	@case "$(RELEASE_CHECK_SIZE)" in \
 		1) $(MAKE) release-size ;; \
 		0) $(MAKE) release-size || echo "WARNING: size enforcement deferred for this qualification build" ;; \
@@ -105,9 +103,19 @@ release:
 	@set -eu; cd release; for f in *.tar.gz; do sha256sum "$$f" > "$$f.sha256"; done
 	@echo "Release assets in ./release/"
 
+# CI and release both prepare the frontend before calling this target.
+release-binaries:
+	@test -s internal/webui/dist/index.html && test -d internal/webui/dist/assets || { echo "build frontend first: missing SPA"; exit 1; }
+	@test -n "$$(find internal/webui/dist/assets -name '*.js.gz' -type f -print -quit)" || { echo "build frontend first: missing compressed scripts"; exit 1; }
+	@for path in full/x86_64 full/aarch64 lite/x86_64 lite/aarch64; do mkdir -p "release/.stage/$$path"; done
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/x86_64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/aarch64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
+
 release-size:
 	@set -eu; failed=0; for profile in full lite; do \
-		limit=33554432; if [ "$$profile" = lite ]; then limit=16777216; fi; \
+		limit=$(FULL_SIZE_LIMIT); if [ "$$profile" = lite ]; then limit=$(LITE_SIZE_LIMIT); fi; \
 		for arch in x86_64 aarch64; do \
 			file="release/.stage/$$profile/$$arch/telemt-panel"; \
 			if [ ! -f "$$file" ]; then echo "missing binary: $$file"; failed=1; continue; fi; \

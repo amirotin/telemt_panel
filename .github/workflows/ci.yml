@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -50,6 +52,11 @@ jobs:
         working-directory: web
         # The build script already runs tsc --noEmit before Vite.
         run: npm run build
+
+      - name: Check generated catalog and size tooling
+        run: |
+          node scripts/compress-telemt-catalog.mjs --check
+          node --test scripts/report-binary-size.test.mjs scripts/compress-telemt-catalog.test.mjs
 
       - name: Check generated SDK drift
         working-directory: web
@@ -80,7 +87,30 @@ jobs:
         run: sh scripts/check-static.sh vuln
 
       - name: Build
-        run: CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.0.0-dev" -o telemt-panel ./cmd/panel
+        run: |
+          make release-binaries VERSION=0.0.0-dev
+          make release-size
+          cp release/.stage/full/x86_64/telemt-panel telemt-panel
+        env:
+          GOFLAGS: -buildvcs=false
+
+      - name: Check linker method elimination
+        run: |
+          node --test scripts/check-size-dce.test.mjs
+          sh scripts/check-static.sh size
+
+      - name: Compare binary sizes with base revision
+        env:
+          SIZE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SIZE_REVISION: ${{ github.sha }}
+          SIZE_BUILD_VERSION: 0.0.0-dev
+        run: |
+          if [ -n "$SIZE_BASE_SHA" ] && git cat-file -e "$SIZE_BASE_SHA^{commit}" 2>/dev/null; then
+            sh scripts/build-size-baseline.sh "$SIZE_BASE_SHA" "$PWD/baseline-sizes.json"
+            node scripts/report-binary-size.mjs release/.stage internal/webui/dist baseline-sizes.json > binary-sizes.json
+          else
+            node scripts/report-binary-size.mjs release/.stage internal/webui/dist > binary-sizes.json
+          fi
 
       - name: Test
         run: make test
@@ -97,6 +127,8 @@ jobs:
           path: |
             deadcode-report.json
             web/knip-report.json
+            binary-sizes.json
+            baseline-sizes.json
           retention-days: 7
 
       - name: Share tested panel binary

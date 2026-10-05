@@ -22,10 +22,14 @@ func TestReleaseSizeGateMeasuresAllTargetsAndRejectsOverflow(t *testing.T) {
 		name       string
 		full, lite int64
 		wantOK     bool
+		missing    string
+		overflow   string
 	}{
-		{"exact-limits", 33554432, 16777216, true},
-		{"lite-overflow", 33554432, 16777217, false},
-		{"both-overflow", 33554433, 16777217, false},
+		{name: "exact-limits", full: 33554432, lite: 16777216, wantOK: true},
+		{name: "lite-overflow", full: 33554432, lite: 16777217},
+		{name: "both-overflow", full: 33554433, lite: 16777217},
+		{name: "missing-arm64", full: 33554432, lite: 16777216, missing: "lite/aarch64"},
+		{name: "one-arch-overflow", full: 33554432, lite: 16777216, overflow: "full/aarch64"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -34,6 +38,9 @@ func TestReleaseSizeGateMeasuresAllTargetsAndRejectsOverflow(t *testing.T) {
 			}
 			for _, profile := range []string{"full", "lite"} {
 				for _, arch := range []string{"x86_64", "aarch64"} {
+					if profile+"/"+arch == scenario.missing {
+						continue
+					}
 					path := filepath.Join(dir, "release", ".stage", profile, arch, "telemt-panel")
 					if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 						t.Fatal(err)
@@ -45,6 +52,9 @@ func TestReleaseSizeGateMeasuresAllTargetsAndRejectsOverflow(t *testing.T) {
 					size := scenario.full
 					if profile == "lite" {
 						size = scenario.lite
+					}
+					if profile+"/"+arch == scenario.overflow {
+						size++
 					}
 					err = file.Truncate(size)
 					closeErr := file.Close()
