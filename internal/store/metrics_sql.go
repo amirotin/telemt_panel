@@ -150,11 +150,7 @@ func (s *SQLite) pruneUserTrafficBatch(now time.Time, limit int) (int, error) {
 				return err
 			}
 		}
-		_, err := tx.Exec(`DELETE FROM user_traffic_users
-			WHERE deleted_ts IS NOT NULL AND deleted_ts < ?
-			  AND NOT EXISTS (SELECT 1 FROM user_traffic_buckets WHERE user_id = user_traffic_users.id)`,
-			now.Add(-retention).Unix())
-		return err
+		return pruneTrafficSummariesTx(tx, now.Unix(), retention)
 	}); err != nil {
 		return 0, fmt.Errorf("prune user traffic batch: %w", err)
 	}

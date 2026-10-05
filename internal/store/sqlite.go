@@ -237,7 +237,9 @@ func (s *SQLite) ApplyStoragePolicies(policies []StoragePolicy) error {
 			delete(s.pendingMetrics, name)
 		}
 	}
-	return nil
+	return s.withOperationTx(func(tx *sql.Tx) error {
+		return pruneTrafficSummariesTx(tx, time.Now().Unix(), retentionDuration(next[StorageUserTraffic]))
+	})
 }
 
 func (s *SQLite) PurgeHistory(category StorageCategory) error {
@@ -265,6 +267,7 @@ func (s *SQLite) PurgeHistory(category StorageCategory) error {
 			if _, err := tx.Exec(`DELETE FROM user_traffic_buckets`); err != nil {
 				return fmt.Errorf("purge user traffic buckets: %w", err)
 			}
+			return pruneTrafficSummariesTx(tx, time.Now().Unix(), retentionDuration(s.policy(StorageUserTraffic)))
 		}
 		return nil
 	})

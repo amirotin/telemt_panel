@@ -33,6 +33,7 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 		return UserTrafficApplyResult{}, err
 	}
 	historyEnabled := s.policy(StorageUserTraffic).Enabled
+	retention := retentionDuration(s.policy(StorageUserTraffic))
 	var result UserTrafficApplyResult
 	err := s.withOperationTx(func(tx *sql.Tx) error {
 		collector, found, err := s.readUserTrafficCollectorTx(tx)
@@ -45,6 +46,9 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 
 		continuity := nextUserTrafficContinuity(collector, found, snapshot)
 
+		if err := pruneTrafficSummariesTx(tx, snapshot.ObservedAt, retention); err != nil {
+			return err
+		}
 		stored, err := s.readUserTrafficUsersTx(tx)
 		if err != nil {
 			return err
@@ -174,7 +178,7 @@ func (s *SQLite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 			continuity = excluded.continuity`, snapshot.ObservedAt, snapshot.SourceStartedAt, sourceState, continuity); err != nil {
 			return fmt.Errorf("update user traffic collector: %w", err)
 		}
-		return nil
+		return pruneTrafficSummariesTx(tx, snapshot.ObservedAt, retention)
 	})
 	if err != nil {
 		return UserTrafficApplyResult{}, fmt.Errorf("apply user traffic snapshot: %w", err)

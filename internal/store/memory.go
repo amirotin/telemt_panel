@@ -684,6 +684,7 @@ func (m *Memory) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 		traffic[username] = current
 	}
 	pruneMemoryUserTrafficBuckets(buckets, snapshot.ObservedAt)
+	pruneMemoryTrafficSummaries(traffic, buckets, snapshot.ObservedAt, min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic])))
 	m.userTraffic = traffic
 	m.userTrafficBuckets = buckets
 	m.userTrafficCollector = UserTrafficCollectorState{
@@ -698,6 +699,19 @@ func (m *Memory) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTra
 
 func (m *Memory) pruneUserTrafficBucketsLocked(now int64) {
 	pruneMemoryUserTrafficBuckets(m.userTrafficBuckets, now)
+	pruneMemoryTrafficSummaries(m.userTraffic, m.userTrafficBuckets, now, min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic])))
+}
+
+func pruneMemoryTrafficSummaries(traffic map[string]memoryUserTraffic, buckets map[memoryUserTrafficBucketKey]int64, now int64, retention time.Duration) {
+	hasBuckets := make(map[string]bool)
+	for key := range buckets {
+		hasBuckets[key.username] = true
+	}
+	for username, current := range traffic {
+		if expiredTrafficSummary(current.summary, hasBuckets[username], now, retention) {
+			delete(traffic, username)
+		}
+	}
 }
 
 func pruneMemoryUserTrafficBuckets(buckets map[memoryUserTrafficBucketKey]int64, now int64) {
@@ -862,6 +876,7 @@ func (m *Memory) ApplyStoragePolicies(policies []StoragePolicy) error {
 		m.userIPEpoch.Add(1)
 	}
 	m.policies = next
+	m.pruneUserTrafficBucketsLocked(time.Now().Unix())
 	return nil
 }
 
@@ -917,6 +932,7 @@ func (m *Memory) PurgeHistory(category StorageCategory) error {
 	}
 	if category == StorageUserTraffic {
 		clear(m.userTrafficBuckets)
+		pruneMemoryTrafficSummaries(m.userTraffic, m.userTrafficBuckets, time.Now().Unix(), min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic])))
 	}
 	return nil
 }

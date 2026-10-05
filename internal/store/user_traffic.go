@@ -73,3 +73,16 @@ func userTrafficSourceState(enabled bool) UserTrafficSourceState {
 	}
 	return UserTrafficPaused
 }
+
+// A deleted summary remains useful while buckets or the profile's retention
+// window survive. Active baselines and lifetime counters never expire here.
+func expiredTrafficSummary(summary UserTrafficSummary, hasBuckets bool, now int64, retention time.Duration) bool {
+	if summary.DeletedEpochSecs == 0 || hasBuckets || retention < 0 {
+		return false
+	}
+	secs := int64(retention / time.Second)
+	if now < math.MinInt64+secs {
+		return false
+	}
+	return summary.DeletedEpochSecs < now-secs
+}
