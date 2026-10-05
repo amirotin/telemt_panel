@@ -14,9 +14,65 @@ import {
   formatterForUnit,
 } from "./formatting";
 import type { FormatterName } from "./formatting";
+import * as diagnosticFormatting from "./formatting";
 
 // A fixed "now" — no test in this repo reads the clock (global constraint).
 const NOW = Date.UTC(2026, 7, 28, 12, 0, 0);
+
+describe("diagnostic formatter contracts", () => {
+  it.each([
+    [ru, 60, "1 мин"], [ru, 3600, "1 ч"], [ru, 86400, "1 д"],
+    [en, 60, "1 min"], [en, 3600, "1 h"], [en, 86400, "1 d"],
+  ])("localizes duration boundaries without changing the input scale", (s, seconds, expected) => {
+    expect(diagnosticFormatting.formatDiagnosticDuration).toBeTypeOf("function");
+    expect(diagnosticFormatting.formatDiagnosticDuration(seconds, s, { inputUnit: "seconds", precision: 0, rounding: "floor" })).toBe(expected);
+    expect(diagnosticFormatting.formatDiagnosticDuration(seconds * 1000, s, { inputUnit: "milliseconds", precision: 0, rounding: "floor" })).toBe(expected);
+  });
+
+  it("keeps RTT in milliseconds and applies its own precision policy", () => {
+    expect(diagnosticFormatting.formatRtt).toBeTypeOf("function");
+    expect(diagnosticFormatting.formatRtt(0.24, en, { precision: "adaptive" })).toBe("0.2 ms");
+    expect(diagnosticFormatting.formatRtt(0.24, ru, { precision: 2 })).toBe("0,24 мс");
+    expect(diagnosticFormatting.formatRtt(1234.5, en, { precision: 0 })).toBe("1,235 ms");
+    expect(diagnosticFormatting.formatRtt(0, ru, { precision: 0 })).toBe("0 мс");
+    for (const value of [null, undefined, Number.NaN]) {
+      expect(diagnosticFormatting.formatRtt(value, en, { precision: "adaptive" })).toBe("—");
+    }
+  });
+
+  it("keeps duration precision and fixed-unit policies explicit", () => {
+    expect(diagnosticFormatting.formatDiagnosticDuration).toBeTypeOf("function");
+    expect(diagnosticFormatting.formatDiagnosticDuration(0, en, { inputUnit: "seconds", minimumUnit: "minutes", precision: 0, rounding: "floor" })).toBe("0 min");
+    expect(diagnosticFormatting.formatDiagnosticDuration(90_500, ru, { inputUnit: "milliseconds", unit: "minutes", precision: 1 })).toBe("1,5 мин");
+    expect(diagnosticFormatting.formatDiagnosticDuration(250, en, { inputUnit: "milliseconds", unit: "seconds", precision: 3 })).toBe("0.25 s");
+    for (const value of [null, undefined, Number.NaN]) {
+      expect(diagnosticFormatting.formatDiagnosticDuration(value, ru, { inputUnit: "milliseconds", precision: 1 })).toBe("—");
+    }
+    expect(diagnosticFormatting.formatCoarseDuration(0, ru)).toBe("1 мин");
+    expect(diagnosticFormatting.formatCoarseDuration(3_600_000, en)).toBe("1 h");
+  });
+
+  it("keeps percentages as percentage points with caller-selected precision", () => {
+    expect(diagnosticFormatting.formatPercent).toBeTypeOf("function");
+    expect(diagnosticFormatting.formatPercent(12.345, en, { precision: 2 })).toBe("12.35 %");
+    expect(diagnosticFormatting.formatPercent(12.345, ru, { precision: 1, space: false })).toBe("12,3%");
+    expect(diagnosticFormatting.formatPercent(0, en, { precision: 0 })).toBe("0 %");
+    for (const value of [null, undefined, Number.NaN]) {
+      expect(diagnosticFormatting.formatPercent(value, en, { precision: 1 })).toBe("—");
+    }
+  });
+
+  it("preserves raw technical booleans while allowing localized presentation", () => {
+    expect(diagnosticFormatting.formatRaw).toBeTypeOf("function");
+    expect(diagnosticFormatting.formatRaw(false, ru, { boolean: "raw" })).toBe("false");
+    expect(diagnosticFormatting.formatRaw(true, en, { boolean: "raw" })).toBe("true");
+    expect(diagnosticFormatting.formatRaw(false, ru, { boolean: "localized" })).toBe("нет");
+    expect(diagnosticFormatting.formatRaw(0, ru, { boolean: "raw" })).toBe("0");
+    for (const value of [null, undefined, Number.NaN, ""]) {
+      expect(diagnosticFormatting.formatRaw(value, ru, { boolean: "raw" })).toBe("—");
+    }
+  });
+});
 
 describe("formatter registry (spec §13)", () => {
   it("covers every mandatory formatter family", () => {
@@ -59,7 +115,7 @@ describe("formatter registry (spec §13)", () => {
     // and the unit, not the glyph between them.
     expect(formatMilliseconds(9838, ru).replace(",", ".")).toBe("9.84 с");
     expect(formatMilliseconds(9838, en)).toBe("9.84 s");
-    expect(formatMilliseconds(864321 * 1000, ru)).toBe("10 дн.");
+    expect(formatMilliseconds(864321 * 1000, ru)).toBe("10 д");
   });
 
   it("accepts both epoch spellings", () => {
@@ -69,7 +125,7 @@ describe("formatter registry (spec §13)", () => {
 
   it("keeps the absolute timestamp reachable from a relative age", () => {
     const value = formatRelativeAge(NOW - 3 * 60 * 60 * 1000, ru, NOW);
-    expect(value.text).toBe("3 ч. назад");
+    expect(value.text).toBe("3 ч назад");
     expect(value.title).toBeTruthy();
     expect(formatRelativeAge(NOW - 5_000, ru, NOW).text).toBe("только что");
     expect(formatRelativeAge(NOW + 120_000, ru, NOW).text).toBe("в будущем");

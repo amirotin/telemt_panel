@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { fill, formatNumber, localeOf, useStrings, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
-import { formatDurationApprox } from "../../people/expiry";
+import { formatCoarseDuration as formatDurationApprox } from "../formatting";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
 import type {

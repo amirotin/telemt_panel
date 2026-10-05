@@ -24,6 +24,7 @@ import {
   type NatMechanismState,
 } from "./nat.helpers";
 import { natSources } from "./sourceDefinitions";
+import { formatRaw as diagnosticRaw } from "../formatting";
 
 type NatTab = "overview" | "servers";
 
@@ -39,10 +40,7 @@ function formatAge(seconds: number | null, s: Dict): string {
 }
 
 function formatRaw(value: unknown, s: Dict): string {
-  if (value === undefined || value === null || value === "") return "—";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number") return formatNumber(s, value);
-  return String(value);
+  return diagnosticRaw(value, s, { boolean: "raw" });
 }
 
 function stateTone(state: NatMechanismState): State {

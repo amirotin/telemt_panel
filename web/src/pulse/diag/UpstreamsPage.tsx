@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { formatNumber, localeOf, useStrings, type Dict } from "../../i18n";
+import { formatNumber, useStrings, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
@@ -11,6 +11,7 @@ import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { DetailHeader } from "./DetailHeader";
 import { upstreamsSources } from "./sourceDefinitions";
 import { connectSuccessPct, upstreamsPagePayload } from "./upstreams.helpers";
+import { formatDiagnosticDuration, formatRtt, formatPercent as diagnosticPercent } from "../formatting";
 
 const HIGH_RTT_MS = 250;
 
@@ -43,23 +44,18 @@ function scopeLabel(scopes: string, s: Dict): string {
 }
 
 function formatMilliseconds(value: number | null | undefined, s: Dict): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  const formatted = new Intl.NumberFormat(localeOf(s), {
-    maximumFractionDigits: value < 10 ? 1 : 0,
-  }).format(value);
-  return `${formatted} ${s.details.pages.upstreams.view.ms}`;
+  return formatRtt(value, s, { precision: "adaptive" });
 }
 
 function formatDurationMs(value: number, s: Dict): string {
   if (value >= 1000 && value % 1000 === 0) {
-    return `${formatNumber(s, value / 1000)} ${s.details.pages.upstreams.view.secondsShort}`;
+    return formatDiagnosticDuration(value, s, { inputUnit: "milliseconds", unit: "seconds", precision: 0 });
   }
   return formatMilliseconds(value, s);
 }
 
 function formatPercent(value: number | null, s: Dict): string {
-  if (value === null || !Number.isFinite(value)) return "—";
-  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: 2 }).format(value)} %`;
+  return diagnosticPercent(value, s, { precision: 2 });
 }
 
 function RouteMark({ route }: { route: UpstreamStatus }) {

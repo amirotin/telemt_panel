@@ -12,9 +12,8 @@
 // is bilingual (D3) and picks its default from the browser's Accept-
 // Language, which the Playwright runner does not fix. Tests default to
 // Russian; bilingual suites can override uiLocale. The run seeds the same
-// per-device localStorage key the language switch writes — before any
-// document script runs, via addInitScript — instead of making the specs
-// locale-agnostic or installing competing initialization scripts.
+// per-device localStorage key before document scripts run. Subsequent full
+// navigations preserve a language the user selected during the test.
 import { test as base, expect } from "@playwright/test";
 import { ADMIN_PASSWORD, ADMIN_USERNAME } from "./env";
 import type {Page} from "@playwright/test";
@@ -26,7 +25,7 @@ export const test = base.extend<{ login: () => Promise<void>; uiLocale: "ru" | "
   page: async ({ page, uiLocale }, use) => {
     await page.addInitScript(({ key, locale }) => {
       try {
-        localStorage.setItem(key, locale);
+        if (localStorage.getItem(key) === null) localStorage.setItem(key, locale);
       } catch {
         // Storage disabled — the assertions will report the mismatch.
       }

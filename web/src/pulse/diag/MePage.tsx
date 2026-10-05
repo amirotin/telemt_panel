@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { formatNumber, localeOf, useStrings, type Dict } from "../../i18n";
+import { fill, formatNumber, useStrings, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
@@ -26,6 +26,7 @@ import { mePagePayload, meRouteMode, type MeRouteMode } from "./me.helpers";
 import { meSources } from "./sourceDefinitions";
 import {MeSourceNotice} from '../MeSourceNotice';
 import {meAvailability,meAvailabilityText} from '../meAvailability';
+import { formatDiagnosticDuration, formatRtt as diagnosticRtt, formatPercent as diagnosticPercent, formatRaw as diagnosticRaw } from "../formatting";
 
 type MeTab = "overview" | "writers" | "quality" | "initialization" | "runtime";
 type WriterFilter = "all" | "active" | "degraded" | "draining";
@@ -45,42 +46,24 @@ interface DcPairPoint {
 }
 
 function formatRtt(value: number | null | undefined, s: Dict): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} ${s.details.pages.me.view.ms}`;
+  return diagnosticRtt(value, s, { precision: "adaptive" });
 }
 
 function formatPercent(value: number | null | undefined, s: Dict): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: 1 }).format(value)}%`;
+  return diagnosticPercent(value, s, { precision: 1, space: false });
 }
 
 function formatDurationMs(value: number | null, s: Dict): string {
-  if (value === null || !Number.isFinite(value)) return "—";
-  if (value >= 60_000) {
-    return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: 1 }).format(value / 60_000)} min`;
-  }
-  if (value >= 1_000) {
-    return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: 1 }).format(value / 1_000)} ${s.details.pages.me.view.secondsShort}`;
-  }
-  return `${formatNumber(s, value)} ${s.details.pages.me.view.ms}`;
+  return formatDiagnosticDuration(value, s, { inputUnit: "milliseconds", unit: value !== null && value >= 60_000 ? "minutes" : value !== null && value >= 1000 ? "seconds" : "milliseconds", precision: value !== null && value >= 1000 ? 1 : 3 });
 }
 
 function formatAge(seconds: number | null, s: Dict): string {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "—";
-  if (seconds < 60)
-    return `${formatNumber(s, Math.round(seconds))} ${s.details.pages.me.view.secondsShort}`;
-  if (seconds < 3_600) return `${formatNumber(s, Math.floor(seconds / 60))} min`;
-  if (seconds < 86_400) return `${formatNumber(s, Math.floor(seconds / 3_600))} h`;
-  return `${formatNumber(s, Math.floor(seconds / 86_400))} d`;
+  return formatDiagnosticDuration(seconds, s, { inputUnit: "seconds", minimumUnit: "seconds", precision: 0, rounding: seconds < 60 ? "round" : "floor" });
 }
 
 function formatRaw(value: unknown, s: Dict): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean")
-    return value ? s.details.pages.me.view.yes : s.details.pages.me.view.no;
-  if (typeof value === "number") return formatNumber(s, value);
-  if (typeof value === "string") return value;
-  return JSON.stringify(value);
+  return diagnosticRaw(value, s, { boolean: "raw" });
 }
 
 function percentile95(writers: MeWriterStatus[]): number | null {
@@ -98,10 +81,12 @@ function writerState(writer: MeWriterStatus): WriterFilter {
   return "active";
 }
 
-function writerStateLabel(writer: MeWriterStatus): string {
+function writerStateLabel(writer: MeWriterStatus, s: Dict): string {
   const state = writerState(writer);
-  if (state !== "active") return state;
-  return writer.state || "active";
+  const v = s.details.pages.me.view;
+  const labels: Record<string, string> = { active: v.active, degraded: v.degraded, draining: v.draining, ready: v.ready };
+  const status = state !== "active" ? state : writer.state || "active";
+  return labels[status] ?? status;
 }
 
 function stateForWriter(writer: MeWriterStatus): State {
@@ -643,7 +628,7 @@ function WritersPanel({ writers, s }: { writers: MeWriterStatus[]; s: Dict }) {
                 {formatRtt(writer.rtt_ema_ms, s)}
               </span>
               <span className="col-span-2 justify-self-start md:col-span-1">
-                <StatePill state={stateForWriter(writer)}>{writerStateLabel(writer)}</StatePill>
+                <StatePill state={stateForWriter(writer)}>{writerStateLabel(writer, s)}</StatePill>
               </span>
             </summary>
             <dl className="grid border-t border-border bg-surface-2 px-3 py-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -814,7 +799,7 @@ function QualityPanel({
     ],
     [
       v.kdfDrift,
-      kdf ? `${formatNumber(s, kdf.ewma_errors_per_min)} / min` : "—",
+      kdf ? `${formatNumber(s, kdf.ewma_errors_per_min)} ${s.details.value.perMinute}` : "—",
       kdf ? `${v.threshold} ${formatNumber(s, kdf.threshold_errors_per_min)}` : "—",
       kdf && kdf.ewma_errors_per_min > kdf.threshold_errors_per_min ? "warn" : "ok",
     ],
@@ -1000,7 +985,7 @@ function InitializationPanel({
             ],
             [
               v.components,
-              `${formatNumber(s, readyCount)} ready · ${formatNumber(s, skippedCount)} skipped`,
+              fill(v.componentStatesTemplate, { ready: formatNumber(s, readyCount), skipped: formatNumber(s, skippedCount) }),
             ],
             [v.started, formatAge(age, s)],
             [v.completed, formatDurationMs(readyDuration, s)],
@@ -1108,7 +1093,7 @@ function RuntimePanel({
     [
       v.routeMode,
       gates?.route_mode ?? "—",
-      gates?.reroute_active ? "reroute active" : v.ready,
+      gates?.reroute_active ? v.rerouteActive : v.ready,
       gates?.reroute_active ? "warn" : "ok",
     ],
     [
@@ -1135,12 +1120,12 @@ function RuntimePanel({
       pool?.generations.warm_generation
         ? `#${formatNumber(s, pool.generations.warm_generation)}`
         : v.none,
-      pool?.hardswap.pending ? v.hardswapPending : "hardswap idle",
+      pool?.hardswap.pending ? v.hardswapPending : v.hardswapIdle,
     ],
     [
       v.draining,
       pool ? formatNumber(s, pool.writers.draining) : "—",
-      `${pool?.generations.draining_generations.length ?? 0} generations`,
+      fill(v.generationsTemplate, { count: formatNumber(s, pool?.generations.draining_generations.length ?? 0) }),
     ],
     [
       v.refillInflight,
@@ -1153,7 +1138,7 @@ function RuntimePanel({
       "KDF",
       selftest?.kdf.state ?? "—",
       selftest
-        ? `${formatNumber(s, selftest.kdf.ewma_errors_per_min)} / min · ${v.threshold} ${formatNumber(s, selftest.kdf.threshold_errors_per_min)}`
+        ? `${formatNumber(s, selftest.kdf.ewma_errors_per_min)} ${s.details.value.perMinute} · ${v.threshold} ${formatNumber(s, selftest.kdf.threshold_errors_per_min)}`
         : "—",
     ],
     [
@@ -1162,7 +1147,7 @@ function RuntimePanel({
       selftest?.timeskew.max_skew_secs_15m === null ||
       selftest?.timeskew.max_skew_secs_15m === undefined
         ? "—"
-        : `${formatNumber(s, selftest.timeskew.max_skew_secs_15m)} ${v.secondsShort} / 15 min`,
+        : `${formatNumber(s, selftest.timeskew.max_skew_secs_15m)} ${s.details.value.seconds} / 15 ${s.details.value.minutes}`,
     ],
     [v.ipv4, selftest?.ip.v4?.state ?? "—", selftest?.ip.v4?.addr ?? "—"],
     [v.ipv6, selftest?.ip.v6?.state ?? "—", selftest?.ip.v6?.addr ?? "—"],

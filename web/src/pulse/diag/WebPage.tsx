@@ -12,7 +12,6 @@ import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import { useTelemtOperation } from "../../lib/useTelemtOperation";
 import { apiErrorMessage } from "../../people/apiError";
-import { formatDurationApprox } from "../../people/expiry";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
 import type { WebTopic } from "../../realtime/topics";
@@ -47,6 +46,7 @@ import {
 } from "./web.view.helpers";
 import { useWebCloseReport } from "./useWebCloseReport";
 import { WebRejections } from "./WebRejections";
+import { formatDiagnosticDuration, formatCoarseDuration as formatDurationApprox } from "../formatting";
 
 const SESSIONS_PAGE_SIZE = 20;
 const SESSION_REVEAL_SIZE = 8;
@@ -54,7 +54,7 @@ const WEB_STATUS_SOURCE = "/v1/runtime/web/status";
 const PRIMARY_CAPACITY = new Set(["sessions","streams","http","queue","websocket"]);
 
 function formatWebDuration(ms: number, s: Dict): string {
-  return ms < 60_000 ? `${formatNumber(s, ms / 1000)} ${s.details.pages.web.view.secondsUnit}` : formatDurationApprox(ms, s);
+  return formatDiagnosticDuration(ms, s, { inputUnit: "milliseconds", minimumUnit: "seconds", precision: ms < 60_000 ? 3 : 0, rounding: ms < 60_000 ? "round" : "floor" });
 }
 
 function Kicker({ children }: { children: React.ReactNode }) {
@@ -524,13 +524,13 @@ function SessionRow({ row, s, onOpen }: { row: WebSessionRow; s: Dict; onOpen: (
         </div>
         <div>
           <strong className="block text-meta text-text">
-            {formatNumber(s, row.streams)} streams · {formatNumber(s, row.lanes)} lanes
+            {fill(v.sessionLoadTemplate, { streams: formatNumber(s, row.streams), lanes: formatNumber(s, row.lanes) })}
           </strong>
           <span className="mt-1 block text-micro text-text-muted">
             {fill(v.pendingTemplate, { bytes: formatBytes(row.pending_bytes, s) })}
           </span>
           <small className="mt-1 block text-micro text-text-muted">
-            {row.client_class} · {row.automatic ? "auto" : "manual"}
+            {row.client_class} · {row.automatic ? v.automaticMode : v.manualMode}
           </small>
         </div>
         <span className="min-w-0 break-words text-micro text-text-muted">

@@ -22,7 +22,6 @@
 import type { Dict } from "../i18n";
 import { fill, formatNumber, localeOf } from "../i18n";
 import { formatBytes } from "../lib/format";
-import { formatDurationApprox } from "../people/expiry";
 
 export type FieldUnit = "percent" | "milliseconds" | "seconds" | "bytes" | "timestamp";
 
@@ -101,6 +100,67 @@ export interface FormatContext {
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 
+type NumericValue = number | null | undefined;
+type DurationUnit = "milliseconds" | "seconds" | "minutes" | "hours" | "days";
+
+function numeric(value: NumericValue): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/** RTT stays in milliseconds even when its magnitude exceeds a second. */
+export function formatRtt(value: NumericValue, s: Dict, options: { precision: number | "adaptive" }): string {
+  if (!numeric(value)) return "—";
+  const precision = options.precision === "adaptive" ? (value < 10 ? 1 : 0) : options.precision;
+  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: precision }).format(value)} ${s.details.value.ms}`;
+}
+
+/** Percent values are already percentage points; this formatter never rescales them. */
+export function formatPercent(value: NumericValue, s: Dict, options: { precision: number; space?: boolean }): string {
+  if (!numeric(value)) return "—";
+  const number = new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: options.precision }).format(value);
+  return `${number}${options.space === false ? "" : " "}${s.details.value.percentSuffix}`;
+}
+
+/** Duration units and rounding belong to the caller's presentation contract. */
+export function formatDiagnosticDuration(value: NumericValue, s: Dict, options: {
+  inputUnit: "milliseconds" | "seconds";
+  unit?: DurationUnit;
+  minimumUnit?: DurationUnit;
+  precision: number;
+  rounding?: "round" | "floor";
+}): string {
+  if (!numeric(value)) return "—";
+  const ms = options.inputUnit === "seconds" ? value * SECOND_MS : value;
+  const units: Array<[DurationUnit, number, string]> = [
+    ["milliseconds", 1, s.details.value.ms],
+    ["seconds", SECOND_MS, s.details.value.seconds],
+    ["minutes", MINUTE_MS, s.details.value.minutes],
+    ["hours", 60 * MINUTE_MS, s.details.value.hours],
+    ["days", 24 * 60 * MINUTE_MS, s.details.value.days],
+  ];
+  const minimum = units.findIndex(([unit]) => unit === (options.minimumUnit ?? "milliseconds"));
+  const selected = options.unit
+    ? units.find(([unit]) => unit === options.unit)!
+    : units.reduce((current, entry, index) => index <= minimum || Math.abs(ms) >= entry[1] ? entry : current, units[0]!);
+  const amount = ms / selected[1];
+  const rounded = options.rounding === "floor" ? Math.floor(amount) : amount;
+  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: options.precision }).format(rounded)} ${selected[2]}`;
+}
+
+/** Preserve the diagnostic age policy: whole units, with a minimum of one minute. */
+export function formatCoarseDuration(value: NumericValue, s: Dict): string {
+  return numeric(value) ? formatDiagnosticDuration(Math.max(MINUTE_MS, value), s, { inputUnit: "milliseconds", minimumUnit: "minutes", precision: 0, rounding: "floor" }) : "—";
+}
+
+/** Technical booleans retain their API spelling; prose may opt into localized words. */
+export function formatRaw(value: unknown, s: Dict, options: { boolean: "raw" | "localized" }): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return options.boolean === "raw" ? String(value) : value ? s.common.yes : s.common.no;
+  if (typeof value === "number") return Number.isFinite(value) ? formatNumber(s, value) : "—";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value) ?? "—";
+}
+
 // absenceText maps each absence to its own sentence. Four different strings
 // for four different situations is the entire point of §13.1's "unsupported
 // MUST differ from unavailable".
@@ -130,14 +190,11 @@ function formatDecimal(n: number, s: Dict): string {
   return new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: 2 }).format(n);
 }
 
-// formatMilliseconds spans the whole range Telemt reports in ms: a 4 ms DC
-// RTT, a 9838 ms init step, and an uptime of days. formatDurationApprox
-// alone would floor the first two to "1 мин.".
+// The catalog's duration policy keeps integer ms, two fractional seconds,
+// and whole larger units. RTT uses its separate fixed-millisecond contract.
 export function formatMilliseconds(ms: number, s: Dict): string {
   const abs = Math.abs(ms);
-  if (abs < SECOND_MS) return `${formatNumber(s, Math.round(ms))} ${s.details.value.ms}`;
-  if (abs < MINUTE_MS) return `${formatDecimal(ms / SECOND_MS, s)} ${s.details.value.seconds}`;
-  return formatDurationApprox(ms, s);
+  return formatDiagnosticDuration(ms, s, { inputUnit: "milliseconds", precision: abs < SECOND_MS ? 0 : abs < MINUTE_MS ? 2 : 0, rounding: abs >= MINUTE_MS ? "floor" : "round" });
 }
 
 // formatAbsoluteTimestamp — the absolute rendering §13 requires to stay
@@ -165,7 +222,7 @@ export function formatRelativeAge(epochMs: number, s: Dict, nowMs: number): Form
   const delta = nowMs - epochMs;
   if (delta < -CLOCK_SKEW_TOLERANCE_MS) return { text: s.details.value.inFuture, title };
   if (delta < MINUTE_MS) return { text: s.details.value.justNow, title };
-  return { text: fill(s.details.value.agoTemplate, { age: formatDurationApprox(delta, s) }), title };
+  return { text: fill(s.details.value.agoTemplate, { age: formatDiagnosticDuration(delta, s, { inputUnit: "milliseconds", precision: 0, rounding: "floor" }) }), title };
 }
 
 // epochToMs accepts both of the two epoch spellings Telemt uses: seconds

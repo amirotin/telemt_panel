@@ -7,7 +7,7 @@ import { getTelemtZeroOptions } from "../../lib/api/generated/@tanstack/react-qu
 import type { ZeroAllData } from "../../lib/api/generated/types.gen";
 import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
-import { formatDurationApprox } from "../../people/expiry";
+import { formatCoarseDuration as formatDurationApprox } from "../formatting";
 import { useNow } from "../../people/useNow";
 import { formatValue } from "../formatting";
 import { useDetailSources, type DetailSourceInput } from "../sourceState";
@@ -205,7 +205,7 @@ function ActivityPanel({ data, metrics, windowSeconds, restarted }: { data: Zero
       <div className="mt-4 grid gap-3 lg:grid-cols-3">
         <QuietCard kicker="Pool" title={v.writers} hint={v.poolEventsHint} value={metrics.poolEvents === null ? "—" : metrics.poolEvents > 0 ? fill(v.eventsCount, { count: formatNumber(s, metrics.poolEvents) }) : v.noMovement} warn={(metrics.poolEvents ?? 0) > 0} />
         <QuietCard kicker="Desync" title={v.protocol} hint={v.desyncHint} value={signed(s, metrics.desyncEvents)} warn={(metrics.desyncEvents ?? 0) > 0} />
-        <QuietCard kicker="Uptime" title={uptime === null ? "—" : formatDurationApprox(uptime * 1000, s)} hint={v.uptimeBoundary} value={restarted ? v.restarted : v.continuous} />
+        <QuietCard kicker={v.uptime} title={uptime === null ? "—" : formatDurationApprox(uptime * 1000, s)} hint={v.uptimeBoundary} value={restarted ? v.restarted : v.continuous} />
       </div>
     </section>
   );
@@ -238,7 +238,7 @@ function FailurePanel({ data, window, windowSeconds }: { data: ZeroAllData; wind
   const codeRows = breakdownAt(data, "middle_proxy", "handshake_error_codes");
   return (
     <section className="p-4 sm:p-5" data-testid="counters-failures-panel">
-      <SectionHead kicker={v.failureDiagnostics} title={v.newThenAccumulated} meta={uptime === null ? undefined : `Uptime · ${formatDurationApprox(uptime * 1000, s)}`} />
+      <SectionHead kicker={v.failureDiagnostics} title={v.newThenAccumulated} meta={uptime === null ? undefined : `${v.uptime} · ${formatDurationApprox(uptime * 1000, s)}`} />
       <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4">
         <FailureStat label={v.newSignalsWindow} value={metrics.newFailureSignals === null ? "—" : formatNumber(s, metrics.newFailureSignals)} hint={v.crossFamilyNavigation} warn={(metrics.newFailureSignals ?? 0) > 0} />
         <FailureStat label="Bad connections" value={formatNumber(s, bad)} hint={fill(v.lifetimeShare, { value: percent(s, ratio(bad, connections)) })} />

@@ -27,23 +27,18 @@ import { resolveGated } from "../widgets/gated";
 import { DetailHeader } from "./DetailHeader";
 import { usersTrafficTotal } from "./connections.helpers";
 import { connectionsSources } from "./sourceDefinitions";
+import { formatDiagnosticDuration, formatPercent, formatRtt } from "../formatting";
 
 const THIRTY_MINUTES_SECONDS = 30 * 60;
 
 type RankingMode = "current" | "traffic";
 
 function percent(value: number | null, s: Dict, digits = 1): string {
-  if (value === null || !Number.isFinite(value)) return "—";
-  return `${new Intl.NumberFormat(localeOf(s), { maximumFractionDigits: digits }).format(value)} %`;
+  return formatPercent(value, s, { precision: digits });
 }
 
 function formatUptime(seconds: number, s: Dict): string {
-  const days = Math.floor(seconds / 86_400);
-  if (days > 0) return `${formatNumber(s, days)} ${s.details.pages.connections.view.daysShort}`;
-  const hours = Math.floor(seconds / 3_600);
-  if (hours > 0) return `${formatNumber(s, hours)} ${s.details.pages.connections.view.hoursShort}`;
-  const minutes = Math.floor(seconds / 60);
-  return `${formatNumber(s, minutes)} ${s.details.pages.connections.view.minutesShort}`;
+  return formatDiagnosticDuration(seconds, s, { inputUnit: "seconds", minimumUnit: "minutes", precision: 0, rounding: "floor" });
 }
 
 function classLabel(name: string, s: Dict): string {
@@ -455,7 +450,7 @@ export function ConnectionsPage() {
         ["configured_users", formatNumber(s, summary.configured_users)],
         ["uptime_seconds", formatUptime(summary.uptime_seconds, s)],
         ["users_traffic_total", users.data ? formatBytes(usersTrafficTotal(users.data) ?? 0, s) : "—"],
-        ["cache.ttl_ms", live ? `${formatNumber(s, live.cache.ttl_ms)} ms` : "—"],
+        ["cache.ttl_ms", live ? formatRtt(live.cache.ttl_ms, s, { precision: 3 }) : "—"],
         ["cache.served_from_cache", live ? String(live.cache.served_from_cache) : "—"],
         ["cache.stale_cache_used", live ? String(live.cache.stale_cache_used) : "—"],
         ["top.limit", live ? formatNumber(s, live.top.limit) : "—"],

@@ -92,7 +92,7 @@ for (const width of [1440, 768, 390]) {
   });
 }
 
-for (const width of [1440, 768, 390]) {
+for (const width of [1440, 768, 390, 320, 2560]) {
   test(`panel settings keep a single scroll owner and reachable footer at ${width}px`, async ({ page, login }) => {
     await page.setViewportSize({ width, height: 900 });
     await login();
@@ -120,6 +120,18 @@ for (const width of [1440, 768, 390]) {
       : mainBox!.y + mainBox!.height;
     // The last lines must stay above the fixed mobile navigation.
     expect(footer!.y + footer!.height).toBeLessThanOrEqual(visibleBottom + 1);
+    const geography = page.locator(".geo-settings");
+    await expect(geography.getByRole("group", { name: "Положение сервера Telemt" })).toBeAttached();
+    const lastAction = geography.getByRole("button", { name: "Сохранить", exact: true });
+    await lastAction.scrollIntoViewIfNeeded();
+    const actionBox = await lastAction.boundingBox();
+    expect(actionBox).not.toBeNull();
+    expect(actionBox!.y).toBeGreaterThanOrEqual(mainBox!.y);
+    expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(visibleBottom + 1);
+    await geography.getByRole("textbox").first().fill("Release readiness");
+    await lastAction.focus();
+    await expect(lastAction).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight)).toBeLessThanOrEqual(1);
   });
 }
 

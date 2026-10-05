@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ru } from "../../i18n/testing";
+import { en, ru } from "../../i18n/testing";
 import {
   webSessionsAll,
   webStatusRunning,
@@ -35,8 +35,16 @@ describe("WEB redesigned surfaces", () => {
     expect(host.querySelectorAll("[data-web-vital]")).toHaveLength(5);
     expect(host.querySelectorAll("[data-web-capacity]")).toHaveLength(5);
     expect(host.querySelector('[data-web-capacity="sessions"]')?.textContent).toContain("128");
-    expect(host.querySelector('[data-testid="web-flow"]')?.textContent).toContain("Streams");
+    expect(host.querySelector('[data-testid="web-flow"]')?.textContent).toContain("Потоков");
     expect(host.querySelectorAll('[data-testid="web-planes"] > div > div')).toHaveLength(3);
+  });
+
+  it.each([[ru, "HTTP-соединения", "Потоки"], [en, "HTTP connections", "Streams"]])("localizes ordinary capacity labels while preserving WEB readings", (s, http, streams) => {
+    const payload = webPagePayload(webStatusRunning, [webSessionsAll])!;
+    act(() => root.render(<Overview payload={payload} s={s} />));
+    expect(host.querySelector('[data-web-capacity="http"]')?.textContent).toContain(http);
+    expect(host.querySelector('[data-web-capacity="streams"]')?.textContent).toContain(streams);
+    expect(host.querySelector('[data-web-capacity="sessions"]')?.textContent).toContain("128");
   });
 
   it("explains lifetime limit events without marking current capacity as overloaded",()=>{
@@ -153,8 +161,9 @@ describe("WEB redesigned surfaces", () => {
     expect(host.querySelectorAll("[data-web-session]")).toHaveLength(16);
 
     const provisional = [...host.querySelectorAll("button")].find(
-      (button) => button.textContent === "Provisional",
+      (button) => button.textContent === "Подготовка",
     );
+    expect(provisional).toBeDefined();
     act(() => provisional!.click());
     const states = [...host.querySelectorAll("[data-web-session-state]")].map((node) =>
       node.getAttribute("data-web-session-state"),

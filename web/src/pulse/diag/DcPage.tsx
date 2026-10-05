@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatNumber, localeOf, useStrings, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
+import { scrollBehavior } from "../../lib/motion";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
 import type {
@@ -21,6 +22,7 @@ import { dcPagePayload } from "./dc.helpers";
 import { dcSources } from "./sourceDefinitions";
 import {MeSourceNotice} from '../MeSourceNotice';
 import {meAvailability,meAvailabilityText} from '../meAvailability';
+import { formatRtt as diagnosticRtt } from "../formatting";
 
 type PairTone = "ok" | "warn" | "error" | "latency";
 type RouteIssue = "coverage" | "fresh" | "endpoints" | "latency" | null;
@@ -62,8 +64,7 @@ function stateForTone(tone: PairTone): State {
 }
 
 function formatRtt(value: number | null, s: Dict): string {
-  if (value === null || !Number.isFinite(value)) return "—";
-  return `${formatNumber(s, Math.round(value))} ${s.details.pages.dc.view.ms}`;
+  return diagnosticRtt(value, s, { precision: 0 });
 }
 
 function statusLabel(tone: PairTone, s: Dict): string {
@@ -445,7 +446,7 @@ export function DcPage() {
     if (!button || list.scrollWidth <= list.clientWidth) return;
     list.scrollTo({
       left: button.offsetLeft - (list.clientWidth - button.offsetWidth) / 2,
-      behavior: selectedId === null ? "auto" : "smooth",
+      behavior: selectedId === null ? "auto" : scrollBehavior(),
     });
   }, [selected, selectedId]);
 

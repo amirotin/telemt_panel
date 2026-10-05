@@ -22,6 +22,7 @@ import { useTlsFingerprintsQuery } from "../widgets/useTlsFingerprints";
 import { DetailHeader } from "./DetailHeader";
 import { securityPageData } from "./security.helpers";
 import { securitySources } from "./sourceDefinitions";
+import { formatRtt } from "../formatting";
 import {
   duration,
   filterTlsRows,
@@ -677,8 +678,8 @@ function LimitsPanel({ limits }: { limits: EffectiveLimits }) {
   const u = limits.upstream;
   const rows = [
     [v.connectAttempts, formatNumber(s, u.connect_retry_attempts), "connect_retry_attempts"],
-    [v.backoff, `${formatNumber(s, u.connect_retry_backoff_ms)} ms`, "connect_retry_backoff_ms"],
-    [v.totalBudget, `${formatNumber(s, u.connect_budget_ms)} ms`, "connect_budget_ms"],
+    [v.backoff, formatRtt(u.connect_retry_backoff_ms, s, { precision: 3 }), "connect_retry_backoff_ms"],
+    [v.totalBudget, formatRtt(u.connect_budget_ms, s, { precision: 3 }), "connect_budget_ms"],
     [v.unhealthyThreshold, formatNumber(s, u.unhealthy_fail_threshold), "unhealthy_fail_threshold"],
     [
       v.failfastHardErrors,
@@ -693,7 +694,7 @@ function LimitsPanel({ limits }: { limits: EffectiveLimits }) {
     [v.clientAck, duration(s, t.client_ack_secs), "client_ack_secs"],
     [
       v.meRetryTimeout,
-      `${formatNumber(s, t.me_one_retry)} / ${formatNumber(s, t.me_one_timeout_ms)} ms`,
+      `${formatNumber(s, t.me_one_retry)} / ${formatRtt(t.me_one_timeout_ms, s, { precision: 3 })}`,
       "me_one_retry / me_one_timeout_ms",
     ],
   ];
@@ -828,10 +829,10 @@ function TechnicalPanel({
     ["api_read_only", posture ? String(posture.api_read_only) : "—"],
     ["api_auth_header_enabled", posture ? String(posture.api_auth_header_enabled) : "—"],
     ["proxy_protocol_enabled", posture ? String(posture.proxy_protocol_enabled) : "—"],
-    ["TLS ranking limit", tls ? String(tls.limit) : "—"],
-    ["TLS capacity", tls ? String(tls.capacity) : "—"],
+    [v.tlsRankingLimit, tls ? String(tls.limit) : "—"],
+    [v.tlsCapacity, tls ? String(tls.capacity) : "—"],
     [
-      "Telemetry",
+      v.telemetryLabel,
       posture
         ? `core ${posture.telemetry_core_enabled} · user ${posture.telemetry_user_enabled} · ME ${posture.telemetry_me_level}`
         : "—",
