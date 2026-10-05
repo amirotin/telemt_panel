@@ -105,7 +105,7 @@ export function PersonTrafficHistory({ username, traffic }: { username: string; 
 				  ? s.people.trafficHistory.bucketHour
 				  : s.people.trafficHistory.bucket15m}
             </span>
-			{(data.state === "partial" || data.continuity === "partial") && <span className="text-accent">{s.people.trafficHistory.partial}</span>}
+			{(data.state === "partial" || data.continuity === "partial" || data.coverage?.boundary_partial) && <span className="text-accent">{s.people.trafficHistory.partial}</span>}
           </div>
         </>
       )}

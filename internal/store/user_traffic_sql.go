@@ -3,11 +3,11 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"time"
 )
@@ -360,134 +360,35 @@ func (s *SQLite) UserTrafficCollectorState() (UserTrafficCollectorState, error) 
 	return state, nil
 }
 
-// UserTrafficRange returns exact sparse buckets in non-overlapping resolutions.
+// UserTrafficRange returns traffic selected by the shared interval planner.
 func (s *SQLite) UserTrafficRange(username string, fromTS int64) ([]UserTrafficPoint, error) {
-	if !s.policy(StorageUserTraffic).Enabled {
-		return []UserTrafficPoint{}, nil
-	}
-	rows, err := s.query(`SELECT buckets.tier, buckets.ts, buckets.bytes
-		FROM user_traffic_buckets AS buckets
-		JOIN user_traffic_users AS users ON users.id = buckets.user_id
-		WHERE users.username = ? AND buckets.ts >= ?
-		ORDER BY buckets.ts, buckets.tier`, username, fromTS)
+	r, err := s.BeginTrafficRead(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("read user traffic range: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
-	fineFrom, hourFrom := userTrafficTierCutoffs(time.Now())
-	points := make([]UserTrafficPoint, 0)
-	for rows.Next() {
-		var tier int
-		var point UserTrafficPoint
-		if err := rows.Scan(&tier, &point.TS, &point.Bytes); err != nil {
-			return nil, fmt.Errorf("scan user traffic range: %w", err)
-		}
-		switch {
-		case tier == 0 && point.TS >= fineFrom:
-			point.Tier = MetricTierQuarter
-		case tier == 1 && point.TS < fineFrom && point.TS >= hourFrom:
-			point.Tier = MetricTierHour
-		case tier == 2 && point.TS < hourFrom:
-			point.Tier = MetricTierDay
-		default:
-			continue
-		}
-		points = append(points, point)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate user traffic range: %w", err)
-	}
-	sort.Slice(points, func(i, j int) bool { return points[i].TS < points[j].TS })
-	return points, nil
+	defer r.Close()
+	points, _, err := r.Range(username, fromTS, r.AsOf())
+	return points, err
 }
 
 func (s *SQLite) UserTrafficAggregate(fromTS, toTS int64) (int64, []UserTrafficPoint, error) {
-	if !s.policy(StorageUserTraffic).Enabled {
-		return 0, []UserTrafficPoint{}, nil
-	}
-	fineFrom, hourFrom := userTrafficTierCutoffs(time.Now())
-	rows, err := s.query(`SELECT buckets.tier, buckets.ts, sum(buckets.bytes)
-		FROM user_traffic_buckets AS buckets
-		WHERE buckets.ts >= ? AND buckets.ts < ? AND (
-			(buckets.tier = 0 AND buckets.ts >= ?) OR
-			(buckets.tier = 1 AND buckets.ts < ? AND buckets.ts >= ?) OR
-			(buckets.tier = 2 AND buckets.ts < ?)
-		)
-		GROUP BY buckets.tier, buckets.ts ORDER BY buckets.ts`,
-		fromTS, toTS, fineFrom, fineFrom, hourFrom, hourFrom)
+	r, err := s.BeginTrafficRead(context.Background())
 	if err != nil {
-		return 0, nil, fmt.Errorf("read aggregate user traffic: %w", err)
+		return 0, nil, err
 	}
-	defer rows.Close()
-	var total int64
-	points := make([]UserTrafficPoint, 0)
-	for rows.Next() {
-		var tier int
-		var point UserTrafficPoint
-		if err := rows.Scan(&tier, &point.TS, &point.Bytes); err != nil {
-			return 0, nil, fmt.Errorf("scan aggregate user traffic: %w", err)
-		}
-		if point.Bytes > math.MaxInt64-total {
-			return 0, nil, errors.New("aggregate user traffic exceeds int64")
-		}
-		total += point.Bytes
-		point.Tier = userTrafficMetricTier(tier)
-		points = append(points, point)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, nil, fmt.Errorf("iterate aggregate user traffic: %w", err)
-	}
-	return total, points, nil
+	defer r.Close()
+	total, points, _, err := r.Aggregate(fromTS, toTS)
+	return total, points, err
 }
 
 func (s *SQLite) UserTrafficRanking(fromTS, toTS int64, includeDeleted bool, limit int, cursor *UserTrafficRankCursor) ([]UserTrafficRank, error) {
-	if !s.policy(StorageUserTraffic).Enabled || limit <= 0 {
-		return []UserTrafficRank{}, nil
-	}
-	fineFrom, hourFrom := userTrafficTierCutoffs(time.Now())
-	query := `SELECT users.username, sum(buckets.bytes), users.total_bytes,
-		users.month_key, users.month_bytes, users.deleted_ts, users.continuity
-		FROM user_traffic_buckets AS buckets
-		JOIN user_traffic_users AS users ON users.id = buckets.user_id
-		WHERE buckets.ts >= ? AND buckets.ts < ? AND (
-			(buckets.tier = 0 AND buckets.ts >= ?) OR
-			(buckets.tier = 1 AND buckets.ts < ? AND buckets.ts >= ?) OR
-			(buckets.tier = 2 AND buckets.ts < ?)
-		) AND (? OR users.deleted_ts IS NULL)
-		GROUP BY users.id`
-	args := []any{fromTS, toTS, fineFrom, fineFrom, hourFrom, hourFrom, includeDeleted}
-	if cursor != nil {
-		query += ` HAVING sum(buckets.bytes) < ? OR (sum(buckets.bytes) = ? AND users.username > ?)`
-		args = append(args, cursor.Bytes, cursor.Bytes, cursor.Username)
-	}
-	query += ` ORDER BY sum(buckets.bytes) DESC, users.username ASC LIMIT ?`
-	args = append(args, limit)
-	rows, err := s.query(query, args...)
+	r, err := s.BeginTrafficRead(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("read user traffic ranking: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
-	monthKey := utcMonthKey(time.Now().Unix())
-	result := make([]UserTrafficRank, 0, limit)
-	for rows.Next() {
-		var rank UserTrafficRank
-		var storedMonth int
-		var deleted sql.NullInt64
-		if err := rows.Scan(&rank.Username, &rank.Bytes, &rank.ObservedTotal, &storedMonth, &rank.CurrentMonth, &deleted, &rank.Continuity); err != nil {
-			return nil, fmt.Errorf("scan user traffic ranking: %w", err)
-		}
-		if storedMonth != monthKey {
-			rank.CurrentMonth = 0
-		}
-		if deleted.Valid {
-			rank.DeletedEpochSecs = deleted.Int64
-		}
-		result = append(result, rank)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate user traffic ranking: %w", err)
-	}
-	return result, nil
+	defer r.Close()
+	ranks, _, err := r.Ranking(fromTS, toTS, includeDeleted, limit, cursor)
+	return ranks, err
 }
 
 func userTrafficTierCutoffs(now time.Time) (fineFrom, hourFrom int64) {

@@ -20,6 +20,7 @@ function report(range: TrafficSummary["range"], overrides: Partial<TrafficSummar
     range,
     state: "ready",
     requested_from_epoch_secs: now - 7 * 86400,
+    coverage: { as_of_epoch_secs: now, boundary_partial: false, covered_from_epoch_secs: now - 7 * 86400, covered_to_epoch_secs: now },
     total_bytes: 150,
     previous_total_bytes: 100,
     points: [{ ts: now - 900, v: 150, tier: "15m" }],
@@ -69,6 +70,17 @@ afterEach(() => {
 });
 
 describe("TrafficAnalytics", () => {
+  it.each(["current", "previous"] as const)("hides exact comparison for %s boundary loss while preserving the monthly counter", async (period) => {
+    const base = report("7d");
+    const partial = { ...base.coverage, boundary_partial: true };
+    const { view } = await renderAnalytics([
+      report("7d", period === "current" ? { coverage: partial } : { previous_coverage: partial }),
+      report("month", { total_bytes: 500, points: [], coverage: partial }),
+    ]);
+    expect(view.textContent).toContain("500");
+    expect(view.textContent).not.toContain("+50");
+    if (period === "current") expect(view.querySelector('[data-testid="traffic-coverage-partial"]')).not.toBeNull();
+  });
   it("renders compact totals, a sparse chart, collection state, and top users", async () => {
     const { view } = await renderAnalytics();
     expect(view.textContent).toContain("Потребление трафика");

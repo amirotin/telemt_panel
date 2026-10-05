@@ -63,7 +63,7 @@ export function TrafficAnalytics() {
 
 function TrafficReport({ report, monthBytes }: { report: TrafficSummary; monthBytes: number }) {
   const s = useStrings();
-  const now = new Date();
+  const now = new Date(report.coverage.as_of_epoch_secs * 1000);
   const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 1000;
   const todayBytes = report.points.reduce((total, point) => point.ts >= todayStart ? total + point.v : total, 0);
   const historyAvailable = report.state !== "disabled";
@@ -105,6 +105,7 @@ function TrafficReport({ report, monthBytes }: { report: TrafficSummary; monthBy
           <TrafficValue label={s.hub.userTraffic.selected} value={formatBytes(report.total_bytes, s)} />
         </div>
         <TrafficChart points={report.points} from={report.requested_from_epoch_secs} to={report.collection.observed_through_epoch_secs ?? report.requested_from_epoch_secs + 1} />
+        {report.coverage.boundary_partial && <p className="mt-2 text-[10px] leading-relaxed text-warn" data-testid="traffic-coverage-partial">{s.people.trafficHistory.partial}</p>}
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-text-muted">
           <span>{comparisonText(report, s)}</span>
           <span className={cn("font-semibold", sourceTone)}>{sourceText}</span>
@@ -180,7 +181,7 @@ function TrafficChart({ points, from, to }: { points: UserTrafficPoint[]; from: 
 }
 
 function comparisonText(report: TrafficSummary, s: ReturnType<typeof useStrings>): string {
-  if (report.previous_total_bytes === undefined) return s.hub.userTraffic.comparisonUnavailable;
+  if (report.previous_total_bytes === undefined || report.coverage.boundary_partial || report.previous_coverage?.boundary_partial) return s.hub.userTraffic.comparisonUnavailable;
   const difference = report.total_bytes - report.previous_total_bytes;
   const sign = difference > 0 ? "+" : difference < 0 ? "−" : "";
   return `${s.hub.userTraffic.previous}: ${sign}${formatBytes(Math.abs(difference), s)}`;

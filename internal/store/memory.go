@@ -1,16 +1,14 @@
 package store
 
 import (
-	"cmp"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -756,104 +754,35 @@ func (m *Memory) UserTrafficCollectorState() (UserTrafficCollectorState, error) 
 	return m.userTrafficCollector, nil
 }
 
-// UserTrafficRange returns bounded 15-minute process-local buckets.
+// UserTrafficRange returns traffic selected by the shared interval planner.
 func (m *Memory) UserTrafficRange(username string, fromTS int64) ([]UserTrafficPoint, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.policies[StorageUserTraffic].Enabled {
-		return []UserTrafficPoint{}, nil
+	r, err := m.BeginTrafficRead(context.Background())
+	if err != nil {
+		return nil, err
 	}
-	points := make([]UserTrafficPoint, 0)
-	for key, bytes := range m.userTrafficBuckets {
-		if key.username == username && key.ts >= fromTS {
-			points = append(points, UserTrafficPoint{TS: key.ts, Bytes: bytes, Tier: MetricTierQuarter})
-		}
-	}
-	slices.SortFunc(points, func(a, b UserTrafficPoint) int {
-		if a.TS < b.TS {
-			return -1
-		}
-		if a.TS > b.TS {
-			return 1
-		}
-		return 0
-	})
-	return points, nil
+	defer r.Close()
+	points, _, err := r.Range(username, fromTS, r.AsOf())
+	return points, err
 }
 
 func (m *Memory) UserTrafficAggregate(fromTS, toTS int64) (int64, []UserTrafficPoint, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.policies[StorageUserTraffic].Enabled {
-		return 0, []UserTrafficPoint{}, nil
+	r, err := m.BeginTrafficRead(context.Background())
+	if err != nil {
+		return 0, nil, err
 	}
-	byTS := make(map[int64]int64)
-	var total int64
-	for key, bytes := range m.userTrafficBuckets {
-		if key.ts < fromTS || key.ts >= toTS {
-			continue
-		}
-		if bytes > math.MaxInt64-total || bytes > math.MaxInt64-byTS[key.ts] {
-			return 0, nil, errors.New("aggregate user traffic exceeds int64")
-		}
-		total += bytes
-		byTS[key.ts] += bytes
-	}
-	points := make([]UserTrafficPoint, 0, len(byTS))
-	for ts, bytes := range byTS {
-		points = append(points, UserTrafficPoint{TS: ts, Bytes: bytes, Tier: MetricTierQuarter})
-	}
-	slices.SortFunc(points, func(a, b UserTrafficPoint) int { return cmp.Compare(a.TS, b.TS) })
-	return total, points, nil
+	defer r.Close()
+	total, points, _, err := r.Aggregate(fromTS, toTS)
+	return total, points, err
 }
 
 func (m *Memory) UserTrafficRanking(fromTS, toTS int64, includeDeleted bool, limit int, cursor *UserTrafficRankCursor) ([]UserTrafficRank, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.policies[StorageUserTraffic].Enabled || limit <= 0 {
-		return []UserTrafficRank{}, nil
+	r, err := m.BeginTrafficRead(context.Background())
+	if err != nil {
+		return nil, err
 	}
-	period := make(map[string]int64)
-	for key, bytes := range m.userTrafficBuckets {
-		if key.ts < fromTS || key.ts >= toTS {
-			continue
-		}
-		if bytes > math.MaxInt64-period[key.username] {
-			return nil, fmt.Errorf("user %q range traffic exceeds int64", key.username)
-		}
-		period[key.username] += bytes
-	}
-	monthKey := utcMonthKey(time.Now().Unix())
-	ranks := make([]UserTrafficRank, 0, len(period))
-	for username, bytes := range period {
-		current := m.userTraffic[username]
-		if bytes == 0 || (!includeDeleted && current.summary.DeletedEpochSecs != 0) {
-			continue
-		}
-		monthBytes := current.summary.CurrentMonthBytes
-		if current.summary.MonthKey != monthKey {
-			monthBytes = 0
-		}
-		rank := UserTrafficRank{
-			Username: username, Bytes: bytes, ObservedTotal: current.summary.ObservedTotalBytes,
-			CurrentMonth: monthBytes, DeletedEpochSecs: current.summary.DeletedEpochSecs,
-			Continuity: current.summary.Continuity,
-		}
-		if cursor != nil && (rank.Bytes > cursor.Bytes || (rank.Bytes == cursor.Bytes && rank.Username <= cursor.Username)) {
-			continue
-		}
-		ranks = append(ranks, rank)
-	}
-	slices.SortFunc(ranks, func(a, b UserTrafficRank) int {
-		if a.Bytes != b.Bytes {
-			return cmp.Compare(b.Bytes, a.Bytes)
-		}
-		return strings.Compare(a.Username, b.Username)
-	})
-	if len(ranks) > limit {
-		ranks = ranks[:limit]
-	}
-	return ranks, nil
+	defer r.Close()
+	ranks, _, err := r.Ranking(fromTS, toTS, includeDeleted, limit, cursor)
+	return ranks, err
 }
 
 // UserTrafficRetention reports the bounded RAM reach when history is enabled.

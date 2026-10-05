@@ -138,6 +138,7 @@ type userTrafficHistorySeriesView struct {
 	ObservedSince   int64                        `json:"observed_since_epoch_secs,omitempty"`
 	ObservedThrough int64                        `json:"observed_through_epoch_secs,omitempty"`
 	Points          []userTrafficPointView       `json:"points"`
+	Coverage        store.TrafficCoverage        `json:"coverage"`
 }
 
 type trafficCollectionView struct {
@@ -158,6 +159,8 @@ type trafficSummaryView struct {
 	Points             []userTrafficPointView  `json:"points"`
 	TopUsers           []store.UserTrafficRank `json:"top_users"`
 	Collection         trafficCollectionView   `json:"collection"`
+	Coverage           store.TrafficCoverage   `json:"coverage"`
+	PreviousCoverage   *store.TrafficCoverage  `json:"previous_coverage,omitempty"`
 }
 
 type trafficUsersView struct {
@@ -165,6 +168,7 @@ type trafficUsersView struct {
 	Users      []store.UserTrafficRank `json:"users"`
 	NextCursor string                  `json:"next_cursor,omitempty"`
 	Collection trafficCollectionView   `json:"collection"`
+	Coverage   store.TrafficCoverage   `json:"coverage"`
 }
 
 type historyEventsView struct {
@@ -233,26 +237,35 @@ func (s *Server) handleGetUserTrafficHistory(w http.ResponseWriter, r *http.Requ
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown range")
 		return
 	}
-	now := time.Now()
+	snapshot, err := s.st.BeginTrafficRead(r.Context())
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not begin traffic read")
+		return
+	}
+	defer snapshot.Close()
+	now := time.Unix(snapshot.AsOf(), 0)
 	fromTS := now.Add(-window).Unix()
-	points, err := s.st.UserTrafficRange(username, fromTS)
+	points, coverage, err := snapshot.Range(username, fromTS, snapshot.AsOf())
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read user traffic history")
 		return
 	}
 	retentionSecs := int64(s.st.UserTrafficRetention() / time.Second)
-	collector, err := s.st.UserTrafficCollectorState()
+	collector, err := snapshot.CollectorState()
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read traffic collector state")
 		return
 	}
-	summaries, err := s.st.UserTrafficSummaries()
+	summaries, err := snapshot.Summaries()
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read user traffic summary")
 		return
 	}
 	summary := summaries[username]
 	state, availableFrom := userTrafficHistoryState(now.Unix(), fromTS, retentionSecs, summary.ObservedSinceEpochSecs, points)
+	if coverage.BoundaryPartial && retentionSecs > 0 {
+		state = "partial"
+	}
 	sourceState := collector.SourceState
 	if collector.LastSuccessTS == 0 || now.Unix()-collector.LastSuccessTS > int64(historySourceFreshness/time.Second) {
 		sourceState = store.UserTrafficUnavailable
@@ -264,6 +277,10 @@ func (s *Server) handleGetUserTrafficHistory(w http.ResponseWriter, r *http.Requ
 	durability := "volatile"
 	if s.st.Info().Durable {
 		durability = "durable"
+	}
+	if err := snapshot.Close(); err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not close traffic read")
+		return
 	}
 	writeJSON(w, http.StatusOK, userTrafficHistorySeriesView{
 		Metric:          userTrafficMetricLabel(username),
@@ -279,6 +296,7 @@ func (s *Server) handleGetUserTrafficHistory(w http.ResponseWriter, r *http.Requ
 		ObservedSince:   summary.ObservedSinceEpochSecs,
 		ObservedThrough: collector.LastSuccessTS,
 		Points:          toUserTrafficHistoryPoints(points),
+		Coverage:        coverage,
 	})
 }
 
@@ -290,13 +308,21 @@ func (s *Server) handleGetTrafficSummary(w http.ResponseWriter, r *http.Request)
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown range")
 		return
 	}
-	total, points, err := s.st.UserTrafficAggregate(from, to)
+	snapshot, err := s.st.BeginTrafficRead(r.Context())
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not begin traffic read")
+		return
+	}
+	defer snapshot.Close()
+	now = time.Unix(snapshot.AsOf(), 0).UTC()
+	from, to, _ = trafficReportBounds(rangeParam, now)
+	total, points, coverage, err := snapshot.Aggregate(from, to)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not aggregate user traffic")
 		return
 	}
 	if rangeParam == "month" {
-		summaries, summaryErr := s.st.UserTrafficSummaries()
+		summaries, summaryErr := snapshot.Summaries()
 		if summaryErr != nil {
 			auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read user traffic totals")
 			return
@@ -311,30 +337,37 @@ func (s *Server) handleGetTrafficSummary(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	window := to - from
-	previousTotal, _, err := s.st.UserTrafficAggregate(from-window, from)
+	previousTotal, _, previousCoverage, err := snapshot.Aggregate(from-window, from)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not aggregate previous user traffic")
 		return
 	}
-	ranks, err := s.st.UserTrafficRanking(from, to, false, 5, nil)
+	ranks, _, err := snapshot.Ranking(from, to, false, 5, nil)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not rank user traffic")
 		return
 	}
-	collection, err := s.trafficCollection(now)
+	collection, err := s.trafficCollection(now, snapshot)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read traffic collection state")
 		return
 	}
 	state, _ := userTrafficHistoryState(to, from, collection.RetentionSecs, collection.ObservedSince, points)
+	if coverage.BoundaryPartial && collection.RetentionSecs > 0 {
+		state = "partial"
+	}
 	var previous *int64
-	if collection.ObservedSince != 0 && collection.ObservedSince <= from-window && collection.RetentionSecs >= 2*window {
+	if collection.ObservedSince != 0 && collection.ObservedSince <= from-window && collection.RetentionSecs >= 2*window && !coverage.BoundaryPartial && !previousCoverage.BoundaryPartial && collection.Continuity == store.UserTrafficNormal {
 		previous = &previousTotal
+	}
+	if err := snapshot.Close(); err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not close traffic read")
+		return
 	}
 	writeJSON(w, http.StatusOK, trafficSummaryView{
 		Range: rangeParam, State: state, RequestedFrom: from, TotalBytes: total,
 		PreviousTotalBytes: previous, Points: toUserTrafficHistoryPoints(points),
-		TopUsers: ranks, Collection: collection,
+		TopUsers: ranks, Collection: collection, Coverage: coverage, PreviousCoverage: &previousCoverage,
 	})
 }
 
@@ -369,7 +402,15 @@ func (s *Server) handleGetTrafficUsers(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid cursor")
 		return
 	}
-	ranks, err := s.st.UserTrafficRanking(from, to, includeDeleted, limit+1, cursor)
+	snapshot, err := s.st.BeginTrafficRead(r.Context())
+	if err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not begin traffic read")
+		return
+	}
+	defer snapshot.Close()
+	now = time.Unix(snapshot.AsOf(), 0).UTC()
+	from, to, _ = trafficReportBounds(rangeParam, now)
+	ranks, coverage, err := snapshot.Ranking(from, to, includeDeleted, limit+1, cursor)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not rank user traffic")
 		return
@@ -380,13 +421,17 @@ func (s *Server) handleGetTrafficUsers(w http.ResponseWriter, r *http.Request) {
 		nextCursor = encodeUserTrafficCursor(last.Bytes, last.Username)
 		ranks = ranks[:limit]
 	}
-	collection, err := s.trafficCollection(now)
+	collection, err := s.trafficCollection(now, snapshot)
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not read traffic collection state")
 		return
 	}
+	if err := snapshot.Close(); err != nil {
+		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not close traffic read")
+		return
+	}
 	writeJSON(w, http.StatusOK, trafficUsersView{
-		Range: rangeParam, Users: ranks, NextCursor: nextCursor, Collection: collection,
+		Range: rangeParam, Users: ranks, NextCursor: nextCursor, Collection: collection, Coverage: coverage,
 	})
 }
 
@@ -403,12 +448,12 @@ func trafficReportBounds(rangeParam string, now time.Time) (int64, int64, bool) 
 	return now.Add(-window).Unix(), to, true
 }
 
-func (s *Server) trafficCollection(now time.Time) (trafficCollectionView, error) {
-	collector, err := s.st.UserTrafficCollectorState()
+func (s *Server) trafficCollection(now time.Time, snapshot store.TrafficReadSnapshot) (trafficCollectionView, error) {
+	collector, err := snapshot.CollectorState()
 	if err != nil {
 		return trafficCollectionView{}, err
 	}
-	summaries, err := s.st.UserTrafficSummaries()
+	summaries, err := snapshot.Summaries()
 	if err != nil {
 		return trafficCollectionView{}, err
 	}

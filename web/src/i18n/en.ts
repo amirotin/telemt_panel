@@ -3637,6 +3637,8 @@ export const en: Dict = {
     rate_limited: "Too many sign-in attempts. Wait a minute and try again.",
     session_expired: "Your session expired. Sign in again.",
     session_revoke_failed: "The session could not be revoked. You are still signed in; try again.",
+    telemt_response_too_large: "The Telemt response exceeds the 8 MiB limit.",
+    history_timeout: "History did not respond in time. Try again.",
     csrf_rejected: "The request failed a security check — reload the page and try again.",
     internal_error: "Internal panel error. Try again.",
     not_found: "Not found.",

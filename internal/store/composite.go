@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -59,6 +60,7 @@ type HistoryStore interface {
 	UserTrafficAggregate(int64, int64) (int64, []UserTrafficPoint, error)
 	UserTrafficRanking(int64, int64, bool, int, *UserTrafficRankCursor) ([]UserTrafficRank, error)
 	UserTrafficRetention() time.Duration
+	BeginTrafficRead(context.Context) (TrafficReadSnapshot, error)
 	DeleteUserHistory(string) error
 	ResetUserTraffic() error
 	AppendHistoryEvent(HistoryEvent) error
@@ -157,6 +159,10 @@ func (s *Composite) MetricRetention(name string) time.Duration {
 }
 func (s *Composite) ApplyUserTrafficSnapshot(snapshot UserTrafficSnapshot) (UserTrafficApplyResult, error) {
 	return s.history.ApplyUserTrafficSnapshot(snapshot)
+}
+
+func (s *Composite) BeginTrafficRead(ctx context.Context) (TrafficReadSnapshot, error) {
+	return s.history.BeginTrafficRead(ctx)
 }
 func (s *Composite) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
 	return s.history.UserTrafficSummaries()

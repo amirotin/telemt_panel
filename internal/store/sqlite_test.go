@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -267,7 +268,12 @@ func TestSQLiteUserTrafficAggregateSelectsNonOverlappingTiers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	total, points, err := st.UserTrafficAggregate(now.Add(-365*24*time.Hour).Unix(), now.Unix())
+	read, err := st.BeginTrafficRead(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	total, points, _, err := read.Aggregate(now.Add(-365*24*time.Hour).Unix(), read.AsOf())
 	if err != nil {
 		t.Fatal(err)
 	}

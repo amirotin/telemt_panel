@@ -278,6 +278,7 @@ paths:
       operationId: logout
       responses:
         "204": { description: Session revoked server-side; cookie cleared }
+        "500": { description: "session_revoke_failed — durable revoke failed; cookie retained for retry", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { description: Authentication disabled or request rejected, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/auth/methods:
@@ -342,6 +343,7 @@ paths:
       description: Revoke all sessions except the current one.
       responses:
         "204": { description: Revoked }
+        "500": { description: "session_revoke_failed — durable revoke failed", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { description: Authentication disabled or request rejected, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/auth/sessions/{sessionId}:
@@ -352,6 +354,7 @@ paths:
       responses:
         "403": { description: "Authentication disabled, unapproved anonymous host, or cross-site request", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "204": { description: Revoked }
+        "500": { description: "session_revoke_failed — durable revoke failed", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
 
   # WebAuthn: public_key and credential are the standard WebAuthn JSON shapes.
@@ -690,6 +693,7 @@ paths:
         - { $ref: "#/components/parameters/Username" }
         - { name: range, in: query, required: true, schema: { type: string, enum: [24h, 7d, 30d, 1y] } }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "200": { description: User traffic series and collection state, content: { application/json: { schema: { $ref: "#/components/schemas/UserTrafficHistorySeries" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -718,6 +722,7 @@ paths:
       parameters:
         - { name: range, in: query, required: true, schema: { $ref: "#/components/schemas/TrafficRange" } }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "200": { description: Aggregate user traffic report, content: { application/json: { schema: { $ref: "#/components/schemas/TrafficSummary" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -731,6 +736,7 @@ paths:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
         - { name: cursor, in: query, schema: { type: string } }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "200": { description: Ranked user traffic page, content: { application/json: { schema: { $ref: "#/components/schemas/TrafficUsersPage" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -823,6 +829,7 @@ paths:
         "200":
           description: Version, connectivity and capability flags (07-telemt-sdk.md §3)
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtInfo" } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
 
   /api/telemt/config:
     get:
@@ -1261,6 +1268,7 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/StoragePurgeRequest" } } }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "204": { description: History deleted }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -1849,6 +1857,7 @@ paths:
           schema: { type: string }
         - { name: range, in: query, required: true, schema: { type: string, enum: [15m, 30m, 1h, 24h, 7d, 30d, 90d] } }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "200": { description: Series (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistorySeries" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -1867,6 +1876,7 @@ paths:
         - { name: kind, in: query, schema: { type: string } }
         - { name: entity, in: query, schema: { type: string } }
       responses:
+        "504": { $ref: "#/components/responses/HistoryTimeout" }
         "200": { description: Structured events (possibly empty), content: { application/json: { schema: { $ref: "#/components/schemas/HistoryEvents" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -1979,6 +1989,9 @@ components:
     InternalError:
       description: Internal panel error
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    HistoryTimeout:
+      description: history_timeout — history operation exceeded its deadline or was cancelled. A timed out mutation has no confirmed successful result.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     Unauthorized:
       description: No valid session
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -1992,7 +2005,7 @@ components:
       description: Too many requests
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     TelemtUnreachable:
-      description: telemt_unreachable | telemt_auth_failed
+      description: telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     TelemtReadOnly:
       description: Telemt API is in read_only mode
@@ -2229,6 +2242,8 @@ components:
             - invalid_credentials
             - rate_limited
             - session_expired
+            - session_revoke_failed
+            - telemt_response_too_large
             - csrf_rejected
             - auth_disabled
             - quota_reset_busy
@@ -2239,6 +2254,7 @@ components:
             - quota_confirmation_expired
             - quota_operation_unavailable
             - internal_error
+            - history_timeout
             - branding_invalid_title
             - branding_invalid_mode
             - branding_invalid_path
@@ -2298,7 +2314,8 @@ components:
           description: >
             Machine code. Panel codes actually emitted today (grepped from every
             WriteError call site): bad_request, invalid_credentials, rate_limited,
-            session_expired, csrf_rejected, auth_disabled, internal_error, not_found,
+            session_expired, session_revoke_failed, csrf_rejected, auth_disabled, internal_error, not_found,
+            telemt_response_too_large, history_timeout,
             telemt_unreachable, capability_absent, capability_unavailable,
             manual_restart_required, update_locked, sublink_unavailable,
             log_tail_unavailable, log_stream_unavailable, log_source_error,
@@ -3065,6 +3082,16 @@ components:
       type: string
       enum: [normal, partial]
 
+    TrafficCoverage:
+      type: object
+      required: [as_of_epoch_secs, boundary_partial, covered_from_epoch_secs, covered_to_epoch_secs]
+      description: Available bucket boundary resolution; collector continuity is reported separately. Bounds do not guarantee continuous observations inside the interval.
+      properties:
+        as_of_epoch_secs: { type: integer, format: int64 }
+        boundary_partial: { type: boolean }
+        covered_from_epoch_secs: { type: [integer, "null"], format: int64 }
+        covered_to_epoch_secs: { type: [integer, "null"], format: int64 }
+
     TrafficCollection:
       type: object
       required: [source_state, continuity, durability, retention_secs]
@@ -3097,7 +3124,7 @@ components:
 
     UserTrafficHistorySeries:
       type: object
-      required: [metric, range, state, requested_from_epoch_secs, retention_secs, source_state, continuity, durability, points]
+      required: [metric, range, state, requested_from_epoch_secs, retention_secs, source_state, continuity, durability, points, coverage]
       properties:
         metric: { type: string }
         range: { type: string, enum: [24h, 7d, 30d, 1y] }
@@ -3112,28 +3139,36 @@ components:
         observed_since_epoch_secs: { type: integer, format: int64 }
         observed_through_epoch_secs: { type: integer, format: int64 }
         points: { type: array, items: { $ref: "#/components/schemas/UserTrafficPoint" } }
+        coverage: { $ref: "#/components/schemas/TrafficCoverage" }
 
     TrafficSummary:
       type: object
-      required: [range, state, requested_from_epoch_secs, total_bytes, points, top_users, collection]
+      required: [range, state, requested_from_epoch_secs, total_bytes, points, top_users, collection, coverage]
       properties:
         range: { $ref: "#/components/schemas/TrafficRange" }
         state: { type: string, enum: [ready, disabled, empty, partial] }
         requested_from_epoch_secs: { type: integer, format: int64 }
-        total_bytes: { type: integer, format: int64, minimum: 0 }
+        total_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Selected bucket total; for month, the separate accumulated current-month counter is returned even when graph coverage is partial.
         previous_total_bytes: { type: integer, format: int64, minimum: 0 }
+        previous_coverage: { $ref: "#/components/schemas/TrafficCoverage" }
         points: { type: array, items: { $ref: "#/components/schemas/UserTrafficPoint" } }
         top_users: { type: array, maxItems: 5, items: { $ref: "#/components/schemas/UserTrafficRank" } }
         collection: { $ref: "#/components/schemas/TrafficCollection" }
+        coverage: { $ref: "#/components/schemas/TrafficCoverage" }
 
     TrafficUsersPage:
       type: object
-      required: [range, users, collection]
+      required: [range, users, collection, coverage]
       properties:
         range: { $ref: "#/components/schemas/TrafficRange" }
         users: { type: array, items: { $ref: "#/components/schemas/UserTrafficRank" } }
         next_cursor: { type: string }
         collection: { $ref: "#/components/schemas/TrafficCollection" }
+        coverage: { $ref: "#/components/schemas/TrafficCoverage" }
 
     HistorySeries:
       type: object
