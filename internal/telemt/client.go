@@ -87,14 +87,16 @@ func newClient(baseURL, authHeader string, now func() time.Time) *Client {
 // envelope is Telemt's native success wrapper; revision is present on every
 // successful response (hash of the canonical config manifest).
 type envelope struct {
-	OK       bool            `json:"ok"`
-	Data     json.RawMessage `json:"data"`
-	Revision string          `json:"revision"`
-	Error    *struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-	RequestID uint64 `json:"request_id"`
+	OK        bool            `json:"ok"`
+	Data      json.RawMessage `json:"data"`
+	Revision  string          `json:"revision"`
+	Error     *responseError  `json:"error"`
+	RequestID uint64          `json:"request_id"`
+}
+
+type responseError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // call performs a request and returns the raw data payload plus revision.
@@ -119,18 +121,27 @@ func (c *Client) callRevision(ctx context.Context, method, path string, body any
 // indistinguishable from "here is the session" by payload alone — the status
 // is the only discriminator (see WebSession).
 func (c *Client) callStatus(ctx context.Context, method, path string, body any, revision string) (json.RawMessage, int, string, error) {
+	raw, status, err := c.requestStatus(ctx, method, path, body, revision)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	return decodeEnvelope(raw, status)
+}
+
+// requestStatus preserves the shared response cap before any typed decoding.
+func (c *Client) requestStatus(ctx context.Context, method, path string, body any, revision string) ([]byte, int, error) {
 	var reqBody io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
 		if err != nil {
-			return nil, 0, "", fmt.Errorf("telemt: marshal request: %w", err)
+			return nil, 0, fmt.Errorf("telemt: marshal request: %w", err)
 		}
 		reqBody = bytes.NewReader(buf)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
 	if err != nil {
-		return nil, 0, "", err
+		return nil, 0, err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -144,21 +155,24 @@ func (c *Client) callStatus(ctx context.Context, method, path string, body any, 
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("telemt: %w", err)
+		return nil, 0, fmt.Errorf("telemt: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.ContentLength > maxResponseBytes {
-		return nil, 0, "", ErrResponseTooLarge
+		return nil, 0, ErrResponseTooLarge
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if len(raw) > maxResponseBytes {
-		return nil, 0, "", ErrResponseTooLarge
+		return nil, 0, ErrResponseTooLarge
 	}
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("telemt: read response: %w", err)
+		return nil, 0, fmt.Errorf("telemt: read response: %w", err)
 	}
+	return raw, resp.StatusCode, nil
+}
 
+func decodeEnvelope(raw []byte, status int) (json.RawMessage, int, string, error) {
 	var env envelope
 	jsonErr := json.Unmarshal(raw, &env)
 	switch {
@@ -168,15 +182,15 @@ func (c *Client) callStatus(ctx context.Context, method, path string, body any, 
 	// HealthReadyData's own fields, not an HTTP-level failure (verified
 	// against mod.rs's /v1/health/ready handler, 3.5.2 sources).
 	case jsonErr == nil && env.OK:
-		return env.Data, resp.StatusCode, env.Revision, nil
+		return env.Data, status, env.Revision, nil
 	case jsonErr == nil && env.Error != nil:
-		return nil, resp.StatusCode, "", &APIError{Status: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID}
-	case resp.StatusCode < 200 || resp.StatusCode >= 300:
-		return nil, resp.StatusCode, "", &APIError{Status: resp.StatusCode, Code: "http_error", Message: http.StatusText(resp.StatusCode)}
+		return nil, status, "", &APIError{Status: status, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID}
+	case status < 200 || status >= 300:
+		return nil, status, "", &APIError{Status: status, Code: "http_error", Message: http.StatusText(status)}
 	default:
 		// Legacy builds return some payloads flat, without the envelope
 		// (2xx, valid or invalid JSON for the envelope shape either way).
-		return raw, resp.StatusCode, "", nil
+		return raw, status, "", nil
 	}
 }
 
@@ -275,12 +289,65 @@ func (c *Client) SystemInfo(ctx context.Context) (SystemInfoData, error) {
 
 // Users calls GET /v1/users.
 func (c *Client) Users(ctx context.Context) ([]UserInfo, error) {
-	return get[[]UserInfo](ctx, c, "/v1/users")
+	users, _, err := c.usersWithRevision(ctx)
+	return users, err
 }
 
 // UsersWithRevision binds an explicit bulk operation to the displayed config.
 func (c *Client) UsersWithRevision(ctx context.Context) ([]UserInfo, string, error) {
-	return getRevision[[]UserInfo](ctx, c, "/v1/users")
+	return c.usersWithRevision(ctx)
+}
+
+// usersWithRevision decodes the large success payload in the envelope pass.
+// Error and legacy forms retain the shared decoder, without another request.
+func (c *Client) usersWithRevision(ctx context.Context) ([]UserInfo, string, error) {
+	raw, status, err := c.requestStatus(ctx, http.MethodGet, "/v1/users", nil, "")
+	if err != nil {
+		return nil, "", err
+	}
+	var success struct {
+		OK        bool           `json:"ok"`
+		Data      []UserInfo     `json:"data"`
+		Revision  string         `json:"revision"`
+		Error     *responseError `json:"error"`
+		RequestID uint64         `json:"request_id"`
+	}
+	if err := json.Unmarshal(raw, &success); err == nil && success.OK && success.Data != nil {
+		normalizeUsers(&success.Data)
+		return success.Data, success.Revision, nil
+	}
+	data, _, revision, err := decodeEnvelope(raw, status)
+	if err != nil {
+		return nil, "", err
+	}
+	var users []UserInfo
+	if err := json.Unmarshal(data, &users); err != nil {
+		return users, "", fmt.Errorf("telemt: decode /v1/users: %w", err)
+	}
+	normalizeUsers(&users)
+	return users, revision, nil
+}
+
+// normalizeUsers specializes the common large list's shared array contract.
+// Its parity test catches future UserInfo slices that need to join this path.
+func normalizeUsers(users *[]UserInfo) {
+	*users = nonNilSlice(*users)
+	for i := range *users {
+		user := &(*users)[i]
+		user.ActiveIPList = nonNilSlice(user.ActiveIPList)
+		user.RecentIPList = nonNilSlice(user.RecentIPList)
+		user.Links.Classic = nonNilSlice(user.Links.Classic)
+		user.Links.Secure = nonNilSlice(user.Links.Secure)
+		user.Links.TLS = nonNilSlice(user.Links.TLS)
+		user.Links.TLSDomains = nonNilSlice(user.Links.TLSDomains)
+	}
+}
+
+func nonNilSlice[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }
 
 // StatsSummary calls GET /v1/stats/summary.

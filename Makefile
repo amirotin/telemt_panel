@@ -2,6 +2,10 @@
 # web/go.mod only isolates frontend dependencies from Go package traversal.
 VERSION ?= 0.0.0-dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
+# Go 1.27's classic encoding/json implementation keeps lite within 16 MiB.
+# Full SQLite requires json/v2. Keep this limited to lite and its CI checks;
+# revisit when Go removes the documented nojsonv2 compatibility opt-out.
+LITE_GOEXPERIMENT := nojsonv2
 
 .PHONY: build build-lite test test-race lint release clean mock web dev-frontend dev-backend
 
@@ -17,7 +21,7 @@ build: web
 	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o telemt-panel ./cmd/panel
 
 build-lite: web
-	CGO_ENABLED=0 go build -tags lite -ldflags="$(LDFLAGS)" -o telemt-panel-lite ./cmd/panel
+	CGO_ENABLED=0 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -tags lite -ldflags="$(LDFLAGS)" -o telemt-panel-lite ./cmd/panel
 
 # Frontend dev server (vite) — proxies /api and /sub to dev-backend below.
 dev-frontend:
@@ -71,15 +75,16 @@ lint:
 # only memory. Both are pure-Go static binaries, so the transitional 1.0
 # gnu/musl tarballs carry identical content for each build profile while
 # preserving the 0.x-updater-compatible names from migration spec 08.
-# Depends on `web` so the frontend is built exactly once, ahead of every
-# per-arch Go build below (they all embed the same internal/webui/dist).
-release: web
-	@rm -rf release/.stage
+# Clear stale output even when the frontend fails, then build it exactly once
+# ahead of every per-arch binary (they all embed the same internal/webui/dist).
+release:
+	@rm -rf release
+	$(MAKE) web
 	@for path in full/x86_64 full/aarch64 lite/x86_64 lite/aarch64; do mkdir -p "release/.stage/$$path"; done
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/x86_64/telemt-panel ./cmd/panel
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/aarch64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
 	@for file in release/.stage/full/*/telemt-panel; do \
 		bytes=$$(wc -c < "$$file"); \
 		if [ "$$bytes" -gt 33554432 ]; then echo "full binary exceeds 32 MiB: $$file ($$bytes bytes)"; exit 1; fi; \

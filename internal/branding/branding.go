@@ -21,7 +21,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 )
 
@@ -187,7 +186,7 @@ func renderIcon(img image.Image, size int) []byte {
 			w = max(1, w*size/h)
 			h = size
 		}
-		draw.ApproxBiLinear.Scale(icon, image.Rect((size-w)/2, (size-h)/2, (size-w)/2+w, (size-h)/2+h), img, bounds, draw.Src, nil)
+		scaleIcon(icon, image.Rect((size-w)/2, (size-h)/2, (size-w)/2+w, (size-h)/2+h), img)
 	}
 	var b bytes.Buffer
 	// Encoding a bounded NRGBA image into a bytes.Buffer cannot fail.
