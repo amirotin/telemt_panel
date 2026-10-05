@@ -11,7 +11,7 @@ SQLite modules and julianday are full-only; the shared SPA, passkeys and geograp
 | --- | --- | --- | --- |
 | Go standard library 1.27 | BSD-3-Clause | full, lite | https://go.dev/src/LICENSE |
 | github.com/BurntSushi/toml@v1.6.0 | MIT | full, lite | https://pkg.go.dev/github.com/BurntSushi/toml@v1.6.0 |
-| github.com/adhocore/gronx@v1.20.3 | MIT | full, lite | https://pkg.go.dev/github.com/adhocore/gronx@v1.20.3 |
+| github.com/adhocore/gronx@v1.20.5 | MIT | full, lite | https://pkg.go.dev/github.com/adhocore/gronx@v1.20.5 |
 | github.com/fxamacker/cbor/v2@v2.9.4 | MIT | full, lite | https://pkg.go.dev/github.com/fxamacker/cbor/v2@v2.9.4 |
 | github.com/go-viper/mapstructure/v2@v2.5.0 | MIT | full, lite | https://pkg.go.dev/github.com/go-viper/mapstructure/v2@v2.5.0 |
 | github.com/go-webauthn/webauthn@v0.18.2 | BSD-3-Clause | full, lite | https://pkg.go.dev/github.com/go-webauthn/webauthn@v0.18.2 |
@@ -145,7 +145,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### github.com/adhocore/gronx@v1.20.3
+### github.com/adhocore/gronx@v1.20.5
 
 LICENSE
 
