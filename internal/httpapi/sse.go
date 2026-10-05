@@ -168,6 +168,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stream, release, ok := s.trackSessionStream(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+
 	ch, snapshots, cancel, err := s.hub.Subscribe(topics)
 	if err != nil {
 		writeUnknownTopicOr500(w, err, "subscribe")
@@ -177,13 +183,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if s.sseAfterSubscribeHook != nil {
 		s.sseAfterSubscribeHook()
 	}
+	if stream.check() != nil {
+		auth.WriteError(w, http.StatusUnauthorized, "session_expired", "no valid session")
+		return
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "streaming unsupported")
 		return
 	}
-	rc := http.NewResponseController(w)
+	rc := stream.rc
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
@@ -201,8 +211,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		if since, err := strconv.ParseUint(lastID, 10, 64); err == nil {
 			if events, ok := s.hub.ReplaySince(since, topics); ok {
 				for _, e := range events {
-					extendSSEWriteDeadline(rc)
-					if err := writeSSEEvent(w, e); err != nil {
+					if err := stream.write(func() error { return writeSSEEvent(w, e) }); err != nil {
 						return
 					}
 					if e.Seq > lastReplayedSeq {
@@ -215,8 +224,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	if !replayed {
 		for _, e := range snapshots {
-			extendSSEWriteDeadline(rc)
-			if err := writeSSEEvent(w, e); err != nil {
+			if err := stream.write(func() error { return writeSSEEvent(w, e) }); err != nil {
 				return
 			}
 		}
@@ -225,11 +233,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	heartbeat := time.NewTicker(s.hub.HeartbeatInterval())
 	defer heartbeat.Stop()
+	sessionCheck := time.NewTicker(sessionStreamCheckInterval)
+	defer sessionCheck.Stop()
 
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-stream.ctx.Done():
 			return
+		case <-sessionCheck.C:
+			if stream.check() != nil {
+				return
+			}
 		case e, open := <-ch:
 			if !open {
 				return
@@ -239,14 +253,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				// lastReplayedSeq's doc comment.
 				continue
 			}
-			extendSSEWriteDeadline(rc)
-			if err := writeSSEEvent(w, e); err != nil {
+			if err := stream.write(func() error { return writeSSEEvent(w, e) }); err != nil {
 				return
 			}
 			flusher.Flush()
 		case <-heartbeat.C:
-			extendSSEWriteDeadline(rc)
-			if _, err := fmt.Fprint(w, sseHeartbeatFrame); err != nil {
+			if err := stream.write(func() error { _, err := fmt.Fprint(w, sseHeartbeatFrame); return err }); err != nil {
 				return
 			}
 			flusher.Flush()

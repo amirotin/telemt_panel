@@ -44,6 +44,7 @@ type Server struct {
 	st             store.Store
 	hub            *hub.Hub
 	limiter        *auth.Limiter
+	sessions       *auth.SessionGuard
 	subSvc         *subpage.Service
 	subIndex       *subpage.Index
 	subLimiter     *subpage.RateLimiter
@@ -218,6 +219,7 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		st:                  st,
 		hub:                 hb,
 		limiter:             auth.NewLimiter(),
+		sessions:            auth.NewSessionGuard(st, func() time.Duration { return cfg.Auth.SessionTTLDuration() }, time.Now),
 		subSvc:              subpage.NewService(cfg.Subpage.Secret, cfg.Subpage.BasePath, st),
 		subIndex:            subpage.NewIndex(cfg.Subpage.Secret, tc, st),
 		subLimiter:          subpage.NewRateLimiter(),
@@ -341,7 +343,7 @@ func (s *Server) Handler() http.Handler {
 	// its own checks) and /sub/* (no cookie, no mutations, out of scope
 	// here).
 	protect := func(h http.HandlerFunc) http.Handler {
-		return chain(h, auth.CSRF(s.cfg), auth.RequireSession(s.st, s.cfg))
+		return chain(h, auth.CSRF(s.cfg), auth.RequireSession(s.st, s.cfg, s.sessions))
 	}
 	// Disabled authentication has no sessions or credential-management API.
 	// Keep these routes explicit; normal panel APIs still retain CSRF checks.
@@ -625,6 +627,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer s.subLimiter.Stop()
 	defer s.hub.Close()
 	defer s.logStreams.Close()
+	defer s.sessions.Close()
 	defer s.tlsManager.Close()
 	defer s.subTLSManager.Close()
 	defer s.quotaResets.Close()
@@ -676,6 +679,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// client disconnects, so it needs its own shutdown hook to end
 	// promptly rather than stall Shutdown.
 	srv.RegisterOnShutdown(s.logStreams.Close)
+	srv.RegisterOnShutdown(s.sessions.Close)
 
 	srv.RegisterOnShutdown(func() {
 		if s.updateEngine.HasActiveRun() {

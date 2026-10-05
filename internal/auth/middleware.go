@@ -11,14 +11,6 @@ import (
 	"github.com/amirotin/telemt_panel/internal/store"
 )
 
-// cookieRefreshFraction controls how often RequireSession re-issues the
-// session cookie: whenever the cookie's remaining lifetime has decayed by
-// more than 1/60th of the TTL since it was last (re)written. This keeps
-// the cookie's client-side MaxAge from expiring long before the
-// server-side sliding TTL would, without rewriting Set-Cookie on every
-// single request.
-const cookieRefreshFraction = 60
-
 // SessionExpired reports whether a session last seen age ago has exceeded
 // ttl — the one expiry rule RequireSession and the sessions list
 // (httpapi's handleListSessions) both apply, factored here so the two
@@ -29,13 +21,16 @@ func SessionExpired(age, ttl time.Duration) bool {
 
 // RequireSession returns middleware that rejects requests without a valid,
 // unexpired session. On success it slides the session's TTL (Touch),
-// re-issues the session cookie with a fresh MaxAge once its remaining
-// lifetime has meaningfully decayed (see cookieRefreshFraction) — without
+// re-issues the session cookie with a fresh MaxAge on each request — without
 // this, the browser would stop sending the cookie after the MaxAge set at
 // login regardless of how active the admin was — and makes the admin's
 // username and the session's store key available via UsernameFromContext /
 // SessionIDHashFromContext.
-func RequireSession(st store.StateStore, cfg *config.Config) func(http.Handler) http.Handler {
+func RequireSession(st store.StateStore, cfg *config.Config, guards ...*SessionGuard) func(http.Handler) http.Handler {
+	guard := NewSessionGuard(st, func() time.Duration { return cfg.Auth.SessionTTLDuration() }, time.Now)
+	if len(guards) > 0 {
+		guard = guards[0]
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if cfg.Auth.Disabled {
@@ -54,24 +49,14 @@ func RequireSession(st store.StateStore, cfg *config.Config) func(http.Handler) 
 			}
 
 			idHash := HashToken(cookie.Value)
-			sess, ok, err := st.GetSession(idHash)
-			if err != nil || !ok {
+			if err := guard.Check(idHash); err != nil {
 				writeSessionExpired(w)
 				return
 			}
 
 			now := time.Now()
-			ttl := cfg.Auth.SessionTTLDuration()
-			age := now.Sub(sess.LastSeen)
-			if SessionExpired(age, ttl) {
-				_ = st.DeleteSession(idHash)
-				writeSessionExpired(w)
-				return
-			}
 			_ = st.TouchSession(idHash, now)
-			if age > ttl/cookieRefreshFraction {
-				SetSessionCookie(w, r, cfg, cookie.Value)
-			}
+			SetSessionCookie(w, r, cfg, cookie.Value)
 
 			ctx := context.WithValue(r.Context(), ctxUsername, cfg.Auth.Username)
 			ctx = context.WithValue(ctx, ctxSessionIDHash, idHash)

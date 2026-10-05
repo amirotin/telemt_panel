@@ -157,7 +157,12 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(r.Context())
+	stream, release, allowed := s.trackSessionStream(w, r)
+	if !allowed {
+		return
+	}
+	defer release()
+	ctx, cancel := context.WithCancel(stream.ctx)
 	defer cancel()
 	deregister := s.logStreams.register(cancel)
 	defer deregister()
@@ -169,7 +174,7 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "streaming unsupported")
 		return
 	}
-	rc := http.NewResponseController(w)
+	rc := stream.rc
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
@@ -178,8 +183,7 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 	if err != nil {
 		if ctx.Err() == nil {
-			extendSSEWriteDeadline(rc)
-			if writeLogSourceErrorEvent(w, s.logSourceDiagnostic(err, logical, name)) == nil {
+			if stream.write(func() error { return writeLogSourceErrorEvent(w, s.logSourceDiagnostic(err, logical, name)) }) == nil {
 				flusher.Flush()
 			}
 		}
@@ -188,38 +192,41 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 
 	heartbeat := time.NewTicker(s.logStreamHeartbeat)
 	defer heartbeat.Stop()
+	sessionCheck := time.NewTicker(sessionStreamCheckInterval)
+	defer sessionCheck.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-sessionCheck.C:
+			if stream.check() != nil {
+				return
+			}
 		case line, open := <-ch:
 			if !open {
 				if ctx.Err() == nil {
-					extendSSEWriteDeadline(rc)
-					if _, err := fmt.Fprint(w, "event: log_end\ndata: {}\n\n"); err == nil {
+					if err := stream.write(func() error { _, err := fmt.Fprint(w, "event: log_end\ndata: {}\n\n"); return err }); err == nil {
 						flusher.Flush()
 					}
 				}
 				return
 			}
-			extendSSEWriteDeadline(rc)
 			if line.Err != nil {
-				if ctx.Err() == nil && writeLogSourceErrorEvent(w, s.logSourceDiagnostic(line.Err, logical, name)) == nil {
+				if ctx.Err() == nil && stream.write(func() error { return writeLogSourceErrorEvent(w, s.logSourceDiagnostic(line.Err, logical, name)) }) == nil {
 					flusher.Flush()
 				}
 				return
 			}
-			if err := writeLogSSEEvent(w, line.LogLine, logical); err != nil {
+			if err := stream.write(func() error { return writeLogSSEEvent(w, line.LogLine, logical) }); err != nil {
 				return
 			}
 			flusher.Flush()
 		case <-heartbeat.C:
-			extendSSEWriteDeadline(rc)
 			// Same observable form as handleEvents' heartbeat
 			// (sseHeartbeatFrame, sse.go) — the two SSE endpoints must stay
 			// consistent.
-			if _, err := fmt.Fprint(w, sseHeartbeatFrame); err != nil {
+			if err := stream.write(func() error { _, err := fmt.Fprint(w, sseHeartbeatFrame); return err }); err != nil {
 				return
 			}
 			flusher.Flush()

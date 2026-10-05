@@ -89,8 +89,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // the cookie.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if idHash, ok := auth.SessionIDHashFromContext(r.Context()); ok {
-		if err := s.st.DeleteSession(idHash); err != nil {
+		if err := s.sessions.Revoke(idHash); err != nil {
 			slog.Error("logout: delete session", "err", err)
+			auth.WriteError(w, http.StatusInternalServerError, "session_revoke_failed", "could not revoke session; retry logout")
+			return
 		}
 	}
 	username, _ := auth.UsernameFromContext(r.Context())
@@ -228,7 +230,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	active := make([]store.Session, 0, len(sessions))
 	for _, sess := range sessions {
 		if auth.SessionExpired(now.Sub(sess.LastSeen), ttl) {
-			if err := s.st.DeleteSession(sess.IDHash); err != nil {
+			if err := s.sessions.Revoke(sess.IDHash); err != nil {
 				slog.Error("list sessions: delete expired", "err", err)
 			}
 			continue
@@ -295,9 +297,9 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 // every session except the caller's current one.
 func (s *Server) handleRevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
 	current, _ := auth.SessionIDHashFromContext(r.Context())
-	if err := s.st.DeleteOtherSessions(current); err != nil {
+	if err := s.sessions.RevokeOthers(current); err != nil {
 		slog.Error("revoke other sessions", "err", err)
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not revoke sessions")
+		auth.WriteError(w, http.StatusInternalServerError, "session_revoke_failed", "could not revoke sessions")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -318,9 +320,9 @@ func (s *Server) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.st.DeleteSession(sessionID); err != nil {
+	if err := s.sessions.Revoke(sessionID); err != nil {
 		slog.Error("revoke session: delete", "err", err)
-		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not revoke session")
+		auth.WriteError(w, http.StatusInternalServerError, "session_revoke_failed", "could not revoke session")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -43,7 +43,7 @@ func TestLinkSettingsPersistInLocalState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.st = state
+	replaceTestServerStore(s, state)
 	_, cookie := login(t, s.Handler(), "admin", testPassword)
 	w := doRequest(t, s, cookie, "PUT", "/api/settings/links", nil, []byte(`{"allow_address_override":true}`))
 	if w.Code != 200 {
@@ -57,7 +57,7 @@ func TestLinkSettingsPersistInLocalState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	s.st = reopened
+	replaceTestServerStore(s, reopened)
 	w = doRequest(t, s, cookie, "GET", "/api/settings/links", nil, nil)
 	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"allow_address_override":true}` {
 		t.Fatal(w.Code, w.Body.String())

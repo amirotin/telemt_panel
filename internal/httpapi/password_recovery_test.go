@@ -30,7 +30,7 @@ func TestPasswordRecoveryLoginAndPasskeyRemoval(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	srv.st = state
+	replaceTestServerStore(srv, state)
 	w, oldCookie := login(t, srv.Handler(), "admin", testPassword)
 	if w.Code != http.StatusNoContent || oldCookie == nil {
 		t.Fatalf("initial login: %d", w.Code)
@@ -53,7 +53,7 @@ func TestPasswordRecoveryLoginAndPasskeyRemoval(t *testing.T) {
 	if err := reopened.BindPasswordAuth(srv.cfg.Auth.Username, hash); err != nil {
 		t.Fatal(err)
 	}
-	srv.st = reopened
+	replaceTestServerStore(srv, reopened)
 	handler := srv.Handler()
 	r := httptest.NewRequest("GET", "/api/auth/me", nil)
 	r.AddCookie(oldCookie)

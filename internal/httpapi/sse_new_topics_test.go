@@ -35,9 +35,7 @@ func recvEventOrFail(t *testing.T, ch <-chan hub.Event) hub.Event {
 // "web": subscribing to them together against a telemttest fixture
 // must deliver one snapshot event per topic on connect, each carrying its
 // documented composite fields. Follows TestHandleEventsWritesInitialSnapshot's
-// pre-warm-then-cancel pattern (sse_test.go) — a canceled request context
-// still lets ResponseRecorder capture whatever was written before the
-// handler noticed the cancellation.
+// pre-warm-then-cancel-on-flush pattern (sse_test.go).
 func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 	fake := telemttest.New(telemttest.Scenario{RuntimeEdge: true})
 	t.Cleanup(fake.Close)
@@ -53,10 +51,10 @@ func TestHandleEventsNewTopicsInitialSnapshot(t *testing.T) {
 	r := httptest.NewRequest("GET", "/api/events?topics=runtime,upstreams,security,stats,web", nil)
 	r.AddCookie(cookie)
 	reqCtx, reqCancel := context.WithCancel(r.Context())
-	reqCancel()
+	defer reqCancel()
 	r = r.WithContext(reqCtx)
 
-	w := httptest.NewRecorder()
+	w := &cancelAfterFlushRecorder{httptest.NewRecorder(), reqCancel}
 	srv.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {

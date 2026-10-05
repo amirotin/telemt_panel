@@ -123,8 +123,7 @@ func TestRequireSessionRefreshesCookieWhenStale(t *testing.T) {
 	st := newMemoryStore(t)
 
 	idHash := HashToken("some-token")
-	// Older than ttl/cookieRefreshFraction (1 minute) but well inside ttl,
-	// so the session is valid but its cookie is due for a refresh.
+	// An authorized request refreshes the cookie with the current TTL.
 	past := time.Now().Add(-2 * time.Minute)
 	if err := st.PutSession(store.Session{IDHash: idHash, Created: past, LastSeen: past}); err != nil {
 		t.Fatalf("PutSession: %v", err)
@@ -147,12 +146,12 @@ func TestRequireSessionRefreshesCookieWhenStale(t *testing.T) {
 	}
 }
 
-func TestRequireSessionDoesNotRefreshFreshCookie(t *testing.T) {
+func TestRequireSessionRefreshesEveryAuthorizedRequest(t *testing.T) {
 	cfg := testConfig("", time.Hour)
 	st := newMemoryStore(t)
 
 	idHash := HashToken("some-token")
-	// Well under ttl/cookieRefreshFraction (1 minute) — no refresh needed.
+	// Even frequent requests must keep the browser cookie alive.
 	past := time.Now().Add(-10 * time.Second)
 	if err := st.PutSession(store.Session{IDHash: idHash, Created: past, LastSeen: past}); err != nil {
 		t.Fatalf("PutSession: %v", err)
@@ -163,8 +162,8 @@ func TestRequireSessionDoesNotRefreshFreshCookie(t *testing.T) {
 	w := httptest.NewRecorder()
 	RequireSession(st, cfg)(okHandler()).ServeHTTP(w, r)
 
-	if cookies := w.Result().Cookies(); len(cookies) != 0 {
-		t.Errorf("Set-Cookie = %+v, want none (cookie is still fresh)", cookies)
+	if cookies := w.Result().Cookies(); len(cookies) != 1 || cookies[0].MaxAge != 3600 {
+		t.Errorf("Set-Cookie = %+v, want the current session TTL", cookies)
 	}
 }
 

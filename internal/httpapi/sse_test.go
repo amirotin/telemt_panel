@@ -155,9 +155,18 @@ func TestHandleEventsRequiresSession(t *testing.T) {
 // TestHandleEventsWritesInitialSnapshot exercises the connect-time path
 // only: it warms the hub's cache via a synchronous Snapshot call (no
 // sleeps, no goroutines), then issues the SSE request with an
-// already-canceled context so handleEvents writes the initial snapshot and
-// returns on its very first select — deterministic, and free of the data
-// race a concurrently-streaming ResponseRecorder would have.
+// context canceled by the initial flush so handleEvents writes the initial
+// snapshot before stopping. Pre-canceled requests cannot authorize streams.
+type cancelAfterFlushRecorder struct {
+	*httptest.ResponseRecorder
+	cancel context.CancelFunc
+}
+
+func (w *cancelAfterFlushRecorder) Flush() {
+	w.ResponseRecorder.Flush()
+	w.cancel()
+}
+
 func TestHandleEventsWritesInitialSnapshot(t *testing.T) {
 	tc := newFakeTelemtHTTP(t, []telemt.UserInfo{{Username: "alice"}})
 	srv, cookie := newSSETestServer(t, tc, hub.Config{})
@@ -171,10 +180,10 @@ func TestHandleEventsWritesInitialSnapshot(t *testing.T) {
 	r := httptest.NewRequest("GET", "/api/events?topics=users", nil)
 	r.AddCookie(cookie)
 	reqCtx, reqCancel := context.WithCancel(r.Context())
-	reqCancel()
+	defer reqCancel()
 	r = r.WithContext(reqCtx)
 
-	w := httptest.NewRecorder()
+	w := &cancelAfterFlushRecorder{httptest.NewRecorder(), reqCancel}
 	srv.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
@@ -208,10 +217,10 @@ func TestHandleEventsFallsBackToLatestSnapshotAfterReplayByteEviction(t *testing
 	r.Header.Set("Last-Event-ID", "0")
 	r.AddCookie(cookie)
 	reqCtx, reqCancel := context.WithCancel(r.Context())
-	reqCancel()
+	defer reqCancel()
 	r = r.WithContext(reqCtx)
 
-	w := httptest.NewRecorder()
+	w := &cancelAfterFlushRecorder{httptest.NewRecorder(), reqCancel}
 	srv.Handler().ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {

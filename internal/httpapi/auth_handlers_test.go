@@ -74,10 +74,17 @@ func newTestServer(t *testing.T) *Server {
 	hb := hub.New(hub.Config{}, tc, st)
 	t.Cleanup(hb.Close)
 	srv := New(cfg, tc, st, hb, "test")
+	t.Cleanup(srv.sessions.Close)
 	t.Cleanup(srv.quotaResets.Close)
 	t.Cleanup(srv.limiter.Stop)
 	t.Cleanup(srv.subLimiter.Stop)
 	return srv
+}
+
+func replaceTestServerStore(s *Server, st store.Store) {
+	s.sessions.Close()
+	s.st = st
+	s.sessions = auth.NewSessionGuard(st, func() time.Duration { return s.cfg.Auth.SessionTTLDuration() }, time.Now)
 }
 
 func loginRequestJSON(t *testing.T, username, password string) *bytes.Reader {
