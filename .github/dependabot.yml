@@ -5,3 +5,18 @@ updates:
     target-branch: main
     schedule:
       interval: weekly
+  - package-ecosystem: gomod
+    directory: /tools
+    target-branch: main
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /web
+    target-branch: main
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly

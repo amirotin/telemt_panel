@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches: [ main ]
-    paths-ignore: [ '**/*.md', 'docs/**', 'LICENSE' ]
+    paths-ignore: [ 'docs/**' ]
   pull_request:
     branches: [ main ]
-    paths-ignore: [ '**/*.md', 'docs/**', 'LICENSE' ]
+    paths-ignore: [ 'docs/**' ]
 
 permissions:
   contents: read
@@ -21,10 +21,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22'
           cache: 'npm'
@@ -51,14 +51,33 @@ jobs:
         # The build script already runs tsc --noEmit before Vite.
         run: npm run build
 
+      - name: Check generated SDK drift
+        working-directory: web
+        run: |
+          npm run gen
+          git diff --exit-code -- src/lib/api/generated
+
+      - name: Review unused frontend entries
+        working-directory: web
+        run: npx knip --reporter json --no-exit-code > knip-report.json
+
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           check-latest: true
 
       - name: Lint (gofmt + vet)
         run: make lint
+
+      - name: Staticcheck (full and lite, pinned Go 1.27 tools)
+        run: sh scripts/check-static.sh
+
+      - name: Review unreachable Go code with test entries
+        run: sh scripts/check-static.sh deadcode > deadcode-report.json
+
+      - name: Check reachable Go vulnerabilities
+        run: sh scripts/check-static.sh vuln
 
       - name: Build
         run: CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=0.0.0-dev" -o telemt-panel ./cmd/panel
@@ -68,8 +87,20 @@ jobs:
         env:
           CGO_ENABLED: "0"
 
+      - name: Test lite profile
+        run: CGO_ENABLED=0 GOEXPERIMENT=nojsonv2 go test -tags lite -count=1 ./...
+
+      - name: Share analysis reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: analysis-reports
+          path: |
+            deadcode-report.json
+            web/knip-report.json
+          retention-days: 7
+
       - name: Share tested panel binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tested-panel
           path: telemt-panel
@@ -85,17 +116,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           check-latest: true
@@ -110,7 +141,7 @@ jobs:
       # needs on a bare Ubuntu runner.
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
@@ -120,7 +151,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Download tested panel binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tested-panel
 
@@ -130,13 +161,16 @@ jobs:
 
       - name: Run e2e
         working-directory: web
-        run: npm run e2e
+        run: |
+          mkdir -p "$TMPDIR"
+          npm run e2e
         env:
           CI: "true"
+          TMPDIR: ${{ runner.temp }}/telemt-panel-e2e
 
       - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: |
@@ -152,10 +186,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           check-latest: true
