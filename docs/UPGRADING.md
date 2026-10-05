@@ -68,7 +68,7 @@ Backup остаётся после успеха и после отказа. Ег
 ## Восстановление прав обновления
 
 Самообновление бинарника не меняет старые sudoers. Пока root-оператор не
-установит protected policy и точные helper-команды, 1.x показывает ручной
+установит отдельный stable helper, protected policy v2 и точные helper-команды, 1.x показывает ручной
 режим обновления. Автоматического перехода на legacy `cp/chmod/mv` нет.
 
 Для уже установленной 1.x выполните актуальный installer от root:
@@ -79,10 +79,11 @@ sh install.sh repair-privileges --user telemt-panel
 
 Вместо `telemt-panel` укажите фактическую учётную запись службы. Команда
 показывает policy path, бинарники, staging и выбранную учётную запись;
-останавливает панель, создаёт root-owned policy `0600` в отдельном каталоге
-`0700`, проверяет её через `privileged --policy … inspect`, проверяет sudoers
+останавливает панель, публикует root-owned stable helper `0755`, создаёт
+root-owned policy v2 `0600` в отдельном каталоге `0700`, проверяет её через
+stable helper `privileged --policy … inspect`, проверяет sudoers
 через visudo при его наличии и заменяет файлы атомарно. Конфиг, бинарники и
-unit/init-скрипт сохраняются. При отказе возвращаются предыдущие policy и
+unit/init-скрипт сохраняются. При отказе возвращаются предыдущие helper, policy и
 sudoers; при неудачном restart выполняется такой же откат. `--no-start` оставляет
 панель остановленной после успешной миграции.
 
@@ -91,6 +92,16 @@ Entware: `/opt/etc/telemt-panel-privileged/policy.json`. Поле
 `privileges.policy_path` может выбрать другой root-owned путь, но sudoers
 разрешает только этот точный путь. Каталог runtime-конфига принадлежит
 пользователю панели и не подходит для хранения root-authority policy.
+
+Native stable helper: `/usr/local/libexec/telemt-panel-privileged`; Entware:
+`/opt/libexec/telemt-panel-privileged`. `privileges.helper_path` задаёт тот же
+защищённый путь в runtime-конфиге. Это отдельная копия проверенного panel binary;
+web self-update и обычное binary-only обновление сохраняют её. В policy v2 helper
+не пересекается с replaceable binaries, backup и locks ни путём, ни inode.
+При старой policy v1 нужен explicit repair. Если main binary уже повреждён или
+не поддерживает новую CLI, передайте проверенный текущий binary через
+`--binary /path/to/telemt-panel` для root-operator repair. Release archive остаётся
+с одним бинарником; установленная копия helper требует дополнительного места.
 
 Все пути должны быть абсолютными и каноническими. Например, при `/bin →
 /usr/bin` root-оператор сначала задаёт `telemt_binary_path = "/usr/bin/telemt"`.

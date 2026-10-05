@@ -125,7 +125,7 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 
 	allow := host.AllowLists{
 		TargetBinaries: map[string]string{"panel": cfg.Updates.PanelBinaryPath, "telemt": cfg.Updates.TelemtBinaryPath},
-		HelperPath:     cfg.Updates.PanelBinaryPath,
+		HelperPath:     cfg.Privileges.HelperPath,
 		PolicyPath:     cfg.Privileges.PolicyPath,
 		BinaryPaths: []string{
 			cfg.Updates.TelemtBinaryPath, cfg.Updates.TelemtBinaryPath + ".bak",

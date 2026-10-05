@@ -9,16 +9,18 @@ import (
 )
 
 func TestPrivilegedInspectOnlyReadsAndRejectsRuntimePathMismatch(t *testing.T) {
-	allow := AllowLists{StagingPrefix: "/var/lib/telemt-panel/staging", TargetBinaries: map[string]string{"panel": "/usr/local/bin/telemt-panel", "telemt": "/bin/telemt"}, HelperPath: "/usr/local/bin/telemt-panel", PolicyPath: DefaultPrivilegedPolicyPath}
-	for _, change := range []string{"none", "staging", "binary", "schema", "old sudoers"} {
+	allow := AllowLists{StagingPrefix: "/var/lib/telemt-panel/staging", TargetBinaries: map[string]string{"panel": "/usr/local/bin/telemt-panel", "telemt": "/bin/telemt"}, HelperPath: DefaultPrivilegedHelperPath, PolicyPath: DefaultPrivilegedPolicyPath}
+	for _, change := range []string{"none", "staging", "binary", "helper", "schema", "old sudoers"} {
 		t.Run(change, func(t *testing.T) {
-			policy := PrivilegedPolicy{Version: 1, StagingRoot: allow.StagingPrefix, Binaries: map[string]string{"panel": allow.TargetBinaries["panel"], "telemt": allow.TargetBinaries["telemt"]}}
+			policy := PrivilegedPolicy{Version: PrivilegedPolicyVersion, HelperPath: allow.HelperPath, StagingRoot: allow.StagingPrefix, Binaries: map[string]string{"panel": allow.TargetBinaries["panel"], "telemt": allow.TargetBinaries["telemt"]}}
 			if change == "staging" {
 				policy.StagingRoot = "/other/staging"
 			} else if change == "binary" {
 				policy.Binaries["telemt"] = "/other/telemt"
 			} else if change == "schema" {
-				policy.Version = 2
+				policy.Version = 1
+			} else if change == "helper" {
+				policy.HelperPath = "/other/helper"
 			}
 			var calls []recordedCommand
 			run := NewSudoCmdRunner(func(_ context.Context, name string, args ...string) ([]byte, []byte, error) {

@@ -274,6 +274,14 @@ grep -q '^\[fail\]' "$WORK/install.log" && { cat "$WORK/install.log"; fail "inst
 check test -x "$PANEL_BIN"
 check test -f "$CONFIG"
 check test "$(stat -c %a "$CONFIG")" = 600
+if [ "$SC" != migrate ]; then
+  HELPER_PATH=/usr/local/libexec/telemt-panel-privileged
+  if [ "$SC" = procd ]; then HELPER_PATH=/usr/libexec/telemt-panel-privileged; fi
+  check test -x "$HELPER_PATH"
+  check test "$(stat -c %u "$HELPER_PATH")" = 0
+  check test "$(stat -c %a "$HELPER_PATH")" = 755
+  check "$HELPER_PATH" privileged --policy /etc/telemt-panel-privileged/policy.json inspect
+fi
 check test -f /etc/telemt-panel/../telemt-panel/config.toml
 case "$SC" in
   systemd)
@@ -335,9 +343,21 @@ if [ "$up" = 1 ]; then echo "panel answered /api/health"; else cat "$WORK/panel.
 if [ "$SC" != "migrate" ]; then
   echo "--- second run = update path (config untouched)"
   before=$(cat "$CONFIG")
+  helper_before=$(sha256sum "$HELPER_PATH" | awk '{print $1}')
+  helper_inode_before=$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")
   run_installer install >"$WORK/update.log" 2>&1 || { cat "$WORK/update.log"; fail "update exited non-zero"; }
   check grep -q 'Only the binary will change' "$WORK/update.log"
   check test "$before" = "$(cat "$CONFIG")"
+  check test "$helper_before" = "$(sha256sum "$HELPER_PATH" | awk '{print $1}')"
+  check test "$helper_inode_before" = "$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")"
+  if [ "$SC" != procd ]; then
+    echo "--- explicit stopped-runtime privilege repair"
+    run_installer repair-privileges --user telemt-panel >"$WORK/repair.log" 2>&1 || { cat "$WORK/repair.log"; fail "privilege repair exited non-zero"; }
+    check "$HELPER_PATH" privileged --policy /etc/telemt-panel-privileged/policy.json inspect
+    check test "$before" = "$(cat "$CONFIG")"
+    check grep -q "$HELPER_PATH privileged --policy" /etc/sudoers.d/telemt-panel
+    if grep -q "$PANEL_BIN privileged --policy" /etc/sudoers.d/telemt-panel; then fail "replaceable panel retains privileged grants"; fi
+  fi
 fi
 
 echo "--- uninstall keeps config"

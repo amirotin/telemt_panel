@@ -126,7 +126,10 @@ func (r *SudoRunner) installExecutable(ctx context.Context, src, dest string, re
 func helperPaths(allow AllowLists) (string, string, error) {
 	helper, policy := allow.HelperPath, allow.PolicyPath
 	if helper == "" {
-		helper = allow.TargetBinaries["panel"]
+		helper = DefaultPrivilegedHelperPath
+		if strings.HasPrefix(allow.TargetBinaries["panel"], "/opt/") {
+			helper = EntwarePrivilegedHelperPath
+		}
 	}
 	if policy == "" {
 		policy = DefaultPrivilegedPolicyPath
@@ -137,8 +140,10 @@ func helperPaths(allow AllowLists) (string, string, error) {
 	if err := privilegedPath(policy); err != nil {
 		return "", "", err
 	}
-	if helper != allow.TargetBinaries["panel"] {
-		return "", "", errors.New("privileged helper must use the configured panel binary")
+	for _, binary := range allow.TargetBinaries {
+		if helper == binary || helper == binary+".bak" {
+			return "", "", errors.New("privileged helper must be independent of live binaries and backups")
+		}
 	}
 	return helper, policy, nil
 }
@@ -169,7 +174,7 @@ func CheckPrivilegedPolicy(ctx context.Context, allow AllowLists, run CmdRunner)
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return errors.New("privileged policy inspection has trailing JSON")
 	}
-	if policy.Version != 1 || len(policy.Binaries) != 2 || policy.StagingRoot != filepath.Clean(allow.StagingPrefix) || policy.Binaries["panel"] != allow.TargetBinaries["panel"] || policy.Binaries["telemt"] != allow.TargetBinaries["telemt"] {
+	if policy.Version != PrivilegedPolicyVersion || policy.HelperPath != helper || len(policy.Binaries) != 2 || policy.StagingRoot != filepath.Clean(allow.StagingPrefix) || policy.Binaries["panel"] != allow.TargetBinaries["panel"] || policy.Binaries["telemt"] != allow.TargetBinaries["telemt"] {
 		return errors.New("privileged policy differs from runtime paths; repair the panel installation")
 	}
 	return nil

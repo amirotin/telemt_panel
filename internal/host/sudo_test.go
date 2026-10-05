@@ -49,7 +49,7 @@ func TestSudoRunner_SharesBinaryAndServicePathAcrossTargets(t *testing.T) {
 	allow := AllowLists{
 		BinaryPaths:    []string{telemt, telemt + ".bak", panel, panel + ".bak"},
 		TargetBinaries: map[string]string{"telemt": telemt, "panel": panel},
-		HelperPath:     panel, PolicyPath: DefaultPrivilegedPolicyPath,
+		HelperPath:     DefaultPrivilegedHelperPath, PolicyPath: DefaultPrivilegedPolicyPath,
 		StagingPrefix: staging,
 		Services:      []string{"telemt", "telemt-panel"},
 	}
@@ -72,9 +72,9 @@ func TestSudoRunner_SharesBinaryAndServicePathAcrossTargets(t *testing.T) {
 	}
 
 	want := []recordedCommand{
-		{"sudo", []string{"-n", "--", panel, "privileged", "--policy", DefaultPrivilegedPolicyPath, "install", "telemt"}},
+		{"sudo", []string{"-n", "--", DefaultPrivilegedHelperPath, "privileged", "--policy", DefaultPrivilegedPolicyPath, "install", "telemt"}},
 		{"sudo", []string{"-n", "--", "systemctl", "restart", "telemt"}},
-		{"sudo", []string{"-n", "--", panel, "privileged", "--policy", DefaultPrivilegedPolicyPath, "install", "panel"}},
+		{"sudo", []string{"-n", "--", DefaultPrivilegedHelperPath, "privileged", "--policy", DefaultPrivilegedPolicyPath, "install", "panel"}},
 		{"sudo", []string{"-n", "--", "systemctl", "restart", "telemt-panel"}},
 	}
 	if !reflect.DeepEqual(calls, want) {
@@ -130,7 +130,7 @@ func TestSudoRunner_RejectsBeforeSpawningCommand(t *testing.T) {
 func TestProbeRunner_ChecksPolicyWithoutExecutingCommands(t *testing.T) {
 	staging := "/var/lib/telemt-panel/staging"
 	dest := "/usr/local/bin/telemt"
-	allow := AllowLists{BinaryPaths: []string{dest}, TargetBinaries: map[string]string{"telemt": dest, "panel": "/usr/local/bin/telemt-panel"}, HelperPath: "/usr/local/bin/telemt-panel", PolicyPath: DefaultPrivilegedPolicyPath, StagingPrefix: staging, Services: []string{"telemt"}}
+	allow := AllowLists{BinaryPaths: []string{dest}, TargetBinaries: map[string]string{"telemt": dest, "panel": "/usr/local/bin/telemt-panel"}, HelperPath: DefaultPrivilegedHelperPath, PolicyPath: DefaultPrivilegedPolicyPath, StagingPrefix: staging, Services: []string{"telemt"}}
 	var calls []recordedCommand
 	policyRun := NewSudoPolicyCmdRunner(commandRecorder(&calls, 0))
 	runner := NewSudoRunner(allow, NewServiceManager(KindOpenRC, Probe{}, policyRun), nil, policyRun)
@@ -151,7 +151,7 @@ func TestProbeRunner_ChecksPolicyWithoutExecutingCommands(t *testing.T) {
 func TestProbeRunner_FailsClosedWhenAnyRequiredCommandIsDenied(t *testing.T) {
 	staging := "/var/lib/telemt-panel/staging"
 	dest := "/usr/local/bin/telemt"
-	allow := AllowLists{BinaryPaths: []string{dest}, TargetBinaries: map[string]string{"telemt": dest, "panel": "/usr/local/bin/telemt-panel"}, HelperPath: "/usr/local/bin/telemt-panel", PolicyPath: DefaultPrivilegedPolicyPath, StagingPrefix: staging}
+	allow := AllowLists{BinaryPaths: []string{dest}, TargetBinaries: map[string]string{"telemt": dest, "panel": "/usr/local/bin/telemt-panel"}, HelperPath: DefaultPrivilegedHelperPath, PolicyPath: DefaultPrivilegedPolicyPath, StagingPrefix: staging}
 	var calls []recordedCommand
 	policyRun := NewSudoPolicyCmdRunner(commandRecorder(&calls, 1))
 	runner := NewSudoRunner(allow, nil, nil, policyRun)

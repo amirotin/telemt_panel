@@ -192,7 +192,14 @@ func newPrivilegedFixture(t *testing.T) privilegedFixture {
 			t.Fatal(err)
 		}
 	}
-	fixture := privilegedFixture{policyPath: filepath.Join(root, "policy.json"), owner: uint32(os.Geteuid()), policy: PrivilegedPolicy{Version: 1, StagingRoot: staging, Binaries: map[string]string{"panel": filepath.Join(binaries, "panel"), "telemt": filepath.Join(binaries, "telemt")}}}
+	helper := filepath.Join(root, "libexec", "privileged")
+	if err := os.MkdirAll(filepath.Dir(helper), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(helper, []byte("independent helper fixture"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := privilegedFixture{policyPath: filepath.Join(root, "policy.json"), owner: uint32(os.Geteuid()), policy: PrivilegedPolicy{Version: PrivilegedPolicyVersion, HelperPath: helper, StagingRoot: staging, Binaries: map[string]string{"panel": filepath.Join(binaries, "panel"), "telemt": filepath.Join(binaries, "telemt")}}}
 	fixture.writePolicy(t)
 	for _, target := range []string{"panel", "telemt"} {
 		if err := os.WriteFile(fixture.policy.Binaries[target], []byte("old-"+target), 0o755); err != nil {
@@ -332,7 +339,7 @@ func TestPrivilegedPolicyRejectsWritableOwnerVersionAndShape(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "version":
-				f.policy.Version = 2
+				f.policy.Version = 1
 				f.writePolicy(t)
 			case "unknown target":
 				f.policy.Binaries["other"] = f.policy.Binaries["panel"]

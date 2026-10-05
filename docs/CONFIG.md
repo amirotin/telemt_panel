@@ -560,21 +560,31 @@ restart = ["/opt/etc/init.d/S99telemt-panel", "restart"]
 | --- | --- | --- |
 | `mode` | `"auto"` | `auto`, `direct`, `sudo`, `manual`. |
 | `policy_path` | `"/etc/telemt-panel-privileged/policy.json"` | Root-owned policy helper-а; для `/opt/`-установки — `/opt/etc/telemt-panel-privileged/policy.json`. |
+| `helper_path` | `"/usr/local/libexec/telemt-panel-privileged"` | Отдельный installer-owned executable; для `/opt/` — `/opt/libexec/telemt-panel-privileged`. Router installer явно задаёт `/usr/libexec/telemt-panel-privileged`. |
 
 `auto`: прямое выполнение под root → доступный неинтерактивный sudo → ручные
 команды. Режим общий для Telemt и панели. `direct` не выдаёт процессу права root,
 а `sudo` не создаёт политику разрешений. `manual` показывает команды для
 самостоятельного выполнения. Отдельного агента нет.
 
-Root-owned policy version 1 содержит только `staging_root` и два бинарника
+Root-owned policy version 2 содержит `helper_path`, `staging_root` и два бинарника
 `panel`/`telemt`, имеет mode `0600` и размер до 64 KiB. Она хранится в отдельном
 root-owned каталоге `0700`: каталог с runtime-конфигом принадлежит пользователю
 панели и не подходит для root-authority policy. Helper не следует за symlink
 ни в одном компоненте пути и ограничивает потоковое копирование 512 MiB.
 Пути policy должны совпадать с нормализованными путями runtime-конфига.
 Изменение `policy_path` в TOML не даёт разрешений: sudoers допускает точные argv
-с одним зафиксированным policy path. Несовпадение или старые sudoers требуют
+со stable helper и одним зафиксированным policy path. Изменение `helper_path`
+также требует совпадения с protected policy и sudoers. Несовпадение, policy v1 или старые sudoers требуют
 repair/manual action; legacy `cp` fallback не используется.
+
+Stable helper — отдельная root-owned копия того же проверенного release binary,
+mode `0755`, в защищённом каталоге. Web update и обычное binary-only обновление
+installer-а не заменяют эту копию, поэтому rollback доступен даже после установки
+неисполняемого main binary или старой 1.x без privileged CLI. Его пути и inode
+не могут совпадать с live binaries, `.bak` или target locks. Initial install и
+explicit repair публикуют helper/policy/sudoers вместе и откатывают все три при
+ошибке. Архив релиза содержит один бинарник; installed disk требует ещё одну копию.
 
 Учётная запись, которой разрешена установка бинарника root-сервиса, имеет
 широкие полномочия через этот бинарник. Узкий helper обеспечивает файловые

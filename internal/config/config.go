@@ -146,6 +146,7 @@ type PrivilegesConfig struct {
 	// (see host.SelectRunner's doc comment for exact fallback behavior).
 	Mode       string `toml:"mode"`
 	PolicyPath string `toml:"policy_path"`
+	HelperPath string `toml:"helper_path"`
 }
 
 // Load reads, validates and normalizes the config file.
@@ -287,6 +288,15 @@ func decode(data []byte, path string) (*Config, error) {
 	if !filepath.IsAbs(cfg.Privileges.PolicyPath) || filepath.Clean(cfg.Privileges.PolicyPath) != cfg.Privileges.PolicyPath || cfg.Privileges.PolicyPath == "/" {
 		return nil, fmt.Errorf("privileges.policy_path must be normalized and absolute")
 	}
+	if cfg.Privileges.HelperPath == "" {
+		cfg.Privileges.HelperPath = host.DefaultPrivilegedHelperPath
+		if strings.HasPrefix(cfg.Updates.PanelBinaryPath, "/opt/") {
+			cfg.Privileges.HelperPath = host.EntwarePrivilegedHelperPath
+		}
+	}
+	if !filepath.IsAbs(cfg.Privileges.HelperPath) || filepath.Clean(cfg.Privileges.HelperPath) != cfg.Privileges.HelperPath || cfg.Privileges.HelperPath == "/" {
+		return nil, fmt.Errorf("privileges.helper_path must be normalized and absolute")
+	}
 
 	for _, entry := range cfg.TrustedProxies {
 		entry = strings.TrimSpace(entry)
@@ -316,6 +326,9 @@ func decode(data []byte, path string) (*Config, error) {
 	}
 
 	cfg.Path = path
+	if err := validatePrivilegeConfigPlacement(cfg, path); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 

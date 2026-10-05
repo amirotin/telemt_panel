@@ -57,6 +57,7 @@ type SourceReport struct {
 	PanelBinaryPath      string   `json:"panel_binary_path"`
 	TelemtBinaryPath     string   `json:"telemt_binary_path"`
 	PrivilegesPolicyPath string   `json:"privileges_policy_path"`
+	PrivilegesHelperPath string   `json:"privileges_helper_path"`
 	StoreDriver          string   `json:"store_driver"`
 	HasTelemtAuth        bool     `json:"has_telemt_auth"`
 	HasGithubToken       bool     `json:"has_github_token"`
@@ -76,6 +77,7 @@ func (s *Source) Report() SourceReport {
 		PanelBinaryPath:      c.Updates.PanelBinaryPath,
 		TelemtBinaryPath:     c.Updates.TelemtBinaryPath,
 		PrivilegesPolicyPath: c.Privileges.PolicyPath,
+		PrivilegesHelperPath: c.Privileges.HelperPath,
 		StoreDriver:          c.Store.Driver, HasTelemtAuth: c.Telemt.AuthHeader != "",
 		HasGithubToken: c.Updates.GithubToken != "", Warnings: s.Warnings}
 }

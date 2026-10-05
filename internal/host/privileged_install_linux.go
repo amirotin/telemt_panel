@@ -54,10 +54,10 @@ func loadPrivilegedPolicy(path string, owner uint32) (PrivilegedPolicy, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return PrivilegedPolicy{}, errors.New("protected policy has trailing JSON")
 	}
-	if policy.Version != 1 || len(policy.Binaries) != 2 || policy.Binaries["panel"] == "" || policy.Binaries["telemt"] == "" {
-		return PrivilegedPolicy{}, errors.New("policy version 1 requires exactly panel and telemt binary targets")
+	if policy.Version != PrivilegedPolicyVersion || policy.HelperPath == "" || len(policy.Binaries) != 2 || policy.Binaries["panel"] == "" || policy.Binaries["telemt"] == "" {
+		return PrivilegedPolicy{}, errors.New("privileged policy version 2 with a stable helper is required; repair the installation")
 	}
-	for _, path := range []string{policy.StagingRoot, policy.Binaries["panel"], policy.Binaries["telemt"]} {
+	for _, path := range []string{policy.StagingRoot, policy.HelperPath, policy.Binaries["panel"], policy.Binaries["telemt"]} {
 		if err := privilegedPath(path); err != nil {
 			return PrivilegedPolicy{}, err
 		}
@@ -65,30 +65,62 @@ func loadPrivilegedPolicy(path string, owner uint32) (PrivilegedPolicy, error) {
 	if policy.Binaries["panel"] == policy.Binaries["telemt"] {
 		return PrivilegedPolicy{}, errors.New("policy binary targets must be different")
 	}
-	fixed := make(map[string]bool, 6)
-	physical := make(map[string]bool, 6)
+	helper, err := openFileNoFollow(policy.HelperPath, owner, true)
+	if err != nil {
+		return PrivilegedPolicy{}, fmt.Errorf("open stable privileged helper: %w", err)
+	}
+	var helperStat unix.Stat_t
+	err = unix.Fstat(int(helper.Fd()), &helperStat)
+	helper.Close()
+	if err != nil {
+		return PrivilegedPolicy{}, err
+	}
+	if helperStat.Mode&unix.S_IFMT != unix.S_IFREG || helperStat.Uid != owner || helperStat.Mode&0o022 != 0 || helperStat.Mode&0o111 == 0 || helperStat.Size <= 0 || helperStat.Size > MaxBinaryCopySize {
+		return PrivilegedPolicy{}, errors.New("stable helper must be a protected root-owned regular executable")
+	}
+	fixed := make(map[string]bool, 7)
+	physical := make(map[string]bool, 7)
+	paths := []string{policy.HelperPath}
 	for _, target := range []string{"panel", "telemt"} {
 		binary := policy.Binaries[target]
-		for _, path := range []string{binary, binary + ".bak", filepath.Join(filepath.Dir(binary), ".telemt-panel-"+target+".lock")} {
-			if fixed[path] {
-				return PrivilegedPolicy{}, errors.New("policy binary, backup and target lock paths must be disjoint")
-			}
-			fixed[path] = true
-			directory, err := openDirectoryNoFollow(filepath.Dir(path), owner, true)
-			if err != nil {
-				return PrivilegedPolicy{}, fmt.Errorf("policy fixed-path directory: %w", err)
-			}
-			var directoryStat unix.Stat_t
-			err = unix.Fstat(int(directory.Fd()), &directoryStat)
-			directory.Close()
-			if err != nil {
+		paths = append(paths, binary, binary+".bak", filepath.Join(filepath.Dir(binary), ".telemt-panel-"+target+".lock"))
+	}
+	for _, path := range paths {
+		if fixed[path] {
+			return PrivilegedPolicy{}, errors.New("policy binary, backup and target lock paths must be disjoint")
+		}
+		fixed[path] = true
+		directory, err := openDirectoryNoFollow(filepath.Dir(path), owner, true)
+		if err != nil {
+			return PrivilegedPolicy{}, fmt.Errorf("policy fixed-path directory: %w", err)
+		}
+		var directoryStat unix.Stat_t
+		err = unix.Fstat(int(directory.Fd()), &directoryStat)
+		directory.Close()
+		if err != nil {
+			return PrivilegedPolicy{}, err
+		}
+		key := fmt.Sprintf("%d:%d:%s", directoryStat.Dev, directoryStat.Ino, filepath.Base(path))
+		if physical[key] {
+			return PrivilegedPolicy{}, errors.New("policy fixed paths alias the same directory entry")
+		}
+		physical[key] = true
+		if path != policy.HelperPath {
+			entry, err := openFileNoFollow(path, owner, true)
+			if err != nil && !errors.Is(err, unix.ENOENT) {
 				return PrivilegedPolicy{}, err
 			}
-			key := fmt.Sprintf("%d:%d:%s", directoryStat.Dev, directoryStat.Ino, filepath.Base(path))
-			if physical[key] {
-				return PrivilegedPolicy{}, errors.New("policy fixed paths alias the same directory entry")
+			if err == nil {
+				var entryStat unix.Stat_t
+				statErr := unix.Fstat(int(entry.Fd()), &entryStat)
+				entry.Close()
+				if statErr != nil {
+					return PrivilegedPolicy{}, statErr
+				}
+				if entryStat.Dev == helperStat.Dev && entryStat.Ino == helperStat.Ino {
+					return PrivilegedPolicy{}, errors.New("stable helper inode must be independent of targets, backups and locks")
+				}
 			}
-			physical[key] = true
 		}
 	}
 	for _, binary := range policy.Binaries {

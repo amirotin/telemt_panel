@@ -132,6 +132,9 @@ mode = "http"
 # Root-owned policy, separate from the runtime-writable config directory.
 # Entware defaults to /opt/etc/telemt-panel-privileged/policy.json.
 # policy_path = "/etc/telemt-panel-privileged/policy.json"
+# Installer-owned stable copy, independent of the replaceable panel binary.
+# Entware defaults to /opt/libexec/telemt-panel-privileged.
+# helper_path = "/usr/local/libexec/telemt-panel-privileged"
 
 [updates]
 # GitHub repos (owner/name) update checks poll for new releases.
