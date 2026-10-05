@@ -18,6 +18,15 @@ parser.add_argument("--version", required=True)
 args = parser.parse_args()
 name = "telemt-container-test-" + uuid.uuid4().hex[:12]
 volume = name + "-data"
+config_volume = name + "-config"
+
+def mounts():
+    return ["--mount", f"type=volume,src={config_volume},dst=/etc/telemt-panel",
+            "--mount", f"type=volume,src={volume},dst=/var/lib/telemt-panel"]
+
+def helper(script):
+    return docker("run", "--rm", "--platform", args.platform, "--user", "0:0",
+                  *mounts(), "--entrypoint", "/bin/sh", args.image, "-c", script)
 
 def docker(*command, **kwargs):
     return subprocess.check_output(["docker", *command], text=True, **kwargs).strip()
@@ -60,14 +69,27 @@ secret = "container-fixture-signing-secret"
         version = docker("run", "--rm", "--platform", args.platform, args.image, "version")
         assert version.startswith("telemt-panel " + args.version + " (full:"), version
         assert "sqlite" in version, version
+        assert docker("image", "inspect", args.image, "--format", "{{.Config.User}}") == "65532:65532"
+        assert docker("run", "--rm", "--platform", args.platform, "--read-only",
+                      "--entrypoint", "/bin/sh", args.image, "-c",
+                      'test "$(id -u):$(id -g)" = 65532:65532 && ! touch /outside-mount') == ""
+        password_hash = docker("run", "--rm", "-i", "--platform", args.platform,
+                               "--read-only", "--network", "none", args.image,
+                               "hash-password", input="container-smoke-password\n")
+        assert password_hash.startswith(("$2a$", "$2b$")), password_hash
         docker("run", "--rm", "--platform", args.platform, "--entrypoint", "/bin/sh", args.image,
                "-c", "test -s /etc/ssl/certs/ca-certificates.crt")
         docker("volume", "create", volume)
+        docker("volume", "create", config_volume)
+        assert helper('stat -c "%u:%g" /etc/telemt-panel /var/lib/telemt-panel').splitlines() == ["65532:65532", "65532:65532"]
+        docker("create", "--name", name, "--platform", args.platform, *mounts(), args.image)
+        docker("cp", str(config), name + ":/etc/telemt-panel/config.toml")
+        docker("rm", name)
+        helper("chown 65532:65532 /etc/telemt-panel/config.toml && chmod 0600 /etc/telemt-panel/config.toml")
         for iteration in range(2):
             docker("run", "-d", "--name", name, "--platform", args.platform,
                    "--read-only", "--tmpfs", "/tmp", "--security-opt", "no-new-privileges:true",
-                   "--mount", f"type=bind,src={config_dir},dst=/etc/telemt-panel",
-                   "--mount", f"type=volume,src={volume},dst=/var/lib/telemt-panel",
+                   *mounts(),
                    "-p", "127.0.0.1::8080", "-p", "127.0.0.1::8081", args.image)
             address = docker("port", name, "8080/tcp").splitlines()[0]
             public = docker("port", name, "8081/tcp").splitlines()[0]
@@ -83,10 +105,19 @@ secret = "container-fixture-signing-secret"
                 raise AssertionError("container never became healthy")
             with request(opener, url + "/login") as response:
                 assert b'<html' in response.read().lower()
+            with request(opener, url + "/licenses/LICENSE.txt") as response:
+                assert response.headers.get_content_type() == "text/plain"
+                assert b"MIT License" in response.read()
             if iteration == 0:
                 with request(opener, url + "/api/auth/login", {"username": "operator", "password": "s3cr3t-password"}) as response:
                     assert response.status == 204
                 assert list(jar), "no session cookie"
+                checked = docker("exec", name, "telemt-panel", "config", "check",
+                                 "--config", "/etc/telemt-panel/config.toml")
+                assert "valid" in checked, checked
+                with request(opener, url + "/api/settings/tls/config") as response:
+                    settings = json.load(response)
+                    assert settings["capabilities"]["config_writable"], settings
             # The second container has only the previous volume and config.
             with request(opener, url + "/api/auth/me") as response:
                 assert response.status == 200
@@ -104,7 +135,29 @@ secret = "container-fixture-signing-secret"
                 assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
                 assert db.execute("SELECT count(*) FROM sqlite_master WHERE type='table'").fetchone()[0] > 0
             docker("rm", name)
-        print(json.dumps({"platform": args.platform, "version": args.version, "sqlite": "ok", "session_survives_recreation": True, "isolated_subscription_port": True}))
+            if iteration == 0:
+                # Current CLI saves a backup as UID 65532 while the service is stopped.
+                docker("run", "--rm", "--platform", args.platform, "--read-only", *mounts(),
+                       args.image, "config", "export", "--config", "/etc/telemt-panel/config.toml",
+                       "--out", "/etc/telemt-panel/config.backup.toml")
+                docker("run", "--rm", "--platform", args.platform, "--read-only", *mounts(),
+                       "--entrypoint", "/bin/sh", args.image, "-c",
+                       "cp /etc/telemt-panel/config.backup.toml /etc/telemt-panel/config.toml")
+                original = helper("cat /etc/telemt-panel/config.toml")
+                before = helper("sha256sum /var/lib/telemt-panel/panel-state.json /var/lib/telemt-panel/panel.db")
+                # Rehearse former root ownership of populated volumes, then migrate offline.
+                helper("chown -R 0:0 /etc/telemt-panel /var/lib/telemt-panel && chmod 0700 /etc/telemt-panel /var/lib/telemt-panel")
+                failed = subprocess.run(["docker", "run", "--rm", "--platform", args.platform,
+                                         "--read-only", *mounts(), args.image], text=True,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                assert failed.returncode != 0 and "offline ownership migration" in failed.stdout, failed.stdout
+                assert helper("cat /etc/telemt-panel/config.toml") == original, "failed startup replaced config"
+                assert helper("sha256sum /var/lib/telemt-panel/panel-state.json /var/lib/telemt-panel/panel.db") == before, "failed startup changed data"
+                helper("chown -R 65532:65532 /etc/telemt-panel /var/lib/telemt-panel")
+        print(json.dumps({"platform": args.platform, "version": args.version, "uid": 65532,
+                          "root_owned_migration": True, "failed_start_preserves_config": True,
+                          "read_only_rootfs": True, "hash_password": True, "sqlite": "ok",
+                          "session_survives_recreation": True, "isolated_subscription_port": True}))
     except Exception:
         subprocess.run(["docker", "logs", "--tail", "30", name], check=False)
         raise
@@ -112,3 +165,4 @@ secret = "container-fixture-signing-secret"
         # Targets are unique fixtures created above; never touch user containers/volumes.
         subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         subprocess.run(["docker", "volume", "rm", volume], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(["docker", "volume", "rm", config_volume], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)

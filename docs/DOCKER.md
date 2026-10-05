@@ -1,24 +1,48 @@
 # Docker: тестовый выпуск 1.0
 
-Образ: `ghcr.io/amirotin/telemt_panel:1.0.0-rc.2` — **prerelease**, Linux
-amd64/arm64. Docker выбирает архитектуру автоматически. Внутри — full-бинарник
-из одноимённого опубликованного релиза, SQLite и системные CA-сертификаты.
-Старый `latest` не переключён на 1.x: для тестирования указывайте полный тег.
+Новый default profile рассчитан на Linux amd64/arm64. Docker выбирает
+архитектуру автоматически. Внутри — full-бинарник из одноимённого
+опубликованного релиза, SQLite и системные CA-сертификаты. Укажите полный
+проверенный тег нового образа через `TELEMT_PANEL_IMAGE`; `latest` не
+используется. Публикация образа выполняется отдельным workflow.
+
+Ранее опубликованный `1.0.0-rc.2` — прежний root-образ; этот исходный diff не
+перезаписывает его и не добавляет в него license assets. Для нового default
+профиля нужен образ, собранный из релиза с этими изменениями.
 
 ## Первый запуск
 
 Сохраните [compose.yaml](../compose.yaml) в отдельный каталог. Рядом создайте
 `config/` и скопируйте туда [пример](../docker/config.example.toml) как
 `config/config.toml`. Конфиг обязателен: готового пароля в образе нет.
+В `.env` рядом с compose сохраните выбранный полный тег:
+
+```dotenv
+TELEMT_PANEL_IMAGE=ghcr.io/amirotin/telemt_panel:<проверенный-тег-нового-образа>
+```
+
+Для команд `docker run` экспортируйте то же значение в shell.
 
 Создайте bcrypt-хеш интерактивно:
 
 ```sh
-docker run --rm -it ghcr.io/amirotin/telemt_panel:1.0.0-rc.2 hash-password
+docker run --rm -it "$TELEMT_PANEL_IMAGE" hash-password
 ```
 
 Вставьте результат в `[auth].password_hash`, укажите адрес и токен API Telemt.
 Не публикуйте конфиг; установите права `0600` на файл и `0700` на каталог.
+Default-процесс использует UID/GID **65532**. Для нового bind mount назначьте
+владельца только созданному каталогу конфигурации:
+
+```sh
+sudo chown -R 65532:65532 ./config
+sudo chmod 0700 ./config
+sudo chmod 0600 ./config/config.toml
+```
+
+Новый named volume получает владельца из образа; каталог данных внутри образа
+принадлежит 65532:65532. Ошибка доступа к прежним root-owned данным требует
+одноразовой миграции ниже; старт контейнера ничего не меняет рекурсивно.
 
 ```sh
 docker compose pull
@@ -48,20 +72,56 @@ Docker-сети, убрать `network_mode: host`, задать API-адрес 
   сохранения настроек доступа через веб. При монтировании одного файла или
   каталога `:ro` веб-изменения конфигурации могут быть недоступны.
 - Файловая система образа read-only; рабочие данные находятся в volume,
-  конфиг — в bind mount. Процесс работает как root внутри контейнера, как
-  старый образ; Docker socket и каталоги служб хоста не монтируются.
+  конфиг — в bind mount. Процесс работает как UID/GID 65532; Docker socket
+  и каталоги служб хоста не монтируются. `no-new-privileges` запрещает
+  повышение полномочий через исполняемые файлы.
 - Подписка имеет отдельный порт. В режиме bridge опубликуйте его отдельно;
   настраиваемый префикс должен сохраняться reverse proxy.
-- ACME поддерживается: домен должен вести на сервер, а TCP/80 — достигать
-  контейнера. В host network порт 80 должен быть свободен; в bridge нужен
-  отдельный mapping `80:80`. Для готовых сертификатов монтируйте каталог с
-  ключом/fullchain и укажите пути **внутри контейнера**.
+- Default слушает высокий порт 8080; низкие порты и TLS обслуживает внешний
+  nginx/Caddy. Для готовых сертификатов можно монтировать каталог с
+  ключом/fullchain, доступный UID 65532, и слушать HTTPS на высоком порту.
+  Вариант ACME с host networking и TCP/80 требует явно выбранного override
+  `user: "0:0"`; это даёт процессу root-полномочия внутри контейнера.
+  Сохраняйте `read_only`, `no-new-privileges` и отсутствие host-control mounts.
 - После сохранения настроек, требующих restart: `docker compose restart telemt-panel`.
   Контейнер не получает доступ к Docker daemon для перезапуска самого себя.
 
 ## Обновление контейнера
 
-Меняйте тег образа в compose, затем:
+Перед первым переходом с root-образа остановите сервис и сохраните конфиг и
+**конкретный** volume данных. Пример для обычного rootful Docker на Linux
+без user namespace remapping (имя volume выясните через `docker volume ls`):
+
+```sh
+docker compose stop telemt-panel
+mkdir -m 0700 backup-before-nonroot
+sudo cp -a ./config backup-before-nonroot/config
+PANEL_DATA_VOLUME=myproject_panel-data
+docker run --rm --user 0:0 --entrypoint /bin/sh \
+  --mount "type=volume,src=$PANEL_DATA_VOLUME,dst=/data,readonly" \
+  --mount "type=bind,src=$PWD/backup-before-nonroot,dst=/backup" \
+  "$TELEMT_PANEL_IMAGE" \
+  -c 'tar -czpf /backup/panel-data.tar.gz -C /data .'
+sudo chown -R 65532:65532 ./config
+docker run --rm --user 0:0 --entrypoint /bin/sh \
+  --mount "type=volume,src=$PANEL_DATA_VOLUME,dst=/data" \
+  "$TELEMT_PANEL_IMAGE" \
+  -c 'chown -R 65532:65532 /data'
+```
+
+Проверьте backup до запуска нового тега. Команды меняют владельца только
+выбранного config/data, не произвольных каталогов хоста. Для rootless Docker
+или user namespace remapping выполните назначение владельца через root helper
+в том же namespace Docker, а не используйте host UID 65532 напрямую.
+
+Для rollback остановите контейнер, верните прежний image tag и `user: "0:0"`,
+восстановите `config/` из `backup-before-nonroot/config`. Восстановите данные
+в тот же остановленный volume из `panel-data.tar.gz` через root helper;
+архив сохраняет прежние владельцев и права. Не смешивайте восстановленную
+конфигурацию с другой версией схемы данных. Backup не удаляйте до успешной
+проверки входа, настроек и SQLite после пересоздания.
+
+Меняйте полный тег `TELEMT_PANEL_IMAGE` в `.env` и shell, затем:
 
 ```sh
 docker compose pull

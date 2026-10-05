@@ -1,7 +1,10 @@
 # Release binaries are verified and placed here by the container workflow.
 FROM alpine:3.24.1
 RUN apk add --no-cache ca-certificates \
+    && addgroup -S -g 65532 telemt-panel \
+    && adduser -S -D -H -u 65532 -G telemt-panel telemt-panel \
     && mkdir -p /etc/telemt-panel /var/lib/telemt-panel \
+    && chown 65532:65532 /etc/telemt-panel /var/lib/telemt-panel \
     && chmod 0700 /etc/telemt-panel /var/lib/telemt-panel
 
 ARG TARGETARCH
@@ -16,7 +19,9 @@ LABEL org.opencontainers.image.source="https://github.com/amirotin/telemt_panel"
       io.telemt-panel.binary-revision="${BINARY_REVISION}"
 
 COPY --chmod=0755 .container-bin/${TARGETARCH}/telemt-panel /usr/local/bin/telemt-panel
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/telemt-panel-entrypoint
 WORKDIR /var/lib/telemt-panel
+USER 65532:65532
 EXPOSE 8080 8081
-ENTRYPOINT ["/usr/local/bin/telemt-panel"]
+ENTRYPOINT ["/usr/local/bin/telemt-panel-entrypoint"]
 CMD ["--config", "/etc/telemt-panel/config.toml"]

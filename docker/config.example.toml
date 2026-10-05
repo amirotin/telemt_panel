@@ -1,4 +1,6 @@
 listen = "127.0.0.1:8080"
+# The default image runs as UID/GID 65532. Both mounted directories must be
+# writable by that identity; use an external reverse proxy for low-port TLS.
 data_dir = "/var/lib/telemt-panel"
 # Required for domain access if [auth].disabled = true; keep this key at the root.
 # public_url = "https://panel.example.com"

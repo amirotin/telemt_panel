@@ -1,7 +1,8 @@
 services:
   telemt-panel:
-    image: ghcr.io/amirotin/telemt_panel:1.0.0-rc.2
+    image: "${TELEMT_PANEL_IMAGE:?Set TELEMT_PANEL_IMAGE to the tested nonroot release image}"
     restart: unless-stopped
+    user: "65532:65532"
     # Linux: access Telemt's loopback API without exposing it to the network.
     network_mode: host
     read_only: true
