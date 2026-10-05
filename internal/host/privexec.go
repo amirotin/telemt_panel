@@ -27,6 +27,10 @@ const MaxBinaryCopySize int64 = 512 << 20
 // it from the configured Telemt/panel binary paths, staging directory and
 // service/container names.
 type AllowLists struct {
+	// TargetBinaries fixes the logical helper target to its runtime binary path.
+	TargetBinaries map[string]string
+	HelperPath     string
+	PolicyPath     string
 	// BinaryPaths lists the absolute paths install-binary's "dest" and
 	// restore-binary's "dest"/"backup" may target.
 	BinaryPaths []string

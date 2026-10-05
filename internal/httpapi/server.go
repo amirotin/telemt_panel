@@ -124,6 +124,9 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	panelServiceName, _ := resolveLogicalService("panel", svcMgr.Kind(), cfg.Host)
 
 	allow := host.AllowLists{
+		TargetBinaries: map[string]string{"panel": cfg.Updates.PanelBinaryPath, "telemt": cfg.Updates.TelemtBinaryPath},
+		HelperPath:     cfg.Updates.PanelBinaryPath,
+		PolicyPath:     cfg.Privileges.PolicyPath,
 		BinaryPaths: []string{
 			cfg.Updates.TelemtBinaryPath, cfg.Updates.TelemtBinaryPath + ".bak",
 			cfg.Updates.PanelBinaryPath, cfg.Updates.PanelBinaryPath + ".bak",
@@ -150,14 +153,10 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		probeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		probeOps := updatePrivilegeProbeOps(allow.StagingPrefix, cfg.Updates, telemtServiceName, panelServiceName)
 		sudoAvailable = host.ProbeRunner(probeCtx, policyRunner, probeOps)
-		if !sudoAvailable && svcMgr.Kind() == host.KindSystemd {
-			// A 0.x binary can replace itself with 1.x before the new installer
-			// has run. Preserve that release path by recognizing and adapting
-			// the exact legacy sudoers command layout.
-			legacyPolicyRunner := host.NewLegacySudoPolicyRunner(allow, policySvcMgr, logSrc, policyRun)
-			if host.ProbeRunner(probeCtx, legacyPolicyRunner, probeOps) {
-				sudoRunner = host.NewLegacySudoRunner(allow, sudoSvcMgr, logSrc, sudoRun)
-				sudoAvailable = true
+		if sudoAvailable {
+			if err := host.CheckPrivilegedPolicy(probeCtx, allow, sudoRun); err != nil {
+				slog.Warn("privileged update policy requires repair", "err", err)
+				sudoAvailable = false
 			}
 		}
 		cancel()

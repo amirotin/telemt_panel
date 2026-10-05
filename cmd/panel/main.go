@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
@@ -67,6 +68,15 @@ func run() int {
 		case "service":
 			if err := runServiceCommand(os.Args[2:], host.OSCmdRunner); err != nil {
 				slog.Error("service", "err", err)
+				return 1
+			}
+			return 0
+		case "privileged":
+			if err := runPrivilegedCommand(os.Args[2:], os.Stdout); err != nil {
+				slog.Error("privileged", "err", err)
+				if atomicfile.Published(err) {
+					return 2
+				}
 				return 1
 			}
 			return 0

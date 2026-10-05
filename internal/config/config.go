@@ -145,7 +145,8 @@ type PrivilegesConfig struct {
 	// UID is 0, otherwise a complete sudo policy, otherwise manual mode.
 	// "sudo", "direct" and "manual" force that path outright
 	// (see host.SelectRunner's doc comment for exact fallback behavior).
-	Mode string `toml:"mode"`
+	Mode       string `toml:"mode"`
+	PolicyPath string `toml:"policy_path"`
 }
 
 // Load reads, validates and normalizes the config file.
@@ -277,6 +278,15 @@ func decode(data []byte, path string) (*Config, error) {
 	case "auto", "sudo", "direct", "manual":
 	default:
 		return nil, fmt.Errorf("privileges.mode: unknown value %q (auto | sudo | direct | manual)", cfg.Privileges.Mode)
+	}
+	if cfg.Privileges.PolicyPath == "" {
+		cfg.Privileges.PolicyPath = host.DefaultPrivilegedPolicyPath
+		if strings.HasPrefix(cfg.Updates.PanelBinaryPath, "/opt/") {
+			cfg.Privileges.PolicyPath = host.EntwarePrivilegedPolicyPath
+		}
+	}
+	if !filepath.IsAbs(cfg.Privileges.PolicyPath) || filepath.Clean(cfg.Privileges.PolicyPath) != cfg.Privileges.PolicyPath || cfg.Privileges.PolicyPath == "/" {
+		return nil, fmt.Errorf("privileges.policy_path must be normalized and absolute")
 	}
 
 	for _, entry := range cfg.TrustedProxies {

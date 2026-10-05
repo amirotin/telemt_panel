@@ -68,7 +68,7 @@ func TestLoadMinimal(t *testing.T) {
 	if cfg.Updates != wantUpdates {
 		t.Errorf("default updates = %+v, want %+v", cfg.Updates, wantUpdates)
 	}
-	wantPrivileges := PrivilegesConfig{Mode: "auto"}
+	wantPrivileges := PrivilegesConfig{Mode: "auto", PolicyPath: "/etc/telemt-panel-privileged/policy.json"}
 	if cfg.Privileges != wantPrivileges {
 		t.Errorf("default privileges = %+v, want %+v", cfg.Privileges, wantPrivileges)
 	}
@@ -198,7 +198,7 @@ mode = "sudo"
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := PrivilegesConfig{Mode: "sudo"}
+	want := PrivilegesConfig{Mode: "sudo", PolicyPath: "/etc/telemt-panel-privileged/policy.json"}
 	if cfg.Privileges != want {
 		t.Errorf("privileges = %+v, want %+v", cfg.Privileges, want)
 	}

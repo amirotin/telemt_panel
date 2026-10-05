@@ -47,7 +47,9 @@ func TestSudoRunner_SharesBinaryAndServicePathAcrossTargets(t *testing.T) {
 	telemt := "/usr/local/bin/telemt"
 	panel := "/usr/local/bin/telemt-panel"
 	allow := AllowLists{
-		BinaryPaths:   []string{telemt, telemt + ".bak", panel, panel + ".bak"},
+		BinaryPaths:    []string{telemt, telemt + ".bak", panel, panel + ".bak"},
+		TargetBinaries: map[string]string{"telemt": telemt, "panel": panel},
+		HelperPath:     panel, PolicyPath: DefaultPrivilegedPolicyPath,
 		StagingPrefix: staging,
 		Services:      []string{"telemt", "telemt-panel"},
 	}
@@ -58,9 +60,9 @@ func TestSudoRunner_SharesBinaryAndServicePathAcrossTargets(t *testing.T) {
 	runner := NewSudoRunner(allow, svcMgr, nil, sudoRun)
 
 	ops := []Op{
-		{Kind: OpInstallBinary, Args: map[string]string{ArgStaging: filepath.Join(staging, "telemt", "bin"), ArgDest: telemt}},
+		{Kind: OpInstallBinary, Args: map[string]string{ArgStaging: filepath.Join(staging, "runs", "telemt", "bin"), ArgDest: telemt}},
 		{Kind: OpRestartService, Args: map[string]string{ArgService: "telemt"}},
-		{Kind: OpInstallBinary, Args: map[string]string{ArgStaging: filepath.Join(staging, "panel", "bin"), ArgDest: panel}},
+		{Kind: OpInstallBinary, Args: map[string]string{ArgStaging: filepath.Join(staging, "runs", "panel", "bin"), ArgDest: panel}},
 		{Kind: OpRestartService, Args: map[string]string{ArgService: "telemt-panel"}},
 	}
 	for _, op := range ops {
@@ -70,13 +72,9 @@ func TestSudoRunner_SharesBinaryAndServicePathAcrossTargets(t *testing.T) {
 	}
 
 	want := []recordedCommand{
-		{"sudo", []string{"-n", "--", "cp", "-f", filepath.Join(staging, "telemt", "bin"), telemt + ".tmp"}},
-		{"sudo", []string{"-n", "--", "chmod", "0755", telemt + ".tmp"}},
-		{"sudo", []string{"-n", "--", "mv", "-f", telemt + ".tmp", telemt}},
+		{"sudo", []string{"-n", "--", panel, "privileged", "--policy", DefaultPrivilegedPolicyPath, "install", "telemt"}},
 		{"sudo", []string{"-n", "--", "systemctl", "restart", "telemt"}},
-		{"sudo", []string{"-n", "--", "cp", "-f", filepath.Join(staging, "panel", "bin"), panel + ".tmp"}},
-		{"sudo", []string{"-n", "--", "chmod", "0755", panel + ".tmp"}},
-		{"sudo", []string{"-n", "--", "mv", "-f", panel + ".tmp", panel}},
+		{"sudo", []string{"-n", "--", panel, "privileged", "--policy", DefaultPrivilegedPolicyPath, "install", "panel"}},
 		{"sudo", []string{"-n", "--", "systemctl", "restart", "telemt-panel"}},
 	}
 	if !reflect.DeepEqual(calls, want) {
@@ -132,12 +130,12 @@ func TestSudoRunner_RejectsBeforeSpawningCommand(t *testing.T) {
 func TestProbeRunner_ChecksPolicyWithoutExecutingCommands(t *testing.T) {
 	staging := "/var/lib/telemt-panel/staging"
 	dest := "/usr/local/bin/telemt"
-	allow := AllowLists{BinaryPaths: []string{dest}, StagingPrefix: staging, Services: []string{"telemt"}}
+	allow := AllowLists{BinaryPaths: []string{dest}, TargetBinaries: map[string]string{"telemt": dest, "panel": "/usr/local/bin/telemt-panel"}, HelperPath: "/usr/local/bin/telemt-panel", PolicyPath: DefaultPrivilegedPolicyPath, StagingPrefix: staging, Services: []string{"telemt"}}
 	var calls []recordedCommand
 	policyRun := NewSudoPolicyCmdRunner(commandRecorder(&calls, 0))
 	runner := NewSudoRunner(allow, NewServiceManager(KindOpenRC, Probe{}, policyRun), nil, policyRun)
 	ops := []Op{
-		{Kind: OpInstallBinary, Args: map[string]string{ArgStaging: filepath.Join(staging, "telemt", "bin"), ArgDest: dest}},
+		{Kind: OpInstallBinary, Args: map[string]string{ArgStaging: filepath.Join(staging, "runs", "telemt", "bin"), ArgDest: dest}},
 		{Kind: OpRestartService, Args: map[string]string{ArgService: "telemt"}},
 	}
 	if !ProbeRunner(context.Background(), runner, ops) {
@@ -153,16 +151,16 @@ func TestProbeRunner_ChecksPolicyWithoutExecutingCommands(t *testing.T) {
 func TestProbeRunner_FailsClosedWhenAnyRequiredCommandIsDenied(t *testing.T) {
 	staging := "/var/lib/telemt-panel/staging"
 	dest := "/usr/local/bin/telemt"
-	allow := AllowLists{BinaryPaths: []string{dest}, StagingPrefix: staging}
+	allow := AllowLists{BinaryPaths: []string{dest}, TargetBinaries: map[string]string{"telemt": dest, "panel": "/usr/local/bin/telemt-panel"}, HelperPath: "/usr/local/bin/telemt-panel", PolicyPath: DefaultPrivilegedPolicyPath, StagingPrefix: staging}
 	var calls []recordedCommand
-	policyRun := NewSudoPolicyCmdRunner(commandRecorder(&calls, 2))
+	policyRun := NewSudoPolicyCmdRunner(commandRecorder(&calls, 1))
 	runner := NewSudoRunner(allow, nil, nil, policyRun)
 	if ProbeRunner(context.Background(), runner, []Op{{Kind: OpInstallBinary, Args: map[string]string{
-		ArgStaging: filepath.Join(staging, "telemt", "bin"), ArgDest: dest,
+		ArgStaging: filepath.Join(staging, "runs", "telemt", "bin"), ArgDest: dest,
 	}}}) {
 		t.Fatal("partial sudo policy must not enable updates")
 	}
-	if len(calls) != 2 {
+	if len(calls) != 1 {
 		t.Fatalf("probe continued after denial: %d calls", len(calls))
 	}
 }

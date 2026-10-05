@@ -2,8 +2,14 @@ package host
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"path/filepath"
 	"strings"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 // SudoRunner executes the same validated host operations as directRunner,
@@ -40,7 +46,7 @@ func (r *SudoRunner) Run(ctx context.Context, op Op) (Output, error) {
 		if err != nil {
 			return Output{}, err
 		}
-		return Output{}, r.installExecutable(ctx, src, dest)
+		return Output{}, r.installExecutable(ctx, src, dest, false)
 
 	case OpRestoreBinary:
 		src, err := requireAllowedPath(op, ArgBackup, r.allow.BinaryPaths)
@@ -51,7 +57,7 @@ func (r *SudoRunner) Run(ctx context.Context, op Op) (Output, error) {
 		if err != nil {
 			return Output{}, err
 		}
-		return Output{}, r.installExecutable(ctx, src, dest)
+		return Output{}, r.installExecutable(ctx, src, dest, true)
 
 	case OpRestartService:
 		service, err := requireAllowedService(op, r.allow.Services)
@@ -86,16 +92,85 @@ func (r *SudoRunner) Run(ctx context.Context, op Op) (Output, error) {
 	}
 }
 
-func (r *SudoRunner) installExecutable(ctx context.Context, src, dest string) error {
-	tmp := dest + ".tmp"
-	if err := runSudoStep(ctx, r.run, "cp", "-f", src, tmp); err != nil {
-		return fmt.Errorf("copy executable to temporary path: %w", err)
+func (r *SudoRunner) installExecutable(ctx context.Context, src, dest string, restore bool) error {
+	for _, target := range []string{"panel", "telemt"} {
+		binary := r.allow.TargetBinaries[target]
+		if binary == "" {
+			continue
+		}
+		operation := "install"
+		expected := filepath.Join(r.allow.StagingPrefix, "runs", target, "bin")
+		if restore {
+			operation = "restore"
+			expected = binary + ".bak"
+		} else if dest == binary+".bak" {
+			operation = "backup"
+			expected = filepath.Join(r.allow.StagingPrefix, "runs", target, "backup")
+		}
+		if (dest == binary || (!restore && dest == binary+".bak")) && src == expected {
+			helper, policy, err := helperPaths(r.allow)
+			if err != nil {
+				return err
+			}
+			err = runSudoStep(ctx, r.run, helper, "privileged", "--policy", policy, operation, target)
+			var exit *ExitError
+			if errors.As(err, &exit) && exit.Code == 2 {
+				return &atomicfile.PublicationError{Err: err}
+			}
+			return err
+		}
 	}
-	if err := runSudoStep(ctx, r.run, "chmod", "0755", tmp); err != nil {
-		return fmt.Errorf("chmod temporary executable: %w", err)
+	return errors.New("binary operation does not match a fixed privileged helper target")
+}
+
+func helperPaths(allow AllowLists) (string, string, error) {
+	helper, policy := allow.HelperPath, allow.PolicyPath
+	if helper == "" {
+		helper = allow.TargetBinaries["panel"]
 	}
-	if err := runSudoStep(ctx, r.run, "mv", "-f", tmp, dest); err != nil {
-		return fmt.Errorf("replace executable: %w", err)
+	if policy == "" {
+		policy = DefaultPrivilegedPolicyPath
+	}
+	if err := privilegedPath(helper); err != nil {
+		return "", "", err
+	}
+	if err := privilegedPath(policy); err != nil {
+		return "", "", err
+	}
+	if helper != allow.TargetBinaries["panel"] {
+		return "", "", errors.New("privileged helper must use the configured panel binary")
+	}
+	return helper, policy, nil
+}
+
+// CheckPrivilegedPolicy executes only readonly inspect and checks runtime bindings.
+func CheckPrivilegedPolicy(ctx context.Context, allow AllowLists, run CmdRunner) error {
+	helper, path, err := helperPaths(allow)
+	if err != nil {
+		return err
+	}
+	if run == nil {
+		return errors.New("privileged policy inspect runner is unavailable")
+	}
+	stdout, stderr, err := run(ctx, helper, "privileged", "--policy", path, "inspect")
+	if err != nil {
+		return fmt.Errorf("privileged policy inspect: %s: %w", strings.TrimSpace(string(stderr)), err)
+	}
+	if len(stdout) > maxPolicySize {
+		return errors.New("privileged policy inspection exceeds 64 KiB")
+	}
+	var policy PrivilegedPolicy
+	decoder := json.NewDecoder(strings.NewReader(string(stdout)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&policy); err != nil {
+		return fmt.Errorf("decode privileged policy inspection: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errors.New("privileged policy inspection has trailing JSON")
+	}
+	if policy.Version != 1 || len(policy.Binaries) != 2 || policy.StagingRoot != filepath.Clean(allow.StagingPrefix) || policy.Binaries["panel"] != allow.TargetBinaries["panel"] || policy.Binaries["telemt"] != allow.TargetBinaries["telemt"] {
+		return errors.New("privileged policy differs from runtime paths; repair the panel installation")
 	}
 	return nil
 }

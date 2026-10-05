@@ -139,6 +139,16 @@ sh install.sh --binary /absolute/path/to/telemt-panel
 Для просмотра плана есть `--dry-run`; временные проверки и загрузки при этом
 возможны, но установленная панель не меняется. Все параметры: `sh install.sh help`.
 
+| Настройка прав | По умолчанию |
+| --- | --- |
+| `privileges.mode` | `auto`: root, точный sudo helper или ручные команды |
+| `privileges.policy_path` | `/etc/telemt-panel-privileged/policy.json`; для Entware — `/opt/etc/telemt-panel-privileged/policy.json` |
+
+Старые sudoers требуют отдельного восстановления root-оператором через
+`sh install.sh repair-privileges --user telemt-panel`; команда останавливает
+панель, проверяет protected policy и заменяет sudoers атомарно с откатом.
+Конфиг и бинарники при этом сохраняются. Порядок — в [UPGRADING.md](docs/UPGRADING.md).
+
 ### Доступ к панели
 
 | Вариант | Что потребуется |

@@ -128,6 +128,9 @@ mode = "http"
 # manual commands. One selected mode is shared by Telemt updates and panel
 # self-updates.
 # mode = "auto" # auto | sudo | direct | manual
+# Root-owned policy, separate from the runtime-writable config directory.
+# Entware defaults to /opt/etc/telemt-panel-privileged/policy.json.
+# policy_path = "/etc/telemt-panel-privileged/policy.json"
 
 [updates]
 # GitHub repos (owner/name) update checks poll for new releases.

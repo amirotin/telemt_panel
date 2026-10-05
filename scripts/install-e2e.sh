@@ -1,7 +1,7 @@
 #!/bin/sh
 # End-to-end tests for install.sh without root or Docker: each scenario runs
-# in an unprivileged user namespace where /etc, /usr, /var and /run are
-# overlay-mounted, so the installer really creates users, writes configs,
+# in an unprivileged user namespace with a disposable chroot where
+# every protected directory has namespace uid 0, so the installer really creates users, writes configs,
 # sudoers and service files — all of it discarded afterwards. Service
 # managers and account tools are stubbed on PATH (they cannot work inside
 # the namespace); everything else is the real thing, including starting
@@ -42,15 +42,40 @@ if [ "${E2E_INNER:-}" = "" ]; then
   fi
   BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")
 
+  copy_tool() {
+    TOOL_SOURCE=$(command -v "$1" || true)
+    case "$TOOL_SOURCE" in /*) ;; *) return 0 ;; esac
+    cp -L "$TOOL_SOURCE" "$ROOTFS/bin/$1"
+    cp -L "$TOOL_SOURCE" "$ROOTFS/usr/bin/$1"
+    ldd "$TOOL_SOURCE" 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i ~ /^\//) print $i}' | while IFS= read -r dependency; do
+      mkdir -p "$ROOTFS$(dirname "$dependency")"
+      cp -L "$dependency" "$ROOTFS$dependency"
+    done
+  }
   rc=0
   for sc in $SCENARIOS; do
     echo "=== scenario: $sc ==="
-    if E2E_INNER="$sc" E2E_BIN="$BIN" unshare -Urm sh "$0"; then
+    ROOTFS=$(mktemp -d)
+    mkdir -p "$ROOTFS/bin" "$ROOTFS/usr/bin" "$ROOTFS/usr/local/bin" "$ROOTFS/etc" "$ROOTFS/var/lib" "$ROOTFS/var/log" "$ROOTFS/run" "$ROOTFS/tmp" "$ROOTFS/dev" "$ROOTFS/src/scripts"
+    chmod 1777 "$ROOTFS/tmp"
+    for tool in dirname basename openssl od dd tty stty expr du sh bash cp chmod chown mkdir mktemp cat grep awk sed tr sort cut head tail rm mv ln touch rmdir readlink stat sleep kill timeout tar install sha256sum id uname date wc find cmp ls sync curl wget getent sudo visudo; do copy_tool "$tool"; done
+    cp "$SRC/install.sh" "$ROOTFS/src/install.sh"
+    cp "$0" "$ROOTFS/src/scripts/install-e2e.sh"
+    cp "$BIN" "$ROOTFS/tmp/test-panel"
+    printf 'root:x:0:0:root:/root:/bin/sh\n' >"$ROOTFS/etc/passwd"
+    printf 'root:x:0:\n' >"$ROOTFS/etc/group"
+    printf 'passwd: files\ngroup: files\nhosts: files dns\n' >"$ROOTFS/etc/nsswitch.conf"
+    printf 'root ALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n' >"$ROOTFS/etc/sudoers"
+    chmod 0440 "$ROOTFS/etc/sudoers"
+    : >"$ROOTFS/etc/sudo.conf"
+    : >"$ROOTFS/dev/null"
+    if E2E_ROOTFS=1 E2E_INNER="$sc" E2E_BIN=/tmp/test-panel unshare -Urm chroot "$ROOTFS" /bin/sh /src/scripts/install-e2e.sh; then
       echo "=== $sc: PASS"
     else
       echo "=== $sc: FAIL"
       rc=1
     fi
+    rm -rf "$ROOTFS"
   done
   exit $rc
 fi
@@ -65,6 +90,7 @@ fail() { printf 'FAIL %s\n' "$*" >&2; FAILED=$((FAILED + 1)); }
 check() { if "$@"; then :; else fail "$*"; fi; }
 
 overlay() {
+  if [ "${E2E_ROOTFS:-}" = 1 ]; then return 0; fi
   mkdir -p "$WORK/ov$1/up" "$WORK/ov$1/work"
   mount -t overlay overlay -o "lowerdir=$1,upperdir=$WORK/ov$1/up,workdir=$WORK/ov$1/work" "$1"
 }
@@ -73,7 +99,7 @@ overlay() {
 # exactly on the directories the installer creates files in; /run becomes a
 # fresh tmpfs (the installer only probes it for init-system markers).
 for d in /etc /usr/local/bin /usr/bin; do overlay "$d"; done
-mount -t tmpfs tmpfs /run
+if [ "${E2E_ROOTFS:-}" != 1 ]; then mount -t tmpfs tmpfs /run; fi
 # writable_dir DIR — directories the installer writes into. Ones that
 # already exist on the host with an unmapped owner (a real panel install,
 # say) are shadowed by a tmpfs so the scenario starts from a clean slate.
@@ -94,8 +120,10 @@ rm -rf /etc/telemt-panel/* /etc/sudoers.d/telemt-panel /etc/systemd/system/telem
 # through the overlay (their owner is unmapped), so the account databases
 # are replaced by writable copies bind-mounted over the originals.
 for f in /etc/passwd /etc/group; do
-  cp "$f" "$WORK/$(basename "$f")"
-  mount --bind "$WORK/$(basename "$f")" "$f"
+  if [ "${E2E_ROOTFS:-}" != 1 ]; then
+    cp "$f" "$WORK/$(basename "$f")"
+    mount --bind "$WORK/$(basename "$f")" "$f"
+  fi
 done
 
 # Stubs: service managers log their calls; account tools edit /etc/passwd
@@ -110,7 +138,7 @@ case "$SC" in
   systemd|migrate) STUB_SVC="systemctl" ;;
   openrc) STUB_SVC="rc-service rc-update" ;;
   procd) STUB_SVC="" ;;
-  sysvinit) STUB_SVC="update-rc.d" ;;
+  sysvinit) STUB_SVC="update-rc.d start-stop-daemon" ;;
 esac
 for c in $STUB_SVC; do
   cat >"$STUB/$c" <<EOF
@@ -205,7 +233,7 @@ case "$SC" in procd) PANEL_BIN=/usr/bin/telemt-panel ;; *) PANEL_BIN=/usr/local/
 
 run_installer() {
   TP_ADMIN_PASSWORD="e2e-password" TP_LISTEN="127.0.0.1:$PORT" TP_LANG=en \
-    sh "$SRC/install.sh" --yes --no-start --no-color --binary "$BIN" "$@"
+    sh "$SRC/install.sh" --yes --no-start --no-color --variant "${TP_TEST_VARIANT:-full}" --binary "$BIN" "$@"
 }
 
 if [ "$SC" = "migrate" ]; then

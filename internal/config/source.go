@@ -41,25 +41,26 @@ func (s *Source) ReuseLegacyPasswordHash(hash string) bool {
 
 // SourceReport is the allowlisted, non-secret output for offline inspection.
 type SourceReport struct {
-	Format              string   `json:"format"`
-	RequiresMigration   bool     `json:"requires_migration"`
-	Listen              string   `json:"listen"`
-	BasePath            string   `json:"base_path"`
-	DataDir             string   `json:"data_dir"`
-	TLSMode             string   `json:"tls_mode"`
-	ACMEDomain          string   `json:"acme_domain,omitempty"`
-	SessionTTL          string   `json:"session_ttl"`
-	ServiceManager      string   `json:"service_manager"`
-	PanelService        string   `json:"panel_service"`
-	TelemtService       string   `json:"telemt_service"`
-	PanelServiceScript  string   `json:"panel_service_script,omitempty"`
-	TelemtServiceScript string   `json:"telemt_service_script,omitempty"`
-	PanelBinaryPath     string   `json:"panel_binary_path"`
-	TelemtBinaryPath    string   `json:"telemt_binary_path"`
-	StoreDriver         string   `json:"store_driver"`
-	HasTelemtAuth       bool     `json:"has_telemt_auth"`
-	HasGithubToken      bool     `json:"has_github_token"`
-	Warnings            []string `json:"warnings"`
+	Format               string   `json:"format"`
+	RequiresMigration    bool     `json:"requires_migration"`
+	Listen               string   `json:"listen"`
+	BasePath             string   `json:"base_path"`
+	DataDir              string   `json:"data_dir"`
+	TLSMode              string   `json:"tls_mode"`
+	ACMEDomain           string   `json:"acme_domain,omitempty"`
+	SessionTTL           string   `json:"session_ttl"`
+	ServiceManager       string   `json:"service_manager"`
+	PanelService         string   `json:"panel_service"`
+	TelemtService        string   `json:"telemt_service"`
+	PanelServiceScript   string   `json:"panel_service_script,omitempty"`
+	TelemtServiceScript  string   `json:"telemt_service_script,omitempty"`
+	PanelBinaryPath      string   `json:"panel_binary_path"`
+	TelemtBinaryPath     string   `json:"telemt_binary_path"`
+	PrivilegesPolicyPath string   `json:"privileges_policy_path"`
+	StoreDriver          string   `json:"store_driver"`
+	HasTelemtAuth        bool     `json:"has_telemt_auth"`
+	HasGithubToken       bool     `json:"has_github_token"`
+	Warnings             []string `json:"warnings"`
 }
 
 // Report deliberately excludes API URLs, tokens, password hashes and JWT keys.
@@ -70,11 +71,12 @@ func (s *Source) Report() SourceReport {
 		TLSMode: c.TLS.Mode, ACMEDomain: c.TLS.AcmeDomain,
 		SessionTTL: c.Auth.SessionTTLDuration().String(), ServiceManager: c.Host.ServiceManager,
 		PanelService: c.Host.PanelService, TelemtService: c.Host.TelemtService,
-		PanelServiceScript:  serviceScript(c.Host.Commands.Panel.Restart),
-		TelemtServiceScript: serviceScript(c.Host.Commands.Telemt.Restart),
-		PanelBinaryPath:     c.Updates.PanelBinaryPath,
-		TelemtBinaryPath:    c.Updates.TelemtBinaryPath,
-		StoreDriver:         c.Store.Driver, HasTelemtAuth: c.Telemt.AuthHeader != "",
+		PanelServiceScript:   serviceScript(c.Host.Commands.Panel.Restart),
+		TelemtServiceScript:  serviceScript(c.Host.Commands.Telemt.Restart),
+		PanelBinaryPath:      c.Updates.PanelBinaryPath,
+		TelemtBinaryPath:     c.Updates.TelemtBinaryPath,
+		PrivilegesPolicyPath: c.Privileges.PolicyPath,
+		StoreDriver:          c.Store.Driver, HasTelemtAuth: c.Telemt.AuthHeader != "",
 		HasGithubToken: c.Updates.GithubToken != "", Warnings: s.Warnings}
 }
 
