@@ -1,5 +1,7 @@
 **
 !Dockerfile
+!docker/
+!docker/entrypoint.sh
 !.container-bin/
 !.container-bin/amd64/
 !.container-bin/amd64/telemt-panel

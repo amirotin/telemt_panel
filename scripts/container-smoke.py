@@ -136,13 +136,14 @@ secret = "container-fixture-signing-secret"
                 assert db.execute("SELECT count(*) FROM sqlite_master WHERE type='table'").fetchone()[0] > 0
             docker("rm", name)
             if iteration == 0:
-                # Current CLI saves a backup as UID 65532 while the service is stopped.
+                # Export committed state/history as UID 65532 while stopped.
                 docker("run", "--rm", "--platform", args.platform, "--read-only", *mounts(),
-                       args.image, "config", "export", "--config", "/etc/telemt-panel/config.toml",
-                       "--out", "/etc/telemt-panel/config.backup.toml")
-                docker("run", "--rm", "--platform", args.platform, "--read-only", *mounts(),
-                       "--entrypoint", "/bin/sh", args.image, "-c",
-                       "cp /etc/telemt-panel/config.backup.toml /etc/telemt-panel/config.toml")
+                       args.image, "store", "export", "--config", "/etc/telemt-panel/config.toml",
+                       "--out", "/var/lib/telemt-panel/backup.json")
+                assert json.loads(helper("cat /var/lib/telemt-panel/backup.json"))["format_version"] == 7
+                # Config export is a legacy migration command; snapshot current
+                # TOML with its ownership and mode in this selected config mount.
+                helper("cp -p /etc/telemt-panel/config.toml /etc/telemt-panel/config.backup.toml && cp -p /etc/telemt-panel/config.backup.toml /etc/telemt-panel/config.toml")
                 original = helper("cat /etc/telemt-panel/config.toml")
                 before = helper("sha256sum /var/lib/telemt-panel/panel-state.json /var/lib/telemt-panel/panel.db")
                 # Rehearse former root ownership of populated volumes, then migrate offline.
