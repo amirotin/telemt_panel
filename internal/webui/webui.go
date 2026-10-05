@@ -45,7 +45,7 @@ const assetsPrefix = "assets/"
 // filesystem, which cannot happen here: "dist" is always present in
 // distFS, either as a real build (after `make web`) or as the committed
 // dist/.gitkeep placeholder — see embed.go. A failure would mean the
-// go:embed directive itself is broken, which fails the build, not this
+// embedding directive itself is broken, which fails the build, not this
 // call.
 func Embedded() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")
@@ -113,7 +113,7 @@ func New(fsys fs.FS, basePath string) (*Handler, error) {
 			return nil
 		}
 		logicalPath := path
-		if strings.HasSuffix(path, ".js.gz") || strings.HasSuffix(path, ".css.gz") {
+		if strings.HasSuffix(path, ".js.gz") || strings.HasSuffix(path, ".css.gz") || strings.HasSuffix(path, ".txt.gz") {
 			logicalPath = strings.TrimSuffix(path, ".gz")
 			h.compressedAssets[logicalPath] = path
 		}
@@ -205,7 +205,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // username may legitimately contain a dot — /users/alice.smith must still
 // reach the SPA, not 404.
 func isReservedStaticPath(p string) bool {
-	if strings.HasPrefix(p, assetsPrefix) {
+	if strings.HasPrefix(p, assetsPrefix) || strings.HasPrefix(p, "licenses/") {
 		return true
 	}
 	return !strings.Contains(p, "/") && strings.Contains(p, ".")
