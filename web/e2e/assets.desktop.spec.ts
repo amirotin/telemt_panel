@@ -17,7 +17,7 @@ test("provided menu logo loads in full sidebar and tablet rail", async ({ page, 
   await login();
   for (const [width, testId] of [[1280, "full-sidebar"], [768, "navigation-rail"]] as const) {
     await page.setViewportSize({ width, height: 900 });
-    const logo = page.getByTestId(testId).locator('img[src*="logo-menu-"]');
+    const logo = page.getByTestId(testId).locator('img[src*="logo-menu-"]:visible');
     await expect(logo).toBeVisible();
     await expect.poll(() => logo.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);

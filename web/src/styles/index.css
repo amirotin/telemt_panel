@@ -76,6 +76,15 @@
 }
 
 @layer components {
+  .panel-menu-logo-light { display: none; }
+  .panel-menu-logo-dark { display: block; }
+  :root:is([data-theme="light"], [data-theme="parchment"]) .panel-menu-logo-light { display: block; }
+  :root:is([data-theme="light"], [data-theme="parchment"]) .panel-menu-logo-dark { display: none; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]) .panel-menu-logo-light { display: block; }
+    :root:not([data-theme]) .panel-menu-logo-dark { display: none; }
+  }
+
   .page-header { min-width: 0; flex: none; margin-bottom: 16px; }
   .page-header-back { margin-bottom: 4px; }
   .page-header-back > :is(a, button) { display: inline-flex; min-height: 44px; max-width: 100%; align-items: center; gap: 6px; color: rgb(var(--text-muted)); font-size: 13px; text-align: left; overflow-wrap: anywhere; }
