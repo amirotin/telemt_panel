@@ -1,39 +1,22 @@
-import { useMemo, useRef, useState, type RefObject } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "../../ui/Button";
 import { fill, formatNumber, useStrings, type Dict } from "../../i18n";
-import type { TlsFingerprintRow, TlsFingerprints } from "../../lib/api/generated/types.gen";
+import type { TlsFingerprints } from "../../lib/api/generated/types.gen";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
-import type {
-  EffectiveLimits,
-  SecurityPosture,
-  SecurityTopic,
-  SecurityWhitelist,
-} from "../../realtime/topics";
-import { GatedNote } from "../GatedNote";
-import {
-  useDetailSources,
-  type DetailSourceInput,
-  type SourceState,
-} from "../sourceState";
+import type { EffectiveLimits, SecurityPosture, SecurityTopic, SecurityWhitelist } from "../../realtime/topics";
+import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { useTlsFingerprintsQuery } from "../widgets/useTlsFingerprints";
 import { DetailHeader } from "./DetailHeader";
 import { securityPageData } from "./security.helpers";
 import { securitySources } from "./sourceDefinitions";
-import { formatRtt } from "../formatting";
-import {
-  duration,
-  filterTlsRows,
-  securityLevel,
-  tlsRowIdentity,
-  tlsRowSecondary,
-  tlsTotals,
-  tlsSeenAt,
-  type SecurityLevel,
-  type SecurityTlsScope,
-} from "./security.view.helpers";
+import { securityLevel, tlsTotals, type SecurityLevel } from "./security.view.helpers";
+import { SectionHeading } from "./SectionHeading";
+import { SecuritySourceNotice as SourceNotice } from "./SecuritySourceNotice";
+import { TlsPanel } from "./SecurityTlsSection";
+import { LimitsPanel } from "./SecurityLimitsSection";
 
 type SecurityTab = "posture" | "tls" | "limits";
 
@@ -57,20 +40,6 @@ const levelStyles: Record<SecurityLevel, { border: string; mark: string; text: s
 
 function displayNumber(s: Dict, value: number | null): string {
   return value === null ? "—" : formatNumber(s, value);
-}
-
-function SectionHead({ kicker, title, meta }: { kicker: string; title: string; meta?: string }) {
-  return (
-    <header className="flex flex-wrap items-end justify-between gap-2">
-      <div>
-        <span className="text-micro font-semibold uppercase tracking-[0.16em] text-text-faint">
-          {kicker}
-        </span>
-        <h2 className="mt-1 text-h2 font-semibold text-text">{title}</h2>
-      </div>
-      {meta && <span className="text-meta text-text-muted">{meta}</span>}
-    </header>
-  );
 }
 
 function SecurityHero({
@@ -237,7 +206,7 @@ function PosturePanel({
       data-testid="security-posture-panel"
     >
       <section className="rounded-xl border border-border bg-bg/25 p-4 sm:p-5">
-        <SectionHead kicker={v.requestPath} title={v.apiProtection} meta={v.sequentialConditions} />
+        <SectionHeading level={2} variant="standard" kicker={v.requestPath} title={v.apiProtection} meta={v.sequentialConditions} />
         <div className="mt-5 grid items-center gap-2 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
           <AccessStep
             number="1"
@@ -277,7 +246,7 @@ function PosturePanel({
         </div>
       </section>
       <section className="rounded-xl border border-border bg-bg/25 p-4 sm:p-5">
-        <SectionHead kicker={v.extraProperties} title={v.transportObservability} />
+        <SectionHeading level={2} variant="standard" kicker={v.extraProperties} title={v.transportObservability} />
         <div className="mt-4 divide-y divide-border">
           <PostureRow
             label="PROXY protocol"
@@ -393,423 +362,6 @@ function PostureRow({
       <strong className={cn("text-meta font-semibold text-text", warn && "text-warn")}>
         {value}
       </strong>
-    </div>
-  );
-}
-
-function TlsPanel({
-  tls,
-  source,
-  onRetry,
-  scope,
-  suspiciousOnly,
-  onScopeChange,
-  onFilterChange,
-  resultsRef,
-}: {
-  tls: TlsFingerprints | undefined;
-  source: SourceState | undefined;
-  onRetry: () => void;
-  scope: SecurityTlsScope;
-  suspiciousOnly: boolean;
-  onScopeChange: (scope: SecurityTlsScope) => void;
-  onFilterChange: (value: boolean) => void;
-  resultsRef: RefObject<HTMLHeadingElement | null>;
-}) {
-  const s = useStrings();
-  const v = s.details.pages.security.view;
-  const [query, setQuery] = useState("");
-  const [visible, setVisible] = useState(5);
-  const rows = useMemo(() => filterTlsRows(tls?.[scope] ?? [], scope, query, suspiciousOnly), [query, scope, tls, suspiciousOnly]);
-  const totals = tlsTotals(tls?.by_fingerprint);
-  if (!tls) {
-    if (source?.status === "disabled" || source?.status === "unsupported")
-      return (
-        <div className="p-5">
-          <GatedNote
-            reason={source.reason}
-            variant={source.status === "unsupported" ? "unsupported" : "disabled"}
-            hint={source.status === "unsupported" ? "telemt_outdated" : "runtime_edge"}
-          />
-        </div>
-      );
-    return (
-      <SourceNotice kind={source?.status === "error" ? "error" : "loading"} onRetry={onRetry} />
-    );
-  }
-  const max = Math.max(...rows.map((row) => suspiciousOnly ? row.bad_or_probe : row.total), 1);
-  const scopes: Array<[SecurityTlsScope, string]> = [
-    ["by_fingerprint", v.fingerprints],
-    ["by_ip", "IP"],
-    ["by_cidr", v.subnets],
-    ["by_user", v.users],
-  ];
-  return (
-    <section className="p-4 sm:p-5" data-testid="security-tls-panel">
-      <SectionHead
-        kicker={v.clientHelloWindow}
-        title={v.captureState}
-        meta={fill(v.retention, { value: duration(s, tls.retention_secs) })}
-      />
-      <p className="mt-3 text-meta leading-relaxed text-text-muted">{fill(v.aggregateHint, { limit: formatNumber(s, tls.limit) })}</p>
-      <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4">
-        <CaptureStat
-          label={v.observations}
-          value={displayNumber(s, totals.observed)}
-          hint={v.fourDimensions}
-        />
-        <CaptureStat
-          label={v.badOrProbe}
-          value={displayNumber(s, totals.bad)}
-          hint="bad_or_probe"
-          warn={(totals.bad ?? 0) > 0}
-        />
-        <CaptureStat
-          label={v.parseErrors}
-          value={formatNumber(s, tls.parse_error_total)}
-          hint="parse_error_total"
-          warn={tls.parse_error_total > 0}
-        />
-        <CaptureStat
-          label={v.evicted}
-          value={formatNumber(s, tls.dropped_total)}
-          hint={fill(v.bufferCapacity, { count: formatNumber(s, tls.capacity) })}
-          warn={tls.dropped_total > 0}
-        />
-      </div>
-      <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label={v.tlsDimensions}>
-          {scopes.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={scope === id}
-              onClick={() => {
-                onScopeChange(id);
-                setVisible(5);
-              }}
-              className={cn(
-                "shrink-0 rounded-lg px-3 py-2 text-meta font-semibold",
-                scope === id
-                  ? "bg-accent/15 text-accent"
-                  : "text-text-muted hover:bg-surface-hover",
-              )}
-            >
-              {label}
-              <b className="ml-2 tabular-nums">{formatNumber(s, tls[id].length)}</b>
-            </button>
-          ))}
-        </div>
-        <label className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2 lg:w-72">
-          <span className="text-text-faint" aria-hidden="true">
-            ⌕
-          </span>
-          <input
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setVisible(5);
-            }}
-            className="min-w-0 flex-1 bg-transparent text-meta text-text outline-none placeholder:text-text-faint"
-            placeholder={v.searchPlaceholder}
-            aria-label={v.searchLabel}
-          />
-        </label>
-      </div>
-      <label className="mt-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 text-meta text-text">
-        <input type="checkbox" checked={suspiciousOnly} onChange={(event) => { onFilterChange(event.target.checked); setVisible(5); }} className="h-4 w-4 accent-accent" />
-        {v.suspiciousOnly}
-      </label>
-      <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <span className="text-micro font-semibold uppercase tracking-[0.16em] text-text-faint">
-            {v.ranking}
-          </span>
-          <h3 ref={resultsRef} tabIndex={-1} className="mt-1 text-h2 font-semibold text-text focus-visible:outline-2 focus-visible:outline-accent">
-            {scopes.find(([id]) => id === scope)?.[1]}
-          </h3>
-        </div>
-        <span className="text-meta text-text-muted">{suspiciousOnly ? v.sortedBySignals : v.sortedByTotal}</span>
-      </div>
-      <div className="mt-3 space-y-px overflow-hidden rounded-xl border border-border bg-border">
-        {rows.slice(0, visible).map((row, index) => (
-          <TlsRow
-            key={`${tlsRowIdentity(row, scope)}-${row.ja3}-${index}`}
-            row={row}
-            scope={scope}
-            index={index}
-            max={max}
-            suspiciousOnly={suspiciousOnly}
-          />
-        ))}
-        {rows.length === 0 && (
-          <div className="bg-surface px-4 py-10 text-center text-meta text-text-muted">
-            {suspiciousOnly ? v.noSuspiciousMatches : v.noMatches}
-          </div>
-        )}
-      </div>
-      <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 text-micro text-text-muted">
-        <span>
-          {fill(v.rowsShown, {
-            visible: formatNumber(s, Math.min(visible, rows.length)),
-            total: formatNumber(s, rows.length),
-          })}
-        </span>
-        {visible < rows.length && (
-          <button
-            type="button"
-            className="rounded-lg border border-border px-3 py-2 font-semibold text-text hover:border-accent/45"
-            onClick={() => setVisible((value) => value + 10)}
-          >
-            {v.showMore}
-          </button>
-        )}
-      </footer>
-    </section>
-  );
-}
-
-function CaptureStat({
-  label,
-  value,
-  hint,
-  warn = false,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  warn?: boolean;
-}) {
-  return (
-    <div className={cn("bg-surface px-4 py-3", warn && "bg-warn/5")}>
-      <span className="block text-micro text-text-faint">{label}</span>
-      <strong
-        className={cn(
-          "mt-1 block text-xl font-bold tabular-nums text-text",
-          warn && "text-warn",
-        )}
-      >
-        {value}
-      </strong>
-      <small className="mt-1 block text-micro text-text-muted">{hint}</small>
-    </div>
-  );
-}
-
-function TlsRow({
-  row,
-  scope,
-  index,
-  max,
-  suspiciousOnly,
-}: {
-  row: TlsFingerprintRow;
-  scope: SecurityTlsScope;
-  index: number;
-  max: number;
-  suspiciousOnly: boolean;
-}) {
-  const s = useStrings();
-  const v = s.details.pages.security.view;
-  return (
-    <div
-      className={cn(
-        "grid gap-3 bg-surface px-3 py-3 sm:grid-cols-[2rem_minmax(0,1fr)_minmax(110px,.5fr)_5.5rem] sm:items-center",
-        row.bad_or_probe > 0 && "bg-gradient-to-r from-warn/10 to-surface",
-      )}
-      data-security-row={row.bad_or_probe > 0 ? "warn" : "ok"}
-    >
-      <span className="hidden text-center text-micro tabular-nums text-text-faint sm:block">
-        {index + 1}
-      </span>
-      <div className="min-w-0">
-        <strong
-          className="block truncate text-meta font-semibold text-text"
-          title={tlsRowIdentity(row, scope)}
-        >
-          {tlsRowIdentity(row, scope)}
-        </strong>
-        <span
-          className="mt-1 block truncate font-mono text-micro text-text-faint"
-          title={tlsRowSecondary(row, scope)}
-        >
-          {tlsRowSecondary(row, scope)}
-        </span>
-        <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-meta text-text-muted">
-          <div><dt className="inline">{v.firstSeen}: </dt><dd className="inline">{tlsSeenAt(s, row.first_seen_epoch_secs)}</dd></div>
-          <div><dt className="inline">{v.lastSeen}: </dt><dd className="inline">{tlsSeenAt(s, row.last_seen_epoch_secs)}</dd></div>
-        </dl>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-bg ring-1 ring-inset ring-border">
-        <i
-          className={cn(
-            "block h-full rounded-full bg-gradient-to-r",
-            row.bad_or_probe > 0 ? "from-warn/60 to-warn" : "from-accent/60 to-accent",
-          )}
-          style={{ width: `${Math.max(2, ((suspiciousOnly ? row.bad_or_probe : row.total) / max) * 100)}%` }}
-        />
-      </div>
-      <div className="flex items-end justify-between gap-3 sm:block sm:text-right">
-        <strong className="text-base font-bold tabular-nums text-text">
-          {formatNumber(s, suspiciousOnly ? row.bad_or_probe : row.total)}
-        </strong>
-        <span
-          className={cn(
-            "block text-micro",
-            row.bad_or_probe > 0 ? "text-warn" : "text-text-faint",
-          )}
-        >
-          {suspiciousOnly
-            ? fill(v.totalObserved, { count: formatNumber(s, row.total) })
-            : row.bad_or_probe > 0
-            ? fill(v.needReview, { count: formatNumber(s, row.bad_or_probe) })
-            : v.noSignals}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function LimitsPanel({ limits }: { limits: EffectiveLimits }) {
-  const s = useStrings();
-  const v = s.details.pages.security.view;
-  const t = limits.timeouts;
-  const u = limits.upstream;
-  const rows = [
-    [v.connectAttempts, formatNumber(s, u.connect_retry_attempts), "connect_retry_attempts"],
-    [v.backoff, formatRtt(u.connect_retry_backoff_ms, s, { precision: 3 }), "connect_retry_backoff_ms"],
-    [v.totalBudget, formatRtt(u.connect_budget_ms, s, { precision: 3 }), "connect_budget_ms"],
-    [v.unhealthyThreshold, formatNumber(s, u.unhealthy_fail_threshold), "unhealthy_fail_threshold"],
-    [
-      v.failfastHardErrors,
-      u.connect_failfast_hard_errors ? v.enabled : v.disabled,
-      "connect_failfast_hard_errors",
-    ],
-  ];
-  const runtime = [
-    [v.configRefresh, duration(s, limits.update_every_secs), "update_every_secs"],
-    [v.meReinit, duration(s, limits.me_reinit_every_secs), "me_reinit_every_secs"],
-    [v.meForceClose, duration(s, limits.me_pool_force_close_secs), "me_pool_force_close_secs"],
-    [v.clientAck, duration(s, t.client_ack_secs), "client_ack_secs"],
-    [
-      v.meRetryTimeout,
-      `${formatNumber(s, t.me_one_retry)} / ${formatRtt(t.me_one_timeout_ms, s, { precision: 3 })}`,
-      "me_one_retry / me_one_timeout_ms",
-    ],
-  ];
-  const policy = [
-    [v.ipPolicyMode, limits.user_ip_policy.mode, "user_ip_policy.mode"],
-    [
-      v.ipPolicyLimit,
-      formatNumber(s, limits.user_ip_policy.global_each),
-      "user_ip_policy.global_each",
-    ],
-    [
-      v.ipPolicyWindow,
-      duration(s, limits.user_ip_policy.window_secs),
-      "user_ip_policy.window_secs",
-    ],
-    [
-      v.tcpPolicyLimit,
-      formatNumber(s, limits.user_tcp_policy.global_each),
-      "user_tcp_policy.global_each",
-    ],
-  ];
-  return (
-    <section className="p-4 sm:p-5" data-testid="security-limits-panel">
-      <SectionHead kicker={v.effectiveValues} title={v.connectionBudgets} meta={v.afterDefaults} />
-      <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4">
-        <TimeoutStep
-          label="Handshake"
-          value={duration(s, t.client_handshake_secs)}
-          hint={v.handshakeHint}
-        />
-        <TimeoutStep
-          label="Telegram connect"
-          value={duration(s, t.tg_connect_secs)}
-          hint={v.telegramConnectHint}
-        />
-        <TimeoutStep
-          label="Keepalive"
-          value={duration(s, t.client_keepalive_secs)}
-          hint={v.keepaliveHint}
-        />
-        <TimeoutStep
-          label="First byte idle"
-          value={duration(s, t.client_first_byte_idle_secs)}
-          hint={v.firstByteHint}
-        />
-      </div>
-      <div className="mt-5 grid gap-4 xl:grid-cols-3">
-        <LimitGroup title={v.upstreamRetries} rows={rows} />
-        <LimitGroup title={v.runtimeBudgets} rows={runtime} />
-        <LimitGroup title={v.userPolicies} rows={policy} />
-      </div>
-      <div className="mt-4 flex gap-3 rounded-xl border border-accent/20 bg-accent/5 px-4 py-3">
-        <span className="font-bold text-accent">i</span>
-        <p className="text-meta leading-relaxed text-text-muted">{v.limitsExplanation}</p>
-      </div>
-    </section>
-  );
-}
-
-function TimeoutStep({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div className="min-w-0 bg-surface p-3.5">
-      <span className="block text-micro text-text-faint">{label}</span>
-      <strong className="mt-1.5 block text-lg font-bold tabular-nums text-text">{value}</strong>
-      <small className="mt-1 block text-micro leading-relaxed text-text-muted">{hint}</small>
-    </div>
-  );
-}
-function LimitGroup({ title, rows }: { title: string; rows: string[][] }) {
-  return (
-    <section className="rounded-xl border border-border bg-bg/25 p-4">
-      <h3 className="text-meta font-semibold text-text">{title}</h3>
-      <div className="mt-3 divide-y divide-border">
-        {rows.map(([label, value, key]) => (
-          <div key={key} className="flex items-center justify-between gap-4 py-3">
-            <div>
-              <span className="block text-meta text-text">{label}</span>
-              <small className="block break-all font-mono text-micro text-text-faint">{key}</small>
-            </div>
-            <strong className="shrink-0 text-meta font-semibold tabular-nums text-text">
-              {value}
-            </strong>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SourceNotice({
-  kind,
-  onRetry,
-}: {
-  kind: "loading" | "error" | "unavailable";
-  onRetry?: () => void;
-}) {
-  const v = useStrings().details.pages.security.view;
-  const title = kind === "loading" ? v.loading : kind === "error" ? v.sourceError : v.unavailable;
-  const body =
-    kind === "loading" ? v.loadingText : kind === "error" ? v.sourceErrorText : v.unavailableText;
-  return (
-    <div className="p-5">
-      <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center">
-        <h2 className="text-h2 font-semibold text-text">{title}</h2>
-        <p className="mx-auto mt-2 max-w-prose text-meta text-text-muted">{body}</p>
-        {kind === "error" && onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-4 rounded-lg border border-border px-3 py-2 text-meta font-semibold text-text hover:border-accent/45"
-          >
-            {v.retry}
-          </button>
-        )}
-      </div>
     </div>
   );
 }

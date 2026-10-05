@@ -1,32 +1,23 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { fill, formatNumber, useStrings, type Dict } from "../../i18n";
+import { formatNumber, useStrings, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
-import type {
-  MeWriterStatus,
-  MeWritersData,
-  RuntimeGates,
-  RuntimeInitialization,
-  RuntimeInitializationComponent,
-  RuntimeMePoolState,
-  RuntimeMeQuality,
-  RuntimeMeQualityDcRtt,
-  RuntimeMeSelftest,
-  RuntimeTopic,
-  UpstreamsTopic,
-} from "../../realtime/topics";
-import { IconChevronDown } from "../../ui/icons";
+import type { MeWriterStatus, MeWritersData, RuntimeGates, RuntimeMePoolState, RuntimeMeQuality, RuntimeMeQualityDcRtt, RuntimeMeSelftest, RuntimeTopic, UpstreamsTopic } from "../../realtime/topics";
 import { StatePill, type State } from "../../ui/StatePill";
 import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { resolveGated } from "../widgets/gated";
 import { DetailHeader } from "./DetailHeader";
 import { mePagePayload, meRouteMode, type MeRouteMode } from "./me.helpers";
 import { meSources } from "./sourceDefinitions";
-import {MeSourceNotice} from '../MeSourceNotice';
-import {meAvailability,meAvailabilityText} from '../meAvailability';
-import { formatDiagnosticDuration, formatRtt as diagnosticRtt, formatPercent as diagnosticPercent, formatRaw as diagnosticRaw } from "../formatting";
+import { MeSourceNotice } from '../MeSourceNotice';
+import { meAvailability, meAvailabilityText } from '../meAvailability';
+import { formatRtt as diagnosticRtt, formatPercent as diagnosticPercent, formatRaw as diagnosticRaw } from "../formatting";
+import { SectionHeading } from "./SectionHeading";
+import { TechnicalSection } from "./TechnicalSection";
+import { InitializationPanel } from "./MeInitializationSection";
+import { RuntimePanel } from "./MeRuntimeSection";
 
 type MeTab = "overview" | "writers" | "quality" | "initialization" | "runtime";
 type WriterFilter = "all" | "active" | "degraded" | "draining";
@@ -51,15 +42,6 @@ function formatRtt(value: number | null | undefined, s: Dict): string {
 
 function formatPercent(value: number | null | undefined, s: Dict): string {
   return diagnosticPercent(value, s, { precision: 1, space: false });
-}
-
-function formatDurationMs(value: number | null, s: Dict): string {
-  return formatDiagnosticDuration(value, s, { inputUnit: "milliseconds", unit: value !== null && value >= 60_000 ? "minutes" : value !== null && value >= 1000 ? "seconds" : "milliseconds", precision: value !== null && value >= 1000 ? 1 : 3 });
-}
-
-function formatAge(seconds: number | null, s: Dict): string {
-  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "—";
-  return formatDiagnosticDuration(seconds, s, { inputUnit: "seconds", minimumUnit: "seconds", precision: 0, rounding: seconds < 60 ? "round" : "floor" });
 }
 
 function formatRaw(value: unknown, s: Dict): string {
@@ -141,18 +123,6 @@ function dcPairs(quality: RuntimeMeQuality | undefined, writers: MeWriterStatus[
     pairs.set(id, pair);
   }
   return [...pairs.values()].sort((a, b) => pairOrder(a.id, b.id));
-}
-
-function SectionHeading({ kicker, title, meta }: { kicker: string; title: string; meta?: string }) {
-  return (
-    <header className="flex flex-wrap items-end justify-between gap-2">
-      <div>
-        <p className="text-label uppercase tracking-[0.12em] text-text-muted">{kicker}</p>
-        <h3 className="mt-0.5 text-h3 font-semibold text-text">{title}</h3>
-      </div>
-      {meta && <span className="text-micro text-text-muted">{meta}</span>}
-    </header>
-  );
 }
 
 function RouteHero({
@@ -271,7 +241,7 @@ function DcTopology({ pairs, s }: { pairs: DcPairPoint[]; s: Dict }) {
 
   return (
     <section className="min-w-0 px-4 py-5 sm:px-5" data-testid="me-topology">
-      <SectionHeading kicker={v.topology} title={v.writersByPairs} meta={v.rttEma} />
+      <SectionHeading level={2} variant="compact" kicker={v.topology} title={v.writersByPairs} meta={v.rttEma} />
       <div className="mt-5 grid gap-4">
         {pairs.map((pair) => {
           const rpcWriters = pair.rpc?.writers ?? 0;
@@ -387,7 +357,7 @@ function RouteReadiness({
       className="min-w-0 border-t border-border px-4 py-5 sm:px-5 lg:border-l lg:border-t-0"
       data-testid="me-readiness"
     >
-      <SectionHeading kicker={v.controller} title={v.routeReadiness} />
+      <SectionHeading level={2} variant="compact" kicker={v.controller} title={v.routeReadiness} />
       <div className="mt-4 overflow-hidden rounded-xl border border-border">
         {rows.map(([label, detail, value, tone]) => (
           <div
@@ -543,7 +513,7 @@ function WritersPanel({ writers, s }: { writers: MeWriterStatus[]; s: Dict }) {
 
   return (
     <section className="px-4 py-5 sm:px-5" data-testid="me-writers">
-      <SectionHeading
+      <SectionHeading level={2} variant="compact"
         kicker={v.pointDiagnostics}
         title={v.writersAndClients}
         meta={`${formatNumber(s, writers.length)} ${v.total}`}
@@ -822,7 +792,7 @@ function QualityPanel({
       data-testid="me-quality"
     >
       <section className="min-w-0 border-b border-border px-4 py-5 sm:px-5 lg:border-b-0 lg:border-r">
-        <SectionHeading
+        <SectionHeading level={2} variant="compact"
           kicker={v.latency}
           title={v.rttByPairs}
           meta={`${v.lowerIsBetter} · p95 ${formatRtt(p95, s)}`}
@@ -830,7 +800,7 @@ function QualityPanel({
         <RttChart rows={quality.dc_rtt} s={s} />
       </section>
       <section className="min-w-0 border-b border-border px-4 py-5 sm:px-5 lg:border-b-0">
-        <SectionHeading kicker={v.currentSignals} title={v.safeToUse} />
+        <SectionHeading level={2} variant="compact" kicker={v.currentSignals} title={v.safeToUse} />
         <div className="mt-4 overflow-hidden rounded-xl border border-border">
           {signals.map(([label, value, detail, tone]) => (
             <div key={label} className="border-b border-border px-3 py-3 last:border-b-0">
@@ -847,7 +817,7 @@ function QualityPanel({
         className="border-t border-border px-4 py-5 sm:px-5 lg:col-span-2"
         data-testid="me-quality-counters"
       >
-        <SectionHeading
+        <SectionHeading level={2} variant="compact"
           kicker={v.lifetime}
           title={v.investigationCounters}
           meta={v.cumulativeNotHealth}
@@ -864,396 +834,6 @@ function QualityPanel({
           ))}
         </div>
       </section>
-    </div>
-  );
-}
-
-interface InitGroup {
-  id: string;
-  label: string;
-  components: RuntimeInitializationComponent[];
-}
-
-function initializationGroups(initialization: RuntimeInitialization, s: Dict): InitGroup[] {
-  const v = s.details.pages.me.view;
-  const specs: Array<[string, string, string[]]> = [
-    ["config", v.initConfig, ["config_load"]],
-    [
-      "services",
-      v.initServices,
-      [
-        "tracing_init",
-        "api_bootstrap",
-        "tls_front_bootstrap",
-        "listeners_bind",
-        "config_watcher_start",
-        "metrics_start",
-        "runtime_ready",
-      ],
-    ],
-    ["network", v.initNetwork, ["network_probe"]],
-    [
-      "secret",
-      v.initSecret,
-      ["me_secret_fetch", "me_proxy_config_fetch_v4", "me_proxy_config_fetch_v6"],
-    ],
-    ["pool", v.initPool, ["me_pool_construct", "me_pool_init_stage1"]],
-    ["optional", v.initOptional, ["me_connectivity_ping", "dc_connectivity_ping"]],
-  ];
-  return specs.map(([id, label, ids]) => ({
-    id,
-    label,
-    components: initialization.components.filter((item) => ids.includes(item.id)),
-  }));
-}
-
-function initializationGroupState(group: InitGroup): { tone: State; status: string } {
-  const statuses = group.components.map((item) => item.status.toLowerCase());
-  if (statuses.some((status) => /fail|error/.test(status)))
-    return { tone: "error", status: "failed" };
-  if (statuses.length > 0 && statuses.every((status) => status === "skipped"))
-    return { tone: "muted", status: "skipped" };
-  if (statuses.some((status) => !["ready", "skipped", "complete", "completed"].includes(status)))
-    return { tone: "warn", status: "in-progress" };
-  return { tone: "ok", status: "ready" };
-}
-
-function InitializationPanel({
-  initialization,
-  nowMs,
-  s,
-}: {
-  initialization: RuntimeInitialization | null;
-  nowMs: number;
-  s: Dict;
-}) {
-  const v = s.details.pages.me.view;
-  if (!initialization)
-    return (
-      <p className="px-5 py-12 text-center text-meta text-text-muted">{v.sourceUnavailable}</p>
-    );
-  const groups = initializationGroups(initialization, s);
-  const ready = initialization.status.toLowerCase() === "ready";
-  const readyCount = initialization.components.filter(
-    (item) => item.status.toLowerCase() === "ready",
-  ).length;
-  const skippedCount = initialization.components.filter(
-    (item) => item.status.toLowerCase() === "skipped",
-  ).length;
-  const age = nowMs / 1000 - initialization.started_at_epoch_secs;
-  const readyDuration =
-    initialization.ready_at_epoch_secs === undefined
-      ? null
-      : (initialization.ready_at_epoch_secs - initialization.started_at_epoch_secs) * 1000;
-
-  return (
-    <div
-      className="grid lg:grid-cols-[minmax(280px,0.78fr)_minmax(0,1.22fr)]"
-      data-testid="me-initialization"
-    >
-      <section className="border-b border-border px-4 py-5 sm:px-5 lg:border-b-0 lg:border-r">
-        <SectionHeading kicker={v.lastStart} title={ready ? v.proxyReady : v.proxyNotReady} />
-        <div
-          className={cn(
-            "mt-5 flex items-center gap-3 rounded-xl border px-4 py-4",
-            ready ? "border-ok/25 bg-ok/8" : "border-warn/25 bg-warn/8",
-          )}
-        >
-          <span
-            className={cn(
-              "grid h-10 w-10 place-items-center rounded-full text-xl",
-              ready ? "bg-ok/15 text-ok" : "bg-warn/15 text-warn",
-            )}
-          >
-            {ready ? "✓" : "…"}
-          </span>
-          <div>
-            <strong className="block text-h3 text-text">
-              {ready ? v.completed : v.inProgress}
-            </strong>
-            <span className="text-micro text-text-muted">
-              {v.transportMode}: {initialization.transport_mode}
-            </span>
-          </div>
-        </div>
-        <dl className="mt-4 grid grid-cols-2 overflow-hidden rounded-xl border border-border">
-          {[
-            [v.meReadiness, `${formatNumber(s, initialization.me.progress_pct)}%`],
-            [
-              v.initAttempt,
-              `${formatNumber(s, initialization.me.init_attempt)} · ${initialization.me.retry_limit}`,
-            ],
-            [
-              v.components,
-              fill(v.componentStatesTemplate, { ready: formatNumber(s, readyCount), skipped: formatNumber(s, skippedCount) }),
-            ],
-            [v.started, formatAge(age, s)],
-            [v.completed, formatDurationMs(readyDuration, s)],
-            [v.state, initialization.current_stage],
-          ].map(([label, value]) => (
-            <div key={label} data-init-fact className="border-b border-r border-border px-3 py-3">
-              <dt className="text-micro text-text-muted">{label}</dt>
-              <dd className="mt-1 break-all text-meta font-semibold text-text">{value}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-4 flex gap-2 text-micro leading-relaxed text-text-muted">
-          <span className="text-accent">i</span>
-          {v.ageVsDuration}
-        </p>
-      </section>
-      <section className="px-4 py-5 sm:px-5">
-        <SectionHeading
-          kicker={v.criticalPath}
-          title={v.startupSequence}
-          meta={`${initialization.components.length} · ${v.groupedComponents}`}
-        />
-        <div className="relative mt-5 ml-2 border-l border-border pl-5">
-          {groups.map((group) => {
-            const state = initializationGroupState(group);
-            const duration = group.components.reduce(
-              (total, item) => total + (item.duration_ms ?? 0),
-              0,
-            );
-            const details = group.components
-              .map((item) => item.details)
-              .filter(Boolean)
-              .join(" · ");
-            const label =
-              state.status === "ready"
-                ? v.completed
-                : state.status === "skipped"
-                  ? v.skipped
-                  : state.status === "failed"
-                    ? v.failed
-                    : v.inProgress;
-            return (
-              <div
-                key={group.id}
-                className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-border py-3 first:pt-0 last:border-b-0"
-                data-init-group={group.id}
-              >
-                <i
-                  className={cn(
-                    "absolute -left-[25px] top-4 h-2 w-2 rounded-full ring-4 ring-surface",
-                    state.tone === "ok"
-                      ? "bg-ok"
-                      : state.tone === "error"
-                        ? "bg-error"
-                        : state.tone === "warn"
-                          ? "bg-warn"
-                          : "bg-text-faint",
-                  )}
-                />
-                <div className="min-w-0">
-                  <strong className="text-meta text-text">{group.label}</strong>
-                  <span className="mt-0.5 block text-micro leading-relaxed text-text-muted">
-                    {details || label}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <StatePill state={state.tone}>{label}</StatePill>
-                  <time className="mt-1 block text-micro tabular-nums text-text-muted">
-                    {formatDurationMs(duration, s)}
-                  </time>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function RuntimePanel({
-  gates,
-  pool,
-  quality,
-  selftest,
-  runtimeSettings,
-  s,
-}: {
-  gates: RuntimeGates | null;
-  pool: RuntimeMePoolState | undefined;
-  quality: RuntimeMeQuality | undefined;
-  selftest: RuntimeMeSelftest | undefined;
-  runtimeSettings: Record<string, unknown> | undefined;
-  s: Dict;
-}) {
-  const v = s.details.pages.me.view;
-  const drainOpen = quality?.drain_gate.route_quorum_ok && quality.drain_gate.redundancy_ok;
-  const cards = [
-    [
-      v.admission,
-      gates?.accepting_new_connections ? v.accepting : v.notAccepting,
-      gates?.accepting_new_connections ? v.ready : v.blocked,
-      gates?.accepting_new_connections ? "ok" : "warn",
-    ],
-    [
-      v.routeMode,
-      gates?.route_mode ?? "—",
-      gates?.reroute_active ? v.rerouteActive : v.ready,
-      gates?.reroute_active ? "warn" : "ok",
-    ],
-    [
-      v.fallback,
-      gates?.me2dc_fallback_enabled ? v.allowed : v.disabled,
-      `${v.fastFallback}: ${gates?.me2dc_fast_enabled ? v.yes : v.no}`,
-      "ok",
-    ],
-    [
-      v.drainGate,
-      quality ? (drainOpen ? v.open : v.blocked) : "—",
-      quality?.drain_gate.block_reason ?? "—",
-      drainOpen ? "ok" : "warn",
-    ],
-  ] as const;
-  const lifecycle = [
-    [
-      v.activeGeneration,
-      pool ? `#${formatNumber(s, pool.generations.active_generation)}` : "—",
-      v.activeGeneration,
-    ],
-    [
-      v.warmGeneration,
-      pool?.generations.warm_generation
-        ? `#${formatNumber(s, pool.generations.warm_generation)}`
-        : v.none,
-      pool?.hardswap.pending ? v.hardswapPending : v.hardswapIdle,
-    ],
-    [
-      v.draining,
-      pool ? formatNumber(s, pool.writers.draining) : "—",
-      fill(v.generationsTemplate, { count: formatNumber(s, pool?.generations.draining_generations.length ?? 0) }),
-    ],
-    [
-      v.refillInflight,
-      pool ? formatNumber(s, pool.refill.inflight_endpoints_total) : "—",
-      `${pool?.refill.inflight_dc_total ?? 0} DC`,
-    ],
-  ] as const;
-  const tests = [
-    [
-      "KDF",
-      selftest?.kdf.state ?? "—",
-      selftest
-        ? `${formatNumber(s, selftest.kdf.ewma_errors_per_min)} ${s.details.value.perMinute} · ${v.threshold} ${formatNumber(s, selftest.kdf.threshold_errors_per_min)}`
-        : "—",
-    ],
-    [
-      v.clockSkew,
-      selftest?.timeskew.state ?? "—",
-      selftest?.timeskew.max_skew_secs_15m === null ||
-      selftest?.timeskew.max_skew_secs_15m === undefined
-        ? "—"
-        : `${formatNumber(s, selftest.timeskew.max_skew_secs_15m)} ${s.details.value.seconds} / 15 ${s.details.value.minutes}`,
-    ],
-    [v.ipv4, selftest?.ip.v4?.state ?? "—", selftest?.ip.v4?.addr ?? "—"],
-    [v.ipv6, selftest?.ip.v6?.state ?? "—", selftest?.ip.v6?.addr ?? "—"],
-    [v.pid, selftest?.pid.state ?? "—", selftest ? formatNumber(s, selftest.pid.pid) : "—"],
-    [
-      v.socksBnd,
-      selftest?.bnd ? `${selftest.bnd.addr_state} / ${selftest.bnd.port_state}` : "—",
-      selftest?.bnd?.last_addr ?? v.notUsed,
-    ],
-  ] as const;
-
-  return (
-    <div data-testid="me-runtime">
-      <section className="border-b border-border px-4 py-5 sm:px-5">
-        <SectionHeading kicker={v.runtimeGates} title={v.whatNow} meta={v.operationalFlags} />
-        <div className="mt-4 grid overflow-hidden rounded-xl border border-border sm:grid-cols-2 lg:grid-cols-4">
-          {cards.map(([label, value, detail, tone]) => (
-            <div
-              key={label}
-              data-runtime-gate
-              className="border-b border-r border-border px-3 py-3"
-            >
-              <span className="text-micro text-text-muted">{label}</span>
-              <strong
-                className={cn("mt-1 block text-h3", tone === "warn" ? "text-warn" : "text-ok")}
-              >
-                {value}
-              </strong>
-              <small className="text-micro text-text-faint">{detail}</small>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="border-b border-border px-4 py-5 sm:px-5">
-        <SectionHeading kicker={v.poolLifecycle} title={v.generationsAndRefill} />
-        <div className="mt-4 grid overflow-hidden rounded-xl border border-border sm:grid-cols-2 lg:grid-cols-4">
-          {lifecycle.map(([label, value, detail]) => (
-            <div
-              key={label}
-              data-runtime-lifecycle
-              className="border-b border-r border-border px-3 py-3"
-            >
-              <span className="text-micro text-text-muted">{label}</span>
-              <strong className="mt-1 block text-h3 tabular-nums text-text">{value}</strong>
-              <small className="text-micro text-text-faint">{detail}</small>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="border-b border-border px-4 py-5 sm:px-5">
-        <SectionHeading kicker={v.selftest} title={v.environment} />
-        <div className="mt-4 grid overflow-hidden rounded-xl border border-border sm:grid-cols-2">
-          {tests.map(([label, value, detail]) => {
-            const okay = /^(ok|good|non-one)$/i.test(value);
-            return (
-              <div
-                key={label}
-                data-selftest
-                className="flex items-start justify-between gap-3 border-b border-r border-border px-3 py-3"
-              >
-                <div>
-                  <span className="block text-meta text-text-muted">{label}</span>
-                  <small className="mt-0.5 block break-all text-micro text-text-faint">
-                    {detail}
-                  </small>
-                </div>
-                <strong
-                  className={okay ? "text-ok" : value === "—" ? "text-text-muted" : "text-warn"}
-                >
-                  {value}
-                </strong>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-      <details className="group px-4 py-4 sm:px-5" data-testid="me-runtime-settings">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-          <span>
-            <strong className="block text-meta text-text">{v.runtimeSettings}</strong>
-            <span className="block text-micro text-text-muted">{v.runtimeSettingsDescription}</span>
-          </span>
-          <IconChevronDown className="shrink-0 transition-transform group-open:rotate-180" />
-        </summary>
-        <dl className="mt-4 grid border-t border-border sm:grid-cols-2 xl:grid-cols-3">
-          {Object.entries(runtimeSettings ?? {})
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([label, value]) => (
-              <div
-                key={label}
-                data-runtime-setting
-                className="min-w-0 border-b border-r border-border px-3 py-3"
-              >
-                <dt className="truncate font-mono text-micro text-text-muted" title={label}>
-                  {label}
-                </dt>
-                <dd className="mt-1 break-all text-meta font-semibold text-text">
-                  {formatRaw(value, s)}
-                </dd>
-              </div>
-            ))}
-          {!runtimeSettings && (
-            <p className="py-5 text-meta text-text-muted">{v.sourceUnavailable}</p>
-          )}
-        </dl>
-      </details>
     </div>
   );
 }
@@ -1431,17 +1011,7 @@ export function MePage() {
             </div>
 
             </>}
-            <details
-              className="group border-t border-border px-4 py-4 sm:px-5"
-              data-testid="me-technical"
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                <span>
-                  <strong className="block text-meta text-text">{v.technical}</strong>
-                  <span className="block text-micro text-text-muted">{v.technicalDescription}</span>
-                </span>
-                <IconChevronDown className="shrink-0 transition-transform group-open:rotate-180" />
-              </summary>
+            <TechnicalSection title={v.technical} data-testid="me-technical">
               <dl className="mt-4 grid border-t border-border sm:grid-cols-2 xl:grid-cols-4">
                 {technical.map(([label, value]) => (
                   <div key={label} className="min-w-0 border-b border-r border-border px-3 py-3">
@@ -1454,7 +1024,7 @@ export function MePage() {
                   </div>
                 ))}
               </dl>
-            </details>
+            </TechnicalSection>
           </>
         )}
       </section>

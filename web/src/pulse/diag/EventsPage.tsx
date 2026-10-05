@@ -262,7 +262,7 @@ function Timeline({
 
   return (
     <section className="min-w-0 px-4 py-5 sm:px-5" data-testid="events-timeline">
-      <SectionHeading kicker={v.newestFirst} title={v.timeline} meta={caption} />
+      <SectionHeading level={2} variant="compact" kicker={v.newestFirst} title={v.timeline} meta={caption} />
       <div className="mt-4 flex flex-col gap-3">
         <div
           className="flex gap-1 overflow-x-auto"
@@ -359,7 +359,7 @@ function Analysis({
       data-testid="events-analysis"
     >
       <section className="border-b border-border px-4 py-5 sm:px-5">
-        <SectionHeading kicker={v.composition} title={v.dominates} />
+        <SectionHeading level={2} variant="compact" kicker={v.composition} title={v.dominates} />
         <div className="mt-5 space-y-4">
           {composition.map(([family, count]) => {
             const percent = events.length > 0 ? (count / events.length) * 100 : 0;
@@ -405,7 +405,7 @@ function Analysis({
         )}
       </section>
       <section className="px-4 py-5 sm:px-5">
-        <SectionHeading kicker={v.ringBuffer} title={v.historyBoundary} />
+        <SectionHeading level={2} variant="compact" kicker={v.ringBuffer} title={v.historyBoundary} />
         <div className="mt-5 flex items-baseline justify-between gap-3">
           <strong className="font-mono text-h2 font-bold tabular-nums text-text">
             {formatNumber(s, events.length)} / {formatNumber(s, buffer.capacity)}

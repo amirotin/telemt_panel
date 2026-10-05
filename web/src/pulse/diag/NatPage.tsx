@@ -4,27 +4,17 @@ import { formatNumber, useStrings, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../people/useNow";
 import { useSnapshot } from "../../realtime";
-import type {
-  RuntimeGates,
-  RuntimeNatStun,
-  RuntimeNatStunReflection,
-  RuntimeTopic,
-} from "../../realtime/topics";
-import { IconChevronDown } from "../../ui/icons";
+import type { RuntimeGates, RuntimeNatStun, RuntimeNatStunReflection, RuntimeTopic } from "../../realtime/topics";
 import { StatePill, type State } from "../../ui/StatePill";
 import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { resolveGated } from "../widgets/gated";
 import { DetailHeader } from "./DetailHeader";
 import { SectionHeading } from "./SectionHeading";
 import { meRouteMode, type MeRouteMode } from "./me.helpers";
-import {
-  natMechanismState,
-  reflectionAgeSecs,
-  STUN_REFLECTION_TTL_SECONDS,
-  type NatMechanismState,
-} from "./nat.helpers";
+import { natMechanismState, reflectionAgeSecs, STUN_REFLECTION_TTL_SECONDS, type NatMechanismState } from "./nat.helpers";
 import { natSources } from "./sourceDefinitions";
 import { formatRaw as diagnosticRaw } from "../formatting";
+import { TechnicalSection } from "./TechnicalSection";
 
 type NatTab = "overview" | "servers";
 
@@ -406,7 +396,7 @@ function OverviewPanel({ nat, s }: { nat: RuntimeNatStun; s: Dict }) {
   return (
     <section data-testid="nat-overview">
       <div className="px-4 py-5 sm:px-5">
-        <SectionHeading kicker={v.howAddressUsed} title={v.pathTitle} meta={v.pathMeta} />
+        <SectionHeading level={2} variant="compact" kicker={v.howAddressUsed} title={v.pathTitle} meta={v.pathMeta} />
         <div className="mt-5 grid items-stretch gap-2 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr]">
           {nodes.map((node, index) => (
             <div key={node.name} className="contents">
@@ -426,7 +416,7 @@ function OverviewPanel({ nat, s }: { nat: RuntimeNatStun; s: Dict }) {
 
       <div className="grid border-t border-border lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,.65fr)]">
         <section className="border-b border-r border-border px-4 py-5 sm:px-5">
-          <SectionHeading
+          <SectionHeading level={2} variant="compact"
             kicker={v.byIpFamily}
             title={v.knownAddresses}
             meta={v.portFromReflection}
@@ -437,7 +427,7 @@ function OverviewPanel({ nat, s }: { nat: RuntimeNatStun; s: Dict }) {
           </div>
         </section>
         <aside className="px-4 py-5 sm:px-5">
-          <SectionHeading kicker={v.probeState} title={v.whatNow} meta={v.notProxyHealth} />
+          <SectionHeading level={2} variant="compact" kicker={v.probeState} title={v.whatNow} meta={v.notProxyHealth} />
           <dl className="mt-5 overflow-hidden rounded-xl border border-border">
             {probeRows.map(([label, value, tone]) => (
               <div
@@ -500,7 +490,7 @@ function ServersPanel({ nat, s }: { nat: RuntimeNatStun; s: Dict }) {
 
   return (
     <section className="px-4 py-5 sm:px-5" data-testid="nat-servers">
-      <SectionHeading
+      <SectionHeading level={2} variant="compact"
         kicker={v.lastCompletedProbe}
         title={s.details.pages.nat.servers}
         meta={v.configurationAndSnapshot}
@@ -591,14 +581,7 @@ function Technical({
       ];
 
   return (
-    <details className="group border-t border-border px-4 py-4 sm:px-5" data-testid="nat-technical">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-        <span>
-          <strong className="block text-meta text-text">{v.technical}</strong>
-          <span className="block text-micro text-text-muted">{v.technicalDescription}</span>
-        </span>
-        <IconChevronDown className="shrink-0 transition-transform group-open:rotate-180" />
-      </summary>
+    <TechnicalSection title={v.technical} data-testid="nat-technical" description={v.technicalDescription}>
       <dl className="mt-4 grid border-t border-border sm:grid-cols-2 xl:grid-cols-4">
         {rows.map(([label, value]) => (
           <div key={label} className="min-w-0 border-b border-r border-border px-3 py-3">
@@ -611,7 +594,7 @@ function Technical({
           </div>
         ))}
       </dl>
-    </details>
+    </TechnicalSection>
   );
 }
 

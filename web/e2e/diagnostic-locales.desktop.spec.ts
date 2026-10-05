@@ -31,6 +31,19 @@ for (const width of [390, 1440]) {
           await expect(page.getByRole("heading", { name: locale === "ru" ? russian : english, level: 1 })).toBeVisible();
           await expect(page.getByTestId(ready)).toBeVisible();
           expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+          if (["connections", "counters", "events", "me", "nat", "security", "web"].includes(domain)) {
+            const levels = await page.getByTestId(`${domain}-detail`).locator("h1,h2,h3,h4,h5,h6").evaluateAll(headings => headings.map(heading => Number(heading.tagName.slice(1))));
+            expect(levels[0]).toBe(1);
+            for (let index = 1; index < levels.length; index++) expect(levels[index]).toBeLessThanOrEqual(levels[index - 1]! + 1);
+          }
+          if (["connections", "me", "nat", "web"].includes(domain)) {
+            const disclosure = page.getByTestId(`${domain}-technical`);
+            const summary = disclosure.locator("summary");
+            await summary.focus();
+            await summary.press("Enter");
+            await expect(disclosure).toHaveAttribute("open", "");
+            await expect(summary).toBeFocused();
+          }
         }
         const readings = await page.locator("[data-web-capacity]").evaluateAll(rows => rows.map(row => ({
           id: row.getAttribute("data-web-capacity"),

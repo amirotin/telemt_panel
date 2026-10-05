@@ -14,3 +14,15 @@ it("preserves NAT/events heading semantics, spacing and optional meta", () => {
   expect(container.querySelector("header > span")).toBeNull();
   expect(container.querySelector("h3")?.textContent).toBe("Timeline");
 });
+
+it("separates semantic level from visual size and renders the prepared description", () => {
+  const container = document.createElement("div");
+  container.innerHTML = renderToStaticMarkup(<SectionHeading level={2} variant="compact" kicker="ME" title="Writers" description="Current pool" />);
+  expect(container.querySelector("h2")?.textContent).toBe("Writers");
+  expect(container.querySelector("h3")).toBeNull();
+  expect(container.querySelector("h2")?.classList.contains("text-h3")).toBe(true);
+  expect(container.querySelector("p")?.textContent).toBe("Current pool");
+  container.innerHTML = renderToStaticMarkup(<SectionHeading level={3} variant="standard" kicker="WEB" title="Capacity" />);
+  expect(container.querySelector("h3")?.textContent).toBe("Capacity");
+  expect(container.querySelector("h3")?.classList.contains("text-h2")).toBe(true);
+});

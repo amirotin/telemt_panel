@@ -47,6 +47,18 @@ describe("WEB redesigned surfaces", () => {
     expect(host.querySelector('[data-web-capacity="sessions"]')?.textContent).toContain("128");
   });
 
+  it("uses level-two headings for the four overview sections beneath the page title", () => {
+    const payload = webPagePayload(webStatusRunning, [webSessionsAll])!;
+    act(() => root.render(<Overview payload={payload} s={ru} />));
+    expect([...host.querySelectorAll("h2")].map(heading => heading.textContent)).toEqual([
+      ru.details.pages.web.view.capacityTitle,
+      ru.details.pages.web.view.runtimeTitle,
+      ru.details.pages.web.view.flowTitle,
+      ru.details.pages.web.view.planesTitle,
+    ]);
+    expect(host.querySelector("h3")).toBeNull();
+  });
+
   it("explains lifetime limit events without marking current capacity as overloaded",()=>{
     const payload=webPagePayload({...webStatusRunning,runtime:{...webStatusRunning.runtime!,limit_hits:7}},null)!;
     act(()=>root.render(<Overview payload={payload} s={ru}/>));

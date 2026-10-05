@@ -13,26 +13,11 @@ import { formatValue } from "../formatting";
 import { useDetailSources, type DetailSourceInput } from "../sourceState";
 import { DetailHeader } from "./DetailHeader";
 import { describeCounter } from "./counterCatalog";
-import {
-  COUNTER_GROUP_PATHS,
-  computeCounterDeltas,
-  counterLeaves,
-  countersRefetchInterval,
-  countersRestarted,
-  isFailureCounterPath,
-  type CounterGroupPath,
-  type CounterSnapshot,
-} from "./counters.helpers";
-import {
-  breakdownRows,
-  counterRowMatchesSearch,
-  counterViewMetrics,
-  readCounterViewValues,
-  scalarCounterRows,
-  type BreakdownRow,
-  type CounterViewMetrics,
-} from "./counters.view.helpers";
+import { COUNTER_GROUP_PATHS, computeCounterDeltas, counterLeaves, countersRefetchInterval, countersRestarted, isFailureCounterPath, type CounterGroupPath, type CounterSnapshot } from "./counters.helpers";
+import { breakdownRows, counterRowMatchesSearch, counterViewMetrics, readCounterViewValues, scalarCounterRows, type BreakdownRow, type CounterViewMetrics } from "./counters.view.helpers";
 import { countersSources } from "./sourceDefinitions";
+import { SectionHeading } from "./SectionHeading";
+import { SourceNotice as NoticeShell } from "./SourceNotice";
 
 type CountersTab = "activity" | "failures" | "explorer";
 type CounterFilter = "all" | "nonzero" | "errors";
@@ -131,18 +116,6 @@ function windowLabel(s: Dict, seconds: number | null): string {
   return seconds === null ? s.details.pages.counters.view.nextSnapshot : fill(s.details.pages.counters.view.secondsWindow, { count: formatNumber(s, Math.max(1, Math.round(seconds))) });
 }
 
-function SectionHead({ kicker, title, meta }: { kicker: string; title: string; meta?: string }) {
-  return (
-    <header className="flex flex-wrap items-end justify-between gap-2">
-      <div>
-        <span className="text-micro font-semibold uppercase tracking-[0.16em] text-text-faint">{kicker}</span>
-        <h2 className="mt-1 text-h2 font-semibold text-text">{title}</h2>
-      </div>
-      {meta && <span className="text-meta text-text-muted">{meta}</span>}
-    </header>
-  );
-}
-
 function CountersHero({ metrics, windowSeconds, restarted }: { metrics: CounterViewMetrics; windowSeconds: number | null; restarted: boolean }) {
   const s = useStrings();
   const v = s.details.pages.counters.view;
@@ -193,7 +166,7 @@ function ActivityPanel({ data, metrics, windowSeconds, restarted }: { data: Zero
   const bytesRate = metrics.payloadBytes === null || windowSeconds === null || windowSeconds <= 0 ? null : metrics.payloadBytes / windowSeconds;
   return (
     <section className="p-4 sm:p-5" data-testid="counters-activity-panel">
-      <SectionHead kicker={fill(v.twoSnapshots, { window: windowLabel(s, windowSeconds) })} title={v.currentTrafficPath} meta={v.absolutesInExplorer} />
+      <SectionHeading level={2} variant="standard" kicker={fill(v.twoSnapshots, { window: windowLabel(s, windowSeconds) })} title={v.currentTrafficPath} meta={v.absolutesInExplorer} />
       <WindowNote collecting={collecting} restarted={restarted} />
       <div className="mt-5 grid items-stretch gap-2 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
         <TrafficNode step="1" title="Core" state={collecting ? v.baseline : v.active} value={signed(s, metrics.connections)} description={v.clientConnectionsWindow} metrics={[[v.unsuccessful, signed(s, metrics.badConnections), (metrics.badConnections ?? 0) > 0], [v.failureShare, percent(s, badShare), false]]} progress={badShare === null ? null : 100 - badShare} warn={(metrics.badConnections ?? 0) > 0} />
@@ -238,7 +211,7 @@ function FailurePanel({ data, window, windowSeconds }: { data: ZeroAllData; wind
   const codeRows = breakdownAt(data, "middle_proxy", "handshake_error_codes");
   return (
     <section className="p-4 sm:p-5" data-testid="counters-failures-panel">
-      <SectionHead kicker={v.failureDiagnostics} title={v.newThenAccumulated} meta={uptime === null ? undefined : `${v.uptime} · ${formatDurationApprox(uptime * 1000, s)}`} />
+      <SectionHeading level={2} variant="standard" kicker={v.failureDiagnostics} title={v.newThenAccumulated} meta={uptime === null ? undefined : `${v.uptime} · ${formatDurationApprox(uptime * 1000, s)}`} />
       <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4">
         <FailureStat label={v.newSignalsWindow} value={metrics.newFailureSignals === null ? "—" : formatNumber(s, metrics.newFailureSignals)} hint={v.crossFamilyNavigation} warn={(metrics.newFailureSignals ?? 0) > 0} />
         <FailureStat label="Bad connections" value={formatNumber(s, bad)} hint={fill(v.lifetimeShare, { value: percent(s, ratio(bad, connections)) })} />
@@ -283,7 +256,7 @@ function ExplorerPanel({ data, window, sinceOpen, windowSeconds, reset }: { data
   const groupLabels: Record<CounterGroupPath, string> = { core: s.details.pages.counters.groups.core, upstream: s.details.pages.counters.groups.upstream, middle_proxy: s.details.pages.counters.groups.middleProxy, pool: s.details.pages.counters.groups.pool, desync: s.details.pages.counters.groups.desync };
   return (
     <section className="p-4 sm:p-5" data-testid="counters-explorer-panel">
-      <SectionHead kicker={v.technicalExplorer} title={v.allBySubsystem} meta={v.absoluteAndMeasured} />
+      <SectionHeading level={2} variant="standard" kicker={v.technicalExplorer} title={v.allBySubsystem} meta={v.absoluteAndMeasured} />
       <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-bg/30 p-3 lg:flex-row lg:items-center lg:justify-between">
         <label className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 lg:w-80"><span className="text-text-faint">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-meta text-text outline-none placeholder:text-text-faint" placeholder={v.searchPlaceholder} aria-label={v.searchLabel} /></label>
         <div className="flex gap-1 overflow-x-auto">{(["all", "nonzero", "errors"] as const).map((id) => <button key={id} type="button" onClick={() => setFilter(id)} className={cn("shrink-0 rounded-lg px-3 py-2 text-meta font-semibold", filter === id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-surface-hover")}>{id === "all" ? v.filterAll : id === "nonzero" ? v.filterNonzero : v.filterErrors}</button>)}<button type="button" onClick={reset} className="shrink-0 rounded-lg border border-border px-3 py-2 text-meta font-semibold text-text-muted hover:border-accent/40 hover:text-text">{v.resetBaseline}</button></div>
@@ -307,7 +280,9 @@ function TechnicalPanel({ data, windowSeconds }: { data: ZeroAllData; windowSeco
 
 function SourceNotice({ kind, onRetry }: { kind: "loading" | "error"; onRetry: () => void }) {
   const v = useStrings().details.pages.counters.view;
-  return <div className="p-5"><div className="rounded-xl border border-dashed border-border px-5 py-10 text-center"><h2 className="text-h2 font-semibold text-text">{kind === "loading" ? v.loading : v.sourceError}</h2><p className="mx-auto mt-2 max-w-prose text-meta text-text-muted">{kind === "loading" ? v.loadingDescription : v.sourceErrorDescription}</p>{kind === "error" && <button type="button" onClick={onRetry} className="mt-4 rounded-lg border border-border px-3 py-2 text-meta font-semibold text-text hover:border-accent/45">{v.retry}</button>}</div></div>;
+  return <NoticeShell title={kind === "loading" ? v.loading : v.sourceError} description={kind === "loading" ? v.loadingDescription : v.sourceErrorDescription} className="p-5" panelClassName="rounded-xl border border-dashed border-border px-5 py-10 text-center">
+    {kind === "error" && <button type="button" onClick={onRetry} className="mt-4 rounded-lg border border-border px-3 py-2 text-meta font-semibold text-text hover:border-accent/45">{v.retry}</button>}
+  </NoticeShell>;
 }
 
 export function CountersPage() {
