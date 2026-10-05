@@ -150,7 +150,7 @@ func TestApply_InterruptedSelfRestart(t *testing.T) {
 			if err != nil || len(pending) != 1 || pending[0].Phase != PhaseRestarting {
 				t.Fatalf("persisted handoff = %+v, err=%v", pending, err)
 			}
-			if err := ReconcileStartup(replacement, "1.0.0-rc.2"); err != nil {
+			if err := reconcileReadyForTest(replacement, "1.0.0-rc.2"); err != nil {
 				t.Fatal(err)
 			}
 			completed, _ := replacement.ListUpdateJournal(TargetPanel, 1)

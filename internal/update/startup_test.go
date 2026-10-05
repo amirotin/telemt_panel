@@ -125,7 +125,7 @@ func TestReconcileStartup(t *testing.T) {
 				}
 			}
 
-			if err := ReconcileStartup(st, tc.running); err != nil {
+			if err := reconcileReadyForTest(st, tc.running); err != nil {
 				t.Fatalf("ReconcileStartup: %v", err)
 			}
 
@@ -187,7 +187,7 @@ func TestReconcileStartup_ActsOnBothTargetsIndependently(t *testing.T) {
 		t.Fatalf("seed panel: %v", err)
 	}
 
-	if err := ReconcileStartup(st, "v2.0.0"); err != nil {
+	if err := reconcileReadyForTest(st, "v2.0.0"); err != nil {
 		t.Fatalf("ReconcileStartup: %v", err)
 	}
 
@@ -236,7 +236,7 @@ func TestReconcileStartup_ContinuesPastAPerTargetError(t *testing.T) {
 	}
 
 	fs := &faultyJournalStore{Store: st, failTarget: TargetTelemt}
-	if err := ReconcileStartup(fs, "v2.0.0"); err == nil {
+	if err := reconcileReadyForTest(fs, "v2.0.0"); err == nil {
 		t.Fatal("want a non-nil error surfacing the telemt store failure")
 	}
 
@@ -276,7 +276,7 @@ func TestReconcileStartupAcrossProcessRestart(t *testing.T) {
 			t.Fatalf("NewMemory (reopen): %v", err)
 		}
 		defer st2.Close()
-		if err := ReconcileStartup(st2, "v2.0.0"); err != nil {
+		if err := reconcileReadyForTest(st2, "v2.0.0"); err != nil {
 			t.Fatalf("ReconcileStartup: %v", err)
 		}
 
@@ -309,7 +309,7 @@ func TestReconcileStartupAcrossProcessRestart(t *testing.T) {
 			t.Fatalf("NewMemory (reopen): %v", err)
 		}
 		defer st2.Close()
-		if err := ReconcileStartup(st2, "v1.0.0"); err != nil {
+		if err := reconcileReadyForTest(st2, "v1.0.0"); err != nil {
 			t.Fatalf("ReconcileStartup: %v", err)
 		}
 
@@ -342,7 +342,7 @@ func TestReconcileStartupAcrossProcessRestart(t *testing.T) {
 			t.Fatalf("NewMemory (reopen): %v", err)
 		}
 		defer st2.Close()
-		if err := ReconcileStartup(st2, "v1.0.0"); err != nil {
+		if err := reconcileReadyForTest(st2, "v1.0.0"); err != nil {
 			t.Fatalf("ReconcileStartup: %v", err)
 		}
 
@@ -389,7 +389,7 @@ func TestUpdateJournalHistorySurvivesPlainRestart(t *testing.T) {
 
 	// No dangling non-terminal entry, so ReconcileStartup must leave the
 	// history untouched.
-	if err := ReconcileStartup(st2, "v1.2.0"); err != nil {
+	if err := reconcileReadyForTest(st2, "v1.2.0"); err != nil {
 		t.Fatalf("ReconcileStartup: %v", err)
 	}
 
@@ -400,4 +400,12 @@ func TestUpdateJournalHistorySurvivesPlainRestart(t *testing.T) {
 	if len(entries) != 2 || entries[0].RunID != "r2" || entries[1].RunID != "r1" {
 		t.Fatalf("ListUpdateJournal after reopen = %+v, want [r2, r1] newest-first", entries)
 	}
+}
+
+func reconcileReadyForTest(st store.StateStore, running string) error {
+	pending, err := ReconcileInterrupted(st, running)
+	if pending != nil {
+		err = errors.Join(err, ConfirmPanelReady(st, *pending, running))
+	}
+	return err
 }

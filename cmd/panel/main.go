@@ -31,84 +31,107 @@ import (
 var version = "0.0.0-dev"
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version", "--version":
 			fmt.Printf("telemt-panel %s (%s: %s)\n", version, store.Variant, strings.Join(store.AvailableDrivers(), " "))
-			return
+			return 0
 		case "hash-password":
 			if err := runHashPassword(); err != nil {
 				slog.Error("hash-password", "err", err)
-				os.Exit(1)
+				return 1
 			}
-			return
+			return 0
 		case "tls":
 			if err := runTLSCommand(os.Args[2:]); err != nil {
 				slog.Error("TLS check", "err", err)
-				os.Exit(1)
+				return 1
 			}
-			return
+			return 0
 		case "config":
 			if err := runConfigCommand(os.Args[2:], os.Stdout); err != nil {
 				slog.Error("config", "err", err)
-				os.Exit(1)
+				return 1
 			}
-			return
+			return 0
 		case "store":
 			if err := runStoreCommand(os.Args[2:]); err != nil {
 				slog.Error("store", "err", err)
-				os.Exit(1)
+				return 1
 			}
-			return
+			return 0
 		case "service":
 			if err := runServiceCommand(os.Args[2:], host.OSCmdRunner); err != nil {
 				slog.Error("service", "err", err)
-				os.Exit(1)
+				return 1
 			}
-			return
+			return 0
 		}
 	}
 
-	configPath := flag.String("config", "config.toml", "path to config file")
-	flag.Parse()
+	flags := flag.NewFlagSet("telemt-panel", flag.ContinueOnError)
+	configPath := flags.String("config", "config.toml", "path to config file")
+	if err := flags.Parse(os.Args[1:]); err != nil || flags.NArg() != 0 {
+		return 1
+	}
 
 	source, err := loadStartupSource(*configPath)
 	if err != nil {
 		slog.Error("load config", "err", err)
-		os.Exit(1)
+		return 1
 	}
-	cfg := source.Config
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	return runRuntime(ctx, source, *configPath)
+}
+
+func runRuntime(ctx context.Context, source *config.Source, configPath string) (code int) {
 	st, err := newSourceStore(source)
 	if err != nil {
 		slog.Error("open store", "err", err)
-		os.Exit(1)
+		return 1
 	}
-	defer st.Close()
+	return runRuntimeStore(ctx, source.Config, configPath, st)
+}
 
-	// Reconcile any update run left dangling by a previous process
-	// instance, for both targets: completes a pending panel self-update
-	// journal handoff (spec 03-update-engine.md §Журнал) if that's why
-	// this process just started, and fails-closed any other non-terminal
-	// journal entry (e.g. a telemt update whose panel process died
-	// mid-install). A no-op the rest of the time (every target's last
-	// journal entry, if any, already terminal).
-	if err := update.ReconcileStartup(st, version); err != nil {
+func runRuntimeStore(ctx context.Context, cfg *config.Config, configPath string, st store.Store) (code int) {
+	defer func() {
+		if err := st.Close(); err != nil {
+			slog.Error("close store", "err", err)
+			code = 1
+		}
+	}()
+
+	// Restart confirmation is deferred until every required listener serves.
+	pending, err := update.ReconcileInterrupted(st, version)
+	if err != nil {
 		slog.Error("reconcile update startup", "err", err)
+		return 1
 	}
 
 	tc := telemt.New(cfg.Telemt.URL, cfg.Telemt.AuthHeader)
 	hb := hub.New(hub.Config{}, tc, st)
+	defer hb.Close()
 	hb.StartPersistentCollectors()
-	srv := httpapi.New(cfg, tc, st, hb, version, httpapi.EngineOptions{PanelLifecycleContext: ctx})
-	srv.SetTLSConfigPath(*configPath)
+	onReady := func() error {
+		if pending != nil {
+			return update.ConfirmPanelReady(st, *pending, version)
+		}
+		return nil
+	}
+	srv := httpapi.New(cfg, tc, st, hb, version, httpapi.EngineOptions{PanelLifecycleContext: ctx, OnReady: onReady})
+	srv.SetTLSConfigPath(configPath)
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server", "err", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func runStoreCommand(args []string) error {

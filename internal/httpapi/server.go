@@ -76,6 +76,7 @@ type Server struct {
 	sseAfterSubscribeHook func()
 
 	updateEngine *update.Engine
+	onReady      func() error
 	autoUpdater  *update.AutoUpdater
 	geoip        *geoip.Manager
 	geography    *geography.Service
@@ -93,6 +94,7 @@ type Server struct {
 // EngineOptions supplies process lifecycle information to the update engine.
 type EngineOptions struct {
 	PanelLifecycleContext context.Context
+	OnReady               func() error
 }
 
 // New builds the handler tree.
@@ -196,6 +198,7 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		Hub:                   hb,
 		BuildVariant:          store.Variant,
 		PanelLifecycleContext: engineOptions.PanelLifecycleContext,
+		RequireReadiness:      engineOptions.PanelLifecycleContext != nil,
 	})
 
 	appearance := branding.New(st, cfg.BasePath)
@@ -230,6 +233,7 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		privilegesMode:      privilegesMode,
 		logStreamHeartbeat:  logStreamHeartbeatInterval,
 		updateEngine:        updateEngine,
+		onReady:             engineOptions.OnReady,
 		autoUpdater:         update.NewAutoUpdater(st, updateEngine),
 		geoip:               geoip.NewManager(cfg.DataDir, st),
 		branding:            appearance,
@@ -591,12 +595,15 @@ func (s *Server) Run(ctx context.Context) error {
 	defer stopQuota()
 	stopAccess := context.AfterFunc(ctx, s.access.cancel)
 	defer stopAccess()
-	defer s.access.close()
 	// Cancel owned workers on every return path, including listen failures.
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	defer func() {
 		cancel()
+		s.access.close()
+		s.quotaResets.Close()
+		s.sessions.Close()
+		s.logStreams.Close()
 		if s.geography != nil {
 			s.geography.Close()
 		}
@@ -604,6 +611,12 @@ func (s *Server) Run(ctx context.Context) error {
 			s.geoip.Close()
 		}
 		wg.Wait()
+		s.updateEngine.Close()
+		s.hub.Close()
+		s.limiter.Stop()
+		s.subLimiter.Stop()
+		s.tlsManager.Close()
+		s.subTLSManager.Close()
 	}()
 	wg.Add(1)
 	go func() {
@@ -623,14 +636,6 @@ func (s *Server) Run(ctx context.Context) error {
 		}()
 	}
 
-	defer s.limiter.Stop()
-	defer s.subLimiter.Stop()
-	defer s.hub.Close()
-	defer s.logStreams.Close()
-	defer s.sessions.Close()
-	defer s.tlsManager.Close()
-	defer s.subTLSManager.Close()
-	defer s.quotaResets.Close()
 	tlsConfig, challengeHandler, err := s.tlsManager.Prepare()
 	if err != nil {
 		return err
@@ -692,7 +697,15 @@ func (s *Server) Run(ctx context.Context) error {
 			ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 			WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	}
-	return serveListeners(ctx, srv, challenge, subscription)
+	return serveListeners(ctx, srv, challenge, func() error {
+		if s.onReady != nil {
+			if err := s.onReady(); err != nil {
+				return err
+			}
+		}
+		s.updateEngine.MarkReady()
+		return nil
+	}, subscription)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -36,7 +36,7 @@ func (w *serverLogWriter) Write(p []byte) (int, error) {
 
 // serveListeners binds every required port before accepting application requests.
 // A failed challenge listener must not leave a seemingly successful TLS startup.
-func serveListeners(ctx context.Context, main, challenge *http.Server, additional ...*http.Server) error {
+func serveListeners(ctx context.Context, main, challenge *http.Server, onReady func() error, additional ...*http.Server) error {
 	servers := []*http.Server{main}
 	if challenge != nil {
 		servers = append(servers, challenge)
@@ -47,6 +47,7 @@ func serveListeners(ctx context.Context, main, challenge *http.Server, additiona
 		}
 	}
 	listeners := make([]net.Listener, 0, len(servers))
+	var serving sync.WaitGroup
 	defer func() {
 		for _, srv := range servers {
 			_ = srv.Close()
@@ -54,6 +55,7 @@ func serveListeners(ctx context.Context, main, challenge *http.Server, additiona
 		for _, ln := range listeners {
 			_ = ln.Close()
 		}
+		serving.Wait()
 	}()
 	for _, srv := range servers {
 		if srv.TLSConfig != nil && srv.ErrorLog == nil {
@@ -77,9 +79,12 @@ func serveListeners(ctx context.Context, main, challenge *http.Server, additiona
 		scheme = "https"
 	}
 	errCh := make(chan error, len(servers))
+	ready := make(chan struct{}, len(servers))
 	for i, srv := range servers {
-		ln := listeners[i]
+		ln := &readyListener{Listener: listeners[i], ready: ready}
+		serving.Add(1)
 		go func() {
+			defer serving.Done()
 			if srv.TLSConfig != nil {
 				errCh <- srv.ServeTLS(ln, "", "")
 			} else {
@@ -87,13 +92,29 @@ func serveListeners(ctx context.Context, main, challenge *http.Server, additiona
 			}
 		}()
 	}
+	for range servers {
+		select {
+		case <-ready:
+		case err := <-errCh:
+			return listenerError(err)
+		case <-ctx.Done():
+			return nil
+		}
+	}
+	select {
+	case err := <-errCh:
+		return listenerError(err)
+	default:
+	}
+	if onReady != nil {
+		if err := onReady(); err != nil {
+			return fmt.Errorf("confirm panel readiness: %w", err)
+		}
+	}
 	slog.Info("panel listener started", "addr", main.Addr, "transport", scheme)
 	select {
 	case err := <-errCh:
-		if err == nil {
-			err = errors.New("listener stopped unexpectedly")
-		}
-		return err
+		return listenerError(err)
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -110,4 +131,22 @@ func serveListeners(ctx context.Context, main, challenge *http.Server, additiona
 		}
 		return result
 	}
+}
+
+type readyListener struct {
+	net.Listener
+	ready chan<- struct{}
+	once  sync.Once
+}
+
+func (l *readyListener) Accept() (net.Conn, error) {
+	l.once.Do(func() { l.ready <- struct{}{} })
+	return l.Listener.Accept()
+}
+
+func listenerError(err error) error {
+	if err == nil {
+		return errors.New("listener stopped unexpectedly")
+	}
+	return err
 }

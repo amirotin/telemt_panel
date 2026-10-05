@@ -40,7 +40,7 @@ func TestTLSHandshakeLogsAreBounded(t *testing.T) {
 		},
 	}}
 	done := make(chan error, 1)
-	go func() { done <- serveListeners(ctx, main, nil) }()
+	go func() { done <- serveListeners(ctx, main, nil, nil) }()
 	client := &http.Client{Timeout: time.Second}
 	deadline := time.Now().Add(3 * time.Second)
 	for counter.count.Load() == 0 && time.Now().Before(deadline) {
@@ -83,7 +83,7 @@ func TestChallengeBindFailureClosesMainListener(t *testing.T) {
 	}
 	defer busy.Close()
 	addr := reserveAddress(t)
-	err = serveListeners(context.Background(), &http.Server{Addr: addr}, &http.Server{Addr: busy.Addr().String()})
+	err = serveListeners(context.Background(), &http.Server{Addr: addr}, &http.Server{Addr: busy.Addr().String()}, nil)
 	if err == nil || !strings.Contains(err.Error(), "HTTP-01") {
 		t.Fatalf("error=%v", err)
 	}
@@ -101,7 +101,7 @@ func TestListenersShutdownTogether(t *testing.T) {
 	main := &http.Server{Addr: mainAddr, Handler: http.NotFoundHandler()}
 	challenge := &http.Server{Addr: challengeAddr, Handler: http.NotFoundHandler()}
 	done := make(chan error, 1)
-	go func() { done <- serveListeners(ctx, main, challenge) }()
+	go func() { done <- serveListeners(ctx, main, challenge, nil) }()
 	deadline := time.Now().Add(3 * time.Second)
 	for _, addr := range []string{mainAddr, challengeAddr} {
 		for {
