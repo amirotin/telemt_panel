@@ -72,6 +72,14 @@ func (r *sqlTrafficReadSnapshot) CollectorState() (UserTrafficCollectorState, er
 	return r.collector, trafficContextError(r.ctx, r.closed)
 }
 func (r *sqlTrafficReadSnapshot) Summaries() (map[string]UserTrafficSummary, error) {
+	summaries, err := r.summaryView()
+	if err != nil {
+		return nil, err
+	}
+	return maps.Clone(summaries), nil
+}
+
+func (r *sqlTrafficReadSnapshot) summaryView() (map[string]UserTrafficSummary, error) {
 	if err := trafficContextError(r.ctx, r.closed); err != nil {
 		return nil, err
 	}
@@ -102,7 +110,7 @@ func (r *sqlTrafficReadSnapshot) Summaries() (map[string]UserTrafficSummary, err
 		}
 		r.summaries = summaries
 	}
-	return maps.Clone(r.summaries), nil
+	return r.summaries, nil
 }
 func trafficSQLPredicate(windows []TrafficWindow) (string, []any) {
 	parts := make([]string, 0, len(windows))
@@ -122,6 +130,22 @@ func trafficSQLPredicate(windows []TrafficWindow) (string, []any) {
 		return "0", args
 	}
 	return "(" + strings.Join(parts, " OR ") + ")", args
+}
+
+// Traffic windows never overlap. Aggregate each indexed interval separately
+// so SQLite avoids deduplicating hundreds of thousands of keys for an OR scan.
+func trafficAggregateSQL(windows []TrafficWindow) (string, []any) {
+	parts := make([]string, 0, len(windows))
+	args := make([]any, 0, 3*len(windows))
+	for _, window := range windows {
+		predicate, values := trafficSQLPredicate([]TrafficWindow{window})
+		parts = append(parts, `SELECT buckets.tier,buckets.ts,sum(buckets.bytes) AS bytes FROM user_traffic_buckets AS buckets WHERE `+predicate+` GROUP BY buckets.tier,buckets.ts`)
+		args = append(args, values...)
+	}
+	if len(parts) == 0 {
+		return `SELECT buckets.tier,buckets.ts,sum(buckets.bytes) AS bytes FROM user_traffic_buckets AS buckets WHERE 0 GROUP BY buckets.tier,buckets.ts`, args
+	}
+	return strings.Join(parts, " UNION ALL ") + ` ORDER BY ts`, args
 }
 func (r *sqlTrafficReadSnapshot) Range(username string, from, to int64) ([]UserTrafficPoint, TrafficCoverage, error) {
 	windows, coverage, err := PlanTrafficWindows(from, to, r.asOf, r.tiers)
@@ -161,8 +185,8 @@ func (r *sqlTrafficReadSnapshot) Aggregate(from, to int64) (int64, []UserTraffic
 	if err := trafficContextError(r.ctx, r.closed); err != nil {
 		return 0, nil, coverage, err
 	}
-	predicate, args := trafficSQLPredicate(windows)
-	rows, err := r.tx.QueryContext(r.ctx, `SELECT buckets.tier,buckets.ts,sum(buckets.bytes) FROM user_traffic_buckets AS buckets WHERE `+predicate+` GROUP BY buckets.tier,buckets.ts ORDER BY buckets.ts`, args...)
+	query, args := trafficAggregateSQL(windows)
+	rows, err := r.tx.QueryContext(r.ctx, query, args...)
 	if err != nil {
 		return 0, nil, coverage, fmt.Errorf("aggregate traffic snapshot: %w", historySQLContextError(r.ctx, err))
 	}
@@ -199,13 +223,15 @@ func (r *sqlTrafficReadSnapshot) Ranking(from, to int64, includeDeleted bool, li
 	if limit <= 0 {
 		return ranks, coverage, nil
 	}
-	summaries, err := r.Summaries()
+	summaries, err := r.summaryView()
 	if err != nil {
 		return nil, coverage, err
 	}
 	predicate, args := trafficSQLPredicate(windows)
 	args = append(args, includeDeleted)
-	query := `SELECT users.username,sum(buckets.bytes) FROM user_traffic_buckets AS buckets JOIN user_traffic_users AS users ON users.id=buckets.user_id WHERE ` + predicate + ` AND (? OR users.deleted_ts IS NULL) GROUP BY users.id`
+	// Keep users outermost so the primary key supplies each user's buckets in
+	// order, avoiding a global OR scan and a temporary GROUP BY tree.
+	query := `SELECT users.username,sum(buckets.bytes) FROM user_traffic_users AS users CROSS JOIN user_traffic_buckets AS buckets ON users.id=buckets.user_id WHERE ` + predicate + ` AND (? OR users.deleted_ts IS NULL) GROUP BY users.id`
 	if cursor != nil {
 		query += ` HAVING sum(buckets.bytes) < ? OR (sum(buckets.bytes) = ? AND users.username > ?)`
 		args = append(args, cursor.Bytes, cursor.Bytes, cursor.Username)

@@ -22,10 +22,11 @@ func (s *coverageHistoryStore) BeginTrafficRead(ctx context.Context) (store.Traf
 }
 
 type coverageTrafficSnapshot struct {
-	ctx    context.Context
-	closed bool
-	asOf   int64
-	ranges [][2]int64
+	ctx          context.Context
+	closed       bool
+	asOf         int64
+	ranges       [][2]int64
+	summaryReads int
 }
 
 func (s *coverageTrafficSnapshot) AsOf() int64  { return s.asOf }
@@ -34,6 +35,7 @@ func (s *coverageTrafficSnapshot) CollectorState() (store.UserTrafficCollectorSt
 	return store.UserTrafficCollectorState{LastSuccessTS: s.asOf, SourceState: store.UserTrafficCollecting, Continuity: store.UserTrafficNormal}, nil
 }
 func (s *coverageTrafficSnapshot) Summaries() (map[string]store.UserTrafficSummary, error) {
+	s.summaryReads++
 	return map[string]store.UserTrafficSummary{"alice": {Username: "alice", CurrentMonthBytes: 500, ObservedSinceEpochSecs: s.asOf - 90*86400}}, nil
 }
 func (s *coverageTrafficSnapshot) Range(username string, from, to int64) ([]store.UserTrafficPoint, store.TrafficCoverage, error) {
@@ -86,6 +88,9 @@ func TestTrafficCoverageHTTPConsistentMonthAndClosedSnapshot(t *testing.T) {
 	}
 	if snapshot.ctx != r.Context() {
 		t.Error("request context was not forwarded")
+	}
+	if snapshot.summaryReads != 1 {
+		t.Errorf("report read summaries %d times, want one consistent read", snapshot.summaryReads)
 	}
 	for i, bounds := range snapshot.ranges {
 		if i == 1 {

@@ -304,7 +304,7 @@ func (s *Server) handleGetUserTrafficHistory(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleGetTrafficSummary(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	rangeParam := r.URL.Query().Get("range")
-	from, to, ok := trafficReportBounds(rangeParam, now)
+	_, _, ok := trafficReportBounds(rangeParam, now)
 	if !ok {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown range")
 		return
@@ -316,18 +316,22 @@ func (s *Server) handleGetTrafficSummary(w http.ResponseWriter, r *http.Request)
 	}
 	defer snapshot.Close()
 	now = time.Unix(snapshot.AsOf(), 0).UTC()
-	from, to, _ = trafficReportBounds(rangeParam, now)
+	from, to, _ := trafficReportBounds(rangeParam, now)
 	total, points, coverage, err := snapshot.Aggregate(from, to)
 	if err != nil {
 		writeHistoryError(w, err, "could not aggregate user traffic")
 		return
 	}
-	if rangeParam == "month" {
-		summaries, summaryErr := snapshot.Summaries()
-		if summaryErr != nil {
-			writeHistoryError(w, summaryErr, "could not read user traffic totals")
-			return
+	summaries, err := snapshot.Summaries()
+	if err != nil {
+		message := "could not read traffic collection state"
+		if rangeParam == "month" {
+			message = "could not read user traffic totals"
 		}
+		writeHistoryError(w, err, message)
+		return
+	}
+	if rangeParam == "month" {
 		total = 0
 		for _, summary := range summaries {
 			if summary.CurrentMonthBytes > math.MaxInt64-total {
@@ -348,7 +352,7 @@ func (s *Server) handleGetTrafficSummary(w http.ResponseWriter, r *http.Request)
 		writeHistoryError(w, err, "could not rank user traffic")
 		return
 	}
-	collection, err := s.trafficCollection(now, snapshot)
+	collection, err := s.trafficCollection(now, snapshot, summaries)
 	if err != nil {
 		writeHistoryError(w, err, "could not read traffic collection state")
 		return
@@ -375,7 +379,7 @@ func (s *Server) handleGetTrafficSummary(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleGetTrafficUsers(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	rangeParam := r.URL.Query().Get("range")
-	from, to, ok := trafficReportBounds(rangeParam, now)
+	_, _, ok := trafficReportBounds(rangeParam, now)
 	if !ok {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown range")
 		return
@@ -410,7 +414,7 @@ func (s *Server) handleGetTrafficUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	defer snapshot.Close()
 	now = time.Unix(snapshot.AsOf(), 0).UTC()
-	from, to, _ = trafficReportBounds(rangeParam, now)
+	from, to, _ := trafficReportBounds(rangeParam, now)
 	ranks, coverage, err := snapshot.Ranking(from, to, includeDeleted, limit+1, cursor)
 	if err != nil {
 		writeHistoryError(w, err, "could not rank user traffic")
@@ -422,7 +426,12 @@ func (s *Server) handleGetTrafficUsers(w http.ResponseWriter, r *http.Request) {
 		nextCursor = encodeUserTrafficCursor(last.Bytes, last.Username)
 		ranks = ranks[:limit]
 	}
-	collection, err := s.trafficCollection(now, snapshot)
+	summaries, err := snapshot.Summaries()
+	if err != nil {
+		writeHistoryError(w, err, "could not read traffic collection state")
+		return
+	}
+	collection, err := s.trafficCollection(now, snapshot, summaries)
 	if err != nil {
 		writeHistoryError(w, err, "could not read traffic collection state")
 		return
@@ -449,12 +458,8 @@ func trafficReportBounds(rangeParam string, now time.Time) (int64, int64, bool) 
 	return now.Add(-window).Unix(), to, true
 }
 
-func (s *Server) trafficCollection(now time.Time, snapshot store.TrafficReadSnapshot) (trafficCollectionView, error) {
+func (s *Server) trafficCollection(now time.Time, snapshot store.TrafficReadSnapshot, summaries map[string]store.UserTrafficSummary) (trafficCollectionView, error) {
 	collector, err := snapshot.CollectorState()
-	if err != nil {
-		return trafficCollectionView{}, err
-	}
-	summaries, err := snapshot.Summaries()
 	if err != nil {
 		return trafficCollectionView{}, err
 	}
