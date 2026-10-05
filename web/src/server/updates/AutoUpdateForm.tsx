@@ -65,7 +65,8 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
       const { data: fresh } = await getAutoUpdate({ throwOnError: true });
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
-      if (queryClient.getQueryState(getAutoUpdateQueryKey())?.dataUpdateCount !== cacheRevision) {
+      const latest = queryClient.getQueryData<AutoUpdateSettings>(getAutoUpdateQueryKey());
+      if (queryClient.getQueryState(getAutoUpdateQueryKey())?.dataUpdateCount !== cacheRevision && (!latest || !equalForm(toAutoUpdateFormState(latest), toAutoUpdateFormState(fresh)))) {
         activeSave.current = null;
         return;
       }

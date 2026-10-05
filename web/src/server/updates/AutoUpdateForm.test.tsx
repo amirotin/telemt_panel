@@ -164,3 +164,36 @@ it("keeps submitted state, late edits and the known conflict when the post-save 
   expect(pushToast).toHaveBeenCalledWith(expect.any(String), "error");
   expect(vi.mocked(pushToast).mock.calls.some(([, tone]) => tone === "ok")).toBe(false);
 });
+
+it.each([false, true])("reconciles a matching baseline cache publication during the post-save GET with late edits=%s", async (lateEdit) => {
+  let stored: AutoUpdateSettings = initial;
+  let finishPut!: () => void;
+  let finishGet!: () => void;
+  const submitted: AutoUpdateSettings = { telemt: "check", panel: "off", interval: "6h" };
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    if ((request as Request).method === "PUT") {
+      const sent = await (request as Request).json();
+      await new Promise<void>((resolve) => { finishPut = resolve; });
+      stored = sent;
+      return new Response(null, { status: 204 });
+    }
+    await new Promise<void>((resolve) => { finishGet = resolve; });
+    return Response.json(stored);
+  } });
+  await setup(); await act(async () => radio(1).click());
+  await act(async () => { save().click(); await settle(); });
+  await act(async () => { cache.setQueryData(getAutoUpdateQueryKey(), { telemt: "off", panel: "apply", interval: "24h" }); await settle(); });
+  await act(async () => { finishPut(); await settle(); });
+  if (lateEdit) await act(async () => radio(2).click());
+  await act(async () => { cache.setQueryData(getAutoUpdateQueryKey(), { ...submitted, interval: "6h0m0s" }); await settle(); });
+  expect(container.textContent).toContain("Настройки изменились на сервере");
+  await act(async () => { finishGet(); await settle(); });
+  expect(stored).toEqual(submitted);
+  expect(container.textContent).not.toContain("Настройки изменились на сервере");
+  expect([...container.querySelectorAll("button")].some((button) => button.textContent === "Загрузить серверную версию")).toBe(false);
+  expect(radio(lateEdit ? 2 : 1).getAttribute("aria-checked")).toBe("true");
+  expect(document.querySelector("select")!.value).toBe("6");
+  expect(save().disabled).toBe(!lateEdit);
+  expect(save().textContent).toBe(lateEdit ? "Сохранить" : "Сохранено");
+  if (lateEdit) expect(pushToast).not.toHaveBeenCalled();
+});
