@@ -336,18 +336,20 @@ func (s *Server) handleWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
 	ip := auth.ClientIP(r, s.cfg.TrustedProxyPrefixes)
-	if !s.limiter.Allow(ip) {
+	finish, admitted := s.limiter.Acquire(ip)
+	if !admitted {
 		auth.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many failed login attempts")
 		return
 	}
+	defer finish(false)
 	body, credentialRequest, ok := decodeWebAuthnFinish(w, r)
 	if !ok {
-		s.limiter.RecordFailure(ip)
+		finish(true)
 		return
 	}
 	ceremony, instance, err := s.consumeWebAuthnChallenge(r, body.FlowID, webAuthnLoginKind)
 	if err != nil {
-		s.limiter.RecordFailure(ip)
+		finish(true)
 		auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "passkey login failed")
 		return
 	}
@@ -368,17 +370,18 @@ func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Reques
 		return nil, errors.New("unknown WebAuthn credential")
 	}, ceremony.Session, credentialRequest)
 	if err != nil || subtle.ConstantTimeCompare(validatedUser.WebAuthnID(), user.id) != 1 {
-		s.limiter.RecordFailure(ip)
+		finish(true)
 		s.appendAudit(r, "login.failed", s.cfg.Auth.Username, "ip="+ip)
 		auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "passkey login failed")
 		return
 	}
 	if credential.Authenticator.CloneWarning {
-		s.limiter.RecordFailure(ip)
+		finish(true)
 		s.appendAudit(r, "login.failed", s.cfg.Auth.Username, "ip="+ip)
 		auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "passkey signature counter is inconsistent")
 		return
 	}
+	finish(false)
 	id := base64.RawURLEncoding.EncodeToString(credential.ID)
 	var previous store.WebAuthnCredential
 	found := false

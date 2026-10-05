@@ -52,24 +52,27 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := auth.ClientIP(r, s.cfg.TrustedProxyPrefixes)
-	if !s.limiter.Allow(ip) {
+	finish, admitted := s.limiter.Acquire(ip)
+	if !admitted {
 		auth.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many failed login attempts")
 		return
 	}
+	defer finish(false)
 
 	if len(req.Username) > loginUsernameMaxBytes {
-		s.limiter.RecordFailure(ip)
+		finish(true)
 		s.appendAudit(r, "login.failed", truncateAuditSubject(req.Username), "ip="+ip)
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "username too long")
 		return
 	}
 
 	if !auth.VerifyCredentials(s.cfg.Auth.Username, s.cfg.Auth.PasswordHash, req.Username, req.Password) {
-		s.limiter.RecordFailure(ip)
+		finish(true)
 		s.appendAudit(r, "login.failed", truncateAuditSubject(req.Username), "ip="+ip)
 		auth.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
 		return
 	}
+	finish(false)
 
 	if err := s.createAuthenticatedSession(w, r, "password"); err != nil {
 		slog.Error("login: create session", "err", err)
