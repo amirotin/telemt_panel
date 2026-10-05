@@ -12,7 +12,7 @@ import {
   getAutoUpdateOptions,
   getAutoUpdateQueryKey,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
-import { putAutoUpdate } from "../../lib/api/generated/sdk.gen";
+import { getAutoUpdate, putAutoUpdate } from "../../lib/api/generated/sdk.gen";
 import {
   serializeAutoUpdateForm,
   toAutoUpdateFormState,
@@ -59,8 +59,23 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
     onSuccess: async (_next, submitted) => {
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
       update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: null }, equalForm));
-      await queryClient.invalidateQueries({ queryKey: getAutoUpdateQueryKey() });
+      const remoteBeforeRefresh = current.current.remote;
+      const cacheRevision = queryClient.getQueryState(getAutoUpdateQueryKey())?.dataUpdateCount;
+      await queryClient.cancelQueries({ queryKey: getAutoUpdateQueryKey() }, { revert: false });
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      const { data: fresh } = await getAutoUpdate({ throwOnError: true });
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      if (queryClient.getQueryState(getAutoUpdateQueryKey())?.dataUpdateCount !== cacheRevision) {
+        activeSave.current = null;
+        return;
+      }
+      update((state) => {
+        const confirmed = acknowledgeSubmitted(state, submitted, { value: toAutoUpdateFormState(fresh), revision: null }, equalForm);
+        // A post-save GET supersedes the snapshot retained before it started.
+        // A different remote arriving during that GET remains a conflict.
+        return state.remote === remoteBeforeRefresh && confirmed.remote ? { ...confirmed, remote: null } : confirmed;
+      });
+      queryClient.setQueryData(getAutoUpdateQueryKey(), fresh);
       activeSave.current = null;
       const confirmed = current.current;
       if (equalForm(confirmed.draft, confirmed.baseline.value) && !confirmed.remote) pushToast(s.server.updates.autoUpdate.saved, "ok");

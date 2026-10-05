@@ -70,3 +70,97 @@ it("keeps dirty AutoUpdate settings mounted when a background GET fails", async 
   expect(container.querySelectorAll('[role="radio"]')[2]?.getAttribute("aria-checked")).toBe("true");
   expect(save()?.disabled).toBe(false);
 });
+
+it.each([false, true])("reconciles an external pre-save snapshot after the authoritative GET while preserving late edits=%s", async (lateEdit) => {
+  let stored: AutoUpdateSettings = initial;
+  let finishPut!: () => void;
+  let finishGet!: () => void;
+  const submitted: AutoUpdateSettings = { telemt: "check", panel: "off", interval: "6h" };
+  const external: AutoUpdateSettings = { telemt: "off", panel: "apply", interval: "24h" };
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    if ((request as Request).method === "PUT") {
+      const sent = await (request as Request).json();
+      await new Promise<void>((resolve) => { finishPut = resolve; });
+      stored = sent;
+      return new Response(null, { status: 204 });
+    }
+    await new Promise<void>((resolve) => { finishGet = resolve; });
+    return Response.json(stored);
+  } });
+  await setup(); await act(async () => radio(1).click());
+  await act(async () => { save().click(); await settle(); });
+  await act(async () => { cache.setQueryData(getAutoUpdateQueryKey(), external); await settle(); });
+  expect(container.textContent).toContain("Настройки изменились на сервере");
+  if (lateEdit) await act(async () => radio(2).click());
+  await act(async () => { finishPut(); await settle(); });
+  expect(stored).toEqual(submitted);
+  await act(async () => { finishGet(); await settle(); });
+  expect(cache.getQueryData(getAutoUpdateQueryKey())).toEqual(submitted);
+  expect(container.textContent).not.toContain("Настройки изменились на сервере");
+  expect([...container.querySelectorAll("button")].some((button) => button.textContent === "Загрузить серверную версию")).toBe(false);
+  expect(radio(lateEdit ? 2 : 1).getAttribute("aria-checked")).toBe("true");
+  expect(document.querySelector("select")!.value).toBe("6");
+  expect(save().disabled).toBe(!lateEdit);
+  expect(save().textContent).toBe(lateEdit ? "Сохранить" : "Сохранено");
+  if (lateEdit) expect(pushToast).not.toHaveBeenCalled();
+});
+
+it("preserves a different external snapshot received during the post-save GET", async () => {
+  let stored: AutoUpdateSettings = initial;
+  let finishPut!: () => void;
+  let finishGet!: () => void;
+  const external: AutoUpdateSettings = { telemt: "apply", panel: "off", interval: "24h" };
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    if ((request as Request).method === "PUT") {
+      const sent = await (request as Request).json();
+      await new Promise<void>((resolve) => { finishPut = resolve; });
+      stored = sent;
+      return new Response(null, { status: 204 });
+    }
+    const snapshot = stored;
+    await new Promise<void>((resolve) => { finishGet = resolve; });
+    return Response.json(snapshot);
+  } });
+  await setup(); await act(async () => radio(1).click());
+  await act(async () => { save().click(); await settle(); });
+  await act(async () => { cache.setQueryData(getAutoUpdateQueryKey(), { telemt: "off", panel: "apply", interval: "12h" }); await settle(); });
+  await act(async () => { finishPut(); await settle(); });
+  stored = external;
+  await act(async () => { cache.setQueryData(getAutoUpdateQueryKey(), external); await settle(); });
+  await act(async () => { finishGet(); await settle(); });
+  expect(cache.getQueryData(getAutoUpdateQueryKey())).toEqual(external);
+  expect(container.textContent).toContain("Настройки изменились на сервере");
+  expect(pushToast).not.toHaveBeenCalled();
+  const load = () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Загрузить серверную версию")!;
+  await act(async () => load().click()); await act(async () => load().click());
+  expect(radio(2).getAttribute("aria-checked")).toBe("true");
+  expect(document.querySelector("select")!.value).toBe("24");
+  expect(stored).toEqual(external);
+});
+
+it("keeps submitted state, late edits and the known conflict when the post-save GET fails", async () => {
+  let stored: AutoUpdateSettings = initial;
+  let finishPut!: () => void;
+  const external: AutoUpdateSettings = { telemt: "off", panel: "apply", interval: "24h" };
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    if ((request as Request).method === "PUT") {
+      const sent = await (request as Request).json();
+      await new Promise<void>((resolve) => { finishPut = resolve; });
+      stored = sent;
+      return new Response(null, { status: 204 });
+    }
+    throw new Error("offline");
+  } });
+  await setup(); await act(async () => radio(1).click());
+  await act(async () => { save().click(); await settle(); });
+  await act(async () => { cache.setQueryData(getAutoUpdateQueryKey(), external); await settle(); radio(2).click(); });
+  await act(async () => { finishPut(); await settle(); });
+  expect(stored).toEqual({ telemt: "check", panel: "off", interval: "6h" });
+  expect(radio(2).getAttribute("aria-checked")).toBe("true");
+  expect(document.querySelector("select")!.value).toBe("6");
+  expect(container.textContent).toContain("Настройки изменились на сервере");
+  expect(save().disabled).toBe(false);
+  expect(save().textContent).toBe("Сохранить");
+  expect(pushToast).toHaveBeenCalledWith(expect.any(String), "error");
+  expect(vi.mocked(pushToast).mock.calls.some(([, tone]) => tone === "ok")).toBe(false);
+});
