@@ -22,10 +22,12 @@ const maxUpdatesRequestBody = 4 << 10
 
 // releaseItemView mirrors one entry of openapi UpdatesStatus.targets[].releases.
 type releaseItemView struct {
-	Version     string    `json:"version"`
-	PublishedAt time.Time `json:"published_at"`
-	Prerelease  bool      `json:"prerelease"`
-	Newer       bool      `json:"newer"`
+	Version           string    `json:"version"`
+	PublishedAt       time.Time `json:"published_at"`
+	Prerelease        bool      `json:"prerelease"`
+	Newer             bool      `json:"newer"`
+	ChecksumRequired  bool      `json:"checksum_required"`
+	ChecksumAvailable bool      `json:"checksum_available"`
 }
 
 // updateRunView mirrors openapi UpdateRun.
@@ -102,6 +104,7 @@ func (s *Server) handleGetUpdates(w http.ResponseWriter, r *http.Request) {
 			releases = append(releases, releaseItemView{
 				Version: rv.Version, PublishedAt: rv.PublishedAt,
 				Prerelease: rv.Prerelease, Newer: rv.Newer,
+				ChecksumRequired: rv.ChecksumRequired, ChecksumAvailable: rv.ChecksumAsset != nil,
 			})
 		}
 

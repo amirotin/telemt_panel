@@ -1,4 +1,6 @@
 export const releasePickerEn={
+ checksumRequired:'This release has no checksum. Panel installation is unavailable.',
+ checksumOptional:'This Telemt release has no checksum; download integrity cannot be verified.',
  choose:'Choose version',select:'Select',selected:'Selected',continue:'Continue',reset:'Clear',newer:'Newer releases',older:'Older releases',preFilter:'Prereleases',pre:'Prerelease',stable:'Stable release',preRelease:'Prerelease',update:'Upgrade',downgrade:'Downgrade',installed:'Installed',available:'Update available',noNewer:'No newer releases',latest:'New',
  intro:'Releases for this host architecture and build variant.',panelLine:'Only the 1.x line. Downgrading to legacy 0.6.2 is not available here.',olderNote:'An older version may not understand newer configuration settings.',emptyFilter:'No releases match this filter. Try including prereleases.',empty:'No other releases are available for this host.',catalogError:'Could not load the release list. This does not mean the installed version is current.',partialCatalog:'Release list partly unavailable',
  manual:'You can browse and select versions. Install manually using host tools or by replacing the Docker image.',manualShort:'Manual installation',busy:'Another operation is in progress. Wait for it to finish.',
