@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 const passwordIdentityKey = "auth.password_identity.v1"
@@ -28,11 +30,13 @@ func (m *Memory) BindPasswordAuth(username, passwordHash string) error {
 	m.webauthnChallenges = make(map[string]WebAuthnChallenge)
 	m.settings[passwordIdentityKey] = identity
 	if err := m.writeStateLocked(); err != nil {
-		m.sessions, m.webauthnChallenges = sessions, challenges
-		if existed {
-			m.settings[passwordIdentityKey] = previous
-		} else {
-			delete(m.settings, passwordIdentityKey)
+		if !atomicfile.Published(err) {
+			m.sessions, m.webauthnChallenges = sessions, challenges
+			if existed {
+				m.settings[passwordIdentityKey] = previous
+			} else {
+				delete(m.settings, passwordIdentityKey)
+			}
 		}
 		return err
 	}

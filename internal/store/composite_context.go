@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 func (s *Composite) ApplyUserIPBatchContext(ctx context.Context, batch UserIPBatch) error {
@@ -62,17 +64,18 @@ func (s *Composite) ReplaceStoragePoliciesContext(parent context.Context, polici
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.state.ReplaceStoragePolicies(policies); err != nil {
-		return err
+	stateErr := s.state.ReplaceStoragePolicies(policies)
+	if stateErr != nil && !atomicfile.Published(stateErr) {
+		return stateErr
 	}
 	if err := s.history.ApplyStoragePoliciesContext(ctx, policies); err != nil {
 		// Roll back the idempotent policy change in a fresh bounded scope even
 		// when the caller canceled its original operation.
 		rollbackCtx, rollbackCancel := historyOperationContext(context.Background())
 		defer rollbackCancel()
-		return errors.Join(err, s.history.ApplyStoragePoliciesContext(rollbackCtx, previous), s.state.ReplaceStoragePolicies(previous))
+		return errors.Join(stateErr, err, s.history.ApplyStoragePoliciesContext(rollbackCtx, previous), s.state.ReplaceStoragePolicies(previous))
 	}
-	return nil
+	return stateErr
 }
 func (s *Composite) StorageStatsContext(ctx context.Context) (StorageStats, error) {
 	stats, err := s.history.StorageStatsContext(ctx)

@@ -7,6 +7,8 @@ import (
 	"io"
 	"sync"
 	"time"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 // StateStore owns the panel control-plane state. It is always local and must
@@ -394,6 +396,9 @@ func (s *Composite) ImportData(data PortableData) error {
 		return errors.Join(err, s.history.ApplyStoragePolicies(previousPolicies))
 	}
 	if err := statePortable.ImportData(stateData); err != nil {
+		if atomicfile.Published(err) {
+			return err
+		}
 		rollbackErr := rollbackImportedHistory(s.history)
 		policyErr := s.history.ApplyStoragePolicies(previousPolicies)
 		return errors.Join(err, rollbackErr, policyErr)

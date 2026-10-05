@@ -7,6 +7,8 @@ import (
 	"io"
 	"sort"
 	"time"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 const portableFormatVersion = 7
@@ -181,24 +183,28 @@ func (m *Memory) ImportData(data PortableData) error {
 		m.policies = policyMap(data.Policies)
 	}
 	if err := m.writeStateLocked(); err != nil {
-		m.sessions = make(map[string]Session)
-		m.subpageNonces = make(map[string]string)
-		m.settings = make(map[string]string)
-		m.journal = make(map[string][]UpdateJournalEntry)
-		m.audit = nil
-		m.metrics = make(map[string][]MetricPoint)
-		m.events = nil
-		m.userIPs = nil
-		m.userIPCollection = UserIPCollection{}
-		m.userTraffic = make(map[string]memoryUserTraffic)
-		m.userTrafficBuckets = make(map[memoryUserTrafficBucketKey]int64)
-		m.userTrafficCollector = UserTrafficCollectorState{}
-		m.hasTrafficCollector = false
-		m.nextEventID = 0
-		m.policies = defaultPolicyMap()
-		m.webauthnUserHandle = nil
-		m.webauthnCredentials = make(map[string]WebAuthnCredential)
-		m.webauthnChallenges = make(map[string]WebAuthnChallenge)
+		if !atomicfile.Published(err) {
+			m.sessions = make(map[string]Session)
+			m.subpageNonces = make(map[string]string)
+			m.settings = make(map[string]string)
+			m.journal = make(map[string][]UpdateJournalEntry)
+			m.audit = nil
+			m.metrics = make(map[string][]MetricPoint)
+			m.events = nil
+			m.userIPs = nil
+			m.userIPCollection = UserIPCollection{}
+			m.userTraffic = make(map[string]memoryUserTraffic)
+			m.userTrafficBuckets = make(map[memoryUserTrafficBucketKey]int64)
+			m.userTrafficCollector = UserTrafficCollectorState{}
+			m.hasTrafficCollector = false
+			m.nextEventID = 0
+			m.policies = defaultPolicyMap()
+			m.webauthnUserHandle = nil
+			m.webauthnCredentials = make(map[string]WebAuthnCredential)
+			m.webauthnChallenges = make(map[string]WebAuthnChallenge)
+		} else {
+			m.userIPEpoch.Add(1)
+		}
 		return fmt.Errorf("persist imported memory store: %w", err)
 	}
 	m.userIPEpoch.Add(1)

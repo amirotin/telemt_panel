@@ -10,12 +10,17 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 // maxJournalLines bounds OpReadJournal's "lines" argument. Generous for an
 // operator-triggered diagnostic tail, small enough that a malformed or
 // hostile value can't turn one op into an unbounded log dump.
 const maxJournalLines = 10000
+
+// MaxBinaryCopySize caps both direct and privileged executable copies.
+const MaxBinaryCopySize int64 = 512 << 20
 
 // AllowLists is the validation policy every op argument is checked against on
 // both direct and sudo execution paths. The caller wiring SelectRunner builds
@@ -229,50 +234,29 @@ func requireBoundedLines(op Op) (int, error) {
 // the process can access. O_NOFOLLOW makes the open fail on a symlink
 // final component instead of following it.
 func installExecutable(src, dest string) error {
-	f, err := os.OpenFile(src, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := os.OpenFile(src, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return fmt.Errorf("host: open %q: %w", src, err)
 	}
 	defer f.Close()
-	data, err := io.ReadAll(f)
+	info, err := f.Stat()
 	if err != nil {
-		return fmt.Errorf("host: read %q: %w", src, err)
+		return fmt.Errorf("host: stat %q: %w", src, err)
 	}
-	return atomicWrite(dest, data, 0o755)
-}
-
-// atomicWrite writes data to a temp file in dest's directory, syncs it,
-// then renames it onto dest — a reader never observes a partially
-// written file, and a failed write never corrupts the existing one.
-func atomicWrite(dest string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(dest)
-	tmp, err := os.CreateTemp(dir, ".telemt-panel-*")
-	if err != nil {
-		return fmt.Errorf("host: create temp file in %q: %w", dir, err)
+	if !info.Mode().IsRegular() || info.Size() > MaxBinaryCopySize {
+		return fmt.Errorf("host: source %q must be a regular binary of at most %d bytes", src, MaxBinaryCopySize)
 	}
-	tmpPath := tmp.Name()
-	// No-op once the rename below succeeds; cleans up on every error path.
-	defer os.Remove(tmpPath)
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("host: write %q: %w", tmpPath, err)
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		tmp.Close()
-		return fmt.Errorf("host: chmod %q: %w", tmpPath, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("host: sync %q: %w", tmpPath, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("host: close %q: %w", tmpPath, err)
-	}
-	if err := os.Rename(tmpPath, dest); err != nil {
-		return fmt.Errorf("host: rename %q to %q: %w", tmpPath, dest, err)
-	}
-	return nil
+	_, err = atomicfile.Write(dest, 0o755, func(w io.Writer) error {
+		copied, err := io.Copy(w, io.LimitReader(f, MaxBinaryCopySize+1))
+		if err != nil {
+			return err
+		}
+		if copied > MaxBinaryCopySize {
+			return fmt.Errorf("binary exceeds copy limit of %d bytes", MaxBinaryCopySize)
+		}
+		return nil
+	})
+	return err
 }
 
 // formatLogLines renders read-journal's Tail result into Output.Stdout's

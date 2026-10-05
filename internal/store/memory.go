@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"os"
-	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 // Ring caps for the in-memory bounded collections.
@@ -54,7 +56,8 @@ type Memory struct {
 	webauthnChallenges   map[string]WebAuthnChallenge
 	nextEventID          int64
 
-	statePath string
+	statePath    string
+	publishState func(string, os.FileMode, func(io.Writer) error) (bool, error)
 
 	// Touch debounce: TouchSession marks the state file dirty and defers the
 	// write to a timer that fires at most once per stateDebounce, instead
@@ -214,48 +217,18 @@ func (m *Memory) writeStateLocked() error {
 		WebAuthnUserHandle:  append([]byte(nil), m.webauthnUserHandle...),
 		WebAuthnCredentials: m.webauthnCredentials,
 	}
-	data, err := json.Marshal(mf)
+	publish := m.publishState
+	if publish == nil {
+		publish = atomicfile.Write
+	}
+	published, err := publish(m.statePath, 0o600, func(w io.Writer) error {
+		return json.NewEncoder(w).Encode(mf)
+	})
 	if err != nil {
-		return fmt.Errorf("encode state file: %w", err)
-	}
-
-	dir := filepath.Dir(m.statePath)
-	tmp, err := os.CreateTemp(dir, ".panel-state-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create state temp file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // no-op once renamed
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write state file: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("sync state file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close state file: %w", err)
-	}
-	if err := os.Chmod(tmpName, 0o600); err != nil {
-		return fmt.Errorf("secure state file: %w", err)
-	}
-	if err := os.Rename(tmpName, m.statePath); err != nil {
-		return fmt.Errorf("replace state file: %w", err)
-	}
-	directory, err := os.Open(dir)
-	if err != nil {
-		slog.Warn("store: state directory sync skipped", "path", dir, "error", err)
-		return nil
-	}
-	if err := directory.Sync(); err != nil {
-		_ = directory.Close()
-		slog.Warn("store: state directory sync failed", "path", dir, "error", err)
-		return nil
-	}
-	if err := directory.Close(); err != nil {
-		slog.Warn("store: state directory close failed", "path", dir, "error", err)
+		if published && !atomicfile.Published(err) {
+			err = &atomicfile.PublicationError{Err: err}
+		}
+		return fmt.Errorf("persist state file: %w", err)
 	}
 	return nil
 }
@@ -267,10 +240,12 @@ func (m *Memory) PutSession(s Session) error {
 	previous, existed := m.sessions[s.IDHash]
 	m.sessions[s.IDHash] = s
 	if err := m.writeStateLocked(); err != nil {
-		if existed {
-			m.sessions[s.IDHash] = previous
-		} else {
-			delete(m.sessions, s.IDHash)
+		if !atomicfile.Published(err) {
+			if existed {
+				m.sessions[s.IDHash] = previous
+			} else {
+				delete(m.sessions, s.IDHash)
+			}
 		}
 		return err
 	}
@@ -337,8 +312,10 @@ func (m *Memory) DeleteSession(idHash string) error {
 	previous, existed := m.sessions[idHash]
 	delete(m.sessions, idHash)
 	if err := m.writeStateLocked(); err != nil {
-		if existed {
-			m.sessions[idHash] = previous
+		if !atomicfile.Published(err) {
+			if existed {
+				m.sessions[idHash] = previous
+			}
 		}
 		return err
 	}
@@ -359,7 +336,9 @@ func (m *Memory) DeleteOtherSessions(keepIDHash string) error {
 		}
 	}
 	if err := m.writeStateLocked(); err != nil {
-		m.sessions = previous
+		if !atomicfile.Published(err) {
+			m.sessions = previous
+		}
 		return err
 	}
 	return nil
@@ -395,7 +374,9 @@ func (m *Memory) AppendAudit(e AuditEntry) error {
 		m.audit = m.audit[len(m.audit)-auditCap:]
 	}
 	if err := m.writeStateLocked(); err != nil {
-		m.audit = previous
+		if !atomicfile.Published(err) {
+			m.audit = previous
+		}
 		return err
 	}
 	return nil
@@ -528,10 +509,12 @@ func (m *Memory) AppendUpdateJournal(e UpdateJournalEntry) error {
 	}
 	m.journal[e.Target] = entries
 	if err := m.writeStateLocked(); err != nil {
-		if previous == nil {
-			delete(m.journal, e.Target)
-		} else {
-			m.journal[e.Target] = previous
+		if !atomicfile.Published(err) {
+			if previous == nil {
+				delete(m.journal, e.Target)
+			} else {
+				m.journal[e.Target] = previous
+			}
 		}
 		return err
 	}
@@ -941,8 +924,12 @@ func (m *Memory) ReplaceStoragePoliciesContext(parent context.Context, policies 
 	m.policies = policyMap(policies)
 	m.pruneAuditLocked(time.Now())
 	if err := m.writeStateLocked(); err != nil {
-		m.policies = previous
-		m.audit = previousAudit
+		if !atomicfile.Published(err) {
+			m.policies = previous
+			m.audit = previousAudit
+		} else if previous[StorageUserIPHistory] != m.policies[StorageUserIPHistory] {
+			m.userIPEpoch.Add(1)
+		}
 		return err
 	}
 	if previous[StorageUserIPHistory] != m.policies[StorageUserIPHistory] {
@@ -1003,7 +990,9 @@ func (m *Memory) PurgeAudit() error {
 	previous := m.audit
 	m.audit = nil
 	if err := m.writeStateLocked(); err != nil {
-		m.audit = previous
+		if !atomicfile.Published(err) {
+			m.audit = previous
+		}
 		return err
 	}
 	return nil
@@ -1107,10 +1096,12 @@ func (m *Memory) SetSubpageNonce(username, nonce string) error {
 	previous, existed := m.subpageNonces[username]
 	m.subpageNonces[username] = nonce
 	if err := m.writeStateLocked(); err != nil {
-		if existed {
-			m.subpageNonces[username] = previous
-		} else {
-			delete(m.subpageNonces, username)
+		if !atomicfile.Published(err) {
+			if existed {
+				m.subpageNonces[username] = previous
+			} else {
+				delete(m.subpageNonces, username)
+			}
 		}
 		return err
 	}
@@ -1132,10 +1123,12 @@ func (m *Memory) SetSetting(key, value string) error {
 	previous, existed := m.settings[key]
 	m.settings[key] = value
 	if err := m.writeStateLocked(); err != nil {
-		if existed {
-			m.settings[key] = previous
-		} else {
-			delete(m.settings, key)
+		if !atomicfile.Published(err) {
+			if existed {
+				m.settings[key] = previous
+			} else {
+				delete(m.settings, key)
+			}
 		}
 		return err
 	}

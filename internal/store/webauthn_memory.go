@@ -7,6 +7,8 @@ import (
 	"slices"
 	"time"
 	"unicode/utf8"
+
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 const (
@@ -94,7 +96,9 @@ func (m *Memory) GetOrCreateWebAuthnUserHandle(candidate []byte) ([]byte, error)
 	}
 	m.webauthnUserHandle = append([]byte(nil), candidate...)
 	if err := m.writeStateLocked(); err != nil {
-		m.webauthnUserHandle = nil
+		if !atomicfile.Published(err) {
+			m.webauthnUserHandle = nil
+		}
 		return nil, err
 	}
 	return append([]byte(nil), candidate...), nil
@@ -132,7 +136,9 @@ func (m *Memory) AddWebAuthnCredential(credential WebAuthnCredential) error {
 	}
 	m.webauthnCredentials[credential.ID] = cloneWebAuthnCredential(credential)
 	if err := m.writeStateLocked(); err != nil {
-		delete(m.webauthnCredentials, credential.ID)
+		if !atomicfile.Published(err) {
+			delete(m.webauthnCredentials, credential.ID)
+		}
 		return err
 	}
 	return nil
@@ -147,7 +153,9 @@ func (m *Memory) DeleteWebAuthnCredential(id string) error {
 	}
 	delete(m.webauthnCredentials, id)
 	if err := m.writeStateLocked(); err != nil {
-		m.webauthnCredentials[id] = credential
+		if !atomicfile.Published(err) {
+			m.webauthnCredentials[id] = credential
+		}
 		return err
 	}
 	return nil
@@ -168,7 +176,9 @@ func (m *Memory) UpdateWebAuthnCredential(credential WebAuthnCredential, oldSign
 	}
 	m.webauthnCredentials[credential.ID] = cloneWebAuthnCredential(credential)
 	if err := m.writeStateLocked(); err != nil {
-		m.webauthnCredentials[credential.ID] = previous
+		if !atomicfile.Published(err) {
+			m.webauthnCredentials[credential.ID] = previous
+		}
 		return err
 	}
 	return nil
