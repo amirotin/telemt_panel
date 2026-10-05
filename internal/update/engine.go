@@ -91,7 +91,7 @@ type Target interface {
 	// PostRestart is called after the service restart succeeds. telemt:
 	// polls SDK Health until it responds or a timeout elapses. panel: nil —
 	// the NEW process confirms success at its own startup instead (see
-	// ReconcileStartup and runPhases' panel special case below), since this
+	// ConfirmPanelReady and runPhases' panel special case below), since this
 	// process may be replaced by the restart before PostRestart could ever
 	// run.
 	PostRestart(ctx context.Context) error
@@ -156,6 +156,8 @@ type EngineConfig struct {
 	// PanelShutdownGrace bounds the wait for lifecycle cancellation after a
 	// signaled self-restart; defaults to 3 seconds.
 	PanelShutdownGrace time.Duration
+	// RequireReadiness prevents new operations until server startup is confirmed.
+	RequireReadiness bool
 
 	// HTTPClient downloads release assets; defaults to a client with a 5
 	// minute timeout (release tarballs are small, but a stalled connection
@@ -201,6 +203,11 @@ type Engine struct {
 	newRunID     func() string
 
 	panelShutdownGrace time.Duration
+	ready              bool
+	runContext         context.Context
+	cancelRuns         context.CancelFunc
+	workers            sync.WaitGroup
+	closed             bool
 
 	mu           sync.Mutex
 	running      bool
@@ -231,10 +238,16 @@ func NewEngine(cfg EngineConfig) *Engine {
 		runs:         make(map[string]RunStatus),
 
 		panelShutdownGrace: cfg.PanelShutdownGrace,
+		ready:              !cfg.RequireReadiness,
 	}
 	if e.panelShutdownGrace <= 0 {
 		e.panelShutdownGrace = 3 * time.Second
 	}
+	parent := cfg.PanelLifecycleContext
+	if parent == nil {
+		parent = context.Background()
+	}
+	e.runContext, e.cancelRuns = context.WithCancel(parent)
 	if e.github == nil {
 		e.github = NewClient()
 	}
@@ -334,11 +347,12 @@ func (e *Engine) ActiveRun(targetName string) (RunStatus, bool) {
 func (e *Engine) tryLock(targetName string) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.running {
+	if e.running || !e.ready || e.closed {
 		return false
 	}
 	e.running = true
 	e.activeTarget = targetName
+	e.workers.Add(1)
 	return true
 }
 
@@ -347,6 +361,25 @@ func (e *Engine) unlock() {
 	defer e.mu.Unlock()
 	e.running = false
 	e.activeTarget = ""
+	e.workers.Done()
+}
+
+// MarkReady allows new operations after the server's readiness confirmation.
+func (e *Engine) MarkReady() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.closed {
+		e.ready = true
+	}
+}
+
+// Close cancels owned runs and waits for their final journal writes before stores close.
+func (e *Engine) Close() {
+	e.mu.Lock()
+	e.closed = true
+	e.cancelRuns()
+	e.mu.Unlock()
+	e.workers.Wait()
 }
 
 func (e *Engine) setStatus(targetName string, st RunStatus) {
@@ -374,14 +407,18 @@ func (e *Engine) Apply(ctx context.Context, targetName, version string) error {
 	if !versionAllowed(targetName, version) {
 		return ErrUnsupportedVersion
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(e.runContext, cancel)
+	defer stop()
+	defer cancel()
 	return e.runPhases(ctx, targetName, t, version)
 }
 
 // StartApply acquires the global lock synchronously — so a concurrent
 // second call reliably observes ErrBusy — then runs the update in a new
-// goroutine bound to context.Background() (the triggering HTTP request's
+// goroutine bound to the panel lifecycle. The triggering HTTP request's
 // context must not cancel a run that continues after the response is
-// sent). Returns nil once the goroutine has been started, not once it has
+// sent. Returns nil once the goroutine has been started, not once it has
 // finished.
 func (e *Engine) StartApply(targetName, version string) error {
 	t, ok := e.targets[targetName]
@@ -397,7 +434,7 @@ func (e *Engine) StartApply(targetName, version string) error {
 	}
 	go func() {
 		defer e.unlock()
-		if err := e.runPhases(context.Background(), targetName, t, version); err != nil {
+		if err := e.runPhases(e.runContext, targetName, t, version); err != nil {
 			slog.Warn("update: run ended", "target", targetName, "err", err)
 		}
 	}()
@@ -730,8 +767,8 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 		// above at any moment. The journal rule (spec 03 §Журнал) forbids
 		// claiming success before a live process of the new version has
 		// confirmed it — the last journal entry stays "restarting" here;
-		// ReconcileStartup completes it (done/rolled_back) from the new
-		// process's own startup path.
+		// ConfirmPanelReady completes it (done/rolled_back) after the new
+		// process's required listeners have entered Accept.
 		return nil
 	}
 
