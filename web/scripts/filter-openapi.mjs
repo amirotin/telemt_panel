@@ -7,13 +7,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import yaml from "js-yaml";
+import { dump } from "js-yaml";
+import { loadOpenAPIYaml } from "./openapi-yaml.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const srcPath = path.join(here, "..", "..", "api", "openapi.yaml");
 const outPath = path.join(here, "..", ".openapi-filtered.yaml");
 
-const doc = yaml.load(readFileSync(srcPath, "utf8"));
+const doc = loadOpenAPIYaml(readFileSync(srcPath, "utf8"));
 
 let removed = 0;
 for (const [route, item] of Object.entries(doc.paths ?? {})) {
@@ -23,5 +24,5 @@ for (const [route, item] of Object.entries(doc.paths ?? {})) {
   }
 }
 
-writeFileSync(outPath, yaml.dump(doc, { noRefs: true, lineWidth: -1 }));
+writeFileSync(outPath, dump(doc, { noRefs: true, lineWidth: -1 }));
 console.log(`filter-openapi: wrote ${outPath} (${removed} planned path(s) excluded)`);

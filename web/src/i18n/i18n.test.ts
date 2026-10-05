@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import yaml from "js-yaml";
+import { loadOpenAPIYaml } from "../../scripts/openapi-yaml.mjs";
 import { describe, expect, it } from "vitest";
 import type { Dict, Locale } from "./dict";
 import { en } from "./en";
@@ -25,7 +25,7 @@ const DICTS: Array<[Locale, Dict]> = [
 function documentedErrorCodes(): string[] {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const openapiPath = path.join(here, "..", "..", "..", "api", "openapi.yaml");
-  const doc = yaml.load(readFileSync(openapiPath, "utf8"));
+  const doc = loadOpenAPIYaml(readFileSync(openapiPath, "utf8"));
   const codes = (
     doc as {
       components?: { schemas?: { Error?: { properties?: { code?: { enum?: unknown } } } } };
