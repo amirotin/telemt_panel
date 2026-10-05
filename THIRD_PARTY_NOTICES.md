@@ -41,7 +41,7 @@ The specialized branding interpolation retains arithmetic adapted from x/image/d
 
 | Package and version | License | Source |
 | --- | --- | --- |
-| @codemirror/state@6.7.1 | MIT | https://www.npmjs.com/package/@codemirror/state/v/6.7.1 |
+| @codemirror/state@6.7.6 | MIT | https://www.npmjs.com/package/@codemirror/state/v/6.7.1 |
 | @codemirror/view@6.43.9 | MIT | https://www.npmjs.com/package/@codemirror/view/v/6.43.9 |
 | @marijn/find-cluster-break@1.0.4 | MIT | https://www.npmjs.com/package/@marijn/find-cluster-break/v/1.0.4 |
 | @react-aria/utils@3.33.1 | Apache-2.0 | https://www.npmjs.com/package/@react-aria/utils/v/3.33.1 |
@@ -938,7 +938,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### @codemirror/state@6.7.1
+### @codemirror/state@6.7.6
 
 LICENSE
 
