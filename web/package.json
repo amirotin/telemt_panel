@@ -50,7 +50,7 @@
     "@types/topojson-client": "3.1.5",
     "@types/topojson-specification": "1.0.5",
     "@vitejs/plugin-react": "6.1.0",
-    "eslint": "10.9.1",
+    "eslint": "10.11.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.4",
     "globals": "17.13.0",
