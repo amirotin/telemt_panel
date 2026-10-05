@@ -3073,8 +3073,9 @@ export const en: Dict = {
       oneAtATimeTitle: "One operation at a time",
       oneAtATimeDetail:
         "The shared lock prevents Telemt and the panel from updating simultaneously.",
-      rollbackTitle: "Automatic rollback",
-      rollbackDetail: "A failed health check restores the previous binary.",
+      rollbackTitle: "Rollback and recovery",
+      rollbackDetail:
+        "Install or restart failures restore the binary backup. Telemt also rolls back after a failed health check. If the updated panel cannot start, restore its .bak file and restart the service manually.",
       hostCapabilities: "Host capabilities",
       installUnavailableTitle: "Why installation is unavailable",
       installUnavailableDetail:

@@ -160,7 +160,7 @@ test("login → people → create user → share → sub-page → overview → p
 
     // The Overview reads the `web` topic: the runtime is running on the
     // mock, so the lifecycle tile says so rather than showing a gate.
-    await expect(page.getByText("running").first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "WEB", exact: true }).getByText("Работает", { exact: true })).toBeVisible();
 
     // The Sessions tab is a SECOND request (fetch-on-visit, cursor-paged).
     await page.getByRole("tab", { name: "Сессии" }).click();

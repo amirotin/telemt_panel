@@ -105,7 +105,7 @@ function Summary({
         <span className="text-label font-semibold uppercase tracking-[0.12em] text-text-muted">
           {v.latestEvent}
         </span>
-        <h3 className="mt-2 text-h3 font-semibold text-text">{latestLine?.text ?? v.noEvents}</h3>
+        <h2 className="mt-2 text-h3 font-semibold text-text">{latestLine?.text ?? v.noEvents}</h2>
         <p className="mt-2 text-micro leading-relaxed text-text-muted">
           {latest
             ? `${eventAgo(latest.ts_epoch_secs, nowMs, s)} · ${latest.event_type}`
@@ -180,7 +180,7 @@ function TimelineRow({
                 s,
               )}
             </span>
-            <h4 className="mt-1 text-meta font-semibold text-text">{line.text}</h4>
+            <h3 className="mt-1 text-meta font-semibold text-text">{line.text}</h3>
           </div>
           <code className="max-w-full break-all font-mono text-micro text-text-muted sm:max-w-[45%] sm:text-right">
             {event.event_type}
@@ -309,9 +309,9 @@ function Timeline({
         {visible.length === 0 && (
           <div className="rounded-xl border border-dashed border-border px-4 py-12 text-center">
             <span className="text-h2 text-text-muted">○</span>
-            <h4 className="mt-2 text-h3 font-semibold text-text">
+            <h3 className="mt-2 text-h3 font-semibold text-text">
               {events.length > 0 ? v.nothingFound : v.noEvents}
-            </h4>
+            </h3>
             <p className="mt-1 text-meta text-text-muted">
               {events.length > 0 ? v.changeFilter : v.newEventsAppear}
             </p>
@@ -444,7 +444,7 @@ function DisabledPanel({ reason, s }: { reason: string; s: Dict }) {
           <span className="text-label font-semibold uppercase tracking-[0.12em] text-text-muted">
             {reason || v.disabledKicker}
           </span>
-          <h3 className="mt-1 text-h2 font-semibold text-text">{v.journalDisabled}</h3>
+          <h2 className="mt-1 text-h2 font-semibold text-text">{v.journalDisabled}</h2>
           <p className="mt-2 max-w-3xl text-meta leading-relaxed text-text-muted">
             {v.disabledDescription}
           </p>

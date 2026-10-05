@@ -3283,8 +3283,9 @@ export const ru = {
       collapse: "Свернуть",
       oneAtATimeTitle: "Одна операция за раз",
       oneAtATimeDetail: "Общий lock не даст Telemt и панели обновляться одновременно.",
-      rollbackTitle: "Автоматический откат",
-      rollbackDetail: "Неуспешная проверка здоровья возвращает предыдущий бинарник.",
+      rollbackTitle: "Откат и восстановление",
+      rollbackDetail:
+        "Ошибка установки или перезапуска возвращает резервный бинарник. Telemt также откатывается при ошибке health. Если обновлённая панель не запускается, восстановите её .bak и перезапустите службу вручную.",
       hostCapabilities: "Возможности хоста",
       installUnavailableTitle: "Почему установка недоступна",
       installUnavailableDetail:

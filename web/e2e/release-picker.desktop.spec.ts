@@ -7,7 +7,7 @@ for(const width of [320,390,768,1280,2560]){
    await page.route('**/api/host',async route=>{const data=await(await route.fetch()).json();data.caps.self_update=!manual;await route.fulfill({json:data});});
    await page.route('**/api/updates',route=>route.fulfill({json:{lock_held:locked,targets:[
      {target:'telemt',current_version:current,releases_error:catalogError?'update_catalog_unavailable':undefined,releases:catalogError?[]:[{version:'3.5.7',published_at:'2026-09-17T00:00:00Z',prerelease:false,newer:true},{version:'3.5.4',published_at:'2026-09-09T00:00:00Z',prerelease:false,newer:false}].filter(r=>!olderOnly||!r.newer),journal:[]},
-     {target:'panel',current_version:'1.0.0-rc.1',releases:[{version:'1.0.0-rc.2',published_at:'2026-09-18T00:00:00Z',prerelease:true,newer:true},{version:'1.0.0-beta.1',published_at:'2026-09-09T00:00:00Z',prerelease:true,newer:false}],journal:[]},
+     {target:'panel',current_version:'1.0.0-rc.1',checksum_required:true,releases:[{version:'1.0.0-rc.2',published_at:'2026-09-18T00:00:00Z',prerelease:true,newer:true,checksum_required:true,checksum_available:true},{version:'1.0.0-beta.1',published_at:'2026-09-09T00:00:00Z',prerelease:true,newer:false,checksum_required:true,checksum_available:true}],journal:[]},
    ]}}));
    await page.route('**/api/updates/*/apply',route=>{applied.push({target:new URL(route.request().url()).pathname.split('/')[3]!,version:route.request().postDataJSON().version});return route.fulfill({status:202});});
    const policyWrites:string[]=[];page.on('request',r=>{if(r.method()==='PUT'&&r.url().includes('/api/updates/auto'))policyWrites.push(r.url());});

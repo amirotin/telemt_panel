@@ -104,9 +104,9 @@ function RouteState({ mode, gates, s }: { mode: MeRouteMode; gates: RuntimeGates
             <span className="text-label font-semibold uppercase tracking-[0.12em] text-text-muted">
               {v.activeRoute}
             </span>
-            <h3 className="mt-1 text-h2 font-semibold text-text">
+            <h2 className="mt-1 text-h2 font-semibold text-text">
               {fallback ? v.fallbackTitle : v.directTitle}
-            </h3>
+            </h2>
             <p className="mt-2 max-w-3xl text-meta leading-relaxed text-text-muted">
               {fallback ? v.fallbackDetail : v.directDetail}
             </p>
@@ -178,7 +178,7 @@ function VerdictHero({ nat, s }: { nat: RuntimeNatStun; s: Dict }) {
           <span className="text-label font-semibold uppercase tracking-[0.12em] text-text-muted">
             {v.mechanismState}
           </span>
-          <h3 className="mt-1 text-h3 font-semibold text-text">{copy.title}</h3>
+          <h2 className="mt-1 text-h3 font-semibold text-text">{copy.title}</h2>
           <p className="mt-1 text-micro leading-relaxed text-text-muted">{copy.detail}</p>
           <strong
             className={cn(

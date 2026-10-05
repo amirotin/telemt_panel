@@ -33,8 +33,8 @@ for (const width of [390, 1440]) {
           expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
           if (["connections", "counters", "events", "me", "nat", "security", "web"].includes(domain)) {
             const levels = await page.getByTestId(`${domain}-detail`).locator("h1,h2,h3,h4,h5,h6").evaluateAll(headings => headings.map(heading => Number(heading.tagName.slice(1))));
-            expect(levels[0]).toBe(1);
-            for (let index = 1; index < levels.length; index++) expect(levels[index]).toBeLessThanOrEqual(levels[index - 1]! + 1);
+            expect.soft(levels[0], `${domain}: page heading`).toBe(1);
+            for (let index = 1; index < levels.length; index++) expect.soft(levels[index], `${domain}: heading ${index}`).toBeLessThanOrEqual(levels[index - 1]! + 1);
           }
           if (["connections", "me", "nat", "web"].includes(domain)) {
             const disclosure = page.getByTestId(`${domain}-technical`);
