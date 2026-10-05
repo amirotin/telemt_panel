@@ -291,23 +291,27 @@ func (m *Manager) ExecuteScheduled(ctx context.Context, reserve func([]string, s
 	names, revision, err := m.snapshot(ctx)
 	m.mu.Lock()
 	m.checking = false
-	defer m.mu.Unlock()
 	if err != nil && !errors.Is(err, ErrEmpty) {
+		m.mu.Unlock()
 		return Status{}, err
 	}
 	if m.closed || ctx.Err() != nil {
+		m.mu.Unlock()
 		return Status{}, ErrClosed
 	}
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
+		m.mu.Unlock()
 		return Status{}, err
 	}
 	token := hex.EncodeToString(id[:])
 	selected, err := reserve(names, token)
 	if err != nil {
+		m.mu.Unlock()
 		return Status{}, err
 	}
 	if len(selected) == 0 {
+		m.mu.Unlock()
 		return Status{}, ErrEmpty
 	}
 	m.prepared = nil
@@ -321,7 +325,6 @@ func (m *Manager) ExecuteScheduled(ctx context.Context, reserve func([]string, s
 		m.onEvent(out, "scheduler", "")
 	}
 	out = m.run(selected, revision, "scheduler", "")
-	m.mu.Lock()
 	return out, nil
 }
 
