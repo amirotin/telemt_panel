@@ -194,10 +194,16 @@ func (s *SQLite) withOperationTxContext(parent context.Context, fn func(*sql.Tx)
 }
 
 func (s *SQLite) initialize() error {
-	if _, err := s.db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+	return s.initializeContext(context.Background())
+}
+
+func (s *SQLite) initializeContext(parent context.Context) error {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if _, err := s.db.ExecContext(ctx, "PRAGMA busy_timeout=5000"); err != nil {
 		return fmt.Errorf("configure sqlite store (PRAGMA busy_timeout=5000): %w", err)
 	}
-	if err := s.initializeSQL(context.Background()); err != nil {
+	if err := s.initializeSQL(ctx); err != nil {
 		return err
 	}
 	for _, statement := range []string{
@@ -207,18 +213,56 @@ func (s *SQLite) initialize() error {
 		"PRAGMA cache_size=-20480",
 		"PRAGMA journal_size_limit=16777216",
 	} {
-		if _, err := s.db.Exec(statement); err != nil {
+		configure := func(ctx context.Context) error {
+			_, err := s.db.ExecContext(ctx, statement)
+			return err
+		}
+		var err error
+		if statement == "PRAGMA journal_mode=WAL" {
+			err = retrySQLiteWAL(ctx, configure)
+		} else {
+			err = configure(ctx)
+		}
+		if err != nil {
 			return fmt.Errorf("configure sqlite store (%s): %w", statement, err)
 		}
 	}
 	var integrity string
-	if err := s.db.QueryRow("PRAGMA quick_check").Scan(&integrity); err != nil {
+	if err := s.db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&integrity); err != nil {
 		return fmt.Errorf("check sqlite store integrity: %w", err)
 	}
 	if integrity != "ok" {
 		return fmt.Errorf("sqlite store integrity check failed: %s", integrity)
 	}
 	return nil
+}
+
+// A concurrent opener or checkpoint can make the idempotent journal-mode
+// change return BUSY/LOCKED without invoking SQLite's busy handler. Retry only
+// that setup step; migrations and unknown transaction outcomes are not replayed.
+func retrySQLiteWAL(ctx context.Context, configure func(context.Context) error) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := configure(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if !errors.Is(err, sqlite3.BUSY) && !errors.Is(err, sqlite3.LOCKED) {
+			return err
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (s *SQLite) initializeSQL(ctx context.Context) error {
