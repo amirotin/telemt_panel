@@ -23,6 +23,10 @@ func anonymousHostAllowed(r *http.Request, cfg *config.Config) bool {
 	}
 	if cfg.PublicURL != "" {
 		public, err := url.Parse(cfg.PublicURL)
+		if err != nil {
+			return false
+		}
+		public.Host, err = validatedHost(public.Host)
 		if err != nil || !strings.EqualFold(u.Hostname(), public.Hostname()) {
 			return false
 		}
