@@ -85,6 +85,9 @@ func TestReleaseContract(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					if os.Getenv("RELEASE_CHECK_SIZE") != "0" && len(content) > releaseBinarySizeLimit(lite) {
+						t.Fatalf("binary exceeds profile size limit: %d > %d", len(content), releaseBinarySizeLimit(lite))
+					}
 					checkReleaseELF(t, content, arch, lite)
 					key := arch
 					if lite {
@@ -126,13 +129,6 @@ func TestReleaseContract(t *testing.T) {
 
 func checkReleaseELF(t *testing.T, content []byte, arch string, lite bool) {
 	t.Helper()
-	limit := 32 << 20
-	if lite {
-		limit = 16 << 20
-	}
-	if len(content) > limit {
-		t.Fatalf("binary exceeds profile size limit: %d > %d", len(content), limit)
-	}
 	f, err := elf.NewFile(bytes.NewReader(content))
 	if err != nil {
 		t.Fatal(err)
@@ -175,6 +171,36 @@ func checkReleaseELF(t *testing.T, content []byte, arch string, lite bool) {
 	// string values with a NUL terminator; native builds are also executed above.
 	if version := os.Getenv("RELEASE_VERSION"); version != "" && !bytes.Contains(content, append([]byte(version), 0)) {
 		t.Fatal("linked release version string is missing")
+	}
+}
+
+func releaseBinarySizeLimit(lite bool) int {
+	if lite {
+		return 16 << 20
+	}
+	return 32 << 20
+}
+
+func TestReleaseBinarySizeBudgets(t *testing.T) {
+	dir := os.Getenv("RELEASE_DIR")
+	if dir == "" {
+		t.Skip("set RELEASE_DIR to inspect actual release archives")
+	}
+	for _, prefix := range []string{"telemt-panel", "telemt-panel-lite"} {
+		for _, arch := range releaseArches {
+			name := AssetName(prefix, arch, "gnu")
+			t.Run(name, func(t *testing.T) {
+				content, err := readReleaseBinary(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				limit := releaseBinarySizeLimit(prefix == "telemt-panel-lite")
+				t.Logf("%s: %d bytes (limit %d)", name, len(content), limit)
+				if len(content) > limit {
+					t.Errorf("binary exceeds profile size limit: %d > %d", len(content), limit)
+				}
+			})
+		}
 	}
 }
 

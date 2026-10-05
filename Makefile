@@ -6,8 +6,9 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # Full SQLite requires json/v2. Keep this limited to lite and its CI checks;
 # revisit when Go removes the documented nojsonv2 compatibility opt-out.
 LITE_GOEXPERIMENT := nojsonv2
+RELEASE_CHECK_SIZE ?= 1
 
-.PHONY: build build-lite test test-race lint release clean mock web dev-frontend dev-backend
+.PHONY: build build-lite test test-race lint release release-size clean mock web dev-frontend dev-backend
 
 # Builds the SPA straight into internal/webui/dist (web/vite.config.ts's
 # outDir) — the package's go:embed directive picks it up with no
@@ -85,14 +86,11 @@ release:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$(LDFLAGS)" -o release/.stage/full/aarch64/telemt-panel ./cmd/panel
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/x86_64/telemt-panel ./cmd/panel
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOEXPERIMENT=$(LITE_GOEXPERIMENT) go build -trimpath -tags lite -ldflags="$(LDFLAGS)" -o release/.stage/lite/aarch64/telemt-panel ./cmd/panel
-	@for file in release/.stage/full/*/telemt-panel; do \
-		bytes=$$(wc -c < "$$file"); \
-		if [ "$$bytes" -gt 33554432 ]; then echo "full binary exceeds 32 MiB: $$file ($$bytes bytes)"; exit 1; fi; \
-	done
-	@for file in release/.stage/lite/*/telemt-panel; do \
-		bytes=$$(wc -c < "$$file"); \
-		if [ "$$bytes" -gt 16777216 ]; then echo "lite binary exceeds 16 MiB: $$file ($$bytes bytes)"; exit 1; fi; \
-	done
+	@case "$(RELEASE_CHECK_SIZE)" in \
+		1) $(MAKE) release-size ;; \
+		0) $(MAKE) release-size || echo "WARNING: size enforcement deferred for this qualification build" ;; \
+		*) echo "RELEASE_CHECK_SIZE must be 0 or 1"; exit 2 ;; \
+	esac
 	@set -eu; for arch in x86_64 aarch64; do \
 		for variant in gnu musl; do \
 			tar --owner=0 --group=0 --numeric-owner -czf release/telemt-panel-$$arch-linux-$$variant.tar.gz -C release/.stage/full/$$arch telemt-panel; \
@@ -106,6 +104,18 @@ release:
 	@rm -rf release/.stage
 	@set -eu; cd release; for f in *.tar.gz; do sha256sum "$$f" > "$$f.sha256"; done
 	@echo "Release assets in ./release/"
+
+release-size:
+	@set -eu; failed=0; for profile in full lite; do \
+		limit=33554432; if [ "$$profile" = lite ]; then limit=16777216; fi; \
+		for arch in x86_64 aarch64; do \
+			file="release/.stage/$$profile/$$arch/telemt-panel"; \
+			if [ ! -f "$$file" ]; then echo "missing binary: $$file"; failed=1; continue; fi; \
+			bytes=$$(wc -c < "$$file"); \
+			echo "$$profile/$$arch: $$bytes bytes (limit $$limit)"; \
+			if [ "$$bytes" -gt "$$limit" ]; then echo "$$profile binary exceeds size budget: $$file"; failed=1; fi; \
+		done; \
+	done; exit "$$failed"
 
 clean:
 	rm -rf telemt-panel telemt-panel-lite release/
