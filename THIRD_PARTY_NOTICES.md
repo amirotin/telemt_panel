@@ -19,8 +19,8 @@ SQLite modules and julianday are full-only; the shared SPA, passkeys and geograp
 | github.com/golang-jwt/jwt/v5@v5.3.1 | MIT | full, lite | https://pkg.go.dev/github.com/golang-jwt/jwt/v5@v5.3.1 |
 | github.com/google/go-tpm@v0.9.8 | Apache-2.0 | full, lite | https://pkg.go.dev/github.com/google/go-tpm@v0.9.8 |
 | github.com/google/uuid@v1.6.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/github.com/google/uuid@v1.6.0 |
-| github.com/ncruces/go-sqlite3-wasm/v5@v5.0.35304 | MIT-0 | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3-wasm/v5@v5.0.35304 |
-| github.com/ncruces/go-sqlite3@v0.35.4 | MIT | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3@v0.35.4 |
+| github.com/ncruces/go-sqlite3-wasm/v6@v6.3.35304 | MIT-0 | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3-wasm/v6@v6.3.35304 |
+| github.com/ncruces/go-sqlite3@v0.35.6 | MIT | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3@v0.35.6 |
 | github.com/ncruces/julianday@v1.0.0 | MIT | full | https://pkg.go.dev/github.com/ncruces/julianday@v1.0.0 |
 | github.com/oschwald/maxminddb-golang/v2@v2.7.0 | ISC | full, lite | https://pkg.go.dev/github.com/oschwald/maxminddb-golang/v2@v2.7.0 |
 | github.com/philhofer/fwd@v1.2.0 | MIT | full, lite | https://pkg.go.dev/github.com/philhofer/fwd@v1.2.0 |
@@ -548,7 +548,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### github.com/ncruces/go-sqlite3-wasm/v5@v5.0.35304
+### github.com/ncruces/go-sqlite3-wasm/v6@v6.3.35304
 
 LICENSE
 
@@ -573,7 +573,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### github.com/ncruces/go-sqlite3@v0.35.4
+### github.com/ncruces/go-sqlite3@v0.35.6
 
 LICENSE
 
