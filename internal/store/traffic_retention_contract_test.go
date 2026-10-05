@@ -158,3 +158,48 @@ func TestMemoryTrafficRetentionPolicyAndReappear(t *testing.T) {
 	}
 	runTrafficRetentionPolicyAndReappear(t, m)
 }
+
+func runTrafficDirectReappearanceAfterExpiry(t *testing.T, st HistoryStore) {
+	t.Helper()
+	policies := DefaultStoragePolicies()
+	for i := range policies {
+		if policies[i].Category == StorageUserTraffic {
+			policies[i].RetentionDays = 1
+		}
+	}
+	if err := st.ApplyStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	first := time.Now().Unix()
+	returned := first + 2*86400
+	for _, snapshot := range []UserTrafficSnapshot{
+		{ObservedAt: first, Users: []UserTrafficObservation{{Username: "returned", RawOctets: 100}, {Username: "active", RawOctets: 100}}},
+		{ObservedAt: first + 1, Users: []UserTrafficObservation{{Username: "returned", RawOctets: 200}, {Username: "active", RawOctets: 110}}},
+		{ObservedAt: first + 2, Users: []UserTrafficObservation{{Username: "active", RawOctets: 110}}},
+		{ObservedAt: returned, Users: []UserTrafficObservation{{Username: "returned", RawOctets: 400}, {Username: "active", RawOctets: 120}}},
+	} {
+		snapshot.SourceStartedAt = first - 100
+		snapshot.TelemetryEnabled = true
+		if _, err := st.ApplyUserTrafficSnapshot(snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summaries, err := st.UserTrafficSummaries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := summaries["returned"]; got.ObservedTotalBytes != 0 || got.ObservedSinceEpochSecs != returned || got.DeletedEpochSecs != 0 {
+		t.Fatalf("direct reappearance reused expired baseline: %+v", got)
+	}
+	if got := summaries["active"].ObservedTotalBytes; got != 20 {
+		t.Fatalf("active lifetime total = %d, want 20", got)
+	}
+}
+
+func TestMemoryTrafficDirectReappearanceAfterExpiry(t *testing.T) {
+	m, err := NewMemory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runTrafficDirectReappearanceAfterExpiry(t, m)
+}

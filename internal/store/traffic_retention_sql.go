@@ -9,8 +9,9 @@ import (
 )
 
 func pruneTrafficSummariesTx(ctx context.Context, tx *sql.Tx, now int64, retention time.Duration) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id,deleted_ts,EXISTS(SELECT 1 FROM user_traffic_buckets WHERE user_id=user_traffic_users.id)
-		FROM user_traffic_users WHERE deleted_ts IS NOT NULL AND deleted_ts < ?`, now-int64(retention/time.Second))
+	cutoff := now - int64(retention/time.Second)
+	rows, err := tx.QueryContext(ctx, `SELECT id,deleted_ts,EXISTS(SELECT 1 FROM user_traffic_buckets WHERE user_id=user_traffic_users.id AND ts >= ?)
+		FROM user_traffic_users WHERE deleted_ts IS NOT NULL AND deleted_ts < ?`, cutoff, cutoff)
 	if err != nil {
 		return err
 	}

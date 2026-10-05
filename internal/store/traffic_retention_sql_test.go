@@ -46,6 +46,15 @@ func TestSQLiteTrafficRetentionPolicyAndReappear(t *testing.T) {
 	runTrafficRetentionPolicyAndReappear(t, s)
 }
 
+func TestSQLiteTrafficDirectReappearanceAfterExpiry(t *testing.T) {
+	s, err := NewSQLite(filepath.Join(t.TempDir(), "panel.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	runTrafficDirectReappearanceAfterExpiry(t, s)
+}
+
 func TestTrafficRetentionDifferentProfileWindows(t *testing.T) {
 	m, err := NewMemory("")
 	if err != nil {

@@ -635,6 +635,9 @@ func (m *Memory) ApplyUserTrafficSnapshotContext(parent context.Context, snapsho
 	for key, bytes := range m.userTrafficBuckets {
 		buckets[key] = bytes
 	}
+	// Expired tombstones must be removed before reappearing names are matched.
+	pruneMemoryUserTrafficBuckets(buckets, snapshot.ObservedAt)
+	pruneMemoryTrafficSummaries(traffic, buckets, snapshot.ObservedAt, min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic])))
 
 	continuity := nextUserTrafficContinuity(m.userTrafficCollector, m.hasTrafficCollector, snapshot)
 	seen := make(map[string]struct{}, len(snapshot.Users))
