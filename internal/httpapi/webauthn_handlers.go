@@ -75,15 +75,9 @@ func (s *Server) handleAuthMethods(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) webAuthnOrigin(r *http.Request) (origin, rpID string, err error) {
-	host := r.Host
-	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" && auth.PeerTrusted(r, s.cfg.TrustedProxyPrefixes) {
-		if strings.Contains(forwarded, ",") {
-			return "", "", errors.New("ambiguous forwarded host")
-		}
-		host = strings.TrimSpace(forwarded)
-	}
-	if host == "" || strings.ContainsAny(host, "\r\n/@") {
-		return "", "", errors.New("invalid request host")
+	host, err := auth.RequestHost(r, s.cfg.TrustedProxyPrefixes)
+	if err != nil {
+		return "", "", err
 	}
 	parsed, err := url.Parse("http://" + host)
 	if err != nil || parsed.Host != host || parsed.Hostname() == "" {

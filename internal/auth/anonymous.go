@@ -13,9 +13,9 @@ import (
 // private address from exposing its unauthenticated API. Custom domains must
 // be explicitly configured; direct IP access needs no extra configuration.
 func anonymousHostAllowed(r *http.Request, cfg *config.Config) bool {
-	host := r.Host
-	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" && PeerTrusted(r, cfg.TrustedProxyPrefixes) {
-		host = forwarded
+	host, err := RequestHost(r, cfg.TrustedProxyPrefixes)
+	if err != nil {
+		return false
 	}
 	u, err := url.Parse("http://" + host)
 	if err != nil || u.Host != host || u.User != nil || u.Hostname() == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {

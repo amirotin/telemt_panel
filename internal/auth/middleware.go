@@ -102,6 +102,10 @@ func CSRF(cfg *config.Config) func(http.Handler) http.Handler {
 }
 
 func csrfAllowed(r *http.Request, cfg *config.Config) bool {
+	reqHost, err := RequestHost(r, cfg.TrustedProxyPrefixes)
+	if err != nil {
+		return false
+	}
 	switch strings.ToLower(r.Header.Get("Sec-Fetch-Site")) {
 	case "same-origin", "none":
 		return true
@@ -120,9 +124,9 @@ func csrfAllowed(r *http.Request, cfg *config.Config) bool {
 		return false
 	}
 
-	reqHost := r.Host
-	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" && PeerTrusted(r, cfg.TrustedProxyPrefixes) {
-		reqHost = fwd
+	originHost, err := validatedHost(u.Host)
+	if err != nil {
+		return false
 	}
 	if cfg.Auth.Disabled {
 		scheme := "http"
@@ -133,5 +137,5 @@ func csrfAllowed(r *http.Request, cfg *config.Config) bool {
 			return false
 		}
 	}
-	return strings.EqualFold(u.Host, reqHost)
+	return originHost == reqHost
 }

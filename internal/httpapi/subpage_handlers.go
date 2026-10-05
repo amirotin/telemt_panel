@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
+	"net/url"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -43,13 +44,19 @@ func (s *Server) subscriptionURL(r *http.Request, path string) string {
 	if s.cfg.Subpage.TLS.Mode != "" && s.cfg.Subpage.TLS.Mode != "http" {
 		scheme = "https"
 	}
-	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	host = strings.Trim(host, "[]")
+	var host string
 	if s.cfg.Subpage.TLS.AcmeDomain != "" {
 		host = s.cfg.Subpage.TLS.AcmeDomain
+	} else {
+		resolved, err := auth.RequestHost(r, s.cfg.TrustedProxyPrefixes)
+		if err != nil {
+			return ""
+		}
+		u, err := url.Parse("http://" + resolved)
+		if err != nil {
+			return ""
+		}
+		host = u.Hostname()
 	}
 	_, port, _ := net.SplitHostPort(s.cfg.Subpage.Listen)
 	if port == "" {
@@ -218,6 +225,10 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 	users, err := s.tc.Users(ctx)
 	if err != nil {
 		slog.Error("sublink: fetch users", "err", err)
+		if errors.Is(err, telemt.ErrResponseTooLarge) {
+			writeTelemtError(w, err, false)
+			return
+		}
 		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", "could not reach telemt")
 		return
 	}
@@ -262,8 +273,13 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 		return
 	}
 
+	link := s.subscriptionURL(r, path)
+	if link == "" {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request host")
+		return
+	}
 	writeJSON(w, http.StatusOK, sublinkResponse{
-		URL:     s.subscriptionURL(r, path),
+		URL:     link,
 		Enabled: s.cfg.Subpage.Enabled,
 	})
 }
@@ -293,9 +309,9 @@ func absoluteURL(r *http.Request, cfg *config.Config, path string) string {
 	if auth.RequestIsSecure(r, cfg.TrustedProxyPrefixes) {
 		scheme = "https"
 	}
-	host := r.Host
-	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" && auth.PeerTrusted(r, cfg.TrustedProxyPrefixes) {
-		host = fwd
+	host, err := auth.RequestHost(r, cfg.TrustedProxyPrefixes)
+	if err != nil {
+		return ""
 	}
 	return scheme + "://" + host + path
 }
