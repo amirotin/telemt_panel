@@ -474,3 +474,179 @@ describe("late snapshot fetches after teardown", () => {
     c.dispose();
   });
 });
+
+describe("local REST/SSE freshness barriers", () => {
+  type Result = Record<string, { v: unknown; ts: number }>;
+  function deferredSnapshots() {
+    const pending: Array<(result: Result) => void> = [];
+    return { pending, fetchSnapshot: () => new Promise<Result>((resolve) => pending.push(resolve)) };
+  }
+
+  it("keeps newer SSE data and its freshness when an earlier REST snapshot resolves (A07)", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    const refreshing = client.refreshTopic("users");
+    latestInstance().emitData("users", { users: [{ username: "alice", enabled: false }] }, 200);
+    pending[0]({ users: { v: { users: [{ username: "alice", enabled: true }] }, ts: 100 } });
+    await refreshing;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: { users: [{ username: "alice", enabled: false }] }, ts: 200, stale: false, error: null });
+  });
+
+  it("applies only the latest HTTP request when two responses finish in reverse order", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); client.subscribeTopic("users");
+    const first = client.refreshTopic("users"), second = client.refreshTopic("users");
+    pending[1]({ users: { v: "latest", ts: 20 } }); await second;
+    pending[0]({ users: { v: "old", ts: 99_999 } }); await first;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "latest", ts: 20, stale: false, error: null });
+  });
+
+  it("preserves source_error data/stale/error against an earlier successful HTTP response", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitData("users", "seed", 5);
+    const refreshing = client.refreshTopic("users");
+    latestInstance().emitSourceError("users", "telemt_unreachable");
+    pending[0]({ users: { v: "old", ts: 9 } }); await refreshing;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "seed", ts: 5, stale: true, error: "telemt_unreachable" });
+    const recovering = client.refreshTopic("users");
+    pending[1]({ users: { v: "recovered", ts: 10 } }); await recovering;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "recovered", ts: 10, stale: false, error: null });
+  });
+
+  it("does not reuse an old request ticket after unsubscribe and immediate resubscribe", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); const unsubscribe = client.subscribeTopic("users");
+    const first = client.refreshTopic("users"); unsubscribe(); client.subscribeTopic("users");
+    const second = client.refreshTopic("users");
+    pending[1]({ users: { v: "new subscription", ts: 2 } }); await second;
+    pending[0]({ users: { v: "old subscription", ts: 1 } }); await first;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "new subscription", ts: 2, stale: false, error: null });
+  });
+
+  it.each(["reset", "dispose", "retry"] as const)("discards responses from before %s and preserves fresh subscription state", async (action) => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    const request = client.refreshTopic("users"); client[action]();
+    pending[0]({ users: { v: "old session", ts: 1 } }); await request;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: null, ts: null, stale: false, error: null });
+  });
+
+  it("installs independent topics in a fallback response while rejecting superseded topics", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot, failureThreshold: 0 });
+    client.subscribeTopic("users"); client.subscribeTopic("stats");
+    await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitError(0);
+    latestInstance().emitSourceError("users", "telemt_unreachable");
+    pending[0]({ users: { v: "old users", ts: 1 }, stats: { v: "fresh stats", ts: 2 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: null, ts: null, stale: true, error: "telemt_unreachable" });
+    expect(client.getTopicSnapshot("stats")).toEqual({ data: "fresh stats", ts: 2, stale: false, error: null });
+    await vi.advanceTimersByTimeAsync(10_000);
+    pending[1]({ users: { v: "recovered users", ts: 3 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "recovered users", ts: 3, stale: false, error: null });
+    expect(client.getTopicSnapshot("stats").data).toBe("fresh stats");
+  });
+
+  it("rejects only an unsubscribed topic from an in-flight multi-topic response", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot, failureThreshold: 0 });
+    const unsubscribe = client.subscribeTopic("users"); client.subscribeTopic("stats");
+    await vi.advanceTimersByTimeAsync(20); latestInstance().emitError(0);
+    unsubscribe();
+    pending[0]({ users: { v: "unsubscribed", ts: 1 }, stats: { v: "independent", ts: 2 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: null, ts: null, stale: false, error: null });
+    expect(client.getTopicSnapshot("stats")).toEqual({ data: "independent", ts: 2, stale: false, error: null });
+  });
+
+  it("does not clear global staleness for a fully superseded snapshot response", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    const request = client.refreshTopic("users");
+    latestInstance().emitData("users", "new", 2);
+    await vi.advanceTimersByTimeAsync(40_000);
+    pending[0]({ users: { v: "old", ts: 1 } }); await request;
+    expect(client.getConnectionSnapshot().stale).toBe(true);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "new", ts: 2, stale: false, error: null });
+  });
+
+  it("lets a slow fallback response finish without repeated poll ticks superseding it", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot, failureThreshold: 0, pollIntervalMs: 100 });
+    client.subscribeTopic("users"); await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitError(0);
+    await vi.advanceTimersByTimeAsync(500);
+    pending[0]({ users: { v: "slow but current", ts: 1 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "slow but current", ts: 1, stale: false, error: null });
+  });
+
+  it("does not rearm the old watchdog after reset from a snapshot listener", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot, failureThreshold: 0 });
+    client.subscribeTopic("stats"); client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    const stop = client.subscribeTopicListener("stats", () => { stop(); client!.reset(); });
+    latestInstance().emitError(0);
+    pending[0]({ stats: { v: "first", ts: 1 }, users: { v: "after reset", ts: 2 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: null, ts: null, stale: false, error: null });
+    await vi.advanceTimersByTimeAsync(40_001);
+    expect(client.getConnectionSnapshot().stale).toBe(false);
+  });
+
+  it("protects watchdog staleness from an older REST response and accepts a fresh recovery", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitData("users", "seed", 1);
+    const request = client.refreshTopic("users");
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(client.getConnectionSnapshot().stale).toBe(true);
+    pending[0]({ users: { v: "old request", ts: 2 } }); await request;
+    expect(client.getConnectionSnapshot().stale).toBe(true);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "seed", ts: 1, stale: false, error: null });
+    const recovery = client.refreshTopic("users");
+    pending[1]({ users: { v: "fresh recovery", ts: 3 } }); await recovery;
+    expect(client.getConnectionSnapshot().stale).toBe(false);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "fresh recovery", ts: 3, stale: false, error: null });
+  });
+
+  it("invalidates retained-topic REST when a changed topic set replaces the transport", async () => {
+    const { pending, fetchSnapshot } = deferredSnapshots();
+    client = makeClient({ fetchSnapshot }); client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitData("users", "seed", 1);
+    const request = client.refreshTopic("users");
+    client.subscribeTopic("stats"); await vi.advanceTimersByTimeAsync(20);
+    pending[0]({ users: { v: "old transport request", ts: 2 } }); await request;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "seed", ts: 1, stale: false, error: null });
+    const recovery = client.refreshTopic("users");
+    pending[1]({ users: { v: "new transport request", ts: 3 } }); await recovery;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "new transport request", ts: 3, stale: false, error: null });
+  });
+
+  it("recovers fallback after a transport replacement while the old poll is still pending", async () => {
+    let finishOld!: (result: Record<string, { v: unknown; ts: number }>) => void;
+    let first = true;
+    const fetchSnapshot = () => {
+      if (first) { first = false; return new Promise<Record<string, { v: unknown; ts: number }>>((resolve) => { finishOld = resolve; }); }
+      return Promise.resolve({ users: { v: "recovered fallback", ts: 2 }, stats: { v: "independent stats", ts: 2 } });
+    };
+    client = makeClient({ fetchSnapshot, failureThreshold: 0, pollIntervalMs: 100 });
+    client.subscribeTopic("users"); await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitError(0);
+    client.subscribeTopic("stats"); await vi.advanceTimersByTimeAsync(120);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "recovered fallback", ts: 2, stale: false, error: null });
+    expect(client.getTopicSnapshot("stats")).toEqual({ data: "independent stats", ts: 2, stale: false, error: null });
+    finishOld({ users: { v: "old pending poll", ts: 1 } }); await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "recovered fallback", ts: 2, stale: false, error: null });
+  });
+});

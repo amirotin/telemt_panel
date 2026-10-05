@@ -76,6 +76,7 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   const fetchSnapshotFn = options.fetchSnapshot ?? defaultFetchSnapshot;
 
   const refCounts = new Map<TopicName, number>();
+  const topicVersions = new Map<TopicName, { revision: number; requestTicket: number }>();
   const snapshots = new Map<TopicName, TopicSnapshot>();
   const topicListeners = new Map<TopicName, Set<() => void>>();
   const connectionListeners = new Set<() => void>();
@@ -85,12 +86,11 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   let backoffTimer: ReturnType<typeof setTimeout> | null = null;
   let staleTimer: ReturnType<typeof setTimeout> | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let pollInFlight: Promise<void> | null = null;
   let consecutiveFailures = 0;
   let connection: ConnectionSnapshot = { status: "closed", stale: false };
   let disposed = false;
-  // generation increments on reset()/dispose(); an in-flight snapshot fetch
-  // that started under an older generation must not install into the store
-  // or re-arm the stale watchdog after teardown.
+  // Session and transport generation are independent of per-topic revisions.
   let generation = 0;
   // lastTopicsKey lets a rebuild triggered by a ref-count-only change (same
   // topic set, e.g. a second subscriber of an already-subscribed topic
@@ -112,6 +112,9 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   function setConnection(patch: Partial<ConnectionSnapshot>) {
     const next: ConnectionSnapshot = { ...connection, ...patch };
     if (next.status === connection.status && next.stale === connection.stale) return;
+    if (!connection.stale && next.stale) {
+      for (const version of topicVersions.values()) version.revision++;
+    }
     connection = next;
     notifyConnection();
   }
@@ -144,17 +147,24 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   }
 
   function applyTopicData(topic: TopicName, data: unknown, ts: number) {
+    const version = topicVersions.get(topic);
+    if (!version || !refCounts.has(topic)) return;
+    version.revision++;
     snapshots.set(topic, { data, ts, stale: false, error: null });
     notifyTopic(topic);
   }
 
   function applyTopicError(topic: TopicName, code: string) {
+    const version = topicVersions.get(topic);
+    if (!version || !refCounts.has(topic)) return;
+    version.revision++;
     const prev = snapshots.get(topic) ?? EMPTY_TOPIC_SNAPSHOT;
     snapshots.set(topic, { ...prev, stale: true, error: code });
     notifyTopic(topic);
   }
 
   function stopPolling() {
+    pollInFlight = null;
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
@@ -178,15 +188,25 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   async function fetchAndInstall(topics: TopicName[]) {
     if (topics.length === 0 || disposed) return;
     const gen = generation;
+    const requests = topics.flatMap((topic) => {
+      const version = topicVersions.get(topic);
+      if (!version || !refCounts.has(topic)) return [];
+      return [{ topic, version, revision: version.revision, ticket: ++version.requestTicket }];
+    });
+    if (requests.length === 0) return;
     try {
-      const result = await fetchSnapshotFn(topics);
+      const result = await fetchSnapshotFn(requests.map(({ topic }) => topic));
       if (disposed || gen !== generation) return;
-      for (const topic of topics) {
+      let applied = false;
+      for (const { topic, version, revision, ticket } of requests) {
+        if (disposed || gen !== generation) return;
+        if (!refCounts.has(topic) || topicVersions.get(topic) !== version || version.requestTicket !== ticket || version.revision !== revision) continue;
         const entry = result[topic];
         if (!entry) continue;
         applyTopicData(topic, entry.v, entry.ts);
+        applied = true;
       }
-      onFrame();
+      if (applied && !disposed && gen === generation) onFrame();
     } catch {
       // Silent — the next poll tick (pollOnce) or the caller's own retry
       // (refreshTopic) tries again; the browser's own SSE reconnect
@@ -195,7 +215,11 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
   }
 
   async function pollOnce() {
-    await fetchAndInstall(activeTopics());
+    if (pollInFlight) return;
+    const pending = fetchAndInstall(activeTopics());
+    pollInFlight = pending;
+    try { await pending; }
+    finally { if (pollInFlight === pending) pollInFlight = null; }
   }
 
   function markConnected() {
@@ -246,6 +270,11 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
       return;
     }
 
+    if (force || lastTopicsKey !== null) {
+      generation++;
+      pollInFlight = null;
+    }
+
     closeEventSource();
     lastTopicsKey = topicsKey;
     // Starting a new SSE attempt must not visually downgrade an active
@@ -257,9 +286,12 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
     const url = withBasePath("/api/events") + "?topics=" + topicsKey;
     const next = eventSourceFactory(url);
     es = next;
+    let opened = false;
 
     next.addEventListener("open", () => {
       if (es !== next) return;
+      if (opened || consecutiveFailures > 0) generation++;
+      opened = true;
       markConnected();
       onFrame();
     });
@@ -280,7 +312,7 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
 
     for (const topic of topics) {
       next.addEventListener(topic, (ev) => {
-        if (es !== next) return;
+        if (es !== next || !refCounts.has(topic)) return;
         const parsed = parseJSON<{ v: unknown; ts: number }>((ev as MessageEvent).data);
         if (!parsed) return;
         markConnected();
@@ -303,6 +335,8 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
         // skip doesn't mistake it for a still-live connection — and
         // schedule our own backoff.
         if (es === next) es = null;
+        generation++;
+        pollInFlight = null;
         if (consecutiveFailures === 1) {
           // First failure of this streak: probe once via the plain GET
           // /api/snapshot fetch path (same one refreshTopic/the polling
@@ -330,6 +364,8 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
 
   return {
     subscribeTopic(topic) {
+      if (disposed) return () => {};
+      if (!refCounts.has(topic)) topicVersions.set(topic, { revision: 0, requestTicket: 0 });
       refCounts.set(topic, (refCounts.get(topic) ?? 0) + 1);
       if (!snapshots.has(topic)) snapshots.set(topic, EMPTY_TOPIC_SNAPSHOT);
       scheduleRebuild();
@@ -337,6 +373,7 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
         const count = (refCounts.get(topic) ?? 1) - 1;
         if (count <= 0) {
           refCounts.delete(topic);
+          topicVersions.delete(topic);
         } else {
           refCounts.set(topic, count);
         }
@@ -382,6 +419,9 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
       consecutiveFailures = 0;
       lastTopicsKey = null;
       snapshots.clear();
+      topicVersions.clear();
+      for (const topic of activeTopics()) topicVersions.set(topic, { revision: 0, requestTicket: 0 });
+      for (const topic of topicListeners.keys()) notifyTopic(topic);
       connection = { status: "closed", stale: false };
       notifyConnection();
       if (activeTopics().length > 0) scheduleRebuild();
@@ -389,6 +429,7 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
     dispose() {
       disposed = true;
       generation++;
+      topicVersions.clear();
       closeEventSource();
       stopPolling();
       if (debounceTimer) clearTimeout(debounceTimer);
