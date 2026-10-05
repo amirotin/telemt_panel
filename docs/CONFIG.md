@@ -490,3 +490,16 @@ repair/manual action; legacy `cp` fallback не используется.
 
 Обновление существующей установки не переписывает config/unit/sudoers.
 Порядок обновления и отката — в [UPGRADING.md](UPGRADING.md).
+
+Runtime и offline import держат общий exclusive nonblocking flock на
+`data_dir/.panel.lock` до завершения store Close/flush. Занятая директория даёт
+`data_dir_in_use`; lock-файл сохраняет inode и не удаляется после выхода. ОС
+освобождает lock при crash. Runtime без `data_dir` не использует этот lock;
+постоянный import требует `data_dir`.
+
+`store export` открывает существующую SQLite в `mode=ro`, `query_only=ON` и
+читает один WAL snapshot без migrations, policy writes, chmod, maintenance,
+flush или checkpoint. Он не меняет identity/config. CLI экспортирует committed
+историю с диска. Для включения ожидающих SQLite samples и session touches
+остановите runtime, дождитесь завершения Close/flush и выполните CLI export.
+SQLite WAL и `synchronous=FULL` рабочего runtime сохраняются.

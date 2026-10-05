@@ -70,10 +70,15 @@ func runConfigCommand(args []string, output io.Writer) error {
 	return nil
 }
 
-func runLegacyStateImport(source *config.Source, output io.Writer) error {
+func runLegacyStateImport(source *config.Source, output io.Writer) (result error) {
 	if source.Legacy == nil || source.Config.DataDir == "" {
 		return errors.New("import-state requires a 0.6 configuration with persistent data_dir")
 	}
+	lock, err := store.AcquireDataDirLock(source.Config.DataDir)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, lock.Close()) }()
 	path, err := resolveStatePath(source.Config.DataDir)
 	if err != nil {
 		return errors.New("cannot prepare state directory (check data_dir and permissions)")
@@ -82,7 +87,7 @@ func runLegacyStateImport(source *config.Source, output io.Writer) error {
 	if err != nil {
 		return errors.New("cannot open existing state; import was not started")
 	}
-	defer state.Close()
+	defer func() { result = errors.Join(result, state.Close()) }()
 	report, err := migration.ImportLegacyState(state, source)
 	if err != nil {
 		return err

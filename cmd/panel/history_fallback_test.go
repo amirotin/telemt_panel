@@ -92,9 +92,21 @@ func TestTransferDoesNotFallBackToMemory(t *testing.T) {
 	}
 	configPath := writeStoreCommandConfigWithDataDir(t, dir, "panel.toml", filepath.Join(dir, "state"), path)
 	for _, importing := range []bool{false, true} {
-		st, err := openTransferStore(configPath, importing)
+		var err error
+		if importing {
+			st, openErr := openTransferStore(configPath, true)
+			err = openErr
+			if st != nil {
+				st.Close()
+			}
+		} else {
+			st, openErr := openReadOnlyTransferStore(configPath)
+			err = openErr
+			if st != nil {
+				st.Close()
+			}
+		}
 		if err == nil {
-			_ = st.Close()
 			t.Fatalf("transfer importing=%v silently fell back", importing)
 		}
 		if !store.IsRuntimeOpenError(err) {

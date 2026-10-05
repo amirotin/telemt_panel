@@ -102,6 +102,19 @@ func run() int {
 }
 
 func runRuntime(ctx context.Context, source *config.Source, configPath string) (code int) {
+	if source.Config.DataDir != "" {
+		lock, err := store.AcquireDataDirLock(source.Config.DataDir)
+		if err != nil {
+			slog.Error("runtime ownership", "err", err)
+			return 1
+		}
+		defer func() {
+			if err := lock.Close(); err != nil {
+				slog.Error("release runtime ownership", "err", err)
+				code = 1
+			}
+		}()
+	}
 	st, err := newSourceStore(source)
 	if err != nil {
 		slog.Error("open store", "err", err)
@@ -162,7 +175,7 @@ func storeCommandUsage() error {
 	return errors.New("usage: telemt-panel store export --config config.toml --out dump.json | store import --config config.toml --in dump.json")
 }
 
-func runStoreExport(args []string) error {
+func runStoreExport(args []string) (result error) {
 	flags := flag.NewFlagSet("store export", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	configPath := flags.String("config", "config.toml", "panel config path")
@@ -170,23 +183,34 @@ func runStoreExport(args []string) error {
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *outPath == "" {
 		return errors.New("usage: telemt-panel store export --config config.toml --out dump.json")
 	}
-	st, err := openTransferStore(*configPath, false)
+	st, err := openReadOnlyTransferStore(*configPath)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
-	portable, ok := st.(store.PortableJSONStore)
-	if !ok {
-		return fmt.Errorf("store driver %q does not support export", st.Driver())
-	}
-	if err := writeExclusiveFile(*outPath, portable.ExportJSON); err != nil {
+	defer func() { result = errors.Join(result, st.Close()) }()
+	if err := writeExclusiveFile(*outPath, st.ExportJSON); err != nil {
 		return fmt.Errorf("write store export: %w", err)
 	}
 	fmt.Printf("%s store exported to %s\n", st.Driver(), *outPath)
 	return nil
 }
 
-func runStoreImport(args []string) error {
+func openReadOnlyTransferStore(configPath string) (store.ReadOnlyTransfer, error) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	if cfg.DataDir == "" && cfg.Store.Driver == "memory" {
+		return nil, errors.New("store transfer requires data_dir so panel state can be persisted")
+	}
+	statePath := ""
+	if cfg.DataDir != "" {
+		statePath = filepath.Join(cfg.DataDir, panelStateFile)
+	}
+	return store.OpenReadOnlyTransfer(statePath, store.OpenOptions{Driver: cfg.Store.Driver, Path: cfg.Store.Path})
+}
+
+func runStoreImport(args []string) (result error) {
 	flags := flag.NewFlagSet("store import", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	configPath := flags.String("config", "config.toml", "panel config path")
@@ -216,11 +240,23 @@ func runStoreImport(args []string) error {
 		return err
 	}
 
-	st, err := openTransferStore(*configPath, true)
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	if cfg.DataDir == "" {
+		return errors.New("store transfer requires data_dir so panel state can be persisted")
+	}
+	lock, err := store.AcquireDataDirLock(cfg.DataDir)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() { result = errors.Join(result, lock.Close()) }()
+	st, err := openTransferStoreConfig(cfg, true)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, st.Close()) }()
 	portable, ok := st.(store.PortableStore)
 	if !ok {
 		return fmt.Errorf("store driver %q does not support import", st.Driver())
@@ -239,6 +275,13 @@ func openTransferStore(configPath string, importing bool) (store.Store, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
+	}
+	return openTransferStoreConfig(cfg, importing)
+}
+
+func openTransferStoreConfig(cfg *config.Config, importing bool) (store.Store, error) {
+	if !importing {
+		return nil, errors.New("writable transfer opener is import-only; export requires a readonly snapshot")
 	}
 	if cfg.DataDir == "" && (importing || cfg.Store.Driver == "memory") {
 		return nil, errors.New("store transfer requires data_dir so panel state can be persisted")

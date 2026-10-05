@@ -146,7 +146,7 @@ data_quota_bytes = 1500000
 		t.Fatal("legacy source modified")
 	}
 	entries, err := os.ReadDir(stateDir)
-	if err != nil || len(entries) != 1 || entries[0].Name() != panelStateFile {
+	if err != nil || len(entries) != 2 || entries[0].Name() != ".panel.lock" || entries[1].Name() != panelStateFile {
 		t.Fatal("import created runtime resources")
 	}
 	stateBytes, _ := os.ReadFile(filepath.Join(stateDir, panelStateFile))

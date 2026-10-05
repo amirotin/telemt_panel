@@ -369,21 +369,22 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		if err := st.ReplaceStoragePolicies(policies); err != nil {
 			t.Fatal(err)
 		}
-		sourceStartedAt := now.Add(-time.Hour).Unix()
+		trafficNow := now.Add(-2 * time.Minute).Truncate(15 * time.Minute)
+		sourceStartedAt := trafficNow.Add(-time.Hour).Unix()
 		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
-			ObservedAt: now.Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
+			ObservedAt: trafficNow.Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
 			Users: []UserTrafficObservation{{Username: username, RawOctets: 100}},
 		}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
-			ObservedAt: now.Add(time.Minute).Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
+			ObservedAt: trafficNow.Add(time.Minute).Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
 			Users: []UserTrafficObservation{{Username: username, RawOctets: 250}},
 		}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := st.ApplyUserTrafficSnapshot(UserTrafficSnapshot{
-			ObservedAt: now.Add(2 * time.Minute).Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
+			ObservedAt: trafficNow.Add(2 * time.Minute).Unix(), SourceStartedAt: sourceStartedAt, TelemetryEnabled: true,
 			Users: []UserTrafficObservation{{Username: username, RawOctets: 250}},
 		}); err != nil {
 			t.Fatal(err)

@@ -134,6 +134,19 @@ telemt-panel config import-state --config /etc/telemt-panel/config.toml
 быть пустым либо уже иметь отметку этого переноса. Команда не запускает сервисы,
 не открывает историю и не меняет исходник. `already_imported` не меняет состояние;
 `imported_*` описывают исходный перенос, а не текущие настройки администратора.
+
+Все offline imports, включая `config import-state`, требуют свободного
+`data_dir/.panel.lock`. Выполняйте import при остановленной панели; если runtime
+держит директорию, команда сразу возвращает `data_dir_in_use` без изменения
+state/history. После graceful exit или crash lock освобождается ОС. Не удаляйте
+lock-файл: постоянный inode нужен для исключения одновременных владельцев.
+
+`store export` разрешён при работающей панели: он читает existing state и
+committed SQLite history через read-only WAL snapshot, не открывает второй
+writable runtime и не создаёт отсутствующую БД. Для включения ожидающих SQLite
+samples и session touches остановите панель, дождитесь Close/flush и выполните
+CLI export. В режиме memory CLI сохраняет
+только persistent state; история RAM принадлежит текущему процессу.
 `pending` и `not_applied` перечисляют оставшуюся обработку и архивные группы.
 
 В режиме старого TOML веб-изменение HTTPS и команды `store export/import`, которым

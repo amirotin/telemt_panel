@@ -9,6 +9,23 @@ import (
 	"strings"
 )
 
+// ReadOnlySchemaVersion validates a readable schema without migration or writes.
+func ReadOnlySchemaVersion(ctx context.Context, db *sql.DB) (int, error) {
+	var version int
+	err := WithTx(ctx, db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
+		current, err := readSQLiteSchemaVersion(ctx, tx)
+		if err != nil {
+			return err
+		}
+		version = current
+		if current != sqliteSchemaVersion && current != sqliteBaselineVersion {
+			return &UnsupportedSchemaError{Current: current, Supported: sqliteSchemaVersion, Reason: "requires writable runtime initialization before export"}
+		}
+		return nil
+	})
+	return version, err
+}
+
 //go:embed migrations/*/*.sql
 var migrationFiles embed.FS
 

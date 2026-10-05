@@ -30,9 +30,10 @@ func historySQLContextError(ctx context.Context, err error) error {
 // SQLite contains observability history only; control-plane state lives in the
 // local panel-state.json store.
 type SQLite struct {
-	db     *sql.DB
-	path   string
-	schema int
+	readOnly bool
+	db       *sql.DB
+	path     string
+	schema   int
 
 	policyMu       sync.RWMutex
 	policies       map[StorageCategory]StoragePolicy
@@ -180,10 +181,6 @@ func (s *SQLite) queryRow(query string, args ...any) queryRow {
 func (s *SQLite) queryRowContext(parent context.Context, query string, args ...any) queryRow {
 	ctx, cancel := historyOperationContext(parent)
 	return queryRow{row: s.db.QueryRowContext(ctx, query, args...), ctx: ctx, cancel: cancel}
-}
-
-func (s *SQLite) operationContext() (context.Context, context.CancelFunc) {
-	return historyOperationContext(context.Background())
 }
 
 func (s *SQLite) withOperationTx(fn func(*sql.Tx) error) error {
@@ -412,6 +409,9 @@ func (s *SQLite) Close() error {
 }
 
 func (s *SQLite) closeStore() error {
+	if s.readOnly {
+		return s.db.Close()
+	}
 	var errs []string
 	if s.maintenanceStop != nil {
 		close(s.maintenanceStop)
