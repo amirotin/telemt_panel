@@ -346,7 +346,7 @@ if [ "$SC" != "migrate" ]; then
   helper_before=$(sha256sum "$HELPER_PATH" | awk '{print $1}')
   helper_inode_before=$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")
   run_installer install >"$WORK/update.log" 2>&1 || { cat "$WORK/update.log"; fail "update exited non-zero"; }
-  check grep -q 'Only the binary will change' "$WORK/update.log"
+  check grep -q 'The binary will be updated' "$WORK/update.log"
   check test "$before" = "$(cat "$CONFIG")"
   check test "$helper_before" = "$(sha256sum "$HELPER_PATH" | awk '{print $1}')"
   check test "$helper_inode_before" = "$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")"
