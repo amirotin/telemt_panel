@@ -99,7 +99,7 @@ PY
     rm -f -- "$TELEMT_BIN" "$TELEMT_BIN.tmp" "$TELEMT_BIN.bak" "$TELEMT_BIN.bak.tmp"
   fi
   if (( USER_CREATED )); then userdel "$ACCOUNT" || true; fi
-  if (( GROUP_CREATED )); then groupdel "$ACCOUNT" || true; fi
+  if (( GROUP_CREATED )) && getent group "$ACCOUNT" >/dev/null; then groupdel "$ACCOUNT" || true; fi
   rm -rf -- "$ROOT"
   exit "$result"
 }
@@ -164,7 +164,7 @@ password_hash = "$PASSWORD_HASH"
 driver = "memory"
 [host]
 service_manager = "systemd"
-log_source = "none"
+log_source = "auto"
 panel_service = "$PANEL_SERVICE"
 telemt_service = "$TELEMT_SERVICE"
 [privileges]
@@ -175,6 +175,8 @@ telemt_binary_path = "$TELEMT_ALIAS"
 EOF
 chown "$ACCOUNT:$ACCOUNT" "$CONFIG_FILE"
 chmod 0600 "$CONFIG_FILE"
+"$ROOT/releases/rc2" config check --format current --config "$CONFIG_FILE"
+"$ROOT/releases/candidate" config check --format current --config "$CONFIG_FILE"
 cp "$CONFIG_FILE" "$ROOT/rc2-config.toml"
 cat >"$ROOT/fail-start-once" <<EOF
 #!/bin/sh
