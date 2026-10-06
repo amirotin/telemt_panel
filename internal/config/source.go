@@ -56,6 +56,8 @@ type SourceReport struct {
 	TelemtServiceScript  string   `json:"telemt_service_script,omitempty"`
 	PanelBinaryPath      string   `json:"panel_binary_path"`
 	TelemtBinaryPath     string   `json:"telemt_binary_path"`
+	PrivilegesMode       string   `json:"privileges_mode"`
+	WorkerStateDir       string   `json:"worker_state_dir"`
 	PrivilegesPolicyPath string   `json:"privileges_policy_path"`
 	PrivilegesHelperPath string   `json:"privileges_helper_path"`
 	StoreDriver          string   `json:"store_driver"`
@@ -76,6 +78,8 @@ func (s *Source) Report() SourceReport {
 		TelemtServiceScript:  serviceScript(c.Host.Commands.Telemt.Restart),
 		PanelBinaryPath:      c.Updates.PanelBinaryPath,
 		TelemtBinaryPath:     c.Updates.TelemtBinaryPath,
+		PrivilegesMode:       c.Privileges.Mode,
+		WorkerStateDir:       c.WorkerStateDir(),
 		PrivilegesPolicyPath: c.Privileges.PolicyPath,
 		PrivilegesHelperPath: c.Privileges.HelperPath,
 		StoreDriver:          c.Store.Driver, HasTelemtAuth: c.Telemt.AuthHeader != "",
@@ -164,8 +168,8 @@ func sourceValidationError(err error) error {
 	message := err.Error()
 	for _, field := range []string{"telemt.url", "telemt.config_edit_mode", "auth.username", "auth.password_hash",
 		"auth.session_ttl", "base_path", "trusted_proxies", "store.driver", "store.path", "subpage.secret",
-		"host.commands.telemt.start", "host.commands.telemt.stop", "host.commands.telemt.restart", "host.commands.panel.restart",
-		"host.commands", "host.panel_service", "host.service_manager", "host.log_source", "privileges.mode", "tls.mode", "tls.acme_domain", "tls.acme_cache_dir", "tls", "listen"} {
+		"host.commands.telemt.start", "host.commands.telemt.stop", "host.commands.telemt.restart", "host.commands.panel.start", "host.commands.panel.stop", "host.commands.panel.restart",
+		"host.commands", "host.panel_service", "host.service_manager", "host.log_source", "privileges.mode", "updates.worker_state_dir", "tls.mode", "tls.acme_domain", "tls.acme_cache_dir", "tls", "listen"} {
 		if strings.HasPrefix(message, field+":") || strings.HasPrefix(message, field+" ") {
 			return fmt.Errorf("invalid configuration field: %s", field)
 		}

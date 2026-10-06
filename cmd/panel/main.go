@@ -80,6 +80,12 @@ func run() int {
 				return 1
 			}
 			return 0
+		case "update-worker":
+			if err := runUpdateWorkerCommand(os.Args[2:], os.Stdout); err != nil {
+				slog.Error("update worker", "err", err)
+				return 1
+			}
+			return 0
 		}
 	}
 

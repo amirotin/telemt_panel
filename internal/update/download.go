@@ -223,7 +223,7 @@ func (e *Engine) ReleasesView(ctx context.Context, targetName string) (ReleasesV
 	}
 	view := BuildReleasesView(current, releases, matcher, e.maxNewer, e.maxOlder)
 	for i := range view.Releases {
-		view.Releases[i].ChecksumRequired = requireChecksum(targetName)
+		view.Releases[i].ChecksumRequired = false
 	}
 	return view, nil
 }

@@ -25,6 +25,28 @@ restart = ["/opt/etc/init.d/S99telemt", "restart"]
 restart = ["/opt/etc/init.d/S99telemt-panel", "restart"]
 `
 
+func TestLoadValidatesOptionalPanelLifecycleCommands(t *testing.T) {
+	for _, action := range []string{"start", "stop"} {
+		t.Run(action, func(t *testing.T) {
+			content := minimal + customCommandsTOML + action + ` = ["relative-script", "` + action + `"]` + "\n"
+			_, err := load(t, content)
+			if err == nil || !strings.Contains(err.Error(), "host.commands.panel."+action) || !strings.Contains(err.Error(), "absolute clean path") {
+				t.Fatalf("expected validation of panel %s command, got %v", action, err)
+			}
+		})
+	}
+}
+
+func TestLoadOptionalPanelLifecycleCommands(t *testing.T) {
+	content := minimal + customCommandsTOML + `
+start = ["/opt/etc/init.d/S99telemt-panel", "start"]
+stop = ["/opt/etc/init.d/S99telemt-panel", "stop"]
+`
+	if _, err := load(t, content); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadCustomCommandsSelectsCustomAndPreservesArgv(t *testing.T) {
 	cfg, err := load(t, minimal+customCommandsTOML)
 	if err != nil {

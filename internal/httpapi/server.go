@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/auth"
@@ -75,14 +77,17 @@ type Server struct {
 	// to hit reliably.
 	sseAfterSubscribeHook func()
 
-	updateEngine      *update.Engine
-	onReady           func() error
-	autoUpdater       *update.AutoUpdater
-	geoip             *geoip.Manager
-	geography         *geography.Service
-	branding          *branding.Manager
-	storagePolicyOnce sync.Once
-	storagePolicyGate chan struct{}
+	updateEngine       *update.Engine
+	onReady            func() error
+	managedReadiness   bool
+	runtimeReady       atomic.Bool
+	independentUpdates bool
+	autoUpdater        *update.AutoUpdater
+	geoip              *geoip.Manager
+	geography          *geography.Service
+	branding           *branding.Manager
+	storagePolicyOnce  sync.Once
+	storagePolicyGate  chan struct{}
 
 	// webUI serves the embedded SPA (internal/webui) — registered as the
 	// mux's catch-all "/" pattern in Handler(), after every /api/ and
@@ -139,6 +144,33 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	if serviceBindingsDiffer(svcMgr.Kind(), telemtServiceName, panelServiceName) {
 		allow.ControlServices = []string{telemtServiceName}
 	}
+	// Registration is installed together with the independent service and its
+	// fixed sudo commands. Existing installations retain the legacy transport.
+	privilegesMode := host.PrivilegesModeManual
+	var worker *update.WorkerClient
+	var workerErr error
+	if cfg.WorkerStateDir() != "" {
+		worker, workerErr = update.NewWorkerClient(cfg.WorkerStateDir(), func(ctx context.Context, argv []string) error {
+			if privilegesMode == host.PrivilegesModeManual {
+				return host.ErrPrivilegesUnavailable
+			}
+			run := host.CmdRunner(host.OSCmdRunner)
+			if privilegesMode == host.PrivilegesModeSudo {
+				run = host.NewSudoCmdRunner(run)
+			}
+			_, _, err := run(ctx, argv[0], argv[1:]...)
+			return err
+		})
+		if errors.Is(workerErr, os.ErrNotExist) {
+			workerErr = nil
+		}
+		if workerErr != nil {
+			slog.Warn("independent updater registration unavailable", "err", workerErr)
+		}
+	}
+	if worker != nil {
+		allow.ControlServices = []string{telemtServiceName, panelServiceName}
+	}
 
 	// Sudo is another transport for the same host operations, not a second
 	// updater. Its ServiceManager is constructed from the already-resolved
@@ -147,15 +179,29 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	sudoRun := host.NewSudoCmdRunner(host.OSCmdRunner)
 	sudoSvcMgr := configuredServiceManager(cfg.Host, svcMgr.Kind(), probe, sudoRun)
 	var sudoRunner host.Runner = host.NewSudoRunner(allow, sudoSvcMgr, logSrc, sudoRun)
+	if worker != nil {
+		sudoRunner = host.NewCommandSudoRunner(allow, sudoSvcMgr, logSrc, sudoRun, host.NewSudoStdinCmdRunner(host.OSStdinCmdRunner))
+	}
 	sudoAvailable := false
 	if cfg.Privileges.Mode == host.PrivilegesModeSudo || ((cfg.Privileges.Mode == "" || cfg.Privileges.Mode == host.PrivilegesModeAuto) && euid != 0) {
 		policyRun := host.NewSudoPolicyCmdRunner(host.OSCmdRunner)
 		policySvcMgr := configuredServiceManager(cfg.Host, svcMgr.Kind(), probe, policyRun)
-		policyRunner := host.NewSudoRunner(allow, policySvcMgr, logSrc, policyRun)
+		var policyRunner host.Runner = host.NewSudoRunner(allow, policySvcMgr, logSrc, policyRun)
+		if worker != nil {
+			policyRunner = host.NewCommandSudoPolicyRunner(allow, policySvcMgr, logSrc, policyRun)
+		}
 		probeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		probeOps := updatePrivilegeProbeOps(allow.StagingPrefix, cfg.Updates, telemtServiceName, panelServiceName)
+		if worker != nil {
+			probeOps = append(probeOps, workerPrivilegeProbeOps(cfg.Updates, telemtServiceName, panelServiceName)...)
+		}
 		sudoAvailable = host.ProbeRunner(probeCtx, policyRunner, probeOps)
-		if sudoAvailable {
+		if sudoAvailable && worker != nil {
+			argv := worker.RegistrationCommand()
+			_, _, err := policyRun(probeCtx, argv[0], argv[1:]...)
+			sudoAvailable = err == nil
+		}
+		if sudoAvailable && worker == nil {
 			if err := host.CheckPrivilegedPolicy(probeCtx, allow, sudoRun); err != nil {
 				slog.Warn("privileged update policy requires repair", "err", err)
 				sudoAvailable = false
@@ -163,8 +209,12 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		}
 		cancel()
 	}
+	mode := cfg.Privileges.Mode
+	if workerErr != nil {
+		mode = host.PrivilegesModeManual
+	}
 	runner, privilegesMode := host.SelectRunner(host.RunnerSelectionOptions{
-		Mode: cfg.Privileges.Mode, EUID: euid,
+		Mode: mode, EUID: euid,
 		Allow: allow, ServiceManager: svcMgr, LogSource: logSrc,
 		SudoRunner: sudoRunner, SudoAvailable: sudoAvailable,
 	})
@@ -172,7 +222,10 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	if privilegesMode == host.PrivilegesModeSudo && len(allow.ControlServices) != 0 {
 		policyRun := host.NewSudoPolicyCmdRunner(host.OSCmdRunner)
 		policyManager := configuredServiceManager(cfg.Host, svcMgr.Kind(), probe, policyRun)
-		policyRunner := host.NewSudoRunner(allow, policyManager, logSrc, policyRun)
+		var policyRunner host.Runner = host.NewSudoRunner(allow, policyManager, logSrc, policyRun)
+		if worker != nil {
+			policyRunner = host.NewCommandSudoPolicyRunner(allow, policyManager, logSrc, policyRun)
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		startAllowed, stopAllowed = host.ProbeServiceControls(ctx, policyRunner, telemtServiceName)
 		cancel()
@@ -192,6 +245,7 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	}
 	updateEngine := update.NewEngine(update.EngineConfig{
 		Runner:                runner,
+		Worker:                worker,
 		Store:                 st,
 		Targets:               map[string]update.Target{update.TargetTelemt: telemtTarget, update.TargetPanel: panelTarget},
 		StagingDir:            allow.StagingPrefix,
@@ -235,6 +289,8 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 		logStreamHeartbeat:  logStreamHeartbeatInterval,
 		updateEngine:        updateEngine,
 		onReady:             engineOptions.OnReady,
+		managedReadiness:    engineOptions.PanelLifecycleContext != nil,
+		independentUpdates:  worker != nil,
 		autoUpdater:         update.NewAutoUpdater(st, updateEngine),
 		geoip:               geoip.NewManager(cfg.DataDir, st),
 		branding:            appearance,
@@ -256,6 +312,22 @@ func New(cfg *config.Config, tc *telemt.Client, st store.Store, hb *hub.Hub, ver
 	}
 	s.geography = geography.NewService(geoDeps)
 	return s
+}
+
+func workerPrivilegeProbeOps(cfg config.UpdatesConfig, telemtService, panelService string) []host.Op {
+	var ops []host.Op
+	for _, service := range []string{telemtService, panelService} {
+		ops = append(ops,
+			host.Op{Kind: host.OpStartService, Args: map[string]string{host.ArgService: service}},
+			host.Op{Kind: host.OpStopService, Args: map[string]string{host.ArgService: service}},
+		)
+	}
+	for _, binary := range []string{cfg.TelemtBinaryPath, cfg.PanelBinaryPath} {
+		for _, suffix := range []string{".bak", ".tmp", ".bak.tmp"} {
+			ops = append(ops, host.Op{Kind: host.OpRemoveBinary, Args: map[string]string{host.ArgDest: binary + suffix}})
+		}
+	}
+	return ops
 }
 
 // updatePrivilegeProbeOps is the complete privileged command surface both
@@ -333,6 +405,10 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		if s.managedReadiness && !s.runtimeReady.Load() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "starting", "version": s.version})
+			return
+		}
 		response := map[string]any{
 			"status":        "ok",
 			"version":       s.version,
@@ -682,8 +758,13 @@ func (s *Server) Run(ctx context.Context) error {
 	srv.RegisterOnShutdown(s.sessions.Close)
 
 	srv.RegisterOnShutdown(func() {
+		s.runtimeReady.Store(false)
 		if s.updateEngine.HasActiveRun() {
-			slog.Warn("update in progress at shutdown; will reconcile on next boot")
+			if s.independentUpdates {
+				slog.Info("update continues in independent worker during panel shutdown")
+			} else {
+				slog.Warn("update in progress at shutdown; will reconcile on next boot")
+			}
 		}
 	})
 	var challenge *http.Server
@@ -699,6 +780,7 @@ func (s *Server) Run(ctx context.Context) error {
 			}
 		}
 		s.updateEngine.MarkReady()
+		s.runtimeReady.Store(true)
 		return nil
 	}, subscription)
 }

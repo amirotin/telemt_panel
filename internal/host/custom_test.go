@@ -2,11 +2,43 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestCustomPanelControlsUseIndependentCopiedCommands(t *testing.T) {
+	var commands CustomCommands
+	if err := json.Unmarshal([]byte(`{"Panel":{"Start":["/opt/etc/init.d/S99telemt-panel","start"],"Stop":["/opt/etc/init.d/S99telemt-panel","stop"]}}`), &commands); err != nil {
+		t.Fatal(err)
+	}
+	var calls []recordedCommand
+	manager := NewCustom("telemt", "telemt-panel", commands, commandRecorder(&calls, 0))
+	commands.Panel.Start[0] = "/changed/source/start"
+	commands.Panel.Stop[0] = "/changed/source/stop"
+	runner := NewDirectRunner(AllowLists{ControlServices: []string{"telemt-panel"}}, manager, nil)
+	for _, kind := range []string{OpStartService, OpStopService} {
+		if _, err := runner.Run(context.Background(), Op{Kind: kind, Args: map[string]string{ArgService: "telemt-panel"}}); err != nil {
+			t.Fatalf("panel %s: %v", kind, err)
+		}
+	}
+	want := []recordedCommand{
+		{"/opt/etc/init.d/S99telemt-panel", []string{"start"}},
+		{"/opt/etc/init.d/S99telemt-panel", []string{"stop"}},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("panel lifecycle commands=%+v, want %+v", calls, want)
+	}
+	for _, action := range []string{"start", "stop"} {
+		copy := manager.Command("telemt-panel", action)
+		copy[0] = "/changed"
+		if got := manager.Command("telemt-panel", action); got[0] != "/opt/etc/init.d/S99telemt-panel" {
+			t.Fatalf("panel %s command mutated: %v", action, got)
+		}
+	}
+}
 
 func customCommandFixture() CustomCommands {
 	return CustomCommands{

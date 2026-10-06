@@ -573,6 +573,12 @@ else
   fail "update transaction fixture failed: $(cat "$TMP/update-test.log")"
 fi
 
+if sh "$HERE/install-worker-test.sh" >"$TMP/worker-test.log" 2>&1; then
+  pass
+else
+  fail "worker installer fixture failed: $(tail -30 "$TMP/worker-test.log")"
+fi
+
 if sh "$HERE/install-entware-test.sh" >"$TMP/entware-test.log" 2>&1; then
   pass
 else

@@ -802,7 +802,9 @@ export type UpdatesStatus = {
             prerelease?: boolean;
             newer?: boolean;
             /**
-             * Panel releases require an exact checksum asset; Telemt compatibility permits omission.
+             * Always false. Runtime updates do not require checksum assets.
+             *
+             * @deprecated
              */
             checksum_required?: boolean;
             /**

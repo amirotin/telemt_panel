@@ -78,10 +78,7 @@ export function UpdateTarget({
   const blocked=lockHeld||runIsActive||applyMutation.isPending||refreshing;
   const selected=picked&&picked.from===data.current_version?data.releases.find(r=>r.version===picked.version&&Boolean(r.newer)===picked.newer):undefined;
   const validSelection=!!selected&&!catalogError;
-  const checksumRequired=selected?.checksum_required??target==='panel';
-  const checksumMissing=!!selected&&selected.checksum_available!==true;
-  const checksumBlocked=checksumRequired&&checksumMissing;
-  const confirmationChanged=!validSelection||confirming?.from!==data.current_version||confirming?.release.version!==selected?.version||Boolean(confirming?.release.prerelease)!==Boolean(selected?.prerelease)||confirming?.release.checksum_available!==selected?.checksum_available||confirming?.release.checksum_required!==selected?.checksum_required;
+  const confirmationChanged=!validSelection||confirming?.from!==data.current_version||confirming?.release.version!==selected?.version||Boolean(confirming?.release.prerelease)!==Boolean(selected?.prerelease);
 
   if (target === "panel" && runIsActive && panelRunID !== activeRun?.run_id) {
     setPanelRunID(activeRun?.run_id ?? null);
@@ -129,15 +126,14 @@ export function UpdateTarget({
         <div><small>{picked.newer?t.update:t.downgrade}</small><p><strong>{picked.from||'—'}</strong><span className="uv-arrow" aria-hidden="true">→</span><strong>{picked.version}</strong>{selected?.prerelease&&<span className="uv-prerelease">{t.pre}</span>}</p></div>
         <div className="uv-selected-actions">
           <Button variant="secondary" size="sm" disabled={applyMutation.isPending} onClick={()=>setPicked(null)}>{t.reset}</Button>
-          {canApply?<Button className={picked.newer?'':'uv-downgrade-button'} disabled={blocked||!validSelection||!data.current_version||checksumBlocked} onClick={()=>{if(selected&&!checksumBlocked){applyMutation.reset();setConfirming({release:selected,from:data.current_version});}}}>{t.continue}<span aria-hidden="true"> →</span></Button>:<span className="text-meta text-text-muted">{t.manualShort}</span>}
+          {canApply?<Button className={picked.newer?'':'uv-downgrade-button'} disabled={blocked||!validSelection||!data.current_version} onClick={()=>{if(selected){applyMutation.reset();setConfirming({release:selected,from:data.current_version});}}}>{t.continue}<span aria-hidden="true"> →</span></Button>:<span className="text-meta text-text-muted">{t.manualShort}</span>}
         </div>
       </div>}
       {picked&&!validSelection&&<p className="uv-row-note text-warn" role="alert">{t.changed}</p>}
-      {picked&&checksumMissing&&<p className="uv-row-note text-warn" role="alert">{checksumRequired?t.checksumRequired:t.checksumOptional}</p>}
       {!data.current_version&&<p className="uv-row-note text-warn">{t.unknownCurrent}</p>}
       {!canApply&&<div className="uv-row-note"><p>{t.manual}</p><Button variant="secondary" size="sm" className="mt-2" onClick={()=>setCapabilityOpen(true)}>{s.server.updates.howToUpdate}</Button></div>}
       {pickerOpen&&<ReleasePicker target={target} current={data.current_version} releases={data.releases} selected={picked?.version??null} blocked={blocked} error={catalogError} onChoose={release=>{setPicked({version:release.version,from:data.current_version,newer:!!release.newer});setPickerOpen(false);}} onClose={()=>setPickerOpen(false)}/>}
-      {confirming&&<ReleaseConfirmation target={target} current={confirming.from} release={confirming.release} blocked={blocked||!canApply||checksumBlocked} changed={confirmationChanged} pending={applyMutation.isPending} error={applyMutation.error?apiErrorMessage(applyMutation.error,s):null} onClose={()=>setConfirming(null)} onConfirm={()=>{if(selected&&!confirmationChanged&&!blocked&&!checksumBlocked&&canApply&&data.current_version)applyMutation.mutate({path:{target},body:{version:selected.version}});}}/>}
+      {confirming&&<ReleaseConfirmation target={target} current={confirming.from} release={confirming.release} blocked={blocked||!canApply} changed={confirmationChanged} pending={applyMutation.isPending} error={applyMutation.error?apiErrorMessage(applyMutation.error,s):null} onClose={()=>setConfirming(null)} onConfirm={()=>{if(selected&&!confirmationChanged&&!blocked&&canApply&&data.current_version)applyMutation.mutate({path:{target},body:{version:selected.version}});}}/>}
 
       {activeRun && (
         <div className="border-t border-border bg-surface-sunken px-4 py-3 sm:pl-[4.5rem]">

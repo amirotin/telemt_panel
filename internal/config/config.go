@@ -133,6 +133,18 @@ type UpdatesConfig struct {
 	GithubToken      string `toml:"github_token"`
 	TelemtBinaryPath string `toml:"telemt_binary_path"`
 	PanelBinaryPath  string `toml:"panel_binary_path"`
+	WorkerStateDir   string `toml:"worker_state_dir"`
+}
+
+// WorkerStateDir permits durable recovery metadata when runtime data lives in RAM.
+func (cfg *Config) WorkerStateDir() string {
+	if cfg.Updates.WorkerStateDir != "" {
+		return cfg.Updates.WorkerStateDir
+	}
+	if cfg.DataDir == "" {
+		return ""
+	}
+	return filepath.Join(cfg.DataDir, "updater")
 }
 
 // PrivilegesConfig selects how the panel executes the five privileged
@@ -235,6 +247,9 @@ func decode(data []byte, path string) (*Config, error) {
 		}
 	default:
 		return nil, fmt.Errorf("store.driver: unknown driver %q (memory | sqlite)", cfg.Store.Driver)
+	}
+	if path := cfg.Updates.WorkerStateDir; path != "" && (!filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" || cfg.DataDir == "") {
+		return nil, fmt.Errorf("updates.worker_state_dir: an absolute clean directory and nonempty data_dir are required")
 	}
 
 	if cfg.Subpage.Enabled && cfg.Subpage.Secret == "" {
@@ -340,7 +355,8 @@ const (
 
 func hasCustomCommands(commands host.CustomCommands) bool {
 	return len(commands.Telemt.Start) != 0 || len(commands.Telemt.Stop) != 0 ||
-		len(commands.Telemt.Restart) != 0 || len(commands.Panel.Restart) != 0
+		len(commands.Telemt.Restart) != 0 || len(commands.Panel.Restart) != 0 ||
+		len(commands.Panel.Start) != 0 || len(commands.Panel.Stop) != 0
 }
 
 func validateCustomCommands(commands host.CustomCommands) error {
@@ -355,6 +371,21 @@ func validateCustomCommands(commands host.CustomCommands) error {
 	} {
 		if err := validateCustomCommand(binding.argv); err != nil {
 			return fmt.Errorf("%s: %w", binding.field, err)
+		}
+	}
+	// Existing custom installations only supplied restart. Explicit start/stop
+	// are optional until the installer provisions independent update recovery.
+	for _, binding := range []struct {
+		field string
+		argv  []string
+	}{
+		{field: "host.commands.panel.start", argv: commands.Panel.Start},
+		{field: "host.commands.panel.stop", argv: commands.Panel.Stop},
+	} {
+		if len(binding.argv) != 0 {
+			if err := validateCustomCommand(binding.argv); err != nil {
+				return fmt.Errorf("%s: %w", binding.field, err)
+			}
 		}
 	}
 	return nil

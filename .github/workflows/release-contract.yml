@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       native_only:
-        description: Run only the published RC2 to RC3 native migration regression
+        description: Run the native installer and independent updater regressions
         type: boolean
         default: false
   push:
@@ -34,6 +34,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-worker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: Build updater fixture and current panel
+        run: |
+          npm ci --prefix web
+          npm run build --prefix web
+          go build -ldflags '-X main.version=1.0.0-worker.test' -o "$RUNNER_TEMP/worker-panel" ./cmd/panel
+          go test -c -o "$RUNNER_TEMP/worker-native.test" ./internal/update
+          test "$("$RUNNER_TEMP/worker-panel" update-worker --protocol)" = 1
+      - name: Verify independent update and rollback with real systemd and sudo
+        run: |
+          sudo env GITHUB_ACTIONS=true TP_NATIVE_TEST=1 \
+            RUNNER_ENVIRONMENT=github-hosted \
+            "$RUNNER_TEMP/worker-native.test" -test.v -test.timeout=8m -test.run '^TestNativeWorkerLifecycle$'
+      - name: Fetch published RC3 for installer migration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fixture_dir="$RUNNER_TEMP/worker-rc3"
+          mkdir "$fixture_dir"
+          gh release download v1.0.0-rc.3 --repo "$GITHUB_REPOSITORY" \
+            --pattern telemt-panel-x86_64-linux-gnu.tar.gz \
+            --pattern telemt-panel-x86_64-linux-gnu.tar.gz.sha256 --dir "$fixture_dir"
+          (cd "$fixture_dir" && sha256sum --check telemt-panel-x86_64-linux-gnu.tar.gz.sha256)
+          tar -xzf "$fixture_dir/telemt-panel-x86_64-linux-gnu.tar.gz" -C "$fixture_dir" telemt-panel
+      - name: Verify installer migration to current worker protocol
+        run: |
+          sudo env GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted TP_NATIVE_WORKER_DISPOSABLE=1 \
+            TP_TEST_BINARY="$RUNNER_TEMP/worker-panel" TP_TEST_RC3_BINARY="$RUNNER_TEMP/worker-rc3/telemt-panel" \
+            bash scripts/install-worker-native-test.sh
+
   native-rc2-upgrade:
     # Keep the published RC2 -> RC3 transition covered with real systemd/sudo.
     # These historical binaries are intentional: a newly built updater cannot

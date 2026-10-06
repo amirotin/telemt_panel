@@ -14,6 +14,8 @@ type TelemtCommands struct {
 
 // PanelCommands contains the explicitly approved lifecycle commands for the panel.
 type PanelCommands struct {
+	Start   []string `toml:"start"`
+	Stop    []string `toml:"stop"`
 	Restart []string `toml:"restart"`
 }
 
@@ -42,7 +44,11 @@ func NewCustom(telemtName, panelName string, commands CustomCommands, runner Cmd
 				Stop:    cloneArgv(commands.Telemt.Stop),
 				Restart: cloneArgv(commands.Telemt.Restart),
 			},
-			Panel: PanelCommands{Restart: cloneArgv(commands.Panel.Restart)},
+			Panel: PanelCommands{
+				Start:   cloneArgv(commands.Panel.Start),
+				Stop:    cloneArgv(commands.Panel.Stop),
+				Restart: cloneArgv(commands.Panel.Restart),
+			},
 		},
 		run: runner,
 	}
@@ -56,12 +62,12 @@ func (c *Custom) Status(context.Context, string) (ServiceStatus, error) {
 	return StatusUnknown, nil
 }
 
-// Start starts Telemt using its configured argv.
+// Start starts a configured service using its approved argv.
 func (c *Custom) Start(ctx context.Context, service string) error {
 	return c.execute(ctx, service, "start")
 }
 
-// Stop stops Telemt using its configured argv.
+// Stop stops a configured service using its approved argv.
 func (c *Custom) Stop(ctx context.Context, service string) error {
 	return c.execute(ctx, service, "stop")
 }
@@ -88,8 +94,15 @@ func (c *Custom) Command(service, action string) []string {
 			return cloneArgv(c.commands.Telemt.Restart)
 		}
 	}
-	if service == c.panelName && action == "restart" {
-		return cloneArgv(c.commands.Panel.Restart)
+	if service == c.panelName {
+		switch action {
+		case "start":
+			return cloneArgv(c.commands.Panel.Start)
+		case "stop":
+			return cloneArgv(c.commands.Panel.Stop)
+		case "restart":
+			return cloneArgv(c.commands.Panel.Restart)
+		}
 	}
 	return nil
 }

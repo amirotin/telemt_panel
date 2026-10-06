@@ -22,7 +22,7 @@ func TestPanelCatalogOnlyListsVersionOne(t *testing.T) {
 		t.Fatalf("catalog contains unsupported branches: %+v", view.Releases)
 	}
 	for i, want := range []string{"v1.0.2", "v1.0.0", "v1.0.0-rc.1"} {
-		if !view.Releases[i].ChecksumRequired || view.Releases[i].Asset.Name == "" {
+		if view.Releases[i].ChecksumRequired || view.Releases[i].Asset.Name == "" {
 			t.Fatal("panel preview must expose checksum policy and preserve archive discovery")
 		}
 		if view.Releases[i].Version != want {

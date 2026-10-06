@@ -58,7 +58,7 @@ if [ "${E2E_INNER:-}" = "" ]; then
     ROOTFS=$(mktemp -d)
     mkdir -p "$ROOTFS/bin" "$ROOTFS/usr/bin" "$ROOTFS/usr/local/bin" "$ROOTFS/etc" "$ROOTFS/var/lib" "$ROOTFS/var/log" "$ROOTFS/run" "$ROOTFS/tmp" "$ROOTFS/dev" "$ROOTFS/src/scripts"
     chmod 1777 "$ROOTFS/tmp"
-    for tool in dirname basename openssl od dd tty stty expr du sh bash cp chmod chown mkdir mktemp cat grep awk sed tr sort cut head tail rm mv ln touch rmdir readlink stat sleep kill timeout tar install sha256sum id uname date wc find cmp ls sync curl wget getent sudo visudo; do copy_tool "$tool"; done
+    for tool in dirname basename openssl od dd tty stty expr du sh bash cp chmod chown mkdir mktemp cat grep awk sed tr sort cut head tail rm mv ln touch rmdir readlink stat sleep kill timeout flock tar install sha256sum id uname date wc find cmp ls sync curl wget getent sudo visudo; do copy_tool "$tool"; done
     cp "$SRC/install.sh" "$ROOTFS/src/install.sh"
     cp "$0" "$ROOTFS/src/scripts/install-e2e.sh"
     cp "$BIN" "$ROOTFS/tmp/test-panel"
@@ -148,6 +148,18 @@ exit 0
 EOF
   chmod 0755 "$STUB/$c"
 done
+if [ "$SC" = systemd ]; then
+  cat >"$STUB/systemctl" <<EOF
+#!/bin/sh
+echo "systemctl \$*" >>"$CALLS"
+case "\$*" in
+  'show --property=FragmentPath '*) printf '/etc/systemd/system/telemt-panel.service\\n' ;;
+  'show --property=DynamicUser '*) printf 'no\\n' ;;
+  'show --property=User '*) printf 'telemt-panel\\n' ;;
+esac
+EOF
+  chmod 0755 "$STUB/systemctl"
+fi
 cat >"$STUB/useradd" <<'EOF'
 #!/bin/sh
 for a in "$@"; do n="$a"; done
@@ -275,9 +287,26 @@ check test -x "$PANEL_BIN"
 check test -f "$CONFIG"
 check test "$(stat -c %a "$CONFIG")" = 600
 if [ "$SC" != migrate ]; then
+  WORKER_INSTALL=0
+  if [ "$(timeout 5 "$BIN" update-worker --protocol 2>/dev/null)" = 1 ]; then WORKER_INSTALL=1; fi
   HELPER_PATH=/usr/local/libexec/telemt-panel-privileged
   if [ "$SC" = procd ]; then HELPER_PATH=/usr/libexec/telemt-panel-privileged; fi
-  if [ "$SC" = procd ]; then
+  if [ "$WORKER_INSTALL" = 1 ]; then
+    check test ! -e "$HELPER_PATH"
+    check test ! -e /etc/telemt-panel-privileged
+    check test -x "$PANEL_BIN.start"
+    if [ "$SC" = procd ]; then
+      check test -f /etc/telemt-panel/updater/registration.json
+      check grep -q '^worker_state_dir = "/etc/telemt-panel/updater"' "$CONFIG"
+    else
+      check test -f /var/lib/telemt-panel/updater/registration.json
+    fi
+    if [ "$SC" = systemd ]; then
+      check test -f /etc/systemd/system/telemt-panel-updater.service
+    else
+      check test -x /etc/init.d/telemt-panel-updater
+    fi
+  elif [ "$SC" = procd ]; then
     check test ! -e "$HELPER_PATH"
     check test ! -e /etc/telemt-panel-privileged
   else
@@ -334,7 +363,9 @@ case "$SC" in
 esac
 
 echo "--- start the installed binary with the generated config"
-sed -i 's#^data_dir = .*#data_dir = "/var/lib/telemt-panel"#' "$CONFIG"
+if [ "${WORKER_INSTALL:-0}" != 1 ]; then
+  sed -i 's#^data_dir = .*#data_dir = "/var/lib/telemt-panel"#' "$CONFIG"
+fi
 "$PANEL_BIN" --config "$CONFIG" >"$WORK/panel.log" 2>&1 &
 PANEL_PID=$!
 i=0; up=0
@@ -356,14 +387,17 @@ kill "$PANEL_PID" 2>/dev/null || true
 if [ "$SC" != "migrate" ]; then
   echo "--- second run = update path (config untouched)"
   before=$(cat "$CONFIG")
-  if [ "$SC" != procd ]; then
+  if [ "$SC" != procd ] && [ "$WORKER_INSTALL" != 1 ]; then
     helper_before=$(sha256sum "$HELPER_PATH" | awk '{print $1}')
     helper_inode_before=$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")
   fi
   run_installer install >"$WORK/update.log" 2>&1 || { cat "$WORK/update.log"; fail "update exited non-zero"; }
   check grep -q 'The binary will be updated' "$WORK/update.log"
   check test "$before" = "$(cat "$CONFIG")"
-  if [ "$SC" = procd ]; then
+  if [ "$WORKER_INSTALL" = 1 ]; then
+    check test ! -e "$HELPER_PATH"
+    check test -x "$PANEL_BIN.start"
+  elif [ "$SC" = procd ]; then
     check test ! -e "$HELPER_PATH"
     check test ! -e /etc/telemt-panel-privileged
     check test ! -e /etc/sudoers.d/telemt-panel
@@ -371,7 +405,7 @@ if [ "$SC" != "migrate" ]; then
     check test "$helper_before" = "$(sha256sum "$HELPER_PATH" | awk '{print $1}')"
     check test "$helper_inode_before" = "$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")"
   fi
-  if [ "$SC" != procd ]; then
+  if [ "$SC" != procd ] && [ "$WORKER_INSTALL" != 1 ]; then
     echo "--- explicit stopped-runtime privilege repair"
     run_installer repair-privileges --user telemt-panel >"$WORK/repair.log" 2>&1 || { cat "$WORK/repair.log"; fail "privilege repair exited non-zero"; }
     check "$HELPER_PATH" privileged --policy /etc/telemt-panel-privileged/policy.json inspect
@@ -384,10 +418,15 @@ fi
 echo "--- uninstall keeps config"
 run_installer uninstall >"$WORK/uninstall.log" 2>&1 || { cat "$WORK/uninstall.log"; fail "uninstall exited non-zero"; }
 check test ! -e "$PANEL_BIN"
+check test ! -e "$PANEL_BIN.start"
 check test ! -e /etc/sudoers.d/telemt-panel
 case "$SC" in
-  systemd|migrate) check test ! -e /etc/systemd/system/telemt-panel.service ;;
-  *) check test ! -e /etc/init.d/telemt-panel ;;
+  systemd|migrate)
+    check test ! -e /etc/systemd/system/telemt-panel.service
+    check test ! -e /etc/systemd/system/telemt-panel-updater.service ;;
+  *)
+    check test ! -e /etc/init.d/telemt-panel
+    check test ! -e /etc/init.d/telemt-panel-updater ;;
 esac
 check test -f "$CONFIG"
 

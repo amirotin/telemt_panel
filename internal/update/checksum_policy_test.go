@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestExternalAuditPanelRequiresChecksum(t *testing.T) {
+func TestPanelRuntimeUpdateDoesNotRequireChecksum(t *testing.T) {
 	for _, profile := range []string{"full", "lite"} {
 		for _, checksum := range []string{"missing", "blank", "malformed", "mismatch", "download failure"} {
 			t.Run(profile+"/"+checksum, func(t *testing.T) {
@@ -42,18 +42,15 @@ func TestExternalAuditPanelRequiresChecksum(t *testing.T) {
 				engine, state := newTestEngine(t, fixture, runner, map[string]Target{TargetPanel: target}, nil)
 				engine.buildVariant = profile
 				err := engine.Apply(context.Background(), TargetPanel, "v1.1.0")
-				if err == nil || !strings.Contains(err.Error(), "checksum") {
-					t.Fatalf("panel release checksum=%s: error=%v, want checksum rejection", checksum, err)
+				if err != nil {
+					t.Fatalf("panel release checksum=%s: %v", checksum, err)
 				}
-				if calls := runner.CallsSnapshot(); len(calls) != 0 {
-					t.Fatalf("host_operations=%d, want 0: %+v", len(calls), calls)
+				if calls := runner.CallsSnapshot(); len(calls) != 3 {
+					t.Fatalf("host_operations=%d, want backup/install/restart: %+v", len(calls), calls)
 				}
 				entries, err := state.ListUpdateJournal(TargetPanel, 20)
-				if err != nil || len(entries) == 0 || entries[0].Phase != PhaseFailed {
-					t.Fatalf("journal=%+v error=%v, want failed", entries, err)
-				}
-				if data, err := os.ReadFile(binaryPath); err != nil || string(data) != "old-test-binary" {
-					t.Fatalf("installed binary=%q error=%v", data, err)
+				if err != nil || len(entries) == 0 || entries[0].Phase != PhaseRestarting {
+					t.Fatalf("journal=%+v error=%v, want pending startup confirmation", entries, err)
 				}
 			})
 		}

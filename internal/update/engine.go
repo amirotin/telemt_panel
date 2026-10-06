@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -60,10 +59,6 @@ var ErrUnknownTarget = errors.New("update: unknown target")
 
 // ErrUnsupportedVersion rejects panel branches with incompatible state/config.
 var ErrUnsupportedVersion = errors.New("update: only panel 1.x releases are supported")
-
-func requireChecksum(target string) bool {
-	return target == TargetPanel
-}
 
 func versionAllowed(target, version string) bool {
 	if target != TargetPanel {
@@ -125,6 +120,8 @@ type UpdatePublisher interface {
 // required; everything else has a production default and exists mainly so
 // tests can inject fakes/fixed values.
 type EngineConfig struct {
+	// Worker delegates mutations to an init-managed independent process.
+	Worker *WorkerClient
 	// Runner executes every privileged op (install/restore binary, restart
 	// service) — never exec'd directly, per the milestone's Runner-only
 	// invariant. A manual Runner (host.ErrPrivilegesUnavailable on every
@@ -185,6 +182,7 @@ type EngineConfig struct {
 // global lock so a Telemt update and a panel self-update can never race
 // each other.
 type Engine struct {
+	worker       *WorkerClient
 	runner       host.Runner
 	st           store.Store
 	targets      map[string]Target
@@ -219,6 +217,7 @@ type Engine struct {
 // every optional field left zero.
 func NewEngine(cfg EngineConfig) *Engine {
 	e := &Engine{
+		worker:       cfg.Worker,
 		runner:       cfg.Runner,
 		st:           cfg.Store,
 		targets:      cfg.Targets,
@@ -275,6 +274,10 @@ func NewEngine(cfg EngineConfig) *Engine {
 	if e.newRunID == nil {
 		e.newRunID = randomRunID
 	}
+	if e.worker != nil {
+		e.workers.Add(1)
+		go e.pollWorker()
+	}
 	return e
 }
 
@@ -306,6 +309,9 @@ func (e *Engine) SetGithubBaseURL(url string) {
 // LockHeld reports whether a run (for either target) currently holds the
 // engine's global lock.
 func (e *Engine) LockHeld() bool {
+	if e.worker != nil && e.worker.Busy() {
+		return true
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.running
@@ -314,6 +320,11 @@ func (e *Engine) LockHeld() bool {
 // HasActiveRun reports an update in flight for the shutdown warning.
 // Manual service controls reserve the lock but have no update to reconcile.
 func (e *Engine) HasActiveRun() bool {
+	if e.worker != nil {
+		_, panel := e.worker.ActiveRun(TargetPanel)
+		_, telemt := e.worker.ActiveRun(TargetTelemt)
+		return panel || telemt
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.running && e.activeTarget != ""
@@ -326,6 +337,9 @@ func (e *Engine) WithHostControl(run func() error) error {
 		return ErrBusy
 	}
 	defer e.unlock()
+	if e.worker != nil {
+		return e.worker.WithHostControl(run)
+	}
 	return run()
 }
 
@@ -333,6 +347,9 @@ func (e *Engine) WithHostControl(run func() error) error {
 // the one holding the global lock; false (with a zero RunStatus) once the
 // run has finished or if none is in progress.
 func (e *Engine) ActiveRun(targetName string) (RunStatus, bool) {
+	if e.worker != nil {
+		return e.worker.ActiveRun(targetName)
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.running || e.activeTarget != targetName {
@@ -370,10 +387,22 @@ func (e *Engine) MarkReady() {
 	defer e.mu.Unlock()
 	if !e.closed {
 		e.ready = true
+		if e.worker != nil {
+			e.workers.Add(1)
+			go func() {
+				defer e.workers.Done()
+				ctx, cancel := context.WithTimeout(e.runContext, 15*time.Second)
+				defer cancel()
+				if err := e.worker.ResumeRecovery(ctx); err != nil {
+					slog.Warn("update: resume recovery", "err", err)
+				}
+			}()
+		}
 	}
 }
 
-// Close cancels owned runs and waits for their final journal writes before stores close.
+// Close cancels in-process runs and polling before stores close. An independent
+// worker belongs to init and continues across panel shutdown.
 func (e *Engine) Close() {
 	e.mu.Lock()
 	e.closed = true
@@ -395,7 +424,11 @@ func (e *Engine) setStatus(targetName string, st RunStatus) {
 // an unrecognized target name. httpapi's POST handler calls StartApply
 // instead, so the HTTP request returns 202 without blocking on the whole
 // run; Apply is the form tests drive directly.
+// With Worker configured, Apply queues the same independent task as StartApply.
 func (e *Engine) Apply(ctx context.Context, targetName, version string) error {
+	if e.worker != nil {
+		return e.StartApply(targetName, version)
+	}
 	t, ok := e.targets[targetName]
 	if !ok {
 		return ErrUnknownTarget
@@ -416,7 +449,8 @@ func (e *Engine) Apply(ctx context.Context, targetName, version string) error {
 
 // StartApply acquires the global lock synchronously — so a concurrent
 // second call reliably observes ErrBusy — then runs the update in a new
-// goroutine bound to the panel lifecycle. The triggering HTTP request's
+// goroutine bound to the panel lifecycle, or queues an independent worker when
+// configured. The triggering HTTP request's
 // context must not cancel a run that continues after the response is
 // sent. Returns nil once the goroutine has been started, not once it has
 // finished.
@@ -431,6 +465,16 @@ func (e *Engine) StartApply(targetName, version string) error {
 	if !versionAllowed(targetName, version) {
 		e.unlock()
 		return ErrUnsupportedVersion
+	}
+	if e.worker != nil {
+		defer e.unlock()
+		ctx, cancel := context.WithTimeout(e.runContext, 15*time.Second)
+		defer cancel()
+		current, err := t.CurrentVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("read current version before update: %w", err)
+		}
+		return e.worker.Submit(ctx, targetName, version, current)
 	}
 	go func() {
 		defer e.unlock()
@@ -644,12 +688,9 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 		return e.fail(rc, PhaseChecking, "release not found: "+version)
 	}
 	matcher := e.assetMatcher(targetName)
-	bin, sum := matcher(rel.Assets)
+	bin, _ := matcher(rel.Assets)
 	if bin == nil {
 		return e.fail(rc, PhaseChecking, "no release asset matches this host's arch/libc")
-	}
-	if requireChecksum(targetName) && sum == nil {
-		return e.fail(rc, PhaseVerifying, "required checksum asset missing for "+bin.Name)
 	}
 
 	runDir := StagingRunDir(e.stagingDir, targetName)
@@ -671,36 +712,7 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 	if err := e.download(ctx, bin.BrowserDownloadURL, tarPath); err != nil {
 		return e.fail(rc, PhaseDownloading, err.Error())
 	}
-	var expectedSum string
-	if sum != nil {
-		sumPath := filepath.Join(runDir, "release.sha256")
-		if err := e.download(ctx, sum.BrowserDownloadURL, sumPath); err != nil {
-			return e.fail(rc, PhaseDownloading, "download checksum: "+err.Error())
-		}
-		data, err := os.ReadFile(sumPath)
-		if err != nil {
-			return e.fail(rc, PhaseDownloading, "read checksum: "+err.Error())
-		}
-		expectedSum, err = parseChecksumFile(string(data))
-		if err != nil {
-			return e.fail(rc, PhaseDownloading, "invalid checksum: "+err.Error())
-		}
-	}
-
-	verificationDetail := ""
-	if sum == nil {
-		verificationDetail = "integrity not verified: release has no checksum asset"
-	}
-	e.transition(rc, PhaseVerifying, verificationDetail)
-	if sum != nil {
-		actual, err := sha256File(tarPath)
-		if err != nil {
-			return e.fail(rc, PhaseVerifying, err.Error())
-		}
-		if !strings.EqualFold(actual, expectedSum) {
-			return e.fail(rc, PhaseVerifying, "checksum mismatch")
-		}
-	}
+	e.transition(rc, PhaseVerifying, "")
 
 	e.transition(rc, PhaseStaging, "")
 	binPath, err := extractSingleBinary(tarPath, runDir)

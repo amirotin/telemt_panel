@@ -59,6 +59,9 @@ EOF
   if (
     TP_SOURCED=1
     . "${TP_TEST_INSTALLER:-$HERE/../install.sh}"
+    # This suite qualifies the compatibility path for pre-worker candidates.
+    # Independent worker migration is covered in install-worker-test.sh.
+    detect_update_worker() { WORKER_PROTOCOL=0; }
     L=en; COLOR=0; setup_colors; INIT=systemd; ASSUME_YES=1; BUILD_VARIANT=full
     BINARY_FILE="$CANDIDATE"; CONFIG_DIR="$WORK/config"; CONFIG_FILE="$CONFIG_DIR/config.toml"
     SUDO=fixture_root; SUDOERS_FILE="$WORK/sudoers/panel"

@@ -117,7 +117,7 @@ func (s *Server) handleGetUpdates(w http.ResponseWriter, r *http.Request) {
 			ts.ActiveRun = &v
 		}
 
-		entries, err := s.st.ListUpdateJournal(name, 20)
+		entries, err := s.updateEngine.Journal(ctx, name, 20)
 		if err != nil {
 			slog.Error("updates: list journal", "target", name, "err", err)
 		}

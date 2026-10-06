@@ -15,6 +15,9 @@ const (
 	// "backup" (source file, must be allow-listed), "dest" (install path,
 	// must be allow-listed).
 	OpRestoreBinary = "restore-binary"
+	// OpRemoveBinary removes one fixed update artifact (.bak, .tmp or .bak.tmp)
+	// belonging to an allowed live binary. Args: "dest" (artifact path).
+	OpRemoveBinary = "remove-binary"
 	// OpRestartService restarts a managed service. Args: "service" (must
 	// be allow-listed).
 	OpRestartService = "restart-service"

@@ -17,13 +17,13 @@ async function setup(){
 afterEach(()=>{if(root)act(()=>root!.unmount());container?.remove();client?.clear();root=undefined;});
 
 describe('release confirmation stays bound to what the operator reviewed',()=>{
- it('blocks a panel checksum that disappears after confirmation',async()=>{
+ it('keeps confirmation usable when optional checksum metadata changes',async()=>{
   await setup();props={...props,data:{...props.data,releases:props.data.releases.map(r=>({...r,checksum_available:false}))}};
-  await render();expect(button('Обновить панель').disabled).toBe(true);expect(document.body.textContent).toContain('контрольной суммы');
+  await render();expect(button('Обновить панель').disabled).toBe(false);expect(document.body.textContent).not.toContain('контрольной суммы');
  });
- it('warns when the selected Telemt release has no optional checksum',async()=>{
+ it('does not warn for a Telemt release without a checksum',async()=>{
   await setup();props={...props,target:'telemt',data:{...props.data,target:'telemt',releases:props.data.releases.map(r=>({...r,checksum_required:false,checksum_available:false}))}};
-  await render();expect(document.body.textContent).toContain('проверить целостность');
+  await render();expect(document.body.textContent).not.toContain('проверить целостность');
  });
  it('blocks a changed installed version',async()=>{await setup();props={...props,data:{...props.data,current_version:'1.0.2'}};await render();expect(button('Обновить панель').disabled).toBe(true);expect(document.body.textContent).toContain('Выберите версию заново');});
  it('blocks a removed release',async()=>{await setup();props={...props,data:{...props.data,releases:[]}};await render();expect(button('Обновить панель').disabled).toBe(true);});

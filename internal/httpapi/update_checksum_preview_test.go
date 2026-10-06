@@ -10,7 +10,7 @@ import (
 	"github.com/amirotin/telemt_panel/internal/update"
 )
 
-func TestUpdatesChecksumPreviewDescribesRequirementAndAvailability(t *testing.T) {
+func TestUpdatesChecksumPreviewNeverRequiresAnAsset(t *testing.T) {
 	s := newTestServer(t)
 	gh := newFakeGitHub(t)
 	gh.releases = []update.Release{{Tag: "v1.1.0", Assets: []update.Asset{
@@ -44,7 +44,7 @@ func TestUpdatesChecksumPreviewDescribesRequirementAndAvailability(t *testing.T)
 			t.Fatalf("target%s releases=%v", target.Target, target.Releases)
 		}
 		release := target.Releases[0]
-		if required, present := release["checksum_required"]; !present || required != (target.Target == update.TargetPanel) {
+		if required, present := release["checksum_required"]; !present || required != false {
 			t.Fatalf("target%s checksum_required=%v", target.Target, release)
 		}
 		if available, present := release["checksum_available"]; !present || available != false {

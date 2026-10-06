@@ -61,6 +61,15 @@ func ExecOp(ctx context.Context, op Op, allow AllowLists, svcMgr ServiceManager,
 	switch op.Kind {
 	case OpStartService, OpStopService:
 		return execServiceControl(ctx, op, allow, svcMgr)
+	case OpRemoveBinary:
+		path, err := requireUpdateArtifact(op, allow)
+		if err != nil {
+			return Output{}, err
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return Output{}, fmt.Errorf("host: remove update artifact %q: %w", path, err)
+		}
+		return Output{}, nil
 	case OpInstallBinary:
 		staging, err := requireWithinPrefix(op, ArgStaging, allow.StagingPrefix)
 		if err != nil {
@@ -114,6 +123,22 @@ func ExecOp(ctx context.Context, op Op, allow AllowLists, svcMgr ServiceManager,
 	default:
 		return Output{}, fmt.Errorf("host: unknown op kind %q", op.Kind)
 	}
+}
+
+func requireUpdateArtifact(op Op, allow AllowLists) (string, error) {
+	path, err := requireSourcePath(op, ArgDest)
+	if err != nil {
+		return "", err
+	}
+	for _, binary := range allow.BinaryPaths {
+		if strings.HasSuffix(binary, ".bak") || strings.HasSuffix(binary, ".tmp") {
+			continue
+		}
+		if path == binary+".bak" || path == binary+".tmp" || path == binary+".bak.tmp" {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("host: %s: destination %q is not a fixed update artifact", op.Kind, path)
 }
 
 // requireSourcePath reads a required path arg and checks it's absolute

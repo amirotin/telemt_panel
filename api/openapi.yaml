@@ -2993,7 +2993,7 @@ components:
                     published_at: { type: string, format: date-time }
                     prerelease: { type: boolean }
                     newer: { type: boolean }
-                    checksum_required: { type: boolean, description: Panel releases require an exact checksum asset; Telemt compatibility permits omission. }
+                    checksum_required: { type: boolean, deprecated: true, description: Always false. Runtime updates do not require checksum assets. }
                     checksum_available: { type: boolean, description: A checksum asset is present; this does not claim that its contents have already been verified. }
               active_run: { $ref: "#/components/schemas/UpdateRun" }
               journal: { type: array, items: { $ref: "#/components/schemas/UpdateRun" } }

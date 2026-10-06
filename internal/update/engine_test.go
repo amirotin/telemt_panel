@@ -229,7 +229,7 @@ func TestApply_LegacySudoersMigrationBridgePreservesRollback(t *testing.T) {
 	}
 }
 
-func TestApply_ChecksumMismatch_FailsWithoutInstalling(t *testing.T) {
+func TestApply_ChecksumMismatchDoesNotGateRuntimeInstall(t *testing.T) {
 	dir := t.TempDir()
 	binaryPath := filepath.Join(dir, "telemt")
 	os.WriteFile(binaryPath, []byte("old-binary"), 0o755)
@@ -250,16 +250,16 @@ func TestApply_ChecksumMismatch_FailsWithoutInstalling(t *testing.T) {
 	e, st := newTestEngine(t, fixture, runner, map[string]Target{TargetTelemt: target}, nil)
 
 	err := e.Apply(context.Background(), TargetTelemt, "v2.0.0")
-	if err == nil {
-		t.Fatal("Apply: want error on checksum mismatch")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	entries, _ := st.ListUpdateJournal(TargetTelemt, 20)
-	if len(entries) == 0 || entries[0].Phase != PhaseFailed {
-		t.Fatalf("last journal entry = %+v, want phase=failed", entries)
+	if len(entries) == 0 || entries[0].Phase != PhaseDone {
+		t.Fatalf("last journal entry = %+v, want phase=done", entries)
 	}
-	if calls := runner.CallsSnapshot(); len(calls) != 0 {
-		t.Errorf("runner calls = %+v, want none (verification failed before any install)", calls)
+	if calls := runner.CallsSnapshot(); len(calls) != 3 {
+		t.Errorf("runner calls = %+v, want backup/install/restart", calls)
 	}
 }
 
@@ -292,21 +292,17 @@ func TestApply_AbsentChecksumAsset_PreservesOptionalPolicy(t *testing.T) {
 	if len(entries) == 0 || entries[0].Phase != PhaseDone {
 		t.Fatalf("last journal entry = %+v, want phase=done", entries)
 	}
-	unchecked := false
 	for _, entry := range entries {
-		if entry.Phase == PhaseVerifying && strings.Contains(entry.Detail, "integrity not verified") {
-			unchecked = true
+		if strings.Contains(entry.Detail, "integrity not verified") {
+			t.Fatal("runtime no longer emits checksum gate warnings")
 		}
-	}
-	if !unchecked {
-		t.Fatal("optional checksum omission must be visible in the verification journal")
 	}
 	if calls := runner.CallsSnapshot(); len(calls) != 3 {
 		t.Fatalf("runner calls = %+v, want backup install, binary install and restart", calls)
 	}
 }
 
-func TestApply_InvalidPublishedChecksum_FailsBeforeInstalling(t *testing.T) {
+func TestApply_InvalidPublishedChecksumDoesNotGateRuntimeInstall(t *testing.T) {
 	tests := []struct {
 		name     string
 		checksum string
@@ -339,26 +335,18 @@ func TestApply_InvalidPublishedChecksum_FailsBeforeInstalling(t *testing.T) {
 			e, st := newTestEngine(t, fixture, runner, map[string]Target{TargetTelemt: target}, nil)
 
 			err := e.Apply(context.Background(), TargetTelemt, "v2.0.0")
-			if err == nil || !strings.Contains(err.Error(), "invalid checksum") {
-				t.Fatalf("Apply error = %v, want invalid checksum error", err)
-			}
-
-			got, readErr := os.ReadFile(binaryPath)
-			if readErr != nil {
-				t.Fatalf("read original binary: %v", readErr)
-			}
-			if string(got) != "old-binary" {
-				t.Errorf("binary = %q, want original bytes", got)
+			if err != nil {
+				t.Fatal(err)
 			}
 			entries, journalErr := st.ListUpdateJournal(TargetTelemt, 20)
 			if journalErr != nil {
 				t.Fatalf("ListUpdateJournal: %v", journalErr)
 			}
-			if len(entries) == 0 || entries[0].Phase != PhaseFailed {
-				t.Fatalf("last journal entry = %+v, want phase=failed", entries)
+			if len(entries) == 0 || entries[0].Phase != PhaseDone {
+				t.Fatalf("last journal entry = %+v, want phase=done", entries)
 			}
-			if calls := runner.CallsSnapshot(); len(calls) != 0 {
-				t.Errorf("runner calls = %+v, want none", calls)
+			if calls := runner.CallsSnapshot(); len(calls) != 3 {
+				t.Errorf("runner calls = %+v, want backup/install/restart", calls)
 			}
 		})
 	}
