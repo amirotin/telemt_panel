@@ -1,5 +1,6 @@
 services:
   telemt-panel:
+    # RC3: TELEMT_PANEL_IMAGE=ghcr.io/amirotin/telemt_panel:1.0.0-rc.3
     image: "${TELEMT_PANEL_IMAGE:?Set TELEMT_PANEL_IMAGE to the tested nonroot release image}"
     restart: unless-stopped
     user: "65532:65532"
