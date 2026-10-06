@@ -277,10 +277,15 @@ check test "$(stat -c %a "$CONFIG")" = 600
 if [ "$SC" != migrate ]; then
   HELPER_PATH=/usr/local/libexec/telemt-panel-privileged
   if [ "$SC" = procd ]; then HELPER_PATH=/usr/libexec/telemt-panel-privileged; fi
-  check test -x "$HELPER_PATH"
-  check test "$(stat -c %u "$HELPER_PATH")" = 0
-  check test "$(stat -c %a "$HELPER_PATH")" = 755
-  check "$HELPER_PATH" privileged --policy /etc/telemt-panel-privileged/policy.json inspect
+  if [ "$SC" = procd ]; then
+    check test ! -e "$HELPER_PATH"
+    check test ! -e /etc/telemt-panel-privileged
+  else
+    check test -x "$HELPER_PATH"
+    check test "$(stat -c %u "$HELPER_PATH")" = 0
+    check test "$(stat -c %a "$HELPER_PATH")" = 755
+    check "$HELPER_PATH" privileged --policy /etc/telemt-panel-privileged/policy.json inspect
+  fi
 fi
 check test -f /etc/telemt-panel/../telemt-panel/config.toml
 case "$SC" in
@@ -337,19 +342,35 @@ while [ "$i" -lt 10 ]; do
   if curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/health" 2>/dev/null | grep -q 200; then up=1; break; fi
   sleep 1; i=$((i + 1))
 done
-kill "$PANEL_PID" 2>/dev/null || true
 if [ "$up" = 1 ]; then echo "panel answered /api/health"; else cat "$WORK/panel.log"; fail "panel did not come up"; fi
+if [ "$SC" = procd ] && [ "$up" = 1 ]; then
+  printf '%s' '{"username":"admin","password":"e2e-password"}' >"$WORK/login.json"
+  check curl -fsS -H 'Content-Type: application/json' --data-binary "@$WORK/login.json" \
+    -c "$WORK/cookies" "http://127.0.0.1:$PORT/api/auth/login" >"$WORK/login-response.json"
+  check curl -fsS -b "$WORK/cookies" "http://127.0.0.1:$PORT/api/host" >"$WORK/host.json"
+  check grep -Eq '"privileges_mode"[[:space:]]*:[[:space:]]*"direct"' "$WORK/host.json"
+  check grep -Eq '"self_update"[[:space:]]*:[[:space:]]*true' "$WORK/host.json"
+fi
+kill "$PANEL_PID" 2>/dev/null || true
 
 if [ "$SC" != "migrate" ]; then
   echo "--- second run = update path (config untouched)"
   before=$(cat "$CONFIG")
-  helper_before=$(sha256sum "$HELPER_PATH" | awk '{print $1}')
-  helper_inode_before=$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")
+  if [ "$SC" != procd ]; then
+    helper_before=$(sha256sum "$HELPER_PATH" | awk '{print $1}')
+    helper_inode_before=$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")
+  fi
   run_installer install >"$WORK/update.log" 2>&1 || { cat "$WORK/update.log"; fail "update exited non-zero"; }
   check grep -q 'The binary will be updated' "$WORK/update.log"
   check test "$before" = "$(cat "$CONFIG")"
-  check test "$helper_before" = "$(sha256sum "$HELPER_PATH" | awk '{print $1}')"
-  check test "$helper_inode_before" = "$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")"
+  if [ "$SC" = procd ]; then
+    check test ! -e "$HELPER_PATH"
+    check test ! -e /etc/telemt-panel-privileged
+    check test ! -e /etc/sudoers.d/telemt-panel
+  else
+    check test "$helper_before" = "$(sha256sum "$HELPER_PATH" | awk '{print $1}')"
+    check test "$helper_inode_before" = "$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")"
+  fi
   if [ "$SC" != procd ]; then
     echo "--- explicit stopped-runtime privilege repair"
     run_installer repair-privileges --user telemt-panel >"$WORK/repair.log" 2>&1 || { cat "$WORK/repair.log"; fail "privilege repair exited non-zero"; }

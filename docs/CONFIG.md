@@ -585,6 +585,15 @@ restart = ["/opt/etc/init.d/S99telemt-panel", "restart"]
 а `sudo` не создаёт политику разрешений. `manual` показывает команды для
 самостоятельного выполнения. Отдельного агента нет.
 
+При установке панели с запуском от root, включая OpenWrt/procd и Entware, установщик
+выбирает `direct`: helper, protected policy и sudoers не создаются. Для обновления
+не нужна отдельная постоянная копия бинарника для helper; резервные копии
+обновлений по-прежнему могут занимать дополнительное место. Root-служба с `auto` использует
+прямое выполнение. Helper нужен при работе через `sudo`, в том числе если этот
+режим явно выбран для root-службы. Уже существующие helper/policy при обычном
+обновлении сохраняются; отсутствие новой копии не означает автоматического
+удаления старых root-файлов.
+
 Root-owned policy version 2 содержит `helper_path`, `staging_root` и два бинарника
 `panel`/`telemt`, имеет mode `0600` и размер до 64 KiB. Она хранится в отдельном
 root-owned каталоге `0700`: каталог с runtime-конфигом принадлежит пользователю
@@ -600,7 +609,7 @@ Stable helper — отдельная root-owned копия того же про�
 mode `0755`, в защищённом каталоге. Web update и обычное binary-only обновление
 installer-а не заменяют эту копию, поэтому rollback доступен даже после установки
 неисполняемого main binary или старой 1.x без privileged CLI. Его пути и inode
-не могут совпадать с live binaries, `.bak` или target locks. Initial install и
+не могут совпадать с live binaries, `.bak` или target locks. Initial sudo install и
 explicit repair публикуют helper/policy/sudoers вместе и откатывают все три при
 ошибке. Архив релиза содержит один бинарник; installed disk требует ещё одну копию.
 

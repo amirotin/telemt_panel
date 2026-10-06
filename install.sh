@@ -2550,8 +2550,10 @@ setup_dirs() {
   fi
   run chown "$_owner:$_grp" "$CONFIG_DIR" "$DATA_DIR" "$DATA_DIR/staging"
   run chmod 0750 "$CONFIG_DIR" "$DATA_DIR" "$DATA_DIR/staging"
-  ensure_privilege_directory "$(dirname "$POLICY_FILE")" 0700 || return 1
-  ensure_privilege_directory "$(dirname "$HELPER_FILE")" 0755 || return 1
+  if [ "$RUN_AS" = user ]; then
+    ensure_privilege_directory "$(dirname "$POLICY_FILE")" 0700 || return 1
+    ensure_privilege_directory "$(dirname "$HELPER_FILE")" 0755 || return 1
+  fi
   if [ "$DRY_RUN" != 1 ]; then
     BIN_DIR=$($SUDO readlink -f "$BIN_DIR") || return 1
     PANEL_BIN="$BIN_DIR/$(basename "$PANEL_BIN")"
@@ -2559,8 +2561,10 @@ setup_dirs() {
     DATA_DIR=$($SUDO readlink -f "$DATA_DIR") || return 1
     CONFIG_DIR=$($SUDO readlink -f "$CONFIG_DIR") || return 1
     CONFIG_FILE="$CONFIG_DIR/$(basename "$CONFIG_FILE")"
-    POLICY_FILE="$($SUDO readlink -f "$(dirname "$POLICY_FILE")")/$(basename "$POLICY_FILE")"
-    HELPER_FILE="$($SUDO readlink -f "$(dirname "$HELPER_FILE")")/$(basename "$HELPER_FILE")"
+    if [ "$RUN_AS" = user ]; then
+      POLICY_FILE="$($SUDO readlink -f "$(dirname "$POLICY_FILE")")/$(basename "$POLICY_FILE")"
+      HELPER_FILE="$($SUDO readlink -f "$(dirname "$HELPER_FILE")")/$(basename "$HELPER_FILE")"
+    fi
   fi
   case "$INIT" in
     openrc|sysvinit|entware)
@@ -3288,10 +3292,6 @@ prepare_systemd_privilege_upgrade() {
   fi
   PRIV_RUNTIME_MODE=$(current_privilege_mode) || { warn "Cannot safely identify privileges.mode in this TOML; no grants were changed."; return 1; }
   case "$PRIV_RUNTIME_MODE" in manual|direct) say "Explicit privileges.mode=$PRIV_RUNTIME_MODE retained; protected sudo migration is skipped."; return 0 ;; esac
-  if [ "$PRIV_EXISTING_PAIR" = 1 ]; then
-    warn "Existing helper/policy cannot be bound to this installation. Use explicit repair-privileges after reviewing these root paths; automatic upgrade did not change them."
-    return 1
-  fi
   PRIV_SERVICE_FRAGMENT=$($SUDO systemctl show --property=FragmentPath --value "$SERVICE_NAME") || return 1
   if [ "$PRIV_SERVICE_FRAGMENT" != "$SERVICE_FILE" ] || [ -L "$SERVICE_FILE" ]; then
     warn "Cannot bind privilege migration to the retained systemd unit."
@@ -3314,6 +3314,15 @@ prepare_systemd_privilege_upgrade() {
       case "$SYSTEM_USER" in ''|-*|*[!a-zA-Z0-9_.-]*) return 1 ;; esac
       case "$PRIV_SERVICE_UID" in ''|*[!0-9]*) return 1 ;; 0) RUN_AS=root ;; *) RUN_AS=user ;; esac ;;
   esac
+  # Auto mode already selects the direct runner for root. Only an explicit
+  # sudo mode needs the protected transport even when the service user is root.
+  if [ "$RUN_AS" = root ] && [ "$PRIV_RUNTIME_MODE" = auto ]; then
+    return 0
+  fi
+  if [ "$PRIV_EXISTING_PAIR" = 1 ]; then
+    warn "Existing helper/policy cannot be bound to this installation. Use explicit repair-privileges after reviewing these root paths; automatic upgrade did not change them."
+    return 1
+  fi
   [ -n "$DATA_DIR" ] || { warn "Privilege migration requires persistent data_dir."; return 1; }
   verify_legacy_privilege_authority || {
     warn "Existing sudo policy does not authorize these binaries, staging paths and services. Review the configured targets and use explicit repair-privileges for new grants; automatic migration was not applied."
@@ -3505,7 +3514,12 @@ do_install() {
   hash_password
   install_binary
   write_config
-  install_sudoers
+  if [ "$RUN_AS" = user ]; then
+    install_sudoers
+  else
+    # Fresh root installations use direct mode; no second executable is needed.
+    run rm -f "$SUDOERS_FILE"
+  fi
   install_service
   configure_firewall
   start_service

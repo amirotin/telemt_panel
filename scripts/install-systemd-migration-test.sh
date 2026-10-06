@@ -8,7 +8,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 CANDIDATE="${TP_TEST_BINARY:-$HERE/../telemt-panel}"
 [ -x "$CANDIDATE" ] || { printf 'Set TP_TEST_BINARY to an executable panel binary for systemd migration tests.\n' >&2; exit 1; }
-for scenario in user root dry no-start manual direct inline-manual inline-direct sudoers-symlink sudoers-directory writable-ancestor nonroot-ancestor legacy-denied matching-policy mismatched-policy policy-fail restart-fail; do
+for scenario in user root root-sudo root-mismatched-policy root-sudo-mismatched-policy dry no-start manual direct inline-manual inline-direct sudoers-symlink sudoers-directory writable-ancestor nonroot-ancestor legacy-denied matching-policy mismatched-policy policy-fail restart-fail; do
   WORK="$TMP/$scenario"
   mkdir -p "$WORK/bin" "$WORK/config" "$WORK/data" "$WORK/protected" "$WORK/libexec" "$WORK/sudoers"
   chmod 0700 "$WORK/protected"
@@ -23,7 +23,7 @@ for scenario in user root dry no-start manual direct inline-manual inline-direct
     sudoers-symlink) mv "$WORK/sudoers/panel" "$WORK/sudoers/untouched"; ln -s "$WORK/sudoers/untouched" "$WORK/sudoers/panel" ;;
     sudoers-directory) rm "$WORK/sudoers/panel"; mkdir "$WORK/sudoers/panel" ;;
   esac
-  case "$scenario" in matching-policy|mismatched-policy) printf other-instance-policy >"$WORK/protected/policy.json"; printf other-instance-helper >"$WORK/libexec/helper" ;; esac
+  case "$scenario" in matching-policy|mismatched-policy|root-mismatched-policy|root-sudo-mismatched-policy) printf other-instance-policy >"$WORK/protected/policy.json"; printf other-instance-helper >"$WORK/libexec/helper" ;; esac
   cat >"$WORK/config/config.toml" <<EOF
 listen = "127.0.0.1:48280"
 data_dir = "$WORK/data"
@@ -41,6 +41,7 @@ helper_path = "$FIXTURE_HELPER_DIR/helper"
 policy_path = "$WORK/protected/policy.json"
 EOF
   case "$scenario" in manual|direct) printf 'mode = "%s"\n' "$scenario" >>"$WORK/config/config.toml" ;; esac
+  case "$scenario" in root-sudo|root-sudo-mismatched-policy) printf 'mode = "sudo"\n' >>"$WORK/config/config.toml" ;; esac
   case "$scenario" in inline-manual|inline-direct)
     awk -v mode="${scenario#inline-}" -v helper="$WORK/libexec/helper" -v policy="$WORK/protected/policy.json" '
       BEGIN {print "privileges = { mode = \"" mode "\", helper_path = \"" helper "\", policy_path = \"" policy "\" }"}
@@ -66,7 +67,7 @@ EOF
       case "$*" in
         'show --property=FragmentPath --value '*) printf '%s\n' "$WORK/service" ;;
         'show --property=DynamicUser --value '*) printf no ;;
-        'show --property=User --value '*) if [ "$scenario" = root ]; then printf 0; else printf 65534; fi ;;
+        'show --property=User --value '*) case "$scenario" in root|root-*) printf 0 ;; *) printf 65534 ;; esac ;;
         *) printf '%s\n' "$*" >>"$WORK/calls" ;;
       esac
     }
@@ -91,7 +92,7 @@ EOF
       "$@"
     }
     install_sudoers() {
-      if [ "$scenario" = root ]; then [ "$RUN_AS" = root ]; else [ "$RUN_AS" = user ] && [ "$SYSTEM_USER" = nobody ]; fi
+      case "$scenario" in root|root-*) [ "$RUN_AS" = root ] ;; *) [ "$RUN_AS" = user ] && [ "$SYSTEM_USER" = nobody ] ;; esac
       gen_privileged_policy >"$WORK/generated-policy"
       grep -q '"telemt":"/usr/bin/telemt"' "$WORK/generated-policy"
       PRIV_PENDING=1
@@ -115,8 +116,13 @@ EOF
     policy-fail|restart-fail)
       [ "$result" != 0 ]; [ "$(cat "$WORK/bin/panel")" = original-binary ]; cmp "$WORK/config/config.toml" "$WORK/original.toml"
       [ ! -e "$WORK/protected/policy.json" ]; [ ! -e "$WORK/libexec/helper" ]; [ "$(cat "$WORK/sudoers/panel")" = old-sudoers ] ;;
-    mismatched-policy) [ "$result" != 0 ]; [ ! -e "$WORK/calls" ]; cmp "$WORK/config/config.toml" "$WORK/original.toml"; [ "$(cat "$WORK/protected/policy.json")" = other-instance-policy ]; [ "$(cat "$WORK/bin/panel")" = original-binary ] ;;
-    manual|direct) [ "$result" = 0 ] || { cat "$WORK/output"; exit 1; }; cmp "$WORK/config/config.toml" "$WORK/original.toml"; [ ! -e "$WORK/generated-policy" ] ;;
+    mismatched-policy|root-sudo-mismatched-policy) [ "$result" != 0 ]; [ ! -e "$WORK/calls" ]; cmp "$WORK/config/config.toml" "$WORK/original.toml"; [ "$(cat "$WORK/protected/policy.json")" = other-instance-policy ]; [ "$(cat "$WORK/bin/panel")" = original-binary ] ;;
+    root-mismatched-policy)
+      [ "$result" = 0 ] || { cat "$WORK/output"; exit 1; }
+      cmp "$WORK/config/config.toml" "$WORK/original.toml"; cmp "$CANDIDATE" "$WORK/bin/panel"
+      [ ! -e "$WORK/generated-policy" ]; [ "$(cat "$WORK/protected/policy.json")" = other-instance-policy ]
+      [ "$(cat "$WORK/libexec/helper")" = other-instance-helper ] ;;
+    root|manual|direct) [ "$result" = 0 ] || { cat "$WORK/output"; exit 1; }; cmp "$WORK/config/config.toml" "$WORK/original.toml"; [ ! -e "$WORK/generated-policy" ]; [ ! -e "$WORK/libexec/helper" ] ;;
     inline-manual|inline-direct)
       [ "$result" != 0 ]; [ ! -e "$WORK/calls" ]; [ ! -e "$WORK/generated-policy" ]
       cmp "$WORK/config/config.toml" "$WORK/original.toml"; [ "$(cat "$WORK/bin/panel")" = original-binary ]; [ "$(cat "$WORK/sudoers/panel")" = old-sudoers ] ;;
