@@ -3211,7 +3211,10 @@ rollback_privilege_transaction() {
 # writable by that account; it must never be sufficient to authorize a new
 # executable, staging source or service during an automatic migration.
 legacy_privilege_probe() {
-  $SUDO sudo -n -l -U "$SYSTEM_USER" -- "$@" >/dev/null 2>&1
+  if ! $SUDO sudo -n -l -U "$SYSTEM_USER" -- "$@" >/dev/null 2>&1; then
+    warn "Legacy sudo policy does not permit: $*"
+    return 1
+  fi
 }
 
 verify_legacy_privilege_authority() {
@@ -3238,7 +3241,7 @@ verify_legacy_privilege_authority() {
     entries && /^[ \t]*$/ { next }
     entries && (!commands || /^[ \t]*[A-Za-z][A-Za-z_ -]*:/) { bad=1 }
     END { exit !(entries && root && nopass && commands && !bad) }
-  ' || return 1
+  ' || { warn "Legacy sudo policy contains unsupported authentication, execution restrictions or listing format."; return 1; }
   PRIV_LEGACY_CP=$(command -v cp) || return 1
   PRIV_LEGACY_CHMOD=$(command -v chmod) || return 1
   PRIV_LEGACY_MV=$(command -v mv) || return 1

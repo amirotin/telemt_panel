@@ -66,6 +66,7 @@ cleanup() {
     if (( UNITS_CREATED )); then
       journalctl -u "$PANEL_SERVICE.service" --no-pager -n 60 >&2 || true
     fi
+    if (( USER_CREATED )); then LC_ALL=C sudo -n -ll -U "$ACCOUNT" >&2 || true; fi
   fi
   # Exact unique names only; do not invoke installer uninstall/purge or wildcard cleanup.
   if (( UNITS_CREATED )); then
