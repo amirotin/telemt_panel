@@ -434,6 +434,7 @@ export const ru = {
     toast: {
       created: "Пользователь создан",
       updated: "Пользователь обновлён",
+      updatedWithDraft: "Отправленные изменения сохранены. В форме остались новые несохранённые изменения.",
       deleted: "Пользователь удалён",
       quotaReset: "Квота сброшена",
       trafficReset: "Учёт трафика сброшен",
@@ -2172,6 +2173,7 @@ export const ru = {
           planesTitle: "Плоскости WEB",
           planesIndependent: "каждая блокируется независимо",
           websocketRegistry: "WebSocket registry",
+          websocketSummaryTemplate: "Записей: {entries} · Заявок: {claims} · Вытеснений в процессе: {evictions}",
           carrierLearningName: "Carrier learning",
           debugRecorder: "Debug recorder",
           captureOff: "capture выключен · буфер пуст",
@@ -2809,6 +2811,8 @@ export const ru = {
       discardDraftShort: "Отменить",
       checkWrite: "Проверить серверную конфигурацию",
       tomlBlockedByDraft: "Сначала сохраните или отмените изменения структурированной формы.",
+      structuredBlockedByToml: "Завершите работу с черновиком TOML перед изменением формы.",
+      returnToToml: "Вернуться к TOML",
       catalog: {
         selectGroup: "Выбрать раздел настроек",
         groupDialogTitle: "Разделы настроек",

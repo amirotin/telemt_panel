@@ -396,6 +396,7 @@ export const en: Dict = {
     toast: {
       created: "User created",
       updated: "User updated",
+      updatedWithDraft: "Submitted changes saved. The form still has newer unsaved changes.",
       deleted: "User deleted",
       quotaReset: "Quota reset",
       trafficReset: "Traffic tracking reset",
@@ -2038,6 +2039,7 @@ export const en: Dict = {
           planesTitle: "WEB planes",
           planesIndependent: "each locks independently",
           websocketRegistry: "WebSocket registry",
+          websocketSummaryTemplate: "Entries: {entries} · Claims: {claims} · Evictions in flight: {evictions}",
           carrierLearningName: "Carrier learning",
           debugRecorder: "Debug recorder",
           captureOff: "capture disabled · buffer empty",
@@ -2610,6 +2612,8 @@ export const en: Dict = {
       discardDraftShort: "Discard",
       checkWrite: "Check server configuration",
       tomlBlockedByDraft: "Save or discard structured form changes first.",
+      structuredBlockedByToml: "Finish the TOML draft before editing the form.",
+      returnToToml: "Return to TOML",
       catalog: {
         selectGroup: "Choose settings group",
         groupDialogTitle: "Settings groups",

@@ -1,13 +1,13 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SSEProvider } from "../realtime";
 import { client } from "../lib/api/client";
 import { getTelemtInfoQueryKey } from "../lib/api/generated/@tanstack/react-query.gen";
 import type { UsersTopicUser } from "../realtime/topics";
 import { ru } from "../i18n/testing";
-import { UserFormSheet } from "./UserFormSheet";
+import { UserFormSheet, type UserFormSheetProps } from "./UserFormSheet";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -40,9 +40,9 @@ afterEach(() => {
   client.setConfig(originalConfig);
 });
 
-async function render(version: string | undefined, overrides: Partial<UsersTopicUser> = {}, mode: "create" | "edit" = "edit") {
+async function render(version: string | undefined, overrides: Partial<UsersTopicUser> = {}, mode: "create" | "edit" = "edit", props: Partial<UserFormSheetProps> = {}) {
   queryClient.setQueryData(getTelemtInfoQueryKey(), { reachable: true, version, capabilities: { quota: true, runtime_edge: true, reload_api: true, config_api: true, user_enable_disable: true, rotate_secret: true } });
-  await act(async () => root.render(<QueryClientProvider client={queryClient}><SSEProvider><UserFormSheet inline open mode={mode} user={{ ...user, ...overrides }} onClose={() => {}} /></SSEProvider></QueryClientProvider>));
+  await act(async () => root.render(<QueryClientProvider client={queryClient}><SSEProvider><UserFormSheet inline open mode={mode} user={{ ...user, ...overrides }} onClose={() => {}} {...props} /></SSEProvider></QueryClientProvider>));
 }
 
 function rateInput(direction: "up" | "down"): HTMLInputElement {
@@ -60,6 +60,106 @@ async function enter(input: HTMLInputElement, value: string) {
 async function submit() {
   await act(async () => container.querySelector("form")!.requestSubmit());
 }
+
+function formInput(label: string): HTMLInputElement {
+  return [...container.querySelectorAll("label")].find((item) => item.querySelector("span")?.textContent === label)!.querySelector("input")!;
+}
+
+function delayedPatch() {
+  const completions: Array<(response: Response) => void> = [];
+  client.setConfig({ baseUrl: "http://panel.test", fetch: (input) => {
+    requests.push(input as Request);
+    return new Promise<Response>((resolve) => { completions.push(resolve); });
+  } });
+  return async (data: Partial<UsersTopicUser>, status = 200, index = 0) => {
+    await act(async () => {
+      completions[index]!(Response.json(status === 200 ? { ...user, ...data } : { error: "telemt_unavailable" }, { status }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+  };
+}
+
+describe("user edit save acknowledgement", () => {
+  it("keeps later edits dirty and bases the next PATCH on canonical confirmed fields", async () => {
+    const finish = delayedPatch();
+    const onClose = vi.fn(), onDirtyChange = vi.fn();
+    await render("3.5.8", { max_tcp_conns: 4, max_unique_ips: 2, data_quota_bytes: 1500000 }, "edit", { onClose, onDirtyChange });
+    await enter(formInput(ru.people.form.maxConnections), "41");
+    await submit();
+    await enter(formInput(ru.people.form.maxConnections), "42");
+    await finish({ max_tcp_conns: 41, max_unique_ips: 7, data_quota_bytes: 2500001 });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(formInput(ru.people.form.maxConnections).value).toBe("42");
+    expect(formInput(ru.people.form.maxIps).value).toBe("7");
+    await submit();
+    expect(requests).toHaveLength(2);
+    expect(await requests[1]!.json()).toEqual({ max_tcp_conns: 42 });
+  });
+
+  it("closes a confirmed unchanged draft only after clearing its dirty flag", async () => {
+    const finish = delayedPatch();
+    const events: string[] = [];
+    await render("3.5.8", {}, "edit", { onClose: () => events.push("close"), onDirtyChange: (dirty) => events.push(`dirty:${dirty}`) });
+    await enter(formInput(ru.people.form.maxConnections), "41");
+    await submit();
+    await finish({ max_tcp_conns: 41 });
+    expect(events).toContain("close");
+    expect(events[events.indexOf("close") - 1]).toBe("dirty:false");
+  });
+
+  it("preserves a late clear, quota unit, expiration and fractional rate for the next PATCH", async () => {
+    const finish = delayedPatch();
+    const onClose = vi.fn();
+    await render("3.5.8", { data_quota_bytes: 2147483648, max_tcp_conns: 4 }, "edit", { onClose });
+    await enter(formInput(ru.people.form.maxConnections), "41");
+    await submit();
+    await enter(formInput(ru.people.form.maxConnections), "");
+    await act(async () => { const select = container.querySelector("select")!; select.value = "MB"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await enter(formInput(ru.people.form.expirationShort), "2026-12-31");
+    await enter(rateInput("up"), "1.5");
+    await finish({ max_tcp_conns: 41, data_quota_bytes: 3221225472 });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(formInput(ru.people.form.quota).value).toBe("2");
+    expect(container.querySelector("select")!.value).toBe("MB");
+    await submit();
+    expect(await requests[1]!.json()).toEqual({ max_tcp_conns: null, data_quota_bytes: 2097152, expiration_rfc3339: "2026-12-31T23:59:59.000Z", rate_limit_up_bps: 1500000 });
+  });
+
+  it("preserves later edits after a failed PATCH", async () => {
+    const finish = delayedPatch();
+    const onClose = vi.fn(), onDirtyChange = vi.fn();
+    await render("3.5.8", {}, "edit", { onClose, onDirtyChange });
+    await enter(formInput(ru.people.form.maxConnections), "41");
+    await submit();
+    await enter(formInput(ru.people.form.maxConnections), "42");
+    await finish({}, 502);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(formInput(ru.people.form.maxConnections).value).toBe("42");
+    await submit();
+    expect(await requests[1]!.json()).toEqual({ max_tcp_conns: 42 });
+  });
+
+  it.each(["different user", "reopened same user"])("ignores a success from a previous session after %s", async (session) => {
+    const finish = delayedPatch();
+    const onClose = vi.fn(), onSaved = vi.fn(), onDirtyChange = vi.fn();
+    const props = { onClose, onSaved, onDirtyChange };
+    await render("3.5.8", {}, "edit", props);
+    await enter(formInput(ru.people.form.maxConnections), "41");
+    await submit();
+    if (session === "reopened same user") await render("3.5.8", {}, "edit", { ...props, open: false });
+    await render("3.5.8", { username: session === "different user" ? "bob" : "alice" }, "edit", props);
+    await enter(formInput(ru.people.form.maxConnections), "52");
+    await finish({ max_tcp_conns: 41 });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(formInput(ru.people.form.maxConnections).value).toBe("52");
+    await submit();
+    expect(await requests[1]!.json()).toEqual({ max_tcp_conns: 52 });
+  });
+});
 
 describe("Telemt user rate bounds", () => {
   it("blocks an out-of-range rate when creating a user", async () => {

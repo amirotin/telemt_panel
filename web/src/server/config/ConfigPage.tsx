@@ -17,7 +17,9 @@ import { ReloadStepper } from "./ReloadStepper";
 import { PatchResultNotice } from "./PatchResultNotice";
 import { recordPendingChanges } from "./pendingChanges";
 import { ConflictBanner } from "./ConflictBanner";
-import { useConfigEditor, type ConfigSnapshot } from "./useConfigEditor";
+import { useConfigEditor } from "./useConfigEditor";
+import { useTomlSettingsSession } from "./useTomlSettingsSession";
+import { DraftSessionActions } from "../../lib/draftSessionActions";
 import { useReloadPolling } from "./useReloadPolling";
 import { buildConfigPatch } from "./configPatch.helpers";
 import { diffChangedSectionKeys } from "./configConflict.helpers";
@@ -45,19 +47,14 @@ import type {
   TelemtConfigPatchResult,
 } from "../../lib/api/generated/types.gen";
 
-const TomlSettingsPanel = lazy(() =>
-  import("./TomlSettingsPanel").then((m) => ({ default: m.TomlSettingsPanel })),
+const TomlSettingsView = lazy(() =>
+  import("./TomlSettingsPanel").then((m) => ({ default: m.TomlSettingsView })),
 );
 
 type Tab = "normal" | "advanced" | "toml";
 
 interface ConflictState {
-  changedKeys: string[];
   fresh: TelemtConfig;
-  /** freshBase with the admin's pending patch reapplied on top (rebaseEdits.ts) — what the working copy becomes if "reapply" is chosen. */
-  rebased: Record<string, unknown>;
-  /** "section.key" paths where the admin's pending edit and the server's own change collide — [] means reapplying is unambiguous. */
-  overlapping: string[];
 }
 
 export function ConfigPage() {
@@ -78,6 +75,14 @@ export function ConfigPage() {
   const [activeReloadId, setActiveReloadId] = useState<number | null>(null);
   const [patchErrorCode, setPatchErrorCode] = useState<string | null>(null);
   const [savePreviewOpen, setSavePreviewOpen] = useState(false);
+  const toml = useTomlSettingsSession({
+    enabled: tab === "toml",
+    onApplied: async (result) => {
+      const fresh = await getTelemtConfig();
+      if (fresh.data) editor.seed(fresh.data);
+      setPatchResult(result);
+    },
+  });
   // Full working-copy snapshot corresponding to the in-flight PATCH. A
   // later keystroke is diffed from this snapshot after success and rebased
   // over Telemt's fresh response instead of being silently discarded.
@@ -92,11 +97,7 @@ export function ConfigPage() {
     try {
       const fresh = await getTelemtConfig();
       if (!fresh.data) return;
-      const changedKeys = diffChangedSectionKeys(editor.baseline.sections, fresh.data.sections);
-      const latestDraft = editor.getEdited() ?? editor.baseline.sections;
-      const latestPatch = buildConfigPatch(editor.baseline.sections, latestDraft);
-      const { edited: rebased, overlapping } = rebaseEdits(fresh.data.sections, latestPatch, changedKeys);
-      setConflict({ changedKeys, fresh: fresh.data, rebased, overlapping });
+      setConflict({ fresh: fresh.data });
     } catch {
       pushToast(errorMessage(s, "telemt_unreachable"), "error");
     }
@@ -242,6 +243,8 @@ export function ConfigPage() {
   const patch = buildConfigPatch(editor.baseline.sections, editor.edited);
   const hasChanges = Object.keys(patch).length > 0;
   const changedCount = countPatchChanges(patch);
+  const conflictChangedKeys = conflict ? diffChangedSectionKeys(editor.baseline.sections, conflict.fresh.sections) : [];
+  const currentRebase = conflict ? rebaseEdits(conflict.fresh.sections, patch, conflictChangedKeys) : null;
 
   function save() {
     if (!editor.baseline || !editor.edited || !hasChanges) return;
@@ -262,21 +265,28 @@ export function ConfigPage() {
 
   return (
     <ServerShell title={s.server.config.title}>
-      {conflict && (
+      {conflict && currentRebase && (
         <ConflictBanner
-          changedKeys={conflict.changedKeys}
-          overlapping={conflict.overlapping}
+          changedKeys={conflictChangedKeys}
+          overlapping={currentRebase.overlapping}
           pending={patchMutation.isPending}
           onReapply={() => {
-            const rebasedConfig: ConfigSnapshot = {
-              revision: conflict.fresh.revision,
-              sections: conflict.rebased,
-            };
+            if (!editor.baseline) return;
+            const latestDraft = editor.getEdited() ?? editor.baseline.sections;
+            const latestPatch = buildConfigPatch(editor.baseline.sections, latestDraft);
+            const latestRebase = rebaseEdits(conflict.fresh.sections, latestPatch, conflictChangedKeys);
+            // A late input event can introduce a collision before this
+            // render's action runs. Show that collision before accepting
+            // an explicit overwrite choice for the latest draft.
+            if (latestRebase.overlapping.some((key) => !currentRebase.overlapping.includes(key))) {
+              setConflict({ ...conflict });
+              return;
+            }
             const retryPatch = buildConfigPatch(
               conflict.fresh.sections,
-              conflict.rebased,
+              latestRebase.edited,
             );
-            editor.seed(conflict.fresh, conflict.rebased);
+            editor.seed(conflict.fresh, latestRebase.edited);
             setConflict(null);
             setPatchErrorCode(null);
             // Nothing left to send only when the admin's pending edit
@@ -284,7 +294,7 @@ export function ConfigPage() {
             // (rare) — otherwise this is the actual retry with the
             // corrected If-Match, not just a reposition for another click.
             if (Object.keys(retryPatch).length > 0) {
-              submitPatch(rebasedConfig.revision, retryPatch, conflict.rebased);
+              submitPatch(conflict.fresh.revision, retryPatch, latestRebase.edited);
             }
           }}
           onDiscard={() => {
@@ -333,14 +343,14 @@ export function ConfigPage() {
                 role="tab"
                 aria-selected={tab === name}
                 onClick={() => setTab(name)}
-                disabled={name === "toml" && hasChanges}
-                title={name === "toml" && hasChanges ? s.server.config.tomlBlockedByDraft : undefined}
+                disabled={name === "toml" && (hasChanges || patchMutation.isPending)}
+                title={name === "toml" && (hasChanges || patchMutation.isPending) ? s.server.config.tomlBlockedByDraft : undefined}
                 className={cn(
                   "inline-flex min-h-11 items-center justify-center rounded-lg px-2 text-meta font-semibold transition-colors",
                   tab === name
                     ? "bg-accent/25 text-text shadow-sm"
                     : "text-text-muted hover:bg-surface-2 hover:text-text",
-                  name === "toml" && hasChanges && "cursor-not-allowed opacity-45",
+                  name === "toml" && (hasChanges || patchMutation.isPending) && "cursor-not-allowed opacity-45",
                 )}
               >
                 {s.server.config.tabs[name]}
@@ -354,7 +364,14 @@ export function ConfigPage() {
           </span>
         </div>
 
-        {tab === "normal" || tab === "advanced" ? (
+        {tab !== "toml" && toml.blocked ? (
+          <div className="flex flex-col gap-3 p-3 sm:p-4">
+            <Notice tone="warn" title={s.server.config.structuredBlockedByToml}>
+              <Button variant="secondary" onClick={() => setTab("toml")}>{s.server.config.returnToToml}</Button>
+            </Notice>
+            <DraftSessionActions conflict={!!toml.session.remote || toml.conflict} onDiscard={toml.discard} onCopy={() => void toml.copyDraft()} disabled={toml.patchMutation.isPending || (toml.conflict && !toml.session.remote)} />
+          </div>
+        ) : tab === "normal" || tab === "advanced" ? (
           <StructuredSettingsForm
             catalog={catalogQuery.data}
             sections={editor.edited}
@@ -370,19 +387,15 @@ export function ConfigPage() {
         ) : (
           <div className="p-3 sm:p-4">
             <Suspense fallback={<Skeleton className="h-[520px] w-full" />}>
-              <TomlSettingsPanel
+              <TomlSettingsView
+                controller={toml}
                 canRestartTelemt={canRestartTelemt}
-                onApplied={async (result) => {
-                  const fresh = await getTelemtConfig();
-                  if (fresh.data) editor.seed(fresh.data);
-                  setPatchResult(result);
-                }}
               />
             </Suspense>
           </div>
         )}
 
-        {tab !== "toml" && (
+        {tab !== "toml" && !toml.blocked && (
           <div data-testid="config-save-bar" className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-t border-border-strong bg-surface/95 px-3 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:items-end lg:gap-3 sm:px-4">
             <div className="flex min-h-11 items-center gap-2.5">
               <span className={cn("size-2 rounded-full", hasChanges ? "bg-warn" : "bg-ok")} />

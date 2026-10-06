@@ -17,8 +17,14 @@ export interface SubmittedDraft<T> {
   requestId: number;
 }
 
-export function receiveRemote<T>(state: DraftSession<T>, fresh: VersionedDraft<T>, equal: (a: T, b: T) => boolean): DraftSession<T> {
+export function receiveRemote<T>(state: DraftSession<T>, fresh: VersionedDraft<T>, equal: (a: T, b: T) => boolean, preserveDraft = false): DraftSession<T> {
   if (fresh.revision === state.baseline.revision && equal(fresh.value, state.baseline.value)) return state;
+  // An unconfirmed write owns later input, including a deliberate return
+  // to the original baseline. A GET is evidence to reconcile explicitly.
+  if (preserveDraft) {
+    if (state.remote?.revision === fresh.revision && equal(state.remote.value, fresh.value)) return state;
+    return { ...state, remote: fresh };
+  }
   // A GET of the confirmed revision can canonicalize submitted values while
   // a different remote revision remains an unresolved conflict.
   if (fresh.revision !== null && fresh.revision === state.baseline.revision) {

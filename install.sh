@@ -127,6 +127,10 @@ t() {
     en:remove_failed) _f='Removal did not complete. Further deletion stopped; resolve the error before retrying.' ;;
     ru:remove_targets) _f='Будут удалены только указанные файлы и каталоги панели. Telemt и файлы вне этих каталогов сохраняются.' ;;
     en:remove_targets) _f='Only the listed panel files and directories will be removed. Telemt and files outside those directories are retained.' ;;
+    ru:remove_privileges_retained) _f='Helper и policy сохранены: принадлежность этой установке не подтверждена. Проверьте их вручную: %s; %s' ;;
+    en:remove_privileges_retained) _f='Helper and policy retained: ownership by this installation could not be verified. Review manually: %s; %s' ;;
+    ru:uninstall_privileges_retained) _f='Helper и защищённая policy сохраняются для повторной установки.' ;;
+    en:uninstall_privileges_retained) _f='Helper and protected policy are retained for reinstallation.' ;;
     ru:update_preflight_failed) _f='Проверка существующей установки или нового бинарника не пройдена; обновление не применено.' ;;
     en:update_preflight_failed) _f='Existing installation or candidate validation failed; update not applied.' ;;
     ru:update_preserve) _f='Будет заменён только бинарник. Конфиг, сервис, права и firewall сохраняются.' ;;
@@ -3195,6 +3199,8 @@ prepare_removal() {
   TELEMT_SERVICE_SCRIPT=$(json_field "$TEMP_DIR/removal.json" telemt_service_script)
   resolve_report_service_scripts || die "$(t remove_unsafe)"
   DATA_DIR=$(json_field "$TEMP_DIR/removal.json" data_dir)
+  POLICY_FILE=$(json_field "$TEMP_DIR/removal.json" privileges_policy_path)
+  HELPER_FILE=$(json_field "$TEMP_DIR/removal.json" privileges_helper_path)
   sudoers_path_ok "$PANEL_BIN" || die "$(t remove_unsafe)"
   sudoers_path_ok "$TELEMT_BIN" || die "$(t remove_unsafe)"
   apply_layout_from_answers
@@ -3218,6 +3224,8 @@ prepare_removal() {
     die "$(t remove_unsafe)"
   fi
   validate_removal_data
+  REMOVE_PRIVILEGES=0
+  if [ "$CMD" = purge ]; then prepare_privilege_removal; fi
   if [ "$CMD" = repair-privileges ]; then
     say "Protected update policy and sudoers repair (binary/config/service are preserved):"
   else
@@ -3226,6 +3234,42 @@ prepare_removal() {
   kv "$(t s_service)" "$SERVICE_FILE"
   kv "$(t s_paths)" "$PANEL_BIN"
   kv "sudoers" "$SUDOERS_FILE"
+  if [ "$REMOVE_PRIVILEGES" = 1 ]; then
+    kv "root policy" "$POLICY_FILE"
+    kv "stable helper" "$HELPER_FILE"
+  fi
+}
+
+# The trusted parser validates protected parents, ownership, mode and v2 roles.
+# Never execute the helper being considered for deletion.
+inspect_removal_privileges() {
+  sudoers_path_ok "$POLICY_FILE" && sudoers_path_ok "$HELPER_FILE" || return 1
+  $SUDO timeout 15 "$STAGED_BIN" privileged --policy "$POLICY_FILE" inspect >"$TEMP_DIR/removal-policy.json" 2>/dev/null || return 1
+  [ "$(json_field "$TEMP_DIR/removal-policy.json" helper_path)" = "$HELPER_FILE" ] || return 1
+  [ "$(json_field "$TEMP_DIR/removal-policy.json" staging_root)" = "$DATA_DIR/staging" ] || return 1
+  [ "$(json_field "$TEMP_DIR/removal-policy.json" panel)" = "$PANEL_BIN" ] || return 1
+  [ "$(json_field "$TEMP_DIR/removal-policy.json" telemt)" = "$TELEMT_BIN" ] || return 1
+  validate_privilege_placement || return 1
+}
+
+removal_privilege_fingerprint() {
+  $SUDO stat -c '%d:%i:%u:%a' "$POLICY_FILE" "$HELPER_FILE" || return 1
+  $SUDO sha256sum "$POLICY_FILE" "$HELPER_FILE"
+}
+
+prepare_privilege_removal() {
+  if inspect_removal_privileges; then
+    REMOVE_PRIVILEGE_FINGERPRINT=$(removal_privilege_fingerprint) || die "$(t remove_unsafe)"
+    REMOVE_PRIVILEGES=1
+  elif $SUDO test -e "$HELPER_FILE" || $SUDO test -L "$HELPER_FILE" || $SUDO test -e "$POLICY_FILE" || $SUDO test -L "$POLICY_FILE"; then
+    warn "$(t remove_privileges_retained "$HELPER_FILE" "$POLICY_FILE")"
+  fi
+}
+
+verify_removal_privileges() {
+  if [ "$REMOVE_PRIVILEGES" != 1 ]; then return 0; fi
+  inspect_removal_privileges || die "$(t remove_unsafe)"
+  [ "$(removal_privilege_fingerprint)" = "$REMOVE_PRIVILEGE_FINGERPRINT" ] || die "$(t remove_unsafe)"
 }
 
 do_repair_privileges() {
@@ -3278,6 +3322,11 @@ validate_removal_data() {
   for REMOVE_DIR in "$CONFIG_DIR" "${DATA_DIR:-$CONFIG_DIR}"; do
     [ ! -L "$REMOVE_DIR" ] || die "$(t remove_unsafe)"
     REMOVE_CANON=$($SUDO readlink -f "$REMOVE_DIR") || die "$(t remove_unsafe)"
+    # Ambiguous protected files must not disappear with recursive runtime cleanup.
+    for REMOVE_PRIVILEGE_FILE in "$HELPER_FILE" "$POLICY_FILE"; do
+      sudoers_path_ok "$REMOVE_PRIVILEGE_FILE" || die "$(t remove_unsafe)"
+      if privilege_directory_contains "$REMOVE_DIR" "$REMOVE_PRIVILEGE_FILE"; then die "$(t remove_unsafe)"; fi
+    done
     for REMOVE_PROTECTED in "$TELEMT_BIN" "$TELEMT_CONFIG" "$BIN_DIR" "$(dirname "$SERVICE_FILE")" "$(dirname "$SUDOERS_FILE")"; do
       REMOVE_PROTECTED=$($SUDO readlink -f "$REMOVE_PROTECTED") || die "$(t remove_unsafe)"
       case "$REMOVE_PROTECTED" in "$REMOVE_CANON"|"$REMOVE_CANON"/*) die "$(t remove_unsafe)" ;; esac
@@ -3312,6 +3361,7 @@ stop_and_disable_service() {
 
 remove_panel_files() {
   [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
+  verify_removal_privileges
   if [ -f "$SERVICE_FILE" ]; then
     stop_and_disable_service || die "$(t remove_failed)"
     run rm -f "$SERVICE_FILE" || die "$(t remove_failed)"
@@ -3326,12 +3376,18 @@ do_uninstall() {
   confirm_danger uninstall_q || { say "$(t aborted)"; exit 0; }
   remove_panel_files
   say "$(t u_kept "$CONFIG_DIR" "$DATA_DIR")"
+  say "$(t uninstall_privileges_retained)"
 }
 
 do_purge() {
   prepare_removal
   confirm_danger purge_q "$CONFIG_DIR" "$DATA_DIR" "$SYSTEM_USER" || { say "$(t aborted)"; exit 0; }
   remove_panel_files
+  verify_removal_privileges
+  if [ "$REMOVE_PRIVILEGES" = 1 ]; then
+    run rm -f "$HELPER_FILE" || die "$(t remove_failed)"
+    run rm -f "$POLICY_FILE" || die "$(t remove_failed)"
+  fi
   validate_removal_data
   [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
   run rm -rf "$CONFIG_DIR" || die "$(t remove_failed)"

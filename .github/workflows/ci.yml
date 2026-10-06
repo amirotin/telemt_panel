@@ -228,7 +228,7 @@ jobs:
 
       - name: Lint installer
         run: |
-          shellcheck -s sh install.sh scripts/install-test.sh scripts/install-e2e.sh scripts/install-entware-test.sh
+          shellcheck -s sh install.sh scripts/install-test.sh scripts/install-e2e.sh scripts/install-entware-test.sh scripts/install-purge-test.sh
           dash -n install.sh
           bash -n install.sh
 
@@ -246,3 +246,5 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-e2e.sh
+          TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-purge-test.sh
+          TP_TEST_BINARY=$PWD/telemt-panel TP_TEST_SHELL=bash bash scripts/install-purge-test.sh

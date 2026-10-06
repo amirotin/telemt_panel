@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage, useStrings } from "../../i18n";
-import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
-import { acknowledgeSubmitted, discardToRemote, type SubmittedDraft } from "../../lib/draftSession";
-import { useDraftSession } from "../../lib/draftSessionReact";
+import { apiErrorMessage } from "../../people/apiError";
 import { DraftSessionActions } from "../../lib/draftSessionActions";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
@@ -11,178 +9,40 @@ import { ErrorState } from "../../ui/ErrorState";
 import { SectionLabel } from "../../ui/SectionLabel";
 import { Sheet } from "../../ui/Sheet";
 import { Skeleton } from "../../ui/Skeleton";
-import { pushToast } from "../../ui/Toast";
 import { Notice } from "../Notice";
 import { useIsDesktop } from "../useIsDesktop";
-import {
-  getTelemtConfigQueryKey,
-  getTelemtConfigTomlOptions,
-  getTelemtConfigTomlQueryKey,
-  reloadTelemtMutation,
-  restartTelemtServiceMutation,
-} from "../../lib/api/generated/@tanstack/react-query.gen";
-import { patchTelemtConfigToml, previewTelemtConfigToml } from "../../lib/api/generated/sdk.gen";
-import type {
-  TelemtConfigPatchResult,
-  TelemtConfigToml,
-  TelemtConfigTomlPreview,
-  PatchTelemtConfigTomlError,
-  PreviewTelemtConfigTomlError,
-} from "../../lib/api/generated/types.gen";
+import { getTelemtConfigTomlQueryKey } from "../../lib/api/generated/@tanstack/react-query.gen";
+import type { TelemtConfigPatchResult, TelemtConfigTomlPreview } from "../../lib/api/generated/types.gen";
 import { PatchResultNotice } from "./PatchResultNotice";
-import { recordPendingChanges } from "./pendingChanges";
 import { ReloadPolicyPicker } from "./ReloadPolicyPicker";
-import {
-  DEFAULT_RELOAD_POLICY,
-  toPatchReloadQuery,
-  type ReloadPolicyState,
-} from "./reloadPolicy";
 import { TomlConfigEditor } from "./TomlConfigEditor";
+import { useTomlSettingsSession, type TomlSettingsController } from "./useTomlSettingsSession";
 
-export function TomlSettingsPanel({
-  canRestartTelemt,
-  onApplied,
-}: {
+export function TomlSettingsPanel({ canRestartTelemt, onApplied }: {
   canRestartTelemt: boolean;
   onApplied?: (result: TelemtConfigPatchResult) => void | Promise<void>;
 }) {
-  const s = useStrings();
-  const query = useQuery(getTelemtConfigTomlOptions());
-
-  if (query.isLoading) return <Skeleton className="h-[520px] w-full" />;
-  if (!query.data) {
-    return <ErrorState message={query.error ? apiErrorMessage(query.error, s) : s.common.error} onRetry={() => query.refetch()} />;
-  }
-  return <TomlSettingsSession initial={query.data} canRestartTelemt={canRestartTelemt} onApplied={onApplied} />;
+  const controller = useTomlSettingsSession({ enabled: true, onApplied });
+  return <TomlSettingsView controller={controller} canRestartTelemt={canRestartTelemt} />;
 }
 
-const equalText = (a: string, b: string) => a === b;
-
-function TomlSettingsSession({
-  initial,
-  canRestartTelemt,
-  onApplied,
-}: {
-  initial: TelemtConfigToml;
+export function TomlSettingsView({ controller, canRestartTelemt }: {
+  controller: TomlSettingsController;
   canRestartTelemt: boolean;
-  onApplied?: (result: TelemtConfigPatchResult) => void | Promise<void>;
 }) {
   const s = useStrings();
   const queryClient = useQueryClient();
   const isDesktop = useIsDesktop();
-  const { session, update, current } = useDraftSession("telemt-toml", { value: initial.toml_projection, revision: initial.revision }, equalText);
-  const draft = session.draft;
-  const [validatedDraft, setValidatedDraft] = useState<SubmittedDraft<string> | null>(null);
-  const [preview, setPreview] = useState<TelemtConfigTomlPreview | null>(null);
-  const [result, setResult] = useState<TelemtConfigPatchResult | null>(null);
-  const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(DEFAULT_RELOAD_POLICY);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [conflict, setConflict] = useState(false);
-  const [unknownOutcome, setUnknownOutcome] = useState(false);
-  const requestSequence = useRef(0);
-  const activePreview = useRef<number | null>(null);
-  const activeSave = useRef<number | null>(null);
-  useEffect(() => () => { activePreview.current = null; activeSave.current = null; }, []);
-
-  const dirty = draft !== session.baseline.value;
-  const previewCurrent = validatedDraft?.value === draft && validatedDraft.revision === session.baseline.revision ? preview : null;
-  const changed = previewCurrent?.changed_paths.length ?? 0;
-
-  const previewMutation = useMutation({
-    mutationFn: async (submitted: SubmittedDraft<string>) => {
-      const { data } = await previewTelemtConfigToml({ headers: { "If-Match": submitted.revision! }, body: { toml_projection: submitted.value }, throwOnError: true });
-      return data;
-    },
-    onSuccess: (next, submitted) => {
-      if (activePreview.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
-      activePreview.current = null;
-      setPreview(next);
-      setValidatedDraft(submitted);
-      setResult(null);
-    },
-    onError: (error: PreviewTelemtConfigTomlError, submitted) => {
-      if (activePreview.current !== submitted.requestId) return;
-      activePreview.current = null;
-      setPreview(null);
-      setValidatedDraft(null);
-      if (apiErrorCode(error) === "revision_conflict") { setConflict(true); void queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() }); }
-      pushToast(apiErrorMessage(error, s), "error");
-    },
-  });
-
-  const patchMutation = useMutation({
-    retry: false,
-    mutationFn: async (submitted: SubmittedDraft<string> & { reloadPolicy: ReloadPolicyState }) => {
-      const { data } = await patchTelemtConfigToml({ headers: { "If-Match": submitted.revision! }, query: toPatchReloadQuery(submitted.reloadPolicy), body: { toml_projection: submitted.value }, throwOnError: true });
-      return data;
-    },
-    onSuccess: async (next, submitted) => {
-      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
-      activeSave.current = null;
-      const confirmed = update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: next.revision }, equalText));
-      recordPendingChanges(next);
-      setResult(confirmed.draft === confirmed.baseline.value && !confirmed.remote ? next : null);
-      setPreview(null);
-      setValidatedDraft(null);
-      setConflict(false);
-      setUnknownOutcome(false);
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigQueryKey() });
-      await onApplied?.(next);
-    },
-    onError: (error: PatchTelemtConfigTomlError, submitted) => {
-      if (activeSave.current !== submitted.requestId) return;
-      activeSave.current = null;
-      const code = apiErrorCode(error) ?? "telemt_config_outcome_unknown";
-      if (code === "telemt_config_outcome_unknown") {
-        setUnknownOutcome(true);
-        setPreview(null);
-        setValidatedDraft(null);
-      }
-      if (code === "revision_conflict") { setConflict(true); void queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() }); }
-      pushToast(errorMessage(s, code), "error");
-    },
-  });
-
-  const reloadMutation = useMutation({
-    ...reloadTelemtMutation(),
-    onSuccess: () => pushToast(s.server.config.toml.reloadAccepted, "ok"),
-    onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
-  });
-  const restartMutation = useMutation({
-    ...restartTelemtServiceMutation(),
-    onSuccess: () => pushToast(s.server.config.toml.restartAccepted, "ok"),
-    onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
-  });
-
-  function updateDraft(next: string) {
-    update((state) => state.draft === next ? state : { ...state, draft: next });
-    setValidatedDraft(null);
-    setPreview(null);
-    setResult(null);
-  }
-
-  function validate() {
-    if (activePreview.current !== null || activeSave.current !== null) return;
-    const submitted = { sessionKey: session.sessionKey, value: draft, revision: session.baseline.revision, requestId: ++requestSequence.current };
-    activePreview.current = submitted.requestId;
-    previewMutation.mutate(submitted);
-  }
-
-  function save() {
-    if (!previewCurrent || changed === 0 || activeSave.current !== null) return;
-    const submitted = { sessionKey: session.sessionKey, value: draft, revision: session.baseline.revision, requestId: ++requestSequence.current, reloadPolicy: { ...reloadPolicy } };
-    activeSave.current = submitted.requestId;
-    patchMutation.mutate(submitted);
-  }
-
-  function discard() {
-    update(discardToRemote); setConflict(false); setUnknownOutcome(false); setPreview(null); setValidatedDraft(null); setResult(null);
-  }
-  async function copyDraft() {
-    try { await navigator.clipboard.writeText(current.current.draft); pushToast(s.server.config.toml.copied, "ok"); }
-    catch { pushToast(s.common.error, "error"); }
-  }
+  const {
+    query, session, draft, dirty, previewCurrent, changed, result,
+    reloadPolicy, setReloadPolicy, conflict, unknownOutcome,
+    previewMutation, patchMutation, reloadMutation, restartMutation,
+    updateDraft, validate, save, discard, copyDraft,
+  } = controller;
+  if (query.isLoading) return <Skeleton className="h-[520px] w-full" />;
+  if (!query.data) return <ErrorState message={query.error ? apiErrorMessage(query.error, s) : s.common.error} onRetry={() => query.refetch()} />;
+  const initial = query.data;
 
   const editor = (
     <TomlConfigEditor

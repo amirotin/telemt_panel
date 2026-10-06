@@ -300,7 +300,11 @@ export function Overview({ payload, s }: { payload: WebPagePayload; s: Dict }) {
             busy={partial.includes("websockets")}
             text={
               websocket
-                ? `${formatNumber(s, websocket.entries)} entries · ${formatNumber(s, websocket.claims)} claims · ${formatNumber(s, websocket.evictions_in_flight)} eviction`
+                ? fill(v.websocketSummaryTemplate, {
+                  entries: formatNumber(s, websocket.entries),
+                  claims: formatNumber(s, websocket.claims),
+                  evictions: formatNumber(s, websocket.evictions_in_flight),
+                })
                 : v.managerBusy
             }
           />

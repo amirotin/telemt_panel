@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Sheet, type SheetProps } from "../ui/Sheet";
 import { Button } from "../ui/Button";
@@ -8,8 +8,10 @@ import { pushToast } from "../ui/Toast";
 import { useStrings } from "../i18n";
 import {
   createUserMutation,
-  patchUserMutation,
 } from "../lib/api/generated/@tanstack/react-query.gen";
+import { patchUser } from "../lib/api/generated/sdk.gen";
+import type { PatchUserError, User, UserPatch } from "../lib/api/generated/types.gen";
+import type { SubmittedDraft } from "../lib/draftSession";
 import {
   buildUserCreateBody,
   buildUserPatch,
@@ -91,7 +93,7 @@ function initialCreateState(): FormState {
   };
 }
 
-function initialEditState(user: UsersTopicUser): FormState {
+function initialEditState(user: User | UsersTopicUser): FormState {
   const quota = bytesToQuotaDisplay(user.data_quota_bytes ?? 0);
   return {
     username: user.username,
@@ -107,6 +109,22 @@ function initialEditState(user: UsersTopicUser): FormState {
     rateLimitUpBps: field(user.rate_limit_up_bps ?? 0, user.rate_limit_up_bps ? "set" : "clear"),
     rateLimitDownBps: field(user.rate_limit_down_bps ?? 0, user.rate_limit_down_bps ? "set" : "clear"),
   };
+}
+
+function rebaseUserForm(submitted: FormState, draft: FormState, confirmed: FormState): FormState {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const next = { ...confirmed };
+  for (const key of ["username", "secret", "enabled", "userAdTag", "maxTcpConns", "maxUniqueIps", "expiration", "rateLimitUpBps", "rateLimitDownBps"] as const) {
+    if (!same(draft[key], submitted[key])) Object.assign(next, { [key]: draft[key] });
+  }
+  // Amount and unit describe one quota. Overlaying only a changed unit onto
+  // the server's canonical amount would change the operator's intended bytes.
+  if (!same([draft.quotaAmount, draft.quotaUnit, draft.quotaEdited], [submitted.quotaAmount, submitted.quotaUnit, submitted.quotaEdited])) {
+    next.quotaAmount = draft.quotaAmount;
+    next.quotaUnit = draft.quotaUnit;
+    next.quotaEdited = draft.quotaEdited;
+  }
+  return next;
 }
 
 // UserFormSheet — create/edit form (06-ui.md §Люди): name, generated secret
@@ -140,16 +158,32 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   // cascading render — this bails out during the same render instead.
   const openKey = open ? `${mode}:${mode === "edit" ? (user?.username ?? "") : "create"}` : null;
   const [lastOpenKey, setLastOpenKey] = useState<string | null>(null);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
+  const [savingSessionKey, setSavingSessionKey] = useState<string | null>(null);
   const [baseline,setBaseline] = useState(state);
-  const [baseUser,setBaseUser] = useState(user);
-  if (openKey !== null && openKey !== lastOpenKey) {
+  const [baseUser,setBaseUser] = useState<User | UsersTopicUser | null | undefined>(user);
+  if (openKey !== lastOpenKey) {
     setLastOpenKey(openKey);
-    const initial = mode === "edit" && user ? initialEditState(user) : initialCreateState();
-    setState(initial);setBaseline(initial);setBaseUser(user);
-    setUsernameTouched(false);
-    setCreatedSecret(null);
-    setActivePreset(mode === "create" ? "unlimited" : null);
+    setSessionGeneration(sessionGeneration + 1);
+    setSavingSessionKey(null);
+    if (openKey !== null) {
+      const initial = mode === "edit" && user ? initialEditState(user) : initialCreateState();
+      setState(initial);setBaseline(initial);setBaseUser(user);
+      setUsernameTouched(false);
+      setCreatedSecret(null);
+      setActivePreset(mode === "create" ? "unlimited" : null);
+    }
   }
+
+  const sessionKey = `${openKey ?? "closed"}:${sessionGeneration}`;
+  const current = useRef({ sessionKey, state });
+  const requestSequence = useRef(0);
+  const activeSave = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (current.current.sessionKey !== sessionKey) activeSave.current = null;
+    current.current = { sessionKey, state };
+  }, [sessionKey, state]);
+  useEffect(() => () => { activeSave.current = null; }, []);
 
   const dirty=JSON.stringify(state)!==JSON.stringify(baseline);
   useEffect(()=>{onDirtyChange?.(dirty);},[dirty,onDirtyChange]);
@@ -167,17 +201,36 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   });
 
   const patchMutation = useMutation({
-    ...patchUserMutation(),
-    onSuccess: (data) => {
-      pushToast(s.people.toast.updated, "ok");
-      onSaved?.(data.username);
-      onClose();
-      refreshUsersAfterMutation(refreshTopic);
+    mutationFn: async ({ submitted, body }: { submitted: SubmittedDraft<FormState>; body: UserPatch }) => {
+      const { data } = await patchUser({ path: { username: submitted.value.username }, body, throwOnError: true });
+      return data;
     },
-    onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
+    retry: false,
+    onSuccess: (data, { submitted }) => {
+      refreshUsersAfterMutation(refreshTopic);
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      activeSave.current = null;
+      const confirmed = initialEditState(data);
+      const next = rebaseUserForm(submitted.value, current.current.state, confirmed);
+      setBaseUser(data);
+      setBaseline(confirmed);
+      setState(next);
+      setSavingSessionKey(null);
+      const stillDirty = JSON.stringify(next) !== JSON.stringify(confirmed);
+      onDirtyChange?.(stillDirty);
+      pushToast(stillDirty ? s.people.toast.updatedWithDraft : s.people.toast.updated, "ok");
+      onSaved?.(data.username);
+      if (!stillDirty) onClose();
+    },
+    onError: (err: PatchUserError, { submitted }) => {
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      activeSave.current = null;
+      setSavingSessionKey(null);
+      pushToast(apiErrorMessage(err, s), "error");
+    },
   });
 
-  const pending = createMutation.isPending || patchMutation.isPending;
+  const pending = createMutation.isPending || (patchMutation.isPending && savingSessionKey === sessionKey);
   const usernameValid = isValidUsername(state.username);
   const canSubmit = !disabled && (mode === "edit" || (usernameValid && isValidSecret(state.secret)));
 
@@ -226,8 +279,16 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
       return;
     }
 
+    const submitted: SubmittedDraft<FormState> = {
+      sessionKey,
+      value: structuredClone(state),
+      revision: null,
+      requestId: ++requestSequence.current,
+    };
+    activeSave.current = submitted.requestId;
+    setSavingSessionKey(sessionKey);
     patchMutation.mutate({
-      path: { username: state.username },
+      submitted,
       body: buildUserPatch({
         enabled: state.enabled !== baseUser?.enabled ? state.enabled : undefined,
         userAdTag: changedLimit(state.userAdTag, baseUser?.user_ad_tag || undefined),
