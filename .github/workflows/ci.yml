@@ -228,7 +228,8 @@ jobs:
 
       - name: Lint installer
         run: |
-          shellcheck -s sh install.sh scripts/install-test.sh scripts/install-e2e.sh scripts/install-entware-test.sh scripts/install-purge-test.sh
+          shellcheck -s sh install.sh scripts/install-test.sh scripts/install-e2e.sh scripts/install-entware-test.sh scripts/install-purge-test.sh scripts/install-migration-test.sh scripts/install-systemd-migration-test.sh scripts/install-legacy-authority-test.sh
+          shellcheck scripts/install-native-upgrade-test.sh
           dash -n install.sh
           bash -n install.sh
 
@@ -239,6 +240,12 @@ jobs:
         run: |
           TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-test.sh
           TP_TEST_BINARY=$PWD/telemt-panel bash scripts/install-test.sh
+          TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-migration-test.sh
+          TP_TEST_BINARY=$PWD/telemt-panel bash scripts/install-migration-test.sh
+          TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-systemd-migration-test.sh
+          TP_TEST_BINARY=$PWD/telemt-panel bash scripts/install-systemd-migration-test.sh
+          sh scripts/install-legacy-authority-test.sh
+          bash scripts/install-legacy-authority-test.sh
 
       # Ubuntu 24.04 gates unprivileged user namespaces behind AppArmor;
       # lifting it on the runner lets the e2e create its overlays.

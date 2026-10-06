@@ -2,6 +2,11 @@ name: Release contract
 
 on:
   workflow_dispatch:
+    inputs:
+      native_only:
+        description: Run only the published RC2 to RC3 native migration regression
+        type: boolean
+        default: false
   push:
     branches: [ main ]
     paths: &release-paths
@@ -10,6 +15,7 @@ on:
       - 'web/**'
       - 'api/**'
       - 'scripts/**'
+      - 'install.sh'
       - 'go.mod'
       - 'go.sum'
       - 'LICENSE'
@@ -28,7 +34,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-rc2-upgrade:
+    # Keep the published RC2 -> RC3 transition covered with real systemd/sudo.
+    # These historical binaries are intentional: a newly built updater cannot
+    # reproduce the privileges and config shipped to existing RC2 users.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch and verify published RC2 and RC3 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for version in rc.2 rc.3; do
+            fixture_dir="$RUNNER_TEMP/tp-native-$version"
+            mkdir "$fixture_dir"
+            gh release download "v1.0.0-$version" --repo "$GITHUB_REPOSITORY" \
+              --pattern telemt-panel-x86_64-linux-gnu.tar.gz \
+              --pattern telemt-panel-x86_64-linux-gnu.tar.gz.sha256 --dir "$fixture_dir"
+            (cd "$fixture_dir" && sha256sum --check telemt-panel-x86_64-linux-gnu.tar.gz.sha256)
+            python3 - "$fixture_dir" <<'PY'
+          import os, sys, tarfile
+          root = sys.argv[1]
+          with tarfile.open(root + '/telemt-panel-x86_64-linux-gnu.tar.gz') as archive:
+              members = archive.getmembers()
+              assert len(members) == 1 and members[0].name == 'telemt-panel' and members[0].isfile()
+              with archive.extractfile(members[0]) as source, open(root + '/telemt-panel', 'xb') as target:
+                  target.write(source.read())
+          os.chmod(root + '/telemt-panel', 0o755)
+          PY
+          done
+      - name: Verify native upgrade, rollback and repair
+        run: |
+          sudo env GITHUB_ACTIONS=true TP_NATIVE_TEST=1 \
+            TP_TEST_BINARY="$RUNNER_TEMP/tp-native-rc.3/telemt-panel" \
+            TP_TEST_RC2_BINARY="$RUNNER_TEMP/tp-native-rc.2/telemt-panel" \
+            bash scripts/install-native-upgrade-test.sh
+
   release-contract:
+    if: ${{ !inputs.native_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

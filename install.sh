@@ -28,6 +28,11 @@ PRIV_PENDING=0
 PRIV_OLD_POLICY=0
 PRIV_OLD_SUDOERS=0
 PRIV_OLD_HELPER=0
+PRIV_CONFIG_PENDING=0
+PRIV_CONFIG_CANDIDATE=""
+PRIV_CONFIG_BACKUP=""
+PRIV_CONFIG_FINGERPRINT=""
+UPDATE_PRIVILEGES=0
 REPAIR_USER=""
 TELEMT_CONFIG="/etc/telemt/telemt.toml"
 LOG_FILE="/var/log/telemt-panel.log"
@@ -133,8 +138,8 @@ t() {
     en:uninstall_privileges_retained) _f='Helper and protected policy are retained for reinstallation.' ;;
     ru:update_preflight_failed) _f='Проверка существующей установки или нового бинарника не пройдена; обновление не применено.' ;;
     en:update_preflight_failed) _f='Existing installation or candidate validation failed; update not applied.' ;;
-    ru:update_preserve) _f='Будет заменён только бинарник. Конфиг, сервис, права и firewall сохраняются.' ;;
-    en:update_preserve) _f='Only the binary will change. Config, service, permissions and firewall are preserved.' ;;
+    ru:update_preserve) _f='Будет обновлён бинарник. Сервис и firewall сохраняются; необходимые изменения путей и прав перечислены выше.' ;;
+    en:update_preserve) _f='The binary will be updated. Service and firewall are retained; required path and privilege changes are listed above.' ;;
     ru:update_legacy) _f='Конфиг 0.6 останется без изменений. При первом запуске совместимые настройки переносятся один раз; проверки версий — без автоустановки, каждые 6 часов. JWT требует нового входа.' ;;
     en:update_legacy) _f='The 0.6 config stays unchanged. First startup imports compatible settings once; version checks only, every 6 hours. JWT requires a new login.' ;;
     ru:migrate_archived_settings) _f='Старые defaults формы пользователей и лимиты списка релизов не применяются: остаются пресеты 1.x и до 10 новых / 3 старых версий. Старые значения сохраняются в архиве состояния; аккаунты и квоты Telemt не меняются.' ;;
@@ -670,18 +675,24 @@ cleanup() {
   if [ -n "$UPDATE_STAGED" ]; then $SUDO rm -f "$UPDATE_STAGED" || true; fi
   if [ -n "$UPDATE_RESTORE" ]; then $SUDO rm -f "$UPDATE_RESTORE" || true; fi
   if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-    rm -rf -- "$TEMP_DIR"
+    if [ "$PRIV_PENDING" = 1 ] || [ "$PRIV_CONFIG_PENDING" = 1 ]; then
+      warn "Recovery files retained in $TEMP_DIR; keep the panel stopped until config and root files are restored."
+    else
+      rm -rf -- "$TEMP_DIR"
+    fi
   fi
 }
 installer_exit() {
   _exit_code=$?
+  _priv_restore_failed=0
+  if [ "$PRIV_CONFIG_PENDING" = 1 ] || [ "$PRIV_PENDING" = 1 ]; then
+    _exit_code=1
+    stop_retained_panel || true
+    rollback_privilege_transaction || _priv_restore_failed=1
+  fi
   if [ "$UPDATE_PENDING" = 1 ]; then
     _exit_code=1
-    if ! restore_update; then warn "$(t update_restore_failed "$UPDATE_BACKUP")"; fi
-  fi
-  if [ "$PRIV_PENDING" = 1 ]; then
-    _exit_code=1
-    if ! restore_privilege_files; then warn "Privilege policy rollback failed; restore the saved root files manually."; fi
+    if ! restore_update "$_priv_restore_failed"; then warn "$(t update_restore_failed "$UPDATE_BACKUP")"; fi
   fi
   cleanup
   trap - EXIT
@@ -2675,7 +2686,9 @@ publish_root_file() {
   case "$ROOT_PUBLISH_DIR_MODE" in ''|*[!0-7]*) return 1 ;; esac
   [ "$((0$ROOT_PUBLISH_DIR_MODE & 022))" = 0 ] || return 1
   ROOT_PUBLISH_TEMP=$($SUDO mktemp "$ROOT_PUBLISH_DIR/.telemt-panel-policy.XXXXXX") || return 1
-  if ! $SUDO install -m "$ROOT_PUBLISH_MODE" -o 0 -g 0 "$ROOT_PUBLISH_SOURCE" "$ROOT_PUBLISH_TEMP"; then
+  if [ "${4:-}" = preserve ]; then
+    $SUDO cp "$PRIV_COPY_MODE" "$ROOT_PUBLISH_SOURCE" "$ROOT_PUBLISH_TEMP" || { $SUDO rm -f "$ROOT_PUBLISH_TEMP"; return 1; }
+  elif ! $SUDO install -m "$ROOT_PUBLISH_MODE" -o 0 -g 0 "$ROOT_PUBLISH_SOURCE" "$ROOT_PUBLISH_TEMP"; then
     $SUDO rm -f "$ROOT_PUBLISH_TEMP"; return 1
   fi
   if ! { $SUDO sync -f "$ROOT_PUBLISH_TEMP" 2>/dev/null || $SUDO sync; }; then
@@ -2690,17 +2703,17 @@ publish_root_file() {
 restore_privilege_files() {
   PRIV_RESTORE_RESULT=0
   if [ "$PRIV_OLD_HELPER" = 1 ]; then
-    publish_root_file "$TEMP_DIR/privileged-helper.previous" "$HELPER_FILE" "$PRIV_HELPER_MODE" || PRIV_RESTORE_RESULT=1
+    publish_root_file "$TEMP_DIR/privileged-helper.previous" "$HELPER_FILE" "$PRIV_HELPER_MODE" preserve || PRIV_RESTORE_RESULT=1
   else
     $SUDO rm -f "$HELPER_FILE" || PRIV_RESTORE_RESULT=1
   fi
   if [ "$PRIV_OLD_POLICY" = 1 ]; then
-    publish_root_file "$TEMP_DIR/privileged-policy.previous" "$POLICY_FILE" "$PRIV_POLICY_MODE" || PRIV_RESTORE_RESULT=1
+    publish_root_file "$TEMP_DIR/privileged-policy.previous" "$POLICY_FILE" "$PRIV_POLICY_MODE" preserve || PRIV_RESTORE_RESULT=1
   else
     $SUDO rm -f "$POLICY_FILE" || PRIV_RESTORE_RESULT=1
   fi
   if [ "$PRIV_OLD_SUDOERS" = 1 ]; then
-    publish_root_file "$TEMP_DIR/privileged-sudoers.previous" "$SUDOERS_FILE" "$PRIV_SUDOERS_MODE" || PRIV_RESTORE_RESULT=1
+    publish_root_file "$TEMP_DIR/privileged-sudoers.previous" "$SUDOERS_FILE" "$PRIV_SUDOERS_MODE" preserve || PRIV_RESTORE_RESULT=1
   else
     $SUDO rm -f "$SUDOERS_FILE" || PRIV_RESTORE_RESULT=1
   fi
@@ -2726,32 +2739,42 @@ install_sudoers() {
     return 0
   fi
   PRIV_OLD_HELPER=0; PRIV_OLD_POLICY=0; PRIV_OLD_SUDOERS=0
+  PRIV_COPY_MODE=-p
+  if cp --help 2>&1 | grep -q -- --attributes-only; then PRIV_COPY_MODE=--preserve=all; fi
   if $SUDO test -e "$HELPER_FILE"; then
     $SUDO test -f "$HELPER_FILE" || return 1
     PRIV_HELPER_MODE=$($SUDO stat -c %a "$HELPER_FILE") || return 1
-    $SUDO cp "$HELPER_FILE" "$TEMP_DIR/privileged-helper.previous" || return 1
+    $SUDO cp "$PRIV_COPY_MODE" "$HELPER_FILE" "$TEMP_DIR/privileged-helper.previous" || return 1
     PRIV_OLD_HELPER=1
   fi
   if $SUDO test -e "$POLICY_FILE"; then
     $SUDO test -f "$POLICY_FILE" || return 1
     PRIV_POLICY_MODE=$($SUDO stat -c %a "$POLICY_FILE") || return 1
-    $SUDO cp "$POLICY_FILE" "$TEMP_DIR/privileged-policy.previous" || return 1
+    $SUDO cp "$PRIV_COPY_MODE" "$POLICY_FILE" "$TEMP_DIR/privileged-policy.previous" || return 1
     PRIV_OLD_POLICY=1
   fi
   if $SUDO test -e "$SUDOERS_FILE"; then
     $SUDO test -f "$SUDOERS_FILE" || return 1
     PRIV_SUDOERS_MODE=$($SUDO stat -c %a "$SUDOERS_FILE") || return 1
-    $SUDO cp "$SUDOERS_FILE" "$TEMP_DIR/privileged-sudoers.previous" || return 1
+    $SUDO cp "$PRIV_COPY_MODE" "$SUDOERS_FILE" "$TEMP_DIR/privileged-sudoers.previous" || return 1
     PRIV_OLD_SUDOERS=1
   fi
   ensure_privilege_directory "$(dirname "$HELPER_FILE")" 0755 || return 1
   ensure_privilege_directory "$(dirname "$POLICY_FILE")" 0700 || return 1
   ensure_privilege_directory "$(dirname "$SUDOERS_FILE")" 0755 || return 1
+  preflight_privilege_destinations || return 1
   PRIV_PENDING=1
   if ! publish_root_file "$STAGED_BIN" "$HELPER_FILE" 0755 || ! publish_root_file "$TEMP_DIR/privileged-policy.new" "$POLICY_FILE" 0600 || ! $SUDO "$HELPER_FILE" privileged --policy "$POLICY_FILE" inspect >"$TEMP_DIR/privileged-policy.inspect"; then
     restore_privilege_files || true
     return 1
   fi
+  for PRIV_BINDING in helper_path staging_root panel telemt; do
+    case "$PRIV_BINDING" in helper_path) PRIV_EXPECT="$HELPER_FILE" ;; staging_root) PRIV_EXPECT="$DATA_DIR/staging" ;; panel) PRIV_EXPECT="$PANEL_BIN" ;; telemt) PRIV_EXPECT="$TELEMT_BIN" ;; esac
+    if [ "$(json_field "$TEMP_DIR/privileged-policy.inspect" "$PRIV_BINDING")" != "$PRIV_EXPECT" ]; then
+      restore_privilege_files || true
+      return 1
+    fi
+  done
   if [ "$RUN_AS" = user ]; then
     if ! publish_root_file "$TEMP_DIR/privileged-sudoers.new" "$SUDOERS_FILE" 0440; then
       restore_privilege_files || true
@@ -2991,6 +3014,315 @@ staged_inspect() {
   (cd "$UPDATE_PROBE_DIR" && timeout 15 "$STAGED_BIN" "$@")
 }
 
+privilege_config_fingerprint() {
+  $SUDO test -f "$CONFIG_FILE" && [ ! -L "$CONFIG_FILE" ] || return 1
+  $SUDO stat -c '%d:%i:%u:%g:%a:%s:%y' "$CONFIG_FILE" || return 1
+  $SUDO sha256sum "$CONFIG_FILE"
+}
+
+# Only ordinary current-schema tables/keys and single-line strings are edited.
+# Track strings, comments and collection depth so text inside arrays is never
+# interpreted as a table or key. Unsupported TOML is refused without publication.
+rewrite_telemt_binary_path() {
+  awk -v replacement="$TELEMT_BIN" -v operation="${1:-rewrite}" -v modefile="$TEMP_DIR/privilege-mode" '
+    function fail() { bad=1; exit 1 }
+    function addpath() { print "telemt_binary_path = \"" replacement "\""; found=1 }
+    {
+      raw=$0; code=""; quote=""; escaped=0; comment=length(raw)+1
+      before=depth
+      for (i=1; i<=length(raw); i++) {
+        c=substr(raw,i,1)
+        if (quote!="") {
+          code=code c
+          if (quote=="\"" && escaped) { escaped=0; continue }
+          if (quote=="\"" && c=="\\") { escaped=1; continue }
+          if (c==quote) quote=""
+          continue
+        }
+        if (c=="#") { comment=i; break }
+        code=code c
+        if (c=="\"" || c==sprintf("%c",39)) {
+          if (substr(raw,i,3)==c c c) fail()
+          quote=c
+        } else if (c=="[" || c=="{") depth++
+        else if (c=="]" || c=="}") { depth--; if (depth<0) fail() }
+      }
+      if (quote!="") fail()
+      trimmed=code; sub(/^[ \t]+/,"",trimmed); sub(/[ \t]+$/,"",trimmed)
+      if (before==0 && substr(trimmed,1,1)=="[") {
+        if (depth!=0 || trimmed !~ /^\[[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*\]$/) fail()
+        if (operation=="rewrite" && table=="updates" && !found) addpath()
+        table=substr(trimmed,2,length(trimmed)-2)
+        if (table=="updates") { if (seen++) fail() }
+      } else if (before==0 && trimmed!="") {
+        if (trimmed !~ /^[a-zA-Z0-9_-]+[ \t]*=/) fail()
+        key=trimmed; sub(/[ \t]*=.*/,"",key)
+        if (operation=="mode" && table=="" && key=="privileges") fail()
+        if (operation=="mode" && table=="privileges" && key=="mode") {
+          value=trimmed; sub(/^[^=]*=[ \t]*/,"",value)
+          q=substr(value,1,1)
+          if ((q!="\"" && q!=sprintf("%c",39)) || substr(value,length(value),1)!=q || depth!=0) fail()
+          mode=substr(value,2,length(value)-2)
+          if (mode!="auto" && mode!="sudo" && mode!="manual" && mode!="direct") fail()
+        }
+        if (operation=="rewrite" && table=="updates" && key=="telemt_binary_path") {
+          if (found++) fail()
+          eq=index(code,"="); value=substr(code,eq+1)
+          sub(/^[ \t]+/,"",value); sub(/[ \t]+$/,"",value)
+          q=substr(value,1,1)
+          if ((q!="\"" && q!=sprintf("%c",39)) || substr(value,length(value),1)!=q || value ~ /\\/ || depth!=0) fail()
+          prefix=substr(raw,1,eq); rest=substr(raw,eq+1)
+          match(rest,/^[ \t]*/); prefix=prefix substr(rest,1,RLENGTH)
+          suffix=substr(raw,comment); spaces=substr(code,eq+1); sub(/^[ \t]*["\047].*["\047]/,"",spaces)
+          print prefix "\"" replacement "\"" spaces suffix
+          next
+        }
+      }
+      print raw
+    }
+    END {
+      if (bad || depth!=0) exit 1
+      if (operation=="mode") print (mode=="" ? "auto" : mode) >modefile
+      else if (!found) { if (table!="updates") print "\n[updates]"; addpath() }
+    }
+  ' "$UPDATE_SOURCE" >"$PRIV_CONFIG_CANDIDATE"
+}
+
+current_privilege_mode() {
+  PRIV_CONFIG_CANDIDATE="$TEMP_DIR/privilege-mode-probe.toml"
+  rewrite_telemt_binary_path mode || return 1
+  cat "$TEMP_DIR/privilege-mode"
+}
+
+prepare_privilege_migration() {
+  PRIV_REPORT="$1"
+  sudoers_path_ok "$TELEMT_BIN" || { warn "Unsafe Telemt binary path: $TELEMT_BIN"; return 1; }
+  [ ! -L "$TELEMT_BIN" ] || { warn "Telemt binary leaf is a symlink; parent-only migration is supported."; return 1; }
+  PRIV_OLD_TELEMT_BIN="$TELEMT_BIN"
+  PRIV_TELEMT_PARENT=$($SUDO readlink -f "$(dirname "$TELEMT_BIN")") || return 1
+  TELEMT_BIN="$PRIV_TELEMT_PARENT/$(basename "$TELEMT_BIN")"
+  [ "$PRIV_TELEMT_PARENT" != / ] || TELEMT_BIN="/$(basename "$TELEMT_BIN")"
+  if [ "$TELEMT_BIN" != "$PRIV_OLD_TELEMT_BIN" ]; then
+    case "$PRIV_OLD_TELEMT_BIN:$TELEMT_BIN" in /bin/*:/usr/bin/*|/sbin/*:/usr/sbin/*) ;; *)
+      warn "Unsupported Telemt parent alias: $PRIV_OLD_TELEMT_BIN -> $TELEMT_BIN. Use a canonical path in config."; return 1 ;;
+    esac
+    [ "$(json_field "$PRIV_REPORT" format)" = current ] || { warn "Automatic path migration requires current-schema TOML; export the legacy config first."; return 1; }
+    PRIV_CONFIG_CANDIDATE="$TEMP_DIR/privilege-config.new"
+    rewrite_telemt_binary_path || { warn "Unsupported TOML shape; config was not changed. Use ordinary tables, bare keys and single-line strings for path migration."; return 1; }
+    chmod 0600 "$PRIV_CONFIG_CANDIDATE"
+    staged_inspect config check --format current --config "$PRIV_CONFIG_CANDIDATE" >"$TEMP_DIR/privilege-config.check" || return 1
+    staged_inspect config inspect --config "$PRIV_CONFIG_CANDIDATE" >"$TEMP_DIR/privilege-config.inspect" || return 1
+    [ "$(json_field "$TEMP_DIR/privilege-config.inspect" telemt_binary_path)" = "$TELEMT_BIN" ] || return 1
+    awk '!/"telemt_binary_path":/' "$PRIV_REPORT" >"$TEMP_DIR/privilege-report.old"
+    awk '!/"telemt_binary_path":/' "$TEMP_DIR/privilege-config.inspect" >"$TEMP_DIR/privilege-report.new"
+    [ "$(sha256_of "$TEMP_DIR/privilege-report.old")" = "$(sha256_of "$TEMP_DIR/privilege-report.new")" ] || return 1
+    kv "Telemt path migration" "$PRIV_OLD_TELEMT_BIN -> $TELEMT_BIN"
+  fi
+  PRIV_CONFIG_FINGERPRINT=$(privilege_config_fingerprint) || return 1
+  [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$(sha256_of "$UPDATE_SOURCE")" ] || return 1
+  [ "$($SUDO readlink -f "$PANEL_BIN")" = "$PANEL_BIN" ] || { warn "Panel binary path must be canonical; it is also bound by the retained service."; return 1; }
+  [ "$($SUDO readlink -f "$DATA_DIR")" = "$DATA_DIR" ] || { warn "data_dir must already be canonical; runtime data is never moved automatically."; return 1; }
+  validate_privilege_placement || return 1
+  preflight_privilege_destinations
+}
+
+# All existing ancestors are trusted before mkdir or helper execution. Root
+# sticky ancestors support temporary directories; the protected parent is strict.
+preflight_privilege_destinations() {
+  for PRIV_DEST in "$HELPER_FILE" "$POLICY_FILE" "$SUDOERS_FILE"; do
+    if $SUDO test -L "$PRIV_DEST" || { $SUDO test -e "$PRIV_DEST" && ! $SUDO test -f "$PRIV_DEST"; }; then
+      warn "Unsafe privilege destination (symlink or nonregular file): $PRIV_DEST"
+      return 1
+    fi
+    PRIV_DEST_DIR=$(dirname "$PRIV_DEST")
+    [ "$(privilege_canonical_path "$PRIV_DEST_DIR")" = "$PRIV_DEST_DIR" ] || { warn "Privilege destination parent is not canonical: $PRIV_DEST_DIR"; return 1; }
+    PRIV_DEST_ANCESTOR="$PRIV_DEST_DIR"
+    while :; do
+      if $SUDO test -e "$PRIV_DEST_ANCESTOR"; then
+        if ! $SUDO test -d "$PRIV_DEST_ANCESTOR" || [ "$($SUDO stat -c %u "$PRIV_DEST_ANCESTOR")" != 0 ]; then
+          warn "Privilege destination ancestor must be a root-owned directory: $PRIV_DEST_ANCESTOR"
+          return 1
+        fi
+        PRIV_DEST_MODE=$($SUDO stat -c %a "$PRIV_DEST_ANCESTOR") || return 1
+        case "$PRIV_DEST_MODE" in ''|*[!0-7]*) return 1 ;; esac
+        if [ "$((0$PRIV_DEST_MODE & 022))" != 0 ]; then
+          if [ "$PRIV_DEST_ANCESTOR" = "$PRIV_DEST_DIR" ] || [ "$((0$PRIV_DEST_MODE & 01000))" = 0 ]; then
+            warn "Privilege destination ancestor must not be group/world writable: $PRIV_DEST_ANCESTOR"
+            return 1
+          fi
+        fi
+        if [ "$PRIV_DEST" = "$POLICY_FILE" ] && [ "$PRIV_DEST_ANCESTOR" = "$PRIV_DEST_DIR" ] && [ "$PRIV_DEST_MODE" != 700 ]; then
+          warn "Policy requires a dedicated existing root-owned 0700 directory: $PRIV_DEST_DIR"
+          return 1
+        fi
+      fi
+      [ "$PRIV_DEST_ANCESTOR" != / ] || break
+      PRIV_DEST_ANCESTOR=$(dirname "$PRIV_DEST_ANCESTOR")
+    done
+  done
+}
+
+publish_privilege_config() {
+  [ "$(privilege_config_fingerprint)" = "$PRIV_CONFIG_FINGERPRINT" ] || { warn "Config changed after inspection; nothing was published."; return 1; }
+  [ -n "$PRIV_CONFIG_CANDIDATE" ] || return 0
+  if [ "$DRY_RUN" = 1 ]; then say "Would atomically publish the validated canonical Telemt path with config metadata preserved."; return 0; fi
+  [ "$($SUDO readlink -f "$(dirname "$CONFIG_FILE")")" = "$(dirname "$CONFIG_FILE")" ] || return 1
+  PRIV_CONFIG_BACKUP=$($SUDO mktemp "$(dirname "$CONFIG_FILE")/.telemt-panel-config-backup.XXXXXX") || return 1
+  PRIV_CONFIG_COPY_MODE=-p
+  if cp --help 2>&1 | grep -q -- --attributes-only; then PRIV_CONFIG_COPY_MODE=--preserve=all; fi
+  $SUDO cp "$PRIV_CONFIG_COPY_MODE" "$CONFIG_FILE" "$PRIV_CONFIG_BACKUP" || return 1
+  [ "$($SUDO sha256sum "$PRIV_CONFIG_BACKUP" | awk '{print $1}')" = "$(sha256_of "$UPDATE_SOURCE")" ] || return 1
+  [ "$(privilege_config_fingerprint)" = "$PRIV_CONFIG_FINGERPRINT" ] || { warn "Config changed while preparing its backup; no config was published."; return 1; }
+  PRIV_CONFIG_PENDING=1
+  publish_config_copy "$PRIV_CONFIG_CANDIDATE" || return 1
+  kv "config backup" "$PRIV_CONFIG_BACKUP"
+}
+
+publish_config_copy() {
+  PRIV_CONFIG_TEMP=$($SUDO mktemp "$(dirname "$CONFIG_FILE")/.telemt-panel-config-new.XXXXXX") || return 1
+  # Positional paths expand in the privileged shell, never in command text.
+  # shellcheck disable=SC2016
+  if ! $SUDO cp "$PRIV_CONFIG_COPY_MODE" "$PRIV_CONFIG_BACKUP" "$PRIV_CONFIG_TEMP" || ! $SUDO sh -c 'cat "$1" >"$2"' sh "$1" "$PRIV_CONFIG_TEMP" || ! { $SUDO sync -f "$PRIV_CONFIG_TEMP" 2>/dev/null || $SUDO sync; } || ! $SUDO mv -f "$PRIV_CONFIG_TEMP" "$CONFIG_FILE"; then
+    $SUDO rm -f "$PRIV_CONFIG_TEMP"; return 1
+  fi
+  $SUDO sync -f "$(dirname "$CONFIG_FILE")" 2>/dev/null || $SUDO sync
+}
+
+restore_privilege_config() {
+  [ "$PRIV_CONFIG_PENDING" = 1 ] || return 0
+  publish_config_copy "$PRIV_CONFIG_BACKUP" || return 1
+  PRIV_CONFIG_PENDING=0
+}
+
+rollback_privilege_transaction() {
+  PRIV_ROLLBACK_FAILED=0
+  if ! restore_privilege_config; then
+    warn "Config rollback failed; restore $PRIV_CONFIG_BACKUP manually."
+    PRIV_ROLLBACK_FAILED=1
+  fi
+  if [ "$PRIV_PENDING" = 1 ] && ! restore_privilege_files; then
+    warn "Privilege rollback failed; root backups are in $TEMP_DIR."
+    PRIV_ROLLBACK_FAILED=1
+  fi
+  return "$PRIV_ROLLBACK_FAILED"
+}
+
+# Query root's existing sudo policy for the retained account. Runtime config is
+# writable by that account; it must never be sufficient to authorize a new
+# executable, staging source or service during an automatic migration.
+legacy_privilege_probe() {
+  $SUDO sudo -n -l -U "$SYSTEM_USER" -- "$@" >/dev/null 2>&1
+}
+
+verify_legacy_privilege_authority() {
+  [ "$RUN_AS" = user ] || return 0
+  has sudo || return 1
+  # Listing a command as root also succeeds for PASSWD grants. Only the simple
+  # root/NOPASSWD entries generated by RC2 are migrated automatically; custom
+  # authentication or execution restrictions require explicit operator repair.
+  PRIV_LEGACY_LIST=$(LC_ALL=C $SUDO sudo -n -ll -U "$SYSTEM_USER" 2>/dev/null) || return 1
+  printf '%s\n' "$PRIV_LEGACY_LIST" | awk '
+    /^Sudoers entry:$/ {
+      if (entries && (!root || !nopass || !commands)) bad=1
+      entries++; root=0; nopass=0; commands=0; next
+    }
+    entries && /^[ \t]*RunAsUsers:/ {
+      if ($0 ~ /^[ \t]*RunAsUsers:[ \t]*root[ \t]*$/) root=1; else bad=1
+      next
+    }
+    entries && /^[ \t]*Options:/ {
+      if ($0 ~ /^[ \t]*Options:[ \t]*!authenticate[ \t]*$/) nopass=1; else bad=1
+      next
+    }
+    entries && /^[ \t]*Commands:[ \t]*$/ { commands=1; next }
+    entries && /^[ \t]*$/ { next }
+    entries && (!commands || /^[ \t]*[A-Za-z][A-Za-z_ -]*:/) { bad=1 }
+    END { exit !(entries && root && nopass && commands && !bad) }
+  ' || return 1
+  PRIV_LEGACY_CP=$(command -v cp) || return 1
+  PRIV_LEGACY_CHMOD=$(command -v chmod) || return 1
+  PRIV_LEGACY_MV=$(command -v mv) || return 1
+  PRIV_LEGACY_SYSTEMCTL=$(command -v systemctl) || return 1
+  for PRIV_LEGACY_PATH in "$PANEL_BIN" "$TELEMT_BIN" "$DATA_DIR/staging"; do
+    sudoers_path_ok "$PRIV_LEGACY_PATH" || return 1
+  done
+  service_name_ok "$SERVICE_NAME" && service_name_ok "$TELEMT_SVC" || return 1
+  for PRIV_LEGACY_TARGET in telemt panel; do
+    if [ "$PRIV_LEGACY_TARGET" = panel ]; then PRIV_LEGACY_BIN="$PANEL_BIN"; else PRIV_LEGACY_BIN="$TELEMT_BIN"; fi
+    PRIV_LEGACY_STAGE="$DATA_DIR/staging/runs/$PRIV_LEGACY_TARGET"
+    legacy_privilege_probe "$PRIV_LEGACY_CP" -f "$PRIV_LEGACY_STAGE/backup" "$PRIV_LEGACY_BIN.bak.tmp" || return 1
+    legacy_privilege_probe "$PRIV_LEGACY_CHMOD" 0755 "$PRIV_LEGACY_BIN.bak.tmp" || return 1
+    legacy_privilege_probe "$PRIV_LEGACY_MV" -f "$PRIV_LEGACY_BIN.bak.tmp" "$PRIV_LEGACY_BIN.bak" || return 1
+    legacy_privilege_probe "$PRIV_LEGACY_CP" -f "$PRIV_LEGACY_STAGE/bin" "$PRIV_LEGACY_BIN.tmp" || return 1
+    legacy_privilege_probe "$PRIV_LEGACY_CP" -f "$PRIV_LEGACY_BIN.bak" "$PRIV_LEGACY_BIN.tmp" || return 1
+    legacy_privilege_probe "$PRIV_LEGACY_CHMOD" 0755 "$PRIV_LEGACY_BIN.tmp" || return 1
+    legacy_privilege_probe "$PRIV_LEGACY_MV" -f "$PRIV_LEGACY_BIN.tmp" "$PRIV_LEGACY_BIN" || return 1
+  done
+  legacy_privilege_probe "$PRIV_LEGACY_SYSTEMCTL" restart "$TELEMT_SVC" || return 1
+  legacy_privilege_probe "$PRIV_LEGACY_SYSTEMCTL" restart "$SERVICE_NAME" || return 1
+  if [ "${TELEMT_SVC%.service}" != "${SERVICE_NAME%.service}" ]; then
+    legacy_privilege_probe "$PRIV_LEGACY_SYSTEMCTL" start "$TELEMT_SVC" || return 1
+    legacy_privilege_probe "$PRIV_LEGACY_SYSTEMCTL" stop "$TELEMT_SVC" || return 1
+  fi
+}
+
+# Read the effective unit identity from root's systemd, including overrides.
+# Never infer it from runtime config ownership or installer defaults.
+prepare_systemd_privilege_upgrade() {
+  [ "$INIT" = systemd ] && [ "$SERVICE_MANAGER" != custom ] || return 0
+  [ "$(json_field "$TEMP_DIR/inspect.json" format)" = current ] || return 0
+  TELEMT_BIN=$(json_field "$TEMP_DIR/inspect.json" telemt_binary_path)
+  DATA_DIR=$(json_field "$TEMP_DIR/inspect.json" data_dir)
+  HELPER_FILE=$(json_field "$TEMP_DIR/inspect.json" privileges_helper_path)
+  POLICY_FILE=$(json_field "$TEMP_DIR/inspect.json" privileges_policy_path)
+  PRIV_EXISTING_PAIR=0
+  if $SUDO test -e "$HELPER_FILE" || $SUDO test -L "$HELPER_FILE" || $SUDO test -e "$POLICY_FILE" || $SUDO test -L "$POLICY_FILE"; then
+    if inspect_removal_privileges; then
+      say "Matching protected policy v2 and stable helper retained."
+      return 0
+    fi
+    PRIV_EXISTING_PAIR=1
+  fi
+  PRIV_RUNTIME_MODE=$(current_privilege_mode) || { warn "Cannot safely identify privileges.mode in this TOML; no grants were changed."; return 1; }
+  case "$PRIV_RUNTIME_MODE" in manual|direct) say "Explicit privileges.mode=$PRIV_RUNTIME_MODE retained; protected sudo migration is skipped."; return 0 ;; esac
+  if [ "$PRIV_EXISTING_PAIR" = 1 ]; then
+    warn "Existing helper/policy cannot be bound to this installation. Use explicit repair-privileges after reviewing these root paths; automatic upgrade did not change them."
+    return 1
+  fi
+  PRIV_SERVICE_FRAGMENT=$($SUDO systemctl show --property=FragmentPath --value "$SERVICE_NAME") || return 1
+  if [ "$PRIV_SERVICE_FRAGMENT" != "$SERVICE_FILE" ] || [ -L "$SERVICE_FILE" ]; then
+    warn "Cannot bind privilege migration to the retained systemd unit."
+    return 1
+  fi
+  [ "$($SUDO stat -c %u "$SERVICE_FILE")" = 0 ] || return 1
+  PRIV_SERVICE_MODE=$($SUDO stat -c %a "$SERVICE_FILE") || return 1
+  case "$PRIV_SERVICE_MODE" in ''|*[!0-7]*) return 1 ;; esac
+  [ "$((0$PRIV_SERVICE_MODE & 022))" = 0 ] || return 1
+  PRIV_DYNAMIC_USER=$($SUDO systemctl show --property=DynamicUser --value "$SERVICE_NAME") || return 1
+  [ "$PRIV_DYNAMIC_USER" = no ] || { warn "DynamicUser services require an explicit privilege design; no sudo grants were created."; return 1; }
+  PRIV_SERVICE_USER=$($SUDO systemctl show --property=User --value "$SERVICE_NAME") || return 1
+  case "$PRIV_SERVICE_USER" in ''|root|0) SYSTEM_USER=root; RUN_AS=root ;;
+    *)
+      case "$PRIV_SERVICE_USER" in -*|*[!a-zA-Z0-9_.-]*) return 1 ;; esac
+      has getent || { warn "Resolving the retained systemd account requires getent."; return 1; }
+      PRIV_SERVICE_PASSWD=$(getent passwd "$PRIV_SERVICE_USER") || return 1
+      SYSTEM_USER=$(printf '%s\n' "$PRIV_SERVICE_PASSWD" | awk -F: 'NR==1 {print $1}')
+      PRIV_SERVICE_UID=$(printf '%s\n' "$PRIV_SERVICE_PASSWD" | awk -F: 'NR==1 {print $3}')
+      case "$SYSTEM_USER" in ''|-*|*[!a-zA-Z0-9_.-]*) return 1 ;; esac
+      case "$PRIV_SERVICE_UID" in ''|*[!0-9]*) return 1 ;; 0) RUN_AS=root ;; *) RUN_AS=user ;; esac ;;
+  esac
+  [ -n "$DATA_DIR" ] || { warn "Privilege migration requires persistent data_dir."; return 1; }
+  verify_legacy_privilege_authority || {
+    warn "Existing sudo policy does not authorize these binaries, staging paths and services. Review the configured targets and use explicit repair-privileges for new grants; automatic migration was not applied."
+    return 1
+  }
+  prepare_privilege_migration "$TEMP_DIR/inspect.json" || return 1
+  UPDATE_PRIVILEGES=1
+  kv "service user" "$SYSTEM_USER"
+  kv "root policy" "$POLICY_FILE"
+  kv "stable helper" "$HELPER_FILE"
+}
+
 do_update_existing() {
   step 3 step_update
   if ! has timeout || ! has sha256sum || ! has readlink; then die "$(t update_preflight_failed)"; fi
@@ -3028,6 +3360,7 @@ do_update_existing() {
   if [ ! -f "$PANEL_BIN" ] || [ -L "$PANEL_BIN" ]; then die "$(t update_preflight_failed)"; fi
   validate_retained_service
   [ "$(readlink -f "$PANEL_BIN")" = "$PANEL_BIN" ] || die "$(t update_preflight_failed)"
+  prepare_systemd_privilege_upgrade || die "Privilege upgrade preflight failed; installation was not changed."
   if [ "$INSTALLED_TAG" != local ]; then
     UPDATE_CANDIDATE_VERSION=$(printf '%s\n' "$UPDATE_VERSION" | awk '{print $2}')
     [ "${UPDATE_CANDIDATE_VERSION#v}" = "${INSTALLED_TAG#v}" ] || die "$(t update_preflight_failed)"
@@ -3060,12 +3393,19 @@ do_update_existing() {
   [ "$($SUDO sha256sum "$UPDATE_BACKUP/binary" | awk '{print $1}')" = "$UPDATE_BINARY_HASH" ] || die "$(t update_preflight_failed)"
   say "$(t update_backup "$UPDATE_BACKUP")"
   UPDATE_PENDING=1
-  if [ "$NO_START" != 1 ]; then
+  if [ "$NO_START" != 1 ] || [ "$UPDATE_PRIVILEGES" = 1 ]; then
     stop_retained_panel || die "$(t update_apply_failed)"
   fi
   install_binary || die "$(t update_apply_failed)"
+  if [ "$UPDATE_PRIVILEGES" = 1 ]; then
+    publish_privilege_config || die "$(t update_apply_failed)"
+    install_sudoers pending || die "$(t update_apply_failed)"
+    if [ -n "$PRIV_CONFIG_CANDIDATE" ]; then UPDATE_SOURCE="$PRIV_CONFIG_CANDIDATE"; fi
+  fi
   if [ "$NO_START" = 1 ]; then
     UPDATE_PENDING=0
+    PRIV_PENDING=0
+    PRIV_CONFIG_PENDING=0
     warn "$(t a_not_started "$(cmd_restart)")"
     return 0
   fi
@@ -3076,12 +3416,15 @@ do_update_existing() {
     run_try systemctl is-active --quiet "$SERVICE_NAME" || die "$(t update_apply_failed)"
   fi
   UPDATE_PENDING=0
+  PRIV_PENDING=0
+  PRIV_CONFIG_PENDING=0
   ok "$(t update_verified)"
 }
 
 restore_update() {
   warn "$(t update_restoring)"
   UPDATE_PENDING=0
+  UPDATE_SOURCE="$TEMP_DIR/existing.toml"
   if [ -n "$UPDATE_STAGED" ]; then $SUDO rm -f "$UPDATE_STAGED" || true; UPDATE_STAGED=""; fi
   # A failed copy/rename may leave the old binary intact (including on ENOSPC).
   # Restart it without demanding enough free space for another complete copy.
@@ -3092,6 +3435,7 @@ restore_update() {
     $SUDO mv -f "$UPDATE_RESTORE" "$PANEL_BIN" || return 1
     UPDATE_RESTORE=""
   fi
+  if [ "${1:-0}" = 1 ]; then return 1; fi
   if [ "$NO_START" = 1 ]; then return 0; fi
   if [ "$SERVICE_MANAGER" != custom ] && [ "$INIT" = systemd ]; then
     $SUDO systemctl reset-failed "$SERVICE_NAME" || return 1
@@ -3227,7 +3571,7 @@ prepare_removal() {
   REMOVE_PRIVILEGES=0
   if [ "$CMD" = purge ]; then prepare_privilege_removal; fi
   if [ "$CMD" = repair-privileges ]; then
-    say "Protected update policy and sudoers repair (binary/config/service are preserved):"
+    say "Protected update policy and sudoers repair (binary/service are preserved):"
   else
     say "$(t remove_targets)"
   fi
@@ -3276,15 +3620,14 @@ do_repair_privileges() {
   case "$REPAIR_USER" in ''|-*|*[!a-zA-Z0-9_.-]*) die "repair-privileges requires --user SERVICE_USER" ;; esac
   SYSTEM_USER="$REPAIR_USER"
   RUN_AS=user
+  case "$SYSTEM_USER" in root|0) RUN_AS=root ;; esac
   prepare_removal
   POLICY_FILE=$(json_field "$TEMP_DIR/removal.json" privileges_policy_path)
   HELPER_FILE=$(json_field "$TEMP_DIR/removal.json" privileges_helper_path)
   sudoers_path_ok "$HELPER_FILE" || die "$(t update_preflight_failed)"
   sudoers_path_ok "$POLICY_FILE" || die "$(t update_preflight_failed)"
   [ -n "$DATA_DIR" ] || die "Privilege repair requires persistent data_dir."
-  [ "$($SUDO readlink -f "$PANEL_BIN")" = "$PANEL_BIN" ] || die "Use canonical binary paths in config before repair."
-  [ "$($SUDO readlink -f "$(dirname "$TELEMT_BIN")")" = "$(dirname "$TELEMT_BIN")" ] || die "Use canonical binary paths in config before repair."
-  [ "$($SUDO readlink -f "$DATA_DIR")" = "$DATA_DIR" ] || die "Use canonical data_dir in config before repair."
+  prepare_privilege_migration "$TEMP_DIR/removal.json" || die "Privilege migration preflight failed; config and root policy were not changed."
   if [ "$SERVICE_MANAGER" = custom ] && [ -z "$PANEL_SERVICE_SCRIPT" ]; then
     die "Custom service repair requires a managed stop/restart script; repair root policy and sudoers manually."
   fi
@@ -3298,16 +3641,19 @@ do_repair_privileges() {
   [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t update_preflight_failed)"
   UPDATE_SOURCE="$TEMP_DIR/removal.toml"
   stop_retained_panel || die "Could not stop the panel; policy was not changed."
-  if ! install_sudoers pending; then
+  if ! publish_privilege_config || ! install_sudoers pending; then
+    rollback_privilege_transaction || die "Privilege rollback failed; panel remains stopped and recovery files are retained."
     if [ "$NO_START" != 1 ]; then restart_retained_panel || true; fi
     die "Privilege repair failed; previous helper, policy and sudoers were restored when possible."
   fi
   if [ "$NO_START" != 1 ] && ! restart_retained_panel; then
-    restore_privilege_files || true
+    stop_retained_panel || true
+    rollback_privilege_transaction || die "Privilege rollback failed; panel remains stopped and recovery files are retained."
     restart_retained_panel || true
     die "Restart failed; privilege policy migration was rolled back."
   fi
   PRIV_PENDING=0
+  PRIV_CONFIG_PENDING=0
   ok "Stable helper, protected policy and exact helper sudoers are installed."
 }
 
