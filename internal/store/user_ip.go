@@ -76,6 +76,7 @@ type UserIPStore interface {
 	UserIPCollectionStateContext(context.Context) (UserIPCollection, error)
 	ResetUserIPHistory(username string) error
 	UserIPRetention() time.Duration
+	UserIPLimit() int
 	ReadUserIPSnapshot(context.Context, int64, int64) (UserIPReadSnapshot, error)
 	UserIPEpoch() uint64
 }
@@ -202,6 +203,13 @@ type userIPKey struct{ username, ip string }
 
 func (m *Memory) UserIPRetention() time.Duration { return 24 * time.Hour }
 
+// UserIPLimit returns the active per-user cap, or zero for unlimited.
+func (m *Memory) UserIPLimit() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return EffectiveUserIPLimit(m.policies[StorageUserIPHistory])
+}
+
 func (m *Memory) expireUserIPsLocked(now int64) {
 	cutoff := now - int64(m.UserIPRetention()/time.Second)
 	for key, r := range m.userIPs {
@@ -272,9 +280,10 @@ func (m *Memory) pruneUserIPsLocked(now int64) {
 		return rows[i].IP > rows[j].IP
 	})
 	counts := make(map[string]int)
+	limit := EffectiveUserIPLimit(m.policies[StorageUserIPHistory])
 	kept := 0
 	for _, r := range rows {
-		if counts[r.Username] >= UserIPPerUserLimit || kept >= UserIPMemoryLimit {
+		if (limit > 0 && counts[r.Username] >= limit) || kept >= UserIPMemoryLimit {
 			delete(m.userIPs, userIPKey{r.Username, r.IP})
 			m.userIPCollection.Limited = true
 		} else {
@@ -429,3 +438,6 @@ func (s *Composite) ResetUserIPHistory(username string) error {
 	return s.history.ResetUserIPHistory(username)
 }
 func (s *Composite) UserIPRetention() time.Duration { return s.history.UserIPRetention() }
+
+// UserIPLimit returns the history backend's active per-user cap.
+func (s *Composite) UserIPLimit() int { return s.history.UserIPLimit() }

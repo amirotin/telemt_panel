@@ -151,6 +151,7 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 	// Bound both current/retry buffers and ephemeral active overlays.
 	buffered := len(c.pending) + len(retryKeys)
 	liveCount := 0
+	perUserLimit := h.st.UserIPLimit()
 	for _, user := range users {
 		if user.Username == "" || len(user.Username) > 256 {
 			c.gap = true
@@ -190,15 +191,7 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 					}
 					continue
 				}
-				if _, exists := union[ip]; !exists && len(union) >= store.UserIPPerUserLimit {
-					c.limited = true
-					if index == 0 {
-						live.valid = false
-						c.livePartial, c.liveTruncated = true, true
-					}
-					continue
-				}
-				union[ip] |= 1 << index
+				// Retained history limits must not reduce the current active overlay.
 				if index == 0 {
 					if liveCount >= store.UserIPMemoryLimit && !live.active[ip] {
 						c.limited = true
@@ -209,6 +202,11 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 						liveCount++
 					}
 				}
+				if _, exists := union[ip]; !exists && ((perUserLimit > 0 && len(union) >= perUserLimit) || len(union) >= store.UserIPBatchLimit) {
+					c.limited = true
+					continue
+				}
+				union[ip] |= 1 << index
 			}
 		}
 		if !live.valid {

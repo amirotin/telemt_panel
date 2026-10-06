@@ -201,6 +201,7 @@ export const en: Dict = {
       total: "addresses in period", active: "active now", new: "first seen in period",
       collecting: "Observation is running", unavailable: "No fresh Telemt data — showing saved history",
       retention: "Retention: {days} days", memory: "In memory until panel restart (up to 24 hours)",
+      limit: "Up to {count} addresses per user", unlimited: "Unlimited addresses per user",
       window: "Telemt recent-address window: {seconds}s", pending: "Latest observations are still being saved",
       limited: "History is incomplete: a collection or storage limit was reached", gap: "Collection had gaps",
       loading: "Loading history…", search: "Find an IP address", period: "Period", family: "Addresses",
@@ -3533,8 +3534,8 @@ export const en: Dict = {
         preview: "Current appearance", privacy: "This changes appearance, not technical Telemt names in diagnostics. It does not conceal the application from technical inspection.",
       },
       storageEyebrow: "Observability memory",
-      storageReduceTitle: "Shorten retention?",
-      storageReduceNote: "After saving, data older than the selected retention will be removed. Increasing retention cannot recover it. Changes (days):",
+      storageReduceTitle: "Reduce retained history?",
+      storageReduceNote: "Records exceeding the new retention period or address limit will be removed. Reducing the address limit keeps the most recently observed addresses. Increasing these settings cannot restore deleted data. Changes:",
       storageTitle: "History and storage",
       storageNote:
         "Panel state and settings are stored separately from history. Choose what to collect and for how long; live graphs work without disk recording.",
@@ -3576,7 +3577,7 @@ export const en: Dict = {
         },
         user_ip_history: {
           title: "IP address history",
-          note: "User addresses with first and last observation. No packet logging or per-IP traffic. Memory retains up to 24 hours; SQLite uses the selected retention, up to 256 addresses per user.",
+          note: "User addresses with first and last observation. No packet logging or per-IP traffic. Memory retains up to 24 hours; SQLite uses the selected retention.",
         },
         user_traffic: {
           title: "Per-user traffic",
@@ -3591,7 +3592,11 @@ export const en: Dict = {
       storageDays: "{count} days",
       storageTechnicalRequired:
         "Required for charts and comparisons between current and previous state.",
-      storageIPRequired: "Address collection is always enabled. You control retention and history deletion.",
+      storageIPRequired: "Address collection is always enabled. You control retention, address limits, and history deletion.",
+      storageIPLimit: "Addresses per user",
+      storageIPUnlimited: "Unlimited per user",
+      storageIPLimitInvalid: "Enter a whole number from 1 to 100,000 or enable unlimited mode.",
+      storageIPLimitNote: "When the limit is exceeded, the most recently observed addresses are retained. The shared limit for all users is 20,000 records in memory or 100,000 in SQLite. This limit and the retention period also apply in unlimited per-user mode.",
       storageKept: "New data is not recorded; existing history is retained.",
       storageFooter:
         "Disabling a category stops new writes without deleting existing data. Reducing retention removes expired records during the next cleanup.",

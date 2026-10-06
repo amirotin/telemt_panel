@@ -151,6 +151,8 @@ func (m *Memory) ImportData(data PortableData) error {
 	if len(m.sessions)+len(m.subpageNonces)+len(m.settings)+len(m.journal)+len(m.audit)+len(m.metrics)+len(m.events)+len(m.userTraffic)+len(m.userTrafficBuckets)+len(m.webauthnCredentials)+len(m.webauthnChallenges)+len(m.webauthnUserHandle) != 0 || m.hasTrafficCollector {
 		return ErrStoreNotEmpty
 	}
+	previousPolicies := m.policies
+	data.Policies = importedStoragePolicies(data, previousPolicies)
 	m.sessions = data.Sessions
 	m.subpageNonces = data.SubpageNonces
 	m.settings = data.Settings
@@ -198,7 +200,7 @@ func (m *Memory) ImportData(data PortableData) error {
 			m.userTrafficCollector = UserTrafficCollectorState{}
 			m.hasTrafficCollector = false
 			m.nextEventID = 0
-			m.policies = defaultPolicyMap()
+			m.policies = previousPolicies
 			m.webauthnUserHandle = nil
 			m.webauthnCredentials = make(map[string]WebAuthnCredential)
 			m.webauthnChallenges = make(map[string]WebAuthnChallenge)

@@ -930,12 +930,14 @@ func (m *Memory) ReplaceStoragePoliciesContext(parent context.Context, policies 
 		if !atomicfile.Published(err) {
 			m.policies = previous
 			m.audit = previousAudit
-		} else if previous[StorageUserIPHistory] != m.policies[StorageUserIPHistory] {
+		} else if !storagePoliciesEqual(previous[StorageUserIPHistory], m.policies[StorageUserIPHistory]) {
+			m.pruneUserIPsLocked(time.Now().Unix())
 			m.userIPEpoch.Add(1)
 		}
 		return err
 	}
-	if previous[StorageUserIPHistory] != m.policies[StorageUserIPHistory] {
+	if !storagePoliciesEqual(previous[StorageUserIPHistory], m.policies[StorageUserIPHistory]) {
+		m.pruneUserIPsLocked(time.Now().Unix())
 		m.userIPEpoch.Add(1)
 	}
 	return nil
@@ -962,10 +964,12 @@ func (m *Memory) ApplyStoragePoliciesContext(parent context.Context, policies []
 	}
 	defer m.mu.Unlock()
 	next := policyMap(policies)
-	if m.policies[StorageUserIPHistory] != next[StorageUserIPHistory] {
+	ipPolicyChanged := !storagePoliciesEqual(m.policies[StorageUserIPHistory], next[StorageUserIPHistory])
+	m.policies = next
+	if ipPolicyChanged {
+		m.pruneUserIPsLocked(time.Now().Unix())
 		m.userIPEpoch.Add(1)
 	}
-	m.policies = next
 	m.pruneUserTrafficBucketsLocked(time.Now().Unix())
 	return nil
 }

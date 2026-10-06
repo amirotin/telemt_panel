@@ -20,9 +20,15 @@ func (s *SQLite) ExportData() (PortableData, error) {
 	if err := s.flushMetrics(); err != nil {
 		return PortableData{}, err
 	}
+	s.userIPMu.RLock()
+	defer s.userIPMu.RUnlock()
+	policies, err := s.ListStoragePolicies()
+	if err != nil {
+		return PortableData{}, err
+	}
 	cutoff := time.Now().Unix() - int64(s.UserIPRetention()/time.Second)
-	data := PortableData{FormatVersion: portableFormatVersion, Metrics: make(map[string][]MetricPoint), UserIPs: []UserIPRecord{}}
-	err := sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
+	data := PortableData{FormatVersion: portableFormatVersion, Policies: policies, Metrics: make(map[string][]MetricPoint), UserIPs: []UserIPRecord{}}
+	err = sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
 		if err := walkPortableMetrics(s, tx, func(name string, point MetricPoint) error {
 			data.Metrics[name] = append(data.Metrics[name], point)
 			return nil
@@ -82,11 +88,20 @@ func (s *SQLite) exportJSON(out io.Writer, state PortableData) error {
 	if err := s.flushMetrics(); err != nil {
 		return err
 	}
+	s.userIPMu.RLock()
+	defer s.userIPMu.RUnlock()
+	if len(state.Policies) == 0 {
+		var err error
+		state.Policies, err = s.ListStoragePolicies()
+		if err != nil {
+			return err
+		}
+	}
 	cutoff := time.Now().Unix() - int64(s.UserIPRetention()/time.Second)
 	w := newPortableJSONWriter(out)
 	w.header(state)
 	err := sqlstore.WithTx(context.Background(), s.db, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
-		if err := streamPortableSQLHistory(s, tx, cutoff, w); err != nil {
+		if err := streamPortableSQLHistory(s, tx, cutoff, portableUserIPLimit(state.Policies), w); err != nil {
 			return err
 		}
 		return w.finish()
@@ -194,6 +209,11 @@ func (s *SQLite) ImportData(data PortableData) error {
 	if err != nil {
 		return fmt.Errorf("import sqlite history: %w", err)
 	}
+	s.policyMu.Lock()
+	if policies := importedStoragePolicies(data, s.policies); len(policies) > 0 {
+		s.policies = policyMap(policies)
+	}
+	s.policyMu.Unlock()
 	s.userIPEpoch.Add(1)
 	return nil
 }
@@ -369,7 +389,7 @@ func walkPortableEvents(s *SQLite, tx *sql.Tx, emit func(HistoryEvent) error) (e
 	return rows.Err()
 }
 
-func streamPortableSQLHistory(s *SQLite, tx *sql.Tx, cutoff int64, w *portableJSONWriter) error {
+func streamPortableSQLHistory(s *SQLite, tx *sql.Tx, cutoff int64, ipLimit int, w *portableJSONWriter) error {
 	var orphan bool
 	if err := tx.QueryRow(`SELECT EXISTS(
 		SELECT 1 FROM user_traffic_buckets AS buckets
@@ -512,7 +532,7 @@ func streamPortableSQLHistory(s *SQLite, tx *sql.Tx, cutoff int64, w *portableJS
 			previousIPUser, previousIP, perUser = item.Username, "", 0
 		}
 		perUser++
-		if totalIPs > UserIPSQLiteLimit || perUser > UserIPPerUserLimit || item.IP == previousIP {
+		if totalIPs > UserIPSQLiteLimit || (ipLimit > 0 && perUser > ipLimit) || item.IP == previousIP {
 			return errors.New("duplicate or excessive imported user IP records")
 		}
 		previousIP = item.IP

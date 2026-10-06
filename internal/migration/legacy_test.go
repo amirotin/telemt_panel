@@ -3,6 +3,7 @@ package migration
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -173,6 +174,42 @@ func TestLegacyStateImportPreservesExistingStoragePolicies(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if !bytes.Equal(before, after) {
 		t.Fatal("destination changed on rejection")
+	}
+}
+
+func TestLegacyStateImportPreservesCustomIPHistoryLimit(t *testing.T) {
+	for _, limit := range []int{0, 512} {
+		t.Run(fmt.Sprint(limit), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "state.json")
+			state, err := store.NewState(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer state.Close()
+			policies := store.DefaultStoragePolicies()
+			for i := range policies {
+				if policies[i].Category == store.StorageUserIPHistory {
+					policies[i].MaxIPsPerUser = &limit
+				}
+			}
+			if err := state.ReplaceStoragePolicies(policies); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ImportLegacyState(state, legacySource()); err == nil {
+				t.Fatal("custom IP history limit overwritten")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) || state.UserIPLimit() != limit {
+				t.Fatal("rejected import changed the configured limit")
+			}
+		})
 	}
 }
 

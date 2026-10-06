@@ -1263,7 +1263,7 @@ paths:
     put:
       tags: [misc]
       operationId: putStorageSettings
-      description: Replaces the complete optional-history policy set. Reducing any retention requires confirm_retention_reduction. Disabling a category stops future writes but does not delete retained data or disable live RAM graphs. Existing mixed policies remain unchanged until explicitly saved.
+      description: Replaces the complete optional-history policy set. Reducing retention or a per-user IP history cap (including unlimited to finite) requires confirm_retention_reduction. Omitted/null max_ips_per_user preserves the existing value. Disabling a category stops future writes but does not delete retained data or disable live RAM graphs. Existing mixed policies remain unchanged until explicitly saved.
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettingsUpdate" } } }
@@ -3350,7 +3350,7 @@ components:
 
     UserIPHistory:
       type: object
-      required: [items, total, matched, new, next_cursor, range, retention_days, durable, collection, source, active_now_count, geoip]
+      required: [items, total, matched, new, next_cursor, range, retention_days, max_ips_per_user, durable, collection, source, active_now_count, geoip]
       properties:
         active_now_count: { type: [integer, "null"], minimum: 0, description: All distinct active addresses for this user, independent of history pagination. Null if the active source is unavailable or stale. }
         items: { type: array, items: { $ref: "#/components/schemas/UserIPHistoryItem" } }
@@ -3360,6 +3360,11 @@ components:
         next_cursor: { type: string, description: Empty when there is no next page. }
         range: { type: string, enum: [24h, 7d, 30d, all] }
         retention_days: { type: integer, minimum: 1 }
+        max_ips_per_user:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          description: Effective per-user observed IP history cap. Zero disables this per-user cap; overall memory/SQLite history and collection bounds still apply. This does not limit Telemt connections.
         durable: { type: boolean }
         collection: { $ref: "#/components/schemas/UserIPCollection" }
         source: { $ref: "#/components/schemas/UserIPSourceStatus" }
@@ -3376,6 +3381,11 @@ components:
         category: { $ref: "#/components/schemas/StorageCategory" }
         enabled: { type: boolean }
         retention_days: { type: integer, minimum: 1, maximum: 3650 }
+        max_ips_per_user:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100000
+          description: Only for user_ip_history. Zero disables the per-user cap; positive values retain at most this many newest addresses. Omitted/null in a settings update preserves the existing value. Legacy policies default to 256. Overall memory/SQLite history and collection bounds remain in force.
 
     StorageCategoryStats:
       type: object
@@ -3422,7 +3432,10 @@ components:
       type: object
       required: [policies]
       properties:
-        confirm_retention_reduction: { type: boolean, default: false, description: Explicitly acknowledges deletion of data outside a shorter retention. }
+        confirm_retention_reduction:
+          type: boolean
+          default: false
+          description: Explicitly acknowledges deletion due to shorter retention or a lower per-user IP history cap, including unlimited to finite.
         policies:
           type: array
           items: { $ref: "#/components/schemas/StoragePolicy" }

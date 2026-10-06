@@ -7,6 +7,9 @@ import {
   getTrafficSummaryQueryKey,
   getUserIpHistoryQueryKey,
   getUserTrafficHistoryQueryKey,
+  getUserQueryKey,
+  listUsersQueryKey,
+  getGeographyQueryKey,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { StorageSettings as StorageSettingsData } from "../../lib/api/generated/types.gen";
 import { StorageSettings } from "./StorageSettings";
@@ -31,6 +34,152 @@ vi.mock("../../lib/api/generated/@tanstack/react-query.gen", async (importOrigin
     putStorageSettingsMutation: () => ({ mutationFn: saveRequest }),
     resetAllUserTrafficMutation: () => ({ mutationFn: resetAllTrafficRequest }),
   };
+});
+
+describe("StorageSettings per-user IP cap", () => {
+  const data: StorageSettingsData = {
+    policies: [
+      { category: "user_ip_history", enabled: true, retention_days: 30 },
+      { category: "technical", enabled: true, retention_days: 7 },
+    ],
+    state_durable: true,
+    stats: { driver: "sqlite", durable: true, database_bytes: 0, categories: [] },
+  };
+  function withLimit(limit: number | null): StorageSettingsData {
+    return { ...data, policies: data.policies.map((p) => p.category === "user_ip_history" ? { ...p, max_ips_per_user: limit } : p) };
+  }
+  function limitField(view: HTMLElement) {
+    const field = view.querySelector<HTMLInputElement>('input[aria-label="Адресов на пользователя"]');
+    expect(field).not.toBeNull();
+    return field!;
+  }
+  function saveButton(view: HTMLElement) {
+    return [...view.querySelectorAll("button")].find((b) => b.textContent === "Сохранить")!;
+  }
+  function unlimitedToggle(view: HTMLElement) {
+    const toggle = view.querySelector<HTMLButtonElement>('[aria-label="Без лимита на пользователя"]');
+    expect(toggle).not.toBeNull();
+    return toggle!;
+  }
+  async function enterLimit(view: HTMLElement, value: string) {
+    const field = limitField(view);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  it.each([undefined, null, 512])("shows the effective limit for %s without creating an edit", async (limit) => {
+    const view = await renderStorage(limit === undefined ? data : withLimit(limit));
+    expect(limitField(view).value).toBe(String(limit ?? 256));
+    expect(unlimitedToggle(view).getAttribute("aria-checked")).toBe("false");
+    expect(saveButton(view).disabled).toBe(true);
+    expect(view.textContent).toContain("20 000");
+    expect(view.textContent).toContain("100 000");
+  });
+
+  it("saves a numeric cap only on the IP policy and refreshes dependent views", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const keys = [
+      getUserIpHistoryQueryKey({ path: { username: "alice" }, query: { range: "7d" } }),
+      getUserQueryKey({ path: { username: "alice" } }),
+      listUsersQueryKey(),
+    ];
+    keys.forEach((key) => client.setQueryData(key, { cached: true }));
+    const geoKey = getGeographyQueryKey({ query: { range: "30d", family: "all" } });
+    client.setQueryData(geoKey, { cached: true });
+    const view = await renderStorage(data, client, true);
+    await enterLimit(view, "512");
+    await act(async () => { saveButton(view).click(); await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(saveRequest).toHaveBeenCalledOnce();
+    expect(saveRequest.mock.calls[0][0].body).toEqual({ policies: withLimit(512).policies });
+    keys.forEach((key) => expect(client.getQueryState(key)?.isInvalidated).toBe(true));
+    expect(client.getQueryData(geoKey)).toBeUndefined();
+    expect(getStorageRequest).toHaveBeenCalled();
+  });
+
+  it("uses an explicit unlimited switch and restores the typed finite limit", async () => {
+    const view = await renderStorage(data);
+    await enterLimit(view, "768");
+    await act(async () => unlimitedToggle(view).click());
+    expect(unlimitedToggle(view).getAttribute("aria-checked")).toBe("true");
+    expect(limitField(view).disabled).toBe(true);
+    await act(async () => unlimitedToggle(view).click());
+    expect(limitField(view).value).toBe("768");
+    await act(async () => unlimitedToggle(view).click());
+    await act(async () => saveButton(view).click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(saveRequest.mock.calls[0][0].body).toEqual({ policies: withLimit(0).policies });
+  });
+
+  it.each(["", "0", "-1", "1.5", "100001", "invalid"])("blocks the invalid finite draft %s even with other pending edits", async (value) => {
+    const view = await renderStorage(data);
+    const metricsToggle = view.querySelector<HTMLButtonElement>('[aria-label="Технические метрики"]')!;
+    await act(async () => metricsToggle.click());
+    await enterLimit(view, value);
+    expect(limitField(view).getAttribute("aria-invalid")).toBe("true");
+    expect(saveButton(view).disabled).toBe(true);
+    await act(async () => saveButton(view).click());
+    expect(saveRequest).not.toHaveBeenCalled();
+    expect(unlimitedToggle(view).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it.each([256, 0])("confirms reducing cap %i before sending the mutation", async (previous) => {
+    const view = await renderStorage(withLimit(previous));
+    if (previous === 0) await act(async () => unlimitedToggle(view).click());
+    await enterLimit(view, "1");
+    await act(async () => saveButton(view).click());
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain("Адресов на пользователя");
+    expect(dialog!.textContent).toContain(previous === 0 ? "Без лимита" : "256");
+    expect(dialog!.textContent).not.toContain("30 → 30");
+    expect(saveRequest).not.toHaveBeenCalled();
+    await act(async () => saveButton(dialog as HTMLElement).click());
+    expect(saveRequest.mock.calls[0][0].body).toEqual({ policies: withLimit(1).policies, confirm_retention_reduction: true });
+  });
+
+  it("accepts the upper bound and preserves a typed draft across background refresh", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const view = await renderStorage(data, client);
+    await enterLimit(view, "100000");
+    await act(async () => client.setQueryData(getStorageSettingsQueryKey(), withLimit(1024)));
+    expect(limitField(view).value).toBe("100000");
+    expect(saveButton(view).disabled).toBe(false);
+    await act(async () => saveButton(view).click());
+    expect(saveRequest.mock.calls[0][0].body).toEqual({ policies: withLimit(100000).policies });
+  });
+
+  it("freezes policy edits during saving and preserves the draft if the request fails", async () => {
+    let rejectSave!: (error: Error) => void;
+    saveRequest.mockReturnValueOnce(new Promise<never>((_resolve, reject) => { rejectSave = reject; }));
+    const view = await renderStorage(data);
+    async function waitForLimitDisabled(disabled: boolean) {
+      const deadline = Date.now() + 1000;
+      while (limitField(view).disabled !== disabled && Date.now() < deadline) {
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+      }
+      expect(limitField(view).disabled).toBe(disabled);
+    }
+    await enterLimit(view, "512");
+    await act(async () => saveButton(view).click());
+
+    try {
+      await waitForLimitDisabled(true);
+      expect(saveRequest).toHaveBeenCalledOnce();
+      expect(unlimitedToggle(view).disabled).toBe(true);
+      expect([...view.querySelectorAll("select")].every((select) => select.disabled)).toBe(true);
+      expect(view.querySelector<HTMLButtonElement>('[aria-label="Технические метрики"]')!.disabled).toBe(true);
+    } finally {
+      await act(async () => rejectSave(new Error("save failed")));
+    }
+
+    await waitForLimitDisabled(false);
+    expect(limitField(view).value).toBe("512");
+    expect(unlimitedToggle(view).disabled).toBe(false);
+    expect(view.querySelector<HTMLButtonElement>('[aria-label="Технические метрики"]')!.disabled).toBe(false);
+    expect(saveButton(view).disabled).toBe(false);
+  });
 });
 
 let root: Root | null = null;
@@ -152,7 +301,7 @@ describe("StorageSettings independent history", () => {
     const save = [...view.querySelectorAll("button")].find((b) => b.textContent?.includes("Сохранить"))!;
     await act(async () => save.click());
     const dialog = document.querySelector('[role="dialog"]')!;
-    expect(dialog.textContent).toContain("Сократить срок хранения?");
+    expect(dialog.textContent).toContain(ru.server.settings.storageReduceTitle);
     expect(saveRequest).not.toHaveBeenCalled();
     const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Сохранить")!;
     await act(async () => confirm.click());

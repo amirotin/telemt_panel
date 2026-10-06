@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -34,6 +35,7 @@ type StoragePolicy struct {
 	Category      StorageCategory `json:"category"`
 	Enabled       bool            `json:"enabled"`
 	RetentionDays int             `json:"retention_days"`
+	MaxIPsPerUser *int            `json:"max_ips_per_user,omitempty"`
 }
 
 // StorageCategoryStats reports the current number of retained records.
@@ -65,6 +67,7 @@ var storageCategoryOrder = []StorageCategory{
 
 // DefaultStoragePolicies returns a fresh copy of the recommended policy set.
 func DefaultStoragePolicies() []StoragePolicy {
+	ipLimit := UserIPPerUserLimit
 	return []StoragePolicy{
 		{Category: StorageTechnical, Enabled: true, RetentionDays: 30},
 		{Category: StorageEvents, Enabled: true, RetentionDays: 30},
@@ -72,7 +75,7 @@ func DefaultStoragePolicies() []StoragePolicy {
 		{Category: StorageConnectionIssues, Enabled: true, RetentionDays: 30},
 		{Category: StorageTraffic, Enabled: true, RetentionDays: 30},
 		{Category: StorageUserTraffic, Enabled: true, RetentionDays: 365},
-		{Category: StorageUserIPHistory, Enabled: true, RetentionDays: 30},
+		{Category: StorageUserIPHistory, Enabled: true, RetentionDays: 30, MaxIPsPerUser: &ipLimit},
 		{Category: StorageDiagnostics, Enabled: true, RetentionDays: 30},
 	}
 }
@@ -105,6 +108,14 @@ func ValidateStoragePolicies(policies []StoragePolicy) error {
 		if policy.Category == StorageUserIPHistory && !policy.Enabled {
 			return fmt.Errorf("storage policies: %s history cannot be disabled", policy.Category)
 		}
+		if policy.MaxIPsPerUser != nil {
+			if policy.Category != StorageUserIPHistory {
+				return fmt.Errorf("storage policies: max_ips_per_user is only valid for %s", StorageUserIPHistory)
+			}
+			if *policy.MaxIPsPerUser < 0 || *policy.MaxIPsPerUser > UserIPSQLiteLimit {
+				return fmt.Errorf("storage policies: max_ips_per_user must be between 0 and %d", UserIPSQLiteLimit)
+			}
+		}
 	}
 	return nil
 }
@@ -112,7 +123,7 @@ func ValidateStoragePolicies(policies []StoragePolicy) error {
 func policiesFromMap(byCategory map[StorageCategory]StoragePolicy) []StoragePolicy {
 	out := make([]StoragePolicy, 0, len(storageCategoryOrder))
 	for _, category := range storageCategoryOrder {
-		out = append(out, byCategory[category])
+		out = append(out, cloneStoragePolicy(byCategory[category]))
 	}
 	return out
 }
@@ -120,9 +131,40 @@ func policiesFromMap(byCategory map[StorageCategory]StoragePolicy) []StoragePoli
 func policyMap(policies []StoragePolicy) map[StorageCategory]StoragePolicy {
 	out := make(map[StorageCategory]StoragePolicy, len(policies))
 	for _, policy := range policies {
-		out[policy.Category] = policy
+		out[policy.Category] = cloneStoragePolicy(policy)
 	}
 	return out
+}
+
+// EffectiveUserIPLimit resolves legacy policies to the default; zero is unlimited per user.
+// Invalid values fall back to the default even before policy validation runs.
+func EffectiveUserIPLimit(policy StoragePolicy) int {
+	if policy.MaxIPsPerUser == nil || *policy.MaxIPsPerUser < 0 || *policy.MaxIPsPerUser > UserIPSQLiteLimit {
+		return UserIPPerUserLimit
+	}
+	return *policy.MaxIPsPerUser
+}
+
+func cloneStoragePolicy(policy StoragePolicy) StoragePolicy {
+	if policy.MaxIPsPerUser != nil {
+		limit := *policy.MaxIPsPerUser
+		policy.MaxIPsPerUser = &limit
+	} else if policy.Category == StorageUserIPHistory {
+		limit := UserIPPerUserLimit
+		policy.MaxIPsPerUser = &limit
+	}
+	return policy
+}
+
+func storagePoliciesEqual(a, b StoragePolicy) bool {
+	return a.Category == b.Category && a.Enabled == b.Enabled && a.RetentionDays == b.RetentionDays &&
+		EffectiveUserIPLimit(a) == EffectiveUserIPLimit(b)
+}
+
+// EqualStoragePolicies compares ordered policy sets by effective values, not
+// pointer identity; an omitted legacy IP cap is equivalent to the default.
+func EqualStoragePolicies(a, b []StoragePolicy) bool {
+	return slices.EqualFunc(a, b, storagePoliciesEqual)
 }
 
 func metricCategory(name string) StorageCategory {

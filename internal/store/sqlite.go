@@ -309,21 +309,32 @@ func (s *SQLite) ApplyStoragePoliciesContext(parent context.Context, policies []
 		return err
 	}
 	defer s.userIPMu.Unlock()
-	s.policyMu.Lock()
 	next := policyMap(policies)
-	if s.policies[StorageUserIPHistory] != next[StorageUserIPHistory] {
-		s.userIPEpoch.Add(1)
+	ipPolicyChanged := !storagePoliciesEqual(s.policy(StorageUserIPHistory), next[StorageUserIPHistory])
+	if err := s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
+		now := time.Now().Unix()
+		if err := pruneTrafficSummariesTx(ctx, tx, now, retentionDuration(next[StorageUserTraffic])); err != nil {
+			return err
+		}
+		if ipPolicyChanged {
+			return pruneUserIPPolicyTx(ctx, tx, now, next[StorageUserIPHistory])
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
+	s.policyMu.Lock()
 	s.policies = next
 	s.policyMu.Unlock()
+	if ipPolicyChanged {
+		s.userIPEpoch.Add(1)
+	}
 	for name := range s.pendingMetrics {
 		if !s.policy(metricCategory(name)).Enabled {
 			delete(s.pendingMetrics, name)
 		}
 	}
-	return s.withOperationTxContext(ctx, func(tx *sql.Tx) error {
-		return pruneTrafficSummariesTx(ctx, tx, time.Now().Unix(), retentionDuration(next[StorageUserTraffic]))
-	})
+	return nil
 }
 
 func (s *SQLite) PurgeHistory(category StorageCategory) error {
@@ -446,7 +457,7 @@ func (s *SQLite) StorageStatsContext(parent context.Context) (StorageStats, erro
 func (s *SQLite) policy(category StorageCategory) StoragePolicy {
 	s.policyMu.RLock()
 	defer s.policyMu.RUnlock()
-	return s.policies[category]
+	return cloneStoragePolicy(s.policies[category])
 }
 
 func (s *SQLite) Close() error {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/store"
 )
@@ -15,6 +16,8 @@ type timeoutHistoryStore struct {
 	store.Store
 	ctx context.Context
 }
+
+type historyContextTestKey struct{}
 
 func (s *timeoutHistoryStore) MetricRangeContext(ctx context.Context, name string, from int64) ([]store.MetricPoint, error) {
 	s.ctx = ctx
@@ -84,7 +87,7 @@ func TestHistoryTimeoutHTTPForwardsContextAndNeverWritesSuccess(t *testing.T) {
 			server := &Server{st: st}
 			request := httptest.NewRequest(http.MethodGet, tc.path, bytes.NewBufferString(tc.body))
 			request.SetPathValue("username", "alice")
-			ctx, cancel := context.WithCancel(request.Context())
+			ctx, cancel := context.WithTimeout(context.WithValue(request.Context(), historyContextTestKey{}, "request"), time.Minute)
 			defer cancel()
 			request = request.WithContext(ctx)
 			response := httptest.NewRecorder()
@@ -96,8 +99,17 @@ func TestHistoryTimeoutHTTPForwardsContextAndNeverWritesSuccess(t *testing.T) {
 			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 				t.Fatal(err)
 			}
-			if result["code"] != "history_timeout" || result["points"] != nil || st.ctx != ctx {
-				t.Fatalf("response=%+v context=%t", result, st.ctx == ctx)
+			if result["code"] != "history_timeout" || result["points"] != nil || st.ctx == nil || st.ctx.Value(historyContextTestKey{}) != "request" {
+				t.Fatalf("response=%+v context=%v", result, st.ctx)
+			}
+			// Handlers may shorten the deadline while preserving request context.
+			requestDeadline, _ := ctx.Deadline()
+			if deadline, ok := st.ctx.Deadline(); !ok || deadline.After(requestDeadline) {
+				t.Fatal("history operation lost or extended the request deadline")
+			}
+			cancel()
+			if st.ctx.Err() == nil {
+				t.Fatal("history operation lost request cancellation")
 			}
 		})
 	}

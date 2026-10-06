@@ -81,6 +81,7 @@ function HistoryContent({ username }: { username: string }) {
   if (data) {
     notes.push(live ? s.collecting : s.unavailable);
     notes.push(data.durable ? fill(s.retention, { days: data.retention_days }) : s.memory);
+    notes.push(data.max_ips_per_user === 0 ? s.unlimited : fill(s.limit, { count: number(data.max_ips_per_user) }));
     if (data.source.recent_window_secs != null) notes.push(fill(s.window, { seconds: data.source.recent_window_secs }));
     if (data.source.pending) notes.push(s.pending);
     if (data.source.history_limited || data.collection.history_limited) notes.push(s.limited);

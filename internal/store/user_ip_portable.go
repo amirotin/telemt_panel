@@ -35,13 +35,14 @@ func validatePortableUserIPs(data PortableData) error {
 	}
 	seen := make(map[userIPKey]bool)
 	counts := make(map[string]int)
+	limit := portableUserIPLimit(data.Policies)
 	for _, r := range data.UserIPs {
 		if err := validatePortableUserIPRecord(r, data.UserIPCollection); err != nil {
 			return err
 		}
 		key := userIPKey{r.Username, r.IP}
 		counts[r.Username]++
-		if seen[key] || counts[r.Username] > UserIPPerUserLimit {
+		if seen[key] || (limit > 0 && counts[r.Username] > limit) {
 			return errors.New("duplicate or excessive imported user IP records")
 		}
 		seen[key] = true
@@ -52,6 +53,31 @@ func validatePortableUserIPs(data PortableData) error {
 		}
 	}
 	return nil
+}
+
+func portableUserIPLimit(policies []StoragePolicy) int {
+	for _, policy := range policies {
+		if policy.Category == StorageUserIPHistory {
+			return EffectiveUserIPLimit(policy)
+		}
+	}
+	return UserIPPerUserLimit
+}
+
+func importedStoragePolicies(data PortableData, previous map[StorageCategory]StoragePolicy) []StoragePolicy {
+	if len(data.Policies) > 0 || len(data.UserIPs) == 0 {
+		return data.Policies
+	}
+	// A legacy IP backup belongs to the default cap, not the destination's
+	// current cap. Preserve unrelated policies omitted by the backup.
+	policies := policiesFromMap(previous)
+	for i := range policies {
+		if policies[i].Category == StorageUserIPHistory {
+			limit := UserIPPerUserLimit
+			policies[i].MaxIPsPerUser = &limit
+		}
+	}
+	return policies
 }
 
 func validatePortableUserIPRecord(r UserIPRecord, collection *UserIPCollection) error {

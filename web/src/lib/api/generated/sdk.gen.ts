@@ -997,7 +997,7 @@ export const getStorageSettings = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Replaces the complete optional-history policy set. Reducing any retention requires confirm_retention_reduction. Disabling a category stops future writes but does not delete retained data or disable live RAM graphs. Existing mixed policies remain unchanged until explicitly saved.
+ * Replaces the complete optional-history policy set. Reducing retention or a per-user IP history cap (including unlimited to finite) requires confirm_retention_reduction. Omitted/null max_ips_per_user preserves the existing value. Disabling a category stops future writes but does not delete retained data or disable live RAM graphs. Existing mixed policies remain unchanged until explicitly saved.
  */
 export const putStorageSettings = <ThrowOnError extends boolean = false>(options: Options<PutStorageSettingsData, ThrowOnError>): RequestResult<PutStorageSettingsResponses, PutStorageSettingsErrors, ThrowOnError> => (options.client ?? client).put<PutStorageSettingsResponses, PutStorageSettingsErrors, ThrowOnError>({
     security: [{

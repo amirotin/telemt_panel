@@ -75,12 +75,14 @@ type Server struct {
 	// to hit reliably.
 	sseAfterSubscribeHook func()
 
-	updateEngine *update.Engine
-	onReady      func() error
-	autoUpdater  *update.AutoUpdater
-	geoip        *geoip.Manager
-	geography    *geography.Service
-	branding     *branding.Manager
+	updateEngine      *update.Engine
+	onReady           func() error
+	autoUpdater       *update.AutoUpdater
+	geoip             *geoip.Manager
+	geography         *geography.Service
+	branding          *branding.Manager
+	storagePolicyOnce sync.Once
+	storagePolicyGate chan struct{}
 
 	// webUI serves the embedded SPA (internal/webui) — registered as the
 	// mux's catch-all "/" pattern in Handler(), after every /api/ and

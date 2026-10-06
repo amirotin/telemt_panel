@@ -251,6 +251,8 @@ func (s *Composite) Close() error {
 // ExportData creates one operator backup while keeping the state/history
 // boundary explicit in the implementation.
 func (s *Composite) ExportData() (PortableData, error) {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
 	statePortable, ok := s.state.(PortableStore)
 	if !ok {
 		return PortableData{}, errors.New("state store does not support export")
@@ -285,6 +287,8 @@ type portableHistoryJSONExporter interface {
 // ExportJSON writes the detached control-plane state followed by one history
 // snapshot. The two stores do not share a transaction.
 func (s *Composite) ExportJSON(w io.Writer) error {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
 	statePortable, ok := s.state.(PortableStore)
 	if !ok {
 		return errors.New("state store does not support export")
@@ -337,6 +341,8 @@ func (m *Memory) exportJSON(w io.Writer, stateData PortableData) error {
 // ImportData restores history first and control-plane state only after the
 // optional history destination accepted its part of the backup.
 func (s *Composite) ImportData(data PortableData) error {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
 	data, err := normalizePortableData(data)
 	if err != nil {
 		return err
@@ -363,6 +369,11 @@ func (s *Composite) ImportData(data PortableData) error {
 	if !historyEmpty {
 		return ErrStoreNotEmpty
 	}
+	previousPolicies, err := s.state.ListStoragePolicies()
+	if err != nil {
+		return err
+	}
+	data.Policies = importedStoragePolicies(data, policyMap(previousPolicies))
 	stateData := data
 	stateData.Metrics = nil
 	stateData.Events = nil
@@ -372,6 +383,7 @@ func (s *Composite) ImportData(data PortableData) error {
 	stateData.UserIPs = nil
 	stateData.UserIPCollection = nil
 	historyData := PortableData{
+		Policies:             data.Policies,
 		UserIPs:              data.UserIPs,
 		UserIPCollection:     data.UserIPCollection,
 		FormatVersion:        portableFormatVersion,
@@ -380,10 +392,6 @@ func (s *Composite) ImportData(data PortableData) error {
 		UserTraffic:          data.UserTraffic,
 		UserTrafficBuckets:   data.UserTrafficBuckets,
 		UserTrafficCollector: data.UserTrafficCollector,
-	}
-	previousPolicies, err := s.state.ListStoragePolicies()
-	if err != nil {
-		return err
 	}
 	targetPolicies := previousPolicies
 	if len(data.Policies) > 0 {

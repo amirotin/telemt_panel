@@ -55,7 +55,7 @@ func ImportLegacyState(state *store.Memory, source *config.Source) (LegacyStateR
 		return report, nil
 	}
 	policies, err := state.ListStoragePolicies()
-	if err != nil || !slices.Equal(policies, store.DefaultStoragePolicies()) {
+	if err != nil || !store.EqualStoragePolicies(policies, store.DefaultStoragePolicies()) {
 		return LegacyStateReport{}, errors.New("legacy state initialization cannot replace existing storage policies")
 	}
 

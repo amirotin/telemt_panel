@@ -14,6 +14,37 @@ func (s *SQLite) UserIPRetention() time.Duration {
 	return time.Duration(s.policy(StorageUserIPHistory).RetentionDays) * 24 * time.Hour
 }
 
+// UserIPLimit returns the active per-user cap, or zero for unlimited.
+func (s *SQLite) UserIPLimit() int {
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+	return EffectiveUserIPLimit(s.policies[StorageUserIPHistory])
+}
+
+func pruneUserIPPolicyTx(ctx context.Context, tx *sql.Tx, now int64, policy StoragePolicy) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM user_ip_history WHERE last_ts < ?", now-int64(retentionDuration(policy)/time.Second)); err != nil {
+		return err
+	}
+	limit := EffectiveUserIPLimit(policy)
+	if limit == 0 {
+		return nil
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM user_ip_history WHERE (username,ip) IN
+		(SELECT username,ip FROM (SELECT username,ip,row_number() OVER (PARTITION BY username ORDER BY last_ts DESC,ip DESC) AS position
+		FROM user_ip_history) WHERE position>?)`, limit)
+	if err != nil {
+		return err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if deleted > 0 {
+		_, err = tx.ExecContext(ctx, "UPDATE user_ip_history_collection SET limited=1 WHERE singleton=1")
+	}
+	return err
+}
+
 func (s *SQLite) PruneUserIPHistory(now int64) error {
 	return s.withUserIPWriteTx(func(tx *sql.Tx) error {
 		_, err := tx.Exec("DELETE FROM user_ip_history WHERE last_ts < ?", now-int64(s.UserIPRetention()/time.Second))
@@ -39,7 +70,14 @@ func (s *SQLite) withUserIPTxContext(parent context.Context, fn func(*sql.Tx) er
 func (s *SQLite) withUserIPWriteTx(fn func(*sql.Tx) error) error {
 	return s.withUserIPWriteTxContext(context.Background(), fn)
 }
-func (s *SQLite) withUserIPWriteTxContext(ctx context.Context, fn func(*sql.Tx) error) error {
+func (s *SQLite) withUserIPWriteTxContext(parent context.Context, fn func(*sql.Tx) error) error {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	// Policy changes and resets must not race a batch using the previous cap.
+	if err := lockSnapshot(ctx, s.userIPMu.TryRLock); err != nil {
+		return err
+	}
+	defer s.userIPMu.RUnlock()
 	s.userIPWriters.Add(1)
 	defer s.userIPWriters.Add(-1)
 	err := s.withUserIPTxContext(ctx, fn)
@@ -141,9 +179,13 @@ func (s *SQLite) ApplyUserIPBatchContext(parent context.Context, b UserIPBatch) 
 			return err
 		}
 		c = nextUserIPCollection(c, b)
+		limit := s.UserIPLimit()
 		for username := range users {
+			if limit == 0 {
+				break
+			}
 			result, err := tx.ExecContext(ctx, `DELETE FROM user_ip_history WHERE username=? AND ip IN
-			(SELECT ip FROM user_ip_history WHERE username=? ORDER BY last_ts DESC,ip DESC LIMIT -1 OFFSET ?)`, username, username, UserIPPerUserLimit)
+			(SELECT ip FROM user_ip_history WHERE username=? ORDER BY last_ts DESC,ip DESC LIMIT -1 OFFSET ?)`, username, username, limit)
 			if err != nil {
 				return err
 			}

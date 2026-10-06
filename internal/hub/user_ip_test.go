@@ -13,6 +13,116 @@ import (
 	"time"
 )
 
+func TestUserIPCollectorConfigurableLimit(t *testing.T) {
+	for _, limit := range []int{512, 0, 3} {
+		t.Run(fmt.Sprint(limit), func(t *testing.T) {
+			m, _ := store.NewMemoryHistory()
+			defer m.Close()
+			policies := store.DefaultStoragePolicies()
+			for i := range policies {
+				if policies[i].Category == store.StorageUserIPHistory {
+					if err := json.Unmarshal([]byte(fmt.Sprintf(`{"max_ips_per_user":%d}`, limit)), &policies[i]); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if err := m.ApplyStoragePolicies(policies); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now()
+			h := &Hub{st: m, now: func() time.Time { return now }}
+			user := telemt.UserInfo{Username: "alice", RecentIPList: []string{}}
+			for i := 1; i <= 350; i++ {
+				user.ActiveIPList = append(user.ActiveIPList, fmt.Sprintf("2001:db8::%x", i))
+			}
+			h.observeUserIPs([]telemt.UserInfo{user}, 0)
+			want := int64(350)
+			if limit == 3 {
+				want = 3
+			}
+			page, err := m.UserIPHistory(store.UserIPQuery{Username: "alice", Now: now.Unix(), Limit: 200})
+			if err != nil || page.Total != want || len(h.ips.live["alice"].active) != 350 {
+				t.Fatalf("collector limit %d: history=%d live=%d error=%v", limit, page.Total, len(h.ips.live["alice"].active), err)
+			}
+			if limit == 0 && h.ips.limited {
+				t.Fatal("unlimited collection was marked limited")
+			}
+		})
+	}
+}
+
+func TestUserIPHistoryLimitPreservesLiveActivity(t *testing.T) {
+	m, _ := store.NewMemoryHistory()
+	defer m.Close()
+	policies := store.DefaultStoragePolicies()
+	for i := range policies {
+		if policies[i].Category == store.StorageUserIPHistory {
+			limit := 1
+			policies[i].MaxIPsPerUser = &limit
+		}
+	}
+	if err := m.ApplyStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	h := &Hub{st: m, now: func() time.Time { return now }}
+	users := []telemt.UserInfo{{Username: "alice", ActiveIPList: []string{"192.0.2.1", "192.0.2.2"}, RecentIPList: []string{}}}
+	h.observeUserIPs(users, 0)
+	page, err := m.UserIPHistory(store.UserIPQuery{Username: "alice", Now: now.Unix(), Limit: 50})
+	if err != nil || page.Total != 1 {
+		t.Fatalf("history cap not applied: total=%d error=%v", page.Total, err)
+	}
+	if count := h.UserIPActiveCount("alice"); count == nil || *count != 2 {
+		t.Fatalf("history cap reduced active count: %v", count)
+	}
+	for _, ip := range users[0].ActiveIPList {
+		if active := h.UserIPLive("alice", ip); active == nil || !*active {
+			t.Errorf("history cap hid active address %s", ip)
+		}
+	}
+	snapshot := h.UserIPSnapshot(now.Unix())
+	if len(snapshot.Records) != 2 || snapshot.Partial || snapshot.Truncated || snapshot.InvalidUsers != 0 || snapshot.Source.Limited {
+		t.Fatalf("history cap truncated live geography: %+v", snapshot)
+	}
+	collection, err := m.UserIPCollectionState()
+	if err != nil || !collection.Limited || !h.UserIPSourceStatus().Limited {
+		t.Fatalf("history truncation not reported: collection=%+v error=%v", collection, err)
+	}
+}
+
+func TestUserIPLiveActivityKeepsGlobalBoundWithSmallHistoryLimit(t *testing.T) {
+	m, _ := store.NewMemoryHistory()
+	defer m.Close()
+	policies := store.DefaultStoragePolicies()
+	for i := range policies {
+		if policies[i].Category == store.StorageUserIPHistory {
+			limit := 1
+			policies[i].MaxIPsPerUser = &limit
+		}
+	}
+	if err := m.ApplyStoragePolicies(policies); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	h := &Hub{st: m, now: func() time.Time { return now }}
+	user := telemt.UserInfo{Username: "alice", RecentIPList: []string{}}
+	for i := 1; i <= 20001; i++ {
+		user.ActiveIPList = append(user.ActiveIPList, fmt.Sprintf("2001:db8::%x", i))
+	}
+	h.observeUserIPs([]telemt.UserInfo{user}, 0)
+	snapshot := h.UserIPSnapshot(now.Unix())
+	if len(snapshot.Records) != 20000 || !snapshot.Partial || !snapshot.Truncated || !snapshot.Source.Limited {
+		t.Fatalf("live global bound: records=%d partial=%v truncated=%v source=%+v", len(snapshot.Records), snapshot.Partial, snapshot.Truncated, snapshot.Source)
+	}
+	if h.UserIPActiveCount("alice") != nil {
+		t.Fatal("globally truncated live data claimed an exact active count")
+	}
+	page, err := m.UserIPHistory(store.UserIPQuery{Username: "alice", Now: now.Unix(), Limit: 50})
+	if err != nil || page.Total != 1 {
+		t.Fatalf("history cap was lost: total=%d error=%v", page.Total, err)
+	}
+}
+
 func TestUserIPObservationsAndReset(t *testing.T) {
 	m, _ := store.NewMemoryHistory()
 	defer m.Close()

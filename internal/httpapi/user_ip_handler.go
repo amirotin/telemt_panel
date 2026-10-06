@@ -30,6 +30,7 @@ type userIPHistoryView struct {
 	NextCursor     string                 `json:"next_cursor"`
 	Range          string                 `json:"range"`
 	RetentionDays  int                    `json:"retention_days"`
+	MaxIPsPerUser  int                    `json:"max_ips_per_user"`
 	Durable        bool                   `json:"durable"`
 	Collection     store.UserIPCollection `json:"collection"`
 	Source         hub.UserIPSourceStatus `json:"source"`
@@ -124,7 +125,7 @@ func (s *Server) handleGetUserIPHistory(w http.ResponseWriter, r *http.Request) 
 		writeHistoryError(w, err, "could not read IP collection state")
 		return
 	}
-	result := userIPHistoryView{Items: make([]userIPHistoryItem, 0, len(page.Items)), Total: page.Total, Matched: page.Matched, New: page.New, Range: span, RetentionDays: int(s.st.UserIPRetention() / (24 * time.Hour)), Durable: s.st.Info().Durable, Collection: collection, Source: hub.UserIPSourceStatus{State: "unavailable"}}
+	result := userIPHistoryView{Items: make([]userIPHistoryItem, 0, len(page.Items)), Total: page.Total, Matched: page.Matched, New: page.New, Range: span, RetentionDays: int(s.st.UserIPRetention() / (24 * time.Hour)), MaxIPsPerUser: s.st.UserIPLimit(), Durable: s.st.Info().Durable, Collection: collection, Source: hub.UserIPSourceStatus{State: "unavailable"}}
 	result.GeoIP = geoip.DisabledStatus()
 	var geography []*geoip.Result
 	if s.geoip != nil {

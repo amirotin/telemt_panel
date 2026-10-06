@@ -1216,6 +1216,10 @@ export type UserIpHistory = {
     next_cursor: string;
     range: '24h' | '7d' | '30d' | 'all';
     retention_days: number;
+    /**
+     * Effective per-user observed IP history cap. Zero disables this per-user cap; overall memory/SQLite history and collection bounds still apply. This does not limit Telemt connections.
+     */
+    max_ips_per_user: number;
     durable: boolean;
     collection: UserIpCollection;
     source: UserIpSourceStatus;
@@ -1228,6 +1232,10 @@ export type StoragePolicy = {
     category: StorageCategory;
     enabled: boolean;
     retention_days: number;
+    /**
+     * Only for user_ip_history. Zero disables the per-user cap; positive values retain at most this many newest addresses. Omitted/null in a settings update preserves the existing value. Legacy policies default to 256. Overall memory/SQLite history and collection bounds remain in force.
+     */
+    max_ips_per_user?: number | null;
 };
 
 export type StorageCategoryStats = {
@@ -1265,7 +1273,7 @@ export type StorageSettings = {
 
 export type StorageSettingsUpdate = {
     /**
-     * Explicitly acknowledges deletion of data outside a shorter retention.
+     * Explicitly acknowledges deletion due to shorter retention or a lower per-user IP history cap, including unlimited to finite.
      */
     confirm_retention_reduction?: boolean;
     policies: Array<StoragePolicy>;

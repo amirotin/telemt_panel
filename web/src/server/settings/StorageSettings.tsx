@@ -31,7 +31,13 @@ import type {
   StoragePolicy,
   StorageSettings as StorageSettingsData,
 } from "../../lib/api/generated/types.gen";
-import { retentionReductions, sameStoragePolicies } from "./storage.helpers";
+import {
+  ipHistoryLimit,
+  ipHistoryLimitReduced,
+  parseIPHistoryLimit,
+  retentionReductions,
+  sameStoragePolicies,
+} from "./storage.helpers";
 import { invalidateTrafficQueries } from "../../traffic/trafficInvalidation";
 import { invalidateGeography } from "../../geography/queries";
 
@@ -56,6 +62,7 @@ export function StorageSettings() {
     source: StorageSettingsData | null;
     policies: StoragePolicy[];
   }>({ source: null, policies: [] });
+  const [ipLimitDraft, setIPLimitDraft] = useState<string | null>(null);
   const [purgeCategory, setPurgeCategory] = useState<StorageCategory | null>(null);
   const [resetTrafficOpen, setResetTrafficOpen] = useState(false);
   const [pendingPolicies, setPendingPolicies] = useState<StoragePolicy[] | null>(null);
@@ -77,8 +84,14 @@ export function StorageSettings() {
       setPendingPolicies(null);
       await invalidateGeography(queryClient);
       pushToast(s.server.settings.storageSaved, "ok");
-      await queryClient.invalidateQueries({ queryKey: getStorageSettingsQueryKey() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getStorageSettingsQueryKey() }),
+        ...["getUserIpHistory", "getUser", "listUsers"].map((_id) =>
+          queryClient.invalidateQueries({ queryKey: [{ _id }] }),
+        ),
+      ]);
       setDraft({ source: null, policies: [] });
+      setIPLimitDraft(null);
     },
     onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
   });
@@ -103,6 +116,10 @@ export function StorageSettings() {
   });
 
   const dirty = query.data ? !sameStoragePolicies(policies, query.data.policies) : false;
+  const ipPolicy = policies.find((policy) => policy.category === "user_ip_history");
+  const ipUnlimited = ipPolicy !== undefined && ipHistoryLimit(ipPolicy) === 0;
+  const ipLimitInput = ipLimitDraft ?? String(ipPolicy ? ipHistoryLimit(ipPolicy) || 256 : 256);
+  const invalidIPLimit = ipPolicy !== undefined && !ipUnlimited && parseIPHistoryLimit(ipLimitInput) === null;
   const records = useMemo(
     () =>
       new Map(query.data?.stats.categories.map((entry) => [entry.category, entry.records]) ?? []),
@@ -120,12 +137,28 @@ export function StorageSettings() {
   }
 
   function save() {
+    if (invalidIPLimit || !dirty || saveMutation.isPending) return;
     if (retentionReductions(query.data?.policies ?? [], policies).length > 0) {
       setPendingPolicies(policies.map((p) => ({ ...p })));
     } else {
       saveMutation.mutate({ body: { policies } });
     }
   }
+
+  const reductionDescription = retentionReductions(query.data?.policies ?? [], pendingPolicies ?? []).map((policy) => {
+    const previous = query.data?.policies.find((old) => old.category === policy.category);
+    if (!previous) return "";
+    const changes: string[] = [];
+    if (policy.retention_days < previous.retention_days) {
+      const days = (count: number) => s.server.settings.storageDays.replace("{count}", String(count));
+      changes.push(`${s.server.settings.storageRetention}: ${days(previous.retention_days)} → ${days(policy.retention_days)}`);
+    }
+    if (ipHistoryLimitReduced(previous, policy)) {
+      const limit = (value: StoragePolicy) => ipHistoryLimit(value) === 0 ? s.server.settings.storageIPUnlimited : String(ipHistoryLimit(value));
+      changes.push(`${s.server.settings.storageIPLimit}: ${limit(previous)} → ${limit(policy)}`);
+    }
+    return `${s.server.settings.storageCategories[policy.category].title} — ${changes.join("; ")}`;
+  }).join(". ");
 
   if (query.isPending) {
     return <Skeleton className="h-[420px] w-full rounded-xl" />;
@@ -168,7 +201,7 @@ export function StorageSettings() {
           </span>
           <Button
             size="sm"
-            disabled={!dirty || saveMutation.isPending}
+            disabled={!dirty || invalidIPLimit || saveMutation.isPending}
             onClick={save}
           >
             {saveMutation.isPending
@@ -249,7 +282,7 @@ export function StorageSettings() {
                     </div>
                     <Toggle
                       checked={policy.enabled}
-                      disabled={mandatory}
+                      disabled={mandatory || saveMutation.isPending}
                       onChange={(enabled) => updatePolicy(policy.category, { enabled })}
                       aria-label={copy.title}
                     />
@@ -268,7 +301,7 @@ export function StorageSettings() {
                   <select
                     aria-label={`${s.server.settings.storageRetention}: ${copy.title}`}
                     value={policy.retention_days}
-                    disabled={!policy.enabled}
+                    disabled={!policy.enabled || saveMutation.isPending}
                     onChange={(event) =>
                       updatePolicy(policy.category, {
                         retention_days: Number(event.target.value),
@@ -305,9 +338,50 @@ export function StorageSettings() {
                 </div>
               </div>
               {mandatory && (
-                <small className="mt-2 block text-[10px] text-text-faint">
-                  {s.server.settings.storageIPRequired}
-                </small>
+                <div className="mt-3 border-t border-border pt-3">
+                  <div className="flex min-h-11 items-center justify-between gap-4">
+                    <span className="text-[12px] font-semibold text-text">{s.server.settings.storageIPUnlimited}</span>
+                    <Toggle
+                      checked={ipUnlimited}
+                      disabled={saveMutation.isPending}
+                      aria-label={s.server.settings.storageIPUnlimited}
+                      className="after:absolute after:-inset-2.5"
+                      onChange={(unlimited) => {
+                        setIPLimitDraft(ipLimitInput);
+                        updatePolicy(policy.category, {
+                          max_ips_per_user: unlimited ? 0 : (parseIPHistoryLimit(ipLimitInput) ?? 256),
+                        });
+                      }}
+                    />
+                  </div>
+                  <label className="mt-2 block">
+                    <span className="mb-1 block text-[9px] font-extrabold uppercase tracking-[0.08em] text-text-faint">
+                      {s.server.settings.storageIPLimit}
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={100_000}
+                      step={1}
+                      aria-label={s.server.settings.storageIPLimit}
+                      aria-invalid={invalidIPLimit}
+                      aria-describedby={invalidIPLimit ? "storage-ip-limit-error storage-ip-limit-note" : "storage-ip-limit-note"}
+                      value={ipLimitInput}
+                      disabled={ipUnlimited || saveMutation.isPending}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setIPLimitDraft(value);
+                        const limit = parseIPHistoryLimit(value);
+                        updatePolicy(policy.category, limit === null ? {} : { max_ips_per_user: limit });
+                      }}
+                      className="h-11 w-full rounded-lg border border-border bg-surface-2 px-3 font-mono text-[13px] font-semibold text-text outline-none focus:border-accent disabled:opacity-50 aria-invalid:border-error"
+                    />
+                  </label>
+                  {invalidIPLimit && <p id="storage-ip-limit-error" role="alert" className="mt-1.5 text-[11px] text-error">{s.server.settings.storageIPLimitInvalid}</p>}
+                  <p id="storage-ip-limit-note" className="mt-2 text-[11px] leading-relaxed text-text-muted">{s.server.settings.storageIPLimitNote}</p>
+                  <small className="mt-2 block text-[10px] text-text-faint">{s.server.settings.storageIPRequired}</small>
+                </div>
               )}
               {!policy.enabled && count > 0 && (
                 <small className="mt-2 block text-[10px] text-warning-text">
@@ -325,7 +399,7 @@ export function StorageSettings() {
         </p>
         <Button
           size="sm"
-          disabled={!dirty || saveMutation.isPending}
+          disabled={!dirty || invalidIPLimit || saveMutation.isPending}
           onClick={save}
         >
           {saveMutation.isPending ? s.server.settings.storageSaving : s.server.settings.storageSave}
@@ -337,9 +411,7 @@ export function StorageSettings() {
         onClose={() => { if (!saveMutation.isPending) setPendingPolicies(null); }}
         title={s.server.settings.storageReduceTitle}
       >
-        <ConfirmView description={s.server.settings.storageReduceNote + " " + retentionReductions(query.data.policies, pendingPolicies ?? []).map((p) =>
-          s.server.settings.storageCategories[p.category].title + ": " + query.data.policies.find((old) => old.category === p.category)?.retention_days + " → " + p.retention_days
-        ).join("; ")}
+        <ConfirmView description={s.server.settings.storageReduceNote + " " + reductionDescription}
           confirmLabel={s.server.settings.storageSave} danger pending={saveMutation.isPending}
           onCancel={() => setPendingPolicies(null)}
           onConfirm={() => { if (pendingPolicies) saveMutation.mutate({ body: { policies: pendingPolicies, confirm_retention_reduction: true } }); }} />
