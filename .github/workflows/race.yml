@@ -15,8 +15,13 @@ concurrency:
 
 jobs:
   race:
+    name: Race (${{ matrix.profile }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [full, lite]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -32,9 +37,11 @@ jobs:
       - name: Build frontend
         run: make web
       - name: Full race suite
+        if: matrix.profile == 'full'
         run: make test-race
         env:
           CGO_ENABLED: '1'
 
       - name: Lite race suite (release JSON implementation)
+        if: matrix.profile == 'lite'
         run: CGO_ENABLED=1 GOEXPERIMENT=nojsonv2 go test -race -p 1 -tags lite -count=1 ./...
