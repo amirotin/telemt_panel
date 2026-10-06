@@ -301,8 +301,8 @@ authenticate_host
 python3 - "$ROOT/host.json" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1]))
-assert data['ok'] and data['data']['privileges_mode'] == 'sudo', data
-assert data['data']['caps']['self_update'], data
+assert data['privileges_mode'] == 'sudo', data
+assert data['caps']['self_update'], data
 PY
 printf 'PASS native fixture: published RC2 running as UID %s with working legacy exact sudoers\n' "$SERVICE_UID"
 
@@ -346,7 +346,7 @@ assert_process "$ROOT/releases/rc2"
 authenticate_host
 python3 - "$ROOT/host.json" <<'PY'
 import json, sys
-data = json.load(open(sys.argv[1]))['data']
+data = json.load(open(sys.argv[1]))
 assert data['privileges_mode'] == 'sudo' and data['caps']['self_update'], data
 PY
 printf 'PASS native rollback: real candidate restart failure restored running RC2, config and legacy sudoers\n'
@@ -415,9 +415,7 @@ PY
   authenticate_host
   python3 - "$ROOT/host.json" <<'PY'
 import json, sys
-response = json.load(open(sys.argv[1]))
-assert response['ok'], response
-data = response['data']
+data = json.load(open(sys.argv[1]))
 assert data['service_manager'] == 'systemd' and data['privileges_mode'] == 'sudo', data
 for cap in ['self_update', 'restart_panel', 'restart_telemt', 'start_telemt', 'stop_telemt']:
     assert data['caps'][cap], (cap, data)
@@ -446,7 +444,7 @@ assert_process "$ROOT/releases/candidate"
 authenticate_host
 python3 - "$ROOT/host.json" <<'PY'
 import json, sys
-data = json.load(open(sys.argv[1]))['data']
+data = json.load(open(sys.argv[1]))
 assert data['privileges_mode'] == 'manual' and not data['caps']['self_update'], data
 PY
 run_installer --yes --lang en repair-privileges --user "$ACCOUNT"
