@@ -101,14 +101,14 @@ func (p *WorkerHealthProbe) panelVersion(ctx context.Context) (string, error) {
 
 func (p *WorkerHealthProbe) telemtVersion(ctx context.Context) (string, error) {
 	if p.Telemt == nil {
-		return "", errors.New("Telemt readiness client missing")
+		return "", errors.New("telemt readiness client missing")
 	}
 	health, err := p.Telemt.Health(ctx)
 	if err != nil {
 		return "", err
 	}
 	if health.Status != "ok" {
-		return "", fmt.Errorf("Telemt health status %q", health.Status)
+		return "", fmt.Errorf("telemt health status %q", health.Status)
 	}
 	ready, err := p.Telemt.Ready(ctx)
 	if err != nil {
@@ -117,7 +117,7 @@ func (p *WorkerHealthProbe) telemtVersion(ctx context.Context) (string, error) {
 			return "", err
 		}
 	} else if !ready.Ready {
-		return "", errors.New("Telemt is not ready")
+		return "", errors.New("telemt is not ready")
 	}
 	info, err := p.Telemt.SystemInfo(ctx)
 	if err != nil {
