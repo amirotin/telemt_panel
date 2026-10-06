@@ -51,6 +51,12 @@ policy_fixture() {
 verify_legacy_privilege_authority
 cmp "$TMP/allowed" "$TMP/probes"
 printf '%s\n' 'PASS: automatic migration proves every existing RC2 authority without executing commands'
+cp "$TMP/listing" "$TMP/plain-listing"
+sed 's|^Sudoers entry:$|Sudoers entry: /etc/sudoers.d/telemt-panel|' "$TMP/plain-listing" >"$TMP/listing"
+: >"$TMP/probes"
+verify_legacy_privilege_authority
+cmp "$TMP/allowed" "$TMP/probes"
+printf '%s\n' 'PASS: sudo source-file headers preserve the same authority checks'
 for changed in telemt panel data user service; do
   if (
     case "$changed" in

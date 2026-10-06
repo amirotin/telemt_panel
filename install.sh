@@ -3225,7 +3225,7 @@ verify_legacy_privilege_authority() {
   # authentication or execution restrictions require explicit operator repair.
   PRIV_LEGACY_LIST=$(LC_ALL=C $SUDO sudo -n -ll -U "$SYSTEM_USER" 2>/dev/null) || return 1
   printf '%s\n' "$PRIV_LEGACY_LIST" | awk '
-    /^Sudoers entry:$/ {
+    /^Sudoers entry:([ \t].*)?$/ {
       if (entries && (!root || !nopass || !commands)) bad=1
       entries++; root=0; nopass=0; commands=0; next
     }
