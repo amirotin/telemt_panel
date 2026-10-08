@@ -1826,6 +1826,10 @@ paths:
       operationId: streamLogs
       description: >
         SSE stream of LogLine events (`event: log`) and quiet-period heartbeats.
+        File sources first emit `event: log_reset` with {"source":"file"},
+        replacing the viewer snapshot before up to 200 recent complete lines
+        from the last 256 KiB and subsequent live entries. Paused viewers
+        apply the replacement when resumed.
         Source startup/runtime failures are `event: log_source_error` with a
         LogSourceDiagnostic payload after HTTP 200; normal source EOF is
         `event: log_end`. Authentication, validation and capability errors
@@ -1833,7 +1837,7 @@ paths:
       parameters:
         - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
       responses:
-        "200": { description: "SSE of log, heartbeat, log_source_error and log_end events", content: { text/event-stream: { schema: { type: string } } } }
+        "200": { description: "SSE of log_reset, log, heartbeat, log_source_error and log_end events", content: { text/event-stream: { schema: { type: string } } } }
         "429": { description: "logs_stream_limit — capacity exhausted before streaming starts", headers: { Retry-After: { schema: { type: integer, minimum: 5 }, description: Retry no earlier than this many seconds } }, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: log_stream_unavailable — host cap log_stream=false, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }

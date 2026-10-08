@@ -10,6 +10,8 @@ import (
 // smaller interval instead of waiting on this one.
 const DefaultLogPollInterval = 2 * time.Second
 
+const fileStreamHistoryLines = 200
+
 // File tails an arbitrary log file (host.log_file) when log_source=file.
 // It applies no service-name filtering: the operator pointed this source
 // at exactly one service's log file already, so every line belongs to the
@@ -37,9 +39,9 @@ func (f *File) Tail(ctx context.Context, service string, lines int) ([]LogLine, 
 	return linesToLogLines(raw, service), nil
 }
 
-// Stream implements LogSource.
+// Stream implements LogSource, sending recent complete lines before following growth.
 func (f *File) Stream(ctx context.Context, service string) (<-chan LogEvent, error) {
-	raw, err := followFileEvents(ctx, f.path, f.pollInterval)
+	raw, err := followFileEventsWithHistory(ctx, f.path, f.pollInterval, fileStreamHistoryLines)
 	if err != nil {
 		return nil, err
 	}

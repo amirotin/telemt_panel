@@ -37,6 +37,8 @@ export interface LogStreamOptions {
   eventSourceFactory?: (url: string) => EventSource;
   staleMs?: number;
   probeCapacity?: (service: string, signal: AbortSignal) => Promise<LogCapacityProbe>;
+  /** Replaces the viewer's file snapshot before this connection's history. */
+  onReset?: () => void;
 }
 
 export interface LogStreamClient {
@@ -61,7 +63,8 @@ export interface LogStreamClient {
 // healthy OPEN sources keep streaming in the background.
 // Normal EOF and transient source errors reopen with capped backoff while
 // the tab is visible; configuration errors require an explicit retry.
-// The viewer keeps received lines and shows source errors until a new frame.
+// The viewer keeps received lines until a successful file snapshot reset,
+// and shows source errors until a new frame.
 // A non-2xx/non-event-stream response (e.g. an expired session) instead sets
 // EventSource.readyState to CLOSED with no auto-retry.
 export function createLogStream(service: string, options: LogStreamOptions = {}): LogStreamClient {
@@ -170,6 +173,14 @@ export function createLogStream(service: string, options: LogStreamOptions = {})
       const parsed = parseJSON<LogLine>((ev as MessageEvent).data);
       if (!parsed) return;
       for (const cb of lineListeners) cb(parsed);
+    });
+
+    next.addEventListener("log_reset", (ev) => {
+      if (es !== next) return;
+      const parsed = parseJSON<{ source?: string }>((ev as MessageEvent).data);
+      if (parsed?.source !== "file") return;
+      onFrame();
+      options.onReset?.();
     });
 
     next.addEventListener("heartbeat", () => {

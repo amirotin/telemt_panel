@@ -273,10 +273,13 @@ func TestFile_Stream_EmitsAppendedLines(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 
+	if got := recvLine2(t, ch, 2*time.Second); got.Msg != "preexisting" {
+		t.Fatalf("got %+v, want preexisting history", got)
+	}
 	appendLine(t, path, "new line 1\n")
 	got := recvLine2(t, ch, 2*time.Second)
 	if got.Msg != "new line 1" {
-		t.Fatalf("got %+v, want new line 1 (preexisting content must not be re-emitted)", got)
+		t.Fatalf("got %+v, want new line 1 without replaying history", got)
 	}
 }
 
@@ -306,6 +309,11 @@ func TestFile_Stream_HandlesTruncation(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 
+	for _, want := range []string{"line1", "line2"} {
+		if got := recvLine2(t, ch, 2*time.Second); got.Msg != want {
+			t.Fatalf("got %+v, want %s", got, want)
+		}
+	}
 	appendLine(t, path, "line3\n")
 	if got := recvLine2(t, ch, 2*time.Second); got.Msg != "line3" {
 		t.Fatalf("got %+v, want line3", got)
@@ -338,6 +346,9 @@ func TestFile_Stream_HandlesRotation(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 
+	if got := recvLine2(t, ch, 2*time.Second); got.Msg != "old content" {
+		t.Fatalf("got %+v, want old content", got)
+	}
 	// Simulate log rotation: move the old file aside and create a brand
 	// new file (new inode) at the same path.
 	if err := os.Rename(path, path+".1"); err != nil {
