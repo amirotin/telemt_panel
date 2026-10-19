@@ -7,7 +7,7 @@ require (
 	github.com/adhocore/gronx v1.20.5
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/ncruces/go-sqlite3 v0.35.6
-	github.com/oschwald/maxminddb-golang/v2 v2.7.0
+	github.com/oschwald/maxminddb-golang/v2 v2.8.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.57.0
 	golang.org/x/image v0.46.0
