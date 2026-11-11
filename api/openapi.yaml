@@ -560,6 +560,7 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/User" } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     post:
       tags: [users]
       operationId: createUser
@@ -581,6 +582,7 @@ paths:
         "409": { description: user_exists, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}:
     parameters: [ { $ref: "#/components/parameters/Username" } ]
@@ -591,6 +593,7 @@ paths:
         "200": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     patch:
       tags: [users]
       operationId: patchUser
@@ -606,6 +609,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     delete:
       tags: [users]
       operationId: deleteUser
@@ -614,6 +618,7 @@ paths:
         "409": { description: last_user_forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/reset-quota:
     post:
@@ -637,6 +642,7 @@ paths:
         "409": { $ref: "#/components/responses/QuotaResetError" }
         "503": { $ref: "#/components/responses/QuotaResetError" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/ip-history:
     get:
@@ -782,6 +788,7 @@ paths:
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "501": { description: capability_absent — not supported on this Telemt build, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/enabled:
     put:
@@ -800,6 +807,7 @@ paths:
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "501": { description: capability_absent — not supported on this Telemt build, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/sublink:
     get:
@@ -813,6 +821,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: sublink_unavailable — user has no valid classic/secure/TLS link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     post:
       tags: [users]
       operationId: regenerateUserSublink
@@ -823,6 +832,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: sublink_unavailable — user has no valid classic/secure/TLS link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   # ───────────────────────── telemt ─────────────────────────
   /api/telemt/info:
@@ -834,6 +844,7 @@ paths:
           description: Version, connectivity and capability flags (07-telemt-sdk.md §3)
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtInfo" } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/config:
     get:
@@ -848,6 +859,7 @@ paths:
           description: Editable sections + revision
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfig" } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — this Telemt build/config does not expose the config API, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     patch:
       tags: [telemt]
@@ -899,6 +911,7 @@ paths:
         "200": { description: TOML projection and revision, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOML" } } } }
         "500": { description: toml_projection_failed — a Config API value cannot be represented as exact TOML, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     patch:
       tags: [telemt]
@@ -952,6 +965,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "409": { description: revision_conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/reload:
     post:
@@ -978,6 +992,7 @@ paths:
         "409": { description: reload_in_progress, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — offer service restart instead, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/reload/{id}:
     get:
@@ -992,6 +1007,7 @@ paths:
         "404": { description: reload_not_found — unknown or aged-out id, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/service:
     get:
@@ -1049,6 +1065,7 @@ paths:
         "200": { description: Deep counter dump, content: { application/json: { schema: { $ref: "#/components/schemas/ZeroAllData" } } } }
         "501": { description: capability_absent — this Telemt build/config does not expose zero/all, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/tls-fingerprints:
     get:
@@ -1071,6 +1088,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: capability_absent — this Telemt build predates the runtime edge routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — runtime_edge_enabled is off, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web-access:
@@ -1081,6 +1099,7 @@ paths:
       responses:
         "200": { description: WEB access relationships and source config revision, content: { application/json: { schema: { $ref: "#/components/schemas/WebAccessView" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — Config API is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web-access/users/{username}:
@@ -1101,6 +1120,7 @@ paths:
         "404": { description: web_vhost_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "409": { description: revision_conflict or web_profile_required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — Config API is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/sessions:
@@ -1130,6 +1150,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/sessions/{ref}:
@@ -1149,6 +1170,7 @@ paths:
         "404": { description: web_session_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable, or web_snapshot_busy when an exact lookup lost a lock race, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/sessions/close:
@@ -1176,6 +1198,7 @@ paths:
         "415": { description: "unsupported_media_type — Telemt's control routes require exactly one byte-exact `Content-Type: application/json`. Unreachable through the panel (the SDK sets the header itself) but declared because the code is Telemt's own.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/operations/{id}:
@@ -1194,6 +1217,7 @@ paths:
         "404": { description: web_operation_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   # ───────────────────────── host ─────────────────────────
@@ -1861,7 +1885,8 @@ paths:
                 type: object
                 additionalProperties: { type: object, additionalProperties: true }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "502": { description: telemt_unreachable — every requested topic's fetch failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: A classified upstream failure, or snapshot_unavailable when no snapshot has been published, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/history:
     get:
@@ -2048,7 +2073,10 @@ components:
       description: Too many requests
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     TelemtUnreachable:
-      description: telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+      description: Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    TelemtTimeout:
+      description: telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     TelemtReadOnly:
       description: Telemt API is in read_only mode
@@ -2306,6 +2334,17 @@ components:
             - branding_invalid_image
             - not_found
             - telemt_unreachable
+            - telemt_api_error
+            - telemt_timeout
+            - telemt_dns_failed
+            - telemt_tls_failed
+            - telemt_invalid_response
+            - telemt_config_permission_denied
+            - telemt_config_read_only
+            - telemt_config_storage_full
+            - telemt_config_write_failed
+            - telemt_config_read_failed
+            - snapshot_unavailable
             - capability_absent
             - capability_unavailable
             - manual_restart_required
@@ -2382,9 +2421,15 @@ components:
             enabled:false means runtime_edge_enabled is off; read from the
             response rather than probed so an unreachable Telemt still maps
             to 502 telemt_unreachable).
-            Reserved for milestones not yet implemented: telemt_auth_failed
-            (superseded on /api/telemt/info by a reachable:false
-            body, not an error status — kept here for /api/telemt/config, M3).
+            telemt_auth_failed reports an upstream HTTP 401 without expiring the
+            administrator's panel session. telemt_api_error distinguishes a received
+            API failure from a connection error. Configuration permission, read-only
+            filesystem, storage, read and write errors have dedicated telemt_config_*
+            codes. Timeouts use telemt_timeout and HTTP 504; malformed responses,
+            DNS and certificate failures also have dedicated diagnostic codes.
+            snapshot_unavailable means no requested snapshot has been published.
+            Diagnostic messages contain only HTTP status, validated upstream code
+            and an optional numeric request ID, never arbitrary upstream payloads.
             A well-formed Telemt *APIError whose status is 4xx and isn't otherwise
             mapped above is passed through verbatim with Telemt's own code — notably
             user_exists, last_user_forbidden, read_only, revision_conflict,

@@ -95,11 +95,11 @@ export function ConfigPage() {
   async function inspectConfigConflict() {
     if (!editor.baseline) return;
     try {
-      const fresh = await getTelemtConfig();
+      const fresh = await getTelemtConfig({ throwOnError: true });
       if (!fresh.data) return;
       setConflict({ fresh: fresh.data });
-    } catch {
-      pushToast(errorMessage(s, "telemt_unreachable"), "error");
+    } catch (err) {
+      pushToast(apiErrorMessage(err, s), "error");
     }
   }
 
@@ -211,7 +211,7 @@ export function ConfigPage() {
     return (
       <ServerShell title={s.server.config.title}>
         <ErrorState
-          message={errorMessage(s, code)}
+          message={errorMessage(s, code, configQuery.error?.message)}
           onRetry={() => configQuery.refetch()}
         />
       </ServerShell>
@@ -306,7 +306,7 @@ export function ConfigPage() {
       )}
 
       {patchErrorCode && (
-        <Notice tone="error" title={errorMessage(s, patchErrorCode)}>
+        <Notice tone="error" title={errorMessage(s, patchErrorCode, patchMutation.error?.message)}>
           {patchErrorCode === "telemt_config_outcome_unknown" && <Button variant="secondary" onClick={() => void inspectConfigConflict()}>{s.server.config.checkWrite}</Button>}
         </Notice>
       )}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -224,11 +223,7 @@ func (s *Server) writeSublink(w http.ResponseWriter, r *http.Request, rotate boo
 	users, err := s.tc.Users(ctx)
 	if err != nil {
 		slog.Error("sublink: fetch users", "err", err)
-		if errors.Is(err, telemt.ErrResponseTooLarge) {
-			writeTelemtError(w, err, false)
-			return
-		}
-		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", "could not reach telemt")
+		writeTelemtError(w, err, false)
 		return
 	}
 	u, ok := findUser(users, username)

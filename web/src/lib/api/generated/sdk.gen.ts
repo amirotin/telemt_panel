@@ -1151,7 +1151,7 @@ export const streamEvents = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * SSE stream of LogLine events (`event: log`) and quiet-period heartbeats. Source startup/runtime failures are `event: log_source_error` with a LogSourceDiagnostic payload after HTTP 200; normal source EOF is `event: log_end`. Authentication, validation and capability errors remain HTTP errors before streaming begins.
+ * SSE stream of LogLine events (`event: log`) and quiet-period heartbeats. File sources first emit `event: log_reset` with {"source":"file"}, replacing the viewer snapshot before up to 200 recent complete lines from the last 256 KiB and subsequent live entries. Paused viewers apply the replacement when resumed. Source startup/runtime failures are `event: log_source_error` with a LogSourceDiagnostic payload after HTTP 200; normal source EOF is `event: log_end`. Authentication, validation and capability errors remain HTTP errors before streaming begins.
  *
  */
 export const streamLogs = <ThrowOnError extends boolean = false>(options: Options<StreamLogsData, ThrowOnError, StreamLogsResponse>): Promise<ServerSentEventsResult<StreamLogsResponses>> => (options.client ?? client).sse.get<StreamLogsResponses, StreamLogsErrors, ThrowOnError>({

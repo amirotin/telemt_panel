@@ -74,5 +74,5 @@ func TestHandleListUsersUpstreamErrorMalformedBelowLimit(t *testing.T) {
 	s := &Server{tc: telemt.New(upstream.URL, "")}
 	w := httptest.NewRecorder()
 	s.handleListUsers(w, httptest.NewRequest(http.MethodGet, "/api/users", nil))
-	assertUpstreamError(t, w, "telemt_unreachable")
+	assertUpstreamError(t, w, "telemt_invalid_response")
 }

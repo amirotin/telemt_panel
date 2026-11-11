@@ -8,6 +8,7 @@ import { getTelemtInfoQueryKey } from "../lib/api/generated/@tanstack/react-quer
 import type { UsersTopicUser } from "../realtime/topics";
 import { ru } from "../i18n/testing";
 import { UserFormSheet, type UserFormSheetProps } from "./UserFormSheet";
+import { ToastViewport } from "../ui/Toast";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -236,4 +237,32 @@ describe("Telemt user rate bounds", () => {
     await submit();
     expect(requests).toHaveLength(0);
   });
+});
+
+it("shows config permission guidance after failed user creation and retains the form", async () => {
+  const toastContainer = document.createElement("div");
+  document.body.append(toastContainer);
+  const toastRoot = createRoot(toastContainer);
+  client.setConfig({ baseUrl: "http://panel.test", fetch: (input) => {
+    requests.push(input as Request);
+    return Promise.resolve(Response.json({
+      code: "telemt_config_permission_denied", message: "HTTP 500 · internal_error · #42",
+    }, { status: 502 }));
+  } });
+  try {
+    await act(async () => toastRoot.render(<ToastViewport />));
+    await render("3.5.14", {}, "create");
+    const username = container.querySelector<HTMLInputElement>('[data-testid="user-form-username"]')!;
+    await enter(username, "bob");
+    await submit();
+    await vi.waitFor(() => {
+      expect(toastContainer.textContent).toMatch(/владельца файла/);
+      expect(toastContainer.textContent).toContain("HTTP 500 · internal_error · #42");
+    });
+    expect(username.value).toBe("bob");
+    expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
+  } finally {
+    act(() => toastRoot.unmount());
+    toastContainer.remove();
+  }
 });

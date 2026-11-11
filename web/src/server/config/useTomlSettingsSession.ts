@@ -115,7 +115,7 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
         setConflict(dirty);
         void query.refetch();
       }
-      pushToast(errorMessage(s, code), "error");
+      pushToast(errorMessage(s, code, error?.message), "error");
     },
   });
 

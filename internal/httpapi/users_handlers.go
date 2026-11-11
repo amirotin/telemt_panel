@@ -495,21 +495,14 @@ func decodeUserPatch(body []byte) (map[string]any, error) {
 // route exists; the user genuinely doesn't) always maps to 404 regardless
 // of capabilityGated, since that switch case is checked first.
 //
-// telemt_unreachable is reserved for actual connectivity failures (no
-// *APIError at all) and for upstream 5xx/unexpected statuses. An *APIError
-// whose code isn't one of the ones above but whose status is 4xx (e.g.
-// bad_request, forbidden, revision_conflict) is the admin's own input being
-// rejected, not the backend being unreachable — that must not be masked as
-// 502 telemt_unreachable, so it passes through with Telemt's own status,
-// code and message.
+// Client rejections retain their status and code. Other failures use the
+// shared diagnostic classifier so server errors, timeouts and malformed
+// replies are not mistaken for a stopped proxy. An upstream 401 must not
+// expire the administrator's authenticated panel session.
 func writeTelemtError(w http.ResponseWriter, err error, capabilityGated bool) {
-	if errors.Is(err, telemt.ErrResponseTooLarge) {
-		auth.WriteError(w, http.StatusBadGateway, "telemt_response_too_large", "telemt response exceeds the 8 MiB limit")
-		return
-	}
 	var apiErr *telemt.APIError
 	if !errors.As(err, &apiErr) {
-		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", "could not reach telemt")
+		writeTelemtDiagnostic(w, telemt.DiagnoseError(err))
 		return
 	}
 	switch apiErr.Code {
@@ -524,10 +517,18 @@ func writeTelemtError(w http.ResponseWriter, err error, capabilityGated bool) {
 			auth.WriteError(w, http.StatusNotImplemented, "capability_absent", "telemt build does not support this operation")
 			return
 		}
-		if apiErr.Status >= 400 && apiErr.Status < 500 {
+		if apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != http.StatusUnauthorized && apiErr.Code != "http_error" {
 			auth.WriteError(w, apiErr.Status, apiErr.Code, apiErr.Message)
 			return
 		}
-		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", apiErr.Message)
+		writeTelemtDiagnostic(w, telemt.DiagnoseError(err))
 	}
+}
+
+func writeTelemtDiagnostic(w http.ResponseWriter, diagnostic telemt.ErrorDiagnostic) {
+	status := http.StatusBadGateway
+	if diagnostic.Code == "telemt_timeout" {
+		status = http.StatusGatewayTimeout
+	}
+	auth.WriteError(w, status, diagnostic.Code, diagnostic.Message)
 }
