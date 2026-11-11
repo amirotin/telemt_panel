@@ -19,13 +19,24 @@ import (
 	"time"
 )
 
-// ErrResponseTooLarge reports an upstream body exceeding the 8 MiB limit.
+// ErrResponseTooLarge reports an upstream body exceeding its route's limit.
 var ErrResponseTooLarge = errors.New("telemt: response exceeds 8 MiB limit")
+
+type responseTooLargeError struct {
+	limit int
+}
+
+func (e *responseTooLargeError) Error() string {
+	return fmt.Sprintf("telemt: response exceeds %d MiB limit", e.limit/1024/1024)
+}
+
+func (e *responseTooLargeError) Unwrap() error { return ErrResponseTooLarge }
 
 // ErrInvalidResponse reports an unconfirmed or malformed upstream success.
 var ErrInvalidResponse = errors.New("telemt: invalid success response")
 
 const maxResponseBytes = 8 * 1024 * 1024
+const maxUsersResponseBytes = 32 * 1024 * 1024
 
 // APIError is a non-2xx Telemt response decoded from the error envelope.
 type APIError struct {
@@ -191,12 +202,16 @@ func (c *Client) requestStatusRuntime(ctx context.Context, method, path string, 
 	}
 	defer resp.Body.Close()
 
-	if resp.ContentLength > maxResponseBytes {
-		return nil, 0, ErrResponseTooLarge
+	limit := maxResponseBytes
+	if method == http.MethodGet && (path == "/v1/users" || path == "/v1/stats/users") {
+		limit = maxUsersResponseBytes
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if len(raw) > maxResponseBytes {
-		return nil, 0, ErrResponseTooLarge
+	if resp.ContentLength > int64(limit) {
+		return nil, 0, &responseTooLargeError{limit: limit}
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
+	if len(raw) > limit {
+		return nil, 0, &responseTooLargeError{limit: limit}
 	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("telemt: read response: %w", err)

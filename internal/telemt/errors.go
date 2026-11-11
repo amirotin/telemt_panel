@@ -22,6 +22,15 @@ type ErrorDiagnostic struct {
 // DiagnoseError distinguishes upstream rejections, bad responses and connection failures.
 func DiagnoseError(err error) ErrorDiagnostic {
 	diagnostic := ErrorDiagnostic{Code: errorCode(err), Message: "Telemt request failed"}
+	if errors.Is(err, ErrResponseTooLarge) {
+		limit := maxResponseBytes
+		var sizeErr *responseTooLargeError
+		if errors.As(err, &sizeErr) {
+			limit = sizeErr.limit
+		}
+		diagnostic.Message = fmt.Sprintf("Telemt response exceeds %d MiB limit", limit/1024/1024)
+		return diagnostic
+	}
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.Status >= 100 && apiErr.Status <= 599 {
 		diagnostic.Message = fmt.Sprintf("HTTP %d", apiErr.Status)

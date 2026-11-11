@@ -56,7 +56,7 @@ func TestHandleTelemtInfoResponseTooLarge(t *testing.T) {
 
 func TestHandleListUsersUpstreamErrorResponseTooLarge(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Length", fmt.Sprint(8*1024*1024+1))
+		w.Header().Set("Content-Length", fmt.Sprint(32*1024*1024+1))
 		_, _ = io.WriteString(w, "UPSTREAM_SECRET")
 	}))
 	t.Cleanup(upstream.Close)
@@ -64,6 +64,9 @@ func TestHandleListUsersUpstreamErrorResponseTooLarge(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.handleListUsers(w, httptest.NewRequest(http.MethodGet, "/api/users", nil))
 	assertUpstreamError(t, w, "telemt_response_too_large")
+	if !strings.Contains(w.Body.String(), "32 MiB") {
+		t.Fatalf("users diagnostic must name its active limit: %s", w.Body)
+	}
 }
 
 func TestHandleListUsersUpstreamErrorMalformedBelowLimit(t *testing.T) {
