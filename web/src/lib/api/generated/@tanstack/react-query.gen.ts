@@ -1262,7 +1262,7 @@ export const getTelemtWebAccessOptions = (options?: Options<GetTelemtWebAccessDa
 });
 
 /**
- * Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Applied with an instant runtime reload.
+ * Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Supports explicit instant or drain runtime reload; omitted policy retains instant for older clients.
  */
 export const putTelemtUserWebAccessMutation = (options?: Partial<Options<PutTelemtUserWebAccessData>>): UseMutationOptions<PutTelemtUserWebAccessResponse, PutTelemtUserWebAccessError, Options<PutTelemtUserWebAccessData>> => {
     const mutationOptions: UseMutationOptions<PutTelemtUserWebAccessResponse, PutTelemtUserWebAccessError, Options<PutTelemtUserWebAccessData>> = {

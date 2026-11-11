@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, type SheetProps } from "../ui/Sheet";
 import { Button } from "../ui/Button";
 import { CopyField } from "../ui/CopyField";
@@ -25,7 +25,7 @@ import {
   quotaBytesForFormSubmit,
   type QuotaUnit,
 } from "./users.helpers";
-import { expirationDateToISO, presetToExpiration } from "./expiry";
+import { expirationDateToISO, expirationISOToDate, presetToExpiration } from "./expiry";
 import { generateSecret } from "./secret";
 import { apiErrorMessage } from "./apiError";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
@@ -188,6 +188,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   const dirty=JSON.stringify(state)!==JSON.stringify(baseline);
   useEffect(()=>{onDirtyChange?.(dirty);},[dirty,onDirtyChange]);
   const refreshTopic = useRefreshTopic();
+  const queryClient = useQueryClient();
 
   const createMutation = useMutation({
     ...createUserMutation(),
@@ -195,7 +196,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
       pushToast(s.people.toast.created, "ok");
       onSaved?.(data.user.username);
       setCreatedSecret(data.secret);
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
@@ -207,7 +208,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     },
     retry: false,
     onSuccess: (data, { submitted }) => {
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
       activeSave.current = null;
       const confirmed = initialEditState(data);
@@ -353,7 +354,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     );
   }
 
-  const expirationDate = state.expiration.mode === "set" ? state.expiration.value.slice(0, 10) : "";
+  const expirationDate = state.expiration.mode === "set" ? expirationISOToDate(state.expiration.value) : "";
   const quotaValue = state.quotaAmount.mode === "set" ? String(state.quotaAmount.value) : "";
   const maxIpsValue = state.maxUniqueIps.mode === "set" ? String(state.maxUniqueIps.value) : "";
   const maxConnectionsValue = state.maxTcpConns.mode === "set" ? String(state.maxTcpConns.value) : "";

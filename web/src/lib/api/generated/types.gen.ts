@@ -440,6 +440,10 @@ export type WebAccessVhost = {
 export type WebAccessView = {
     revision: string;
     enabled: boolean;
+    /**
+     * Whether the source configuration has an MTProto listener. Unknown preserves older or unavailable configuration behavior.
+     */
+    mtproto_listener?: 'configured' | 'absent' | 'unknown';
     vhosts: Array<WebAccessVhost>;
 };
 
@@ -767,6 +771,10 @@ export type TelemtServiceState = {
     service: string;
     manager: string;
     status: 'running' | 'stopped' | 'unknown';
+    /**
+     * Native state when available from the service manager.
+     */
+    native_state?: 'active' | 'inactive' | 'failed' | 'activating' | 'deactivating' | 'reloading' | 'unknown';
     status_supported: boolean;
     status_error?: 'service_status_unavailable';
     /**
@@ -3706,7 +3714,7 @@ export type RestartTelemtServiceErrors = {
      */
     409: Error;
     /**
-     * internal_error — the restart op itself failed
+     * service_action_unconfirmed — result is unconfirmed; check service state before retrying
      */
     502: Error;
     /**
@@ -3841,7 +3849,11 @@ export type PutTelemtUserWebAccessData = {
     path: {
         username: string;
     };
-    query?: never;
+    query?: {
+        reload?: 'instant' | 'drain';
+        timeout_secs?: number;
+        failure_policy?: 'keep_new' | 'rollback';
+    };
     url: '/api/telemt/web-access/users/{username}';
 };
 

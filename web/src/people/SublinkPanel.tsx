@@ -54,7 +54,7 @@ export function SublinkPanel({ username, compact = false }: SublinkPanelProps) {
       pushToast(s.people.toast.sublinkRegenerated, "ok");
       setConfirming(false);
       queryClient.invalidateQueries({ queryKey: getUserSublinkQueryKey({ path: { username } }) });
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });

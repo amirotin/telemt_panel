@@ -34,20 +34,28 @@ func (s *Systemd) Stop(ctx context.Context, service string) error {
 // exits nonzero for every state but "active", so the state is read from
 // stdout, not the exit code.
 func (s *Systemd) Status(ctx context.Context, service string) (ServiceStatus, error) {
-	out, _, runErr := s.run(ctx, "systemctl", "is-active", service)
-	switch strings.TrimSpace(string(out)) {
+	state, err := s.DetailedState(ctx, service)
+	switch state {
 	case "active":
-		return StatusRunning, nil
+		return StatusRunning, err
 	case "inactive", "failed":
-		return StatusStopped, nil
-	case "":
-		if runErr != nil {
-			return StatusUnknown, runErr
-		}
-		return StatusUnknown, nil
+		return StatusStopped, err
 	default:
-		// activating, deactivating, reloading, unknown, ...
-		return StatusUnknown, nil
+		return StatusUnknown, err
+	}
+}
+
+// DetailedState returns the systemd state from a single is-active command.
+// Recognized non-active states have a nonzero exit code but remain valid observations.
+func (s *Systemd) DetailedState(ctx context.Context, service string) (string, error) {
+	out, _, runErr := s.run(ctx, "systemctl", "is-active", service)
+	switch state := strings.TrimSpace(string(out)); state {
+	case "active", "inactive", "failed", "activating", "deactivating", "reloading", "unknown":
+		return state, nil
+	case "":
+		return "unknown", runErr
+	default:
+		return "unknown", nil
 	}
 }
 

@@ -19,6 +19,7 @@ import { recordPendingChanges } from "./pendingChanges";
 import { ConflictBanner } from "./ConflictBanner";
 import { useConfigEditor } from "./useConfigEditor";
 import { useTomlSettingsSession } from "./useTomlSettingsSession";
+import { invalidateTelemtConfigCaches } from "../../lib/invalidateTelemtConfigCaches";
 import { DraftSessionActions } from "../../lib/draftSessionActions";
 import { useReloadPolling } from "./useReloadPolling";
 import { buildConfigPatch } from "./configPatch.helpers";
@@ -34,8 +35,6 @@ import {
 import {
   getTelemtConfigOptions,
   getTelemtConfigCatalogOptions,
-  getTelemtConfigTomlQueryKey,
-  getTelemtConfigQueryKey,
   getHostOptions,
   patchTelemtConfigMutation,
   reloadTelemtMutation,
@@ -115,8 +114,7 @@ export function ConfigPage() {
       setConflict(null);
       setPatchErrorCode(null);
       if (result.reload) setActiveReloadId(result.reload.reload_id);
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() });
+      void invalidateTelemtConfigCaches(queryClient);
       // Re-baseline to a fresh revision explicitly (useConfigEditor never
       // auto-reseeds from the query cache — see that hook's own doc
       // comment) so the next PATCH's If-Match sends the revision this

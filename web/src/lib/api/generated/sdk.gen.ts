@@ -843,7 +843,7 @@ export const getTelemtWebAccess = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Applied with an instant runtime reload.
+ * Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Supports explicit instant or drain runtime reload; omitted policy retains instant for older clients.
  */
 export const putTelemtUserWebAccess = <ThrowOnError extends boolean = false>(options: Options<PutTelemtUserWebAccessData, ThrowOnError>): RequestResult<PutTelemtUserWebAccessResponses, PutTelemtUserWebAccessErrors, ThrowOnError> => (options.client ?? client).put<PutTelemtUserWebAccessResponses, PutTelemtUserWebAccessErrors, ThrowOnError>({
     security: [{

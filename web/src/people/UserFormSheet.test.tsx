@@ -266,3 +266,15 @@ it("shows config permission guidance after failed user creation and retains the 
     toastContainer.remove();
   }
 });
+
+describe("UTC expiry calendar", () => {
+  it("normalizes an existing offset instant to its UTC calendar date without rewriting it", async () => {
+    await render("3.5.8", { expiration_rfc3339: "2026-12-01T01:30:00+03:00" });
+    const input = formInput(ru.people.form.expirationShort);
+    expect(input.value).toBe("2026-11-30");
+    expect(input.closest("label")?.textContent).toContain("UTC");
+    await enter(formInput(ru.people.form.maxConnections), "5");
+    await submit();
+    expect(await requests[0]!.json()).toEqual({ max_tcp_conns: 5 });
+  });
+});

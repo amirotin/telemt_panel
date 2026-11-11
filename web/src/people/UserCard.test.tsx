@@ -118,6 +118,22 @@ describe("UserCard gestures", () => {
     </PeopleContext.Provider>));
   }
 
+  it("renders the UTC expiry day and UTC tooltip at the month boundary", () => {
+    vi.setSystemTime(new Date("2026-11-01T12:00:00Z"));
+    renderDisplay({ expiration_rfc3339: "2026-11-30T23:59:59Z" });
+    const expiry = container.querySelector<HTMLElement>(".user-expiry")!;
+    expect(expiry.textContent).toBe("До 30.11 UTC");
+    expect(expiry.title).toContain("30.11.2026");
+    expect(expiry.title).toContain("23:59:59");
+    expect(expiry.title).toContain("UTC");
+  });
+
+  it("compares expiry years in UTC at the year boundary", () => {
+    vi.setSystemTime(new Date("2026-12-31T23:00:00Z"));
+    renderDisplay({ expiration_rfc3339: "2027-01-01T00:30:00Z" });
+    expect(container.querySelector(".user-expiry")?.textContent).toBe("До 01.01.2027 UTC");
+  });
+
   it("fills the quota indicator from quota usage, not accumulated panel traffic", () => {
     renderDisplay({data_quota_bytes:2048,traffic:{observed_total_bytes:8192,current_month_bytes:4096,month_key:202610,observed_since_epoch_secs:1,last_activity_epoch_secs:2,continuity:"normal"}},1024);
     expect(container.querySelector<HTMLElement>("[data-quota-fill]")?.style.getPropertyValue("--quota-fill")).toBe("50%");

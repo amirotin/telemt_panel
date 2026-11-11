@@ -3,12 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage, useStrings } from "../../i18n";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { acknowledgeSubmitted, discardToRemote, type SubmittedDraft } from "../../lib/draftSession";
+import { invalidateTelemtConfigCaches } from "../../lib/invalidateTelemtConfigCaches";
 import { useDraftSession } from "../../lib/draftSessionReact";
 import { pushToast } from "../../ui/Toast";
 import {
-  getTelemtConfigQueryKey,
   getTelemtConfigTomlOptions,
-  getTelemtConfigTomlQueryKey,
   reloadTelemtMutation,
   restartTelemtServiceMutation,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
@@ -91,8 +90,7 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
       setValidatedDraft(null);
       setConflict(false);
       setUnknownOutcome(false);
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigQueryKey() });
+      void invalidateTelemtConfigCaches(queryClient);
       await onApplied?.(next);
     },
     onError: (error: PatchTelemtConfigTomlError, submitted) => {

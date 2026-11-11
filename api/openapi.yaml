@@ -1050,7 +1050,7 @@ paths:
         "202": { description: Restart initiated }
         "409": { description: update_locked — another service or update operation is running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: manual_restart_required — automatic restart unavailable on this host; message carries the manual command (same info as /api/host manual_commands), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "502": { description: internal_error — the restart op itself failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: service_action_unconfirmed — result is unconfirmed; check service state before retrying, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/zero:
     get:
@@ -1106,10 +1106,13 @@ paths:
     put:
       tags: [telemt, users]
       operationId: putTelemtUserWebAccess
-      description: Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Applied with an instant runtime reload.
+      description: Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Supports explicit instant or drain runtime reload; omitted policy retains instant for older clients.
       parameters:
         - { $ref: "#/components/parameters/Username" }
         - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
+        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
+        - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/WebUserAccessUpdate" } } }
@@ -2662,6 +2665,7 @@ components:
       properties:
         revision: { type: string }
         enabled: { type: boolean }
+        mtproto_listener: { type: string, enum: [configured, absent, unknown], description: Whether the source configuration has an MTProto listener. Unknown preserves older or unavailable configuration behavior. }
         vhosts: { type: array, items: { $ref: "#/components/schemas/WebAccessVhost" } }
 
     WebUserAccessProfile:
@@ -3003,6 +3007,7 @@ components:
         service: { type: string }
         manager: { type: string }
         status: { type: string, enum: [running, stopped, unknown] }
+        native_state: { type: string, enum: [active, inactive, failed, activating, deactivating, reloading, unknown], description: Native state when available from the service manager. }
         status_supported: { type: boolean }
         status_error: { type: string, enum: [service_status_unavailable] }
         binding_conflict: { type: boolean, description: The configured start/stop target collides with the panel binding. }

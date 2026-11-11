@@ -140,6 +140,11 @@ func (s *Server) handleSubpage(w http.ResponseWriter, r *http.Request) {
 	if caps, err := s.tc.Capabilities(ctx); err == nil && caps.ConfigAPI {
 		if sections, _, err := s.tc.GetConfig(ctx); err == nil {
 			webLinks = subpage.WebLinksForUser(sections["web"], username, secret)
+			// Keep source links through token verification and WEB secret extraction.
+			// findUser returned a value copy, so filtering cannot mutate cached users.
+			if telemt.MTProtoListenerState(sections) == "absent" {
+				u.Links = telemt.UserLinks{}
+			}
 		} else {
 			slog.Warn("subpage: WEB profile lookup unavailable", "username", username, "err", err)
 		}
