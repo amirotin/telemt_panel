@@ -1,3 +1,4 @@
+import { accessPolicyRu } from "./accessPolicy.ru";
 // The Russian dictionary — and the source of truth for the dictionary
 // SHAPE: `Dict = Widen<typeof ru>` (i18n/dict.ts) is what types en.ts, so a
 // key added here is a compile error in en.ts until it is translated
@@ -17,6 +18,7 @@ import {serviceControlRu} from './serviceControl.ru';
 import { linkAddressRu } from "./linkAddress.ru";
 
 export const ru = {
+  accessPolicy: accessPolicyRu,
   linkAddress: linkAddressRu,
   serviceControl:serviceControlRu,
   releasePicker:releasePickerRu,

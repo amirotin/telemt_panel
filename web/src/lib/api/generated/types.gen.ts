@@ -225,6 +225,12 @@ export type User = {
     username: string;
     enabled: boolean;
     in_runtime?: boolean;
+    /**
+     * Desired source CIDR deny rules; absent on older servers.
+     */
+    source_deny?: Array<string>;
+    source_deny_status?: UserSourceDenyState;
+    limits?: UserLimitState;
     user_ad_tag?: string;
     max_tcp_conns?: number;
     max_unique_ips?: number;
@@ -259,6 +265,42 @@ export type User = {
     sub_url?: string;
 };
 
+export type UserInheritedLimit = {
+    /**
+     * Resolved limit; null means unlimited.
+     */
+    value: number | null;
+    /**
+     * User configuration; zero inherits the global default.
+     */
+    configured_override: number | null;
+    global_value: number;
+    origin: 'user_override' | 'global_default' | 'unlimited';
+};
+
+export type UserLimitSnapshot = {
+    max_tcp_conns: UserInheritedLimit;
+    max_unique_ips: UserInheritedLimit;
+};
+
+export type UserLimitState = {
+    desired: UserLimitSnapshot;
+    effective: UserLimitSnapshot | null;
+    effective_scope: string;
+    subsystem_convergence: string;
+};
+
+export type UserSourceDenyState = {
+    /**
+     * Null means the active snapshot is unknown.
+     */
+    effective: Array<string> | null;
+    runtime_reload_required: boolean | null;
+    apply_mode: string;
+    reload_endpoint: string;
+    effective_scope: string;
+};
+
 export type UserTraffic = {
     observed_total_bytes: number;
     current_month_bytes: number;
@@ -282,10 +324,20 @@ export type UserLinks = {
 };
 
 export type UserCreate = {
+    /**
+     * Omitted preserves retained rules; empty array or null removes rules. Supported servers only.
+     */
+    source_deny?: Array<string> | null;
     username: string;
     secret?: string;
     user_ad_tag?: string;
+    /**
+     * On servers with global limits, zero or omission inherits the global default.
+     */
     max_tcp_conns?: number;
+    /**
+     * On servers with global limits, zero or omission inherits the global default.
+     */
     max_unique_ips?: number;
     data_quota_bytes?: number;
     expiration_rfc3339?: string;
@@ -304,6 +356,10 @@ export type UserCreate = {
  * JSON Merge Patch — null removes a limit, omitted leaves unchanged.
  */
 export type UserPatch = {
+    /**
+     * Omitted preserves retained rules; empty array or null removes rules. Supported servers only.
+     */
+    source_deny?: Array<string> | null;
     secret?: string;
     user_ad_tag?: string | null;
     max_tcp_conns?: number | null;

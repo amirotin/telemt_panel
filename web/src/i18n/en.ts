@@ -1,3 +1,4 @@
+import { accessPolicyEn } from "./accessPolicy.en";
 import type { Dict } from "./dict";
 import { geoipEn } from "./geoip.en";
 import { geographyEn } from "./geography.en";
@@ -16,6 +17,7 @@ import { linkAddressEn } from "./linkAddress.en";
 // Reissue, Белый список → Allowlist. Telemt's own identifiers (config keys,
 // ME, DC, Fake-TLS, hardswap, PROXY protocol) are never translated.
 export const en: Dict = {
+  accessPolicy: accessPolicyEn,
   linkAddress: linkAddressEn,
   serviceControl:serviceControlEn,
   releasePicker:releasePickerEn,

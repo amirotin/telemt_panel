@@ -2562,6 +2562,9 @@ components:
         username: { type: string }
         enabled: { type: boolean }
         in_runtime: { type: boolean }
+        source_deny: { type: array, items: { type: string }, description: Desired source CIDR deny rules; absent on older servers. }
+        source_deny_status: { $ref: "#/components/schemas/UserSourceDenyState" }
+        limits: { $ref: "#/components/schemas/UserLimitState" }
         user_ad_tag: { type: string }
         max_tcp_conns: { type: integer }
         max_unique_ips: { type: integer }
@@ -2586,6 +2589,44 @@ components:
         traffic: { $ref: "#/components/schemas/UserTraffic" }
         ip_history: { $ref: "#/components/schemas/UserIPSummary" }
         sub_url: { type: string, description: Absolute subscription page URL }
+
+    UserInheritedLimit:
+      type: object
+      required: [value, configured_override, global_value, origin]
+      properties:
+        value: { type: [integer, "null"], description: Resolved limit; null means unlimited. }
+        configured_override: { type: [integer, "null"], description: User configuration; zero inherits the global default. }
+        global_value: { type: integer, minimum: 0 }
+        origin: { type: string, enum: [user_override, global_default, unlimited] }
+
+    UserLimitSnapshot:
+      type: object
+      required: [max_tcp_conns, max_unique_ips]
+      properties:
+        max_tcp_conns: { $ref: "#/components/schemas/UserInheritedLimit" }
+        max_unique_ips: { $ref: "#/components/schemas/UserInheritedLimit" }
+
+    UserLimitState:
+      type: object
+      required: [desired, effective, effective_scope, subsystem_convergence]
+      properties:
+        desired: { $ref: "#/components/schemas/UserLimitSnapshot" }
+        effective:
+          oneOf:
+            - { $ref: "#/components/schemas/UserLimitSnapshot" }
+            - { type: "null" }
+        effective_scope: { type: string }
+        subsystem_convergence: { type: string }
+
+    UserSourceDenyState:
+      type: object
+      required: [effective, runtime_reload_required, apply_mode, reload_endpoint, effective_scope]
+      properties:
+        effective: { type: [array, "null"], items: { type: string }, description: Null means the active snapshot is unknown. }
+        runtime_reload_required: { type: [boolean, "null"] }
+        apply_mode: { type: string }
+        reload_endpoint: { type: string }
+        effective_scope: { type: string }
 
     UserTraffic:
       type: object
@@ -2618,11 +2659,12 @@ components:
       type: object
       required: [username]
       properties:
+        source_deny: { type: [array, "null"], items: { type: string }, description: Omitted preserves retained rules; empty array or null removes rules. Supported servers only. }
         username: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
         secret: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
         user_ad_tag: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
-        max_tcp_conns: { type: integer, minimum: 1 }
-        max_unique_ips: { type: integer, minimum: 1 }
+        max_tcp_conns: { type: integer, minimum: 0, description: "On servers with global limits, zero or omission inherits the global default." }
+        max_unique_ips: { type: integer, minimum: 0, description: "On servers with global limits, zero or omission inherits the global default." }
         data_quota_bytes: { type: integer, format: int64, minimum: 1 }
         expiration_rfc3339: { type: string, format: date-time }
         rate_limit_up_bps: { type: integer, format: int64, minimum: 0, description: "Bits per second; 0 is unlimited. Telemt 3.5.8+ accepts at most 100000000000." }
@@ -2633,6 +2675,7 @@ components:
       type: object
       description: JSON Merge Patch — null removes a limit, omitted leaves unchanged.
       properties:
+        source_deny: { type: [array, "null"], items: { type: string }, description: Omitted preserves retained rules; empty array or null removes rules. Supported servers only. }
         secret: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
         user_ad_tag: { type: [string, "null"] }
         max_tcp_conns: { type: [integer, "null"] }

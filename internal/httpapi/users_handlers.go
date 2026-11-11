@@ -159,14 +159,41 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 
 // handleCreateUser implements POST /api/users.
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
-	var req telemt.CreateUserRequest
-	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxUserPatchBody}); err != nil {
+	var body json.RawMessage
+	if err := decodeJSONBody(w, r, &body, jsonBodyOptions{MaxBytes: maxUserPatchBody}); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
 
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "request body must be an object")
+		return
+	}
+	for key := range fields {
+		if _, ok := userPatchFields[key]; !ok && key != "username" {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "unsupported user field: "+key)
+			return
+		}
+	}
+	var req telemt.CreateUserRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body: "+err.Error())
+		return
+	}
+	if value, present := fields["source_deny"]; present && !bytes.Equal(bytes.TrimSpace(value), jsonNull) {
+		if _, err := decodeSourceDenyField(value); err != nil {
+			auth.WriteError(w, http.StatusBadRequest, "bad_request", "source_deny must be an array of CIDR strings or null")
+			return
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), subpageRequestTimeout)
 	defer cancel()
+
+	if len(req.SourceDeny) > 0 && !s.requireSourceDeny(w, ctx) {
+		return
+	}
 
 	u, secret, err := s.tc.CreateUser(ctx, req)
 	if err != nil {
@@ -220,12 +247,16 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	patch, err := decodeUserPatch(body)
 	if err != nil {
-		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "invalid request body: "+err.Error())
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), subpageRequestTimeout)
 	defer cancel()
+
+	if _, present := patch["source_deny"]; present && !s.requireSourceDeny(w, ctx) {
+		return
+	}
 
 	u, err := s.tc.PatchUser(ctx, username, patch)
 	if err != nil {
@@ -419,6 +450,7 @@ var userPatchFields = map[string]func(json.RawMessage) (any, error){
 	"rate_limit_up_bps":   decodeUint64PatchField,
 	"rate_limit_down_bps": decodeUint64PatchField,
 	"enabled":             decodeBoolPatchField,
+	"source_deny":         decodeSourceDenyField,
 }
 
 func decodeStringPatchField(v json.RawMessage) (any, error) {
@@ -463,11 +495,14 @@ func decodeUserPatch(body []byte) (map[string]any, error) {
 		return nil, err
 	}
 
+	if raw == nil {
+		return nil, errors.New("request body must be an object")
+	}
 	patch := make(map[string]any, len(raw))
 	for key, val := range raw {
 		decode, ok := userPatchFields[key]
 		if !ok {
-			continue // unknown fields ignored, matching Telemt's own tolerance
+			return nil, fmt.Errorf("unsupported user field: %s", key)
 		}
 		if bytes.Equal(bytes.TrimSpace(val), jsonNull) {
 			if key == "secret" {
@@ -531,4 +566,25 @@ func writeTelemtDiagnostic(w http.ResponseWriter, diagnostic telemt.ErrorDiagnos
 		status = http.StatusGatewayTimeout
 	}
 	auth.WriteError(w, status, diagnostic.Code, diagnostic.Message)
+}
+
+func decodeSourceDenyField(v json.RawMessage) (any, error) {
+	var values []string
+	if err := json.Unmarshal(v, &values); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func (s *Server) requireSourceDeny(w http.ResponseWriter, ctx context.Context) bool {
+	supported, err := s.tc.UserSourceDenySupported(ctx)
+	if err != nil {
+		writeTelemtError(w, err, false)
+		return false
+	}
+	if !supported {
+		auth.WriteError(w, http.StatusNotImplemented, "capability_absent", "telemt build does not support source_deny")
+		return false
+	}
+	return true
 }

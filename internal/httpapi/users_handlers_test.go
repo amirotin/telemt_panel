@@ -697,7 +697,7 @@ func TestHandleCreateUserExists(t *testing.T) {
 
 // TestHandlePatchUserTriState is the byte-level assertion the brief
 // requires: a set field, an explicit null (remove), an omitted field (left
-// unchanged) and an unknown field (dropped) must produce exactly one JSON
+// unchanged) must produce exactly one JSON
 // object upstream with only the known, present keys — set field as its
 // value, null field as literal null, nothing else.
 func TestHandlePatchUserTriState(t *testing.T) {
@@ -709,7 +709,6 @@ func TestHandlePatchUserTriState(t *testing.T) {
 		"data_quota_bytes":  2048,
 		"max_tcp_conns":     nil,
 		"rate_limit_up_bps": uint64(9007199254740993),
-		"bogus_field":       "should be dropped",
 	}
 	req := mutatingJSON(t, "PATCH", "/api/users/alice", cookie, body)
 	w := httptest.NewRecorder()

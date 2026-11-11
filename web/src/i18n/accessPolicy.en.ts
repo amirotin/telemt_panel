@@ -1,0 +1,16 @@
+export const accessPolicyEn = {
+ sourceUnavailable: "Source network editing is unavailable. Your edits are preserved. Restore support or revert these edits before saving.", retrySupport: "Refresh support",
+ inheritedProfile: "Server defaults",
+ title: "Access policy", description: "Global defaults apply to each user unless a positive user override is configured.",
+ tcp: "TCP connections per user", ips: "Unique IPs per user", mode: "IP counting mode", window: "IP window · seconds", cidr: "Network rate limits",
+ active_window: "Active connections", time_window: "Time window", combined: "Active connections + time window",
+ zero: "0 means unlimited globally. Empty user overrides and user value 0 inherit this default.",
+ cidrHint: "One CIDR, upload bits/s, download bits/s per line. Zero means unlimited. Emptying the list removes every rule.",
+ unsupported: "This Telemt version does not expose access policies.", readonly: "Read-only server. The policy can be inspected, but changes are disabled.",
+ save: "Save policy", refresh: "Refresh", discard: "Discard edits and refresh", preview: "Review changes", cancel: "Back to editing", confirm: "Confirm changes",
+ saved: "Policy saved. Watcher publication is asynchronous; subsystem convergence is unknown.",
+ conflict: "The server configuration changed. Your edits are preserved. Refresh the baseline before saving again.", rebase: "Keep edits on the latest revision", error: "Could not load or save the access policy.", invalid: "Use whole numbers from 0 to 9007199254740991. Network rows require CIDR, upload bits/s and download bits/s; duplicates are not allowed.",
+ desired: "Desired", effective: "Active snapshot", unknown: "Unknown", unlimited: "Unlimited", inherited: "Global default", override: "User override",
+ sourceDeny: "Blocked source networks", sourceHint: "One IPv4 or IPv6 CIDR per line. An empty list removes all rules. New rules need a generation reload.",
+ sourceCreate: "An empty list explicitly clears any retained rules for this username.", reloadRequired: "Generation reload required. Saved rules are not active yet.", reloadUnknown: "The active deny rules are unknown. Reload status is unavailable.", reloadCurrent: "Deny rules match the active generation snapshot.", reloadLink: "Open reload settings", noDenies: "No blocked networks", inheritHint: "Empty or 0 inherits the global default.",
+} as const;

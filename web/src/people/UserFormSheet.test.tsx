@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 async function render(version: string | undefined, overrides: Partial<UsersTopicUser> = {}, mode: "create" | "edit" = "edit", props: Partial<UserFormSheetProps> = {}) {
-  queryClient.setQueryData(getTelemtInfoQueryKey(), { reachable: true, version, capabilities: { quota: true, runtime_edge: true, reload_api: true, config_api: true, user_enable_disable: true, rotate_secret: true } });
+  queryClient.setQueryData(getTelemtInfoQueryKey(), { reachable: true, version, capabilities: { user_source_deny:version === "3.5.17", quota: true, runtime_edge: true, reload_api: true, config_api: true, user_enable_disable: true, rotate_secret: true } });
   await act(async () => root.render(<QueryClientProvider client={queryClient}><SSEProvider><UserFormSheet inline open mode={mode} user={{ ...user, ...overrides }} onClose={() => {}} {...props} /></SSEProvider></QueryClientProvider>));
 }
 
@@ -277,4 +277,46 @@ describe("UTC expiry calendar", () => {
     await submit();
     expect(await requests[0]!.json()).toEqual({ max_tcp_conns: 5 });
   });
+});
+
+describe("source deny form compatibility",()=>{
+ it("shows no deny input on legacy",async()=>{await render("3.5.16",{},"create");expect(container.querySelector("textarea")).toBeNull();});
+ it("clears orphan denies for new supported accounts",async()=>{
+  await render("3.5.17",{},"create");
+  expect(container.querySelector("textarea")).not.toBeNull();
+  await enter(container.querySelector<HTMLInputElement>('[data-testid="user-form-username"]')!,"newuser");await submit();
+  expect(await requests[0]!.json()).toHaveProperty("source_deny",[]);
+ });
+ it("seeds inherited limits with an empty override and preserves them when editing another field",async()=>{
+  const inherited={value:7,configured_override:0,global_value:7,origin:"global_default" as const};
+  await render("3.5.17",{max_tcp_conns:7,limits:{desired:{max_tcp_conns:inherited,max_unique_ips:inherited},effective:null,effective_scope:"active_config_snapshot",subsystem_convergence:"unknown"}});
+  expect(formInput(ru.people.form.maxConnections).value).toBe("");
+  await enter(formInput(ru.people.form.maxIps),"3");await submit();expect(await requests[0]!.json()).toEqual({max_unique_ips:3});
+ });
+});
+it("keeps untouched deny rules omitted while editing another field",async()=>{
+ await render("3.5.17",{source_deny:["::/0"]});
+ await enter(formInput(ru.people.form.maxConnections),"3");await submit();expect(await requests[0]!.json()).toEqual({max_tcp_conns:3});
+});
+
+it("clears source-deny rules explicitly from the user form",async()=>{
+ await render("3.5.17",{source_deny:["::/0"]});
+ await act(async()=>{const el=container.querySelector("textarea")!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(el,"");el.dispatchEvent(new Event("input",{bubbles:true}));});
+ await submit();expect(await requests[0]!.json()).toEqual({source_deny:[]});
+});
+it("preserves dirty deny edits and blocks other writes if support disappears",async()=>{
+ await render("3.5.17",{source_deny:["::/0"]});
+ await act(async()=>{const el=container.querySelector("textarea")!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(el,"192.0.2.0/24");el.dispatchEvent(new Event("input",{bubbles:true}));});
+ await enter(formInput(ru.people.form.maxConnections),"3");
+ await act(async()=>{queryClient.setQueryData(getTelemtInfoQueryKey(),{reachable:true,version:"3.5.16",capabilities:{user_source_deny:false}});await new Promise(resolve=>setTimeout(resolve,30));});
+ expect(container.querySelector("textarea")?.value).toBe("192.0.2.0/24");
+ expect(container.textContent).toContain(ru.accessPolicy.sourceUnavailable);
+ expect(container.querySelector<HTMLButtonElement>('[data-testid="user-form-submit"]')!.disabled).toBe(true);
+ await submit();expect(requests).toHaveLength(0);
+});
+it("labels blank .17 connection limits as inheritance for new users",async()=>{
+ await render("3.5.17",{},"create");
+ expect(formInput(ru.people.form.maxConnections).placeholder).toBe(ru.accessPolicy.inherited);
+ expect(formInput(ru.people.form.maxIps).placeholder).toBe(ru.accessPolicy.inherited);
+ expect(container.textContent).toContain(ru.accessPolicy.inheritHint);
 });

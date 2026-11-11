@@ -109,6 +109,9 @@ export interface UserLinksWire {
 // *_list fields have no omitempty on the Go side (always present) but are
 // typed nullable defensively since a nil Go slice marshals to `null`.
 export interface UsersTopicUser {
+  source_deny?: string[];
+  source_deny_status?: import("../lib/api/generated/types.gen").UserSourceDenyState;
+  limits?: import("../lib/api/generated/types.gen").UserLimitState;
   username: string;
   enabled: boolean;
   in_runtime: boolean;
