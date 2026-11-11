@@ -53,3 +53,26 @@ export function policyPatch(base: PolicyDraft, draft: PolicyDraft): TelemtAccess
   }
   return patch;
 }
+
+// Preserve only edits relative to the original baseline; fresh untouched rows stay authoritative.
+export function rebasePolicyDraft(original: PolicyDraft, draft: PolicyDraft, fresh: PolicyDraft): PolicyDraft {
+  const next = { ...fresh };
+  for (const key of [...policyNumbers, "user_max_unique_ips_mode"] as const) {
+    if (draft[key] !== original[key]) next[key] = draft[key];
+  }
+  if (draft.cidr_rate_limits !== original.cidr_rate_limits) {
+    const before = rules(original.cidr_rate_limits), edited = rules(draft.cidr_rate_limits);
+    // Emptying a previously populated list deliberately clears the whole map, including fresh keys.
+    if (before.size > 0 && edited.size === 0) next.cidr_rate_limits = "";
+    else {
+      const merged = rules(fresh.cidr_rate_limits);
+      for (const [cidr, rate] of edited) {
+        const previous = before.get(cidr);
+        if (previous?.[0] !== rate[0] || previous?.[1] !== rate[1]) merged.set(cidr, rate);
+      }
+      for (const cidr of before.keys()) if (!edited.has(cidr)) merged.delete(cidr);
+      next.cidr_rate_limits = [...merged].map(([cidr, [up, down]]) => `${cidr} ${up} ${down}`).join("\n");
+    }
+  }
+  return next;
+}

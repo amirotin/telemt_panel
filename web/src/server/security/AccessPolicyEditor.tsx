@@ -8,16 +8,12 @@ import type { TelemtAccessPolicyState } from "../../lib/api/generated/types.gen"
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
-import { policyDraft, policyNumbers, policyPatch, type PolicyDraft } from "./policy.helpers";
+import { policyDraft, policyNumbers, policyPatch, rebasePolicyDraft, type PolicyDraft } from "./policy.helpers";
 
 interface Session { base: TelemtAccessPolicyState; draft: PolicyDraft }
 
 function rebaseDraft(session: Session, fresh: TelemtAccessPolicyState): Session {
-  const original = policyDraft(session.base.desired), next = policyDraft(fresh.desired);
-  for (const key of Object.keys(next) as (keyof PolicyDraft)[]) {
-    if (session.draft[key] !== original[key]) next[key] = session.draft[key];
-  }
-  return { base: fresh, draft: next };
+  return { base: fresh, draft: rebasePolicyDraft(policyDraft(session.base.desired), session.draft, policyDraft(fresh.desired)) };
 }
 
 export function AccessPolicyEditor() {
@@ -102,7 +98,7 @@ export function AccessPolicyEditor() {
           <label className="grid min-w-0 gap-1.5 text-meta text-text-muted sm:col-span-2"><span>{copy.cidr}</span><textarea name="cidr_rate_limits" className="min-h-32 w-full rounded-xl border border-border bg-bg p-3 font-mono text-meta text-text" rows={4} value={session.draft.cidr_rate_limits} spellCheck={false} autoCapitalize="off" onChange={event => update("cidr_rate_limits", event.target.value)} /><small className="leading-relaxed">{copy.cidrHint}</small></label>
         </fieldset>
         {invalid && <p role="alert" className="text-meta text-error">{copy.invalid}</p>}
-        {conflict && <div role="alert" className="grid gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-meta"><p>{copy.conflict}</p><Button variant="secondary" onClick={() => void refresh(true)} disabled={busy || readOnly}>{copy.rebase}</Button></div>}
+        {conflict && <div role="alert" className="grid gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-meta"><p>{copy.conflict}</p><Button variant="secondary" onClick={() => void refresh(true)} disabled={busy || readOnly || invalid}>{copy.rebase}</Button></div>}
         {!!failure && !failedConflict && <p role="alert" className="text-meta text-error">{apiErrorMessage(failure, s)}</p>}
         {saved && <p role="status" className="rounded-xl bg-success/10 p-3 text-meta text-success-text">{copy.saved}</p>}
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end"><Button variant="secondary" disabled={busy} onClick={() => void refresh(false)}>{dirty ? copy.discard : copy.refresh}</Button><Button disabled={!canSave} onClick={() => setPreview(true)}>{copy.save}</Button></div>

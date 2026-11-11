@@ -24,3 +24,30 @@ it("preserves local edits and original CAS baseline on background refresh",async
 it("keeps a rejected conflicting draft until explicit rebase",async()=>{client.setConfig({fetch:async input=>{const req=input as Request;requests.push(req);return req.method==="PATCH"?Response.json({code:"revision_conflict",message:"changed"},{status:409}):Response.json({...state,revision:"r2"});}});await render();await enter("user_max_unique_ips_global_each","9");await save();expect(input("user_max_unique_ips_global_each").value).toBe("9");expect(container.textContent).toContain(ru.accessPolicy.conflict);expect(button(ru.accessPolicy.save).disabled).toBe(true);});
 it("edits CIDR bandwidth with a key merge",async()=>{await render();await enter("cidr_rate_limits","::/0 10 20\n192.0.2.0/24 0 30");await save();expect(await requests.find(r=>r.method==="PATCH")!.json()).toEqual({cidr_rate_limits:{"::/0":{up_bps:10,down_bps:20},"192.0.2.0/24":{up_bps:0,down_bps:30}}});});
 it("uses the confirmed revision on the next save",async()=>{await render();await enter("user_max_unique_ips_global_each","5");await save();await enter("user_max_unique_ips_global_each","6");await save();expect(requests.filter(r=>r.method==="PATCH").map(req=>req.headers.get("If-Match"))).toEqual(["r1","r2"]);});
+it("rebases only locally edited CIDRs and reviews them before using fresh CAS tokens",async()=>{
+ const A="192.0.2.0/24", B="198.51.100.0/24", C="203.0.113.0/24";
+ const baseline={...state,desired:{...state.desired,cidr_rate_limits:{[A]:{up_bps:1,down_bps:2},[B]:{up_bps:3,down_bps:4}}}};
+ cache.setQueryData(getTelemtAccessPolicyQueryKey(),baseline);
+ const fresh={...baseline,revision:"r2",runtime:{...state.runtime,runtime_match:"runtime2"},desired:{...baseline.desired,cidr_rate_limits:{[A]:{up_bps:1,down_bps:2},[B]:{up_bps:30,down_bps:40},[C]:{up_bps:5,down_bps:6}}}};
+ client.setConfig({fetch:async input=>{const req=input as Request;requests.push(req);return Response.json(fresh);}});
+ await render();await enter("cidr_rate_limits",`${A} 10 20\n${B} 3 4`);
+ await act(async()=>{cache.setQueryData(getTelemtAccessPolicyQueryKey(),fresh);await wait();});
+ expect(button(ru.accessPolicy.save).disabled).toBe(true);
+ await act(async()=>{button(ru.accessPolicy.rebase).click();await wait();});
+ expect(input("cidr_rate_limits").value).toBe(`${A} 10 20\n${B} 30 40\n${C} 5 6`);
+ expect(requests.filter(req=>req.method==="PATCH")).toHaveLength(0);
+ expect(button(ru.accessPolicy.confirm)).toBeUndefined();
+ await act(async()=>button(ru.accessPolicy.save).click());
+ expect(requests.filter(req=>req.method==="PATCH")).toHaveLength(0);
+ expect(button(ru.accessPolicy.confirm)).toBeDefined();
+ await act(async()=>{button(ru.accessPolicy.confirm).click();await wait();});
+ const req=requests.find(req=>req.method==="PATCH")!;
+ expect(await req.json()).toEqual({cidr_rate_limits:{[A]:{up_bps:10,down_bps:20}}});
+ expect(req.headers.get("If-Match")).toBe("r2");expect(req.headers.get("If-Runtime-Match")).toBe("runtime2");
+});
+it("requires correcting invalid CIDR rows before conflict rebase",async()=>{
+ await render();await enter("cidr_rate_limits","invalid row");
+ await act(async()=>{cache.setQueryData(getTelemtAccessPolicyQueryKey(),{...state,revision:"r2"});await wait();});
+ expect(button(ru.accessPolicy.rebase).disabled).toBe(true);
+ expect(input("cidr_rate_limits").value).toBe("invalid row");
+});

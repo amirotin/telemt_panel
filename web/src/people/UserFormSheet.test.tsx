@@ -10,6 +10,11 @@ import { ru } from "../i18n/testing";
 import { UserFormSheet, type UserFormSheetProps } from "./UserFormSheet";
 import { ToastViewport } from "../ui/Toast";
 
+vi.mock("@tanstack/react-router", async importOriginal => ({
+  ...await importOriginal<typeof import("@tanstack/react-router")>(),
+  Link: ({children,to,className}:{children:React.ReactNode;to:string;className?:string}) => <a href={to} className={className}>{children}</a>,
+}));
+
 let root: Root;
 let container: HTMLDivElement;
 let queryClient: QueryClient;
@@ -319,4 +324,20 @@ it("labels blank .17 connection limits as inheritance for new users",async()=>{
  expect(formInput(ru.people.form.maxConnections).placeholder).toBe(ru.accessPolicy.inherited);
  expect(formInput(ru.people.form.maxIps).placeholder).toBe(ru.accessPolicy.inherited);
  expect(container.textContent).toContain(ru.accessPolicy.inheritHint);
+});
+
+it.each(["retained orphan rules", "new deny rules", "legacy"] as const)("shows returned policy application status after creating a user: %s",async scenario=>{
+ const metadata=scenario==="legacy"?{}:{source_deny:scenario==="retained orphan rules"?[]:["192.0.2.0/24"],source_deny_status:{effective:scenario==="retained orphan rules"?["203.0.113.0/24"]:[],runtime_reload_required:true,apply_mode:"generation_reload",reload_endpoint:"POST /v1/system/reload",effective_scope:"request_generation_snapshot"}};
+ client.setConfig({fetch:async input=>{requests.push(input as Request);return Response.json({user:{...user,username:"newuser",...metadata},secret:"0123456789abcdef0123456789abcdef"});}});
+ await render(scenario==="legacy"?"3.5.16":"3.5.17",{},"create");
+ await enter(container.querySelector<HTMLInputElement>('[data-testid="user-form-username"]')!,"newuser");await submit();
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,30));});
+ expect(container.querySelector('[data-testid="created-user-secret"]')).not.toBeNull();
+ if(scenario==="legacy")expect(container.querySelector('[data-testid="user-policy-summary"]')).toBeNull();
+ else {
+  expect(container.textContent).toContain(ru.accessPolicy.reloadRequired);
+  expect(container.textContent).toContain(scenario==="retained orphan rules"?"203.0.113.0/24":"192.0.2.0/24");
+  const link=container.querySelector<HTMLAnchorElement>('a[href="/server/config"]');
+  expect(link?.textContent).toBe(ru.accessPolicy.reloadLink);
+ }
 });

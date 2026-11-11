@@ -151,6 +151,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   );
   const [usernameTouched, setUsernameTouched] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const [createdUser, setCreatedUser] = useState<User | null>(null);
   const [activePreset, setActivePreset] = useState<"unlimited" | "personal" | "temporary" | null>(
     mode === "create" ? "unlimited" : null,
   );
@@ -178,6 +179,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
       setState(initial);setBaseline(initial);setBaseUser(user);
       setUsernameTouched(false);
       setCreatedSecret(null);
+      setCreatedUser(null);
       setActivePreset(mode === "create" ? "unlimited" : null);
     }
   }
@@ -202,6 +204,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     onSuccess: (data) => {
       pushToast(s.people.toast.created, "ok");
       onSaved?.(data.user.username);
+      setCreatedUser(data.user);
       setCreatedSecret(data.secret);
       refreshUsersAfterMutation(refreshTopic, queryClient);
     },
@@ -357,6 +360,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
         <div className="flex flex-col gap-4 py-2">
           <p className="rounded-xl border border-warn/30 bg-warn/10 p-3 text-sm text-warn">{s.people.newSecret.warning}</p>
           <CopyField value={createdSecret} label={s.people.form.secret} data-testid="created-user-secret" />
+          {(createdUser?.limits || createdUser?.source_deny_status) && <UserPolicySummary user={createdUser} />}
           <div className="grid gap-2 sm:grid-cols-2">
             <Button variant="secondary" onClick={onClose}>{s.people.newSecret.close}</Button>
             {onConfigureWeb && <Button onClick={() => { if(!inline)onClose(); onConfigureWeb(state.username); }}>{s.people.newSecret.configureWeb}</Button>}
