@@ -1,5 +1,11 @@
-import { Suspense, lazy, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCaps } from "../../caps/useCaps";
+import { ConfigNativeState } from "./ConfigNativeState";
+import { nativeStateMatches } from "./configNativeState";
+import { nativePatchResult, preflightConfig, type ConfigPreflight } from "./configPreflight";
+import { clearPendingChanges, getPendingChanges } from "./pendingChanges";
+import { isTerminalReloadState } from "./reloadStatus.helpers";
 import { ServerShell } from "../ServerShell";
 import { errorMessage, useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
@@ -34,6 +40,9 @@ import {
 } from "./reloadPolicy";
 import {
   getTelemtConfigOptions,
+  getTelemtConfigStateOptions,
+  getTelemtConfigSchemaOptions,
+  getTelemtInfoQueryKey,
   getTelemtConfigCatalogOptions,
   getHostOptions,
   patchTelemtConfigMutation,
@@ -59,8 +68,22 @@ interface ConflictState {
 export function ConfigPage() {
   const s = useStrings();
   const queryClient = useQueryClient();
+  const infoQuery = useCaps();
+  const readOnly = infoQuery.data?.capabilities?.read_only === true;
   const configQuery = useQuery(getTelemtConfigOptions());
   const catalogQuery = useQuery(getTelemtConfigCatalogOptions());
+  const stateQuery = useQuery({ ...getTelemtConfigStateOptions(), retry: false, refetchInterval: (query) => query.state.error?.code === "capability_absent" ? false : 5000 });
+  const schemaQuery = useQuery({ ...getTelemtConfigSchemaOptions(), retry: false });
+  const refetchCatalog = catalogQuery.refetch;
+  const refetchSchema = schemaQuery.refetch;
+  const refetchState = stateQuery.refetch;
+  const metadataToken = JSON.stringify([infoQuery.data?.version, infoQuery.data?.capabilities?.config_schema, infoQuery.data?.capabilities?.config_state, infoQuery.data?.capabilities?.config_validation, readOnly]);
+  const versionRef = useRef(metadataToken);
+  useEffect(() => {
+    if (versionRef.current === metadataToken) return;
+    versionRef.current = metadataToken;
+    void refetchCatalog(); void refetchSchema(); void refetchState();
+  }, [metadataToken, refetchCatalog, refetchSchema, refetchState]);
   const hostQuery = useQuery(getHostOptions());
   const editor = useConfigEditor(configQuery.data);
 
@@ -73,23 +96,55 @@ export function ConfigPage() {
     useState<TelemtConfigPatchResult | null>(null);
   const [activeReloadId, setActiveReloadId] = useState<number | null>(null);
   const [patchErrorCode, setPatchErrorCode] = useState<string | null>(null);
+  const [rebaseChecking, setRebaseChecking] = useState(false);
   const [savePreviewOpen, setSavePreviewOpen] = useState(false);
   const toml = useTomlSettingsSession({
     enabled: tab === "toml",
+    readOnly,
+    onReloadAccepted: setActiveReloadId,
     onApplied: async (result) => {
       const fresh = await getTelemtConfig();
       if (fresh.data) editor.seed(fresh.data);
       setPatchResult(result);
+      if (result.reload) setActiveReloadId(result.reload.reload_id);
     },
   });
   // Full working-copy snapshot corresponding to the in-flight PATCH. A
   // later keystroke is diffed from this snapshot after success and rebased
   // over Telemt's fresh response instead of being silently discarded.
+  const pendingPreflightRef = useRef<ConfigPreflight | undefined>(undefined);
   const pendingDraftRef = useRef<Record<string, unknown>>({});
 
   const canRestartTelemt = hostQuery.data?.caps.restart_telemt ?? false;
 
   const reloadStatusQuery = useReloadPolling(activeReloadId);
+  const completedReload = useRef<number | null>(null);
+  useEffect(() => {
+    if (activeReloadId === null || !reloadStatusQuery.data || !isTerminalReloadState(reloadStatusQuery.data.state) || completedReload.current === activeReloadId) return;
+    completedReload.current = activeReloadId;
+    void queryClient.invalidateQueries({ queryKey: getTelemtInfoQueryKey() });
+    void refetchCatalog(); void refetchSchema(); void refetchState();
+  }, [activeReloadId, reloadStatusQuery.data, queryClient, refetchCatalog, refetchSchema, refetchState]);
+  useEffect(() => {
+    const pending = getPendingChanges();
+    if (pending && !stateQuery.isError && stateQuery.dataUpdatedAt >= pending.at && nativeStateMatches(stateQuery.data, pending.revision ?? configQuery.data?.revision)) clearPendingChanges();
+  }, [stateQuery.data, stateQuery.isError, stateQuery.dataUpdatedAt, configQuery.data?.revision]);
+  const currentPatch = editor.baseline && editor.edited ? buildConfigPatch(editor.baseline.sections, editor.edited) : {};
+  const preflightQuery = useQuery({
+    queryKey: ["config-preflight", infoQuery.data?.version, editor.baseline?.revision, currentPatch, reloadPolicy],
+    queryFn: () => preflightConfig(editor.baseline!.revision, currentPatch, reloadPolicy),
+    enabled: savePreviewOpen && !!editor.baseline && Object.keys(currentPatch).length > 0,
+    retry: false, staleTime: 0, gcTime: 0,
+  });
+
+  useEffect(() => {
+    if (!savePreviewOpen || apiErrorCode(preflightQuery.error) !== "revision_conflict") return;
+    let cancelled = false;
+    void getTelemtConfig({ throwOnError: true }).then(({ data }) => {
+      if (!cancelled && data) { setSavePreviewOpen(false); setConflict({ fresh: data }); }
+    }).catch((error: unknown) => { if (!cancelled) pushToast(apiErrorMessage(error, s), "error"); });
+    return () => { cancelled = true; };
+  }, [savePreviewOpen, preflightQuery.error, s]);
 
   async function inspectConfigConflict() {
     if (!editor.baseline) return;
@@ -105,12 +160,13 @@ export function ConfigPage() {
   const patchMutation = useMutation({
     ...patchTelemtConfigMutation(),
     retry: false,
-    onSuccess: async (result) => {
+    onSuccess: async (rawResult) => {
+      const result = nativePatchResult(rawResult, pendingPreflightRef.current?.validation);
       setSavePreviewOpen(false);
       setPatchResult(result);
       // Telemt reports "not applied yet" only in this response, so the
       // panel remembers it for Сводка's banner (pendingChanges.ts).
-      recordPendingChanges(result);
+      recordPendingChanges(rawResult);
       setConflict(null);
       setPatchErrorCode(null);
       if (result.reload) setActiveReloadId(result.reload.reload_id);
@@ -164,11 +220,14 @@ export function ConfigPage() {
     revision: string,
     sections: Record<string, unknown>,
     draft: Record<string, unknown>,
+    preflight?: ConfigPreflight,
   ) {
+    if (readOnly) return;
+    pendingPreflightRef.current = preflight;
     pendingDraftRef.current = draft;
     patchMutation.mutate({
-      headers: { "If-Match": revision },
-      query: toPatchReloadQuery(reloadPolicy),
+      headers: { "If-Match": preflight?.revision ?? revision, ...(preflight?.runtimeMatch ? { "If-Runtime-Match": preflight.runtimeMatch } : {}) },
+      query: toPatchReloadQuery(preflight?.policy ?? reloadPolicy),
       body: { sections },
     });
   }
@@ -185,9 +244,12 @@ export function ConfigPage() {
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
+  const nativeState = <ConfigNativeState state={stateQuery.data} error={stateQuery.error} readOnly={readOnly} canReload={infoQuery.data?.capabilities?.reload_api === true} pending={reloadNowMutation.isPending || (activeReloadId !== null && !reloadStatusQuery.data?.state) || (!!reloadStatusQuery.data && !isTerminalReloadState(reloadStatusQuery.data.state))} onRefresh={() => { void stateQuery.refetch(); void infoQuery.refetch(); }} onReload={() => reloadNowMutation.mutate({ body: { mode: "instant" } })} />;
+
   if (configQuery.isPending || catalogQuery.isPending) {
     return (
       <ServerShell title={s.server.config.title}>
+        {nativeState}
         <Skeleton className="h-40 w-full" />
       </ServerShell>
     );
@@ -198,6 +260,7 @@ export function ConfigPage() {
     if (code === "capability_unavailable") {
       return (
         <ServerShell title={s.server.config.title}>
+        {nativeState}
           <Gated
             enabled={false}
             reason={configQuery.error?.message}
@@ -208,6 +271,7 @@ export function ConfigPage() {
     }
     return (
       <ServerShell title={s.server.config.title}>
+        {nativeState}
         <ErrorState
           message={errorMessage(s, code, configQuery.error?.message)}
           onRetry={() => configQuery.refetch()}
@@ -219,6 +283,7 @@ export function ConfigPage() {
   if (catalogQuery.isError) {
     return (
       <ServerShell title={s.server.config.title}>
+        {nativeState}
         <ErrorState
           message={errorMessage(
             s,
@@ -233,6 +298,7 @@ export function ConfigPage() {
   if (!editor.baseline || !editor.edited || !catalogQuery.data) {
     return (
       <ServerShell title={s.server.config.title}>
+        {nativeState}
         <Skeleton className="h-40 w-full" />
       </ServerShell>
     );
@@ -250,7 +316,7 @@ export function ConfigPage() {
   }
 
   function applyPreviewedChanges() {
-    if (!editor.baseline || !editor.edited) return;
+    if (!editor.baseline || !editor.edited || !preflightQuery.data || preflightQuery.isFetching || preflightQuery.isError || readOnly) return;
     // Clear any stale notice from a *previous* save before starting a new
     // one — otherwise a lingering success banner (changed keys, a reload
     // stepper stuck on an old run) sits next to this new in-flight save,
@@ -258,18 +324,19 @@ export function ConfigPage() {
     setPatchErrorCode(null);
     setPatchResult(null);
     setActiveReloadId(null);
-    submitPatch(editor.baseline.revision, patch, editor.edited);
+    submitPatch(editor.baseline.revision, patch, editor.edited, preflightQuery.data);
   }
 
   return (
     <ServerShell title={s.server.config.title}>
+        {nativeState}
       {conflict && currentRebase && (
         <ConflictBanner
           changedKeys={conflictChangedKeys}
           overlapping={currentRebase.overlapping}
-          pending={patchMutation.isPending}
-          onReapply={() => {
-            if (!editor.baseline) return;
+          pending={patchMutation.isPending || rebaseChecking}
+          onReapply={async () => {
+            if (!editor.baseline || rebaseChecking || readOnly) return;
             const latestDraft = editor.getEdited() ?? editor.baseline.sections;
             const latestPatch = buildConfigPatch(editor.baseline.sections, latestDraft);
             const latestRebase = rebaseEdits(conflict.fresh.sections, latestPatch, conflictChangedKeys);
@@ -292,7 +359,12 @@ export function ConfigPage() {
             // (rare) — otherwise this is the actual retry with the
             // corrected If-Match, not just a reposition for another click.
             if (Object.keys(retryPatch).length > 0) {
-              submitPatch(conflict.fresh.revision, retryPatch, latestRebase.edited);
+              setRebaseChecking(true);
+              try {
+                const checked = await preflightConfig(conflict.fresh.revision, retryPatch, reloadPolicy);
+                if (!readOnly) submitPatch(conflict.fresh.revision, retryPatch, latestRebase.edited, checked);
+              } catch (error) { setPatchErrorCode(apiErrorCode(error) ?? "telemt_api_error"); }
+              finally { setRebaseChecking(false); }
             }
           }}
           onDiscard={() => {
@@ -311,9 +383,9 @@ export function ConfigPage() {
 
       {patchResult && (
         <PatchResultNotice
-          result={patchResult}
+          result={!stateQuery.isError && nativeStateMatches(stateQuery.data, patchResult.revision) && stateQuery.dataUpdatedAt >= patchMutation.submittedAt ? { ...patchResult, runtime_reload_required: false, process_restart_required: false } : patchResult}
           canRestartTelemt={canRestartTelemt}
-          reloadPending={reloadNowMutation.isPending}
+          reloadPending={reloadNowMutation.isPending || readOnly || infoQuery.data?.capabilities?.reload_api === false}
           restartPending={restartMutation.isPending}
           onReloadNow={() =>
             reloadNowMutation.mutate({ body: { mode: "instant" } })
@@ -371,6 +443,7 @@ export function ConfigPage() {
           </div>
         ) : tab === "normal" || tab === "advanced" ? (
           <StructuredSettingsForm
+            schema={schemaQuery.data}
             catalog={catalogQuery.data}
             sections={editor.edited}
             mode={tab}
@@ -424,7 +497,7 @@ export function ConfigPage() {
                   <span className="hidden sm:inline">{s.server.config.discardDraft}</span>
                 </Button>
               )}
-              <Button size="sm" onClick={save} disabled={!hasChanges || patchMutation.isPending}>
+              <Button size="sm" onClick={save} disabled={!hasChanges || patchMutation.isPending || rebaseChecking}>
                 {patchMutation.isPending ? s.server.config.saving : s.server.config.save}
               </Button>
             </div>
@@ -439,6 +512,11 @@ export function ConfigPage() {
         catalog={catalogQuery.data}
         reloadPolicy={reloadPolicy}
         pending={patchMutation.isPending}
+        checking={preflightQuery.isFetching || preflightQuery.isPending}
+        preflight={preflightQuery.data}
+        preflightError={preflightQuery.error}
+        readOnly={readOnly}
+        onRetry={() => void preflightQuery.refetch()}
         onClose={() => setSavePreviewOpen(false)}
         onConfirm={applyPreviewedChanges}
       />

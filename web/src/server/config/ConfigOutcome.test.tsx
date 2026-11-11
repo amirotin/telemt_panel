@@ -19,6 +19,8 @@ it.each(["envelope", "network", "html", "repeat", "recovery"])("checks an unconf
   let writes = 0;
   client.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
     const req = request as Request;
+    if (req.url.endsWith("/catalog")) return Response.json(cache.getQueryData(getTelemtConfigCatalogQueryKey()));
+    if (/\/(validate|state|schema|info)$/.test(req.url)) return Response.json({ code: "capability_absent" }, { status: 501 });
     if (req.method === "PATCH") {
       writes++;
       if (failure === "network") throw new TypeError("Failed to fetch");
@@ -43,7 +45,7 @@ it.each(["envelope", "network", "html", "repeat", "recovery"])("checks an unconf
   try {
     await act(async () => { root.render(<QueryClientProvider client={cache}><ConfigPage />{failure === "recovery" && <ToastViewport />}</QueryClientProvider>); await settle(); });
     await act(async () => { const select = container.querySelector("select")!; select.value = "debug"; select.dispatchEvent(new Event("change", { bubbles: true })); });
-    await act(async () => button(copy.save)!.click());
+    await act(async () => { button(copy.save)!.click(); await settle(); });
     await act(async () => { button(copy.savePreview.apply.replace("{count}", "1"))!.click(); await settle(); });
     expect(writes).toBe(1);
     const check = button("Проверить серверную конфигурацию");
