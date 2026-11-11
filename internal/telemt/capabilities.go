@@ -140,20 +140,54 @@ func (c *Client) capabilityGeneration() uint64 {
 	return c.capsGeneration
 }
 
-func (c *Client) observeTelemtVersion(version string, generation uint64) {
-	if version == "" {
+func (c *Client) observeSystemInfo(info SystemInfoData, generation uint64) {
+	if info.Version == "" {
 		return
 	}
 	c.capsMu.Lock()
 	defer c.capsMu.Unlock()
-	if generation != c.capsGeneration || version == c.telemtVersion {
+	if generation != c.capsGeneration {
 		return
 	}
-	c.telemtVersion = version
+	versionChanged := info.Version != c.telemtVersion
+	processChanged := c.runtimeInfoValid && info.ProcessStartedAtEpochSec != c.processStartedAt
+	publicationChanged := c.runtimeInfoValid && (info.ConfigReloadCount != c.configReloadCount || processChanged)
+	c.runtimeInfoValid = true
+	c.configReloadCount = info.ConfigReloadCount
+	c.processStartedAt = info.ProcessStartedAtEpochSec
+	if !versionChanged && !publicationChanged {
+		return
+	}
+	c.telemtVersion = info.Version
+	c.invalidateCapabilitySnapshotsLocked()
+	if versionChanged {
+		c.userEnableDisableAbsent = negativeCapabilityObservation{}
+		c.rotateSecretAbsent = negativeCapabilityObservation{}
+	}
+	if versionChanged || processChanged {
+		c.lastCompletedReloadID = 0
+	}
+}
+
+// invalidateCapabilitySnapshotsLocked requires capsMu and preserves independently
+// observed absent mutation routes during a same-version runtime publication.
+func (c *Client) invalidateCapabilitySnapshotsLocked() {
 	c.capsGeneration++
 	c.capsValid = false
-	c.userEnableDisableAbsent = negativeCapabilityObservation{}
-	c.rotateSecretAbsent = negativeCapabilityObservation{}
+	c.schemaValid = false
+}
+
+func (c *Client) observeCompletedReload(status ReloadStatus, generation uint64) {
+	if status.State != ReloadPhaseSucceeded && status.State != ReloadPhaseRolledBack {
+		return
+	}
+	c.capsMu.Lock()
+	defer c.capsMu.Unlock()
+	if generation != c.capsGeneration || status.ReloadID <= c.lastCompletedReloadID {
+		return
+	}
+	c.lastCompletedReloadID = status.ReloadID
+	c.invalidateCapabilitySnapshotsLocked()
 }
 
 func (c *Client) observeMutation(observation *negativeCapabilityObservation, generation uint64, err error) {

@@ -57,12 +57,16 @@ type Client struct {
 	// Version changes invalidate both probed flags and negative observations.
 	// The generation prevents requests started before an upgrade from
 	// publishing their old observations after the new version is known.
-	telemtVersion    string
-	capsGeneration   uint64
-	schema           ConfigSchemaData
-	schemaAt         time.Time
-	schemaGeneration uint64
-	schemaValid      bool
+	telemtVersion         string
+	capsGeneration        uint64
+	schema                ConfigSchemaData
+	schemaAt              time.Time
+	schemaGeneration      uint64
+	schemaValid           bool
+	runtimeInfoValid      bool
+	configReloadCount     uint64
+	processStartedAt      int64
+	lastCompletedReloadID uint64
 	// capabilityProbeGate serializes the actual Telemt probe round while
 	// allowing waiters to honor their own context. capsMu guards the cached
 	// snapshot, version and mutation observations.
@@ -314,7 +318,7 @@ func (c *Client) SystemInfo(ctx context.Context) (SystemInfoData, error) {
 	generation := c.capabilityGeneration()
 	info, err := get[SystemInfoData](ctx, c, "/v1/system/info")
 	if err == nil {
-		c.observeTelemtVersion(info.Version, generation)
+		c.observeSystemInfo(info, generation)
 	}
 	return info, err
 }
