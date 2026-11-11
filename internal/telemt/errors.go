@@ -36,6 +36,9 @@ func DiagnoseError(err error) ErrorDiagnostic {
 }
 
 func errorCode(err error) string {
+	if errors.Is(err, ErrInvalidResponse) {
+		return "telemt_invalid_response"
+	}
 	if errors.Is(err, ErrResponseTooLarge) {
 		return "telemt_response_too_large"
 	}
@@ -54,7 +57,17 @@ func errorCode(err error) string {
 			}
 		}
 		if apiErr.Status >= 500 {
+			// Newer Telemt sanitizes source failures and reports their category
+			// through field diagnostics; the underlying OS failure is unknown.
+			for _, issue := range apiErr.Details {
+				if issue.Code == "source_load_failed" {
+					return "telemt_config_read_failed"
+				}
+			}
 			message := strings.ToLower(apiErr.Message)
+			if strings.Contains(message, "cannot load the desired configuration source") {
+				return "telemt_config_read_failed"
+			}
 			write := strings.HasPrefix(message, "failed to write config:")
 			read := strings.HasPrefix(message, "failed to read config") ||
 				strings.HasPrefix(message, "failed to load config:") ||

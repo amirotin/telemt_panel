@@ -3730,6 +3730,8 @@ export const en: Dict = {
     user_exists: "A user with that name already exists.",
     last_user_forbidden: "The last user can't be deleted.",
     read_only: "Telemt is running in read-only mode.",
+    runtime_conflict: "The running configuration changed — refresh its state and validate your changes again.",
+    config_preflight_busy: "Configuration preparation is busy — try again shortly.",
     revision_conflict: "The configuration changed — reload it and try again.",
     invalid_toml: "The TOML syntax is invalid. Fix the structure and validate again.",
     invalid_config_path:

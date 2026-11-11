@@ -507,18 +507,18 @@ func writeTelemtError(w http.ResponseWriter, err error, capabilityGated bool) {
 	}
 	switch apiErr.Code {
 	case "user_exists", "last_user_forbidden":
-		auth.WriteError(w, http.StatusConflict, apiErr.Code, apiErr.Message)
+		writeTelemtDetailedError(w, http.StatusConflict, apiErr)
 	case "read_only":
-		auth.WriteError(w, http.StatusForbidden, apiErr.Code, apiErr.Message)
+		writeTelemtDetailedError(w, http.StatusForbidden, apiErr)
 	case "not_found":
-		auth.WriteError(w, http.StatusNotFound, apiErr.Code, apiErr.Message)
+		writeTelemtDetailedError(w, http.StatusNotFound, apiErr)
 	default:
 		if capabilityGated && (apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed) {
 			auth.WriteError(w, http.StatusNotImplemented, "capability_absent", "telemt build does not support this operation")
 			return
 		}
 		if apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != http.StatusUnauthorized && apiErr.Code != "http_error" {
-			auth.WriteError(w, apiErr.Status, apiErr.Code, apiErr.Message)
+			writeTelemtDetailedError(w, apiErr.Status, apiErr)
 			return
 		}
 		writeTelemtDiagnostic(w, telemt.DiagnoseError(err))

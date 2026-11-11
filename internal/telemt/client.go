@@ -22,6 +22,9 @@ import (
 // ErrResponseTooLarge reports an upstream body exceeding the 8 MiB limit.
 var ErrResponseTooLarge = errors.New("telemt: response exceeds 8 MiB limit")
 
+// ErrInvalidResponse reports an unconfirmed or malformed upstream success.
+var ErrInvalidResponse = errors.New("telemt: invalid success response")
+
 const maxResponseBytes = 8 * 1024 * 1024
 
 // APIError is a non-2xx Telemt response decoded from the error envelope.
@@ -30,6 +33,7 @@ type APIError struct {
 	Code      string
 	Message   string
 	RequestID uint64
+	Details   []FieldIssue
 }
 
 func (e *APIError) Error() string {
@@ -53,8 +57,12 @@ type Client struct {
 	// Version changes invalidate both probed flags and negative observations.
 	// The generation prevents requests started before an upgrade from
 	// publishing their old observations after the new version is known.
-	telemtVersion  string
-	capsGeneration uint64
+	telemtVersion    string
+	capsGeneration   uint64
+	schema           ConfigSchemaData
+	schemaAt         time.Time
+	schemaGeneration uint64
+	schemaValid      bool
 	// capabilityProbeGate serializes the actual Telemt probe round while
 	// allowing waiters to honor their own context. capsMu guards the cached
 	// snapshot, version and mutation observations.
@@ -96,8 +104,9 @@ type envelope struct {
 }
 
 type responseError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string       `json:"code"`
+	Message string       `json:"message"`
+	Details []FieldIssue `json:"details,omitempty"`
 }
 
 // call performs a request and returns the raw data payload plus revision.
@@ -122,7 +131,11 @@ func (c *Client) callRevision(ctx context.Context, method, path string, body any
 // indistinguishable from "here is the session" by payload alone — the status
 // is the only discriminator (see WebSession).
 func (c *Client) callStatus(ctx context.Context, method, path string, body any, revision string) (json.RawMessage, int, string, error) {
-	raw, status, err := c.requestStatus(ctx, method, path, body, revision)
+	return c.callStatusRuntime(ctx, method, path, body, revision, "")
+}
+
+func (c *Client) callStatusRuntime(ctx context.Context, method, path string, body any, revision, runtimeMatch string) (json.RawMessage, int, string, error) {
+	raw, status, err := c.requestStatusRuntime(ctx, method, path, body, revision, runtimeMatch)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -131,6 +144,10 @@ func (c *Client) callStatus(ctx context.Context, method, path string, body any, 
 
 // requestStatus preserves the shared response cap before any typed decoding.
 func (c *Client) requestStatus(ctx context.Context, method, path string, body any, revision string) ([]byte, int, error) {
+	return c.requestStatusRuntime(ctx, method, path, body, revision, "")
+}
+
+func (c *Client) requestStatusRuntime(ctx context.Context, method, path string, body any, revision, runtimeMatch string) ([]byte, int, error) {
 	var reqBody io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -154,8 +171,12 @@ func (c *Client) requestStatus(ctx context.Context, method, path string, body an
 		req.Header.Set("If-Match", revision)
 	}
 
+	if runtimeMatch != "" {
+		req.Header.Set("If-Runtime-Match", runtimeMatch)
+	}
+
 	client := c.http
-	if method == http.MethodPatch && (path == "/v1/config" || strings.HasPrefix(path, "/v1/config?")) {
+	if (method == http.MethodPatch && (path == "/v1/config" || strings.HasPrefix(path, "/v1/config?"))) || (method == http.MethodPost && strings.HasPrefix(path, "/v1/config/validate")) {
 		scoped := *client
 		scoped.Timeout = ConfigMutationTimeout
 		client = &scoped
@@ -176,6 +197,11 @@ func (c *Client) requestStatus(ctx context.Context, method, path string, body an
 	if err != nil {
 		return nil, 0, fmt.Errorf("telemt: read response: %w", err)
 	}
+	if method != http.MethodGet && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if err := validateMutationResponse(raw); err != nil {
+			return nil, 0, err
+		}
+	}
 	return raw, resp.StatusCode, nil
 }
 
@@ -191,12 +217,11 @@ func decodeEnvelope(raw []byte, status int) (json.RawMessage, int, string, error
 	case jsonErr == nil && env.OK:
 		return env.Data, status, env.Revision, nil
 	case jsonErr == nil && env.Error != nil:
-		return nil, status, "", &APIError{Status: status, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID}
+		return nil, status, "", &APIError{Status: status, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID, Details: env.Error.Details}
 	case status < 200 || status >= 300:
 		return nil, status, "", &APIError{Status: status, Code: "http_error", Message: http.StatusText(status)}
 	default:
-		// Legacy builds return some payloads flat, without the envelope
-		// (2xx, valid or invalid JSON for the envelope shape either way).
+		// Legacy builds return flat JSON; typed reads validate their payload.
 		return raw, status, "", nil
 	}
 }
@@ -489,4 +514,29 @@ func isRouteAbsent(err error) bool {
 		return false
 	}
 	return apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed
+}
+
+// validateMutationResponse rejects gray_action=200 and incomplete success
+// envelopes before even payload-free callers (DeleteUser) can confirm a write.
+func validateMutationResponse(raw []byte) error {
+	if !json.Valid(raw) {
+		return ErrInvalidResponse
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return ErrInvalidResponse
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) == nil && fields["ok"] != nil {
+		var env envelope
+		if json.Unmarshal(raw, &env) != nil {
+			return ErrInvalidResponse
+		}
+		if !env.OK && env.Error != nil {
+			return nil
+		}
+		if !env.OK || len(env.Data) == 0 || bytes.Equal(bytes.TrimSpace(env.Data), []byte("null")) {
+			return ErrInvalidResponse
+		}
+	}
+	return nil
 }

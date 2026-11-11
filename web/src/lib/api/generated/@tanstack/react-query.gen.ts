@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAuthMethods, getAutoUpdate, getBrandingIcon, getBrandingLogo, getBrandingSettings, getBulkQuotaReset, getGeography, getGeographyLocations, getGeographySettings, getGeographyUsers, getGeoIpSettings, getHealth, getHistory, getHistoryEvents, getHost, getLinkSettings, getMe, getPanelTls, getPanelTlsConfig, getPublicBranding, getQuotaSchedule, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtService, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getTrafficSummary, getTrafficUsers, getUpdates, getUser, getUserIpHistory, getUserQuotaSchedule, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtConfig, patchTelemtConfigToml, patchUser, prepareBulkQuotaReset, preparePanelTls, previewQuotaSchedule, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putBrandingSettings, putGeographySettings, putGeoIpSettings, putLinkSettings, putPanelTlsConfig, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetAllUserTraffic, resetUserIpHistory, resetUserQuota, resetUserTraffic, restartPanelTls, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, saveQuotaSchedule, saveUserQuotaSchedule, setUserEnabled, startBulkQuotaReset, startTelemtService, stopTelemtService, tailLogs, updateGeoIp, webauthnDeleteCredential, webauthnLoginBegin, webauthnLoginFinish, webauthnRegisterBegin, webauthnRegisterFinish } from '../sdk.gen';
-import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAuthMethodsData, GetAuthMethodsResponse, GetAutoUpdateData, GetAutoUpdateError, GetAutoUpdateResponse, GetBrandingIconData, GetBrandingIconResponse, GetBrandingLogoData, GetBrandingLogoResponse, GetBrandingSettingsData, GetBrandingSettingsError, GetBrandingSettingsResponse, GetBulkQuotaResetData, GetBulkQuotaResetError, GetBulkQuotaResetResponse, GetGeographyData, GetGeographyError, GetGeographyLocationsData, GetGeographyLocationsError, GetGeographyLocationsResponse, GetGeographyResponse, GetGeographySettingsData, GetGeographySettingsError, GetGeographySettingsResponse, GetGeographyUsersData, GetGeographyUsersError, GetGeographyUsersResponse, GetGeoIpSettingsData, GetGeoIpSettingsError, GetGeoIpSettingsResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetLinkSettingsData, GetLinkSettingsError, GetLinkSettingsResponse, GetMeData, GetMeError, GetMeResponse, GetPanelTlsConfigData, GetPanelTlsConfigError, GetPanelTlsConfigResponse, GetPanelTlsData, GetPanelTlsError, GetPanelTlsResponse, GetPublicBrandingData, GetPublicBrandingResponse, GetQuotaScheduleData, GetQuotaScheduleError, GetQuotaScheduleResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsError, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoError, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtServiceData, GetTelemtServiceResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetTrafficSummaryData, GetTrafficSummaryError, GetTrafficSummaryResponse, GetTrafficUsersData, GetTrafficUsersError, GetTrafficUsersResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserIpHistoryData, GetUserIpHistoryError, GetUserIpHistoryResponse, GetUserQuotaScheduleData, GetUserQuotaScheduleError, GetUserQuotaScheduleResponse, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PrepareBulkQuotaResetData, PrepareBulkQuotaResetError, PrepareBulkQuotaResetResponse, PreparePanelTlsData, PreparePanelTlsError, PreparePanelTlsResponse, PreviewQuotaScheduleData, PreviewQuotaScheduleError, PreviewQuotaScheduleResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutBrandingSettingsData, PutBrandingSettingsError, PutBrandingSettingsResponse, PutGeographySettingsData, PutGeographySettingsError, PutGeographySettingsResponse, PutGeoIpSettingsData, PutGeoIpSettingsError, PutGeoIpSettingsResponse, PutLinkSettingsData, PutLinkSettingsError, PutLinkSettingsResponse, PutPanelTlsConfigData, PutPanelTlsConfigError, PutPanelTlsConfigResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetAllUserTrafficData, ResetAllUserTrafficError, ResetAllUserTrafficResponse, ResetUserIpHistoryData, ResetUserIpHistoryError, ResetUserIpHistoryResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, ResetUserTrafficData, ResetUserTrafficError, ResetUserTrafficResponse, RestartPanelTlsData, RestartPanelTlsError, RestartPanelTlsResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SaveQuotaScheduleData, SaveQuotaScheduleError, SaveQuotaScheduleResponse, SaveUserQuotaScheduleData, SaveUserQuotaScheduleError, SaveUserQuotaScheduleResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, StartBulkQuotaResetData, StartBulkQuotaResetError, StartBulkQuotaResetResponse, StartTelemtServiceData, StartTelemtServiceError, StopTelemtServiceData, StopTelemtServiceError, TailLogsData, TailLogsError, TailLogsResponse, UpdateGeoIpData, UpdateGeoIpError, UpdateGeoIpResponse, WebauthnDeleteCredentialData, WebauthnDeleteCredentialError, WebauthnDeleteCredentialResponse, WebauthnLoginBeginData, WebauthnLoginBeginError, WebauthnLoginBeginResponse, WebauthnLoginFinishData, WebauthnLoginFinishError, WebauthnLoginFinishResponse, WebauthnRegisterBeginData, WebauthnRegisterBeginError, WebauthnRegisterBeginResponse, WebauthnRegisterFinishData, WebauthnRegisterFinishError, WebauthnRegisterFinishResponse } from '../types.gen';
+import { applyUpdate, closeTelemtWebSessions, createUser, deleteUser, getAudit, getAuthMethods, getAutoUpdate, getBrandingIcon, getBrandingLogo, getBrandingSettings, getBulkQuotaReset, getGeography, getGeographyLocations, getGeographySettings, getGeographyUsers, getGeoIpSettings, getHealth, getHistory, getHistoryEvents, getHost, getLinkSettings, getMe, getPanelTls, getPanelTlsConfig, getPublicBranding, getQuotaSchedule, getSnapshot, getStorageSettings, getSubscriptionPage, getTelemtAccessPolicy, getTelemtCapabilities, getTelemtConfig, getTelemtConfigCatalog, getTelemtConfigSchema, getTelemtConfigState, getTelemtConfigToml, getTelemtInfo, getTelemtReloadStatus, getTelemtService, getTelemtTlsFingerprints, getTelemtWebAccess, getTelemtWebOperation, getTelemtWebSession, getTelemtWebSessions, getTelemtZero, getTrafficSummary, getTrafficUsers, getUpdates, getUser, getUserIpHistory, getUserQuotaSchedule, getUserSublink, getUserTrafficHistory, listSessions, listUsers, login, logout, type Options, patchTelemtAccessPolicy, patchTelemtConfig, patchTelemtConfigToml, patchUser, prepareBulkQuotaReset, preparePanelTls, previewQuotaSchedule, previewTelemtConfigToml, purgeStorageHistory, putAutoUpdate, putBrandingSettings, putGeographySettings, putGeoIpSettings, putLinkSettings, putPanelTlsConfig, putStorageSettings, putTelemtUserWebAccess, regenerateUserSublink, reloadTelemt, resetAllUserTraffic, resetUserIpHistory, resetUserQuota, resetUserTraffic, restartPanelTls, restartTelemtService, revokeOtherSessions, revokeSession, rotateUserSecret, saveQuotaSchedule, saveUserQuotaSchedule, setUserEnabled, startBulkQuotaReset, startTelemtService, stopTelemtService, tailLogs, updateGeoIp, validateTelemtConfig, webauthnDeleteCredential, webauthnLoginBegin, webauthnLoginFinish, webauthnRegisterBegin, webauthnRegisterFinish } from '../sdk.gen';
+import type { ApplyUpdateData, ApplyUpdateError, CloseTelemtWebSessionsData, CloseTelemtWebSessionsError, CloseTelemtWebSessionsResponse, CreateUserData, CreateUserError, CreateUserResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, GetAuditData, GetAuditError, GetAuditResponse, GetAuthMethodsData, GetAuthMethodsResponse, GetAutoUpdateData, GetAutoUpdateError, GetAutoUpdateResponse, GetBrandingIconData, GetBrandingIconResponse, GetBrandingLogoData, GetBrandingLogoResponse, GetBrandingSettingsData, GetBrandingSettingsError, GetBrandingSettingsResponse, GetBulkQuotaResetData, GetBulkQuotaResetError, GetBulkQuotaResetResponse, GetGeographyData, GetGeographyError, GetGeographyLocationsData, GetGeographyLocationsError, GetGeographyLocationsResponse, GetGeographyResponse, GetGeographySettingsData, GetGeographySettingsError, GetGeographySettingsResponse, GetGeographyUsersData, GetGeographyUsersError, GetGeographyUsersResponse, GetGeoIpSettingsData, GetGeoIpSettingsError, GetGeoIpSettingsResponse, GetHealthData, GetHealthResponse, GetHistoryData, GetHistoryError, GetHistoryEventsData, GetHistoryEventsError, GetHistoryEventsResponse, GetHistoryResponse, GetHostData, GetHostResponse, GetLinkSettingsData, GetLinkSettingsError, GetLinkSettingsResponse, GetMeData, GetMeError, GetMeResponse, GetPanelTlsConfigData, GetPanelTlsConfigError, GetPanelTlsConfigResponse, GetPanelTlsData, GetPanelTlsError, GetPanelTlsResponse, GetPublicBrandingData, GetPublicBrandingResponse, GetQuotaScheduleData, GetQuotaScheduleError, GetQuotaScheduleResponse, GetSnapshotData, GetSnapshotError, GetSnapshotResponse, GetStorageSettingsData, GetStorageSettingsError, GetStorageSettingsResponse, GetSubscriptionPageData, GetSubscriptionPageError, GetSubscriptionPageResponse, GetTelemtAccessPolicyData, GetTelemtAccessPolicyError, GetTelemtAccessPolicyResponse, GetTelemtCapabilitiesData, GetTelemtCapabilitiesError, GetTelemtCapabilitiesResponse, GetTelemtConfigCatalogData, GetTelemtConfigCatalogResponse, GetTelemtConfigData, GetTelemtConfigError, GetTelemtConfigResponse, GetTelemtConfigSchemaData, GetTelemtConfigSchemaError, GetTelemtConfigSchemaResponse, GetTelemtConfigStateData, GetTelemtConfigStateError, GetTelemtConfigStateResponse, GetTelemtConfigTomlData, GetTelemtConfigTomlError, GetTelemtConfigTomlResponse, GetTelemtInfoData, GetTelemtInfoError, GetTelemtInfoResponse, GetTelemtReloadStatusData, GetTelemtReloadStatusError, GetTelemtReloadStatusResponse, GetTelemtServiceData, GetTelemtServiceResponse, GetTelemtTlsFingerprintsData, GetTelemtTlsFingerprintsError, GetTelemtTlsFingerprintsResponse, GetTelemtWebAccessData, GetTelemtWebAccessError, GetTelemtWebAccessResponse, GetTelemtWebOperationData, GetTelemtWebOperationError, GetTelemtWebOperationResponse, GetTelemtWebSessionData, GetTelemtWebSessionError, GetTelemtWebSessionResponse, GetTelemtWebSessionsData, GetTelemtWebSessionsError, GetTelemtWebSessionsResponse, GetTelemtZeroData, GetTelemtZeroError, GetTelemtZeroResponse, GetTrafficSummaryData, GetTrafficSummaryError, GetTrafficSummaryResponse, GetTrafficUsersData, GetTrafficUsersError, GetTrafficUsersResponse, GetUpdatesData, GetUpdatesResponse, GetUserData, GetUserError, GetUserIpHistoryData, GetUserIpHistoryError, GetUserIpHistoryResponse, GetUserQuotaScheduleData, GetUserQuotaScheduleError, GetUserQuotaScheduleResponse, GetUserResponse, GetUserSublinkData, GetUserSublinkError, GetUserSublinkResponse, GetUserTrafficHistoryData, GetUserTrafficHistoryError, GetUserTrafficHistoryResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListUsersData, ListUsersError, ListUsersResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutError, LogoutResponse, PatchTelemtAccessPolicyData, PatchTelemtAccessPolicyError, PatchTelemtAccessPolicyResponse, PatchTelemtConfigData, PatchTelemtConfigError, PatchTelemtConfigResponse, PatchTelemtConfigTomlData, PatchTelemtConfigTomlError, PatchTelemtConfigTomlResponse, PatchUserData, PatchUserError, PatchUserResponse, PrepareBulkQuotaResetData, PrepareBulkQuotaResetError, PrepareBulkQuotaResetResponse, PreparePanelTlsData, PreparePanelTlsError, PreparePanelTlsResponse, PreviewQuotaScheduleData, PreviewQuotaScheduleError, PreviewQuotaScheduleResponse, PreviewTelemtConfigTomlData, PreviewTelemtConfigTomlError, PreviewTelemtConfigTomlResponse, PurgeStorageHistoryData, PurgeStorageHistoryError, PurgeStorageHistoryResponse, PutAutoUpdateData, PutAutoUpdateError, PutAutoUpdateResponse, PutBrandingSettingsData, PutBrandingSettingsError, PutBrandingSettingsResponse, PutGeographySettingsData, PutGeographySettingsError, PutGeographySettingsResponse, PutGeoIpSettingsData, PutGeoIpSettingsError, PutGeoIpSettingsResponse, PutLinkSettingsData, PutLinkSettingsError, PutLinkSettingsResponse, PutPanelTlsConfigData, PutPanelTlsConfigError, PutPanelTlsConfigResponse, PutStorageSettingsData, PutStorageSettingsError, PutStorageSettingsResponse, PutTelemtUserWebAccessData, PutTelemtUserWebAccessError, PutTelemtUserWebAccessResponse, RegenerateUserSublinkData, RegenerateUserSublinkError, RegenerateUserSublinkResponse, ReloadTelemtData, ReloadTelemtError, ReloadTelemtResponse, ResetAllUserTrafficData, ResetAllUserTrafficError, ResetAllUserTrafficResponse, ResetUserIpHistoryData, ResetUserIpHistoryError, ResetUserIpHistoryResponse, ResetUserQuotaData, ResetUserQuotaError, ResetUserQuotaResponse, ResetUserTrafficData, ResetUserTrafficError, ResetUserTrafficResponse, RestartPanelTlsData, RestartPanelTlsError, RestartPanelTlsResponse, RestartTelemtServiceData, RestartTelemtServiceError, RevokeOtherSessionsData, RevokeOtherSessionsError, RevokeOtherSessionsResponse, RevokeSessionData, RevokeSessionError, RevokeSessionResponse, RotateUserSecretData, RotateUserSecretError, RotateUserSecretResponse, SaveQuotaScheduleData, SaveQuotaScheduleError, SaveQuotaScheduleResponse, SaveUserQuotaScheduleData, SaveUserQuotaScheduleError, SaveUserQuotaScheduleResponse, SetUserEnabledData, SetUserEnabledError, SetUserEnabledResponse, StartBulkQuotaResetData, StartBulkQuotaResetError, StartBulkQuotaResetResponse, StartTelemtServiceData, StartTelemtServiceError, StopTelemtServiceData, StopTelemtServiceError, TailLogsData, TailLogsError, TailLogsResponse, UpdateGeoIpData, UpdateGeoIpError, UpdateGeoIpResponse, ValidateTelemtConfigData, ValidateTelemtConfigError, ValidateTelemtConfigResponse, WebauthnDeleteCredentialData, WebauthnDeleteCredentialError, WebauthnDeleteCredentialResponse, WebauthnLoginBeginData, WebauthnLoginBeginError, WebauthnLoginBeginResponse, WebauthnLoginFinishData, WebauthnLoginFinishError, WebauthnLoginFinishResponse, WebauthnRegisterBeginData, WebauthnRegisterBeginError, WebauthnRegisterBeginResponse, WebauthnRegisterFinishData, WebauthnRegisterFinishError, WebauthnRegisterFinishResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -988,6 +988,113 @@ export const getTelemtInfoOptions = (options?: Options<GetTelemtInfoData>) => qu
     },
     queryKey: getTelemtInfoQueryKey(options)
 });
+
+export const getTelemtCapabilitiesQueryKey = (options?: Options<GetTelemtCapabilitiesData>) => createQueryKey('getTelemtCapabilities', options);
+
+/**
+ * Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+ */
+export const getTelemtCapabilitiesOptions = (options?: Options<GetTelemtCapabilitiesData>) => queryOptions<GetTelemtCapabilitiesResponse, GetTelemtCapabilitiesError, GetTelemtCapabilitiesResponse, ReturnType<typeof getTelemtCapabilitiesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtCapabilities({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtCapabilitiesQueryKey(options)
+});
+
+export const getTelemtConfigSchemaQueryKey = (options?: Options<GetTelemtConfigSchemaData>) => createQueryKey('getTelemtConfigSchema', options);
+
+/**
+ * Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+ */
+export const getTelemtConfigSchemaOptions = (options?: Options<GetTelemtConfigSchemaData>) => queryOptions<GetTelemtConfigSchemaResponse, GetTelemtConfigSchemaError, GetTelemtConfigSchemaResponse, ReturnType<typeof getTelemtConfigSchemaQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtConfigSchema({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtConfigSchemaQueryKey(options)
+});
+
+export const getTelemtConfigStateQueryKey = (options?: Options<GetTelemtConfigStateData>) => createQueryKey('getTelemtConfigState', options);
+
+/**
+ * Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+ */
+export const getTelemtConfigStateOptions = (options?: Options<GetTelemtConfigStateData>) => queryOptions<GetTelemtConfigStateResponse, GetTelemtConfigStateError, GetTelemtConfigStateResponse, ReturnType<typeof getTelemtConfigStateQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtConfigState({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtConfigStateQueryKey(options)
+});
+
+export const getTelemtAccessPolicyQueryKey = (options?: Options<GetTelemtAccessPolicyData>) => createQueryKey('getTelemtAccessPolicy', options);
+
+/**
+ * Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+ */
+export const getTelemtAccessPolicyOptions = (options?: Options<GetTelemtAccessPolicyData>) => queryOptions<GetTelemtAccessPolicyResponse, GetTelemtAccessPolicyError, GetTelemtAccessPolicyResponse, ReturnType<typeof getTelemtAccessPolicyQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTelemtAccessPolicy({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTelemtAccessPolicyQueryKey(options)
+});
+
+/**
+ * Writes access defaults and merges CIDR entries; publication uses the watcher. Source/runtime conflicts require a fresh read.
+ */
+export const patchTelemtAccessPolicyMutation = (options?: Partial<Options<PatchTelemtAccessPolicyData>>): UseMutationOptions<PatchTelemtAccessPolicyResponse, PatchTelemtAccessPolicyError, Options<PatchTelemtAccessPolicyData>> => {
+    const mutationOptions: UseMutationOptions<PatchTelemtAccessPolicyResponse, PatchTelemtAccessPolicyError, Options<PatchTelemtAccessPolicyData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await patchTelemtAccessPolicy({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Non-mutating upstream candidate preparation, bounded to 60 seconds. Requires the source revision and optionally fences the active publication. May read DNS/static assets; does not write files, bind listeners or publish a runtime generation.
+ *
+ */
+export const validateTelemtConfigMutation = (options?: Partial<Options<ValidateTelemtConfigData>>): UseMutationOptions<ValidateTelemtConfigResponse, ValidateTelemtConfigError, Options<ValidateTelemtConfigData>> => {
+    const mutationOptions: UseMutationOptions<ValidateTelemtConfigResponse, ValidateTelemtConfigError, Options<ValidateTelemtConfigData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await validateTelemtConfig({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getTelemtConfigQueryKey = (options?: Options<GetTelemtConfigData>) => createQueryKey('getTelemtConfig', options);
 
