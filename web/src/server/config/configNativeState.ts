@@ -1,4 +1,4 @@
-import type { TelemtConfigState } from "../../lib/api/generated/types.gen";
+import type { TelemtConfigState, TelemtConfigPatchResult } from "../../lib/api/generated/types.gen";
 
 const FULL_SECTIONS = ["general", "network", "server", "timeouts", "censorship", "upstreams", "dc_overrides", "web", "access", "logging", "root"];
 export function nativeStateMatches(state: TelemtConfigState | undefined, revision?: string): boolean {
@@ -14,4 +14,15 @@ export function nativeStateMatches(state: TelemtConfigState | undefined, revisio
 export function nativeStatePaths(state: TelemtConfigState | undefined, key: string): string[] {
   const value = state?.comparison?.[key];
   return Array.isArray(value) ? value.filter((path): path is string => typeof path === "string") : [];
+}
+
+export interface NativeConfigPublication {
+  state?: TelemtConfigState;
+  updatedAt: number;
+  failed: boolean;
+}
+
+export function resolvePublishedPatchResult(result: TelemtConfigPatchResult, publication: NativeConfigPublication | undefined, submittedAt: number): TelemtConfigPatchResult {
+  if (!publication || publication.failed || publication.updatedAt < submittedAt || !nativeStateMatches(publication.state, result.revision)) return result;
+  return { ...result, runtime_reload_required: false, process_restart_required: false };
 }

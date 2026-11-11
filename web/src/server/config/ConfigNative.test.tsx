@@ -9,6 +9,7 @@ import { getHostQueryKey, getTelemtInfoQueryKey, getTelemtConfigCatalogQueryKey,
 
 vi.mock("../ServerShell", () => ({ ServerShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock("../useIsDesktop", () => ({ useIsDesktop: () => true }));
+vi.mock("./TomlConfigEditor", () => ({ TomlConfigEditor: ({ initialText, onChange }: { initialText: string; onChange: (text: string) => void }) => <textarea value={initialText} onInput={(event) => onChange(event.currentTarget.value)} onChange={() => {}} /> }));
 vi.mock("./StructuredSettingsForm", () => ({ StructuredSettingsForm: ({ sections, onChange }: { sections: { general: Record<string, string> }; onChange: (next: unknown) => void }) => <input aria-label="log_level" value={sections.general["log_level"]} onChange={() => {}} onInput={(event) => onChange({ ...sections, general: { log_level: event.currentTarget.value } })} /> }));
 const initial = { revision: "source-1", sections: { general: { log_level: "info" } } };
 const native = { revision: "source-1", valid: true, base_revision: "source-1", candidate_revision: "candidate-2", runtime: { active_generation: 4, config_epoch: 7, runtime_match: "runtime-7" }, changed_paths: ["general.log_level"], normalization_effects: [{ path: "general.log_level", code: "normalized" }], apply: { watcher_paths: ["general.log_level"], generation_paths: [], process_restart_paths: [], runtime_reload_required: true, process_restart_required: false, deferred_process_fields: [] }, touched_sections: ["general"], warnings: [] };
@@ -174,4 +175,69 @@ it("explains ignored null normalization before confirming a save", async () => {
   await edit(); await click(copy.save);
   expect(document.body.textContent).toContain("Пустое значение не изменит сохранённую настройку");
   expect(document.body.textContent).toContain("web.retry_jitter.peak_ms");
+});
+
+it.each(["policy", "edit", "revert", "version", "read-only", "source", "unchanged"])("checks current %s identity before submitting delayed rebase validation", async (change) => {
+  let finish!: () => void;
+  let writes = 0;
+  const fresh = { ...initial, revision: "source-2" };
+  await render(async (request) => {
+    if (request.url.includes("/validate")) {
+      const revision = request.headers.get("If-Match")!;
+      if (revision === "source-2") await new Promise<void>((resolve) => { finish = resolve; });
+      return Response.json({ ...native, revision, base_revision: revision });
+    }
+    if (request.method === "PATCH") { writes++; return Response.json({ code: "revision_conflict" }, { status: 409 }); }
+    if (request.url.endsWith("/config")) return Response.json(fresh);
+    return optional(request);
+  });
+  await edit(); await click(copy.reloadPolicy.instant); await click(copy.save);
+  await click(copy.savePreview.apply.replace("{count}", "1"));
+  await click(copy.conflictReload);
+  expect(finish).toBeDefined();
+  if (change === "policy") await click(copy.reloadPolicy.none);
+  if (change === "edit" || change === "revert") await edit(change === "edit" ? "error" : "info");
+  if (change === "version" || change === "read-only") await act(async () => {
+    cache.setQueryData(getTelemtInfoQueryKey(), { version: change === "version" ? "3.5.18" : "3.5.17", capabilities: { reload_api: true, read_only: change === "read-only" } });
+    await settle();
+  });
+  if (change === "source") await act(async () => { cache.setQueryData(getTelemtConfigQueryKey(), { ...fresh, revision: "source-3" }); await settle(); });
+  await act(async () => { finish(); await settle(); });
+  expect(writes).toBe(change === "unchanged" ? 2 : 1);
+  expect(container.querySelector("input")?.value).toBe(change === "edit" ? "error" : change === "revert" ? "info" : "debug");
+});
+
+const completeState = (revision: string) => ({ revision, desired_revision: revision, desired_status: "valid", runtime: native.runtime, runtime_sample_current: true, sections: ["general", "network", "server", "timeouts", "censorship", "upstreams", "dc_overrides", "web", "access", "logging", "root"], comparison: { status: "published_match", truncated: false, pending_paths: [], watcher_pending_paths: [], generation_pending_paths: [], process_deferred_paths: [] } });
+
+it.each(["current", "stale", "partial", "legacy", "other-revision"])("reconciles the TOML reload notice only with fresh full matching publication: %s", async (stateKind) => {
+  const original = '[server.api]\nruntime_edge_enabled = false\n';
+  const updated = '[server.api]\nruntime_edge_enabled = true\n';
+  const path = "server.api.runtime_edge_enabled";
+  let saved = false;
+  let reloaded = false;
+  await render(async (request) => {
+    if (request.url.endsWith("/state")) {
+      if (reloaded && stateKind === "legacy") return absent();
+      const state = completeState(saved ? "source-2" : "source-1");
+      if (!reloaded) return Response.json({ ...state, comparison: { ...state.comparison, status: "pending_publication", pending_paths: [path], generation_pending_paths: [path] } });
+      return Response.json({ ...state, ...(stateKind === "stale" ? { runtime_sample_current: false } : {}), ...(stateKind === "partial" ? { sections: ["server"] } : {}), ...(stateKind === "other-revision" ? { revision: "source-1", desired_revision: "source-1" } : {}) });
+    }
+    if (request.url.includes("/toml/preview")) return Response.json({ revision: "source-1", patch: { server: { api: { runtime_edge_enabled: true } } }, patch_json: '{"server":{"api":{"runtime_edge_enabled":true}}}', changed_paths: [path], materialized_sections: [], array_replacements: [], runtime_match: "runtime-7", validation: { ...native, changed_paths: [path], normalization_effects: [], apply: { ...native.apply, watcher_paths: [], generation_paths: [path] } } });
+    if (request.method === "PATCH") { saved = true; return Response.json({ revision: "source-2", changed: [path], runtime_reload_required: true }); }
+    if (request.url.endsWith("/reload") && request.method === "POST") { reloaded = true; return Response.json({ reload_id: 1 }); }
+    if (request.url.endsWith("/reload/1")) return Response.json({ reload_id: 1, state: "succeeded" });
+    if (request.url.endsWith("/toml")) return Response.json({ revision: saved ? "source-2" : "source-1", toml_projection: saved ? updated : original, source_sections: ["server"], projection_kind: "normalized_config_api" });
+    if (request.url.endsWith("/config")) return Response.json({ ...initial, revision: saved ? "source-2" : "source-1" });
+    return optional(request);
+  });
+  await click(copy.tabs.toml);
+  await act(async () => { const input = container.querySelector<HTMLTextAreaElement>("textarea")!; input.value = updated; input.dispatchEvent(new Event("input", { bubbles: true })); await settle(); });
+  await click(copy.toml.validate); await click(copy.toml.saveValidated);
+  const panel = () => container.querySelector('[data-testid="toml-settings-panel"]')!;
+  expect(panel().textContent).toContain(copy.runtimeReloadNotice);
+  await act(async () => { [...panel().querySelectorAll("button")].find((item) => item.textContent === copy.reloadNow)!.click(); await settle(); });
+  await act(async () => { await settle(); });
+  expect(reloaded).toBe(true);
+  if (stateKind === "current") expect(panel().textContent).not.toContain(copy.runtimeReloadNotice);
+  else expect(panel().textContent).toContain(copy.runtimeReloadNotice);
 });

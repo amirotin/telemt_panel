@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCaps } from "../../caps/useCaps";
 import { ConfigNativeState } from "./ConfigNativeState";
-import { nativeStateMatches } from "./configNativeState";
+import { nativeStateMatches, resolvePublishedPatchResult } from "./configNativeState";
 import { nativePatchResult, preflightConfig, type ConfigPreflight } from "./configPreflight";
 import { clearPendingChanges, getPendingChanges } from "./pendingChanges";
 import { isTerminalReloadState } from "./reloadStatus.helpers";
@@ -40,6 +40,7 @@ import {
 } from "./reloadPolicy";
 import {
   getTelemtConfigOptions,
+  getTelemtConfigQueryKey,
   getTelemtConfigStateOptions,
   getTelemtConfigSchemaOptions,
   getTelemtInfoQueryKey,
@@ -52,6 +53,7 @@ import {
 import { getTelemtConfig } from "../../lib/api/generated/sdk.gen";
 import type {
   TelemtConfig,
+  TelemtInfo,
   TelemtConfigPatchResult,
 } from "../../lib/api/generated/types.gen";
 
@@ -88,12 +90,18 @@ export function ConfigPage() {
   const editor = useConfigEditor(configQuery.data);
 
   const [tab, setTab] = useState<Tab>("normal");
-  const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(
+  const [reloadPolicy, setReloadPolicyState] = useState<ReloadPolicyState>(
     DEFAULT_RELOAD_POLICY,
   );
+  const reloadPolicyRef = useRef(DEFAULT_RELOAD_POLICY);
+  function setReloadPolicy(next: ReloadPolicyState) {
+    reloadPolicyRef.current = next;
+    setReloadPolicyState(next);
+  }
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [patchResult, setPatchResult] =
     useState<TelemtConfigPatchResult | null>(null);
+  const [patchResultOrigin, setPatchResultOrigin] = useState<"structured" | "toml">("structured");
   const [activeReloadId, setActiveReloadId] = useState<number | null>(null);
   const [patchErrorCode, setPatchErrorCode] = useState<string | null>(null);
   const [rebaseChecking, setRebaseChecking] = useState(false);
@@ -106,6 +114,7 @@ export function ConfigPage() {
       const fresh = await getTelemtConfig();
       if (fresh.data) editor.seed(fresh.data);
       setPatchResult(result);
+      setPatchResultOrigin("toml");
       if (result.reload) setActiveReloadId(result.reload.reload_id);
     },
   });
@@ -146,6 +155,15 @@ export function ConfigPage() {
     return () => { cancelled = true; };
   }, [savePreviewOpen, preflightQuery.error, s]);
 
+  function currentRebaseIdentity() {
+    const info = queryClient.getQueryData<TelemtInfo>(getTelemtInfoQueryKey());
+    return JSON.stringify([
+      editor.getBaseline(), editor.getEdited(), reloadPolicyRef.current,
+      info?.version, info?.capabilities?.read_only === true,
+      queryClient.getQueryData<TelemtConfig>(getTelemtConfigQueryKey())?.revision,
+    ]);
+  }
+
   async function inspectConfigConflict() {
     if (!editor.baseline) return;
     try {
@@ -164,6 +182,7 @@ export function ConfigPage() {
       const result = nativePatchResult(rawResult, pendingPreflightRef.current?.validation);
       setSavePreviewOpen(false);
       setPatchResult(result);
+      setPatchResultOrigin("structured");
       // Telemt reports "not applied yet" only in this response, so the
       // panel remembers it for Сводка's banner (pendingChanges.ts).
       recordPendingChanges(rawResult);
@@ -244,6 +263,7 @@ export function ConfigPage() {
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
 
+  const publication = { state: stateQuery.data, updatedAt: stateQuery.dataUpdatedAt, failed: stateQuery.isError };
   const nativeState = <ConfigNativeState state={stateQuery.data} error={stateQuery.error} readOnly={readOnly} canReload={infoQuery.data?.capabilities?.reload_api === true} pending={reloadNowMutation.isPending || (activeReloadId !== null && !reloadStatusQuery.data?.state) || (!!reloadStatusQuery.data && !isTerminalReloadState(reloadStatusQuery.data.state))} onRefresh={() => { void stateQuery.refetch(); void infoQuery.refetch(); }} onReload={() => reloadNowMutation.mutate({ body: { mode: "instant" } })} />;
 
   if (configQuery.isPending || catalogQuery.isPending) {
@@ -359,10 +379,14 @@ export function ConfigPage() {
             // (rare) — otherwise this is the actual retry with the
             // corrected If-Match, not just a reposition for another click.
             if (Object.keys(retryPatch).length > 0) {
+              const identity = currentRebaseIdentity();
+              const policy = { ...reloadPolicyRef.current };
               setRebaseChecking(true);
               try {
-                const checked = await preflightConfig(conflict.fresh.revision, retryPatch, reloadPolicy);
-                if (!readOnly) submitPatch(conflict.fresh.revision, retryPatch, latestRebase.edited, checked);
+                const checked = await preflightConfig(conflict.fresh.revision, retryPatch, policy);
+                const currentReadOnly = queryClient.getQueryData<TelemtInfo>(getTelemtInfoQueryKey())?.capabilities?.read_only === true;
+                if (currentReadOnly || identity !== currentRebaseIdentity()) return;
+                submitPatch(conflict.fresh.revision, retryPatch, latestRebase.edited, checked);
               } catch (error) { setPatchErrorCode(apiErrorCode(error) ?? "telemt_api_error"); }
               finally { setRebaseChecking(false); }
             }
@@ -383,7 +407,7 @@ export function ConfigPage() {
 
       {patchResult && (
         <PatchResultNotice
-          result={!stateQuery.isError && nativeStateMatches(stateQuery.data, patchResult.revision) && stateQuery.dataUpdatedAt >= patchMutation.submittedAt ? { ...patchResult, runtime_reload_required: false, process_restart_required: false } : patchResult}
+          result={resolvePublishedPatchResult(patchResult, publication, patchResultOrigin === "toml" ? toml.patchMutation.submittedAt : patchMutation.submittedAt)}
           canRestartTelemt={canRestartTelemt}
           reloadPending={reloadNowMutation.isPending || readOnly || infoQuery.data?.capabilities?.reload_api === false}
           restartPending={restartMutation.isPending}
@@ -460,6 +484,7 @@ export function ConfigPage() {
             <Suspense fallback={<Skeleton className="h-[520px] w-full" />}>
               <TomlSettingsView
                 controller={toml}
+                publication={publication}
                 canRestartTelemt={canRestartTelemt}
               />
             </Suspense>

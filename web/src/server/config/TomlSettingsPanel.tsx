@@ -13,6 +13,7 @@ import { Notice } from "../Notice";
 import { useIsDesktop } from "../useIsDesktop";
 import { getTelemtConfigTomlQueryKey } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { TelemtConfigPatchResult, TelemtConfigTomlPreview } from "../../lib/api/generated/types.gen";
+import { resolvePublishedPatchResult, type NativeConfigPublication } from "./configNativeState";
 import { ConfigNormalizationEffects } from "./ConfigNormalizationEffects";
 import { PatchResultNotice } from "./PatchResultNotice";
 import { ReloadPolicyPicker } from "./ReloadPolicyPicker";
@@ -27,7 +28,8 @@ export function TomlSettingsPanel({ canRestartTelemt, onApplied }: {
   return <TomlSettingsView controller={controller} canRestartTelemt={canRestartTelemt} />;
 }
 
-export function TomlSettingsView({ controller, canRestartTelemt }: {
+export function TomlSettingsView({ controller, canRestartTelemt, publication }: {
+  publication?: NativeConfigPublication;
   controller: TomlSettingsController;
   canRestartTelemt: boolean;
 }) {
@@ -106,7 +108,7 @@ export function TomlSettingsView({ controller, canRestartTelemt }: {
 
       {result && !dirty && !session.remote && (
         <PatchResultNotice
-          result={result}
+          result={resolvePublishedPatchResult(result, publication, patchMutation.submittedAt)}
           canRestartTelemt={canRestartTelemt}
           onReloadNow={() => reloadMutation.mutate({ body: { mode: "instant" } })}
           onRestartNow={() => restartMutation.mutate({})}
