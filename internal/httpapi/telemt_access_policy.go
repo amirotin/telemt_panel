@@ -41,6 +41,9 @@ func (s *Server) handlePatchTelemtAccessPolicy(w http.ResponseWriter, r *http.Re
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), telemt.ConfigMutationTimeout)
 	defer cancel()
+	if !allowTelemtConfigMutationResponse(w, ctx) {
+		return
+	}
 	data, next, err := s.tc.PatchAccessPolicy(ctx, patch, revision, r.Header.Get("If-Runtime-Match"))
 	if err != nil {
 		writeTelemtOptionalError(w, err)

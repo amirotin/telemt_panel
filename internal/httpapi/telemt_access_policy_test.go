@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
@@ -47,5 +49,41 @@ func TestAccessPolicyRevisionPrecisionAndPatchSemantics(t *testing.T) {
 		if w.Code != 400 || len(bodies) != before {
 			t.Errorf("invalid policy reached upstream: %s status %d", body, w.Code)
 		}
+	}
+}
+
+type accessPolicyDeadlineRecorder struct {
+	*httptest.ResponseRecorder
+	writeDeadline time.Time
+}
+
+func (w *accessPolicyDeadlineRecorder) SetWriteDeadline(deadline time.Time) error {
+	w.writeDeadline = deadline
+	return nil
+}
+
+func TestAccessPolicyPreparesResponseDeadline(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PATCH" || r.URL.Path != "/v1/access/policy" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"ok":true,"revision":"s2","data":{"desired":{},"effective":{},"runtime":{}}}`))
+	}))
+	defer upstream.Close()
+	srv, _ := newTelemtInfoTestServer(t, telemt.New(upstream.URL, ""))
+	deadline := time.Now().Add(30 * time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPatch, "/api/telemt/access-policy", strings.NewReader(`{"user_max_tcp_conns_global_each":1}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("If-Match", "s1")
+	writer := &accessPolicyDeadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	srv.handlePatchTelemtAccessPolicy(writer, req)
+	if writer.Code != http.StatusOK {
+		t.Fatalf("response=%d %s", writer.Code, writer.Body)
+	}
+	if want := deadline.Add(5 * time.Second); !writer.writeDeadline.Equal(want) {
+		t.Fatalf("response write deadline=%s, want request deadline +5s (%s)", writer.writeDeadline, want)
 	}
 }

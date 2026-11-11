@@ -180,7 +180,7 @@ func (c *Client) requestStatusRuntime(ctx context.Context, method, path string, 
 	}
 
 	client := c.http
-	if (method == http.MethodPatch && (path == "/v1/config" || strings.HasPrefix(path, "/v1/config?"))) || (method == http.MethodPost && strings.HasPrefix(path, "/v1/config/validate")) {
+	if (method == http.MethodPatch && (path == "/v1/config" || strings.HasPrefix(path, "/v1/config?") || path == "/v1/access/policy")) || (method == http.MethodPost && strings.HasPrefix(path, "/v1/config/validate")) {
 		scoped := *client
 		scoped.Timeout = ConfigMutationTimeout
 		client = &scoped
