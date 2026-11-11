@@ -51,3 +51,15 @@ it("requires correcting invalid CIDR rows before conflict rebase",async()=>{
  expect(button(ru.accessPolicy.rebase).disabled).toBe(true);
  expect(input("cidr_rate_limits").value).toBe("invalid row");
 });
+it("retains the draft and confirmed cache after an invalid upstream response without retrying",async()=>{
+ client.setConfig({fetch:async input=>{const req=input as Request;requests.push(req);return Response.json({code:"telemt_invalid_response",message:"Upstream mutation result was not confirmed"},{status:502});}});
+ await render();await enter("user_max_unique_ips_global_each","9");await enter("cidr_rate_limits","192.0.2.0/24 10 20");await save();
+ expect(input("user_max_unique_ips_global_each").value).toBe("9");expect(input("cidr_rate_limits").value).toBe("192.0.2.0/24 10 20");
+ expect(cache.getQueryData(getTelemtAccessPolicyQueryKey())).toEqual(state);
+ expect(container.querySelector('[role="alert"]')).not.toBeNull();expect(container.textContent).not.toContain(ru.accessPolicy.saved);
+ await act(async()=>{await wait();});expect(requests.filter(req=>req.method==="PATCH")).toHaveLength(1);
+});
+it("shows an unavailable metadata error instead of unsupported policy after malformed discovery",async()=>{
+ cache.setQueryData(getTelemtInfoQueryKey(),{capabilities:{access_policy:false,optional_metadata_unavailable:true}});
+ await render();expect(container.textContent).toContain(ru.accessPolicy.error);expect(container.textContent).not.toContain(ru.accessPolicy.unsupported);
+});

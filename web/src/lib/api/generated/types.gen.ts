@@ -614,6 +614,10 @@ export type TelemtInfo = {
         config_api: boolean;
         user_enable_disable: boolean;
         rotate_secret: boolean;
+        /**
+         * Optional discovery or schema could not be confirmed; false feature flags are not definitive absence while true.
+         */
+        optional_metadata_unavailable?: boolean;
         config_schema?: boolean;
         config_state?: boolean;
         config_validation?: boolean;

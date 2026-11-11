@@ -147,7 +147,10 @@ func configCall[T any](ctx context.Context, c *Client, method, path string, body
 		return value, 0, "", err
 	}
 	if err = json.Unmarshal(data, &value); err != nil {
-		return value, 0, "", fmt.Errorf("telemt: decode %s: %w", path, err)
+		return value, 0, "", fmt.Errorf("telemt: decode %s: %w: %w", path, ErrInvalidResponse, err)
+	}
+	if err := validateDecodedResponse(data, &value, next, true); err != nil {
+		return value, 0, "", err
 	}
 	normalizeSlices(&value)
 	return value, status, next, nil

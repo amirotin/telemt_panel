@@ -27,7 +27,7 @@ func TestDiscoveryDowngradeAndUpgradeDiscardCachedSupport(t *testing.T) {
 				http.NotFound(w, r)
 				return
 			}
-			fmt.Fprint(w, `{"ok":true,"data":{"operations":[{"method":"GET","path":"/v1/config/state","supported":true,"enabled":true}]}}`)
+			fmt.Fprint(w, `{"ok":true,"data":{"operations":[{"method":"GET","path":"/v1/config/state","supported":true,"enabled":true}],"api_version":"v1","schema_version":1,"software_version":"3.5.17","config_schema":"/v1/config/schema","read_only":false,"availability_scope":"feature_and_runtime_source_prerequisites_not_request_success"}}`)
 		default:
 			http.NotFound(w, r)
 		}

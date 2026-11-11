@@ -141,6 +141,7 @@ function rebaseUserForm(submitted: FormState, draft: FormState, confirmed: FormS
 export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureWeb, inline, disabled=false, onDirtyChange }: UserFormSheetProps) {
   const s = useStrings();
   const caps = useCaps();
+  const metadataUnavailable = caps.data?.capabilities.optional_metadata_unavailable === true;
   const sourceDenySupported = caps.data?.capabilities.user_source_deny === true;
   const readOnly = disabled || caps.data?.capabilities.read_only === true;
   const rateMaxMbps = userRateLimitMaxMbps(caps.data?.version);
@@ -444,7 +445,8 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
             </div>
           </section>
 
-          {(baseUser?.limits || sourceDenySupported || denyDirty || readOnly) && <section className="people-form-section">
+          {(baseUser?.limits || sourceDenySupported || denyDirty || readOnly || metadataUnavailable) && <section className="people-form-section">
+            {metadataUnavailable && <p role="alert" className="user-note">{s.accessPolicy.sourceUnavailable}</p>}
             {readOnly && <p className="user-note">{s.accessPolicy.readonly}</p>}
             {(baseUser?.limits || baseUser?.source_deny_status) && <><p className="user-note">{s.accessPolicy.inheritHint}</p><UserPolicySummary user={baseUser} /></>}
             {(sourceDenySupported || denyDirty) && <label className="people-form-field people-form-field-wide">

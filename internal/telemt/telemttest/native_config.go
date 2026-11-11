@@ -72,7 +72,7 @@ func nativeApply(paths []string) telemt.ConfigApplyImpact {
 func (s *Server) handleNativeConfig(w http.ResponseWriter, r *http.Request) bool {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/capabilities":
-		writeOK(w, 200, telemt.DiscoveryData{SoftwareVersion: "3.5.17", SchemaVersion: 1, ReadOnly: s.scenario.ReadOnly, Operations: []telemt.OperationCapability{
+		writeOK(w, 200, telemt.DiscoveryData{APIVersion: "v1", ConfigSchema: "/v1/config/schema", AvailabilityScope: "feature_and_runtime_source_prerequisites_not_request_success", SoftwareVersion: "3.5.17", SchemaVersion: 1, ReadOnly: s.scenario.ReadOnly, Operations: []telemt.OperationCapability{
 			{Method: "GET", Path: "/v1/config/schema", Supported: true, Enabled: true},
 			{Method: "GET", Path: "/v1/config/state", Supported: true, Enabled: true},
 			{Method: "POST", Path: "/v1/config/validate", Supported: true, Enabled: true, ReadOnlyOperation: true},
@@ -80,9 +80,9 @@ func (s *Server) handleNativeConfig(w http.ResponseWriter, r *http.Request) bool
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/config/schema":
 		fields := []telemt.ConfigField{}
 		for _, path := range []string{"network.dns_overrides", "web.retry_jitter.enabled", "web.retry_jitter.min_ms", "web.retry_jitter.max_ms", "web.retry_jitter.distribution", "web.retry_jitter.peak_ms", "server.api.minimal_runtime_enabled", "server.api.minimal_runtime_cache_ttl_ms", "server.api.runtime_edge_enabled", "server.api.runtime_edge_cache_ttl_ms", "server.api.runtime_edge_top_n"} {
-			fields = append(fields, telemt.ConfigField{Path: path, Value: json.RawMessage(`{}`), DefaultKind: "type_default", Sensitivity: "public", Apply: json.RawMessage(`{"watcher":"supported","reload":"supported","effect":"new_settings"}`), API: telemt.ConfigFieldAPI{ConfigWrite: true, WriteRoutes: []string{"PATCH /v1/config"}}})
+			fields = append(fields, telemt.ConfigField{Path: path, Value: json.RawMessage(`{}`), DefaultKind: "type_default", Sensitivity: "public", Apply: json.RawMessage(`{"watcher":"supported","reload":"supported","effect":"new_settings"}`), API: telemt.ConfigFieldAPI{ConfigWrite: true, ReadRoutes: []string{}, NullBehavior: "ignored", WriteRoutes: []string{"PATCH /v1/config"}}})
 		}
-		writeOK(w, 200, telemt.ConfigSchemaData{SchemaVersion: 1, Fields: fields}, s.revision())
+		writeOK(w, 200, telemt.ConfigSchemaData{ValueSchemaDialect: "https://json-schema.org/draft/2020-12/schema", DefaultsScope: "unconfigured_type_defaults_before_loader_normalization", ValidationScope: "value_constraints_are_not_a_substitute_for_full_config_validation", PathNotation: "dot_members; []=array_element; {name}=dynamic_map_key", ConfigPatch: json.RawMessage(`{"objects":"recursive_merge","arrays":"replace_whole_array","object_null_members":"ignored_before_candidate_validation","reset":"not_supported","source_ownership":"one_independently_writable_source_per_mutation","if_match":"optional_source_manifest_revision"}`), SchemaVersion: 1, Fields: fields}, s.revision())
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/config/state":
 		generation := append([]string{}, s.nativeGenerationPaths...)
 		status := "published_match"

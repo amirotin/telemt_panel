@@ -2950,6 +2950,7 @@ components:
             config_api: { type: boolean }
             user_enable_disable: { type: boolean }
             rotate_secret: { type: boolean }
+            optional_metadata_unavailable: { type: boolean, description: Optional discovery or schema could not be confirmed; false feature flags are not definitive absence while true. }
             config_schema: { type: boolean }
             config_state: { type: boolean }
             config_validation: { type: boolean }

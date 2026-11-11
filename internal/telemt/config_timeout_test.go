@@ -60,7 +60,7 @@ func TestAccessPolicyPreparationRequestDeadline(t *testing.T) {
 		}
 		deadlines = append(deadlines, time.Until(deadline))
 		w := httptest.NewRecorder()
-		w.Write([]byte(`{"ok":true,"revision":"s2","data":{"desired":{},"effective":{},"runtime":{}}}`))
+		w.Write([]byte(`{"ok":true,"revision":"s2","data":{"desired":{"user_max_tcp_conns_global_each":0,"user_max_unique_ips_global_each":0,"user_max_unique_ips_mode":"active_window","user_max_unique_ips_window_secs":30,"cidr_rate_limits":{}},"effective":{"user_max_tcp_conns_global_each":0,"user_max_unique_ips_global_each":0,"user_max_unique_ips_mode":"active_window","user_max_unique_ips_window_secs":30,"cidr_rate_limits":{}},"runtime":{"active_generation":2,"config_epoch":6,"runtime_match":"2a8c5c0c28168a0997bc3a368a12549c:2:6"},"published_match":true,"effective_scope":"active_config_snapshot","subsystem_convergence":"unknown","apply_mode":"watcher"}}`))
 		return w.Result(), nil
 	})
 	patch := AccessPolicyPatch{"user_max_tcp_conns_global_each": json.RawMessage(`1`)}

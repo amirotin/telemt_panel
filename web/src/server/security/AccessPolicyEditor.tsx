@@ -87,7 +87,7 @@ export function AccessPolicyEditor() {
   };
   return <section className="grid min-w-0 gap-4 rounded-2xl border border-border bg-surface p-4 sm:p-5" data-testid="access-policy-editor">
     <header><h2 className="text-lg font-semibold text-text">{copy.title}</h2><p className="mt-1 text-meta text-text-muted">{copy.description}</p></header>
-    {!caps.data ? <p className="text-meta text-text-muted">{caps.error ? apiErrorMessage(caps.error, s) : s.common.loading}</p> : !supported ? <p className="text-meta text-text-muted">{copy.unsupported}</p> : <>
+    {!caps.data ? <p className="text-meta text-text-muted">{caps.error ? apiErrorMessage(caps.error, s) : s.common.loading}</p> : !supported ? caps.data.capabilities.optional_metadata_unavailable ? <div className="grid gap-2"><p role="alert" className="text-meta text-error">{copy.error}</p><Button variant="secondary" onClick={() => void caps.refetch()}>{copy.refresh}</Button></div> : <p className="text-meta text-text-muted">{copy.unsupported}</p> : <>
       {readOnly && <p className="rounded-xl bg-bg p-3 text-meta text-text-muted">{copy.readonly}</p>}
       {query.error && <p role="alert" className="text-meta text-error">{apiErrorMessage(query.error, s)}</p>}
       {session ? <>

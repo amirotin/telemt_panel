@@ -253,7 +253,10 @@ func get[T any](ctx context.Context, c *Client, path string) (T, error) {
 		return out, err
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, fmt.Errorf("telemt: decode %s: %w: %w", path, ErrInvalidResponse, err)
+	}
+	if err := validateDecodedResponse(data, &out, "", false); err != nil {
+		return out, err
 	}
 	normalizeSlices(&out)
 	return out, nil
@@ -280,7 +283,10 @@ func getRevision[T any](ctx context.Context, c *Client, path string) (T, string,
 		return out, "", err
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, "", fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, "", fmt.Errorf("telemt: decode %s: %w: %w", path, ErrInvalidResponse, err)
+	}
+	if err := validateDecodedResponse(data, &out, revision, false); err != nil {
+		return out, "", err
 	}
 	normalizeSlices(&out)
 	return out, revision, nil
@@ -309,7 +315,15 @@ func mutateRevisionStatus[T any](ctx context.Context, c *Client, method, path st
 		return out, status, respRevision, nil
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, 0, "", fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, 0, "", fmt.Errorf("telemt: decode %s: %w: %w", path, ErrInvalidResponse, err)
+	}
+	if method == http.MethodPost && (strings.HasSuffix(path, "/enable") || strings.HasSuffix(path, "/disable")) {
+		if _, err := responseFields(data, "enabled"); err != nil {
+			return out, 0, "", err
+		}
+	}
+	if err := validateDecodedResponse(data, &out, respRevision, true); err != nil {
+		return out, 0, "", err
 	}
 	normalizeSlices(&out)
 	return out, status, respRevision, nil
@@ -456,6 +470,9 @@ func (c *Client) CreateUser(ctx context.Context, req CreateUserRequest) (UserInf
 	if err != nil {
 		return UserInfo{}, "", err
 	}
+	if out.User.Username != req.Username {
+		return UserInfo{}, "", ErrInvalidResponse
+	}
 	return out.User, out.Secret, nil
 }
 
@@ -465,7 +482,11 @@ func (c *Client) CreateUser(ctx context.Context, req CreateUserRequest) (UserInf
 // JSON null (Telemt: remove the limit). Building that distinction is the
 // caller's job — see httpapi's decodeUserPatch.
 func (c *Client) PatchUser(ctx context.Context, username string, patch map[string]any) (UserInfo, error) {
-	return mutate[UserInfo](ctx, c, http.MethodPatch, "/v1/users/"+url.PathEscape(username), patch)
+	out, err := mutate[UserInfo](ctx, c, http.MethodPatch, "/v1/users/"+url.PathEscape(username), patch)
+	if err == nil && out.Username != username {
+		err = ErrInvalidResponse
+	}
+	return out, err
 }
 
 // DeleteUser calls DELETE /v1/users/{username}. 409 last_user_forbidden
@@ -497,6 +518,9 @@ func (c *Client) ResetQuotaWithRevision(ctx context.Context, username, revision 
 func (c *Client) RotateSecret(ctx context.Context, username string) (UserInfo, string, error) {
 	generation := c.capabilityGeneration()
 	out, err := mutate[userSecret](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/rotate-secret", nil)
+	if err == nil && out.User.Username != username {
+		err = ErrInvalidResponse
+	}
 	c.observeMutation(&c.rotateSecretAbsent, generation, err)
 	if err != nil {
 		return UserInfo{}, "", err
@@ -516,6 +540,9 @@ func (c *Client) SetEnabled(ctx context.Context, username string, enabled bool) 
 		action = "enable"
 	}
 	out, err := mutate[UserInfo](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/"+action, nil)
+	if err == nil && (out.Username != username || out.Enabled != enabled) {
+		err = ErrInvalidResponse
+	}
 	c.observeMutation(&c.userEnableDisableAbsent, generation, err)
 	return out, err
 }

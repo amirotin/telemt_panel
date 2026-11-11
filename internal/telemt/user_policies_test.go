@@ -54,11 +54,11 @@ func TestUserSourceDenyMetadataFailuresAndDowngrade(t *testing.T) {
 						w.WriteHeader(current)
 						return
 					}
-					fmt.Fprint(w, `{"ok":true,"data":{"schema_version":1,"operations":[]}}`)
+					fmt.Fprint(w, `{"ok":true,"data":{"schema_version":1,"operations":[],"api_version":"v1","software_version":"3.5.17","config_schema":"/v1/config/schema","read_only":false,"availability_scope":"feature_and_runtime_source_prerequisites_not_request_success"}}`)
 					return
 				}
 				if r.URL.Path == "/v1/config/schema" {
-					fmt.Fprint(w, `{"ok":true,"data":{"schema_version":1,"fields":[{"path":"access.user_source_deny","api":{"request_field":"source_deny","write_routes":["POST /v1/users","PATCH /v1/users/{username}"]}}]}}`)
+					fmt.Fprint(w, `{"ok":true,"data":{"schema_version":1,"fields":[{"path":"access.user_source_deny","api":{"request_field":"source_deny","write_routes":["POST /v1/users","PATCH /v1/users/{username}"],"config_read":false,"config_write":false,"read_routes":[],"null_behavior":"not_editable"},"sensitivity":"public"}],"value_schema_dialect":"https://json-schema.org/draft/2020-12/schema","defaults_scope":"unconfigured_type_defaults_before_loader_normalization","validation_scope":"value_constraints_are_not_a_substitute_for_full_config_validation","path_notation":"dot_members; []=array_element; {name}=dynamic_map_key","config_patch":{"objects":"recursive_merge","arrays":"replace_whole_array","object_null_members":"ignored_before_candidate_validation","reset":"not_supported","source_ownership":"one_independently_writable_source_per_mutation","if_match":"optional_source_manifest_revision"}}}`)
 					return
 				}
 				http.NotFound(w, r)

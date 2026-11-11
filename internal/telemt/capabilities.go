@@ -22,18 +22,19 @@ type negativeCapabilityObservation struct {
 // 07-telemt-sdk.md §SDK-3 defines, letting the panel show "unavailable on
 // this Telemt build" instead of a dead control or a failed request.
 type Caps struct {
-	ConfigSchema      bool `json:"config_schema"`
-	ConfigState       bool `json:"config_state"`
-	ConfigValidation  bool `json:"config_validation"`
-	AccessPolicy      bool `json:"access_policy"`
-	UserSourceDeny    bool `json:"user_source_deny"`
-	ReadOnly          bool `json:"read_only"`
-	Quota             bool `json:"quota"`
-	RuntimeEdge       bool `json:"runtime_edge"`
-	ReloadAPI         bool `json:"reload_api"`
-	ConfigAPI         bool `json:"config_api"`
-	UserEnableDisable bool `json:"user_enable_disable"`
-	RotateSecret      bool `json:"rotate_secret"`
+	OptionalMetadataUnavailable bool `json:"optional_metadata_unavailable,omitempty"`
+	ConfigSchema                bool `json:"config_schema"`
+	ConfigState                 bool `json:"config_state"`
+	ConfigValidation            bool `json:"config_validation"`
+	AccessPolicy                bool `json:"access_policy"`
+	UserSourceDeny              bool `json:"user_source_deny"`
+	ReadOnly                    bool `json:"read_only"`
+	Quota                       bool `json:"quota"`
+	RuntimeEdge                 bool `json:"runtime_edge"`
+	ReloadAPI                   bool `json:"reload_api"`
+	ConfigAPI                   bool `json:"config_api"`
+	UserEnableDisable           bool `json:"user_enable_disable"`
+	RotateSecret                bool `json:"rotate_secret"`
 }
 
 // runtimeEdgeGate is the minimal shape of GET /v1/runtime/connections/summary
@@ -301,6 +302,7 @@ func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) bool {
 	discovery, err := c.Discovery(ctx)
 	if err != nil {
 		if !optionalRouteAbsent(err) {
+			caps.OptionalMetadataUnavailable = true
 			return false
 		}
 		// Legacy servers keep the existing six capability decisions. Health can
@@ -326,6 +328,7 @@ func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) bool {
 	caps.AccessPolicy = has("GET", "/v1/access/policy") && has("PATCH", "/v1/access/policy")
 	schema, err := c.ConfigSchema(ctx)
 	if err != nil {
+		caps.OptionalMetadataUnavailable = !optionalRouteAbsent(err)
 		return optionalRouteAbsent(err)
 	}
 	for _, field := range schema.Fields {

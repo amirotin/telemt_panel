@@ -26,7 +26,7 @@ func TestAccessPolicyRevisionPrecisionAndPatchSemantics(t *testing.T) {
 				t.Errorf("lost preconditions")
 			}
 		}
-		w.Write([]byte(`{"ok":true,"revision":"s2","data":{"desired":{"user_max_unique_ips_window_secs":9007199254740993,"cidr_rate_limits":{"192.0.2.0/24":{"up_bps":18446744073709551615,"down_bps":0}}},"effective":{},"runtime":{"runtime_match":"r2"},"published_match":false,"apply_mode":"watcher"}}`))
+		w.Write([]byte(`{"ok":true,"revision":"s2","data":{"desired":{"user_max_unique_ips_window_secs":9007199254740993,"cidr_rate_limits":{"192.0.2.0/24":{"up_bps":18446744073709551615,"down_bps":0}},"user_max_tcp_conns_global_each":0,"user_max_unique_ips_global_each":0,"user_max_unique_ips_mode":"active_window"},"effective":{"user_max_tcp_conns_global_each":0,"user_max_unique_ips_global_each":0,"user_max_unique_ips_mode":"active_window","user_max_unique_ips_window_secs":30,"cidr_rate_limits":{}},"runtime":{"runtime_match":"r2","active_generation":2,"config_epoch":6},"published_match":false,"apply_mode":"watcher","effective_scope":"active_config_snapshot","subsystem_convergence":"unknown"}}`))
 	}))
 	defer upstream.Close()
 	srv, cookie := newTelemtInfoTestServer(t, telemt.New(upstream.URL, ""))
@@ -68,7 +68,7 @@ func TestAccessPolicyPreparesResponseDeadline(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Write([]byte(`{"ok":true,"revision":"s2","data":{"desired":{},"effective":{},"runtime":{}}}`))
+		w.Write([]byte(`{"ok":true,"revision":"s2","data":{"desired":{"user_max_tcp_conns_global_each":0,"user_max_unique_ips_global_each":0,"user_max_unique_ips_mode":"active_window","user_max_unique_ips_window_secs":30,"cidr_rate_limits":{}},"effective":{"user_max_tcp_conns_global_each":0,"user_max_unique_ips_global_each":0,"user_max_unique_ips_mode":"active_window","user_max_unique_ips_window_secs":30,"cidr_rate_limits":{}},"runtime":{"active_generation":2,"config_epoch":6,"runtime_match":"2a8c5c0c28168a0997bc3a368a12549c:2:6"},"published_match":true,"effective_scope":"active_config_snapshot","subsystem_convergence":"unknown","apply_mode":"watcher"}}`))
 	}))
 	defer upstream.Close()
 	srv, _ := newTelemtInfoTestServer(t, telemt.New(upstream.URL, ""))
