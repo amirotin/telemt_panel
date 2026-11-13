@@ -27,12 +27,12 @@ SQLite modules and julianday are full-only; the shared SPA, passkeys and geograp
 | github.com/skip2/go-qrcode@v0.0.0-20200617195104-da1b6568686e | MIT | full, lite | https://pkg.go.dev/github.com/skip2/go-qrcode@v0.0.0-20200617195104-da1b6568686e |
 | github.com/tinylib/msgp@v1.6.4 | MIT AND BSD-3-Clause | full, lite | https://pkg.go.dev/github.com/tinylib/msgp@v1.6.4 |
 | github.com/x448/float16@v0.8.4 | MIT | full, lite | https://pkg.go.dev/github.com/x448/float16@v0.8.4 |
-| golang.org/x/crypto@v0.57.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/crypto@v0.57.0 |
+| golang.org/x/crypto@v0.58.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/crypto@v0.58.0 |
 | golang.org/x/image@v0.46.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/image@v0.46.0 |
-| golang.org/x/net@v0.58.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/net@v0.58.0 |
-| golang.org/x/sys@v0.48.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/sys@v0.48.0 |
-| golang.org/x/term@v0.46.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/term@v0.46.0 |
-| golang.org/x/text@v0.42.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/text@v0.42.0 |
+| golang.org/x/net@v0.60.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/net@v0.60.0 |
+| golang.org/x/sys@v0.49.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/sys@v0.49.0 |
+| golang.org/x/term@v0.47.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/term@v0.47.0 |
+| golang.org/x/text@v0.43.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/text@v0.43.0 |
 
 SQLite itself is in the public domain (https://www.sqlite.org/copyright.html). The Go driver and generated wrapper have the licenses listed above.
 The specialized branding interpolation retains arithmetic adapted from x/image/draw under BSD-3-Clause.
@@ -770,7 +770,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### golang.org/x/crypto@v0.57.0
+### golang.org/x/crypto@v0.58.0
 
 LICENSE
 
@@ -838,7 +838,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/net@v0.58.0
+### golang.org/x/net@v0.60.0
 
 LICENSE
 
@@ -872,7 +872,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/sys@v0.48.0
+### golang.org/x/sys@v0.49.0
 
 LICENSE
 
@@ -906,7 +906,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/term@v0.46.0
+### golang.org/x/term@v0.47.0
 
 LICENSE
 
@@ -940,7 +940,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/text@v0.42.0
+### golang.org/x/text@v0.43.0
 
 LICENSE
 
