@@ -58,10 +58,10 @@ The SQLite wrapper includes translated libc and TLSF allocator sources from wasm
 | @tanstack/react-query@5.104.1 | MIT | https://www.npmjs.com/package/@tanstack/react-query/v/5.104.1 |
 | @tanstack/react-router@1.170.41 | MIT | https://www.npmjs.com/package/@tanstack/react-router/v/1.170.41 |
 | @tanstack/react-store@0.11.2 | MIT | https://www.npmjs.com/package/@tanstack/react-store/v/0.11.2 |
-| @tanstack/react-virtual@3.14.10 | MIT | https://www.npmjs.com/package/@tanstack/react-virtual/v/3.14.10 |
+| @tanstack/react-virtual@3.14.13 | MIT | https://www.npmjs.com/package/@tanstack/react-virtual/v/3.14.13 |
 | @tanstack/router-core@1.171.34 | MIT | https://www.npmjs.com/package/@tanstack/router-core/v/1.171.34 |
 | @tanstack/store@0.11.2 | MIT | https://www.npmjs.com/package/@tanstack/store/v/0.11.2 |
-| @tanstack/virtual-core@3.17.8 | MIT | https://www.npmjs.com/package/@tanstack/virtual-core/v/3.17.8 |
+| @tanstack/virtual-core@3.17.11 | MIT | https://www.npmjs.com/package/@tanstack/virtual-core/v/3.17.11 |
 | clsx@2.1.1 | MIT | https://www.npmjs.com/package/clsx/v/2.1.1 |
 | d3-array@3.2.4 | ISC | https://www.npmjs.com/package/d3-array/v/3.2.4 |
 | d3-geo@3.1.1 | ISC | https://www.npmjs.com/package/d3-geo/v/3.1.1 |
@@ -1406,7 +1406,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/react-virtual@3.14.10
+### @tanstack/react-virtual@3.14.13
 
 LICENSE
 
@@ -1490,7 +1490,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/virtual-core@3.17.8
+### @tanstack/virtual-core@3.17.11
 
 LICENSE
 
