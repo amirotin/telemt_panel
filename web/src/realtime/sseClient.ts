@@ -46,9 +46,8 @@ export interface SSEClient {
    * result into the snapshot store (notifying subscribers) — a manual
    * "refresh this one topic" action, independent of the topic's own poll
    * interval or the >3-failures polling fallback. Resolves once the fetch
-   * attempt settles (success or failure — errors are swallowed, matching
-   * the fallback poller's own silent-retry behavior); callers needn't
-   * await it.
+   * attempt settles; failures are reported in topic state while retaining
+   * the last good data. Callers needn't await it.
    */
   refreshTopic(topic: TopicName): Promise<void>;
   /** Clears all cached data/state (logout) — see useLogout. */
@@ -207,10 +206,16 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
         applied = true;
       }
       if (applied && !disposed && gen === generation) onFrame();
-    } catch {
-      // Silent — the next poll tick (pollOnce) or the caller's own retry
-      // (refreshTopic) tries again; the browser's own SSE reconnect
-      // attempts keep racing in parallel regardless.
+    } catch (error) {
+      if (disposed || gen !== generation) return;
+      const code = error && typeof error === "object" && "code" in error &&
+        typeof error.code === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(error.code)
+        ? error.code : "network";
+      for (const { topic, version, revision, ticket } of requests) {
+        if (disposed || gen !== generation) return;
+        if (!refCounts.has(topic) || topicVersions.get(topic) !== version || version.requestTicket !== ticket || version.revision !== revision) continue;
+        applyTopicError(topic, code);
+      }
     }
   }
 
@@ -344,11 +349,11 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
           // client's response interceptor — and its /login redirect —
           // within about a second, instead of only after the 4th backoff
           // attempt (~14s). Reuses pollOnce/fetchAndInstall exactly as-is:
-          // it already swallows its own errors and never touches
+          // it already handles its own errors and never touches
           // consecutiveFailures or startPollingIfNeeded, so this probe
           // cannot itself double-count as a failure or start the polling
-          // loop. A transient network error here is silently discarded —
-          // the backoff scheduled below keeps retrying regardless.
+          // loop. Failed reads keep the last good topic data while the
+          // backoff scheduled below keeps retrying regardless.
           void pollOnce();
         }
         const delay = Math.min(1000 * 2 ** consecutiveFailures, 30_000);

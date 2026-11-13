@@ -34,9 +34,20 @@ func (s *Server) trackSessionStream(w http.ResponseWriter, r *http.Request) (*se
 		}
 	}
 	rc := http.NewResponseController(w)
+	deadlineDone := make(chan struct{})
 	// A revoke must also interrupt a writer blocked on the transport.
-	stop := context.AfterFunc(ctx, func() { _ = rc.SetWriteDeadline(time.Now()) })
-	return &sessionStream{ctx: ctx, hash: hash, guard: guard, rc: rc}, func() { stop(); release() }, true
+	stop := context.AfterFunc(ctx, func() {
+		defer close(deadlineDone)
+		_ = rc.SetWriteDeadline(time.Now())
+	})
+	return &sessionStream{ctx: ctx, hash: hash, guard: guard, rc: rc}, func() {
+		if stop() {
+			close(deadlineDone)
+		}
+		// stop does not join a running callback; the writer must not outlive the handler.
+		<-deadlineDone
+		release()
+	}, true
 }
 
 func (s *sessionStream) check() error {

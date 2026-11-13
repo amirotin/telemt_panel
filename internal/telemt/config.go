@@ -2,9 +2,6 @@ package telemt
 
 import (
 	"context"
-	"net/http"
-	"net/url"
-	"strconv"
 	"time"
 )
 
@@ -29,17 +26,5 @@ func (c *Client) GetConfig(ctx context.Context) (ConfigSections, string, error) 
 // surfaces as a revision_conflict *APIError. reload, when its Mode is set,
 // asks Telemt to apply the write via an inline reload (see ReloadQuery).
 func (c *Client) PatchConfig(ctx context.Context, patch map[string]any, revision string, reload ReloadQuery) (PatchConfigResult, int, string, error) {
-	path := "/v1/config"
-	if reload.Mode != "" {
-		q := url.Values{}
-		q.Set("reload", reload.Mode)
-		if reload.TimeoutSecs != nil {
-			q.Set("timeout_secs", strconv.FormatUint(*reload.TimeoutSecs, 10))
-		}
-		if reload.FailurePolicy != "" {
-			q.Set("failure_policy", reload.FailurePolicy)
-		}
-		path += "?" + q.Encode()
-	}
-	return mutateRevisionStatus[PatchConfigResult](ctx, c, http.MethodPatch, path, patch, revision)
+	return c.PatchConfigRuntime(ctx, patch, revision, "", reload)
 }

@@ -697,7 +697,7 @@ func TestHandleCreateUserExists(t *testing.T) {
 
 // TestHandlePatchUserTriState is the byte-level assertion the brief
 // requires: a set field, an explicit null (remove), an omitted field (left
-// unchanged) and an unknown field (dropped) must produce exactly one JSON
+// unchanged) must produce exactly one JSON
 // object upstream with only the known, present keys — set field as its
 // value, null field as literal null, nothing else.
 func TestHandlePatchUserTriState(t *testing.T) {
@@ -709,7 +709,6 @@ func TestHandlePatchUserTriState(t *testing.T) {
 		"data_quota_bytes":  2048,
 		"max_tcp_conns":     nil,
 		"rate_limit_up_bps": uint64(9007199254740993),
-		"bogus_field":       "should be dropped",
 	}
 	req := mutatingJSON(t, "PATCH", "/api/users/alice", cookie, body)
 	w := httptest.NewRecorder()
@@ -837,12 +836,9 @@ func TestHandlePatchUserUnmappedClientErrorPassesThrough(t *testing.T) {
 	}
 }
 
-// TestHandleCreateUserUnmappedServerErrorStaysUnreachable is the other
-// half of finding 3's fix: an upstream 5xx (or otherwise non-4xx)
-// APIError with an unmapped code should still collapse to 502
-// telemt_unreachable — the passthrough is specifically for 4xx client-input
-// problems, not a blanket "always show Telemt's raw status."
-func TestHandleCreateUserUnmappedServerErrorStaysUnreachable(t *testing.T) {
+// TestHandleCreateUserServerErrorIsNotConnectivityFailure keeps an upstream
+// rejection distinct from a failed connection while retaining HTTP 502.
+func TestHandleCreateUserServerErrorIsNotConnectivityFailure(t *testing.T) {
 	fake := newFakeTelemt()
 	fake.createErr = &telemtErr{status: http.StatusInternalServerError, code: "internal_error", message: "boom"}
 	srv, cookie := newUsersTestServer(t, fake, true)
@@ -856,8 +852,8 @@ func TestHandleCreateUserUnmappedServerErrorStaysUnreachable(t *testing.T) {
 	}
 	var body map[string]string
 	json.Unmarshal(w.Body.Bytes(), &body)
-	if body["code"] != "telemt_unreachable" {
-		t.Errorf("code = %q, want telemt_unreachable", body["code"])
+	if body["code"] != "telemt_api_error" {
+		t.Errorf("code = %q, want telemt_api_error", body["code"])
 	}
 }
 

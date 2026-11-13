@@ -5,7 +5,8 @@ import "reflect"
 // normalizeSlices walks v — a pointer to a value freshly decoded from a
 // Telemt response — and replaces every nil slice found at any depth
 // (through struct fields, non-nil pointers, and slice elements) with a
-// non-nil, empty slice of the same type. It is the SDK's one normalization
+// non-nil, empty slice of the same type, except fields marked
+// normalize:"nullable" for an unknown snapshot. It is the SDK's normalization
 // point for the panel's output contract: "arrays are always [], never
 // null" — Telemt frequently omits a slice-typed field, or the SDK's own
 // zero value is a nil slice, and either one round-trips through
@@ -24,7 +25,7 @@ import "reflect"
 // generic pass has no way to tell that case apart from "just happens to be
 // nil", so this stays scoped to slices, which have no such ambiguity (an
 // absent/unsupported list is exactly as valid a `[]` as a present-but-empty
-// one, and the SDK never uses a slice's nilness as a signal itself).
+// one). Nullable snapshot fields explicitly opt out of this default.
 func normalizeSlices(v any) {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
@@ -72,7 +73,7 @@ func normalizeValue(v reflect.Value) {
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
 			field := v.Field(i)
-			if field.CanSet() {
+			if field.CanSet() && v.Type().Field(i).Tag.Get("normalize") != "nullable" {
 				normalizeValue(field)
 			}
 		}

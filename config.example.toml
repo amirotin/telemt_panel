@@ -103,6 +103,7 @@ mode = "http"
 # startup.
 # log_source = "auto" # auto | journald | logread | syslog | docker | file
 # Path tailed when log_source = "file".
+# File streams include up to 200 recent complete lines from the last 256 KiB.
 # log_file = ""
 # Service/container names, when service_manager needs one.
 # telemt_service = "telemt"

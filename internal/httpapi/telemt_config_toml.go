@@ -30,12 +30,14 @@ type telemtConfigTOMLRequest struct {
 }
 
 type telemtConfigTOMLPreview struct {
-	Revision             string                `json:"revision"`
-	Patch                telemt.ConfigSections `json:"patch"`
-	PatchJSON            string                `json:"patch_json"`
-	ChangedPaths         []string              `json:"changed_paths"`
-	MaterializedSections []string              `json:"materialized_sections"`
-	ArrayReplacements    []string              `json:"array_replacements"`
+	Revision             string                       `json:"revision"`
+	Patch                telemt.ConfigSections        `json:"patch"`
+	PatchJSON            string                       `json:"patch_json"`
+	ChangedPaths         []string                     `json:"changed_paths"`
+	MaterializedSections []string                     `json:"materialized_sections"`
+	ArrayReplacements    []string                     `json:"array_replacements"`
+	Validation           *telemt.ConfigValidationData `json:"validation,omitempty"`
+	RuntimeMatch         string                       `json:"runtime_match,omitempty"`
 }
 
 func (s *Server) handleGetTelemtConfigTOML(w http.ResponseWriter, r *http.Request) {
@@ -82,12 +84,35 @@ func (s *Server) handlePreviewTelemtConfigTOML(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	ctx, cancel := contextWithTelemtConfigTimeout(r)
+	reload, err := parseTelemtReloadQuery(r.URL.Query())
+	if err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), telemt.ConfigMutationTimeout)
 	defer cancel()
-	preview, _, err := s.buildTelemtConfigTOMLPreview(ctx, revision, req.TOMLProjection)
+	if !allowTelemtConfigMutationResponse(w, ctx) {
+		return
+	}
+	preview, patch, err := s.buildTelemtConfigTOMLPreview(ctx, revision, req.TOMLProjection)
 	if err != nil {
 		writeTelemtConfigTOMLError(w, err)
 		return
+	}
+	if len(patch) == 0 {
+		writeJSON(w, http.StatusOK, preview)
+		return
+	}
+	validation, _, validationErr := s.tc.ValidateConfig(ctx, patch, revision, r.Header.Get("If-Runtime-Match"), reload)
+	if validationErr == nil {
+		preview.Validation = &validation
+		preview.RuntimeMatch = validation.Runtime.RuntimeMatch
+	} else {
+		var apiErr *telemt.APIError
+		if !errors.As(validationErr, &apiErr) || (apiErr.Status != 404 && apiErr.Status != 405) {
+			writeTelemtConfigTOMLError(w, validationErr)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, preview)
 }
@@ -125,7 +150,7 @@ func (s *Server) handlePatchTelemtConfigTOML(w http.ResponseWriter, r *http.Requ
 		auth.WriteError(w, http.StatusBadRequest, "no_changes", "TOML projection has no changes")
 		return
 	}
-	result, status, _, err := s.tc.PatchConfig(ctx, patch, revision, reload)
+	result, status, _, err := s.tc.PatchConfigRuntime(ctx, patch, revision, r.Header.Get("If-Runtime-Match"), reload)
 	if err != nil {
 		writeTelemtConfigMutationError(w, err)
 		return
@@ -195,7 +220,7 @@ func (s *Server) buildTelemtConfigTOMLPreview(ctx context.Context, expectedRevis
 	if err != nil {
 		return telemtConfigTOMLPreview{}, nil, err
 	}
-	if err := validateTelemtConfigPatch(desiredRaw, currentRaw, s.telemtConfigVersion(ctx)); err != nil {
+	if err := s.validateTelemtConfigPatchWithSchema(ctx, desiredRaw, currentRaw, s.telemtConfigVersion(ctx)); err != nil {
 		return telemtConfigTOMLPreview{}, nil, &telemtConfigTOMLError{code: "invalid_config_path", message: err.Error()}
 	}
 	// BurntSushi/toml represents arrays of tables as []map[string]any,
