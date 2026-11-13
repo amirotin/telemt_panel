@@ -67,6 +67,7 @@ export function WebEditor({ fields, sections, advanced, onChange, decoyDrafts, o
     );
   };
   const advancedGroups = [
+    { id: "jitter", title: copy.jitterTitle, hint: copy.jitterHint, fields: fields.filter((field) => field.path.startsWith("web.retry_jitter.")) },
     { id: "limits", title: copy.webLimitsTitle, hint: copy.webLimitsHint, fields: fields.filter((field) => field.path.startsWith("web.limits.") && !WEB_STRUCTURE_PATHS.has(field.path)) },
     { id: "timeouts", title: copy.webTimeoutsTitle, hint: copy.webTimeoutsHint, fields: fields.filter((field) => field.path.startsWith("web.timeouts.") && !WEB_STRUCTURE_PATHS.has(field.path)) },
     { id: "debug", title: copy.webDebugTitle, hint: copy.webDebugHint, fields: fields.filter((field) => field.path.startsWith("web.debug.") && field.path !== "web.debug.enabled" && !WEB_STRUCTURE_PATHS.has(field.path)) },

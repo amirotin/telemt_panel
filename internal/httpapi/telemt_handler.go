@@ -16,12 +16,19 @@ const telemtInfoRequestTimeout = 10 * time.Second
 
 // telemtCapabilitiesView mirrors api/openapi.yaml TelemtInfo.capabilities.
 type telemtCapabilitiesView struct {
-	Quota             bool `json:"quota"`
-	RuntimeEdge       bool `json:"runtime_edge"`
-	ReloadAPI         bool `json:"reload_api"`
-	ConfigAPI         bool `json:"config_api"`
-	UserEnableDisable bool `json:"user_enable_disable"`
-	RotateSecret      bool `json:"rotate_secret"`
+	OptionalMetadataUnavailable bool `json:"optional_metadata_unavailable,omitempty"`
+	ConfigSchema                bool `json:"config_schema"`
+	ConfigState                 bool `json:"config_state"`
+	ConfigValidation            bool `json:"config_validation"`
+	AccessPolicy                bool `json:"access_policy"`
+	UserSourceDeny              bool `json:"user_source_deny"`
+	ReadOnly                    bool `json:"read_only"`
+	Quota                       bool `json:"quota"`
+	RuntimeEdge                 bool `json:"runtime_edge"`
+	ReloadAPI                   bool `json:"reload_api"`
+	ConfigAPI                   bool `json:"config_api"`
+	UserEnableDisable           bool `json:"user_enable_disable"`
+	RotateSecret                bool `json:"rotate_secret"`
 }
 
 // telemtInfoView mirrors api/openapi.yaml schema TelemtInfo.
@@ -84,6 +91,7 @@ func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
 		ConfigPath:     sysInfo.ConfigPath,
 		ConfigEditMode: s.cfg.Telemt.ConfigEditMode,
 		Capabilities: telemtCapabilitiesView{
+			OptionalMetadataUnavailable: caps.OptionalMetadataUnavailable, ConfigSchema: caps.ConfigSchema, ConfigState: caps.ConfigState, ConfigValidation: caps.ConfigValidation, AccessPolicy: caps.AccessPolicy, UserSourceDeny: caps.UserSourceDeny, ReadOnly: caps.ReadOnly,
 			Quota:             caps.Quota,
 			RuntimeEdge:       caps.RuntimeEdge,
 			ReloadAPI:         caps.ReloadAPI,

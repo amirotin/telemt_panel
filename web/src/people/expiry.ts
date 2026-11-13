@@ -1,16 +1,5 @@
-// Expiry conversions for the create/edit form (06-ui.md: "срок —
-// datetime-local + быстрые пресеты 7д/30д/∞"). Two independent concerns
-// live here:
-//
-// 1. Preset -> ISO instant, computed from an injectable `now` (never
-//    `new Date()` directly) so tests are deterministic.
-// 2. `<input type="datetime-local">`'s value (a timezone-less
-//    "YYYY-MM-DDTHH:mm" string, always interpreted by the browser as local
-//    time) <-> the RFC3339 UTC instant PatchUser/CreateUser actually carry.
-//    Both directions go through the platform Date object's own local
-//    getters/setters, so the conversion is correct under any host timezone
-//    without this module ever reading or assuming one itself — see
-//    expiry.test.ts's round-trip test for why that's "timezone-safe".
+// Expiry calendars use UTC; presets retain their exact instant durations.
+// The legacy datetime-local helpers below retain local-time round trips.
 
 import { countLabel, type Dict } from "../i18n";
 
@@ -33,6 +22,20 @@ export function expirationDateToISO(value: string): string | null {
   const date = new Date(`${value}T23:59:59.000Z`);
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
   return date.toISOString();
+}
+
+export function expirationISOToDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+export function formatExpirationUTC(value: string, locale: string, now: Date): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: "UTC", day: "2-digit", month: "2-digit",
+    ...(date.getUTCFullYear() !== now.getUTCFullYear() ? { year: "numeric" as const } : {}),
+  }).format(date);
 }
 
 function pad2(n: number): string {

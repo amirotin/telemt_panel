@@ -6,6 +6,11 @@ export const serviceControlEn = {
   notConfigured: "not configured",
   running: "Running",
   stopped: "Stopped",
+  failed: "Failed",
+  activating: "Starting",
+  deactivating: "Stopping",
+  reloading: "Reloading configuration",
+  logs: "Open Telemt logs",
   unknown: "Status unknown",
   separate:
     "This is the service state on the panel host, not Telemt API availability. When connected to a remote API, check which service you are managing.",

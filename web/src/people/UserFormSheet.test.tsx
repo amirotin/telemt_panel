@@ -8,6 +8,12 @@ import { getTelemtInfoQueryKey } from "../lib/api/generated/@tanstack/react-quer
 import type { UsersTopicUser } from "../realtime/topics";
 import { ru } from "../i18n/testing";
 import { UserFormSheet, type UserFormSheetProps } from "./UserFormSheet";
+import { ToastViewport } from "../ui/Toast";
+
+vi.mock("@tanstack/react-router", async importOriginal => ({
+  ...await importOriginal<typeof import("@tanstack/react-router")>(),
+  Link: ({children,to,className}:{children:React.ReactNode;to:string;className?:string}) => <a href={to} className={className}>{children}</a>,
+}));
 
 let root: Root;
 let container: HTMLDivElement;
@@ -41,7 +47,7 @@ afterEach(() => {
 });
 
 async function render(version: string | undefined, overrides: Partial<UsersTopicUser> = {}, mode: "create" | "edit" = "edit", props: Partial<UserFormSheetProps> = {}) {
-  queryClient.setQueryData(getTelemtInfoQueryKey(), { reachable: true, version, capabilities: { quota: true, runtime_edge: true, reload_api: true, config_api: true, user_enable_disable: true, rotate_secret: true } });
+  queryClient.setQueryData(getTelemtInfoQueryKey(), { reachable: true, version, capabilities: { user_source_deny:version === "3.5.17", quota: true, runtime_edge: true, reload_api: true, config_api: true, user_enable_disable: true, rotate_secret: true } });
   await act(async () => root.render(<QueryClientProvider client={queryClient}><SSEProvider><UserFormSheet inline open mode={mode} user={{ ...user, ...overrides }} onClose={() => {}} {...props} /></SSEProvider></QueryClientProvider>));
 }
 
@@ -236,4 +242,102 @@ describe("Telemt user rate bounds", () => {
     await submit();
     expect(requests).toHaveLength(0);
   });
+});
+
+it("shows config permission guidance after failed user creation and retains the form", async () => {
+  const toastContainer = document.createElement("div");
+  document.body.append(toastContainer);
+  const toastRoot = createRoot(toastContainer);
+  client.setConfig({ baseUrl: "http://panel.test", fetch: (input) => {
+    requests.push(input as Request);
+    return Promise.resolve(Response.json({
+      code: "telemt_config_permission_denied", message: "HTTP 500 · internal_error · #42",
+    }, { status: 502 }));
+  } });
+  try {
+    await act(async () => toastRoot.render(<ToastViewport />));
+    await render("3.5.14", {}, "create");
+    const username = container.querySelector<HTMLInputElement>('[data-testid="user-form-username"]')!;
+    await enter(username, "bob");
+    await submit();
+    await vi.waitFor(() => {
+      expect(toastContainer.textContent).toMatch(/владельца файла/);
+      expect(toastContainer.textContent).toContain("HTTP 500 · internal_error · #42");
+    });
+    expect(username.value).toBe("bob");
+    expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
+  } finally {
+    act(() => toastRoot.unmount());
+    toastContainer.remove();
+  }
+});
+
+describe("UTC expiry calendar", () => {
+  it("normalizes an existing offset instant to its UTC calendar date without rewriting it", async () => {
+    await render("3.5.8", { expiration_rfc3339: "2026-12-01T01:30:00+03:00" });
+    const input = formInput(ru.people.form.expirationShort);
+    expect(input.value).toBe("2026-11-30");
+    expect(input.closest("label")?.textContent).toContain("UTC");
+    await enter(formInput(ru.people.form.maxConnections), "5");
+    await submit();
+    expect(await requests[0]!.json()).toEqual({ max_tcp_conns: 5 });
+  });
+});
+
+describe("source deny form compatibility",()=>{
+ it("shows no deny input on legacy",async()=>{await render("3.5.16",{},"create");expect(container.querySelector("textarea")).toBeNull();});
+ it("clears orphan denies for new supported accounts",async()=>{
+  await render("3.5.17",{},"create");
+  expect(container.querySelector("textarea")).not.toBeNull();
+  await enter(container.querySelector<HTMLInputElement>('[data-testid="user-form-username"]')!,"newuser");await submit();
+  expect(await requests[0]!.json()).toHaveProperty("source_deny",[]);
+ });
+ it("seeds inherited limits with an empty override and preserves them when editing another field",async()=>{
+  const inherited={value:7,configured_override:0,global_value:7,origin:"global_default" as const};
+  await render("3.5.17",{max_tcp_conns:7,limits:{desired:{max_tcp_conns:inherited,max_unique_ips:inherited},effective:null,effective_scope:"active_config_snapshot",subsystem_convergence:"unknown"}});
+  expect(formInput(ru.people.form.maxConnections).value).toBe("");
+  await enter(formInput(ru.people.form.maxIps),"3");await submit();expect(await requests[0]!.json()).toEqual({max_unique_ips:3});
+ });
+});
+it("keeps untouched deny rules omitted while editing another field",async()=>{
+ await render("3.5.17",{source_deny:["::/0"]});
+ await enter(formInput(ru.people.form.maxConnections),"3");await submit();expect(await requests[0]!.json()).toEqual({max_tcp_conns:3});
+});
+
+it("clears source-deny rules explicitly from the user form",async()=>{
+ await render("3.5.17",{source_deny:["::/0"]});
+ await act(async()=>{const el=container.querySelector("textarea")!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(el,"");el.dispatchEvent(new Event("input",{bubbles:true}));});
+ await submit();expect(await requests[0]!.json()).toEqual({source_deny:[]});
+});
+it("preserves dirty deny edits and blocks other writes if support disappears",async()=>{
+ await render("3.5.17",{source_deny:["::/0"]});
+ await act(async()=>{const el=container.querySelector("textarea")!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(el,"192.0.2.0/24");el.dispatchEvent(new Event("input",{bubbles:true}));});
+ await enter(formInput(ru.people.form.maxConnections),"3");
+ await act(async()=>{queryClient.setQueryData(getTelemtInfoQueryKey(),{reachable:true,version:"3.5.16",capabilities:{user_source_deny:false}});await new Promise(resolve=>setTimeout(resolve,30));});
+ expect(container.querySelector("textarea")?.value).toBe("192.0.2.0/24");
+ expect(container.textContent).toContain(ru.accessPolicy.sourceUnavailable);
+ expect(container.querySelector<HTMLButtonElement>('[data-testid="user-form-submit"]')!.disabled).toBe(true);
+ await submit();expect(requests).toHaveLength(0);
+});
+it("labels blank .17 connection limits as inheritance for new users",async()=>{
+ await render("3.5.17",{},"create");
+ expect(formInput(ru.people.form.maxConnections).placeholder).toBe(ru.accessPolicy.inherited);
+ expect(formInput(ru.people.form.maxIps).placeholder).toBe(ru.accessPolicy.inherited);
+ expect(container.textContent).toContain(ru.accessPolicy.inheritHint);
+});
+
+it.each(["retained orphan rules", "new deny rules", "legacy"] as const)("shows returned policy application status after creating a user: %s",async scenario=>{
+ const metadata=scenario==="legacy"?{}:{source_deny:scenario==="retained orphan rules"?[]:["192.0.2.0/24"],source_deny_status:{effective:scenario==="retained orphan rules"?["203.0.113.0/24"]:[],runtime_reload_required:true,apply_mode:"generation_reload",reload_endpoint:"POST /v1/system/reload",effective_scope:"request_generation_snapshot"}};
+ client.setConfig({fetch:async input=>{requests.push(input as Request);return Response.json({user:{...user,username:"newuser",...metadata},secret:"0123456789abcdef0123456789abcdef"});}});
+ await render(scenario==="legacy"?"3.5.16":"3.5.17",{},"create");
+ await enter(container.querySelector<HTMLInputElement>('[data-testid="user-form-username"]')!,"newuser");await submit();
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,30));});
+ expect(container.querySelector('[data-testid="created-user-secret"]')).not.toBeNull();
+ if(scenario==="legacy")expect(container.querySelector('[data-testid="user-policy-summary"]')).toBeNull();
+ else {
+  expect(container.textContent).toContain(ru.accessPolicy.reloadRequired);
+  expect(container.textContent).toContain(scenario==="retained orphan rules"?"203.0.113.0/24":"192.0.2.0/24");
+  const link=container.querySelector<HTMLAnchorElement>('a[href="/server/config"]');
+  expect(link?.textContent).toBe(ru.accessPolicy.reloadLink);
+ }
 });

@@ -1,5 +1,7 @@
 package telemt
 
+import "encoding/json"
+
 // Response shapes mirror the serde structs in Telemt's src/api/model.rs
 // (verified against the 3.5.2 sources).
 // Optional response fields are omitted by Telemt, not null — except the
@@ -83,37 +85,42 @@ type QuotaEntry struct {
 
 // CreateUserRequest is the body of POST /v1/users. Username is required;
 // every other field is omitted from the wire request when unset, letting
-// Telemt apply its own defaults (secret generated, enabled=true, no limits).
+// Telemt apply its own defaults, including inherited global limits on .17.
+// SourceDeny uses raw JSON to distinguish omission, null reset and an explicit empty list.
 type CreateUserRequest struct {
-	Username          string  `json:"username"`
-	Secret            string  `json:"secret,omitempty"`
-	UserAdTag         string  `json:"user_ad_tag,omitempty"`
-	MaxTCPConns       *uint64 `json:"max_tcp_conns,omitempty"`
-	ExpirationRFC3339 string  `json:"expiration_rfc3339,omitempty"`
-	DataQuotaBytes    *uint64 `json:"data_quota_bytes,omitempty"`
-	RateLimitUpBps    *uint64 `json:"rate_limit_up_bps,omitempty"`
-	RateLimitDownBps  *uint64 `json:"rate_limit_down_bps,omitempty"`
-	MaxUniqueIPs      *uint64 `json:"max_unique_ips,omitempty"`
-	Enabled           *bool   `json:"enabled,omitempty"`
+	SourceDeny        json.RawMessage `json:"source_deny,omitempty"`
+	Username          string          `json:"username"`
+	Secret            string          `json:"secret,omitempty"`
+	UserAdTag         string          `json:"user_ad_tag,omitempty"`
+	MaxTCPConns       *uint64         `json:"max_tcp_conns,omitempty"`
+	ExpirationRFC3339 string          `json:"expiration_rfc3339,omitempty"`
+	DataQuotaBytes    *uint64         `json:"data_quota_bytes,omitempty"`
+	RateLimitUpBps    *uint64         `json:"rate_limit_up_bps,omitempty"`
+	RateLimitDownBps  *uint64         `json:"rate_limit_down_bps,omitempty"`
+	MaxUniqueIPs      *uint64         `json:"max_unique_ips,omitempty"`
+	Enabled           *bool           `json:"enabled,omitempty"`
 }
 
 // UserInfo is one user as returned by GET /v1/users.
 type UserInfo struct {
-	Username           string    `json:"username"`
-	Enabled            bool      `json:"enabled"`
-	InRuntime          bool      `json:"in_runtime"`
-	UserAdTag          string    `json:"user_ad_tag,omitempty"`
-	MaxTCPConns        *uint64   `json:"max_tcp_conns,omitempty"`
-	ExpirationRFC3339  string    `json:"expiration_rfc3339,omitempty"`
-	DataQuotaBytes     *uint64   `json:"data_quota_bytes,omitempty"`
-	RateLimitUpBps     *uint64   `json:"rate_limit_up_bps,omitempty"`
-	RateLimitDownBps   *uint64   `json:"rate_limit_down_bps,omitempty"`
-	MaxUniqueIPs       *uint64   `json:"max_unique_ips,omitempty"`
-	CurrentConnections uint64    `json:"current_connections"`
-	ActiveUniqueIPs    uint64    `json:"active_unique_ips"`
-	ActiveIPList       []string  `json:"active_unique_ips_list"`
-	RecentUniqueIPs    uint64    `json:"recent_unique_ips"`
-	RecentIPList       []string  `json:"recent_unique_ips_list"`
-	TotalOctets        uint64    `json:"total_octets"`
-	Links              UserLinks `json:"links"`
+	SourceDeny         *[]string        `json:"source_deny,omitempty"`
+	SourceDenyStatus   *SourceDenyState `json:"source_deny_status,omitempty"`
+	Limits             *UserLimitState  `json:"limits,omitempty"`
+	Username           string           `json:"username"`
+	Enabled            bool             `json:"enabled"`
+	InRuntime          bool             `json:"in_runtime"`
+	UserAdTag          string           `json:"user_ad_tag,omitempty"`
+	MaxTCPConns        *uint64          `json:"max_tcp_conns,omitempty"`
+	ExpirationRFC3339  string           `json:"expiration_rfc3339,omitempty"`
+	DataQuotaBytes     *uint64          `json:"data_quota_bytes,omitempty"`
+	RateLimitUpBps     *uint64          `json:"rate_limit_up_bps,omitempty"`
+	RateLimitDownBps   *uint64          `json:"rate_limit_down_bps,omitempty"`
+	MaxUniqueIPs       *uint64          `json:"max_unique_ips,omitempty"`
+	CurrentConnections uint64           `json:"current_connections"`
+	ActiveUniqueIPs    uint64           `json:"active_unique_ips"`
+	ActiveIPList       []string         `json:"active_unique_ips_list"`
+	RecentUniqueIPs    uint64           `json:"recent_unique_ips"`
+	RecentIPList       []string         `json:"recent_unique_ips_list"`
+	TotalOctets        uint64           `json:"total_octets"`
+	Links              UserLinks        `json:"links"`
 }

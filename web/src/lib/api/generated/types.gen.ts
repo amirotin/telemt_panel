@@ -209,11 +209,12 @@ export type PanelTlsStatus = {
 };
 
 export type Error = {
+    details?: Array<TelemtFieldIssue>;
     /**
-     * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, session_revoke_failed, csrf_rejected, auth_disabled, internal_error, not_found, telemt_response_too_large, history_timeout, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, invalid_webauthn_origin, invalid_webauthn_challenge, invalid_webauthn_response, webauthn_credential_exists, passkey_unavailable, quota_reset_busy, quota_confirmation_expired, quota_operation_unavailable, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). Reserved for milestones not yet implemented: telemt_auth_failed (superseded on /api/telemt/info by a reachable:false body, not an error status — kept here for /api/telemt/config, M3). A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
+     * Machine code. Panel codes actually emitted today (grepped from every WriteError call site): bad_request, invalid_credentials, rate_limited, session_expired, session_revoke_failed, csrf_rejected, auth_disabled, internal_error, not_found, telemt_response_too_large, history_timeout, telemt_unreachable, capability_absent, capability_unavailable, manual_restart_required, update_locked, sublink_unavailable, log_tail_unavailable, log_stream_unavailable, log_source_error, invalid_webauthn_origin, invalid_webauthn_challenge, invalid_webauthn_response, webauthn_credential_exists, passkey_unavailable, quota_reset_busy, quota_confirmation_expired, quota_operation_unavailable, invalid_toml, invalid_config_path, config_unset_unsupported, no_changes, toml_projection_failed. capability_absent (501) vs capability_unavailable (503) are deliberately distinct, not aliases: capability_absent means the route itself doesn't exist on this Telemt build (a bare 404/405 with no error envelope — detected reactively, after attempting the call: rotate-secret, enable/disable, POST /api/telemt/reload, GET /api/telemt/reload/{id}); capability_unavailable means the route exists but the feature behind it is switched off on this Telemt — either known up front from the SDK's cached Capabilities probe (GET/PATCH /api/telemt/config, config_api) or reported by the response itself (GET /api/telemt/tls-fingerprints, whose enabled:false means runtime_edge_enabled is off; read from the response rather than probed so an unreachable Telemt still maps to 502 telemt_unreachable). telemt_auth_failed reports an upstream HTTP 401 without expiring the administrator's panel session. telemt_api_error distinguishes a received API failure from a connection error. Configuration permission, read-only filesystem, storage, read and write errors have dedicated telemt_config_* codes. Timeouts use telemt_timeout and HTTP 504; malformed responses, DNS and certificate failures also have dedicated diagnostic codes. snapshot_unavailable means no requested snapshot has been published. Diagnostic messages contain only HTTP status, validated upstream code and an optional numeric request ID, never arbitrary upstream payloads. A well-formed Telemt *APIError whose status is 4xx and isn't otherwise mapped above is passed through verbatim with Telemt's own code — notably user_exists, last_user_forbidden, read_only, revision_conflict, reload_in_progress, reload_not_found, ambiguous_listeners (the latter two absent from Telemt's own documented error-code table but confirmed against its source, M3), plus any other code in Telemt's own set (07-telemt-sdk.md): bad_request, access_not_editable, section_not_editable, field_not_editable, unauthorized, forbidden, method_not_allowed, config_patch_not_atomic, payload_too_large, api_disabled, maestro_unavailable — except access_not_editable/section_not_editable/field_not_editable/ config_patch_not_atomic/ambiguous_listeners on PATCH /api/telemt/config, which the panel remaps to HTTP 422 regardless of Telemt's own status. The WEB group (Telemt >= 3.5.3, internal/telemt/types_web.go) adds web_runtime_mismatch, web_issuance_enabled, web_operation_in_progress, web_snapshot_busy, web_session_not_found, web_operation_not_found and unsupported_media_type; web_runtime_unavailable is listed because it is Telemt's own code, but the panel remaps it to capability_unavailable (rule R5) so the closed-capability gate is drawn instead of an error. Every code in this enum must carry a message in BOTH dictionaries — web/src/i18n/i18n.test.ts walks this list.
      *
      */
-    code: 'bad_request' | 'tls_invalid_candidate' | 'tls_manual_required' | 'tls_prepare_busy' | 'tls_prepare_unavailable' | 'tls_listener_unavailable' | 'tls_challenge_unavailable' | 'tls_cache_unavailable' | 'tls_certificate_invalid' | 'tls_certificate_untrusted' | 'tls_acquisition_failed' | 'tls_prepare_failed' | 'tls_prepare_timeout' | 'tls_config_changed' | 'tls_receipt_invalid' | 'tls_save_failed' | 'tls_restart_not_pending' | 'tls_restart_failed' | 'conflict' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'session_revoke_failed' | 'logs_stream_limit' | 'telemt_response_too_large' | 'csrf_rejected' | 'auth_disabled' | 'quota_reset_busy' | 'invalid_quota_schedule' | 'quota_schedule_conflict' | 'quota_schedule_storage' | 'quota_schedule_unavailable' | 'quota_confirmation_expired' | 'quota_operation_unavailable' | 'internal_error' | 'history_timeout' | 'branding_invalid_title' | 'branding_invalid_mode' | 'branding_invalid_path' | 'branding_logo_unreadable' | 'branding_invalid_image' | 'not_found' | 'telemt_unreachable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'manual_service_control_required' | 'service_action_unconfirmed' | 'update_locked' | 'update_version_unsupported' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
+    code: 'bad_request' | 'tls_invalid_candidate' | 'tls_manual_required' | 'tls_prepare_busy' | 'tls_prepare_unavailable' | 'tls_listener_unavailable' | 'tls_challenge_unavailable' | 'tls_cache_unavailable' | 'tls_certificate_invalid' | 'tls_certificate_untrusted' | 'tls_acquisition_failed' | 'tls_prepare_failed' | 'tls_prepare_timeout' | 'tls_config_changed' | 'tls_receipt_invalid' | 'tls_save_failed' | 'tls_restart_not_pending' | 'tls_restart_failed' | 'conflict' | 'confirmation_required' | 'invalid_credentials' | 'rate_limited' | 'session_expired' | 'session_revoke_failed' | 'logs_stream_limit' | 'telemt_response_too_large' | 'csrf_rejected' | 'auth_disabled' | 'quota_reset_busy' | 'invalid_quota_schedule' | 'quota_schedule_conflict' | 'quota_schedule_storage' | 'quota_schedule_unavailable' | 'quota_confirmation_expired' | 'quota_operation_unavailable' | 'internal_error' | 'history_timeout' | 'branding_invalid_title' | 'branding_invalid_mode' | 'branding_invalid_path' | 'branding_logo_unreadable' | 'branding_invalid_image' | 'not_found' | 'telemt_unreachable' | 'telemt_api_error' | 'telemt_timeout' | 'telemt_dns_failed' | 'telemt_tls_failed' | 'telemt_invalid_response' | 'telemt_config_permission_denied' | 'telemt_config_read_only' | 'telemt_config_storage_full' | 'telemt_config_write_failed' | 'telemt_config_read_failed' | 'snapshot_unavailable' | 'capability_absent' | 'capability_unavailable' | 'manual_restart_required' | 'manual_service_control_required' | 'service_action_unconfirmed' | 'update_locked' | 'update_version_unsupported' | 'sublink_unavailable' | 'log_tail_unavailable' | 'log_stream_unavailable' | 'log_source_error' | 'invalid_webauthn_origin' | 'invalid_webauthn_challenge' | 'invalid_webauthn_response' | 'webauthn_credential_exists' | 'passkey_unavailable' | 'telemt_auth_failed' | 'user_exists' | 'last_user_forbidden' | 'read_only' | 'runtime_conflict' | 'config_preflight_busy' | 'revision_conflict' | 'invalid_toml' | 'invalid_config_path' | 'config_unset_unsupported' | 'no_changes' | 'toml_projection_failed' | 'reload_in_progress' | 'reload_not_found' | 'ambiguous_listeners' | 'access_not_editable' | 'section_not_editable' | 'field_not_editable' | 'unauthorized' | 'forbidden' | 'method_not_allowed' | 'config_patch_not_atomic' | 'payload_too_large' | 'api_disabled' | 'maestro_unavailable' | 'unsupported_media_type' | 'web_runtime_unavailable' | 'web_snapshot_busy' | 'web_runtime_mismatch' | 'web_issuance_enabled' | 'web_operation_in_progress' | 'web_session_not_found' | 'web_operation_not_found' | 'web_vhost_not_found' | 'web_profile_required';
     message: string;
 };
 
@@ -224,6 +225,12 @@ export type User = {
     username: string;
     enabled: boolean;
     in_runtime?: boolean;
+    /**
+     * Desired source CIDR deny rules; absent on older servers.
+     */
+    source_deny?: Array<string>;
+    source_deny_status?: UserSourceDenyState;
+    limits?: UserLimitState;
     user_ad_tag?: string;
     max_tcp_conns?: number;
     max_unique_ips?: number;
@@ -258,6 +265,42 @@ export type User = {
     sub_url?: string;
 };
 
+export type UserInheritedLimit = {
+    /**
+     * Resolved limit; null means unlimited.
+     */
+    value: number | null;
+    /**
+     * User configuration; zero inherits the global default.
+     */
+    configured_override: number | null;
+    global_value: number;
+    origin: 'user_override' | 'global_default' | 'unlimited';
+};
+
+export type UserLimitSnapshot = {
+    max_tcp_conns: UserInheritedLimit;
+    max_unique_ips: UserInheritedLimit;
+};
+
+export type UserLimitState = {
+    desired: UserLimitSnapshot;
+    effective: UserLimitSnapshot | null;
+    effective_scope: string;
+    subsystem_convergence: string;
+};
+
+export type UserSourceDenyState = {
+    /**
+     * Null means the active snapshot is unknown.
+     */
+    effective: Array<string> | null;
+    runtime_reload_required: boolean | null;
+    apply_mode: string;
+    reload_endpoint: string;
+    effective_scope: string;
+};
+
 export type UserTraffic = {
     observed_total_bytes: number;
     current_month_bytes: number;
@@ -281,10 +324,20 @@ export type UserLinks = {
 };
 
 export type UserCreate = {
+    /**
+     * Omitted preserves retained rules; empty array or null removes rules. Supported servers only.
+     */
+    source_deny?: Array<string> | null;
     username: string;
     secret?: string;
     user_ad_tag?: string;
+    /**
+     * On servers with global limits, zero or omission inherits the global default.
+     */
     max_tcp_conns?: number;
+    /**
+     * On servers with global limits, zero or omission inherits the global default.
+     */
     max_unique_ips?: number;
     data_quota_bytes?: number;
     expiration_rfc3339?: string;
@@ -303,6 +356,10 @@ export type UserCreate = {
  * JSON Merge Patch — null removes a limit, omitted leaves unchanged.
  */
 export type UserPatch = {
+    /**
+     * Omitted preserves retained rules; empty array or null removes rules. Supported servers only.
+     */
+    source_deny?: Array<string> | null;
     secret?: string;
     user_ad_tag?: string | null;
     max_tcp_conns?: number | null;
@@ -328,6 +385,214 @@ export type Sublink = {
     enabled: boolean;
 };
 
+export type TelemtFieldIssue = {
+    path: string;
+    code: string;
+    message: string;
+};
+
+export type TelemtRuntimeBaseline = {
+    active_generation: number;
+    config_epoch: number;
+    runtime_match: string;
+};
+
+export type TelemtOperationCapability = {
+    id: string;
+    method: string;
+    path: string;
+    aliases?: Array<string>;
+    gate?: string;
+    success?: Array<number>;
+    credential_bearing?: boolean;
+    body?: string;
+    optional_body?: boolean;
+    exact_json_content_type?: boolean;
+    if_match?: boolean;
+    if_runtime_match?: boolean;
+    read_only_operation?: boolean;
+    supported: boolean;
+    enabled: boolean;
+    available: boolean | null;
+    mutable: boolean;
+    disabled_reason?: string;
+    unavailable_reason?: string;
+    mutation_blocked_reason?: string;
+};
+
+export type TelemtDiscovery = {
+    api_version: string;
+    schema_version: number;
+    software_version: string;
+    config_schema?: string;
+    read_only: boolean;
+    availability_scope?: string;
+    operations: Array<TelemtOperationCapability>;
+};
+
+export type TelemtConfigFieldApi = {
+    config_read: boolean;
+    config_write: boolean;
+    read_routes: Array<string>;
+    write_routes: Array<string>;
+    request_field?: string;
+    non_editable_reason?: string;
+    null_behavior: string;
+};
+
+export type TelemtConfigSchemaField = {
+    path: string;
+    value: {
+        [key: string]: unknown;
+    };
+    default_kind: string;
+    default?: unknown;
+    sensitivity: string;
+    description: string;
+    aliases?: Array<string>;
+    unit?: string;
+    apply: {
+        watcher: string;
+        reload: string;
+        effect: string;
+    };
+    dependencies?: Array<string>;
+    constraints?: Array<string>;
+    api: TelemtConfigFieldApi;
+};
+
+export type TelemtConfigSchema = {
+    schema_version: number;
+    value_schema_dialect?: string;
+    defaults_scope?: string;
+    validation_scope?: string;
+    path_notation?: string;
+    config_patch?: {
+        [key: string]: unknown;
+    };
+    fields: Array<TelemtConfigSchemaField>;
+};
+
+export type TelemtConfigState = {
+    revision: string | null;
+    scope?: string;
+    sections?: Array<string>;
+    runtime: TelemtRuntimeBaseline;
+    runtime_sample_current?: boolean;
+    desired_revision: string | null;
+    desired_status: string;
+    desired_error?: TelemtFieldIssue | null;
+    desired?: unknown;
+    effective?: unknown;
+    projection_error?: TelemtFieldIssue | null;
+    comparison: {
+        scope?: string;
+        status?: string;
+        pending_paths?: Array<string>;
+        watcher_pending_paths?: Array<string>;
+        generation_pending_paths?: Array<string>;
+        process_deferred_paths?: Array<string>;
+        deferred_process_fields?: Array<string>;
+        runtime_derived_paths?: Array<string>;
+        truncated?: boolean;
+        [key: string]: unknown;
+    };
+    watcher?: unknown;
+    watcher_matches_desired?: boolean | null;
+    reload?: unknown;
+    reload_observation?: string;
+    reload_matches_desired?: boolean | null;
+    subsystem_convergence?: string;
+    [key: string]: unknown;
+};
+
+export type TelemtConfigNormalization = {
+    path: string;
+    code: string;
+    [key: string]: unknown;
+};
+
+export type TelemtConfigApplyImpact = {
+    watcher_paths: Array<string>;
+    generation_paths: Array<string>;
+    process_restart_paths: Array<string>;
+    restart_required?: boolean;
+    runtime_reload_required: boolean;
+    process_restart_required: boolean;
+    deferred_process_fields: Array<string>;
+};
+
+export type TelemtConfigValidation = {
+    /**
+     * Source revision from the upstream envelope.
+     */
+    revision?: string;
+    valid: boolean;
+    base_revision: string;
+    candidate_revision: string;
+    runtime: TelemtRuntimeBaseline;
+    changed_paths: Array<string>;
+    normalization_effects: Array<TelemtConfigNormalization>;
+    apply: TelemtConfigApplyImpact;
+    source_ownership?: string;
+    touched_sections: Array<string>;
+    reload?: ReloadRequest | null;
+    warnings: Array<TelemtFieldIssue>;
+};
+
+export type TelemtCidrRateLimit = {
+    /**
+     * Full unsigned 64-bit bit-per-second limit.
+     */
+    up_bps?: number;
+    /**
+     * Full unsigned 64-bit bit-per-second limit.
+     */
+    down_bps?: number;
+};
+
+export type TelemtAccessPolicy = {
+    user_max_tcp_conns_global_each: number;
+    user_max_unique_ips_global_each: number;
+    user_max_unique_ips_mode: 'active_window' | 'time_window' | 'combined';
+    user_max_unique_ips_window_secs: number;
+    cidr_rate_limits: {
+        [key: string]: TelemtCidrRateLimit;
+    };
+};
+
+/**
+ * Absent fields are unchanged; null scalar fields restore defaults. CIDR maps merge individual keys, key:null removes one entry, and cidr_rate_limits:null clears all. An empty CIDR object does not clear or replace the existing map. Unsigned integer literals are forwarded without conversion to floating point.
+ *
+ */
+export type TelemtAccessPolicyPatch = {
+    user_max_tcp_conns_global_each?: number | null;
+    user_max_unique_ips_global_each?: number | null;
+    user_max_unique_ips_mode?: string | null;
+    user_max_unique_ips_window_secs?: number | null;
+    cidr_rate_limits?: {
+        [key: string]: TelemtCidrRateLimit | null;
+    } | null;
+};
+
+export type TelemtAccessPolicyState = {
+    revision: string;
+    desired: TelemtAccessPolicy;
+    effective: TelemtAccessPolicy;
+    runtime: TelemtRuntimeBaseline;
+    published_match: boolean;
+    effective_scope: string;
+    subsystem_convergence: string;
+    apply_mode: string;
+    changed_paths?: Array<string>;
+};
+
+export type ReloadRequest = {
+    mode?: 'instant' | 'drain';
+    timeout_secs?: number;
+    failure_policy?: 'keep_new' | 'rollback';
+};
+
 export type TelemtInfo = {
     reachable: boolean;
     version?: string;
@@ -349,6 +614,16 @@ export type TelemtInfo = {
         config_api: boolean;
         user_enable_disable: boolean;
         rotate_secret: boolean;
+        /**
+         * Optional discovery or schema could not be confirmed; false feature flags are not definitive absence while true.
+         */
+        optional_metadata_unavailable?: boolean;
+        config_schema?: boolean;
+        config_state?: boolean;
+        config_validation?: boolean;
+        access_policy?: boolean;
+        user_source_deny?: boolean;
+        read_only?: boolean;
     };
     /**
      * Actionable diagnostic (e.g. "check [server.api].whitelist — connection dropped").
@@ -440,6 +715,10 @@ export type WebAccessVhost = {
 export type WebAccessView = {
     revision: string;
     enabled: boolean;
+    /**
+     * Whether the source configuration has an MTProto listener. Unknown preserves older or unavailable configuration behavior.
+     */
+    mtproto_listener?: 'configured' | 'absent' | 'unknown';
     vhosts: Array<WebAccessVhost>;
 };
 
@@ -658,6 +937,8 @@ export type TelemtConfigTomlRequest = {
 };
 
 export type TelemtConfigTomlPreview = {
+    validation?: TelemtConfigValidation;
+    runtime_match?: string;
     revision: string;
     patch: {
         [key: string]: unknown;
@@ -677,6 +958,8 @@ export type TelemtConfigTomlPreview = {
 export type TelemtConfigPatchResult = {
     revision: string;
     changed: Array<string>;
+    changed_paths?: Array<string>;
+    normalization_effects?: Array<TelemtConfigNormalization>;
     /**
      * Legacy field
      */
@@ -767,6 +1050,10 @@ export type TelemtServiceState = {
     service: string;
     manager: string;
     status: 'running' | 'stopped' | 'unknown';
+    /**
+     * Native state when available from the service manager.
+     */
+    native_state?: 'active' | 'inactive' | 'failed' | 'activating' | 'deactivating' | 'reloading' | 'unknown';
     status_supported: boolean;
     status_error?: 'service_status_unavailable';
     /**
@@ -2604,9 +2891,13 @@ export type ListUsersData = {
 
 export type ListUsersErrors = {
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type ListUsersError = ListUsersErrors[keyof ListUsersErrors];
@@ -2641,9 +2932,13 @@ export type CreateUserErrors = {
      */
     409: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type CreateUserError = CreateUserErrors[keyof CreateUserErrors];
@@ -2679,9 +2974,13 @@ export type DeleteUserErrors = {
      */
     409: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type DeleteUserError = DeleteUserErrors[keyof DeleteUserErrors];
@@ -2710,9 +3009,13 @@ export type GetUserErrors = {
      */
     404: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetUserError = GetUserErrors[keyof GetUserErrors];
@@ -2749,9 +3052,13 @@ export type PatchUserErrors = {
      */
     404: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type PatchUserError = PatchUserErrors[keyof PatchUserErrors];
@@ -2788,13 +3095,17 @@ export type ResetUserQuotaErrors = {
      */
     409: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * Quota operation refused or unavailable; no automatic retry of mutations.
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type ResetUserQuotaError = ResetUserQuotaErrors[keyof ResetUserQuotaErrors];
@@ -3077,9 +3388,13 @@ export type RotateUserSecretErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type RotateUserSecretError = RotateUserSecretErrors[keyof RotateUserSecretErrors];
@@ -3125,9 +3440,13 @@ export type SetUserEnabledErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type SetUserEnabledError = SetUserEnabledErrors[keyof SetUserEnabledErrors];
@@ -3160,9 +3479,13 @@ export type GetUserSublinkErrors = {
      */
     409: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetUserSublinkError = GetUserSublinkErrors[keyof GetUserSublinkErrors];
@@ -3195,9 +3518,13 @@ export type RegenerateUserSublinkErrors = {
      */
     409: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type RegenerateUserSublinkError = RegenerateUserSublinkErrors[keyof RegenerateUserSublinkErrors];
@@ -3220,9 +3547,13 @@ export type GetTelemtInfoData = {
 
 export type GetTelemtInfoErrors = {
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtInfoError = GetTelemtInfoErrors[keyof GetTelemtInfoErrors];
@@ -3236,6 +3567,248 @@ export type GetTelemtInfoResponses = {
 
 export type GetTelemtInfoResponse = GetTelemtInfoResponses[keyof GetTelemtInfoResponses];
 
+export type GetTelemtCapabilitiesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/capabilities';
+};
+
+export type GetTelemtCapabilitiesErrors = {
+    /**
+     * capability_absent
+     */
+    501: Error;
+    /**
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+     */
+    502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
+};
+
+export type GetTelemtCapabilitiesError = GetTelemtCapabilitiesErrors[keyof GetTelemtCapabilitiesErrors];
+
+export type GetTelemtCapabilitiesResponses = {
+    /**
+     * Upstream metadata with source revision where applicable
+     */
+    200: TelemtDiscovery;
+};
+
+export type GetTelemtCapabilitiesResponse = GetTelemtCapabilitiesResponses[keyof GetTelemtCapabilitiesResponses];
+
+export type GetTelemtConfigSchemaData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/config/schema';
+};
+
+export type GetTelemtConfigSchemaErrors = {
+    /**
+     * capability_absent
+     */
+    501: Error;
+    /**
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+     */
+    502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
+};
+
+export type GetTelemtConfigSchemaError = GetTelemtConfigSchemaErrors[keyof GetTelemtConfigSchemaErrors];
+
+export type GetTelemtConfigSchemaResponses = {
+    /**
+     * Upstream metadata with source revision where applicable
+     */
+    200: TelemtConfigSchema;
+};
+
+export type GetTelemtConfigSchemaResponse = GetTelemtConfigSchemaResponses[keyof GetTelemtConfigSchemaResponses];
+
+export type GetTelemtConfigStateData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/config/state';
+};
+
+export type GetTelemtConfigStateErrors = {
+    /**
+     * capability_absent
+     */
+    501: Error;
+    /**
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+     */
+    502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
+};
+
+export type GetTelemtConfigStateError = GetTelemtConfigStateErrors[keyof GetTelemtConfigStateErrors];
+
+export type GetTelemtConfigStateResponses = {
+    /**
+     * Upstream metadata with source revision where applicable
+     */
+    200: TelemtConfigState;
+};
+
+export type GetTelemtConfigStateResponse = GetTelemtConfigStateResponses[keyof GetTelemtConfigStateResponses];
+
+export type GetTelemtAccessPolicyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/telemt/access-policy';
+};
+
+export type GetTelemtAccessPolicyErrors = {
+    /**
+     * capability_absent
+     */
+    501: Error;
+    /**
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+     */
+    502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
+};
+
+export type GetTelemtAccessPolicyError = GetTelemtAccessPolicyErrors[keyof GetTelemtAccessPolicyErrors];
+
+export type GetTelemtAccessPolicyResponses = {
+    /**
+     * Upstream metadata with source revision where applicable
+     */
+    200: TelemtAccessPolicyState;
+};
+
+export type GetTelemtAccessPolicyResponse = GetTelemtAccessPolicyResponses[keyof GetTelemtAccessPolicyResponses];
+
+export type PatchTelemtAccessPolicyData = {
+    body: TelemtAccessPolicyPatch;
+    headers: {
+        'If-Match': string;
+        'If-Runtime-Match'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/telemt/access-policy';
+};
+
+export type PatchTelemtAccessPolicyErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Telemt API is in read_only mode
+     */
+    403: Error;
+    /**
+     * Source or runtime conflict
+     */
+    409: Error;
+    /**
+     * Field validation errors
+     */
+    422: Error;
+    /**
+     * capability_absent
+     */
+    501: Error;
+    /**
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+     */
+    502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
+};
+
+export type PatchTelemtAccessPolicyError = PatchTelemtAccessPolicyErrors[keyof PatchTelemtAccessPolicyErrors];
+
+export type PatchTelemtAccessPolicyResponses = {
+    /**
+     * Desired and effective policy plus new source revision
+     */
+    200: TelemtAccessPolicyState;
+};
+
+export type PatchTelemtAccessPolicyResponse = PatchTelemtAccessPolicyResponses[keyof PatchTelemtAccessPolicyResponses];
+
+export type ValidateTelemtConfigData = {
+    body: TelemtConfigPatch;
+    headers: {
+        'If-Match': string;
+        'If-Runtime-Match'?: string;
+    };
+    path?: never;
+    query?: {
+        reload?: 'instant' | 'drain';
+        timeout_secs?: number;
+        failure_policy?: 'keep_new' | 'rollback';
+    };
+    url: '/api/telemt/config/validate';
+};
+
+export type ValidateTelemtConfigErrors = {
+    /**
+     * Invalid input
+     */
+    400: Error;
+    /**
+     * Source or runtime conflict
+     */
+    409: Error;
+    /**
+     * Field validation details
+     */
+    422: Error;
+    /**
+     * Preflight preparation busy
+     */
+    429: Error;
+    /**
+     * capability_absent
+     */
+    501: Error;
+    /**
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+     */
+    502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
+};
+
+export type ValidateTelemtConfigError = ValidateTelemtConfigErrors[keyof ValidateTelemtConfigErrors];
+
+export type ValidateTelemtConfigResponses = {
+    /**
+     * Candidate revision
+     */
+    200: TelemtConfigValidation;
+};
+
+export type ValidateTelemtConfigResponse = ValidateTelemtConfigResponses[keyof ValidateTelemtConfigResponses];
+
 export type GetTelemtConfigData = {
     body?: never;
     path?: never;
@@ -3245,13 +3818,17 @@ export type GetTelemtConfigData = {
 
 export type GetTelemtConfigErrors = {
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable — this Telemt build/config does not expose the config API
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtConfigError = GetTelemtConfigErrors[keyof GetTelemtConfigErrors];
@@ -3269,6 +3846,7 @@ export type PatchTelemtConfigData = {
     body: TelemtConfigPatch;
     headers: {
         'If-Match': string;
+        'If-Runtime-Match'?: string;
     };
     path?: never;
     query?: {
@@ -3339,13 +3917,17 @@ export type GetTelemtConfigTomlErrors = {
      */
     500: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtConfigTomlError = GetTelemtConfigTomlErrors[keyof GetTelemtConfigTomlErrors];
@@ -3363,6 +3945,7 @@ export type PatchTelemtConfigTomlData = {
     body: TelemtConfigTomlRequest;
     headers: {
         'If-Match': string;
+        'If-Runtime-Match'?: string;
     };
     path?: never;
     query?: {
@@ -3435,9 +4018,14 @@ export type PreviewTelemtConfigTomlData = {
     body: TelemtConfigTomlRequest;
     headers: {
         'If-Match': string;
+        'If-Runtime-Match'?: string;
     };
     path?: never;
-    query?: never;
+    query?: {
+        reload?: 'instant' | 'drain';
+        timeout_secs?: number;
+        failure_policy?: 'keep_new' | 'rollback';
+    };
     url: '/api/telemt/config/toml/preview';
 };
 
@@ -3451,9 +4039,13 @@ export type PreviewTelemtConfigTomlErrors = {
      */
     409: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type PreviewTelemtConfigTomlError = PreviewTelemtConfigTomlErrors[keyof PreviewTelemtConfigTomlErrors];
@@ -3496,9 +4088,13 @@ export type ReloadTelemtErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type ReloadTelemtError = ReloadTelemtErrors[keyof ReloadTelemtErrors];
@@ -3535,9 +4131,13 @@ export type GetTelemtReloadStatusErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtReloadStatusError = GetTelemtReloadStatusErrors[keyof GetTelemtReloadStatusErrors];
@@ -3642,7 +4242,7 @@ export type RestartTelemtServiceErrors = {
      */
     409: Error;
     /**
-     * internal_error — the restart op itself failed
+     * service_action_unconfirmed — result is unconfirmed; check service state before retrying
      */
     502: Error;
     /**
@@ -3673,9 +4273,13 @@ export type GetTelemtZeroErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtZeroError = GetTelemtZeroErrors[keyof GetTelemtZeroErrors];
@@ -3708,13 +4312,17 @@ export type GetTelemtTlsFingerprintsErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable — runtime_edge_enabled is off
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtTlsFingerprintsError = GetTelemtTlsFingerprintsErrors[keyof GetTelemtTlsFingerprintsErrors];
@@ -3737,13 +4345,17 @@ export type GetTelemtWebAccessData = {
 
 export type GetTelemtWebAccessErrors = {
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable — Config API is unavailable
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtWebAccessError = GetTelemtWebAccessErrors[keyof GetTelemtWebAccessErrors];
@@ -3765,7 +4377,11 @@ export type PutTelemtUserWebAccessData = {
     path: {
         username: string;
     };
-    query?: never;
+    query?: {
+        reload?: 'instant' | 'drain';
+        timeout_secs?: number;
+        failure_policy?: 'keep_new' | 'rollback';
+    };
     url: '/api/telemt/web-access/users/{username}';
 };
 
@@ -3783,13 +4399,17 @@ export type PutTelemtUserWebAccessErrors = {
      */
     409: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable — Config API is unavailable
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type PutTelemtUserWebAccessError = PutTelemtUserWebAccessErrors[keyof PutTelemtUserWebAccessErrors];
@@ -3835,13 +4455,17 @@ export type GetTelemtWebSessionsErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable — the WEB runtime is not running
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtWebSessionsError = GetTelemtWebSessionsErrors[keyof GetTelemtWebSessionsErrors];
@@ -3881,13 +4505,17 @@ export type GetTelemtWebSessionErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtWebSessionError = GetTelemtWebSessionErrors[keyof GetTelemtWebSessionErrors];
@@ -3934,13 +4562,17 @@ export type CloseTelemtWebSessionsErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable — the WEB runtime is not running
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type CloseTelemtWebSessionsError = CloseTelemtWebSessionsErrors[keyof CloseTelemtWebSessionsErrors];
@@ -3980,13 +4612,17 @@ export type GetTelemtWebOperationErrors = {
      */
     501: Error;
     /**
-     * telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+     * Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
      */
     502: Error;
     /**
      * capability_unavailable — the WEB runtime is not running
      */
     503: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetTelemtWebOperationError = GetTelemtWebOperationErrors[keyof GetTelemtWebOperationErrors];
@@ -4628,7 +5264,7 @@ export type StreamLogsError = StreamLogsErrors[keyof StreamLogsErrors];
 
 export type StreamLogsResponses = {
     /**
-     * SSE of log, heartbeat, log_source_error and log_end events
+     * SSE of log_reset, log, heartbeat, log_source_error and log_end events
      */
     200: string;
 };
@@ -4697,9 +5333,13 @@ export type GetSnapshotErrors = {
      */
     400: Error;
     /**
-     * telemt_unreachable — every requested topic's fetch failed
+     * A classified upstream failure
      */
     502: Error;
+    /**
+     * telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
+     */
+    504: Error;
 };
 
 export type GetSnapshotError = GetSnapshotErrors[keyof GetSnapshotErrors];

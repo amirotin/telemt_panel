@@ -19,10 +19,24 @@ import (
 	"time"
 )
 
-// ErrResponseTooLarge reports an upstream body exceeding the 8 MiB limit.
+// ErrResponseTooLarge reports an upstream body exceeding its route's limit.
 var ErrResponseTooLarge = errors.New("telemt: response exceeds 8 MiB limit")
 
+type responseTooLargeError struct {
+	limit int
+}
+
+func (e *responseTooLargeError) Error() string {
+	return fmt.Sprintf("telemt: response exceeds %d MiB limit", e.limit/1024/1024)
+}
+
+func (e *responseTooLargeError) Unwrap() error { return ErrResponseTooLarge }
+
+// ErrInvalidResponse reports an unconfirmed or malformed upstream success.
+var ErrInvalidResponse = errors.New("telemt: invalid success response")
+
 const maxResponseBytes = 8 * 1024 * 1024
+const maxUsersResponseBytes = 32 * 1024 * 1024
 
 // APIError is a non-2xx Telemt response decoded from the error envelope.
 type APIError struct {
@@ -30,6 +44,7 @@ type APIError struct {
 	Code      string
 	Message   string
 	RequestID uint64
+	Details   []FieldIssue
 }
 
 func (e *APIError) Error() string {
@@ -53,8 +68,16 @@ type Client struct {
 	// Version changes invalidate both probed flags and negative observations.
 	// The generation prevents requests started before an upgrade from
 	// publishing their old observations after the new version is known.
-	telemtVersion  string
-	capsGeneration uint64
+	telemtVersion         string
+	capsGeneration        uint64
+	schema                ConfigSchemaData
+	schemaAt              time.Time
+	schemaGeneration      uint64
+	schemaValid           bool
+	runtimeInfoValid      bool
+	configReloadCount     uint64
+	processStartedAt      int64
+	lastCompletedReloadID uint64
 	// capabilityProbeGate serializes the actual Telemt probe round while
 	// allowing waiters to honor their own context. capsMu guards the cached
 	// snapshot, version and mutation observations.
@@ -96,8 +119,9 @@ type envelope struct {
 }
 
 type responseError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string       `json:"code"`
+	Message string       `json:"message"`
+	Details []FieldIssue `json:"details,omitempty"`
 }
 
 // call performs a request and returns the raw data payload plus revision.
@@ -122,7 +146,11 @@ func (c *Client) callRevision(ctx context.Context, method, path string, body any
 // indistinguishable from "here is the session" by payload alone — the status
 // is the only discriminator (see WebSession).
 func (c *Client) callStatus(ctx context.Context, method, path string, body any, revision string) (json.RawMessage, int, string, error) {
-	raw, status, err := c.requestStatus(ctx, method, path, body, revision)
+	return c.callStatusRuntime(ctx, method, path, body, revision, "")
+}
+
+func (c *Client) callStatusRuntime(ctx context.Context, method, path string, body any, revision, runtimeMatch string) (json.RawMessage, int, string, error) {
+	raw, status, err := c.requestStatusRuntime(ctx, method, path, body, revision, runtimeMatch)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -131,6 +159,10 @@ func (c *Client) callStatus(ctx context.Context, method, path string, body any, 
 
 // requestStatus preserves the shared response cap before any typed decoding.
 func (c *Client) requestStatus(ctx context.Context, method, path string, body any, revision string) ([]byte, int, error) {
+	return c.requestStatusRuntime(ctx, method, path, body, revision, "")
+}
+
+func (c *Client) requestStatusRuntime(ctx context.Context, method, path string, body any, revision, runtimeMatch string) ([]byte, int, error) {
 	var reqBody io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -154,8 +186,12 @@ func (c *Client) requestStatus(ctx context.Context, method, path string, body an
 		req.Header.Set("If-Match", revision)
 	}
 
+	if runtimeMatch != "" {
+		req.Header.Set("If-Runtime-Match", runtimeMatch)
+	}
+
 	client := c.http
-	if method == http.MethodPatch && (path == "/v1/config" || strings.HasPrefix(path, "/v1/config?")) {
+	if (method == http.MethodPatch && (path == "/v1/config" || strings.HasPrefix(path, "/v1/config?") || path == "/v1/access/policy")) || (method == http.MethodPost && strings.HasPrefix(path, "/v1/config/validate")) {
 		scoped := *client
 		scoped.Timeout = ConfigMutationTimeout
 		client = &scoped
@@ -166,15 +202,24 @@ func (c *Client) requestStatus(ctx context.Context, method, path string, body an
 	}
 	defer resp.Body.Close()
 
-	if resp.ContentLength > maxResponseBytes {
-		return nil, 0, ErrResponseTooLarge
+	limit := maxResponseBytes
+	if method == http.MethodGet && (path == "/v1/users" || path == "/v1/stats/users") {
+		limit = maxUsersResponseBytes
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if len(raw) > maxResponseBytes {
-		return nil, 0, ErrResponseTooLarge
+	if resp.ContentLength > int64(limit) {
+		return nil, 0, &responseTooLargeError{limit: limit}
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
+	if len(raw) > limit {
+		return nil, 0, &responseTooLargeError{limit: limit}
 	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("telemt: read response: %w", err)
+	}
+	if method != http.MethodGet && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if err := validateMutationResponse(raw); err != nil {
+			return nil, 0, err
+		}
 	}
 	return raw, resp.StatusCode, nil
 }
@@ -191,12 +236,11 @@ func decodeEnvelope(raw []byte, status int) (json.RawMessage, int, string, error
 	case jsonErr == nil && env.OK:
 		return env.Data, status, env.Revision, nil
 	case jsonErr == nil && env.Error != nil:
-		return nil, status, "", &APIError{Status: status, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID}
+		return nil, status, "", &APIError{Status: status, Code: env.Error.Code, Message: env.Error.Message, RequestID: env.RequestID, Details: env.Error.Details}
 	case status < 200 || status >= 300:
 		return nil, status, "", &APIError{Status: status, Code: "http_error", Message: http.StatusText(status)}
 	default:
-		// Legacy builds return some payloads flat, without the envelope
-		// (2xx, valid or invalid JSON for the envelope shape either way).
+		// Legacy builds return flat JSON; typed reads validate their payload.
 		return raw, status, "", nil
 	}
 }
@@ -209,7 +253,10 @@ func get[T any](ctx context.Context, c *Client, path string) (T, error) {
 		return out, err
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, fmt.Errorf("telemt: decode %s: %w: %w", path, ErrInvalidResponse, err)
+	}
+	if err := validateDecodedResponse(data, &out, "", false); err != nil {
+		return out, err
 	}
 	normalizeSlices(&out)
 	return out, nil
@@ -236,7 +283,10 @@ func getRevision[T any](ctx context.Context, c *Client, path string) (T, string,
 		return out, "", err
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, "", fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, "", fmt.Errorf("telemt: decode %s: %w: %w", path, ErrInvalidResponse, err)
+	}
+	if err := validateDecodedResponse(data, &out, revision, false); err != nil {
+		return out, "", err
 	}
 	normalizeSlices(&out)
 	return out, revision, nil
@@ -265,7 +315,15 @@ func mutateRevisionStatus[T any](ctx context.Context, c *Client, method, path st
 		return out, status, respRevision, nil
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return out, 0, "", fmt.Errorf("telemt: decode %s: %w", path, err)
+		return out, 0, "", fmt.Errorf("telemt: decode %s: %w: %w", path, ErrInvalidResponse, err)
+	}
+	if method == http.MethodPost && (strings.HasSuffix(path, "/enable") || strings.HasSuffix(path, "/disable")) {
+		if _, err := responseFields(data, "enabled"); err != nil {
+			return out, 0, "", err
+		}
+	}
+	if err := validateDecodedResponse(data, &out, respRevision, true); err != nil {
+		return out, 0, "", err
 	}
 	normalizeSlices(&out)
 	return out, status, respRevision, nil
@@ -289,7 +347,7 @@ func (c *Client) SystemInfo(ctx context.Context) (SystemInfoData, error) {
 	generation := c.capabilityGeneration()
 	info, err := get[SystemInfoData](ctx, c, "/v1/system/info")
 	if err == nil {
-		c.observeTelemtVersion(info.Version, generation)
+		c.observeSystemInfo(info, generation)
 	}
 	return info, err
 }
@@ -412,6 +470,9 @@ func (c *Client) CreateUser(ctx context.Context, req CreateUserRequest) (UserInf
 	if err != nil {
 		return UserInfo{}, "", err
 	}
+	if out.User.Username != req.Username {
+		return UserInfo{}, "", ErrInvalidResponse
+	}
 	return out.User, out.Secret, nil
 }
 
@@ -421,7 +482,11 @@ func (c *Client) CreateUser(ctx context.Context, req CreateUserRequest) (UserInf
 // JSON null (Telemt: remove the limit). Building that distinction is the
 // caller's job — see httpapi's decodeUserPatch.
 func (c *Client) PatchUser(ctx context.Context, username string, patch map[string]any) (UserInfo, error) {
-	return mutate[UserInfo](ctx, c, http.MethodPatch, "/v1/users/"+url.PathEscape(username), patch)
+	out, err := mutate[UserInfo](ctx, c, http.MethodPatch, "/v1/users/"+url.PathEscape(username), patch)
+	if err == nil && out.Username != username {
+		err = ErrInvalidResponse
+	}
+	return out, err
 }
 
 // DeleteUser calls DELETE /v1/users/{username}. 409 last_user_forbidden
@@ -453,6 +518,9 @@ func (c *Client) ResetQuotaWithRevision(ctx context.Context, username, revision 
 func (c *Client) RotateSecret(ctx context.Context, username string) (UserInfo, string, error) {
 	generation := c.capabilityGeneration()
 	out, err := mutate[userSecret](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/rotate-secret", nil)
+	if err == nil && out.User.Username != username {
+		err = ErrInvalidResponse
+	}
 	c.observeMutation(&c.rotateSecretAbsent, generation, err)
 	if err != nil {
 		return UserInfo{}, "", err
@@ -472,6 +540,9 @@ func (c *Client) SetEnabled(ctx context.Context, username string, enabled bool) 
 		action = "enable"
 	}
 	out, err := mutate[UserInfo](ctx, c, http.MethodPost, "/v1/users/"+url.PathEscape(username)+"/"+action, nil)
+	if err == nil && (out.Username != username || out.Enabled != enabled) {
+		err = ErrInvalidResponse
+	}
 	c.observeMutation(&c.userEnableDisableAbsent, generation, err)
 	return out, err
 }
@@ -489,4 +560,29 @@ func isRouteAbsent(err error) bool {
 		return false
 	}
 	return apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed
+}
+
+// validateMutationResponse rejects gray_action=200 and incomplete success
+// envelopes before even payload-free callers (DeleteUser) can confirm a write.
+func validateMutationResponse(raw []byte) error {
+	if !json.Valid(raw) {
+		return ErrInvalidResponse
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return ErrInvalidResponse
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) == nil && fields["ok"] != nil {
+		var env envelope
+		if json.Unmarshal(raw, &env) != nil {
+			return ErrInvalidResponse
+		}
+		if !env.OK && env.Error != nil {
+			return nil
+		}
+		if !env.OK || len(env.Data) == 0 || bytes.Equal(bytes.TrimSpace(env.Data), []byte("null")) {
+			return ErrInvalidResponse
+		}
+	}
+	return nil
 }

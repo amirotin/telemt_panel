@@ -2,7 +2,8 @@
 # Real protected-policy validation in a disposable user-namespace chroot.
 # No host paths are deletion targets; service control alone is stubbed.
 # Globals and service hooks are consumed by the sourced installer.
-# shellcheck disable=SC2034,SC2317
+# Stubs are invoked through the sourced installer.
+# shellcheck disable=SC2034,SC2317,SC2329
 set -eu
 HERE=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 PARSER="${TP_TEST_BINARY:-$HERE/../telemt-panel}"

@@ -620,7 +620,7 @@ func TestSourceErrorOnUpstream500AndRecovery(t *testing.T) {
 	defer cancel()
 
 	ev := recvEvent(t, ch, time.Second)
-	if ev.Err != sourceErrorCode || ev.Topic != "users" {
+	if ev.Err != "telemt_api_error" || ev.Topic != "users" {
 		t.Fatalf("event = %+v, want source_error for users", ev)
 	}
 
@@ -687,7 +687,7 @@ func TestStatsTopicSourceErrorsWhenBothSubCallsFail(t *testing.T) {
 	// A total outage (both sub-calls failing) must surface as source_error,
 	// not silently publish {"health":null,"summary":null}.
 	ev := recvEvent(t, ch, time.Second)
-	if ev.Err != sourceErrorCode || ev.Topic != "stats" {
+	if ev.Err != "telemt_api_error" || ev.Topic != "stats" {
 		t.Fatalf("event = %+v, want source_error for stats", ev)
 	}
 
@@ -695,7 +695,7 @@ func TestStatsTopicSourceErrorsWhenBothSubCallsFail(t *testing.T) {
 	// (doubled from the immediate first poll), not another immediate retry.
 	ev2 := recvEvent(t, ch, time.Second)
 	gap := time.Since(start)
-	if ev2.Err != sourceErrorCode {
+	if ev2.Err != "telemt_api_error" {
 		t.Fatalf("second event = %+v, want another source_error (still failing)", ev2)
 	}
 	if gap < interval {

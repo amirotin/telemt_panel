@@ -81,3 +81,24 @@ func TestSystemd_Kind(t *testing.T) {
 		t.Errorf("Kind() = %q, want %q", got, KindSystemd)
 	}
 }
+
+func TestSystemdDetailedStatePreservesNativeState(t *testing.T) {
+	for _, state := range []string{"active", "inactive", "failed", "activating", "deactivating", "reloading", "unknown"} {
+		t.Run(state, func(t *testing.T) {
+			r := &fakeRunner{stdout: []byte(state + "\n"), err: &ExitError{Code: 3}}
+			detailer, ok := any(NewSystemd(r.run)).(interface {
+				DetailedState(context.Context, string) (string, error)
+			})
+			if !ok {
+				t.Fatal("systemd does not expose native service state")
+			}
+			got, err := detailer.DetailedState(context.Background(), "telemt")
+			if err != nil || got != state {
+				t.Fatalf("state = %q, err = %v", got, err)
+			}
+			if len(r.calls) != 1 {
+				t.Fatalf("status commands: %v", r.calls)
+			}
+		})
+	}
+}
