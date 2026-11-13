@@ -42,6 +42,8 @@ func newCapabilityRecoveryClient(t *testing.T) (*Client, *capabilityRecoveryScri
 
 func (s *capabilityRecoveryScript) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.URL.Path == "/v1/capabilities" || r.URL.Path == "/v1/config/schema":
+		w.WriteHeader(http.StatusNotFound)
 	case r.URL.Path == "/v1/system/info":
 		fmt.Fprintf(w, `{"ok":true,"data":{"version":%q}}`, s.version.Load().(string))
 	case r.Method == http.MethodPost:

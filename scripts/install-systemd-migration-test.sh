@@ -1,7 +1,8 @@
 #!/bin/sh
 # Transaction fixtures use the published config parser without host mutations.
 # Fixture callbacks and globals are consumed by the sourced installer.
-# shellcheck disable=SC2034,SC2317,SC1090
+# Stubs are invoked through the sourced installer.
+# shellcheck disable=SC2034,SC2317,SC2329,SC1090
 set -eu
 HERE=$(CDPATH="" cd -- "$(dirname "$0")" && pwd)
 TMP=$(mktemp -d)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/hub"
+	"github.com/amirotin/telemt_panel/internal/telemt"
 )
 
 // snapshotFetchTimeout bounds an on-demand fetch for an idle topic in
@@ -82,7 +83,7 @@ func writeUnknownTopicOr500(w http.ResponseWriter, err error, action string) {
 // published yet — is omitted from the response map rather than surfacing
 // as a bare JSON null: the contract promises every present key is an
 // object (openapi getSnapshot). If every requested topic ends up empty,
-// that's reported as 502 telemt_unreachable instead of an all-empty 200.
+// the latest source failure is reported instead of an all-empty 200.
 func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	topics, err := parseTopics(r.URL.Query().Get("topics"))
 	if err != nil {
@@ -107,7 +108,13 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		out[name] = data
 	}
 	if len(out) == 0 {
-		auth.WriteError(w, http.StatusBadGateway, "telemt_unreachable", "could not reach telemt for any requested topic")
+		if err := ctx.Err(); err != nil {
+			writeTelemtDiagnostic(w, telemt.DiagnoseError(err))
+		} else if diagnostic := s.hub.SnapshotDiagnostic(topics); diagnostic.Code != "" {
+			writeTelemtDiagnostic(w, diagnostic)
+		} else {
+			auth.WriteError(w, http.StatusBadGateway, "snapshot_unavailable", "no snapshot has been published for the requested topics")
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

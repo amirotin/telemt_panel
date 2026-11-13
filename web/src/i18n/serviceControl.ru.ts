@@ -6,6 +6,11 @@ export const serviceControlRu = {
   notConfigured: "не настроено",
   running: "Работает",
   stopped: "Остановлен",
+  failed: "Сбой",
+  activating: "Запускается",
+  deactivating: "Останавливается",
+  reloading: "Перечитывает конфигурацию",
+  logs: "Открыть журнал Telemt",
   unknown: "Статус неизвестен",
   separate:
     "Это состояние службы на узле панели, а не доступность API Telemt. При подключении к удалённому API проверьте, какой службой вы управляете.",

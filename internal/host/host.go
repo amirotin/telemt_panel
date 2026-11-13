@@ -111,6 +111,12 @@ type ServiceManager interface {
 	Caps() ServiceCaps
 }
 
+// ServiceStateDetailer exposes a manager's native state without a second status command.
+// Implementations return "unknown" for unrecognized states.
+type ServiceStateDetailer interface {
+	DetailedState(ctx context.Context, service string) (string, error)
+}
+
 // LogCaps reports what a LogSource implementation can actually do on this
 // host.
 type LogCaps struct {

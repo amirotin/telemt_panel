@@ -17,7 +17,7 @@ const emptyProfiles: WebLinkProfile[] = [];
 function useLinks(user: UsersTopicUser) {
   const context = useContext(PeopleContext);
   const profiles = context.profiles.get(user.username) ?? emptyProfiles;
-  const links = useMemo(()=>collectConnectionLinks(user.links, profiles),[user.links,profiles]);
+  const links = useMemo(()=>collectConnectionLinks(user.links, profiles, context.mtprotoListener),[user.links,profiles,context.mtprotoListener]);
   return {...context,links,profiles,format:context.formats.get(user.username)??"tg" as const};
 }
 const names: Record<ConnectionKind,string> = {tls:"EE",secure:"DD",classic:"Classic",web:"WEB"};

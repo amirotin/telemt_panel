@@ -30,5 +30,10 @@ func (c *Client) Reload(ctx context.Context, req ReloadRequest, revision string)
 // report's discrepancy note) means the id is unknown or has aged out of the
 // last-32 history.
 func (c *Client) ReloadStatus(ctx context.Context, reloadID uint64) (ReloadStatus, error) {
-	return get[ReloadStatus](ctx, c, "/v1/system/reload/"+strconv.FormatUint(reloadID, 10))
+	generation := c.capabilityGeneration()
+	status, err := get[ReloadStatus](ctx, c, "/v1/system/reload/"+strconv.FormatUint(reloadID, 10))
+	if err == nil {
+		c.observeCompletedReload(status, generation)
+	}
+	return status, err
 }

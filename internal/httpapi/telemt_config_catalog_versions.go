@@ -65,6 +65,30 @@ func telemtConfigCatalogForVersion(version string) telemtConfigCatalog {
 			versionedConfigField("web.timeouts.decoy_resolve_secs", "u64", "integer", "5", "web", "advanced", "runtime reload"),
 		)
 	}
+
+	if update.CompareVersions(version, "3.5.16") >= 0 {
+		catalog.Version = "3.5.16"
+		catalog.SourceCommit = "84e5b827a6619fb2e09ad3d09f253cdffe04bc2f"
+		appendFields(
+			versionedConfigField("web.retry_jitter.enabled", "bool", "boolean", "false", "web", "advanced", "runtime reload"),
+			versionedConfigField("web.retry_jitter.min_ms", "u32", "integer", "0", "web", "advanced", "runtime reload"),
+			versionedConfigField("web.retry_jitter.max_ms", "u32", "integer", "250", "web", "advanced", "runtime reload"),
+			versionedConfigField("web.retry_jitter.distribution", "enum", "enum", "uniform", "web", "advanced", "runtime reload", "uniform", "triangular"),
+			versionedConfigField("web.retry_jitter.peak_ms", "Option<u32>", "integer", "null", "web", "advanced", "runtime reload"),
+		)
+	}
+	if update.CompareVersions(version, "3.5.17") >= 0 {
+		catalog.Version = "3.5.17"
+		catalog.SourceCommit = "66708d2866f3f3a4541c4fa67984d408e71a8af4"
+		appendFields(
+			versionedConfigField("network.dns_overrides", "Vec<String>", "string_list", "[]", "routing", "advanced", "hot reload"),
+			versionedConfigField("server.api.minimal_runtime_enabled", "bool", "boolean", "true", "diagnostics", "advanced", "runtime reload"),
+			versionedConfigField("server.api.minimal_runtime_cache_ttl_ms", "u64", "integer", "1000", "diagnostics", "advanced", "runtime reload"),
+			versionedConfigField("server.api.runtime_edge_enabled", "bool", "boolean", "false", "diagnostics", "advanced", "runtime reload"),
+			versionedConfigField("server.api.runtime_edge_cache_ttl_ms", "u64", "integer", "1000", "diagnostics", "advanced", "runtime reload"),
+			versionedConfigField("server.api.runtime_edge_top_n", "usize", "integer", "10", "diagnostics", "advanced", "runtime reload"),
+		)
+	}
 	return catalog
 }
 

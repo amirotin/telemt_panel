@@ -172,3 +172,41 @@ it("preserves revision-3 after the delayed save's canonical revision-2 GET", asy
   await act(async () => button("Загрузить серверную версию").click());
   expect(document.querySelector("textarea")!.value).toBe(later);
 });
+
+it("binds native TOML runtime token and reload policy to the exact preview", async () => {
+  let checkedReload: string | null = null;
+  let runtime: string | null = null;
+  let writtenReload: string | null = null;
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    const req = request as Request;
+    if (req.method === "POST") { checkedReload = new URL(req.url).searchParams.get("reload"); return Response.json({ ...preview, runtime_match: "runtime-9" }); }
+    if (req.method === "PATCH") { runtime = req.headers.get("If-Runtime-Match"); writtenReload = new URL(req.url).searchParams.get("reload"); return Response.json({ revision: "r2", changed: [] }); }
+    return Response.json(initial);
+  } });
+  await renderPanel(); await type(first);
+  await act(async () => { button("Сразу").click(); await settle(); });
+  await act(async () => { button("Проверить").click(); await settle(); });
+  expect(checkedReload).toBe("instant");
+  await act(async () => { button("Сохранить проверенное").click(); await settle(); });
+  expect(runtime).toBe("runtime-9"); expect(writtenReload).toBe("instant");
+});
+
+it("invalidates native TOML validation when reload policy changes", async () => {
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => (request as Request).method === "POST" ? Response.json({ ...preview, runtime_match: "runtime-9" }) : Response.json(initial) });
+  await renderPanel(); await type(first);
+  await act(async () => { button("Проверить").click(); await settle(); });
+  expect(button("Сохранить проверенное").disabled).toBe(false);
+  await act(async () => { button("Сразу").click(); await settle(); });
+  expect(button("Сохранить проверенное").disabled).toBe(true);
+});
+
+it.each([
+  { valid: true, runtime: { runtime_match: "runtime-9" } },
+  { valid: true, base_revision: "other-source", runtime: { runtime_match: "runtime-9" } },
+  { valid: true, base_revision: "r1", runtime: {} },
+])("does not authorize TOML saves from malformed native validation: %j", async (validation) => {
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => (request as Request).method === "POST" ? Response.json({ ...preview, validation, runtime_match: "runtime-9" }) : Response.json(initial) });
+  await renderPanel(); await type(first);
+  await act(async () => { button("Проверить").click(); await settle(); });
+  expect(button("Сохранить проверенное").disabled).toBe(true);
+});

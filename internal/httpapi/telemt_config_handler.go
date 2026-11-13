@@ -183,7 +183,7 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 		writeTelemtConfigError(w, err)
 		return
 	}
-	if err := validateTelemtConfigPatch(req.Sections, snapshot, s.telemtConfigVersion(ctx)); err != nil {
+	if err := s.validateTelemtConfigPatchWithSchema(ctx, req.Sections, snapshot, s.telemtConfigVersion(ctx)); err != nil {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
@@ -192,7 +192,7 @@ func (s *Server) handlePatchTelemtConfig(w http.ResponseWriter, r *http.Request)
 	for section, value := range req.Sections {
 		patch[section] = value
 	}
-	result, status, _, err := s.tc.PatchConfig(ctx, patch, revision, reload)
+	result, status, _, err := s.tc.PatchConfigRuntime(ctx, patch, revision, r.Header.Get("If-Runtime-Match"), reload)
 	if err != nil {
 		writeTelemtConfigMutationError(w, err)
 		return
@@ -236,7 +236,7 @@ func writeTelemtConfigError(w http.ResponseWriter, err error) {
 	if errors.As(err, &apiErr) {
 		switch apiErr.Code {
 		case "access_not_editable", "section_not_editable", "field_not_editable", "config_patch_not_atomic", "ambiguous_listeners":
-			auth.WriteError(w, http.StatusUnprocessableEntity, apiErr.Code, apiErr.Message)
+			writeTelemtDetailedError(w, http.StatusUnprocessableEntity, apiErr)
 			return
 		}
 	}
