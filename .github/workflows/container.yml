@@ -114,6 +114,9 @@ jobs:
             if [ "$REUSE_EXISTING" = true ]; then
               ref_name="EXISTING_${arch^^}_REF"
               docker pull --platform "linux/$arch" "${!ref_name}"
+              expected_hash="$(sha256sum ".container-bin/$arch/telemt-panel" | awk '{print $1}')"
+              actual_hash="$(docker run --rm --platform "linux/$arch" --entrypoint /bin/sh "${!ref_name}" -c 'sha256sum /usr/local/bin/telemt-panel' | awk '{print $1}')"
+              test "$actual_hash" = "$expected_hash" || { echo "Existing $arch binary does not match the release archive"; exit 1; }
               docker tag "${!ref_name}" "telemt-panel-container-test:$arch"
             else
               docker buildx build --platform "linux/$arch" --load --provenance=false \
