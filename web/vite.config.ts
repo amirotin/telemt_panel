@@ -54,7 +54,7 @@ export default defineConfig({
             minShareCount: 2,
             entriesAware: true,
             // Merge tiny shared chunks without combining every lazy route.
-            entriesAwareMergeThreshold: 12_000,
+            entriesAwareMergeThreshold: 8_000,
           }],
         },
       },
