@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -159,4 +160,68 @@ func validateDCOverrides(value any) error {
 		}
 	}
 	return nil
+}
+
+// validateTelemtConfigPatchWithSchema extends known paths only with editable,
+// non-credential schema metadata. Legacy endpoints retain snapshot/catalog guards.
+func (s *Server) validateTelemtConfigPatchWithSchema(ctx context.Context, sections map[string]json.RawMessage, snapshot telemt.ConfigSections, version string) error {
+	paths, err := telemtConfigPaths(snapshot, version)
+	if err != nil {
+		return err
+	}
+	schema, err := s.tc.ConfigSchema(ctx)
+	if err != nil {
+		// Optional introspection must not prevent established config operations.
+		// Auth/transport failures still surface from the actual read/write request.
+		return validateTelemtConfigPatch(sections, snapshot, version)
+	}
+	for _, field := range schema.Fields {
+		if field.API.ConfigWrite && field.Sensitivity != "credential" && safeTelemtSchemaPath(field.Path) {
+			paths.add(field.Path)
+		}
+	}
+	for _, field := range schema.Fields {
+		if !safeTelemtSchemaPath(field.Path) {
+			for path := range paths {
+				if path == field.Path || strings.HasPrefix(path, field.Path+".") {
+					delete(paths, path)
+				}
+			}
+		} else if !field.API.ConfigWrite {
+			hasChild := false
+			for _, child := range schema.Fields {
+				if child.API.ConfigWrite && child.Sensitivity != "credential" && strings.HasPrefix(child.Path, field.Path+".") {
+					hasChild = true
+					break
+				}
+			}
+			if !hasChild {
+				delete(paths, field.Path)
+			}
+		}
+	}
+	for section, raw := range sections {
+		var value any
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return fmt.Errorf("invalid JSON in sections.%s", section)
+		}
+		if err := validateTelemtConfigValue(value, section, paths); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func safeTelemtSchemaPath(path string) bool {
+	root := strings.SplitN(path, ".", 2)[0]
+	switch root {
+	case "general", "timeouts", "censorship", "upstreams[]", "upstreams", "dc_overrides", "web":
+		return true
+	case "server":
+		return path == "server" || path == "server.listeners" || strings.HasPrefix(path, "server.listeners[]") || path == "server.api" || strings.HasPrefix(path, "server.api.")
+	case "network":
+		return path == "network" || path == "network.dns_overrides"
+	default:
+		return false
+	}
 }

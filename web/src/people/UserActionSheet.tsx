@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet } from "../ui/Sheet";
 import { Button } from "../ui/Button";
@@ -15,7 +15,8 @@ import {
   setUserEnabledMutation,
 } from "../lib/api/generated/@tanstack/react-query.gen";
 import { apiErrorMessage } from "./apiError";
-import { collectConnectionLinks } from "./connectionLinks";
+import { collectConnectionLinks, selectPrimaryConnectionLink } from "./connectionLinks";
+import { PeopleContext } from "./PeopleContext";
 import { useBulkQuota } from "./bulkQuotaContext";
 import { SublinkPanel } from "./SublinkPanel";
 import { ConfirmView } from "../ui/ConfirmView";
@@ -68,6 +69,7 @@ export function UserActionSheet({
 }: UserActionSheetProps) {
   const s = useStrings();
   const bulkQuota = useBulkQuota();
+  const connectionContext = useContext(PeopleContext);
   // Seeded from the intent, never re-derived: "which step am I on" belongs
   // to one opening of the sheet, and a live `user` update from the SSE
   // topic must not knock the admin out of a half-finished confirmation.
@@ -91,7 +93,7 @@ export function UserActionSheet({
       pushToast(s.people.toast.deleted, "ok");
       onDeleted?.(user!.username);
       close();
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
@@ -101,7 +103,7 @@ export function UserActionSheet({
     onSuccess: () => {
       pushToast(s.people.toast.quotaReset, "ok");
       close();
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
@@ -111,7 +113,7 @@ export function UserActionSheet({
     onSuccess: async (_data, variables) => {
       pushToast(s.people.toast.trafficReset, "ok");
       close();
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
       await invalidateTrafficQueries(queryClient, variables.path.username);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
@@ -122,7 +124,7 @@ export function UserActionSheet({
     onSuccess: (data) => {
       pushToast(data.enabled ? s.people.toast.enabled : s.people.toast.disabled, "ok");
       close();
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
@@ -132,7 +134,7 @@ export function UserActionSheet({
     onSuccess: (data) => {
       pushToast(s.people.toast.secretRotated, "ok");
       setView({ kind: "new-secret", secret: data.secret });
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
@@ -181,7 +183,7 @@ export function UserActionSheet({
 
       {view.kind === "confirm-delete" && (
         <ConfirmView
-          description={s.people.actions.confirmDeleteDescription}
+          description={s.people.actions.confirmDeleteDescription + (connectionContext.profiles.get(user.username)?.length ? " " + s.people.webAccess.deleteWarning : "")}
           confirmLabel={s.people.actions.delete}
           danger
           pending={deleteMutation.isPending}
@@ -259,7 +261,8 @@ export function UserActionSheet({
 
 function TelegramQRView({ user }: { user: UsersTopicUser }) {
   const s = useStrings();
-  const link = collectConnectionLinks(user.links).find(link=>link.primary)?.url;
+  const context = useContext(PeopleContext);
+  const link = selectPrimaryConnectionLink(collectConnectionLinks(user.links, context.profiles.get(user.username), context.mtprotoListener))?.url;
   if (!link) return <p className="text-sm text-text-muted">{s.people.actions.noTelegramLink}</p>;
   return (
     <div className="flex flex-col gap-3">

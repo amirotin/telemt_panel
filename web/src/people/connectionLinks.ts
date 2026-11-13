@@ -4,6 +4,7 @@ import {parseLink} from "./parseLink";
 
 export type ConnectionKind = "tls" | "secure" | "classic" | "web";
 export type LinkFormat = "tg" | "tme";
+export type MTProtoListenerState = "configured" | "absent" | "unknown";
 export interface WebLinkProfile { host: string; basePath?:string; mode: "plain" | "dd" }
 export interface ConnectionLink {
   kind: ConnectionKind; url: string; endpoint: string; domain: string | null;
@@ -34,7 +35,7 @@ function proxyURL(raw: string): URL | null {
   } catch { return null; }
 }
 
-export function collectConnectionLinks(links: UserLinksWire, profiles: readonly WebLinkProfile[] = []): ConnectionLink[] {
+export function collectConnectionLinks(links: UserLinksWire, profiles: readonly WebLinkProfile[] = [], mtprotoState: MTProtoListenerState = "unknown"): ConnectionLink[] {
   const result: ConnectionLink[] = [];
   const seen = new Set<string>();
   const masks = new Map(links.tls_domains.map(d => [d.link, d.domain]));
@@ -69,7 +70,15 @@ export function collectConnectionLinks(links: UserLinksWire, profiles: readonly 
     if (seen.has(url)) continue;
     seen.add(url);result.push({kind:"web", url, endpoint, domain:null, profileMode:p.mode, primary:i===0});
   }
-  return result;
+  return mtprotoState === "absent" ? result.filter(link => link.kind === "web") : result;
+}
+
+export function selectPrimaryConnectionLink(links: readonly ConnectionLink[]): ConnectionLink | null {
+  for (const kind of ["tls", "secure", "classic", "web"] as const) {
+    const link = links.find(link => link.kind === kind && link.primary);
+    if (link) return link;
+  }
+  return null;
 }
 
 export function formatConnectionLink(link: ConnectionLink, format: LinkFormat): string {

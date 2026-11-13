@@ -64,12 +64,13 @@ func TestServiceControlUnknownAndDeniedRemainHonest(t *testing.T) {
 	var body struct {
 		Status          string `json:"status"`
 		StatusSupported bool   `json:"status_supported"`
+		NativeState     string `json:"native_state"`
 		Caps            struct {
 			Start bool `json:"start"`
 			Stop  bool `json:"stop"`
 		}
 	}
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Status != "unknown" || body.StatusSupported || !body.Caps.Start || !body.Caps.Stop {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Status != "unknown" || body.NativeState != "" || body.StatusSupported || !body.Caps.Start || !body.Caps.Stop {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	s.privilegesMode = host.PrivilegesModeManual
@@ -87,7 +88,7 @@ func TestServiceControlUnknownAndDeniedRemainHonest(t *testing.T) {
 	})
 	w = doRequest(t, s, cookie, "GET", "/api/telemt/service", nil, nil)
 	json.Unmarshal(w.Body.Bytes(), &body)
-	if body.Status != "unknown" {
+	if body.Status != "unknown" || body.NativeState != "" {
 		t.Fatal("failed status became stopped", w.Body.String())
 	}
 }
@@ -226,30 +227,62 @@ func TestServiceControlSudoRightsAreIndependent(t *testing.T) {
 }
 
 func TestServiceControlUnconfirmedIsNotRetriedAndReleasesLock(t *testing.T) {
-	s, cookie, _, runner := newRestartTestServer(t)
-	s.svcMgr = host.NewSystemd(func(context.Context, string, ...string) ([]byte, []byte, error) { return nil, nil, nil })
-	runner.Err = context.DeadlineExceeded
-	w := doRequest(t, s, cookie, "POST", "/api/telemt/stop", nil, nil)
-	var body struct {
-		Code string `json:"code"`
+	for _, action := range []string{"start", "stop", "restart"} {
+		t.Run(action, func(t *testing.T) {
+			s, cookie, _, runner := newRestartTestServer(t)
+			s.svcMgr = host.NewSystemd(func(context.Context, string, ...string) ([]byte, []byte, error) { return nil, nil, nil })
+			runner.Err = context.DeadlineExceeded
+			w := doRequest(t, s, cookie, "POST", "/api/telemt/"+action, nil, nil)
+			var body struct {
+				Code string `json:"code"`
+			}
+			if w.Code != 502 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Code != "service_action_unconfirmed" {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			if len(runner.CallsSnapshot()) != 1 || s.updateEngine.LockHeld() {
+				t.Fatal("uncertain command retried or leaked operation lock")
+			}
+			entries, _ := s.st.ListAudit(0)
+			found := false
+			for _, e := range entries {
+				if e.Action == "telemt."+action+".unconfirmed" {
+					found = true
+				}
+				if e.Action == "telemt."+action {
+					t.Fatal("failed command reported success")
+				}
+			}
+			if !found {
+				t.Fatal("missing uncertain command audit")
+			}
+		})
 	}
-	if w.Code != 502 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Code != "service_action_unconfirmed" {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	if len(runner.CallsSnapshot()) != 1 || s.updateEngine.LockHeld() {
-		t.Fatal("uncertain command retried or leaked operation lock")
-	}
-	entries, _ := s.st.ListAudit(0)
-	found := false
-	for _, e := range entries {
-		if e.Action == "telemt.stop.unconfirmed" {
-			found = true
-		}
-		if e.Action == "telemt.stop" {
-			t.Fatal("failed command reported success")
-		}
-	}
-	if !found {
-		t.Fatal("missing uncertain command audit")
+}
+
+func TestServiceNativeStateUsesOneStatusCommand(t *testing.T) {
+	for _, tc := range []struct{ native, normalized string }{
+		{"active", "running"}, {"inactive", "stopped"}, {"failed", "stopped"},
+		{"activating", "unknown"}, {"deactivating", "unknown"}, {"reloading", "unknown"},
+		{"unknown", "unknown"},
+	} {
+		t.Run(tc.native, func(t *testing.T) {
+			s, cookie, _, _ := newRestartTestServer(t)
+			calls := 0
+			s.svcMgr = host.NewSystemd(func(context.Context, string, ...string) ([]byte, []byte, error) {
+				calls++
+				return []byte(tc.native + "\n"), nil, &host.ExitError{Code: 3}
+			})
+			w := doRequest(t, s, cookie, "GET", "/api/telemt/service", nil, nil)
+			var body struct {
+				Status string `json:"status"`
+				Native string `json:"native_state"`
+			}
+			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Status != tc.normalized || body.Native != tc.native {
+				t.Fatalf("status response: %d %s", w.Code, w.Body)
+			}
+			if calls != 1 {
+				t.Fatalf("status commands = %d, want 1", calls)
+			}
+		})
 	}
 }

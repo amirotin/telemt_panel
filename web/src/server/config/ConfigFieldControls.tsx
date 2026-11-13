@@ -44,6 +44,7 @@ export function ConfigFieldRow({ instance, advanced, groupName, hint, onChange }
   const copy = useStrings().server.config.catalog;
   const { field, value, concretePath, recordLabel } = instance;
   const label = configFieldLabel(field, copy.labels as Record<string, string>);
+  const fieldHelp = (copy.fieldHelp as Record<string, string>)[field.path];
   const requiresRestart = field.apply.includes("restart");
   return (
     <div className="grid min-h-[74px] max-w-[960px] gap-2 border-b border-border/75 py-3.5 sm:grid-cols-[minmax(180px,1fr)_minmax(170px,225px)] sm:items-center sm:gap-4">
@@ -56,7 +57,7 @@ export function ConfigFieldRow({ instance, advanced, groupName, hint, onChange }
           {requiresRestart && <span className="rounded bg-warn/10 px-1.5 py-0.5 text-micro font-bold text-warn">restart</span>}
         </div>
         <p className="mt-1 text-meta leading-relaxed text-text-muted">
-          {advanced ? configFieldDescription(field, { restart: copy.applyRestart, conditional: copy.applyConditional, reload: copy.applyReload }) : normalFieldHint(field, copy)}
+          {fieldHelp ?? (advanced ? configFieldDescription(field, { restart: copy.applyRestart, conditional: copy.applyConditional, reload: copy.applyReload }) : normalFieldHint(field, copy))}
         </p>
         {advanced && <code className="mt-1 block break-all font-mono text-micro text-accent/80">{concretePath}</code>}
       </div>
@@ -68,14 +69,15 @@ export function ConfigFieldRow({ instance, advanced, groupName, hint, onChange }
 export function FieldControl({ field, value, label, onChange }: { field: TelemtConfigField; value: unknown; label: string; onChange: (value: unknown) => void }) {
   const copy = useStrings().server.config.catalog;
   if (field.kind === "boolean") {
-    return <div className="flex min-h-11 items-center justify-between gap-3 sm:justify-end"><span className="text-meta text-text-muted sm:hidden">{value === true ? copy.enabled : copy.disabled}</span><Toggle checked={value === true} onChange={onChange} aria-label={label} /></div>;
+    const checked = value === undefined ? field.default_value === "true" : value === true;
+    return <div className="flex min-h-11 items-center justify-between gap-3 sm:justify-end"><span className="text-meta text-text-muted sm:hidden">{checked ? copy.enabled : copy.disabled}</span><Toggle checked={checked} onChange={onChange} aria-label={label} /></div>;
   }
   if (field.kind === "enum") {
     return <Select value={value === false ? "false" : String(value ?? "")} onChange={(event) => onChange(enumValue(field, event.target.value))} aria-label={label}>{value === undefined && <option value="">{copy.unset}</option>}{field.options?.map((option) => <option key={option} value={option}>{option}</option>)}</Select>;
   }
   if (field.kind === "integer" || field.kind === "decimal") {
     const unsafe = typeof value === "number" && !Number.isSafeInteger(value) && field.kind === "integer";
-    return <div><Input value={formatConfigNumber(value, field.kind === "decimal" ? field.data_type : "")} inputMode={field.kind === "integer" ? "numeric" : "decimal"} monospace disabled={unsafe} aria-label={label} onChange={(event) => { const parsed = Number(event.target.value); if (event.target.value !== "" && Number.isFinite(parsed) && (field.kind !== "integer" || Number.isSafeInteger(parsed))) onChange(parsed); }} />{unsafe && <p className="mt-1 text-micro text-warn">{copy.exactToml}</p>}</div>;
+    return <div><Input value={formatConfigNumber(value, field.kind === "decimal" ? field.data_type : "")} inputMode={field.kind === "integer" ? "numeric" : "decimal"} monospace disabled={unsafe} placeholder={field.default_value === "null" ? copy.unset : field.default_value} aria-label={label} onChange={(event) => { const parsed = Number(event.target.value); if (event.target.value !== "" && Number.isFinite(parsed) && (field.kind !== "integer" || Number.isSafeInteger(parsed))) onChange(parsed); }} />{unsafe && <p className="mt-1 text-micro text-warn">{copy.exactToml}</p>}</div>;
   }
   if (field.kind === "string_list" || field.kind === "integer_list") {
     const list = Array.isArray(value) ? value : [];

@@ -35,6 +35,11 @@ export function receiveRemote<T>(state: DraftSession<T>, fresh: VersionedDraft<T
       remote: state.remote?.revision === fresh.revision ? null : state.remote,
     };
   }
+  // A different config section can change the shared revision without
+  // changing this form's value. Keep its input, but use the fresh revision.
+  if (!state.remote && fresh.revision !== null && equal(fresh.value, state.baseline.value)) {
+    return { ...state, baseline: fresh, remote: null };
+  }
   if (state.remote?.revision === fresh.revision && equal(state.remote.value, fresh.value)) return state;
   if (!state.remote && equal(state.draft, state.baseline.value)) {
     return { ...state, baseline: fresh, draft: fresh.value, remote: null };
@@ -58,4 +63,8 @@ export function acknowledgeSubmitted<T>(state: DraftSession<T>, submitted: Submi
 export function discardToRemote<T>(state: DraftSession<T>): DraftSession<T> {
   const baseline = state.remote ?? state.baseline;
   return { ...state, baseline, draft: baseline.value, remote: null };
+}
+
+export function rebaseDraftToRemote<T>(state: DraftSession<T>): DraftSession<T> {
+  return state.remote ? { ...state, baseline: state.remote, remote: null } : state;
 }

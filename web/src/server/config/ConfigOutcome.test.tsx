@@ -6,11 +6,12 @@ import { ConfigPage } from "./ConfigPage";
 import { getStrings } from "../../i18n";
 import { client } from "../../lib/api/client";
 import { getHostQueryKey, getTelemtConfigCatalogQueryKey, getTelemtConfigQueryKey } from "../../lib/api/generated/@tanstack/react-query.gen";
+import { ToastViewport } from "../../ui/Toast";
 
 vi.mock("../ServerShell", () => ({ ServerShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock("../useIsDesktop", () => ({ useIsDesktop: () => true }));
 
-it.each(["envelope", "network", "html", "repeat"])("checks an unconfirmed structured %s failure without repeating it or losing the draft", async (failure) => {
+it.each(["envelope", "network", "html", "repeat", "recovery"])("checks an unconfirmed structured %s failure without repeating it or losing the draft", async (failure) => {
   const initial = { revision: "r1", sections: { general: { log_level: "normal" } } };
   const fresh = { revision: "r2", sections: { general: { log_level: failure === "repeat" ? "normal" : "debug" } } };
   const cache = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: 1, retryDelay: 0 } } });
@@ -18,12 +19,15 @@ it.each(["envelope", "network", "html", "repeat"])("checks an unconfirmed struct
   let writes = 0;
   client.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
     const req = request as Request;
+    if (req.url.endsWith("/catalog")) return Response.json(cache.getQueryData(getTelemtConfigCatalogQueryKey()));
+    if (/\/(validate|state|schema|info)$/.test(req.url)) return Response.json({ code: "capability_absent" }, { status: 501 });
     if (req.method === "PATCH") {
       writes++;
       if (failure === "network") throw new TypeError("Failed to fetch");
       if (failure === "html") return new Response("gateway timeout", { status: 504, headers: { "Content-Type": "text/html" } });
       return Response.json({ code: "telemt_config_outcome_unknown" }, { status: 504 });
     }
+    if (failure === "recovery") return Response.json({ code: "telemt_config_permission_denied", message: "HTTP 500 · internal_error · #42" }, { status: 502 });
     return Response.json(fresh);
   } });
   cache.setQueryData(getTelemtConfigQueryKey(), initial);
@@ -39,9 +43,9 @@ it.each(["envelope", "network", "html", "repeat"])("checks an unconfirmed struct
   const copy = getStrings().server.config;
   const button = (text: string) => [...document.querySelectorAll("button")].find((item) => item.textContent === text);
   try {
-    await act(async () => { root.render(<QueryClientProvider client={cache}><ConfigPage /></QueryClientProvider>); await settle(); });
+    await act(async () => { root.render(<QueryClientProvider client={cache}><ConfigPage />{failure === "recovery" && <ToastViewport />}</QueryClientProvider>); await settle(); });
     await act(async () => { const select = container.querySelector("select")!; select.value = "debug"; select.dispatchEvent(new Event("change", { bubbles: true })); });
-    await act(async () => button(copy.save)!.click());
+    await act(async () => { button(copy.save)!.click(); await settle(); });
     await act(async () => { button(copy.savePreview.apply.replace("{count}", "1"))!.click(); await settle(); });
     expect(writes).toBe(1);
     const check = button("Проверить серверную конфигурацию");
@@ -49,6 +53,10 @@ it.each(["envelope", "network", "html", "repeat"])("checks an unconfirmed struct
     await act(async () => { check!.click(); await settle(); });
     expect(writes).toBe(1);
     expect(container.querySelector("select")?.value).toBe("debug");
+    if (failure === "recovery") {
+      expect(container.textContent).toMatch(/владельца файла/);
+      expect(container.textContent).toContain("HTTP 500 · internal_error · #42");
+    }
     if (failure === "repeat") {
       await act(async () => { button(copy.conflictReload)!.click(); await settle(); });
       expect(writes).toBe(2);

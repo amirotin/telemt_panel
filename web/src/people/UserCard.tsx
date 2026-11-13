@@ -4,6 +4,7 @@ import {localeOf,useStrings} from "../i18n";
 import {IconMore,IconRefresh,IconShield} from "../ui/icons";
 import {computeUserStatus,getUserQuota,isOnline} from "./users.helpers";
 import {QuickConnectionLinks} from "./ConnectionLinks";
+import {formatExpirationUTC} from "./expiry";
 import {useUserRowGestures,type SwipeSide} from "./useUserRowGestures";
 import type {UsersTopicQuotaEntry,UsersTopicUser} from "../realtime/topics";
 
@@ -31,7 +32,7 @@ export function UserCard({user,quotaEntry,now,gesturesEnabled=false,swipeSide=nu
   const observed=user.traffic?formatBytes(user.traffic.observed_total_bytes,s):"—";
   const expires=user.expiration_rfc3339?new Date(user.expiration_rfc3339):null;
   const validExpiry=expires!==null&&!Number.isNaN(expires.getTime());
-  const expiry=validExpiry?new Intl.DateTimeFormat(localeOf(s),{day:"2-digit",month:"2-digit",...(expires.getFullYear()!==new Date(now).getFullYear()?{year:"numeric" as const}:{})}).format(expires):s.people.detail.noExpiry;
+  const expiry=validExpiry?`${formatExpirationUTC(user.expiration_rfc3339!,localeOf(s),new Date(now))} UTC`:s.people.detail.noExpiry;
   let hue=0;for(const character of user.username)hue=(hue*31+character.codePointAt(0)!)%360;
   const avatarStyle={"--avatar-hue":hue} as CSSProperties;
   const style:CSSProperties={transform:gesturesEnabled?`translateX(${offset}px)`:undefined};
@@ -46,7 +47,7 @@ export function UserCard({user,quotaEntry,now,gesturesEnabled=false,swipeSide=nu
       <div className="user-col-traffic">
         {quota.limitBytes!==null?<><div className={`user-traffic-pill ${exhausted?"danger":near?"warn":""}`} data-quota-fill style={{"--quota-fill":`${ratio??0}%`} as CSSProperties} role={ratio===null?undefined:"progressbar"} aria-label={t.usedQuota} aria-valuemin={ratio===null?undefined:0} aria-valuemax={ratio===null?undefined:100} aria-valuenow={ratio??undefined} aria-valuetext={quotaText} title={s.people.list.quotaHint}><strong data-quota-used>{used}</strong><span>{s.people.meta.of} {limit}</span></div><small>{ratio===null?t.quotaUnknown:s.people.list.telemtQuota} · <span data-observed-traffic>{s.people.list.observed} {observed}</span></small></>:<><div className="user-traffic-pill unlimited"><strong data-observed-traffic>{observed}</strong><span>{s.people.list.noQuota}</span></div><small>{user.traffic?s.people.list.panelTraffic:s.people.list.noTraffic}</small></>}
       </div>
-      <div className="user-col-expiry"><span className={`user-expiry ${status==="expired"?"expired":""}`} title={validExpiry?expires.toLocaleString(localeOf(s)):s.people.detail.noExpiry}>{validExpiry?`${expires.getTime()<=now?s.people.list.expired:s.people.list.until} ${expiry}`:expiry}</span></div>
+      <div className="user-col-expiry"><span className={`user-expiry ${status==="expired"?"expired":""}`} title={validExpiry?`${expires.toLocaleString(localeOf(s),{timeZone:"UTC"})} UTC`:s.people.detail.noExpiry}>{validExpiry?`${expires.getTime()<=now?s.people.list.expired:s.people.list.until} ${expiry}`:expiry}</span></div>
       <div className="user-row-actions" inert={gesturesEnabled&&swipeSide!==null}><QuickConnectionLinks user={user}/><button type="button" className="user-menu-trigger" aria-label={`${s.people.actions.menu} ${user.username}`} onClick={e=>onActions(gesturesEnabled?undefined:e.currentTarget.getBoundingClientRect())}><IconMore/></button></div>
     </div>
   </article>;

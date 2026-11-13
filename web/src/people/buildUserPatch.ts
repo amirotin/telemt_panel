@@ -19,6 +19,7 @@ export function diffLimitField<T>(
 }
 
 export interface UserPatchFormState {
+  sourceDeny?: LimitFieldState<string[]>;
   enabled?: boolean;
   userAdTag: LimitFieldState<string>;
   maxTcpConns: LimitFieldState<number>;
@@ -61,6 +62,7 @@ function assign(
 export function buildUserPatch(form: UserPatchFormState): UserPatch {
   const patch: Record<string, unknown> = {};
   if (form.enabled !== undefined) patch["enabled"] = form.enabled;
+  if (form.sourceDeny) assign(patch, "source_deny", form.sourceDeny);
   assign(patch, "user_ad_tag", form.userAdTag);
   assign(patch, "max_tcp_conns", form.maxTcpConns);
   assign(patch, "max_unique_ips", form.maxUniqueIps);
@@ -74,6 +76,7 @@ export function buildUserPatch(form: UserPatchFormState): UserPatch {
 // --- create ---
 
 export interface UserCreateFormState {
+  sourceDeny?: string[];
   username: string;
   secret: string;
   enabled: boolean;
@@ -88,13 +91,15 @@ export interface UserCreateFormState {
 
 // buildUserCreateBody is POST /api/users' body serializer. Create has no
 // "existing value" to keep, so its optional fields are simple presence:
-// unset/empty means "unlimited", nothing to omit-vs-null about.
+// unset limits use server defaults, including global inheritance on .17.
+// Source deny is explicitly [] from supported UI creates to clear retained rules.
 export function buildUserCreateBody(form: UserCreateFormState): UserCreate {
   const body: UserCreate = {
     username: form.username,
     secret: form.secret,
     enabled: form.enabled,
   };
+  if (form.sourceDeny !== undefined) body.source_deny = form.sourceDeny;
   if (form.userAdTag) body.user_ad_tag = form.userAdTag;
   if (form.maxTcpConns !== undefined) body.max_tcp_conns = form.maxTcpConns;
   if (form.maxUniqueIps !== undefined) body.max_unique_ips = form.maxUniqueIps;

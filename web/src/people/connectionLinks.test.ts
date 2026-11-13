@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {collectConnectionLinks,formatConnectionLink,webProfileIndex} from "./connectionLinks";
+import {collectConnectionLinks,formatConnectionLink,selectPrimaryConnectionLink,webProfileIndex} from "./connectionLinks";
 import type {UserLinksWire} from "../realtime/topics";
 const secret="0123456789abcdef0123456789abcdef";
 const hex=(value:string)=>[...new TextEncoder().encode(value)].map(b=>b.toString(16).padStart(2,"0")).join("");
@@ -7,6 +7,26 @@ const link=(prefix="",host="proxy.example.org",domain="")=>`tg://proxy?${new URL
 const links=(override:Partial<UserLinksWire>={}):UserLinksWire=>({classic:[],secure:[],tls:[],tls_domains:[],...override});
 
 describe("connection link projection",()=>{
+  it("hides absent MTProto only after extracting the WEB secret from raw links",()=>{
+    const source=links({tls:[link("ee","127.0.0.1","mask.example.org")]});
+    const profiles=[{host:"web.example.org",mode:"plain" as const},{host:"web.example.org",mode:"dd" as const,basePath:"Relay"}];
+    const result=collectConnectionLinks(source,profiles,"absent");
+    expect(result.map(l=>l.kind)).toEqual(["web","web"]);
+    expect(new URL(result[0]!.url).searchParams.get("secret")).toBe(secret);
+    expect(result[1]!.endpoint).toBe("web.example.org/Relay");
+    expect(selectPrimaryConnectionLink(result)?.url).toBe(result[0]!.url);
+    expect(source.tls).toHaveLength(1);
+  });
+  it.each(["configured","unknown"] as const)("preserves MTProto when listener state is %s",state=>{
+    const result=collectConnectionLinks(links({tls:[link("ee","proxy.example.org","mask.example.org")]}),[{host:"web.example.org",mode:"dd"}],state);
+    expect(result.map(l=>l.kind)).toEqual(["tls","web"]);
+    expect(selectPrimaryConnectionLink(result)?.kind).toBe("tls");
+  });
+  it("offers no WEB-only link when raw secrets disagree",()=>{
+    const source=links({classic:[link()],secure:[link("dd").replace(secret,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]});
+    expect(collectConnectionLinks(source,[{host:"web.example.org",mode:"dd"}],"absent")).toEqual([]);
+    expect(selectPrimaryConnectionLink([])).toBeNull();
+  });
   it("keeps primary TLS, extra domains and multiple endpoints without duplication",()=>{
     const primary=link("ee","proxy.example.org","main.example.org"),extra=link("ee","proxy.example.org","extra.example.org"),other=link("ee","198.51.100.4","main.example.org");
     const result=collectConnectionLinks(links({tls:[primary,extra,other],tls_domains:[{domain:"extra.example.org",link:extra}]}));
