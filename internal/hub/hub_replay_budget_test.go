@@ -28,7 +28,7 @@ func TestReplayByteBudgetEvictsOldestAcrossTopics(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("ReplaySince(1) events = %+v, want the two retained events", events)
 	}
-	if events[0].Seq != 2 || events[0].Topic != "stats" || events[0].Err != sourceErrorCode || events[0].Data != nil {
+	if events[0].Seq != 2 || events[0].Topic != "stats" || events[0].Err != "telemt_unreachable" || events[0].Data != nil {
 		t.Fatalf("first retained event = %+v, want zero-data stats source_error at seq 2", events[0])
 	}
 	if events[1].Seq != 3 || events[1].Topic != "update" || !bytes.Equal(events[1].Data, []byte(`"newer"`)) {

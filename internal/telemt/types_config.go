@@ -37,11 +37,13 @@ type ReloadQuery struct {
 
 // PatchConfigResult is the payload of PATCH /v1/config.
 type PatchConfigResult struct {
-	Revision               string          `json:"revision"`
-	RestartRequired        bool            `json:"restart_required"` // legacy field; still sent by current Telemt
-	RuntimeReloadRequired  bool            `json:"runtime_reload_required"`
-	ProcessRestartRequired bool            `json:"process_restart_required"`
-	DeferredProcessFields  []string        `json:"deferred_process_fields"`
-	Changed                []string        `json:"changed"`
-	Reload                 *ReloadAccepted `json:"reload,omitempty"`
+	ChangedPaths           []string          `json:"changed_paths,omitempty"`
+	NormalizationEffects   []json.RawMessage `json:"normalization_effects,omitempty"`
+	Revision               string            `json:"revision"`
+	RestartRequired        bool              `json:"restart_required"` // legacy field; still sent by current Telemt
+	RuntimeReloadRequired  bool              `json:"runtime_reload_required"`
+	ProcessRestartRequired bool              `json:"process_restart_required"`
+	DeferredProcessFields  []string          `json:"deferred_process_fields"`
+	Changed                []string          `json:"changed"`
+	Reload                 *ReloadAccepted   `json:"reload,omitempty"`
 }

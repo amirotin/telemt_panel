@@ -166,3 +166,42 @@ for (const width of [320, 390, 1280]) {
     ).toBeLessThanOrEqual(1);
   });
 }
+
+test("failed service stays actionable during delayed background polling", async ({ page, login }) => {
+  await login();
+  const snapshot = {
+    service: "telemt-test", manager: "systemd", status: "stopped", native_state: "failed",
+    status_supported: true, binding_conflict: false, busy: false,
+    caps: { start: true, stop: true, restart: true }, manual_commands: {},
+  };
+  let reads = 0;
+  let releasePoll!: () => void;
+  let pollStarted!: () => void;
+  const polling = new Promise<void>((resolve) => { pollStarted = resolve; });
+  const delayed = new Promise<void>((resolve) => { releasePoll = resolve; });
+  await page.route("**/api/telemt/service", async (route) => {
+    if (++reads > 1) { pollStarted(); await delayed; }
+    await route.fulfill({ json: snapshot });
+  });
+  let writes = 0;
+  await page.route("**/api/telemt/restart", (route) => {
+    writes++;
+    return route.fulfill({ status: 502, json: { code: "service_action_unconfirmed", message: "unconfirmed" } });
+  });
+  await page.goto("/server/platform");
+  const card = page.getByTestId("telemt-service-control");
+  await expect(card).toContainText("Сбой");
+  await expect(card.getByRole("link", { name: "Открыть журнал Telemt" })).toHaveAttribute("href", /\/journal$/);
+  await polling;
+  try {
+    await expect(card.getByRole("button", { name: "Перезапустить", exact: true })).toBeEnabled();
+    await card.getByRole("button", { name: "Перезапустить", exact: true }).click();
+    const confirm = page.getByRole("dialog").getByRole("button", { name: "Перезапустить Telemt", exact: true });
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
+    await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Проверьте состояние службы");
+    expect(writes).toBe(1);
+  } finally {
+    releasePoll();
+  }
+});

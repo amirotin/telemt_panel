@@ -48,6 +48,36 @@ describe("StructuredSettingsForm record editors", () => {
     resetLocaleForTests();
   });
 
+  it("offers absent optional jitter peak without promising unsupported removal", () => {
+    const fields = [field("web.retry_jitter.enabled", "boolean", "web", "bool"), field("web.retry_jitter.peak_ms", "integer", "web", "Option<u32>")];
+    const onChange = vi.fn();
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("web", fields)} sections={{ web: { retry_jitter: { enabled: false } } }} mode="advanced" onChange={onChange} />));
+    act(() => [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Задержка повторов"))!.click());
+    const peak = container.querySelector<HTMLInputElement>('input[aria-label="Пик задержки, мс"]');
+    expect(peak).not.toBeNull();
+    act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(peak, "40"); peak!.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(onChange.mock.calls.at(-1)?.[0].web.retry_jitter.peak_ms).toBe(40);
+    expect([...container.querySelectorAll("button")].find((button) => button.textContent === "По умолчанию")).toBeUndefined();
+    expect(container.textContent).toContain("файле конфигурации Telemt");
+  });
+
+  it("uses schema write support for new catalog fields while preserving legacy forms", () => {
+    const fields = [field("network.dns_overrides", "string_list", "routing")];
+    const schema = { schema_version: 1, fields: [{ path: "network.dns_overrides", value: {}, default_kind: "type_default", sensitivity: "public", description: "", apply: { watcher: "supported", reload: "supported", effect: "future_resolutions" }, api: { config_read: true, config_write: false, read_routes: [], write_routes: [], null_behavior: "reject" } }] };
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("routing", fields)} schema={schema} sections={{ network: { dns_overrides: [] } }} mode="advanced" onChange={() => {}} />));
+    expect(container.querySelector('input[aria-label="Подмена адресов DNS"]')).toBeNull();
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("routing", fields)} sections={{ network: { dns_overrides: [] } }} mode="advanced" onChange={() => {}} />));
+    expect(container.querySelector('input[aria-label="Подмена адресов DNS"]')).not.toBeNull();
+  });
+
+  it("shows the declared diagnostic default before the optional boolean is authored", () => {
+    const fields = [{ ...field("server.api.minimal_runtime_enabled", "boolean", "routing", "bool"), default_value: "true" }];
+    const onChange = vi.fn();
+    act(() => root.render(<StructuredSettingsForm catalog={catalog("routing", fields)} sections={{ server: { api: {} } }} mode="advanced" onChange={onChange} />));
+    expect(container.querySelector('[aria-label="Минимальная диагностика"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("does not introduce a second main landmark inside the page shell", () => {
     const fields = [field("general.fast_mode", "boolean", "routing", "bool")];
     act(() => root.render(<StructuredSettingsForm catalog={catalog("routing", fields)} sections={{ general: { fast_mode: false } }} mode="normal" onChange={() => {}} />));
