@@ -205,7 +205,7 @@ func buildExpiry(u telemt.UserInfo, now time.Time) *expiryView {
 	if !ok {
 		return nil
 	}
-	return &expiryView{Formatted: exp.Format("2006-01-02 15:04 MST")}
+	return &expiryView{Formatted: exp.UTC().Format("2006-01-02 15:04 MST")}
 }
 
 func parseExpiry(rfc3339 string) (time.Time, bool) {

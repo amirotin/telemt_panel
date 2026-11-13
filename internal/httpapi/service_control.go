@@ -86,11 +86,27 @@ func (s *Server) handleTelemtService(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	status := host.StatusUnknown
 	statusError := ""
+	nativeState := ""
 	supported := s.svcMgr.Caps().CanStatus
 	if supported {
-		value, err := s.svcMgr.Status(ctx, s.telemtServiceName)
+		var value host.ServiceStatus
+		var err error
+		if detailer, ok := s.svcMgr.(host.ServiceStateDetailer); ok {
+			nativeState, err = detailer.DetailedState(ctx, s.telemtServiceName)
+			switch nativeState {
+			case "active":
+				value = host.StatusRunning
+			case "inactive", "failed":
+				value = host.StatusStopped
+			default:
+				value = host.StatusUnknown
+			}
+		} else {
+			value, err = s.svcMgr.Status(ctx, s.telemtServiceName)
+		}
 		if err != nil {
 			statusError = "service_status_unavailable"
+			nativeState = ""
 		} else if value == host.StatusRunning || value == host.StatusStopped {
 			status = value
 		}
@@ -110,13 +126,14 @@ func (s *Server) handleTelemtService(w http.ResponseWriter, r *http.Request) {
 		Service         string             `json:"service"`
 		Manager         string             `json:"manager"`
 		Status          host.ServiceStatus `json:"status"`
+		NativeState     string             `json:"native_state,omitempty"`
 		StatusSupported bool               `json:"status_supported"`
 		StatusError     string             `json:"status_error,omitempty"`
 		BindingConflict bool               `json:"binding_conflict"`
 		Caps            serviceControlCaps `json:"caps"`
 		Manual          map[string]string  `json:"manual_commands"`
 		Busy            bool               `json:"busy"`
-	}{s.telemtServiceName, s.svcMgr.Kind(), status, supported, statusError, conflict, caps, manual, s.updateEngine.LockHeld()})
+	}{s.telemtServiceName, s.svcMgr.Kind(), status, nativeState, supported, statusError, conflict, caps, manual, s.updateEngine.LockHeld()})
 }
 
 func (s *Server) handleTelemtStart(w http.ResponseWriter, r *http.Request) {
@@ -164,11 +181,7 @@ func (s *Server) handleServiceAction(w http.ResponseWriter, r *http.Request, act
 	if err != nil {
 		slog.Warn("service control result unconfirmed", "action", action, "err", err)
 		s.appendAudit(r, "telemt."+action+".unconfirmed", "", "")
-		code := "service_action_unconfirmed"
-		if action == "restart" {
-			code = "internal_error"
-		}
-		auth.WriteError(w, 502, code, "service command result is unconfirmed; check service state before retrying")
+		auth.WriteError(w, 502, "service_action_unconfirmed", "service command result is unconfirmed; check service state before retrying")
 		return
 	}
 	s.appendAudit(r, "telemt."+action, "", "")

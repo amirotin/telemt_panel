@@ -28,7 +28,7 @@ const button = (text: string) => [...document.querySelectorAll("button")].find((
 async function click(text: string) { await act(async () => { button(text).click(); await settle(); }); }
 async function type(selector: string, value: string) { await act(async () => { const input = container.querySelector<HTMLInputElement>(selector)!; input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); }); }
 async function render(fetch: (request: Request) => Promise<Response>) {
-  client.setConfig({ baseUrl: "http://localhost", fetch: (request) => fetch(request as Request) });
+  client.setConfig({ baseUrl: "http://localhost", fetch: (request) => (request as Request).url.endsWith("/catalog") ? Promise.resolve(Response.json(cache.getQueryData(getTelemtConfigCatalogQueryKey()))) : /\/(validate|state|schema|info)$/.test((request as Request).url) ? Promise.resolve(Response.json({ code: "capability_absent" }, { status: 501 })) : fetch(request as Request) });
   cache = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
   cache.setQueryData(getTelemtConfigQueryKey(), initial);
   cache.setQueryData(getTelemtConfigTomlQueryKey(), tomlInitial);

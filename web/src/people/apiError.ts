@@ -5,9 +5,11 @@ import { errorMessage, type Dict } from "../i18n";
 // non-empty `code`), so the absence of a well-formed `code` means fetch
 // itself never got a response at all (offline/DNS/CORS), not a documented
 // envelope error.
-export function apiErrorMessage(err: { code?: unknown } | undefined, s: Dict): string {
-  if (!err || typeof err.code !== "string") return errorMessage(s, "network");
-  return errorMessage(s, err.code);
+export function apiErrorMessage(err: unknown, s: Dict): string {
+  const code = apiErrorCode(err);
+  if (!code) return errorMessage(s, "network");
+  const detail = err && typeof err === "object" && "message" in err ? err.message : undefined;
+  return errorMessage(s, code, detail);
 }
 
 // apiErrorCode extracts a well-formed envelope `code` from a query error of
