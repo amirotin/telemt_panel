@@ -139,7 +139,7 @@ Workflow `release.yml` запускается при push тега `v1.*`. Он 
 создаётся как draft; публикация выполняется только после успешной загрузки всех
 assets. Ошибка загрузки оставляет draft для ручной проверки, а не публичный
 неполный релиз. Тег с prerelease
-частью (например `v1.0.0-rc.3`) создаёт prerelease. Дефис только в build metadata
+частью (например `v1.0.0-rc.4`) создаёт prerelease. Дефис только в build metadata
 не меняет статус стабильного релиза.
 
 Создание/push тега — отдельное осознанное действие после проверок перехода и
@@ -148,12 +148,12 @@ assets. Ошибка загрузки оставляет draft для ручно
 публикационным прогоном отдельно. Лимиты full/lite не повышайте молча при ошибке
 сборки; сначала выясните причину изменения размера.
 
-Для RC3 после публикации бинарников запустите `Container prerelease` на том же
+Для RC4 после публикации бинарников запустите `Container prerelease` на том же
 теге, чтобы исходники образа и release binaries относились к одному commit:
 
 ```sh
-gh workflow run container.yml --ref v1.0.0-rc.3 -f release_tag=v1.0.0-rc.3
+gh workflow run container.yml --ref v1.0.0-rc.4 -f release_tag=v1.0.0-rc.4
 ```
 
 Перед объявлением готовности Docker дождитесь успешных smoke tests обеих
-архитектур и проверьте manifest `ghcr.io/amirotin/telemt_panel:1.0.0-rc.3`.
+архитектур и проверьте manifest `ghcr.io/amirotin/telemt_panel:1.0.0-rc.4`.

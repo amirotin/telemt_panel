@@ -101,19 +101,19 @@ Node.js и Go на сервере не нужны. Telemt устанавлива
 ## Установка
 
 Для контейнерного запуска: [Docker / Compose](docs/DOCKER.md).
-Для RC3 укажите `ghcr.io/amirotin/telemt_panel:1.0.0-rc.3`
+Для RC4 укажите `ghcr.io/amirotin/telemt_panel:1.0.0-rc.4`
 (amd64/arm64); Compose требует явного выбора тега. При переходе с root-образа
 RC2 сначала выполните миграцию владельцев config/data из инструкции Docker.
 
 Скачайте установщик и выберите **опубликованный тег 1.x** на странице
 [релизов](https://github.com/amirotin/telemt_panel/releases).
-Текущий тестовый выпуск — **`v1.0.0-rc.3`**, предварительная версия для
+Текущий тестовый выпуск — **`v1.0.0-rc.4`**, предварительная версия для
 пользовательской проверки перед стабильным 1.0. Установщик скачивается из
 того же тега, что и бинарник. Перед обновлением сохраните конфиг и данные.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/amirotin/telemt_panel/v1.0.0-rc.3/install.sh -o install.sh
-sh install.sh --version v1.0.0-rc.3
+curl -fsSL https://raw.githubusercontent.com/amirotin/telemt_panel/v1.0.0-rc.4/install.sh -o install.sh
+sh install.sh --version v1.0.0-rc.4
 ```
 
 Для локально собранной панели используйте `install.sh` из тех же исходников:

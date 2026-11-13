@@ -1,4 +1,4 @@
-# Docker: тестовый выпуск 1.0.0-rc.3
+# Docker: тестовый выпуск 1.0.0-rc.4
 
 Новый default profile рассчитан на Linux amd64/arm64. Docker выбирает
 архитектуру автоматически. Внутри — full-бинарник из одноимённого
@@ -18,7 +18,7 @@
 В `.env` рядом с compose сохраните выбранный полный тег:
 
 ```dotenv
-TELEMT_PANEL_IMAGE=ghcr.io/amirotin/telemt_panel:1.0.0-rc.3
+TELEMT_PANEL_IMAGE=ghcr.io/amirotin/telemt_panel:1.0.0-rc.4
 ```
 
 Для команд `docker run` экспортируйте то же значение в shell.
