@@ -5,6 +5,13 @@ TanStack Query. Builds straight into `../internal/webui/dist`, which
 `internal/webui` embeds via `go:embed` and serves as the panel's SPA (see that
 package's doc comment for the embed/base_path design).
 
+Type checking uses native TypeScript 7 through the `@typescript/native` npm alias.
+The `typescript` alias provides Microsoft's TypeScript 6 compatibility package
+for ESLint and OpenAPI SDK generation, which consume the JavaScript compiler API.
+This follows the [supported side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6-0).
+`npx tsc --version` reports the native compiler; `node -p 'require("typescript").version'`
+reports the API version used by those tools.
+
 ## Running the full stack locally
 
 Three processes, in order:
