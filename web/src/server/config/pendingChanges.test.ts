@@ -23,7 +23,7 @@ beforeEach(() => {
 describe("recordPendingChanges", () => {
   it("remembers a reload the PATCH did not perform itself", () => {
     recordPendingChanges(result({ runtime_reload_required: true }), 1_000);
-    expect(getPendingChanges()).toEqual({ runtimeReload: true, processRestart: false, at: 1_000 });
+    expect(getPendingChanges()).toEqual({ runtimeReload: true, processRestart: false, at: 1_000, revision: "r1" });
   });
 
   // The PATCH's own inline reload already applied it — same rule
@@ -108,4 +108,9 @@ describe("resolvePendingChanges", () => {
     );
     expect(resolved.runtimeReload).toBe(true);
   });
+});
+
+it("retains the saved revision for native publication confirmation", () => {
+  recordPendingChanges({ revision: "saved-9", changed: ["access.user_source_deny"], runtime_reload_required: true });
+  expect(getPendingChanges()).toMatchObject({ revision: "saved-9" });
 });

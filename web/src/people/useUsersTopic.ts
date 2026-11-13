@@ -27,7 +27,7 @@ export function useUsersTopic(): UsersTopicView {
       users: data?.users ?? [],
       quota: data?.quota ?? null,
       quotaSupported: data?.quota_supported ?? false,
-      isPending: data === null,
+      isPending: data === null && snapshot.error === null,
       isError: data === null && snapshot.error !== null,
       errorCode: snapshot.error,
       stale: snapshot.stale,

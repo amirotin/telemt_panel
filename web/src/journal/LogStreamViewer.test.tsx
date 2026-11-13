@@ -37,6 +37,85 @@ afterEach(() => {
 });
 
 describe("Journal source states", () => {
+  it.each(["native", "backoff", "manual"])("replaces file history after %s reconnect and keeps real repeated lines", reconnect => {
+    let source = JournalSource.instances[0];
+    const line = { ts: "2026-10-03T12:00:00Z", level: "info", msg: "repeated file entry" };
+    act(() => {
+      source.emit("open", {});
+      source.emit("log_reset", { source: "file" });
+      source.emit("log", line);
+      source.emit("log", line);
+    });
+    if (reconnect === "native") {
+      act(() => {
+        source.readyState = 0;
+        source.emit("error", {});
+        source.readyState = 1;
+        source.emit("open", {});
+      });
+    } else if (reconnect === "backoff") {
+      act(() => source.emit("log_end", {}));
+      act(() => vi.advanceTimersByTime(1000));
+      source = JournalSource.instances[1];
+    } else {
+      act(() => source.emit("log_source_error", {
+        code: "log_source_error", message: "safe diagnostic", source: "file",
+        service: "telemt", reason: "permission_denied",
+      }));
+      const retry = [...container.querySelectorAll("button")].find(button => button.textContent === ru.journal.retryStream);
+      act(() => retry!.click());
+      source = JournalSource.instances[1];
+    }
+    act(() => {
+      source.emit("open", {});
+      source.emit("log_reset", { source: "file" });
+      source.emit("log", line);
+      source.emit("log", line);
+    });
+    expect(container.textContent?.match(/repeated file entry/g)).toHaveLength(2);
+  });
+
+  it("removes old entries when the reconnected file is empty", () => {
+    const source = JournalSource.instances[0];
+    act(() => {
+      source.emit("open", {});
+      source.emit("log", { ts: "2026-10-03T12:00:00Z", level: "info", msg: "old file content" });
+      source.emit("log_reset", { source: "file" });
+    });
+    expect(container.textContent).not.toContain("old file content");
+    expect(container.textContent).toContain(ru.journal.emptyTitle);
+  });
+
+  it("retains paused rows until resume, then replaces them with reconnected file history", () => {
+    const source = JournalSource.instances[0];
+    act(() => source.emit("log", { ts: "2026-10-03T12:00:00Z", level: "info", msg: "paused visible row" }));
+    const pause = [...container.querySelectorAll("button")].find(button => button.textContent === ru.journal.pause);
+    expect(pause).toBeDefined();
+    act(() => pause!.click());
+    act(() => {
+      source.emit("log", { ts: "2026-10-03T12:00:01Z", level: "info", msg: "old pending row" });
+      source.emit("log_reset", { source: "file" });
+      source.emit("log", { ts: "2026-10-03T12:00:02Z", level: "info", msg: "refreshed file row" });
+    });
+    expect(container.textContent).toContain("paused visible row");
+    expect(container.textContent).not.toContain("refreshed file row");
+    const resume = [...container.querySelectorAll("button")].find(button => button.textContent === ru.journal.resume);
+    act(() => resume!.click());
+    expect(container.textContent).not.toContain("paused visible row");
+    expect(container.textContent).not.toContain("old pending row");
+    expect(container.textContent).toContain("refreshed file row");
+  });
+
+  it("applies an empty file snapshot on resume without moving paused rows early", () => {
+    const source = JournalSource.instances[0];
+    act(() => source.emit("log", { ts: "2026-10-03T12:00:00Z", level: "info", msg: "paused file content" }));
+    act(() => [...container.querySelectorAll("button")].find(button => button.textContent === ru.journal.pause)!.click());
+    act(() => source.emit("log_reset", { source: "file" }));
+    expect(container.textContent).toContain("paused file content");
+    act(() => [...container.querySelectorAll("button")].find(button => button.textContent === ru.journal.resume)!.click());
+    expect(container.textContent).not.toContain("paused file content");
+  });
+
   it("does not claim the source is connected while it is still connecting", () => {
     expect(container.textContent).not.toContain(ru.journal.emptyDescription);
   });

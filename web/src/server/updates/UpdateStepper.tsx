@@ -6,16 +6,15 @@ import type { UpdatePhase } from "./updatePhase.helpers";
 
 const GROUPS: Array<{ phases: UpdatePhase[]; labelPhase: UpdatePhase }> = [
   { phases: ["checking"], labelPhase: "checking" },
-  { phases: ["downloading", "verifying"], labelPhase: "downloading" },
-  { phases: ["staging"], labelPhase: "staging" },
+  { phases: ["downloading"], labelPhase: "downloading" },
+  { phases: ["verifying", "staging"], labelPhase: "staging" },
   { phases: ["installing"], labelPhase: "installing" },
   { phases: ["restarting", "health"], labelPhase: "restarting" },
   { phases: ["done"], labelPhase: "done" },
 ];
 
-// The engine exposes eight happy-path phases. On the narrow horizontal track
-// closely related technical phases are grouped into six readable milestones;
-// the header still names the exact current engine phase.
+// Seven current phases fit into six milestones by grouping restart and health.
+// Legacy verifying entries belong to package preparation, alongside staging.
 export function UpdateStepper({
   phase,
   detail,

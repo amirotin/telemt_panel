@@ -67,7 +67,7 @@ for (const width of [1440, 768, 390]) {
     await duration.selectOption("7");
     await storage.getByRole("button", { name: "Сохранить", exact: true }).first().click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("Сократить срок хранения?");
+    await expect(dialog).toHaveAccessibleName("Сократить историю?");
     await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
     const canceled = await (await page.request.get("/api/settings/storage")).json();
     expect(canceled.policies).toEqual(before.policies);

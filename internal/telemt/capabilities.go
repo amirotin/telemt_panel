@@ -22,12 +22,19 @@ type negativeCapabilityObservation struct {
 // 07-telemt-sdk.md §SDK-3 defines, letting the panel show "unavailable on
 // this Telemt build" instead of a dead control or a failed request.
 type Caps struct {
-	Quota             bool `json:"quota"`
-	RuntimeEdge       bool `json:"runtime_edge"`
-	ReloadAPI         bool `json:"reload_api"`
-	ConfigAPI         bool `json:"config_api"`
-	UserEnableDisable bool `json:"user_enable_disable"`
-	RotateSecret      bool `json:"rotate_secret"`
+	OptionalMetadataUnavailable bool `json:"optional_metadata_unavailable,omitempty"`
+	ConfigSchema                bool `json:"config_schema"`
+	ConfigState                 bool `json:"config_state"`
+	ConfigValidation            bool `json:"config_validation"`
+	AccessPolicy                bool `json:"access_policy"`
+	UserSourceDeny              bool `json:"user_source_deny"`
+	ReadOnly                    bool `json:"read_only"`
+	Quota                       bool `json:"quota"`
+	RuntimeEdge                 bool `json:"runtime_edge"`
+	ReloadAPI                   bool `json:"reload_api"`
+	ConfigAPI                   bool `json:"config_api"`
+	UserEnableDisable           bool `json:"user_enable_disable"`
+	RotateSecret                bool `json:"rotate_secret"`
 }
 
 // runtimeEdgeGate is the minimal shape of GET /v1/runtime/connections/summary
@@ -88,10 +95,16 @@ func (c *Client) probeCapsSingleFlight(ctx context.Context) (Caps, error) {
 			return caps, nil
 		}
 		generation := c.capabilityGeneration()
-		caps := c.probeCaps(ctx)
+		caps, cacheable := c.probeCaps(ctx)
 		if err := ctx.Err(); err != nil {
 			// Context failures are not five-minute capability observations.
 			return Caps{}, err
+		}
+		if !cacheable {
+			if generation != c.capabilityGeneration() {
+				continue
+			}
+			return caps, nil
 		}
 		if c.storeCaps(caps, generation) {
 			return caps, nil
@@ -128,20 +141,54 @@ func (c *Client) capabilityGeneration() uint64 {
 	return c.capsGeneration
 }
 
-func (c *Client) observeTelemtVersion(version string, generation uint64) {
-	if version == "" {
+func (c *Client) observeSystemInfo(info SystemInfoData, generation uint64) {
+	if info.Version == "" {
 		return
 	}
 	c.capsMu.Lock()
 	defer c.capsMu.Unlock()
-	if generation != c.capsGeneration || version == c.telemtVersion {
+	if generation != c.capsGeneration {
 		return
 	}
-	c.telemtVersion = version
+	versionChanged := info.Version != c.telemtVersion
+	processChanged := c.runtimeInfoValid && info.ProcessStartedAtEpochSec != c.processStartedAt
+	publicationChanged := c.runtimeInfoValid && (info.ConfigReloadCount != c.configReloadCount || processChanged)
+	c.runtimeInfoValid = true
+	c.configReloadCount = info.ConfigReloadCount
+	c.processStartedAt = info.ProcessStartedAtEpochSec
+	if !versionChanged && !publicationChanged {
+		return
+	}
+	c.telemtVersion = info.Version
+	c.invalidateCapabilitySnapshotsLocked()
+	if versionChanged {
+		c.userEnableDisableAbsent = negativeCapabilityObservation{}
+		c.rotateSecretAbsent = negativeCapabilityObservation{}
+	}
+	if versionChanged || processChanged {
+		c.lastCompletedReloadID = 0
+	}
+}
+
+// invalidateCapabilitySnapshotsLocked requires capsMu and preserves independently
+// observed absent mutation routes during a same-version runtime publication.
+func (c *Client) invalidateCapabilitySnapshotsLocked() {
 	c.capsGeneration++
 	c.capsValid = false
-	c.userEnableDisableAbsent = negativeCapabilityObservation{}
-	c.rotateSecretAbsent = negativeCapabilityObservation{}
+	c.schemaValid = false
+}
+
+func (c *Client) observeCompletedReload(status ReloadStatus, generation uint64) {
+	if status.State != ReloadPhaseSucceeded && status.State != ReloadPhaseRolledBack {
+		return
+	}
+	c.capsMu.Lock()
+	defer c.capsMu.Unlock()
+	if generation != c.capsGeneration || status.ReloadID <= c.lastCompletedReloadID {
+		return
+	}
+	c.lastCompletedReloadID = status.ReloadID
+	c.invalidateCapabilitySnapshotsLocked()
 }
 
 func (c *Client) observeMutation(observation *negativeCapabilityObservation, generation uint64, err error) {
@@ -173,7 +220,7 @@ func (c *Client) negativeObservationActive(observation *negativeCapabilityObserv
 // user_enable_disable/rotate_secret fields of the result are meaningless
 // zero values — Capabilities overwrites them from mutation observations
 // after calling this.
-func (c *Client) probeCaps(ctx context.Context) Caps {
+func (c *Client) probeCaps(ctx context.Context) (Caps, bool) {
 	var caps Caps
 
 	_, hasQuota, err := c.QuotaList(ctx)
@@ -186,7 +233,8 @@ func (c *Client) probeCaps(ctx context.Context) Caps {
 	caps.RuntimeEdge = c.probeRuntimeEdge(ctx)
 	caps.ReloadAPI = c.probeReloadAPI(ctx)
 	caps.ConfigAPI = c.probeConfigAPI(ctx)
-	return caps
+	cacheable := c.probeDiscoveryCaps(ctx, &caps)
+	return caps, cacheable
 }
 
 // probeRuntimeEdge detects the runtime_edge capability from the gate
@@ -245,5 +293,54 @@ func (c *Client) probeConfigAPI(ctx context.Context) bool {
 		return false
 	}
 	slog.Warn("telemt: capability probe: config_api", "err", err)
+	return true
+}
+
+// probeDiscoveryCaps keeps unsupported routes distinct from transient failures.
+// A transient result is returned conservatively but is not cached for five minutes.
+func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) bool {
+	discovery, err := c.Discovery(ctx)
+	if err != nil {
+		if !optionalRouteAbsent(err) {
+			caps.OptionalMetadataUnavailable = true
+			return false
+		}
+		// Legacy servers keep the existing six capability decisions. Health can
+		// still report read-only without requiring the discovery extension.
+		health, healthErr := c.Health(ctx)
+		if healthErr == nil {
+			caps.ReadOnly = health.ReadOnly
+		}
+		return true
+	}
+	caps.ReadOnly = discovery.ReadOnly
+	has := func(method, path string) bool {
+		for _, operation := range discovery.Operations {
+			if operation.Method == method && operation.Path == path && operation.Supported && operation.Enabled {
+				return true
+			}
+		}
+		return false
+	}
+	caps.ConfigSchema = has("GET", "/v1/config/schema")
+	caps.ConfigState = has("GET", "/v1/config/state")
+	caps.ConfigValidation = has("POST", "/v1/config/validate")
+	caps.AccessPolicy = has("GET", "/v1/access/policy") && has("PATCH", "/v1/access/policy")
+	schema, err := c.ConfigSchema(ctx)
+	if err != nil {
+		caps.OptionalMetadataUnavailable = !optionalRouteAbsent(err)
+		return optionalRouteAbsent(err)
+	}
+	for _, field := range schema.Fields {
+		if field.Path != "access.user_source_deny" || field.API.RequestField != "source_deny" {
+			continue
+		}
+		create, patch := false, false
+		for _, route := range field.API.WriteRoutes {
+			create = create || route == "POST /v1/users"
+			patch = patch || route == "PATCH /v1/users/{username}"
+		}
+		caps.UserSourceDeny = create && patch
+	}
 	return true
 }

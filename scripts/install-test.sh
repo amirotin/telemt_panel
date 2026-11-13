@@ -6,7 +6,7 @@
 #   sh scripts/install-test.sh
 #   bash scripts/install-test.sh
 # shellcheck disable=SC2034,SC2016  # globals are consumed by the sourced installer
-# shellcheck disable=SC2317  # stubs are called by functions from the sourced installer
+# shellcheck disable=SC2317,SC2329  # stubs are called by functions from the sourced installer
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)

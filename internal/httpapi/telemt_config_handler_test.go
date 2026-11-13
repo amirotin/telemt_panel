@@ -575,7 +575,7 @@ func TestWriteTelemtConfigError_Mapping(t *testing.T) {
 		{"revision_conflict passthrough", &telemt.APIError{Status: http.StatusConflict, Code: "revision_conflict", Message: "stale"}, http.StatusConflict, "revision_conflict"},
 		{"read_only", &telemt.APIError{Status: http.StatusForbidden, Code: "read_only", Message: "ro"}, http.StatusForbidden, "read_only"},
 		{"payload_too_large passthrough", &telemt.APIError{Status: http.StatusRequestEntityTooLarge, Code: "payload_too_large", Message: "too big"}, http.StatusRequestEntityTooLarge, "payload_too_large"},
-		{"5xx maps to telemt_unreachable", &telemt.APIError{Status: http.StatusInternalServerError, Code: "internal_error", Message: "boom"}, http.StatusBadGateway, "telemt_unreachable"},
+		{"5xx identifies upstream rejection", &telemt.APIError{Status: http.StatusInternalServerError, Code: "internal_error", Message: "boom"}, http.StatusBadGateway, "telemt_api_error"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

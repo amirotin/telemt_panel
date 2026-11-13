@@ -560,6 +560,7 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/User" } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     post:
       tags: [users]
       operationId: createUser
@@ -581,6 +582,7 @@ paths:
         "409": { description: user_exists, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}:
     parameters: [ { $ref: "#/components/parameters/Username" } ]
@@ -591,6 +593,7 @@ paths:
         "200": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     patch:
       tags: [users]
       operationId: patchUser
@@ -606,6 +609,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     delete:
       tags: [users]
       operationId: deleteUser
@@ -614,6 +618,7 @@ paths:
         "409": { description: last_user_forbidden, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/reset-quota:
     post:
@@ -637,6 +642,7 @@ paths:
         "409": { $ref: "#/components/responses/QuotaResetError" }
         "503": { $ref: "#/components/responses/QuotaResetError" }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/ip-history:
     get:
@@ -782,6 +788,7 @@ paths:
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "501": { description: capability_absent — not supported on this Telemt build, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/enabled:
     put:
@@ -800,6 +807,7 @@ paths:
         "403": { $ref: "#/components/responses/TelemtReadOnly" }
         "501": { description: capability_absent — not supported on this Telemt build, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/users/{username}/sublink:
     get:
@@ -813,6 +821,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: sublink_unavailable — user has no valid classic/secure/TLS link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
     post:
       tags: [users]
       operationId: regenerateUserSublink
@@ -823,6 +832,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: sublink_unavailable — user has no valid classic/secure/TLS link to derive one from, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   # ───────────────────────── telemt ─────────────────────────
   /api/telemt/info:
@@ -834,6 +844,97 @@ paths:
           description: Version, connectivity and capability flags (07-telemt-sdk.md §3)
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtInfo" } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
+
+  /api/telemt/capabilities:
+    get:
+      tags: [telemt]
+      operationId: getTelemtCapabilities
+      description: Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+      responses:
+        "200": { description: Upstream metadata with source revision where applicable, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtDiscovery" } } } }
+        "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
+
+  /api/telemt/config/schema:
+    get:
+      tags: [telemt]
+      operationId: getTelemtConfigSchema
+      description: Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+      responses:
+        "200": { description: Upstream metadata with source revision where applicable, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigSchema" } } } }
+        "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
+
+  /api/telemt/config/state:
+    get:
+      tags: [telemt]
+      operationId: getTelemtConfigState
+      description: Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+      responses:
+        "200": { description: Upstream metadata with source revision where applicable, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigState" } } } }
+        "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
+
+  /api/telemt/access-policy:
+    get:
+      tags: [telemt]
+      operationId: getTelemtAccessPolicy
+      description: Optional Telemt extension. Unsupported older servers return capability_absent; auth and transient failures remain distinct errors.
+      responses:
+        "200": { description: Upstream metadata with source revision where applicable, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtAccessPolicyState" } } } }
+        "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
+    patch:
+      tags: [telemt]
+      operationId: patchTelemtAccessPolicy
+      description: Writes access defaults and merges CIDR entries; publication uses the watcher. Source/runtime conflicts require a fresh read.
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: If-Runtime-Match, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TelemtAccessPolicyPatch" } } }
+      responses:
+        "200": { description: Desired and effective policy plus new source revision, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtAccessPolicyState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/TelemtReadOnly" }
+        "409": { description: Source or runtime conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: Field validation errors, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
+
+  /api/telemt/config/validate:
+    post:
+      tags: [telemt]
+      operationId: validateTelemtConfig
+      description: >
+        Non-mutating upstream candidate preparation, bounded to 60 seconds. Requires the
+        source revision and optionally fences the active publication. May read DNS/static
+        assets; does not write files, bind listeners or publish a runtime generation.
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: If-Runtime-Match, in: header, schema: { type: string } }
+        - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
+        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
+        - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigPatch" } } }
+      responses:
+        "200": { description: Candidate revision, field paths, normalizations, warnings and apply impact, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigValidation" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: Source or runtime conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: Field validation details, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: Preflight preparation busy, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/config:
     get:
@@ -848,6 +949,7 @@ paths:
           description: Editable sections + revision
           content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfig" } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — this Telemt build/config does not expose the config API, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     patch:
       tags: [telemt]
@@ -863,6 +965,7 @@ paths:
         an explicit retry; the panel never automatically repeats the write.
       parameters:
         - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: If-Runtime-Match, in: header, schema: { type: string } }
         - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
         - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
         - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
@@ -899,6 +1002,7 @@ paths:
         "200": { description: TOML projection and revision, content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOML" } } } }
         "500": { description: toml_projection_failed — a Config API value cannot be represented as exact TOML, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     patch:
       tags: [telemt]
@@ -911,6 +1015,7 @@ paths:
         handling as the structured configuration PATCH.
       parameters:
         - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: If-Runtime-Match, in: header, schema: { type: string } }
         - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
         - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
         - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
@@ -944,6 +1049,10 @@ paths:
         sparse JSON patch plus materialized sections and wholesale array replacements.
       parameters:
         - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: If-Runtime-Match, in: header, schema: { type: string } }
+        - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
+        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
+        - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/TelemtConfigTOMLRequest" } } }
@@ -952,6 +1061,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "409": { description: revision_conflict, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/reload:
     post:
@@ -978,6 +1088,7 @@ paths:
         "409": { description: reload_in_progress, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — offer service restart instead, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/reload/{id}:
     get:
@@ -992,6 +1103,7 @@ paths:
         "404": { description: reload_not_found — unknown or aged-out id, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/service:
     get:
@@ -1034,7 +1146,7 @@ paths:
         "202": { description: Restart initiated }
         "409": { description: update_locked — another service or update operation is running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: manual_restart_required — automatic restart unavailable on this host; message carries the manual command (same info as /api/host manual_commands), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "502": { description: internal_error — the restart op itself failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: service_action_unconfirmed — result is unconfirmed; check service state before retrying, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/zero:
     get:
@@ -1049,6 +1161,7 @@ paths:
         "200": { description: Deep counter dump, content: { application/json: { schema: { $ref: "#/components/schemas/ZeroAllData" } } } }
         "501": { description: capability_absent — this Telemt build/config does not expose zero/all, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/telemt/tls-fingerprints:
     get:
@@ -1071,6 +1184,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: capability_absent — this Telemt build predates the runtime edge routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — runtime_edge_enabled is off, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web-access:
@@ -1081,16 +1195,20 @@ paths:
       responses:
         "200": { description: WEB access relationships and source config revision, content: { application/json: { schema: { $ref: "#/components/schemas/WebAccessView" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — Config API is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web-access/users/{username}:
     put:
       tags: [telemt, users]
       operationId: putTelemtUserWebAccess
-      description: Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Applied with an instant runtime reload.
+      description: Replaces one user's WEB profile relationships while preserving every unrelated vhost and profile. Supports explicit instant or drain runtime reload; omitted policy retains instant for older clients.
       parameters:
         - { $ref: "#/components/parameters/Username" }
         - { name: If-Match, in: header, required: true, schema: { type: string } }
+        - { name: reload, in: query, schema: { type: string, enum: [instant, drain] } }
+        - { name: timeout_secs, in: query, schema: { type: integer, minimum: 1, maximum: 3600 } }
+        - { name: failure_policy, in: query, schema: { type: string, enum: [keep_new, rollback] } }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/WebUserAccessUpdate" } } }
@@ -1101,6 +1219,7 @@ paths:
         "404": { description: web_vhost_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "409": { description: revision_conflict or web_profile_required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — Config API is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/sessions:
@@ -1130,6 +1249,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/sessions/{ref}:
@@ -1149,6 +1269,7 @@ paths:
         "404": { description: web_session_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable, or web_snapshot_busy when an exact lookup lost a lock race, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/sessions/close:
@@ -1176,6 +1297,7 @@ paths:
         "415": { description: "unsupported_media_type — Telemt's control routes require exactly one byte-exact `Content-Type: application/json`. Unreachable through the panel (the SDK sets the header itself) but declared because the code is Telemt's own.", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/telemt/web/operations/{id}:
@@ -1194,6 +1316,7 @@ paths:
         "404": { description: web_operation_not_found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "501": { description: capability_absent — this Telemt build predates the WEB runtime routes, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { $ref: "#/components/responses/TelemtUnreachable" }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
         "503": { description: capability_unavailable — the WEB runtime is not running, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   # ───────────────────────── host ─────────────────────────
@@ -1826,6 +1949,10 @@ paths:
       operationId: streamLogs
       description: >
         SSE stream of LogLine events (`event: log`) and quiet-period heartbeats.
+        File sources first emit `event: log_reset` with {"source":"file"},
+        replacing the viewer snapshot before up to 200 recent complete lines
+        from the last 256 KiB and subsequent live entries. Paused viewers
+        apply the replacement when resumed.
         Source startup/runtime failures are `event: log_source_error` with a
         LogSourceDiagnostic payload after HTTP 200; normal source EOF is
         `event: log_end`. Authentication, validation and capability errors
@@ -1833,7 +1960,7 @@ paths:
       parameters:
         - { name: service, in: query, required: true, schema: { type: string, enum: [telemt, panel] } }
       responses:
-        "200": { description: "SSE of log, heartbeat, log_source_error and log_end events", content: { text/event-stream: { schema: { type: string } } } }
+        "200": { description: "SSE of log_reset, log, heartbeat, log_source_error and log_end events", content: { text/event-stream: { schema: { type: string } } } }
         "429": { description: "logs_stream_limit — capacity exhausted before streaming starts", headers: { Retry-After: { schema: { type: integer, minimum: 5 }, description: Retry no earlier than this many seconds } }, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "501": { description: log_stream_unavailable — host cap log_stream=false, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
@@ -1857,7 +1984,8 @@ paths:
                 type: object
                 additionalProperties: { type: object, additionalProperties: true }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "502": { description: telemt_unreachable — every requested topic's fetch failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: A classified upstream failure, or snapshot_unavailable when no snapshot has been published, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "504": { $ref: "#/components/responses/TelemtTimeout" }
 
   /api/history:
     get:
@@ -2044,7 +2172,10 @@ components:
       description: Too many requests
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     TelemtUnreachable:
-      description: telemt_unreachable | telemt_auth_failed | telemt_response_too_large (upstream response exceeds 8 MiB)
+      description: Classified Telemt failure — connection, API rejection, configuration filesystem error, DNS, TLS, malformed response or response exceeding 8 MiB. The message contains only safe diagnostics for upstream failures.
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    TelemtTimeout:
+      description: telemt_timeout — the API did not respond in time; check whether a mutation took effect before retrying
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     TelemtReadOnly:
       description: Telemt API is in read_only mode
@@ -2255,6 +2386,7 @@ components:
       type: object
       required: [code, message]
       properties:
+        details: { type: array, items: { $ref: "#/components/schemas/TelemtFieldIssue" } }
         code:
           type: string
           enum:
@@ -2302,6 +2434,17 @@ components:
             - branding_invalid_image
             - not_found
             - telemt_unreachable
+            - telemt_api_error
+            - telemt_timeout
+            - telemt_dns_failed
+            - telemt_tls_failed
+            - telemt_invalid_response
+            - telemt_config_permission_denied
+            - telemt_config_read_only
+            - telemt_config_storage_full
+            - telemt_config_write_failed
+            - telemt_config_read_failed
+            - snapshot_unavailable
             - capability_absent
             - capability_unavailable
             - manual_restart_required
@@ -2322,6 +2465,8 @@ components:
             - user_exists
             - last_user_forbidden
             - read_only
+            - runtime_conflict
+            - config_preflight_busy
             - revision_conflict
             - invalid_toml
             - invalid_config_path
@@ -2378,9 +2523,15 @@ components:
             enabled:false means runtime_edge_enabled is off; read from the
             response rather than probed so an unreachable Telemt still maps
             to 502 telemt_unreachable).
-            Reserved for milestones not yet implemented: telemt_auth_failed
-            (superseded on /api/telemt/info by a reachable:false
-            body, not an error status — kept here for /api/telemt/config, M3).
+            telemt_auth_failed reports an upstream HTTP 401 without expiring the
+            administrator's panel session. telemt_api_error distinguishes a received
+            API failure from a connection error. Configuration permission, read-only
+            filesystem, storage, read and write errors have dedicated telemt_config_*
+            codes. Timeouts use telemt_timeout and HTTP 504; malformed responses,
+            DNS and certificate failures also have dedicated diagnostic codes.
+            snapshot_unavailable means no requested snapshot has been published.
+            Diagnostic messages contain only HTTP status, validated upstream code
+            and an optional numeric request ID, never arbitrary upstream payloads.
             A well-formed Telemt *APIError whose status is 4xx and isn't otherwise
             mapped above is passed through verbatim with Telemt's own code — notably
             user_exists, last_user_forbidden, read_only, revision_conflict,
@@ -2411,6 +2562,9 @@ components:
         username: { type: string }
         enabled: { type: boolean }
         in_runtime: { type: boolean }
+        source_deny: { type: array, items: { type: string }, description: Desired source CIDR deny rules; absent on older servers. }
+        source_deny_status: { $ref: "#/components/schemas/UserSourceDenyState" }
+        limits: { $ref: "#/components/schemas/UserLimitState" }
         user_ad_tag: { type: string }
         max_tcp_conns: { type: integer }
         max_unique_ips: { type: integer }
@@ -2435,6 +2589,44 @@ components:
         traffic: { $ref: "#/components/schemas/UserTraffic" }
         ip_history: { $ref: "#/components/schemas/UserIPSummary" }
         sub_url: { type: string, description: Absolute subscription page URL }
+
+    UserInheritedLimit:
+      type: object
+      required: [value, configured_override, global_value, origin]
+      properties:
+        value: { type: [integer, "null"], description: Resolved limit; null means unlimited. }
+        configured_override: { type: [integer, "null"], description: User configuration; zero inherits the global default. }
+        global_value: { type: integer, minimum: 0 }
+        origin: { type: string, enum: [user_override, global_default, unlimited] }
+
+    UserLimitSnapshot:
+      type: object
+      required: [max_tcp_conns, max_unique_ips]
+      properties:
+        max_tcp_conns: { $ref: "#/components/schemas/UserInheritedLimit" }
+        max_unique_ips: { $ref: "#/components/schemas/UserInheritedLimit" }
+
+    UserLimitState:
+      type: object
+      required: [desired, effective, effective_scope, subsystem_convergence]
+      properties:
+        desired: { $ref: "#/components/schemas/UserLimitSnapshot" }
+        effective:
+          oneOf:
+            - { $ref: "#/components/schemas/UserLimitSnapshot" }
+            - { type: "null" }
+        effective_scope: { type: string }
+        subsystem_convergence: { type: string }
+
+    UserSourceDenyState:
+      type: object
+      required: [effective, runtime_reload_required, apply_mode, reload_endpoint, effective_scope]
+      properties:
+        effective: { type: [array, "null"], items: { type: string }, description: Null means the active snapshot is unknown. }
+        runtime_reload_required: { type: [boolean, "null"] }
+        apply_mode: { type: string }
+        reload_endpoint: { type: string }
+        effective_scope: { type: string }
 
     UserTraffic:
       type: object
@@ -2467,11 +2659,12 @@ components:
       type: object
       required: [username]
       properties:
+        source_deny: { type: [array, "null"], items: { type: string }, description: Omitted preserves retained rules; empty array or null removes rules. Supported servers only. }
         username: { type: string, pattern: "^[A-Za-z0-9_.-]{1,64}$" }
         secret: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
         user_ad_tag: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
-        max_tcp_conns: { type: integer, minimum: 1 }
-        max_unique_ips: { type: integer, minimum: 1 }
+        max_tcp_conns: { type: integer, minimum: 0, description: "On servers with global limits, zero or omission inherits the global default." }
+        max_unique_ips: { type: integer, minimum: 0, description: "On servers with global limits, zero or omission inherits the global default." }
         data_quota_bytes: { type: integer, format: int64, minimum: 1 }
         expiration_rfc3339: { type: string, format: date-time }
         rate_limit_up_bps: { type: integer, format: int64, minimum: 0, description: "Bits per second; 0 is unlimited. Telemt 3.5.8+ accepts at most 100000000000." }
@@ -2482,6 +2675,7 @@ components:
       type: object
       description: JSON Merge Patch — null removes a limit, omitted leaves unchanged.
       properties:
+        source_deny: { type: [array, "null"], items: { type: string }, description: Omitted preserves retained rules; empty array or null removes rules. Supported servers only. }
         secret: { type: string, pattern: "^[0-9a-fA-F]{32}$" }
         user_ad_tag: { type: [string, "null"] }
         max_tcp_conns: { type: [integer, "null"] }
@@ -2498,6 +2692,238 @@ components:
       properties:
         url: { type: string }
         enabled: { type: boolean, description: false when subpage module is disabled }
+
+    TelemtFieldIssue:
+      type: object
+      required: [path, code, message]
+      properties:
+        path: { type: string }
+        code: { type: string }
+        message: { type: string }
+
+    TelemtRuntimeBaseline:
+      type: object
+      required: [active_generation, config_epoch, runtime_match]
+      properties:
+        active_generation: { type: integer, minimum: 0 }
+        config_epoch: { type: integer, minimum: 0 }
+        runtime_match: { type: string }
+
+    TelemtOperationCapability:
+      type: object
+      required: [id, method, path, supported, enabled, available, mutable]
+      properties:
+        id: { type: string }
+        method: { type: string }
+        path: { type: string }
+        aliases: { type: array, items: { type: string } }
+        gate: { type: string }
+        success: { type: array, items: { type: integer } }
+        credential_bearing: { type: boolean }
+        body: { type: string }
+        optional_body: { type: boolean }
+        exact_json_content_type: { type: boolean }
+        if_match: { type: boolean }
+        if_runtime_match: { type: boolean }
+        read_only_operation: { type: boolean }
+        supported: { type: boolean }
+        enabled: { type: boolean }
+        available: { type: [boolean, "null"] }
+        mutable: { type: boolean }
+        disabled_reason: { type: string }
+        unavailable_reason: { type: string }
+        mutation_blocked_reason: { type: string }
+
+    TelemtDiscovery:
+      type: object
+      required: [api_version, schema_version, software_version, read_only, operations]
+      properties:
+        api_version: { type: string }
+        schema_version: { type: integer }
+        software_version: { type: string }
+        config_schema: { type: string }
+        read_only: { type: boolean }
+        availability_scope: { type: string }
+        operations: { type: array, items: { $ref: "#/components/schemas/TelemtOperationCapability" } }
+
+    TelemtConfigFieldAPI:
+      type: object
+      required: [config_read, config_write, read_routes, write_routes, null_behavior]
+      properties:
+        config_read: { type: boolean }
+        config_write: { type: boolean }
+        read_routes: { type: array, items: { type: string } }
+        write_routes: { type: array, items: { type: string } }
+        request_field: { type: string }
+        non_editable_reason: { type: string }
+        null_behavior: { type: string }
+
+    TelemtConfigSchemaField:
+      type: object
+      required: [path, value, default_kind, sensitivity, description, apply, api]
+      properties:
+        path: { type: string }
+        value: { type: object, additionalProperties: true }
+        default_kind: { type: string }
+        default: {}
+        sensitivity: { type: string }
+        description: { type: string }
+        aliases: { type: array, items: { type: string } }
+        unit: { type: string }
+        apply:
+          type: object
+          required: [watcher, reload, effect]
+          properties:
+            watcher: { type: string }
+            reload: { type: string }
+            effect: { type: string }
+        dependencies: { type: array, items: { type: string } }
+        constraints: { type: array, items: { type: string } }
+        api: { $ref: "#/components/schemas/TelemtConfigFieldAPI" }
+
+    TelemtConfigSchema:
+      type: object
+      required: [schema_version, fields]
+      properties:
+        schema_version: { type: integer }
+        value_schema_dialect: { type: string }
+        defaults_scope: { type: string }
+        validation_scope: { type: string }
+        path_notation: { type: string }
+        config_patch: { type: object, additionalProperties: true }
+        fields: { type: array, items: { $ref: "#/components/schemas/TelemtConfigSchemaField" } }
+
+    TelemtConfigState:
+      type: object
+      additionalProperties: true
+      required: [revision, runtime, desired_revision, desired_status, comparison]
+      properties:
+        revision: { type: [string, "null"] }
+        scope: { type: string }
+        sections: { type: array, items: { type: string } }
+        runtime: { $ref: "#/components/schemas/TelemtRuntimeBaseline" }
+        runtime_sample_current: { type: boolean }
+        desired_revision: { type: [string, "null"] }
+        desired_status: { type: string }
+        desired_error: { oneOf: [{ $ref: "#/components/schemas/TelemtFieldIssue" }, { type: "null" }] }
+        desired: {}
+        effective: {}
+        projection_error: { oneOf: [{ $ref: "#/components/schemas/TelemtFieldIssue" }, { type: "null" }] }
+        comparison:
+          type: object
+          additionalProperties: true
+          properties:
+            scope: { type: string }
+            status: { type: string }
+            pending_paths: { type: array, items: { type: string } }
+            watcher_pending_paths: { type: array, items: { type: string } }
+            generation_pending_paths: { type: array, items: { type: string } }
+            process_deferred_paths: { type: array, items: { type: string } }
+            deferred_process_fields: { type: array, items: { type: string } }
+            runtime_derived_paths: { type: array, items: { type: string } }
+            truncated: { type: boolean }
+        watcher: {}
+        watcher_matches_desired: { type: [boolean, "null"] }
+        reload: {}
+        reload_observation: { type: string }
+        reload_matches_desired: { type: [boolean, "null"] }
+        subsystem_convergence: { type: string }
+
+    TelemtConfigNormalization:
+      type: object
+      additionalProperties: true
+      required: [path, code]
+      properties:
+        path: { type: string }
+        code: { type: string }
+
+    TelemtConfigApplyImpact:
+      type: object
+      required: [watcher_paths, generation_paths, process_restart_paths, runtime_reload_required, process_restart_required, deferred_process_fields]
+      properties:
+        watcher_paths: { type: array, items: { type: string } }
+        generation_paths: { type: array, items: { type: string } }
+        process_restart_paths: { type: array, items: { type: string } }
+        restart_required: { type: boolean }
+        runtime_reload_required: { type: boolean }
+        process_restart_required: { type: boolean }
+        deferred_process_fields: { type: array, items: { type: string } }
+
+    TelemtConfigValidation:
+      type: object
+      required: [valid, base_revision, candidate_revision, runtime, changed_paths, normalization_effects, apply, touched_sections, warnings]
+      properties:
+        revision: { type: string, description: Source revision from the upstream envelope. }
+        valid: { type: boolean }
+        base_revision: { type: string }
+        candidate_revision: { type: string }
+        runtime: { $ref: "#/components/schemas/TelemtRuntimeBaseline" }
+        changed_paths: { type: array, items: { type: string } }
+        normalization_effects: { type: array, items: { $ref: "#/components/schemas/TelemtConfigNormalization" } }
+        apply: { $ref: "#/components/schemas/TelemtConfigApplyImpact" }
+        source_ownership: { type: string }
+        touched_sections: { type: array, items: { type: string } }
+        reload: { oneOf: [{ $ref: "#/components/schemas/ReloadRequest" }, { type: "null" }] }
+        warnings: { type: array, items: { $ref: "#/components/schemas/TelemtFieldIssue" } }
+
+    TelemtCIDRRateLimit:
+      type: object
+      additionalProperties: false
+      properties:
+        up_bps: { type: integer, minimum: 0, description: Full unsigned 64-bit bit-per-second limit. }
+        down_bps: { type: integer, minimum: 0, description: Full unsigned 64-bit bit-per-second limit. }
+
+    TelemtAccessPolicy:
+      type: object
+      required: [user_max_tcp_conns_global_each, user_max_unique_ips_global_each, user_max_unique_ips_mode, user_max_unique_ips_window_secs, cidr_rate_limits]
+      properties:
+        user_max_tcp_conns_global_each: { type: integer, minimum: 0 }
+        user_max_unique_ips_global_each: { type: integer, minimum: 0 }
+        user_max_unique_ips_mode: { type: string, enum: [active_window, time_window, combined] }
+        user_max_unique_ips_window_secs: { type: integer, minimum: 0 }
+        cidr_rate_limits:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/TelemtCIDRRateLimit" }
+
+    TelemtAccessPolicyPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: >
+        Absent fields are unchanged; null scalar fields restore defaults. CIDR maps merge
+        individual keys, key:null removes one entry, and cidr_rate_limits:null clears all.
+        An empty CIDR object does not clear or replace the existing map. Unsigned integer
+        literals are forwarded without conversion to floating point.
+      properties:
+        user_max_tcp_conns_global_each: { type: [integer, "null"], minimum: 0 }
+        user_max_unique_ips_global_each: { type: [integer, "null"], minimum: 0 }
+        user_max_unique_ips_mode: { type: [string, "null"] }
+        user_max_unique_ips_window_secs: { type: [integer, "null"], minimum: 0 }
+        cidr_rate_limits:
+          type: [object, "null"]
+          additionalProperties:
+            oneOf: [{ $ref: "#/components/schemas/TelemtCIDRRateLimit" }, { type: "null" }]
+
+    TelemtAccessPolicyState:
+      type: object
+      required: [revision, desired, effective, runtime, published_match, effective_scope, subsystem_convergence, apply_mode]
+      properties:
+        revision: { type: string }
+        desired: { $ref: "#/components/schemas/TelemtAccessPolicy" }
+        effective: { $ref: "#/components/schemas/TelemtAccessPolicy" }
+        runtime: { $ref: "#/components/schemas/TelemtRuntimeBaseline" }
+        published_match: { type: boolean }
+        effective_scope: { type: string }
+        subsystem_convergence: { type: string }
+        apply_mode: { type: string }
+        changed_paths: { type: array, items: { type: string } }
+
+    ReloadRequest:
+      type: object
+      properties:
+        mode: { type: string, enum: [instant, drain] }
+        timeout_secs: { type: integer, minimum: 1, maximum: 3600 }
+        failure_policy: { type: string, enum: [keep_new, rollback] }
 
     TelemtInfo:
       type: object
@@ -2524,6 +2950,14 @@ components:
             config_api: { type: boolean }
             user_enable_disable: { type: boolean }
             rotate_secret: { type: boolean }
+            optional_metadata_unavailable: { type: boolean, description: Optional discovery or schema could not be confirmed; false feature flags are not definitive absence while true. }
+            config_schema: { type: boolean }
+            config_state: { type: boolean }
+            config_validation: { type: boolean }
+            access_policy: { type: boolean }
+            user_source_deny: { type: boolean }
+            read_only: { type: boolean }
+
         hint:
           type: string
           description: Actionable diagnostic (e.g. "check [server.api].whitelist — connection dropped").
@@ -2613,6 +3047,7 @@ components:
       properties:
         revision: { type: string }
         enabled: { type: boolean }
+        mtproto_listener: { type: string, enum: [configured, absent, unknown], description: Whether the source configuration has an MTProto listener. Unknown preserves older or unavailable configuration behavior. }
         vhosts: { type: array, items: { $ref: "#/components/schemas/WebAccessVhost" } }
 
     WebUserAccessProfile:
@@ -2857,6 +3292,8 @@ components:
       type: object
       required: [revision, patch, patch_json, changed_paths, materialized_sections, array_replacements]
       properties:
+        validation: { $ref: "#/components/schemas/TelemtConfigValidation" }
+        runtime_match: { type: string }
         revision: { type: string }
         patch:
           type: object
@@ -2875,6 +3312,8 @@ components:
       properties:
         revision: { type: string }
         changed: { type: array, items: { type: string } }
+        changed_paths: { type: array, items: { type: string } }
+        normalization_effects: { type: array, items: { $ref: "#/components/schemas/TelemtConfigNormalization" } }
         restart_required: { type: boolean, description: Legacy field, still sent by current Telemt builds. }
         runtime_reload_required: { type: boolean }
         process_restart_required: { type: boolean }
@@ -2954,6 +3393,7 @@ components:
         service: { type: string }
         manager: { type: string }
         status: { type: string, enum: [running, stopped, unknown] }
+        native_state: { type: string, enum: [active, inactive, failed, activating, deactivating, reloading, unknown], description: Native state when available from the service manager. }
         status_supported: { type: boolean }
         status_error: { type: string, enum: [service_status_unavailable] }
         binding_conflict: { type: boolean, description: The configured start/stop target collides with the panel binding. }

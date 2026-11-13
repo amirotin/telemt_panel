@@ -2,7 +2,7 @@
 // releases (releases.go), semver comparison (semver.go), libc/arch variant
 // detection (variant.go), asset matching (assets.go), and — in this file
 // plus targets.go/download.go/auto.go/startup.go — the state machine that
-// downloads, verifies, installs and health-gates Telemt and panel-self
+// downloads, stages, installs and health-gates Telemt and panel-self
 // updates. Panel updates are confirmed by the replacement process after readiness.
 package update
 
@@ -32,11 +32,12 @@ const (
 	TargetPanel  = "panel"
 )
 
-// Update run phases, in the order the state machine moves through them.
+// Update run phases, including legacy values accepted in persisted journals.
 // Mirrors openapi.yaml UpdateRun.phase exactly.
 const (
 	PhaseChecking    = "checking"
 	PhaseDownloading = "downloading"
+	// PhaseVerifying remains readable for runs recorded by older versions.
 	PhaseVerifying   = "verifying"
 	PhaseStaging     = "staging"
 	PhaseInstalling  = "installing"
@@ -670,7 +671,7 @@ func stageBinaryBackup(sourcePath, destinationPath string) (retErr error) {
 	return nil
 }
 
-// runPhases drives one run through verification, publication and health checking.
+// runPhases drives one run through download, staging, installation and health checking.
 func (e *Engine) runPhases(ctx context.Context, targetName string, target Target, version string) error {
 	rc := &runCtx{RunID: e.newRunID(), Target: targetName, VersionTo: version, StartedAt: e.now()}
 	if cv, err := target.CurrentVersion(ctx); err == nil {
@@ -712,7 +713,6 @@ func (e *Engine) runPhases(ctx context.Context, targetName string, target Target
 	if err := e.download(ctx, bin.BrowserDownloadURL, tarPath); err != nil {
 		return e.fail(rc, PhaseDownloading, err.Error())
 	}
-	e.transition(rc, PhaseVerifying, "")
 
 	e.transition(rc, PhaseStaging, "")
 	binPath, err := extractSingleBinary(tarPath, runDir)

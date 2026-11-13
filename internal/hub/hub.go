@@ -63,11 +63,6 @@ const (
 	// the panel's payload size fixed even if Telemt's own default moves.
 	recentEventsLimit = 50
 
-	// sourceErrorCode is the SSE source_error event's code for any fetch
-	// failure; the panel does not currently need finer-grained
-	// classification of the underlying Telemt error.
-	sourceErrorCode = "telemt_unreachable"
-
 	// History metric names (store.RecordMetric/MetricRange series keys).
 	metricConnections = "connections"
 	metricActiveUsers = "active_users"
@@ -228,6 +223,7 @@ type topicState struct {
 	// a mutation-triggered refresh that arrived while the full fetch ran.
 	pokePending bool
 	lastData    json.RawMessage
+	lastError   telemt.ErrorDiagnostic
 	lastKey     json.RawMessage
 	lastEvent   Event
 	// lastObservedAt tracks successful full polls and minimal users gauge
@@ -1356,6 +1352,7 @@ func (h *Hub) recordFetchSuccess(t *topicState, data json.RawMessage, gauges *us
 	t.fullFresh = true
 	t.fullPending = false
 	t.fullVersion++
+	t.lastError = telemt.ErrorDiagnostic{}
 	if gauges != nil {
 		t.usersGauges = *gauges
 		t.usersGaugesOK = true
@@ -1508,16 +1505,18 @@ func stripVolatileTimestamps(v any, keys map[string]struct{}) {
 }
 
 func (h *Hub) recordFetchError(t *topicState, err error) {
+	diagnostic := telemt.DiagnoseError(err)
 	slog.Warn("hub: poll failed", "topic", t.name, "err", err)
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	t.lastObservedAt = time.Time{}
 	t.fullFresh = false
+	t.lastError = diagnostic
 	if t.name == "users" {
 		t.usersGaugesOK = false
 	}
-	ev := Event{Seq: h.nextSeqLocked(), Topic: t.name, Err: sourceErrorCode, TS: time.Now().Unix()}
+	ev := Event{Seq: h.nextSeqLocked(), Topic: t.name, Err: diagnostic.Code, TS: time.Now().Unix()}
 	h.appendRingLocked(ev)
 	h.broadcastLocked(ev)
 	// The last good snapshot (t.lastData) is left untouched: a stale value
@@ -1712,6 +1711,18 @@ func (h *Hub) Snapshot(ctx context.Context, topics []string) (map[string]json.Ra
 		h.mu.Unlock()
 	}
 	return out, nil
+}
+
+// SnapshotDiagnostic returns a recent failure for a requested topic without data.
+func (h *Hub) SnapshotDiagnostic(topics []string) telemt.ErrorDiagnostic {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, name := range topics {
+		if topic := h.topics[name]; topic != nil && !topic.hasData && topic.lastError.Code != "" {
+			return topic.lastError
+		}
+	}
+	return telemt.ErrorDiagnostic{}
 }
 
 // PublishUpdate pushes a new snapshot into the event-driven "update" topic

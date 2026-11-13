@@ -11,7 +11,6 @@ import type { UpdateRun } from "../../lib/api/generated/types.gen";
 const HAPPY_PATH: UpdatePhase[] = [
   "checking",
   "downloading",
-  "verifying",
   "staging",
   "installing",
   "restarting",
@@ -28,6 +27,12 @@ describe("updatePhaseStep", () => {
       expect(step.totalSteps).toBe(HAPPY_PATH.length);
     },
   );
+
+  it("maps persisted verifying entries to package staging without adding a step", () => {
+    expect(updatePhaseStep("verifying")).toEqual({
+      stepIndex: 2, totalSteps: 7, terminal: false, outcome: null,
+    });
+  });
 
   it("marks done as a terminal success", () => {
     const step = updatePhaseStep("done");
