@@ -219,3 +219,15 @@ func TestFormatBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderPageExpiryNormalizesOffsetToUTC(t *testing.T) {
+	u := fixtureUser()
+	u.ExpirationRFC3339 = "2026-12-01T01:30:00+03:00"
+	var buf bytes.Buffer
+	if err := RenderPage(&buf, u, nil, "en", time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "2026-11-30 22:30 UTC") {
+		t.Error("expected expiry in UTC, got page without 2026-11-30 22:30 UTC")
+	}
+}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { withBasePath } from "../../lib/base-path";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getTelemtServiceOptions,
@@ -56,7 +57,13 @@ export function TelemtServiceControl() {
   const labels = { start: t.start, stop: t.stop, restart: t.restart },
     confirm = { start: t.confirmStart, stop: t.confirmStop, restart: t.confirmRestart },
     notes = { start: t.startNote, stop: t.stopNote, restart: t.restartNote };
-  const blocked = mutation.isPending || query.isFetching || stale || !!data?.busy;
+  const nativeState = stale ? undefined : data?.native_state;
+  const stateLabel = nativeState === "failed" ? t.failed
+    : nativeState === "activating" ? t.activating
+    : nativeState === "deactivating" ? t.deactivating
+    : nativeState === "reloading" ? t.reloading
+    : status === "running" ? t.running : status === "stopped" ? t.stopped : t.unknown;
+  const blocked = mutation.isPending || query.isPending || stale || !!data?.busy;
   const allowed = action && !!data?.caps[action];
   const managerLabel = data?.manager === "custom" ? t.customManager : (data?.manager ?? "—");
   return (
@@ -68,8 +75,8 @@ export function TelemtServiceControl() {
             {t.host} · {managerLabel} · <code>{data?.service || t.notConfigured}</code>
           </p>
         </div>
-        <StatePill state={status === "running" ? "ok" : "muted"}>
-          {status === "running" ? t.running : status === "stopped" ? t.stopped : t.unknown}
+        <StatePill state={nativeState === "failed" ? "error" : status === "running" ? "ok" : "muted"}>
+          {stateLabel}
         </StatePill>
       </header>
       {query.isPending ? (
@@ -77,7 +84,12 @@ export function TelemtServiceControl() {
       ) : (
         <>
           <p className="mt-3 text-meta leading-relaxed text-text-muted">{t.separate}</p>
-          {status === "unknown" && (
+          {nativeState === "failed" && (
+            <a href={withBasePath("/journal")} className="mt-3 inline-flex min-h-11 items-center text-meta text-accent">
+              {t.logs}
+            </a>
+          )}
+          {status === "unknown" && !["activating", "deactivating", "reloading"].includes(nativeState ?? "") && (
             <p className="mt-3 rounded-lg border border-border bg-surface-2 p-3 text-meta leading-relaxed text-text-muted">
               {t.unknownNote}
             </p>

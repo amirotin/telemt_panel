@@ -12,16 +12,18 @@ const MODES: readonly ReloadMode[] = ["none", "instant", "drain"];
 export function ReloadPolicyPicker({
   value,
   onChange,
+  modes = MODES,
 }: {
   value: ReloadPolicyState;
   onChange: (next: ReloadPolicyState) => void;
+  modes?: readonly ReloadMode[];
 }) {
   const s = useStrings();
   return (
     <div className="flex flex-col gap-1.5 lg:gap-2">
       <SectionLabel className="hidden lg:block">{s.server.config.reloadPolicy.label}</SectionLabel>
       <div className="flex flex-wrap items-center gap-1">
-        {MODES.map((mode) => (
+        {modes.map((mode) => (
           <Chip
             key={mode}
             active={value.mode === mode}

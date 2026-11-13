@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   datetimeLocalValueToISO,
   expirationDateToISO,
+  expirationISOToDate,
+  formatExpirationUTC,
   formatDurationApprox,
   isoToDatetimeLocalValue,
   presetToExpiration,
@@ -88,5 +90,34 @@ describe("formatDurationApprox", () => {
   });
   it("treats a negative duration as zero", () => {
     expect(formatDurationApprox(-1000, s)).toBe("1 мин.");
+  });
+});
+
+describe("UTC expiry dates", () => {
+  it.each([
+    ["2026-12-01T01:30:00+03:00", "2026-11-30"],
+    ["2026-12-31T23:30:00-03:00", "2027-01-01"],
+    ["2028-02-29T23:59:59Z", "2028-02-29"],
+    ["not-a-date", ""], ["", ""],
+  ])("normalizes %s to UTC date %s", (value, expected) => {
+    expect(expirationISOToDate(value)).toBe(expected);
+  });
+
+  it.each([
+    ["2026-11-30T23:59:59Z", "2026-11-01T00:00:00Z", "30.11"],
+    ["2027-01-01T00:30:00Z", "2026-12-31T23:00:00Z", "01.01.2027"],
+    ["2026-12-01T01:30:00+03:00", "2026-11-01T00:00:00Z", "30.11"],
+    ["2028-02-29T23:59:59Z", "2028-01-01T00:00:00Z", "29.02"],
+    ["not-a-date", "2026-01-01T00:00:00Z", ""],
+  ])("formats %s using the UTC year and day", (value, now, expected) => {
+    expect(formatExpirationUTC(value, "ru-RU", new Date(now))).toBe(expected);
+  });
+
+  it("keeps presets as exact durations across UTC midnight", () => {
+    const now = new Date("2026-12-31T23:59:59Z");
+    expect(presetToExpiration("7d", now)).toBe("2027-01-07T23:59:59.000Z");
+    expect(presetToExpiration("30d", now)).toBe("2027-01-30T23:59:59.000Z");
+    expect(expirationDateToISO("2028-02-29")).toBe("2028-02-29T23:59:59.000Z");
+    expect(expirationDateToISO("2026-02-29")).toBeNull();
   });
 });
