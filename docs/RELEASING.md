@@ -157,3 +157,16 @@ gh workflow run container.yml --ref v1.0.0-rc.4 -f release_tag=v1.0.0-rc.4
 
 Перед объявлением готовности Docker дождитесь успешных smoke tests обеих
 архитектур и проверьте manifest `ghcr.io/amirotin/telemt_panel:1.0.0-rc.4`.
+
+Если обе платформенные версии уже опубликованы, а общий manifest отсутствует,
+workflow можно запустить из актуального `main` с `reuse_existing=true`:
+
+```sh
+gh workflow run container.yml --ref main -f release_tag=v1.0.0-rc.4 -f reuse_existing=true
+```
+
+Workflow берёт исходники и бинарники выбранного release-тега. В режиме
+восстановления он проверяет версии, архитектуры, nonroot-профиль и обе revision
+метки существующих образов, фиксирует registry digests и повторяет smoke tests.
+Платформенные теги не перезаписываются; публикация добавляет только отсутствующий
+общий manifest. Существующий общий версионный тег по-прежнему отклоняется.

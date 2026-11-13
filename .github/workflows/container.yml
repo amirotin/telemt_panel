@@ -7,6 +7,10 @@ on:
         description: Published prerelease tag to package (no latest tag is changed)
         required: true
         type: string
+      reuse_existing:
+        description: Verify and reuse both published platform images after a partial publication
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,6 +29,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
@@ -35,8 +41,10 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^v1\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]] || { echo 'Use an explicit v1 prerelease tag'; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '(.prerelease == true) and (.draft == false)' | grep -qx true
           git fetch --depth=1 origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          release_revision="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          test "$(git rev-parse HEAD)" = "$release_revision" || { echo 'Checkout does not match the release tag'; exit 1; }
           {
-            echo "BINARY_REVISION=$(git rev-parse "$RELEASE_TAG^{commit}")"
+            echo "BINARY_REVISION=$release_revision"
             echo "VERSION=${RELEASE_TAG#v}"
             echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}"
           } >> "$GITHUB_ENV"
@@ -60,16 +68,59 @@ jobs:
           PY
           done
 
+      - name: Resolve existing platform images
+        if: ${{ inputs.reuse_existing }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          repo = os.environ['GITHUB_REPOSITORY'].lower()
+          image = os.environ['IMAGE']
+          version = os.environ['VERSION']
+          revision = os.environ['BINARY_REVISION']
+          with urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:'+repo+':pull', timeout=20) as response:
+              token = json.load(response)['token']
+          def read(path):
+              req = urllib.request.Request('https://ghcr.io/v2/'+repo+'/'+path, headers={
+                  'Authorization': 'Bearer '+token,
+                  'Accept': 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  return json.load(response), response.headers.get('Docker-Content-Digest', '')
+          refs = {}
+          for arch in ('amd64', 'arm64'):
+              manifest, digest = read('manifests/'+version+'-'+arch)
+              assert re.fullmatch(r'sha256:[0-9a-f]{64}', digest), 'invalid platform digest'
+              config, _ = read('blobs/'+manifest['config']['digest'])
+              assert config['os'] == 'linux' and config['architecture'] == arch, 'platform mismatch'
+              labels = config['config'].get('Labels', {})
+              assert labels.get('org.opencontainers.image.version') == version, 'version mismatch'
+              assert labels.get('org.opencontainers.image.revision') == revision, 'source revision mismatch'
+              assert labels.get('io.telemt-panel.binary-revision') == revision, 'binary revision mismatch'
+              assert config['config'].get('User') == '65532:65532', 'nonroot profile required'
+              refs[arch] = image+'@'+digest
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              for arch, ref in refs.items():
+                  output.write('EXISTING_'+arch.upper()+'_REF='+ref+'\n')
+                  print('Verified existing '+arch+': '+ref)
+          PY
+
       - name: Build and test both architectures before publishing
+        env:
+          REUSE_EXISTING: ${{ inputs.reuse_existing }}
         shell: bash
         run: |
           set -euo pipefail
           TELEMT_PANEL_IMAGE="$IMAGE:$VERSION" docker compose config --quiet
           for arch in amd64 arm64; do
-            docker buildx build --platform "linux/$arch" --load --provenance=false \
-              --build-arg "VERSION=$VERSION" --build-arg "SOURCE_REVISION=$GITHUB_SHA" \
-              --build-arg "BINARY_REVISION=$BINARY_REVISION" \
-              --tag "telemt-panel-container-test:$arch" .
+            if [ "$REUSE_EXISTING" = true ]; then
+              ref_name="EXISTING_${arch^^}_REF"
+              docker pull --platform "linux/$arch" "${!ref_name}"
+              docker tag "${!ref_name}" "telemt-panel-container-test:$arch"
+            else
+              docker buildx build --platform "linux/$arch" --load --provenance=false \
+                --build-arg "VERSION=$VERSION" --build-arg "SOURCE_REVISION=$BINARY_REVISION" \
+                --build-arg "BINARY_REVISION=$BINARY_REVISION" \
+                --tag "telemt-panel-container-test:$arch" .
+            fi
             python3 scripts/container-smoke.py --image "telemt-panel-container-test:$arch" --platform "linux/$arch" --version "$VERSION"
           done
 
@@ -98,17 +149,24 @@ jobs:
           password: ${{ github.token }}
 
       - name: Publish immutable prerelease and platform manifest
+        env:
+          REUSE_EXISTING: ${{ inputs.reuse_existing }}
         shell: bash
         run: |
           set -euo pipefail
-          digests=()
+          sources=()
           for arch in amd64 arm64; do
-            tag="$IMAGE:$VERSION-$arch"
-            docker tag "telemt-panel-container-test:$arch" "$tag"
-            docker push "$tag"
-            digests+=("$(docker image inspect "$tag" --format '{{index .RepoDigests 0}}')")
+            if [ "$REUSE_EXISTING" = true ]; then
+              ref_name="EXISTING_${arch^^}_REF"
+              sources+=("${!ref_name}")
+            else
+              tag="$IMAGE:$VERSION-$arch"
+              docker tag "telemt-panel-container-test:$arch" "$tag"
+              docker push "$tag"
+              sources+=("$tag")
+            fi
           done
-          docker buildx imagetools create --tag "$IMAGE:$VERSION" "${digests[@]}"
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" "${sources[@]}"
           docker buildx imagetools inspect "$IMAGE:$VERSION" --raw | \
             jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
           echo "Published $IMAGE:$VERSION (latest unchanged)" >> "$GITHUB_STEP_SUMMARY"
