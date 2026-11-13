@@ -13,7 +13,7 @@ import (
 // usage string to the actual map keys, so the two can't drift apart.
 func TestScenariosCoverTheDocumentedFlagValues(t *testing.T) {
 	want := []string{
-		"full", "old-build", "edge-off", "edge-gated",
+		"full", "native-config", "old-build", "edge-off", "edge-gated",
 		"me-pool-down", "upstream-source-down", "read-only", "web-off", "web-busy",
 	}
 	if len(scenarios) != len(want) {

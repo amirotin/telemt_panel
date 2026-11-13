@@ -93,12 +93,10 @@ func newLogLine(line, service string) LogLine {
 // that happens entirely between two ticks (see overlapStillMatches).
 const tailOverlapBytes = 256
 
-// followFileEvents polls path for growth every pollInterval, emitting each new
-// complete line as it appears; Stream only delivers new lines going
-// forward (Tail already covers history), so it starts from the file's
-// current end — captured synchronously here, before the polling goroutine
-// starts, so a write landing right after the caller gets the channel back
-// is never missed nor double-delivered (either race is possible if this
+// File followers emit each complete line as it appears. The initial end
+// and optional bounded history start are captured synchronously before the
+// polling goroutine starts, so a write landing right after the caller gets
+// the channel back is never missed nor double-delivered (either race is possible if this
 // snapshot were taken inside the goroutine instead, since its first tick
 // isn't ordered against the caller's next write). Rotation (the file is
 // replaced — different inode, e.g. rotate then create), plain truncation
@@ -134,8 +132,12 @@ func openLogFile(path string) (*os.File, error) {
 }
 
 func followFileEvents(ctx context.Context, path string, pollInterval time.Duration) (<-chan fileFollowEvent, error) {
+	return followFileEventsWithHistory(ctx, path, pollInterval, 0)
+}
+
+func followFileEventsWithHistory(ctx context.Context, path string, pollInterval time.Duration, historyLines int) (<-chan fileFollowEvent, error) {
 	ticker := time.NewTicker(pollInterval)
-	return followFileEventTicks(ctx, path, ticker.C, ticker.Stop)
+	return followFileEventTicksWithHistory(ctx, path, ticker.C, ticker.Stop, historyLines)
 }
 
 // followFileEventTicks is followFileEvents' implementation, parameterized on the
@@ -143,6 +145,10 @@ func followFileEvents(ctx context.Context, path string, pollInterval time.Durati
 // value on tickCh to force exactly one poll — instead of racing a real
 // wall-clock ticker.
 func followFileEventTicks(ctx context.Context, path string, tickCh <-chan time.Time, stop func()) (<-chan fileFollowEvent, error) {
+	return followFileEventTicksWithHistory(ctx, path, tickCh, stop, 0)
+}
+
+func followFileEventTicksWithHistory(ctx context.Context, path string, tickCh <-chan time.Time, stop func(), historyLines int) (<-chan fileFollowEvent, error) {
 	var cursor fileFollowCursor
 	var ino uint64
 	var haveIno bool
@@ -158,15 +164,30 @@ func followFileEventTicks(ctx context.Context, path string, tickCh <-chan time.T
 		return nil, newLogSourceError(err, "")
 	}
 	cursor.offset = fi.Size()
+	if historyLines > 0 {
+		cursor.offset, cursor.discardLine, err = fileHistoryOffset(f, fi.Size(), historyLines)
+		if err != nil {
+			f.Close()
+			stop()
+			return nil, newLogSourceError(err, "")
+		}
+	}
 	ino, haveIno = fileIno(fi)
 	cursor.remember(readTailOverlapFromFile(f, cursor.offset))
-	f.Close()
 
 	out := make(chan fileFollowEvent)
 	go func() {
 		defer close(out)
 		defer stop()
 		scratch := make([]byte, followChunkBytes)
+		emit := func(line string) bool {
+			select {
+			case out <- fileFollowEvent{line: line}:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
 		missingTicks := 0
 		fail := func(err error) {
 			if ctx.Err() != nil {
@@ -176,6 +197,15 @@ func followFileEventTicks(ctx context.Context, path string, tickCh <-chan time.T
 			case out <- fileFollowEvent{err: newLogSourceError(err, "")}:
 			case <-ctx.Done():
 			}
+		}
+
+		// History and its pending partial line use the same descriptor and
+		// cursor as the captured end, so concurrent appends are read once.
+		readErr := readNewLines(ctx, f, fi.Size(), &cursor, scratch, emit)
+		f.Close()
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			fail(readErr)
+			return
 		}
 
 		for {
@@ -226,14 +256,7 @@ func followFileEventTicks(ctx context.Context, path string, tickCh <-chan time.T
 			}
 			// A fixed end bounds this poll even if the writer keeps growing.
 			// Partial reads retain their consumed offset for the next poll.
-			readErr := readNewLines(ctx, f, fi.Size(), &cursor, scratch, func(line string) bool {
-				select {
-				case out <- fileFollowEvent{line: line}:
-					return true
-				case <-ctx.Done():
-					return false
-				}
-			})
+			readErr := readNewLines(ctx, f, fi.Size(), &cursor, scratch, emit)
 			f.Close()
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
 				fail(readErr)
@@ -302,17 +325,19 @@ const (
 )
 
 type fileFollowCursor struct {
-	offset     int64
-	partial    []byte
-	truncated  bool
-	overlap    [tailOverlapBytes]byte
-	overlapLen int
+	offset      int64
+	partial     []byte
+	truncated   bool
+	discardLine bool
+	overlap     [tailOverlapBytes]byte
+	overlapLen  int
 }
 
 func (c *fileFollowCursor) reset() {
 	c.offset = 0
 	c.partial = c.partial[:0]
 	c.truncated = false
+	c.discardLine = false
 	c.overlapLen = 0
 }
 
@@ -360,7 +385,10 @@ func readNewLines(ctx context.Context, f io.ReaderAt, end int64, cursor *fileFol
 			if newline >= 0 {
 				length = newline
 			}
-			keep := min(length, maxFollowLineBytes-len(cursor.partial))
+			keep := 0
+			if !cursor.discardLine {
+				keep = min(length, maxFollowLineBytes-len(cursor.partial))
+			}
 			if keep > 0 {
 				if cursor.partial == nil {
 					// A fixed capacity avoids append growth beyond the line cap.
@@ -368,7 +396,7 @@ func readNewLines(ctx context.Context, f io.ReaderAt, end int64, cursor *fileFol
 				}
 				cursor.partial = append(cursor.partial, chunk[:keep]...)
 			}
-			cursor.truncated = cursor.truncated || keep < length
+			cursor.truncated = cursor.truncated || (!cursor.discardLine && keep < length)
 			cursor.offset += int64(length)
 			chunk = chunk[length:]
 			if newline < 0 {
@@ -376,6 +404,10 @@ func readNewLines(ctx context.Context, f io.ReaderAt, end int64, cursor *fileFol
 			}
 			cursor.offset++
 			chunk = chunk[1:]
+			if cursor.discardLine {
+				cursor.discardLine = false
+				continue
+			}
 			prefix := cursor.partial
 			if cursor.truncated {
 				// Trim only an incomplete final UTF-8 rune introduced by the cap.

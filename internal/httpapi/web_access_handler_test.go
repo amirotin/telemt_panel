@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/amirotin/telemt_panel/internal/telemt"
 	"github.com/amirotin/telemt_panel/internal/telemt/telemttest"
 )
 
@@ -161,11 +164,119 @@ func TestHandleGetTelemtWebAccess(t *testing.T) {
 	}
 }
 
+func TestWebAccessReportsAbsentMTProtoListener(t *testing.T) {
+	fake := telemttest.New(telemttest.Scenario{})
+	t.Cleanup(fake.Close)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/v1/config" {
+			writeJSON(w, 200, map[string]any{"ok": true, "revision": "rev-0", "data": map[string]json.RawMessage{"web": json.RawMessage(webAccessFixture), "server": json.RawMessage(`{"listeners":[{"transport":"web","port":18080}]}`)}})
+			return
+		}
+		fake.Handler().ServeHTTP(w, r)
+	}))
+	t.Cleanup(upstream.Close)
+	srv, cookie := newTelemtInfoTestServer(t, telemt.New(upstream.URL, ""))
+	w := doRequest(t, srv, cookie, "GET", "/api/telemt/web-access", nil, nil)
+	var view struct {
+		MTProtoListener string `json:"mtproto_listener"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || view.MTProtoListener != "absent" {
+		t.Fatalf("HTTP %d: %s", w.Code, w.Body)
+	}
+}
+
 func TestHandlePutTelemtUserWebAccessRequiresIfMatch(t *testing.T) {
 	srv, cookie, _ := newTelemttestConfigServer(t, telemttest.Scenario{})
 	w := doRequest(t, srv, cookie, http.MethodPut, "/api/telemt/web-access/users/alice", nil, []byte(`{"profiles":[]}`))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", w.Code, w.Body)
+	}
+}
+
+func TestWebAccessReloadPolicy(t *testing.T) {
+	for _, tt := range []struct {
+		query  string
+		mode   string
+		status int
+		stale  bool
+	}{
+		{"", "instant", 202, false},
+		{"?reload=drain&timeout_secs=30", "drain", 202, false},
+		{"?reload=instant", "instant", 202, false},
+		{"?reload=instant", "instant", 504, false},
+		{"?reload=drain", "", 400, false},
+		{"?reload=drain&timeout_secs=3601", "", 400, false},
+		{"?reload=instant&timeout_secs=30", "", 400, false},
+		{"?reload=instant&reload=drain", "", 400, false},
+		{"?reload=none", "", 400, false},
+		{"?unknown=1", "", 400, false},
+		{"?reload=drain&timeout_secs=30", "", 409, true},
+	} {
+		t.Run(tt.query+tt.mode, func(t *testing.T) {
+			fake := telemttest.New(telemttest.Scenario{})
+			t.Cleanup(fake.Close)
+			patches := make(chan url.Values, 1)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet && r.URL.Path == "/v1/config" {
+					writeJSON(w, 200, map[string]any{"ok": true, "revision": "rev-0", "data": map[string]json.RawMessage{"web": json.RawMessage(webAccessFixture)}})
+					return
+				}
+				if r.Method == http.MethodPatch && r.URL.Path == "/v1/config" {
+					patches <- r.URL.Query()
+					if tt.status == 504 {
+						http.Error(w, "upstream timeout", http.StatusGatewayTimeout)
+						return
+					}
+				}
+				fake.Handler().ServeHTTP(w, r)
+			}))
+			t.Cleanup(upstream.Close)
+			srv, cookie := newTelemtInfoTestServer(t, telemt.New(upstream.URL, ""))
+			get := doRequest(t, srv, cookie, "GET", "/api/telemt/web-access", nil, nil)
+			var view webAccessView
+			if err := json.Unmarshal(get.Body.Bytes(), &view); err != nil || len(view.Vhosts) == 0 {
+				t.Fatalf("fixture: %s %v", get.Body, err)
+			}
+			body, _ := json.Marshal(webUserAccessUpdate{Profiles: []webUserAccessProfile{{Vhost: view.Vhosts[0].Host, SecretMode: "dd"}}})
+			revision := view.Revision
+			if tt.stale {
+				revision = "stale"
+			}
+			w := doRequest(t, srv, cookie, "PUT", "/api/telemt/web-access/users/alice"+tt.query, map[string]string{"If-Match": revision}, body)
+			if w.Code != tt.status {
+				t.Fatalf("HTTP %d want %d: %s", w.Code, tt.status, w.Body)
+			}
+			if tt.status == 504 {
+				var failure struct {
+					Code string `json:"code"`
+				}
+				if json.Unmarshal(w.Body.Bytes(), &failure) != nil || failure.Code != "telemt_config_outcome_unknown" {
+					t.Fatalf("unconfirmed write: %s", w.Body)
+				}
+			}
+			select {
+			case query := <-patches:
+				if tt.mode == "" {
+					t.Fatal("invalid or stale request patched upstream")
+				}
+				if query.Get("reload") != tt.mode {
+					t.Fatalf("reload query: %v", query)
+				}
+				if tt.mode == "drain" && query.Get("timeout_secs") != "30" {
+					t.Fatalf("drain timeout: %v", query)
+				}
+				if tt.mode == "instant" && query.Has("timeout_secs") {
+					t.Fatalf("instant timeout: %v", query)
+				}
+			default:
+				if tt.mode != "" {
+					t.Fatal("missing upstream patch")
+				}
+			}
+		})
 	}
 }
 

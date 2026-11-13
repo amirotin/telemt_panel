@@ -13,6 +13,8 @@ import { Notice } from "../Notice";
 import { useIsDesktop } from "../useIsDesktop";
 import { getTelemtConfigTomlQueryKey } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { TelemtConfigPatchResult, TelemtConfigTomlPreview } from "../../lib/api/generated/types.gen";
+import { resolvePublishedPatchResult, type NativeConfigPublication } from "./configNativeState";
+import { ConfigNormalizationEffects } from "./ConfigNormalizationEffects";
 import { PatchResultNotice } from "./PatchResultNotice";
 import { ReloadPolicyPicker } from "./ReloadPolicyPicker";
 import { TomlConfigEditor } from "./TomlConfigEditor";
@@ -26,7 +28,8 @@ export function TomlSettingsPanel({ canRestartTelemt, onApplied }: {
   return <TomlSettingsView controller={controller} canRestartTelemt={canRestartTelemt} />;
 }
 
-export function TomlSettingsView({ controller, canRestartTelemt }: {
+export function TomlSettingsView({ controller, canRestartTelemt, publication }: {
+  publication?: NativeConfigPublication;
   controller: TomlSettingsController;
   canRestartTelemt: boolean;
 }) {
@@ -35,7 +38,7 @@ export function TomlSettingsView({ controller, canRestartTelemt }: {
   const isDesktop = useIsDesktop();
   const [mobileOpen, setMobileOpen] = useState(false);
   const {
-    query, session, draft, dirty, previewCurrent, changed, result,
+    query, session, draft, dirty, previewCurrent, changed, result, readOnly,
     reloadPolicy, setReloadPolicy, conflict, unknownOutcome,
     previewMutation, patchMutation, reloadMutation, restartMutation,
     updateDraft, validate, save, discard, copyDraft,
@@ -97,15 +100,19 @@ export function TomlSettingsView({ controller, canRestartTelemt }: {
         </div>
       </Sheet>
 
+      {previewMutation.error && <Notice tone="error" title={apiErrorMessage(previewMutation.error, s)}>
+        {previewMutation.error.details?.map((issue, index) => <p key={index} className="break-words text-meta">{issue.path}: {issue.message}</p>)}
+      </Notice>}
+      {readOnly && <p className="text-meta text-warn">{s.server.config.native.readonly}</p>}
       {previewCurrent && <TOMLPreview preview={previewCurrent} />}
 
       {result && !dirty && !session.remote && (
         <PatchResultNotice
-          result={result}
+          result={resolvePublishedPatchResult(result, publication, patchMutation.submittedAt)}
           canRestartTelemt={canRestartTelemt}
           onReloadNow={() => reloadMutation.mutate({ body: { mode: "instant" } })}
           onRestartNow={() => restartMutation.mutate({})}
-          reloadPending={reloadMutation.isPending}
+          reloadPending={reloadMutation.isPending || readOnly}
           restartPending={restartMutation.isPending}
         />
       )}
@@ -119,7 +126,7 @@ export function TomlSettingsView({ controller, canRestartTelemt }: {
           <Button variant="secondary" onClick={validate} disabled={!dirty || previewMutation.isPending || patchMutation.isPending}>
             {previewMutation.isPending ? s.server.config.toml.validating : s.server.config.toml.validate}
           </Button>
-          <Button onClick={save} disabled={!previewCurrent || changed === 0 || patchMutation.isPending}>
+          <Button onClick={save} disabled={!previewCurrent || changed === 0 || patchMutation.isPending || readOnly}>
             {patchMutation.isPending ? s.server.config.saving : s.server.config.toml.saveValidated}
           </Button>
         </div>
@@ -136,6 +143,11 @@ function TOMLPreview({ preview }: { preview: TelemtConfigTomlPreview }) {
         <div><SectionLabel>{s.server.config.toml.previewKicker}</SectionLabel><h3 className="mt-1 text-[14px] font-semibold text-text">{s.server.config.toml.previewTitle}</h3></div>
         <span className="rounded-full bg-accent/10 px-2.5 py-1 text-micro font-bold text-accent">{preview.changed_paths.length}</span>
       </div>
+      {preview.validation && <Notice tone="info" title={s.server.config.native.validated}>
+        {preview.validation.apply.watcher_paths.length > 0 && <p className="text-meta">{s.server.config.native.watcher}</p>}
+        <ConfigNormalizationEffects effects={preview.validation.normalization_effects} />
+        {preview.validation.warnings.map((issue, index) => <p key={index} className="break-words text-meta">{issue.path}: {issue.message}</p>)}
+      </Notice>}
       <div className="grid gap-2 sm:grid-cols-2">
         {preview.changed_paths.map((path) => <code key={path} className="truncate border-b border-border py-2 font-mono text-micro text-text-muted">{path}</code>)}
       </div>

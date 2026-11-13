@@ -12,6 +12,66 @@ function makeClient(overrides: Partial<Parameters<typeof createSSEClient>[0]> = 
 
 let client: SSEClient | null = null;
 
+describe("snapshot failure diagnostics", () => {
+  it("reports a fallback failure before any data arrives", async () => {
+    client = makeClient({ failureThreshold: 0, fetchSnapshot: async () => {
+      throw { code: "telemt_auth_failed", message: "HTTP 401 · unauthorized" };
+    } });
+    client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitError(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users")).toEqual({ data: null, ts: null, stale: true, error: "telemt_auth_failed" });
+  });
+
+  it("retains the last data on a failed refresh and clears the error on recovery", async () => {
+    let failing = true;
+    client = makeClient({ fetchSnapshot: async () => {
+      if (failing) throw { code: "telemt_config_permission_denied" };
+      return { users: { v: "recovered", ts: 20 } };
+    } });
+    client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitData("users", "last good", 10);
+    await client.refreshTopic("users");
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "last good", ts: 10, stale: true, error: "telemt_config_permission_denied" });
+    failing = false;
+    await client.refreshTopic("users");
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "recovered", ts: 20, stale: false, error: null });
+  });
+
+  it("does not replace a newer SSE frame with an older HTTP failure", async () => {
+    let reject!: (reason: unknown) => void;
+    client = makeClient({ fetchSnapshot: () => new Promise((_resolve, fail) => { reject = fail; }) });
+    client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    const pending = client.refreshTopic("users");
+    latestInstance().emitData("users", "fresh", 20);
+    reject({ code: "telemt_api_error" });
+    await pending;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: "fresh", ts: 20, stale: false, error: null });
+  });
+
+  it.each(["reset", "dispose", "retry"] as const)("ignores a rejected snapshot from before %s", async (action) => {
+    let reject!: (reason: unknown) => void;
+    client = makeClient({ fetchSnapshot: () => new Promise((_resolve, fail) => { reject = fail; }) });
+    client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    const pending = client.refreshTopic("users");
+    client[action]();
+    reject({ code: "telemt_api_error" });
+    await pending;
+    expect(client.getTopicSnapshot("users")).toEqual({ data: null, ts: null, stale: false, error: null });
+  });
+
+  it("identifies a browser-to-panel network failure without displaying the raw exception", async () => {
+    client = makeClient({ fetchSnapshot: async () => { throw new Error("UPSTREAM_SECRET"); } });
+    client.subscribeTopic("users");
+    await client.refreshTopic("users");
+    expect(client.getTopicSnapshot("users").error).toBe("network");
+  });
+});
+
 beforeEach(() => {
   vi.useFakeTimers();
   FakeEventSource.reset();

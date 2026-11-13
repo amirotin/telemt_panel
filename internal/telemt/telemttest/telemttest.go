@@ -20,6 +20,8 @@ import (
 // Scenario toggles the fake's behavior to exercise the panel's degraded-mode
 // handling against realistic Telemt build/config variations.
 type Scenario struct {
+	// NativeConfig enables the explicit 3.5.17 configuration browser fixture.
+	NativeConfig bool
 	// Version overrides system/info without changing the legacy fixture default.
 	Version string
 	// OldBuild simulates a Telemt build that predates the quota, reload and
@@ -116,14 +118,17 @@ const defaultGeneratedAtEpochSecs = 5000
 type Server struct {
 	*httptest.Server
 
-	mu           sync.Mutex
-	scenario     Scenario
-	users        map[string]telemt.UserInfo
-	secrets      map[string]string
-	quota        map[string]telemt.QuotaEntry
-	revisionSeq  int
-	nextReloadID uint64
-	reloads      map[uint64]telemt.ReloadStatus
+	mu                    sync.Mutex
+	scenario              Scenario
+	users                 map[string]telemt.UserInfo
+	secrets               map[string]string
+	quota                 map[string]telemt.QuotaEntry
+	nativeConfig          telemt.ConfigSections
+	nativeEffective       telemt.ConfigSections
+	nativeGenerationPaths []string
+	revisionSeq           int
+	nextReloadID          uint64
+	reloads               map[uint64]telemt.ReloadStatus
 
 	webSessions      []telemt.WebSessionRow
 	webOperations    map[string]telemt.WebControlOperationStatus
@@ -141,6 +146,9 @@ func New(scenario Scenario) *Server {
 
 		webSessions:   webSeedSessions(),
 		webOperations: map[string]telemt.WebControlOperationStatus{},
+	}
+	if scenario.NativeConfig {
+		s.nativeGenerationPaths = []string{"access.user_source_deny"}
 	}
 	s.seedDefaultUser()
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
@@ -252,6 +260,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.scenario.NativeConfig && s.handleNativeConfig(w, r) {
+		return
+	}
 	path := r.URL.Path
 	query := r.URL.RawQuery
 

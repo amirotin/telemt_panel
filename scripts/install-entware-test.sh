@@ -1,7 +1,8 @@
 #!/bin/sh
 # Focused Entware installer fixtures. All generated services and processes live
 # below mktemp; this script never touches /opt or host service state.
-# shellcheck disable=SC2034,SC2016,SC2317
+# Stubs are invoked through the sourced installer.
+# shellcheck disable=SC2034,SC2016,SC2317,SC2329
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
