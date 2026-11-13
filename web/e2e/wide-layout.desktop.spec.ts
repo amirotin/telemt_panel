@@ -3,6 +3,14 @@ import { test, expect } from "./fixtures";
 for (const width of [390, 768, 1280, 1920, 2560, 3840]) {
   test(`overview problems and DC grid fit at ${width}px`, async ({ page, login }, testInfo) => {
     await page.setViewportSize({ width, height: 1100 });
+    // This layout matrix controls problems through SSE, with supported optional features.
+    await page.route("**/api/telemt/info", async route => {
+      const info = await (await route.fetch()).json();
+      for (const name of ["config_schema", "config_state", "config_validation", "access_policy", "user_source_deny"]) {
+        info.capabilities[name] = true;
+      }
+      await route.fulfill({ json: info });
+    });
     await login();
     let count = 0;
     await page.route("**/api/events?*", async (route) => {
