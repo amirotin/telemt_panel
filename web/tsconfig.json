@@ -21,9 +21,8 @@
     "noImplicitReturns": true,
     "noPropertyAccessFromIndexSignature": true,
 
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
 
     "types": ["vite/client"]

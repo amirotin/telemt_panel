@@ -15,9 +15,10 @@ import (
 const maxWebAccessBody = 64 << 10
 
 type webAccessView struct {
-	Revision string               `json:"revision"`
-	Enabled  bool                 `json:"enabled"`
-	Vhosts   []webAccessVhostView `json:"vhosts"`
+	MTProtoListener string               `json:"mtproto_listener"`
+	Revision        string               `json:"revision"`
+	Enabled         bool                 `json:"enabled"`
+	Vhosts          []webAccessVhostView `json:"vhosts"`
 }
 
 type webAccessVhostView struct {
@@ -65,6 +66,7 @@ func (s *Server) handleGetTelemtWebAccess(w http.ResponseWriter, r *http.Request
 		auth.WriteError(w, http.StatusBadGateway, "internal_error", "invalid WEB config returned by Telemt")
 		return
 	}
+	view.MTProtoListener = telemt.MTProtoListenerState(sections)
 	writeJSON(w, http.StatusOK, view)
 }
 
@@ -79,6 +81,14 @@ func (s *Server) handlePutTelemtUserWebAccess(w http.ResponseWriter, r *http.Req
 	if revision == "" {
 		auth.WriteError(w, http.StatusBadRequest, "bad_request", "If-Match header is required")
 		return
+	}
+	reload, err := parseTelemtReloadQuery(r.URL.Query())
+	if err != nil {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	if reload.Mode == "" {
+		reload.Mode = telemt.ReloadModeInstant
 	}
 	var req webUserAccessUpdate
 	if err := decodeJSONBody(w, r, &req, jsonBodyOptions{MaxBytes: maxWebAccessBody, RejectUnknown: true}); err != nil {
@@ -116,9 +126,9 @@ func (s *Server) handlePutTelemtUserWebAccess(w http.ResponseWriter, r *http.Req
 		auth.WriteError(w, http.StatusBadGateway, "internal_error", "could not prepare WEB profile update")
 		return
 	}
-	result, status, _, err := s.tc.PatchConfig(ctx, map[string]any{"web": webPatch}, revision, telemt.ReloadQuery{Mode: "instant"})
+	result, status, _, err := s.tc.PatchConfig(ctx, map[string]any{"web": webPatch}, revision, reload)
 	if err != nil {
-		writeTelemtConfigError(w, err)
+		writeTelemtConfigMutationError(w, err)
 		return
 	}
 	s.appendAudit(r, "config.web_access", username, fmt.Sprintf("profiles=%d", len(req.Profiles)))
@@ -183,7 +193,7 @@ func asWebProfileConstraint(err error, target **webProfileConstraintError) bool 
 }
 
 func projectWebAccess(raw json.RawMessage, revision string) (webAccessView, error) {
-	view := webAccessView{Revision: revision, Vhosts: []webAccessVhostView{}}
+	view := webAccessView{Revision: revision, MTProtoListener: "unknown", Vhosts: []webAccessVhostView{}}
 	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return view, nil
 	}

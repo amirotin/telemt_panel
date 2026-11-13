@@ -3,17 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage, useStrings } from "../../i18n";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { acknowledgeSubmitted, discardToRemote, type SubmittedDraft } from "../../lib/draftSession";
+import { invalidateTelemtConfigCaches } from "../../lib/invalidateTelemtConfigCaches";
 import { useDraftSession } from "../../lib/draftSessionReact";
 import { pushToast } from "../../ui/Toast";
 import {
-  getTelemtConfigQueryKey,
   getTelemtConfigTomlOptions,
-  getTelemtConfigTomlQueryKey,
   reloadTelemtMutation,
   restartTelemtServiceMutation,
 } from "../../lib/api/generated/@tanstack/react-query.gen";
 import { patchTelemtConfigToml, previewTelemtConfigToml } from "../../lib/api/generated/sdk.gen";
 import type { TelemtConfigPatchResult, TelemtConfigTomlPreview, PatchTelemtConfigTomlError, PreviewTelemtConfigTomlError } from "../../lib/api/generated/types.gen";
+import { nativePatchResult, validationMatches } from "./configPreflight";
 import { recordPendingChanges } from "./pendingChanges";
 import { DEFAULT_RELOAD_POLICY, toPatchReloadQuery, type ReloadPolicyState } from "./reloadPolicy";
 
@@ -21,7 +21,9 @@ const equalText = (a: string, b: string) => a === b;
 
 // Own the lightweight session above the conditional editor view, so tab
 // changes cannot discard drafts or cancel ownership of an in-flight request.
-export function useTomlSettingsSession({ enabled, onApplied }: {
+export function useTomlSettingsSession({ enabled, onApplied, onReloadAccepted, readOnly = false }: {
+  readOnly?: boolean;
+  onReloadAccepted?: (reloadId: number) => void;
   enabled: boolean;
   onApplied?: (result: TelemtConfigPatchResult) => void | Promise<void>;
 }) {
@@ -32,7 +34,7 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   const { session, update, current } = useDraftSession("telemt-toml", { value: query.data?.toml_projection ?? "", revision: query.data?.revision ?? null }, equalText, writePending || unknownOutcome);
   const draft = session.draft;
-  const [validatedDraft, setValidatedDraft] = useState<SubmittedDraft<string> | null>(null);
+  const [validatedDraft, setValidatedDraft] = useState<(SubmittedDraft<string> & { reloadPolicy: ReloadPolicyState }) | null>(null);
   const [preview, setPreview] = useState<TelemtConfigTomlPreview | null>(null);
   const [result, setResult] = useState<TelemtConfigPatchResult | null>(null);
   const [reloadPolicy, setReloadPolicy] = useState<ReloadPolicyState>(DEFAULT_RELOAD_POLICY);
@@ -43,12 +45,15 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
   useEffect(() => () => { activePreview.current = null; activeSave.current = null; }, []);
 
   const dirty = draft !== session.baseline.value;
-  const previewCurrent = validatedDraft?.value === draft && validatedDraft.revision === session.baseline.revision ? preview : null;
+  const previewCurrent = validatedDraft?.value === draft && validatedDraft.revision === session.baseline.revision && JSON.stringify(validatedDraft.reloadPolicy) === JSON.stringify(reloadPolicy) ? preview : null;
   const changed = previewCurrent?.changed_paths.length ?? 0;
 
   const previewMutation = useMutation({
-    mutationFn: async (submitted: SubmittedDraft<string>) => {
-      const { data } = await previewTelemtConfigToml({ headers: { "If-Match": submitted.revision! }, body: { toml_projection: submitted.value }, throwOnError: true });
+    mutationFn: async (submitted: SubmittedDraft<string> & { reloadPolicy: ReloadPolicyState }) => {
+      const { data } = await previewTelemtConfigToml({ headers: { "If-Match": submitted.revision! }, body: { toml_projection: submitted.value }, query: toPatchReloadQuery(submitted.reloadPolicy), throwOnError: true });
+      if (!data || data.revision !== submitted.revision || !Array.isArray(data.changed_paths)) throw { code: "telemt_api_error" };
+      const validation = data.validation;
+      if (validation && (!validationMatches(validation, submitted.revision!) || data.runtime_match !== validation.runtime.runtime_match)) throw { code: "telemt_api_error" };
       return data;
     },
     onSuccess: (next, submitted) => {
@@ -76,23 +81,23 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
 
   const patchMutation = useMutation({
     retry: false,
-    mutationFn: async (submitted: SubmittedDraft<string> & { reloadPolicy: ReloadPolicyState }) => {
-      const { data } = await patchTelemtConfigToml({ headers: { "If-Match": submitted.revision! }, query: toPatchReloadQuery(submitted.reloadPolicy), body: { toml_projection: submitted.value }, throwOnError: true });
+    mutationFn: async (submitted: SubmittedDraft<string> & { reloadPolicy: ReloadPolicyState; runtimeMatch?: string; validation?: TelemtConfigTomlPreview["validation"] }) => {
+      const { data } = await patchTelemtConfigToml({ headers: { "If-Match": submitted.revision!, ...(submitted.runtimeMatch ? { "If-Runtime-Match": submitted.runtimeMatch } : {}) }, query: toPatchReloadQuery(submitted.reloadPolicy), body: { toml_projection: submitted.value }, throwOnError: true });
       return data;
     },
-    onSuccess: async (next, submitted) => {
+    onSuccess: async (rawNext, submitted) => {
+      const next = nativePatchResult(rawNext, submitted.validation);
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
       activeSave.current = null;
       setWritePending(false);
       const confirmed = update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: next.revision }, equalText));
-      recordPendingChanges(next);
+      recordPendingChanges(rawNext);
       setResult(confirmed.draft === confirmed.baseline.value && !confirmed.remote ? next : null);
       setPreview(null);
       setValidatedDraft(null);
       setConflict(false);
       setUnknownOutcome(false);
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigTomlQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getTelemtConfigQueryKey() });
+      void invalidateTelemtConfigCaches(queryClient);
       await onApplied?.(next);
     },
     onError: (error: PatchTelemtConfigTomlError, submitted) => {
@@ -100,6 +105,8 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
       activeSave.current = null;
       setWritePending(false);
       const code = apiErrorCode(error) ?? "telemt_config_outcome_unknown";
+      setPreview(null);
+      setValidatedDraft(null);
       if (code === "telemt_config_outcome_unknown") {
         setUnknownOutcome(true);
         setPreview(null);
@@ -115,13 +122,13 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
         setConflict(dirty);
         void query.refetch();
       }
-      pushToast(errorMessage(s, code), "error");
+      pushToast(errorMessage(s, code, error?.message), "error");
     },
   });
 
   const reloadMutation = useMutation({
     ...reloadTelemtMutation(),
-    onSuccess: () => pushToast(s.server.config.toml.reloadAccepted, "ok"),
+    onSuccess: (accepted) => { onReloadAccepted?.(accepted.reload_id); pushToast(s.server.config.toml.reloadAccepted, "ok"); },
     onError: (error) => pushToast(apiErrorMessage(error, s), "error"),
   });
   const restartMutation = useMutation({
@@ -140,14 +147,14 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
 
   function validate() {
     if (!session.baseline.revision || activePreview.current !== null || activeSave.current !== null) return;
-    const submitted = { sessionKey: session.sessionKey, value: draft, revision: session.baseline.revision, requestId: ++requestSequence.current };
+    const submitted = { sessionKey: session.sessionKey, value: draft, revision: session.baseline.revision, requestId: ++requestSequence.current, reloadPolicy: { ...reloadPolicy } };
     activePreview.current = submitted.requestId;
     previewMutation.mutate(submitted);
   }
 
   function save() {
-    if (!previewCurrent || changed === 0 || activeSave.current !== null) return;
-    const submitted = { sessionKey: session.sessionKey, value: draft, revision: session.baseline.revision, requestId: ++requestSequence.current, reloadPolicy: { ...reloadPolicy } };
+    if (!previewCurrent || changed === 0 || activeSave.current !== null || readOnly) return;
+    const submitted = { sessionKey: session.sessionKey, value: draft, revision: session.baseline.revision, requestId: ++requestSequence.current, reloadPolicy: { ...reloadPolicy }, runtimeMatch: previewCurrent.runtime_match, validation: previewCurrent.validation };
     activeSave.current = submitted.requestId;
     setWritePending(true);
     patchMutation.mutate(submitted);
@@ -168,7 +175,7 @@ export function useTomlSettingsSession({ enabled, onApplied }: {
   }
 
   return {
-    query, session, draft, dirty, previewCurrent, changed, result,
+    query, session, draft, dirty, previewCurrent, changed, result, readOnly,
     reloadPolicy, setReloadPolicy, conflict, unknownOutcome,
     previewMutation, patchMutation, reloadMutation, restartMutation,
     updateDraft, validate, save, discard, copyDraft,

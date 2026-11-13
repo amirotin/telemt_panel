@@ -20,6 +20,8 @@ export interface JournalState {
   paused: boolean;
   /** Lines received while paused, also capped at LOG_RING_CAP, oldest-first. */
   pending: RingLine[];
+  /** A replacement file snapshot is buffered without moving paused rows. */
+  pendingSnapshot: boolean;
   nextId: number;
 }
 
@@ -27,10 +29,11 @@ export type JournalAction =
   | { type: "line"; line: LogLine }
   | { type: "pause" }
   | { type: "resume" }
+  | { type: "reset" }
   | { type: "clear" };
 
 export function createJournalState(): JournalState {
-  return { lines: [], paused: false, pending: [], nextId: 1 };
+  return { lines: [], paused: false, pending: [], pendingSnapshot: false, nextId: 1 };
 }
 
 // capPush appends `item`, dropping from the front once length exceeds `cap`
@@ -61,13 +64,16 @@ export function journalReducer(state: JournalState, action: JournalAction): Jour
       return state.paused ? state : { ...state, paused: true };
     case "resume": {
       if (!state.paused) return state;
-      if (state.pending.length === 0) return { ...state, paused: false };
-      let lines = state.lines;
+      let lines = state.pendingSnapshot ? [] : state.lines;
       for (const line of state.pending) lines = capPush(lines, line, LOG_RING_CAP);
-      return { ...state, paused: false, lines, pending: [] };
+      return { ...state, paused: false, lines, pending: [], pendingSnapshot: false };
     }
+    case "reset":
+      return state.paused
+        ? { ...state, pending: [], pendingSnapshot: true }
+        : { ...state, lines: [], pending: [], pendingSnapshot: false };
     case "clear":
-      return { ...state, lines: [], pending: [] };
+      return { ...state, lines: [], pending: [], pendingSnapshot: false };
     default:
       return state;
   }

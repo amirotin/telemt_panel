@@ -22,17 +22,17 @@ SQLite modules and julianday are full-only; the shared SPA, passkeys and geograp
 | github.com/ncruces/go-sqlite3-wasm/v6@v6.3.35304 | MIT-0 | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3-wasm/v6@v6.3.35304 |
 | github.com/ncruces/go-sqlite3@v0.35.6 | MIT | full | https://pkg.go.dev/github.com/ncruces/go-sqlite3@v0.35.6 |
 | github.com/ncruces/julianday@v1.0.0 | MIT | full | https://pkg.go.dev/github.com/ncruces/julianday@v1.0.0 |
-| github.com/oschwald/maxminddb-golang/v2@v2.7.0 | ISC | full, lite | https://pkg.go.dev/github.com/oschwald/maxminddb-golang/v2@v2.7.0 |
+| github.com/oschwald/maxminddb-golang/v2@v2.8.0 | ISC | full, lite | https://pkg.go.dev/github.com/oschwald/maxminddb-golang/v2@v2.8.0 |
 | github.com/philhofer/fwd@v1.2.0 | MIT | full, lite | https://pkg.go.dev/github.com/philhofer/fwd@v1.2.0 |
 | github.com/skip2/go-qrcode@v0.0.0-20200617195104-da1b6568686e | MIT | full, lite | https://pkg.go.dev/github.com/skip2/go-qrcode@v0.0.0-20200617195104-da1b6568686e |
 | github.com/tinylib/msgp@v1.6.4 | MIT AND BSD-3-Clause | full, lite | https://pkg.go.dev/github.com/tinylib/msgp@v1.6.4 |
 | github.com/x448/float16@v0.8.4 | MIT | full, lite | https://pkg.go.dev/github.com/x448/float16@v0.8.4 |
-| golang.org/x/crypto@v0.57.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/crypto@v0.57.0 |
+| golang.org/x/crypto@v0.58.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/crypto@v0.58.0 |
 | golang.org/x/image@v0.46.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/image@v0.46.0 |
-| golang.org/x/net@v0.58.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/net@v0.58.0 |
-| golang.org/x/sys@v0.48.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/sys@v0.48.0 |
-| golang.org/x/term@v0.46.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/term@v0.46.0 |
-| golang.org/x/text@v0.42.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/text@v0.42.0 |
+| golang.org/x/net@v0.60.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/net@v0.60.0 |
+| golang.org/x/sys@v0.49.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/sys@v0.49.0 |
+| golang.org/x/term@v0.47.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/term@v0.47.0 |
+| golang.org/x/text@v0.43.0 | BSD-3-Clause | full, lite | https://pkg.go.dev/golang.org/x/text@v0.43.0 |
 
 SQLite itself is in the public domain (https://www.sqlite.org/copyright.html). The Go driver and generated wrapper have the licenses listed above.
 The specialized branding interpolation retains arithmetic adapted from x/image/draw under BSD-3-Clause.
@@ -58,10 +58,10 @@ The SQLite wrapper includes translated libc and TLSF allocator sources from wasm
 | @tanstack/react-query@5.104.1 | MIT | https://www.npmjs.com/package/@tanstack/react-query/v/5.104.1 |
 | @tanstack/react-router@1.170.41 | MIT | https://www.npmjs.com/package/@tanstack/react-router/v/1.170.41 |
 | @tanstack/react-store@0.11.2 | MIT | https://www.npmjs.com/package/@tanstack/react-store/v/0.11.2 |
-| @tanstack/react-virtual@3.14.10 | MIT | https://www.npmjs.com/package/@tanstack/react-virtual/v/3.14.10 |
+| @tanstack/react-virtual@3.14.13 | MIT | https://www.npmjs.com/package/@tanstack/react-virtual/v/3.14.13 |
 | @tanstack/router-core@1.171.34 | MIT | https://www.npmjs.com/package/@tanstack/router-core/v/1.171.34 |
 | @tanstack/store@0.11.2 | MIT | https://www.npmjs.com/package/@tanstack/store/v/0.11.2 |
-| @tanstack/virtual-core@3.17.8 | MIT | https://www.npmjs.com/package/@tanstack/virtual-core/v/3.17.8 |
+| @tanstack/virtual-core@3.17.11 | MIT | https://www.npmjs.com/package/@tanstack/virtual-core/v/3.17.11 |
 | clsx@2.1.1 | MIT | https://www.npmjs.com/package/clsx/v/2.1.1 |
 | d3-array@3.2.4 | ISC | https://www.npmjs.com/package/d3-array/v/3.2.4 |
 | d3-geo@3.1.1 | ISC | https://www.npmjs.com/package/d3-geo/v/3.1.1 |
@@ -665,7 +665,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### github.com/oschwald/maxminddb-golang/v2@v2.7.0
+### github.com/oschwald/maxminddb-golang/v2@v2.8.0
 
 LICENSE
 
@@ -770,7 +770,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### golang.org/x/crypto@v0.57.0
+### golang.org/x/crypto@v0.58.0
 
 LICENSE
 
@@ -838,7 +838,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/net@v0.58.0
+### golang.org/x/net@v0.60.0
 
 LICENSE
 
@@ -872,7 +872,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/sys@v0.48.0
+### golang.org/x/sys@v0.49.0
 
 LICENSE
 
@@ -906,7 +906,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/term@v0.46.0
+### golang.org/x/term@v0.47.0
 
 LICENSE
 
@@ -940,7 +940,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/text@v0.42.0
+### golang.org/x/text@v0.43.0
 
 LICENSE
 
@@ -1406,7 +1406,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/react-virtual@3.14.10
+### @tanstack/react-virtual@3.14.13
 
 LICENSE
 
@@ -1490,7 +1490,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/virtual-core@3.17.8
+### @tanstack/virtual-core@3.17.11
 
 LICENSE
 
