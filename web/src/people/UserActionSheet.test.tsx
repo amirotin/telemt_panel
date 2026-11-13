@@ -14,6 +14,7 @@ import {
   getUserTrafficHistoryQueryKey,
 } from "../lib/api/generated/@tanstack/react-query.gen";
 import { ru } from "../i18n/testing";
+import { PeopleContext, type PeopleContextValue } from "./PeopleContext";
 
 const { resetTrafficRequest } = vi.hoisted(() => ({
   resetTrafficRequest: vi.fn().mockResolvedValue(undefined),
@@ -127,11 +128,12 @@ describe("UserActionSheet — toggle-enabled confirmation", () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     }),
+    access: Partial<PeopleContextValue> = {},
   ) {
     act(() => {
       root.render(
         <QueryClientProvider client={queryClient}>
-          <SSEProvider>
+          <PeopleContext.Provider value={{ profiles: new Map(), webUnavailable: false, readOnly: false, canResetQuota: false, canToggle: false, formats: new Map(), setFormat: () => {}, listView: { search: "", filter: "all", scrollOffset: 0, returnUsername: null }, ...access }}><SSEProvider>
             <UserActionSheet
               open
               intent={intent}
@@ -139,7 +141,7 @@ describe("UserActionSheet — toggle-enabled confirmation", () => {
               onClose={() => {}}
               onEdit={() => {}}
             />
-          </SSEProvider>
+          </SSEProvider></PeopleContext.Provider>
         </QueryClientProvider>,
       );
     });
@@ -152,6 +154,19 @@ describe("UserActionSheet — toggle-enabled confirmation", () => {
     if (!btn) throw new Error(`no confirm button; saw: ${buttons.map((b) => b.textContent).join(" | ")}`);
     return btn as HTMLButtonElement;
   }
+
+  it("warns that deleting WEB profiles can interrupt other users", () => {
+    render(makeUser(), "delete", undefined, { profiles: new Map([["alice", [{ host: "web.example.org", mode: "dd" }]]]) });
+    expect(document.body.textContent).toContain("других пользователей");
+  });
+
+  it("opens a WEB QR link when MTProto listeners are absent", async () => {
+    const wire = { classic: ["tg://proxy?server=127.0.0.1&port=18080&secret=0123456789abcdef0123456789abcdef"], secure: [], tls: [], tls_domains: [] };
+    render(makeUser({ links: wire }), "qr", undefined, { profiles: new Map([["alice", [{ host: "web.example.org", mode: "dd" }]]]), mtprotoListener: "absent" });
+    await act(async () => { await Promise.resolve(); });
+    const open = [...document.querySelectorAll("a")].find(a => a.textContent === "Открыть в Telegram");
+    expect(open?.getAttribute("href")).toBe("tg://webproxy?server=web.example.org&secret=dd0123456789abcdef0123456789abcdef");
+  });
 
   it("keeps the frozen decision when the live user flips mid-confirmation", async () => {
     render(makeUser({ enabled: true }));

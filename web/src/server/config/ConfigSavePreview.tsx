@@ -1,3 +1,6 @@
+import { ConfigNormalizationEffects } from "./ConfigNormalizationEffects";
+import type { ConfigPreflight } from "./configPreflight";
+import { errorMessage } from "../../i18n";
 import type { TelemtConfigCatalog } from "../../lib/api/generated/types.gen";
 import { countLabel, useStrings, type Dict } from "../../i18n";
 import { Button } from "../../ui/Button";
@@ -13,6 +16,11 @@ export function ConfigSavePreview({
   catalog,
   reloadPolicy,
   pending,
+  checking = false,
+  preflight,
+  preflightError,
+  readOnly = false,
+  onRetry,
   onClose,
   onConfirm,
 }: {
@@ -22,6 +30,11 @@ export function ConfigSavePreview({
   catalog: TelemtConfigCatalog;
   reloadPolicy: ReloadPolicyState;
   pending: boolean;
+  checking?: boolean;
+  preflight?: ConfigPreflight;
+  preflightError?: { code?: string; message?: string; details?: { path: string; message: string }[] } | null;
+  readOnly?: boolean;
+  onRetry?: () => void;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -41,6 +54,15 @@ export function ConfigSavePreview({
       placement="form"
       bodyClassName="flex flex-col gap-3"
     >
+      {checking ? <p role="status" className="text-meta text-text-muted">{s.server.config.native.validating}</p> : preflightError ? <Notice tone="error" title={errorMessage(s, preflightError.code ?? "telemt_api_error", preflightError.message)}>
+        {preflightError.details?.map((issue, index) => <p key={index} className="break-words text-meta">{issue.path}: {issue.message}</p>)}
+        <Button variant="secondary" onClick={onRetry}>{s.server.config.native.retry}</Button>
+      </Notice> : preflight && <Notice tone="info" title={preflight.validation ? s.server.config.native.validated : s.server.config.native.legacy}>
+        {preflight.validation?.apply.watcher_paths.length ? <p className="text-meta">{s.server.config.native.watcher}</p> : null}
+        {preflight.validation && <ConfigNormalizationEffects effects={preflight.validation.normalization_effects} />}
+        {preflight.validation?.warnings.map((issue, index) => <p key={index} className="break-words text-meta">{issue.path}: {issue.message}</p>)}
+      </Notice>}
+      {readOnly && <p className="text-meta text-warn">{s.server.config.native.readonly}</p>}
       {arrays.length > 0 && (
         <Notice tone="warn" title={copy.arraysTitle}>
           <p className="text-meta text-text-muted">{arrays.map((change) => change.path).join(", ")}</p>
@@ -67,7 +89,7 @@ export function ConfigSavePreview({
 
       <div className="sticky bottom-0 mt-auto flex justify-end gap-2 border-t border-border bg-surface pt-3 pb-safe">
         <Button variant="secondary" onClick={onClose} disabled={pending}>{copy.cancel}</Button>
-        <Button onClick={onConfirm} disabled={pending || changes.length === 0}>
+        <Button onClick={onConfirm} disabled={pending || checking || !!preflightError || !preflight || readOnly || changes.length === 0}>
           {pending ? copy.applying : copy.apply.replace("{count}", String(changes.length))}
         </Button>
       </div>

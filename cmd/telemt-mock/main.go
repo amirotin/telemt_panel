@@ -30,7 +30,8 @@ import (
 var scenarios = map[string]telemttest.Scenario{
 	// full: every capability on, including runtime_edge — the "everything
 	// works" case a frontend widget catalog needs to render completely.
-	"full": {RuntimeEdge: true},
+	"full":          {RuntimeEdge: true},
+	"native-config": {RuntimeEdge: true, NativeConfig: true},
 	// old-build: quota/reload/config-API routes 404 bare, as on a Telemt
 	// build that predates them.
 	"old-build": {OldBuild: true},
@@ -95,12 +96,12 @@ var scenarios = map[string]telemttest.Scenario{
 func main() {
 	listen := flag.String("listen", ":9091", "address to listen on")
 	version := flag.String("telemt-version", "", "system/info version override (default 3.5.5)")
-	scenarioName := flag.String("scenario", "full", "scenario: full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off|web-busy")
+	scenarioName := flag.String("scenario", "full", "scenario: full|native-config|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off|web-busy")
 	flag.Parse()
 
 	scenario, ok := scenarios[*scenarioName]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off|web-busy)\n", *scenarioName)
+		fmt.Fprintf(os.Stderr, "telemt-mock: unknown -scenario %q (want full|native-config|old-build|edge-off|edge-gated|me-pool-down|upstream-source-down|read-only|web-off|web-busy)\n", *scenarioName)
 		os.Exit(1)
 	}
 

@@ -3,14 +3,11 @@ import type { ConnectionStatus } from "../../realtime";
 
 export type UpdatePhase = UpdateRun["phase"];
 
-// HAPPY_PATH mirrors 03-update-engine.md's state machine:
-// idle ─▶ checking ─▶ downloading ─▶ verifying ─▶ staging ─▶ installing ─▶
-// restarting ─▶ health ─▶ done. "idle" isn't a phase UpdateRun ever reports
-// (no run exists yet), so it isn't in this list.
+// New runs skip the legacy verifying phase: downloading proceeds directly
+// to package staging. Persisted verifying entries map to staging below.
 const HAPPY_PATH: UpdatePhase[] = [
   "checking",
   "downloading",
-  "verifying",
   "staging",
   "installing",
   "restarting",
@@ -37,7 +34,7 @@ export function updatePhaseStep(phase: UpdatePhase): UpdatePhaseStep {
   if (phase === "rolled_back" || phase === "failed") {
     return { stepIndex: -1, totalSteps: HAPPY_PATH.length, terminal: true, outcome: "error" };
   }
-  const idx = HAPPY_PATH.indexOf(phase);
+  const idx = HAPPY_PATH.indexOf(phase === "verifying" ? "staging" : phase);
   return {
     stepIndex: idx,
     totalSteps: HAPPY_PATH.length,

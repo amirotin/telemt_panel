@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { TelemtConfigCatalog, TelemtConfigGroup } from "../../lib/api/generated/types.gen";
+import type { TelemtConfigCatalog, TelemtConfigGroup, TelemtConfigSchema } from "../../lib/api/generated/types.gen";
 import { useStrings } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { Input } from "../../ui/Input";
@@ -21,6 +21,7 @@ export type SettingsMode = "normal" | "advanced";
 
 export interface StructuredSettingsFormProps {
   catalog: TelemtConfigCatalog;
+  schema?: TelemtConfigSchema;
   sections: Record<string, unknown>;
   mode: SettingsMode;
   changedCount?: number;
@@ -29,13 +30,21 @@ export interface StructuredSettingsFormProps {
 }
 
 export function StructuredSettingsForm({
-  catalog,
+  catalog: sourceCatalog,
+  schema,
   sections,
   mode,
   changedCount = 0,
   documentVersion = 0,
   onChange,
 }: StructuredSettingsFormProps) {
+  const catalog = useMemo(() => {
+    if (!schema || !Array.isArray(schema.fields)) return sourceCatalog;
+    return { ...sourceCatalog, fields: sourceCatalog.fields.filter((field) => {
+      const metadata = schema.fields.find((item) => item.path === field.path || item.aliases?.includes(field.path));
+      return !metadata || metadata.api?.config_write === true;
+    }) };
+  }, [sourceCatalog, schema]);
   const copy = useStrings().server.config.catalog;
   const labels = copy.labels as Record<string, string>;
   const isDesktop = useIsDesktop();

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, type SheetProps } from "../ui/Sheet";
 import { Button } from "../ui/Button";
 import { CopyField } from "../ui/CopyField";
@@ -25,13 +25,15 @@ import {
   quotaBytesForFormSubmit,
   type QuotaUnit,
 } from "./users.helpers";
-import { expirationDateToISO, presetToExpiration } from "./expiry";
+import { expirationDateToISO, expirationISOToDate, presetToExpiration } from "./expiry";
 import { generateSecret } from "./secret";
 import { apiErrorMessage } from "./apiError";
 import { refreshUsersAfterMutation } from "./refreshUsersAfterMutation";
 import { useRefreshTopic } from "../realtime";
 import type { UsersTopicUser } from "../realtime/topics";
 import { useCaps } from "../caps";
+import { UserPolicySummary } from "./UserPolicySummary";
+import { configuredUserLimit, sourceDenyLines, sourceDenyPatch } from "./userPolicy.helpers";
 import { userRateLimitMaxMbps } from "./rateLimit.helpers";
 
 export interface UserFormSheetProps {
@@ -62,6 +64,7 @@ function field<T>(value: T, mode: FieldMode): FieldState<T> {
 }
 
 interface FormState {
+  sourceDeny: string;
   username: string;
   secret: string;
   enabled: boolean;
@@ -78,6 +81,7 @@ interface FormState {
 
 function initialCreateState(): FormState {
   return {
+    sourceDeny: "",
     username: "",
     secret: generateSecret(),
     enabled: true,
@@ -96,12 +100,13 @@ function initialCreateState(): FormState {
 function initialEditState(user: User | UsersTopicUser): FormState {
   const quota = bytesToQuotaDisplay(user.data_quota_bytes ?? 0);
   return {
+    sourceDeny: (user.source_deny ?? []).join("\n"),
     username: user.username,
     secret: "",
     enabled: user.enabled,
     userAdTag: field(user.user_ad_tag ?? "", user.user_ad_tag ? "set" : "clear"),
-    maxTcpConns: field(user.max_tcp_conns || 4, user.max_tcp_conns ? "set" : "clear"),
-    maxUniqueIps: field(user.max_unique_ips || 2, user.max_unique_ips ? "set" : "clear"),
+    maxTcpConns: field(configuredUserLimit(user,"max_tcp_conns") || 4, configuredUserLimit(user,"max_tcp_conns") ? "set" : "clear"),
+    maxUniqueIps: field(configuredUserLimit(user,"max_unique_ips") || 2, configuredUserLimit(user,"max_unique_ips") ? "set" : "clear"),
     quotaAmount: field(quota.value, user.data_quota_bytes ? "set" : "clear"),
     quotaUnit: user.data_quota_bytes ? quota.unit : "GB",
     quotaEdited: false,
@@ -114,7 +119,7 @@ function initialEditState(user: User | UsersTopicUser): FormState {
 function rebaseUserForm(submitted: FormState, draft: FormState, confirmed: FormState): FormState {
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const next = { ...confirmed };
-  for (const key of ["username", "secret", "enabled", "userAdTag", "maxTcpConns", "maxUniqueIps", "expiration", "rateLimitUpBps", "rateLimitDownBps"] as const) {
+  for (const key of ["sourceDeny", "username", "secret", "enabled", "userAdTag", "maxTcpConns", "maxUniqueIps", "expiration", "rateLimitUpBps", "rateLimitDownBps"] as const) {
     if (!same(draft[key], submitted[key])) Object.assign(next, { [key]: draft[key] });
   }
   // Amount and unit describe one quota. Overlaying only a changed unit onto
@@ -136,6 +141,9 @@ function rebaseUserForm(submitted: FormState, draft: FormState, confirmed: FormS
 export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureWeb, inline, disabled=false, onDirtyChange }: UserFormSheetProps) {
   const s = useStrings();
   const caps = useCaps();
+  const metadataUnavailable = caps.data?.capabilities.optional_metadata_unavailable === true;
+  const sourceDenySupported = caps.data?.capabilities.user_source_deny === true;
+  const readOnly = disabled || caps.data?.capabilities.read_only === true;
   const rateMaxMbps = userRateLimitMaxMbps(caps.data?.version);
   const rateUpInput = useRef<HTMLInputElement>(null);
   const rateDownInput = useRef<HTMLInputElement>(null);
@@ -144,6 +152,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   );
   const [usernameTouched, setUsernameTouched] = useState(false);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const [createdUser, setCreatedUser] = useState<User | null>(null);
   const [activePreset, setActivePreset] = useState<"unlimited" | "personal" | "temporary" | null>(
     mode === "create" ? "unlimited" : null,
   );
@@ -171,6 +180,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
       setState(initial);setBaseline(initial);setBaseUser(user);
       setUsernameTouched(false);
       setCreatedSecret(null);
+      setCreatedUser(null);
       setActivePreset(mode === "create" ? "unlimited" : null);
     }
   }
@@ -188,14 +198,16 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   const dirty=JSON.stringify(state)!==JSON.stringify(baseline);
   useEffect(()=>{onDirtyChange?.(dirty);},[dirty,onDirtyChange]);
   const refreshTopic = useRefreshTopic();
+  const queryClient = useQueryClient();
 
   const createMutation = useMutation({
     ...createUserMutation(),
     onSuccess: (data) => {
       pushToast(s.people.toast.created, "ok");
       onSaved?.(data.user.username);
+      setCreatedUser(data.user);
       setCreatedSecret(data.secret);
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
     },
     onError: (err) => pushToast(apiErrorMessage(err, s), "error"),
   });
@@ -207,7 +219,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     },
     retry: false,
     onSuccess: (data, { submitted }) => {
-      refreshUsersAfterMutation(refreshTopic);
+      refreshUsersAfterMutation(refreshTopic, queryClient);
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
       activeSave.current = null;
       const confirmed = initialEditState(data);
@@ -231,8 +243,11 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   });
 
   const pending = createMutation.isPending || (patchMutation.isPending && savingSessionKey === sessionKey);
+  const denyDirty = state.sourceDeny !== baseline.sourceDeny;
+  const denyUnavailable = denyDirty && !sourceDenySupported;
+  const inheritedLimits = sourceDenySupported || !!baseUser?.limits;
   const usernameValid = isValidUsername(state.username);
-  const canSubmit = !disabled && (mode === "edit" || (usernameValid && isValidSecret(state.secret)));
+  const canSubmit = !readOnly && !denyUnavailable && (mode === "edit" || (usernameValid && isValidSecret(state.secret)));
 
   function changedLimit<T>(f: FieldState<T>, original: T | undefined): LimitFieldState<T> {
     return diffLimitField(f.mode === "set" ? f.value : undefined, original);
@@ -263,6 +278,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     if (mode === "create") {
       createMutation.mutate({
         body: buildUserCreateBody({
+          sourceDeny: sourceDenySupported ? sourceDenyLines(state.sourceDeny) : undefined,
           username: state.username,
           secret: state.secret,
           enabled: state.enabled,
@@ -290,10 +306,11 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     patchMutation.mutate({
       submitted,
       body: buildUserPatch({
+        sourceDeny: sourceDenySupported ? sourceDenyPatch(state.sourceDeny, baseUser?.source_deny) : {mode:"keep"},
         enabled: state.enabled !== baseUser?.enabled ? state.enabled : undefined,
         userAdTag: changedLimit(state.userAdTag, baseUser?.user_ad_tag || undefined),
-        maxTcpConns: changedLimit(state.maxTcpConns, baseUser?.max_tcp_conns || undefined),
-        maxUniqueIps: changedLimit(state.maxUniqueIps, baseUser?.max_unique_ips || undefined),
+        maxTcpConns: changedLimit(state.maxTcpConns, baseUser ? configuredUserLimit(baseUser,"max_tcp_conns") : undefined),
+        maxUniqueIps: changedLimit(state.maxUniqueIps, baseUser ? configuredUserLimit(baseUser,"max_unique_ips") : undefined),
         dataQuotaBytes: changedLimit(
           quotaBytesField,
           baseUser?.data_quota_bytes ? baseUser.data_quota_bytes : undefined,
@@ -344,6 +361,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
         <div className="flex flex-col gap-4 py-2">
           <p className="rounded-xl border border-warn/30 bg-warn/10 p-3 text-sm text-warn">{s.people.newSecret.warning}</p>
           <CopyField value={createdSecret} label={s.people.form.secret} data-testid="created-user-secret" />
+          {(createdUser?.limits || createdUser?.source_deny_status) && <UserPolicySummary user={createdUser} />}
           <div className="grid gap-2 sm:grid-cols-2">
             <Button variant="secondary" onClick={onClose}>{s.people.newSecret.close}</Button>
             {onConfigureWeb && <Button onClick={() => { if(!inline)onClose(); onConfigureWeb(state.username); }}>{s.people.newSecret.configureWeb}</Button>}
@@ -353,7 +371,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
     );
   }
 
-  const expirationDate = state.expiration.mode === "set" ? state.expiration.value.slice(0, 10) : "";
+  const expirationDate = state.expiration.mode === "set" ? expirationISOToDate(state.expiration.value) : "";
   const quotaValue = state.quotaAmount.mode === "set" ? String(state.quotaAmount.value) : "";
   const maxIpsValue = state.maxUniqueIps.mode === "set" ? String(state.maxUniqueIps.value) : "";
   const maxConnectionsValue = state.maxTcpConns.mode === "set" ? String(state.maxTcpConns.value) : "";
@@ -375,7 +393,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
       bodyClassName="people-form-sheet-body"
     >
       <form onSubmit={handleSubmit} className="people-create-form" noValidate>
-        <div className="people-form-body">
+        <fieldset disabled={readOnly} className="contents"><div className="people-form-body">
           <section className="people-form-section">
             <div className="people-form-section-head"><strong>{s.people.form.basics}</strong><span>{s.people.form.requiredParameters}</span></div>
             <label className="people-form-field people-form-field-wide">
@@ -407,7 +425,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
             <div className="people-form-presets" role="group" aria-label={s.people.form.profile}>
               {(["unlimited", "personal", "temporary"] as const).map((preset) => (
                 <button key={preset} type="button" className={activePreset === preset ? "is-active" : ""} onClick={() => applyCreatePreset(preset)}>
-                  <strong>{preset === "unlimited" ? s.people.form.profileUnlimited : preset === "personal" ? s.people.form.profilePersonal : s.people.form.profileTemporary}</strong>
+                  <strong>{preset === "unlimited" ? inheritedLimits ? s.accessPolicy.inheritedProfile : s.people.form.profileUnlimited : preset === "personal" ? s.people.form.profilePersonal : s.people.form.profileTemporary}</strong>
                   <span>{preset === "unlimited" ? s.people.form.profileUnlimitedHint : preset === "personal" ? s.people.form.profilePersonalHint : s.people.form.profileTemporaryHint}</span>
                 </button>
               ))}
@@ -421,10 +439,25 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
                 </div>
               </label>
               <label className="people-form-field"><span>{s.people.form.expirationShort}</span><input type="date" value={expirationDate} onChange={(event) => { const value = event.target.value; const iso = expirationDateToISO(value); setActivePreset(null); setState((prev) => ({ ...prev, expiration: iso === null ? { ...prev.expiration, mode: "clear" } : field(iso, "set") })); }} /></label>
-              <label className="people-form-field"><span>{s.people.form.maxIps}</span><input type="number" inputMode="numeric" min={1} value={maxIpsValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxUniqueIps: value === "" ? { ...prev.maxUniqueIps, mode: "clear" } : field(Number(value), "set") })); }} /></label>
-              <label className="people-form-field"><span>{s.people.form.maxConnections}</span><input type="number" inputMode="numeric" min={1} value={maxConnectionsValue} placeholder={s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxTcpConns: value === "" ? { ...prev.maxTcpConns, mode: "clear" } : field(Number(value), "set") })); }} /></label>
+              {inheritedLimits && <small className="people-form-field-wide text-text-muted">{s.accessPolicy.inheritHint}</small>}
+              <label className="people-form-field"><span>{s.people.form.maxIps}</span><input type="number" inputMode="numeric" min={inheritedLimits ? 0 : 1} value={maxIpsValue} placeholder={inheritedLimits ? s.accessPolicy.inherited : s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxUniqueIps: value === "" ? { ...prev.maxUniqueIps, mode: "clear" } : field(Number(value), "set") })); }} /></label>
+              <label className="people-form-field"><span>{s.people.form.maxConnections}</span><input type="number" inputMode="numeric" min={inheritedLimits ? 0 : 1} value={maxConnectionsValue} placeholder={inheritedLimits ? s.accessPolicy.inherited : s.people.form.quotaUnlimited} onChange={(event) => { const value = event.target.value; setActivePreset(null); setState((prev) => ({ ...prev, maxTcpConns: value === "" ? { ...prev.maxTcpConns, mode: "clear" } : field(Number(value), "set") })); }} /></label>
             </div>
           </section>
+
+          {(baseUser?.limits || sourceDenySupported || denyDirty || readOnly || metadataUnavailable) && <section className="people-form-section">
+            {metadataUnavailable && <p role="alert" className="user-note">{s.accessPolicy.sourceUnavailable}</p>}
+            {readOnly && <p className="user-note">{s.accessPolicy.readonly}</p>}
+            {(baseUser?.limits || baseUser?.source_deny_status) && <><p className="user-note">{s.accessPolicy.inheritHint}</p><UserPolicySummary user={baseUser} /></>}
+            {(sourceDenySupported || denyDirty) && <label className="people-form-field people-form-field-wide">
+              <span>{s.accessPolicy.sourceDeny}</span>
+              <textarea rows={4} className="min-h-28 w-full rounded-xl border border-border bg-bg p-3 font-mono text-meta" spellCheck={false} autoCapitalize="off" value={state.sourceDeny} onChange={event=>setState(prev=>({...prev,sourceDeny:event.target.value}))} />
+              <small>{s.accessPolicy.sourceHint}</small>
+              {denyUnavailable && <small role="alert" className="text-error">{s.accessPolicy.sourceUnavailable}</small>}
+              {creating && <small>{s.accessPolicy.sourceCreate}</small>}
+            </label>}
+            {denyUnavailable && <Button type="button" variant="secondary" disabled={caps.isFetching} onClick={()=>void caps.refetch()}>{s.accessPolicy.retrySupport}</Button>}
+          </section>}
 
           <details className="people-form-section">
             <summary className="people-form-advanced-toggle"><span><strong>{s.people.form.advancedParameters}</strong><small>{s.people.form.advancedHint}</small></span><i>⌄</i></summary>
@@ -436,7 +469,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
             </div>
           </details>
         </div>
-        <footer className="people-form-foot">
+        </fieldset><footer className="people-form-foot">
           <Button type="button" variant="secondary" disabled={pending} onClick={onClose}>{s.common.cancel}</Button>
           <Button type="submit" data-testid="user-form-submit" disabled={!canSubmit || pending}>{pending ? s.people.form.submitting : creating ? s.people.form.submitCreateFull : s.people.form.submitEdit}</Button>
         </footer>

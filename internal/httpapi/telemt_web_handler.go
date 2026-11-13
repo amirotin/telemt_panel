@@ -89,9 +89,8 @@ func parseWebSessionsQuery(r *http.Request) (telemt.WebSessionsQuery, error) {
 
 // writeWebTelemtError maps a WEB-group failure onto the panel's envelope.
 //
-// It exists because the generic writeTelemtError collapses every 5xx into
-// 502 telemt_unreachable, and the WEB group's two 503s are not "Telemt is
-// unreachable" at all — they are states the UI has a rendering for:
+// The WEB group's two 503s have dedicated capability and contention states
+// in the UI rather than the generic upstream-error presentation:
 //
 //   - web_runtime_unavailable is a CLOSED CAPABILITY. Reported as 503
 //     capability_unavailable, the same code /api/telemt/config and
