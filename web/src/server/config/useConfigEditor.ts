@@ -20,6 +20,8 @@ export interface ConfigEditorState {
   setEdited: (next: Record<string, unknown>) => void;
   /** Current draft for async mutation callbacks, without relying on a stale render closure. */
   getEdited: () => Record<string, unknown> | null;
+  /** Current source baseline for validating an async operation identity. */
+  getBaseline: () => ConfigSnapshot | null;
   /** Re-seeds the baseline and optionally keeps a rebased working copy. */
   seed: (fresh: ConfigSnapshot, workingCopy?: Record<string, unknown>) => void;
   /** Changes only on an explicit seed, so uncontrolled editors can remount safely. */
@@ -43,6 +45,7 @@ export interface ConfigEditorState {
 export function useConfigEditor(queryData: ConfigSnapshot | undefined): ConfigEditorState {
   const [baseline, setBaseline] = useState<ConfigSnapshot | null>(null);
   const [edited, setEditedState] = useState<Record<string, unknown> | null>(null);
+  const seededBaselineRef = useRef<ConfigSnapshot | null>(null);
   const editedRef = useRef<Record<string, unknown> | null>(null);
   const [documentVersion, setDocumentVersion] = useState(0);
 
@@ -57,6 +60,7 @@ export function useConfigEditor(queryData: ConfigSnapshot | undefined): ConfigEd
   }
 
   function seed(fresh: ConfigSnapshot, workingCopy = fresh.sections) {
+    seededBaselineRef.current = fresh;
     setBaseline(fresh);
     editedRef.current = workingCopy;
     setEditedState(workingCopy);
@@ -68,6 +72,7 @@ export function useConfigEditor(queryData: ConfigSnapshot | undefined): ConfigEd
     edited,
     setEdited,
     getEdited: () => editedRef.current,
+    getBaseline: () => seededBaselineRef.current ?? baseline,
     seed,
     documentVersion,
   };

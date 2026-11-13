@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 
-export function DraftSessionActions({ conflict, onDiscard, onCopy, disabled = false }: {
+export function DraftSessionActions({ conflict, onDiscard, onCopy, onRebase, disabled = false }: {
   conflict: boolean;
   onDiscard: () => void;
   onCopy?: () => void;
+  onRebase?: () => void;
   disabled?: boolean;
 }) {
   const s = useStrings();
@@ -21,6 +22,7 @@ export function DraftSessionActions({ conflict, onDiscard, onCopy, disabled = fa
           onDiscard(); setConfirming(false);
         }}>{copy.loadRemote}</Button>
         {(conflict || confirming) && <Button type="button" variant="secondary" onClick={() => setConfirming(false)}>{copy.keepDraft}</Button>}
+        {conflict && onRebase && <Button type="button" variant="secondary" disabled={disabled} onClick={() => { onRebase(); setConfirming(false); }}>{copy.rebaseDraft}</Button>}
         {onCopy && <Button type="button" variant="secondary" onClick={onCopy}>{copy.copyDraft}</Button>}
       </div>
     </div>

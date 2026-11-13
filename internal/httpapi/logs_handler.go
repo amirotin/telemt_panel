@@ -245,6 +245,16 @@ func (s *Server) handleEventsLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.logSrc.Kind() == host.LogKindFile {
+		if err := stream.write(func() error {
+			_, err := fmt.Fprint(w, "event: log_reset\ndata: {\"source\":\"file\"}\n\n")
+			return err
+		}); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
+
 	heartbeat := time.NewTicker(s.logStreamHeartbeat)
 	defer heartbeat.Stop()
 	sessionCheck := time.NewTicker(sessionStreamCheckInterval)

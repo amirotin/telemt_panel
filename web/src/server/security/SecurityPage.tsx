@@ -1,3 +1,4 @@
+import { AccessPolicyEditor } from "./AccessPolicyEditor";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ServerShell } from "../ServerShell";
@@ -287,6 +288,7 @@ export function SecurityPage() {
       <div className="flex w-full flex-col gap-3" data-testid="server-security-page">
         {topic.stale && <div><StatePill state="warn">{s.common.stale}</StatePill></div>}
         <SecurityHero posture={posture} whitelist={whitelist} level={level} tlsObserved={totals.observed} tlsBad={totals.bad} />
+        <AccessPolicyEditor />
         {posture ? <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(330px,.75fr)]">
           <div className="flex min-w-0 flex-col gap-3"><AccessCard posture={posture} whitelist={whitelist} kind={kind} /><LimitsCard limits={topic.data.effective_limits} /></div>
           <aside className="grid min-w-0 content-start gap-3 md:grid-cols-2 xl:grid-cols-1"><TlsCard tls={tls} /><ProtocolCard posture={posture} /><button type="button" onClick={() => setTechnicalOpen(true)} className="group flex min-h-[64px] items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 text-left hover:border-border-strong hover:bg-surface-hover md:col-span-2 xl:col-span-1" data-testid="server-security-technical-trigger"><span><small className="block text-micro font-semibold uppercase tracking-[0.1em] text-text-faint">{s.server.security.view.effectiveConfig}</small><strong className="mt-1 block text-meta font-semibold text-text">{s.server.security.view.timeoutsAndLimits}</strong></span><IconChevronRight className="h-4 w-4 text-accent transition-transform group-hover:translate-x-0.5" /></button></aside>

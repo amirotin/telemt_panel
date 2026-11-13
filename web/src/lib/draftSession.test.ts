@@ -1,11 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { acknowledgeSubmitted, discardToRemote, receiveRemote, type DraftSession, type SubmittedDraft } from "./draftSession";
+import { acknowledgeSubmitted, discardToRemote, rebaseDraftToRemote, receiveRemote, type DraftSession, type SubmittedDraft } from "./draftSession";
 
 const equal = (a: string, b: string) => a === b;
 const clean = (): DraftSession<string> => ({ sessionKey: "alice", baseline: { value: "original", revision: "r1" }, draft: "original", remote: null });
 const submitted: SubmittedDraft<string> = { sessionKey: "alice", value: "submitted", revision: "r1", requestId: 1 };
 
 describe("draft session confirmation", () => {
+  it("accepts an unrelated known revision without replacing dirty input", () => {
+    const next = receiveRemote({ ...clean(), draft: "mine" }, { value: "original", revision: "r2" }, equal);
+    expect(next.baseline).toEqual({ value: "original", revision: "r2" });
+    expect(next.draft).toBe("mine");
+    expect(next.remote).toBeNull();
+  });
+  it("does not rebase an unconfirmed write or an unknown revision", () => {
+    const state = { ...clean(), draft: "mine" };
+    for (const [fresh, preserve] of [[{ value: "original", revision: "r2" }, true], [{ value: "original", revision: null }, false]] as const) {
+      const next = receiveRemote(state, fresh, equal, preserve);
+      expect(next.baseline.revision).toBe("r1");
+      expect(next.draft).toBe("mine");
+      expect(next.remote).toEqual(fresh);
+    }
+  });
+  it("preserves a real conflict when another revision contains the old baseline", () => {
+    const state = { ...clean(), draft: "mine", remote: { value: "other admin", revision: "r2" } };
+    const next = receiveRemote(state, { value: "original", revision: "r3" }, equal);
+    expect(next.baseline.revision).toBe("r1");
+    expect(next.remote).toEqual({ value: "original", revision: "r3" });
+    expect(next.draft).toBe("mine");
+  });
+  it("rebases a draft only when explicitly asked, preserving its input", () => {
+    const state = { ...clean(), draft: "mine", remote: { value: "other admin", revision: "r2" } };
+    expect(rebaseDraftToRemote(state)).toEqual({ ...state, baseline: state.remote, remote: null });
+    const withoutRemote = { ...clean(), draft: "mine" };
+    expect(rebaseDraftToRemote(withoutRemote)).toBe(withoutRemote);
+  });
   it("accepts a remote refresh when clean", () => {
     expect(receiveRemote(clean(), { value: "fresh", revision: "r2" }, equal)).toEqual({ sessionKey: "alice", baseline: { value: "fresh", revision: "r2" }, draft: "fresh", remote: null });
   });

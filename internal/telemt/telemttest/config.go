@@ -45,7 +45,11 @@ func (s *Server) handleGetConfig(w http.ResponseWriter) {
 		writeBareNotFound(w)
 		return
 	}
-	writeOK(w, http.StatusOK, sampleConfigSections(), s.revision())
+	sections := sampleConfigSections()
+	if s.scenario.NativeConfig {
+		sections = s.nativeSections()
+	}
+	writeOK(w, http.StatusOK, sections, s.revision())
 }
 
 func (s *Server) bodyLimit() int {
@@ -92,6 +96,14 @@ func (s *Server) handlePatchConfig(w http.ResponseWriter, r *http.Request, rawQu
 	changed := make([]string, 0, len(patch))
 	for section := range patch {
 		changed = append(changed, section)
+	}
+
+	if s.scenario.NativeConfig {
+		if token := r.Header.Get("If-Runtime-Match"); token != "" && token != s.nativeRuntime().RuntimeMatch {
+			writeErr(w, 409, "runtime_conflict", "runtime changed")
+			return
+		}
+		s.mergeNativePatch(patch)
 	}
 
 	values, _ := url.ParseQuery(rawQuery)
@@ -175,6 +187,12 @@ func (s *Server) submitReload(mode, timeoutSecs, failurePolicy, configRevision s
 	}
 	if failurePolicy == "" {
 		failurePolicy = telemt.ReloadFailurePolicyKeepNew
+	}
+	if s.scenario.NativeConfig {
+		s.nativeGenerationPaths = nil
+		for key, value := range s.nativeSections() {
+			s.nativeEffective[key] = append(json.RawMessage(nil), value...)
+		}
 	}
 	s.nextReloadID++
 	id := s.nextReloadID

@@ -43,8 +43,10 @@ export function LogStreamViewer({
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
 
-  const streamState = useLogStream(service, (line) =>
-    dispatch({ type: "line", line }),
+  const streamState = useLogStream(
+    service,
+    (line) => dispatch({ type: "line", line }),
+    { onReset: () => dispatch({ type: "reset" }) },
   );
 
   const filtered = useMemo(

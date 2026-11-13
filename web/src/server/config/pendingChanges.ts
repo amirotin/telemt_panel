@@ -17,6 +17,7 @@ import type { StatsSnapshot } from "../../realtime/topics";
 export interface PendingConfigChanges {
   runtimeReload: boolean;
   processRestart: boolean;
+  revision?: string;
   /** Epoch ms at which the PATCH that produced these returned. */
   at: number;
 }
@@ -44,6 +45,7 @@ export function getPendingChanges(): PendingConfigChanges | null {
       runtimeReload: v["runtimeReload"] === true,
       processRestart: v["processRestart"] === true,
       at,
+      ...(typeof v["revision"] === "string" ? { revision: v["revision"] } : {}),
     };
   } catch {
     // localStorage unavailable or garbage JSON — nothing is pending as far
@@ -74,7 +76,7 @@ export function recordPendingChanges(
     return;
   }
   try {
-    const payload: PendingConfigChanges = { runtimeReload, processRestart, at: now };
+    const payload: PendingConfigChanges = { runtimeReload, processRestart, at: now, revision: result.revision };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // Best-effort — the banner simply won't mention it.

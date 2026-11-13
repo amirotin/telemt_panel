@@ -93,7 +93,7 @@ func TestApply_HappyPath_JournalsAllPhasesInOrder(t *testing.T) {
 	for i, e := range entries {
 		got[len(entries)-1-i] = e.Phase
 	}
-	want := []string{PhaseChecking, PhaseDownloading, PhaseVerifying, PhaseStaging, PhaseInstalling, PhaseRestarting, PhaseHealth, PhaseDone}
+	want := []string{PhaseChecking, PhaseDownloading, PhaseStaging, PhaseInstalling, PhaseRestarting, PhaseHealth, PhaseDone}
 	if len(got) != len(want) {
 		t.Fatalf("phases = %v, want %v", got, want)
 	}
@@ -226,6 +226,36 @@ func TestApply_LegacySudoersMigrationBridgePreservesRollback(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(e.stagingDir, "telemt")); !os.IsNotExist(statErr) {
 		t.Fatalf("legacy install source was not cleaned: %v", statErr)
+	}
+}
+
+func TestApply_InvalidArchiveFailsStagingWithoutReplacingInstalledBinary(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "telemt")
+	if err := os.WriteFile(binaryPath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := newFakeReleaseServer(t)
+	setupHappyRelease(fixture, TargetTelemt, []byte("not a gzip archive"))
+	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", binaryPath: binaryPath, serviceName: "telemt", version: "v1.0.0"}
+	runner := newTestRunner()
+	e, st := newTestEngine(t, fixture, runner, map[string]Target{TargetTelemt: target}, nil)
+
+	if err := e.Apply(context.Background(), TargetTelemt, "v2.0.0"); err == nil || !strings.Contains(err.Error(), "staging:") {
+		t.Fatalf("Apply = %v, want staging error", err)
+	}
+	installed, err := os.ReadFile(binaryPath)
+	if err != nil || string(installed) != "old-binary" {
+		t.Fatalf("installed binary = %q, %v; want old-binary", installed, err)
+	}
+	if calls := runner.CallsSnapshot(); len(calls) != 0 {
+		t.Fatalf("host operations = %+v, want none before archive extraction", calls)
+	}
+	entries, err := st.ListUpdateJournal(TargetTelemt, 20)
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("journal = %+v, %v", entries, err)
+	}
+	if entries[0].Phase != PhaseFailed || !strings.HasPrefix(entries[0].Detail, "staging:") {
+		t.Fatalf("last journal entry = %+v, want staging failure", entries[0])
 	}
 }
 

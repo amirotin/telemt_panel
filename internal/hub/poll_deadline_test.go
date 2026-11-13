@@ -242,7 +242,7 @@ func TestStatsPollAllPrimaryTimeoutRecordsOneSourceError(t *testing.T) {
 	h.mu.Lock()
 	ring := append([]Event(nil), h.ring...)
 	h.mu.Unlock()
-	if len(ring) != 1 || ring[0].Topic != "stats" || ring[0].Err != sourceErrorCode {
+	if len(ring) != 1 || ring[0].Topic != "stats" || ring[0].Err != "telemt_timeout" {
 		t.Fatalf("ring = %+v, want one stats source_error", ring)
 	}
 	_, maxFlight := fixture.activity()

@@ -332,8 +332,8 @@ func TestNewTopicsSourceErrorWhenTelemtUnreachable(t *testing.T) {
 			t.Fatalf("Subscribe(%q): %v", topic, err)
 		}
 		ev := recvEvent(t, ch, 2*time.Second)
-		if ev.Err != sourceErrorCode {
-			t.Errorf("topic %q: Err = %q, want %q", topic, ev.Err, sourceErrorCode)
+		if ev.Err != "telemt_unreachable" {
+			t.Errorf("topic %q: Err = %q, want telemt_unreachable", topic, ev.Err)
 		}
 		cancel()
 	}
