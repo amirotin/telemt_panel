@@ -61,8 +61,9 @@ export function Problems() {
     { topic: "security", stale: security.stale, error: security.error },
   ];
   const capabilities = caps.data?.capabilities;
+  // State flags do not describe feature support.
   const missingCapabilities = capabilities
-    ? (Object.keys(capabilities) as Array<keyof typeof capabilities>).filter((k) => !capabilities[k])
+    ? (Object.keys(capabilities) as Array<keyof typeof capabilities>).filter((k) => k !== "read_only" && k !== "optional_metadata_unavailable" && !capabilities[k])
     : [];
 
   let items = computeProblems(
