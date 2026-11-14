@@ -16,6 +16,7 @@ import { WebEditor, type DecoyModeDrafts } from "./WebEditor";
 import { ListenersEditor } from "./ListenersEditor";
 import { GenericFields } from "./ConfigFieldControls";
 import { asRecordArray } from "./configRecords";
+import type { WebUserChoices } from "./WebProfilesField";
 
 export type SettingsMode = "normal" | "advanced";
 
@@ -26,6 +27,7 @@ export interface StructuredSettingsFormProps {
   mode: SettingsMode;
   changedCount?: number;
   documentVersion?: number;
+  webUsers?: WebUserChoices;
   onChange: (next: Record<string, unknown>) => void;
 }
 
@@ -36,6 +38,7 @@ export function StructuredSettingsForm({
   mode,
   changedCount = 0,
   documentVersion = 0,
+  webUsers,
   onChange,
 }: StructuredSettingsFormProps) {
   const catalog = useMemo(() => {
@@ -152,7 +155,16 @@ export function StructuredSettingsForm({
         ) : group.id === "listeners" ? (
           <ListenersEditor fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
         ) : group.id === "web" ? (
-          <WebEditor key={documentVersion} decoyDrafts={decoyDrafts.version === documentVersion ? decoyDrafts.drafts : []} onDecoyDraftsChange={(drafts) => setDecoyDrafts({ version: documentVersion, drafts })} fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
+          <WebEditor
+            key={documentVersion}
+            {...webUsers}
+            decoyDrafts={decoyDrafts.version === documentVersion ? decoyDrafts.drafts : []}
+            onDecoyDraftsChange={(drafts) => setDecoyDrafts({ version: documentVersion, drafts })}
+            fields={groupFields}
+            sections={sections}
+            advanced={mode === "advanced"}
+            onChange={onChange}
+          />
         ) : (
           <GenericFields fields={groupFields} sections={sections} advanced={mode === "advanced"} onChange={onChange} />
         )}

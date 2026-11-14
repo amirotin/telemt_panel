@@ -66,6 +66,11 @@ func telemtConfigCatalogForVersion(version string) telemtConfigCatalog {
 		)
 	}
 
+	if update.CompareVersions(version, "3.5.15") >= 0 {
+		catalog.Version = "3.5.15"
+		catalog.SourceCommit = "61afd6c7024b9c4b48497b53109f3eebb899320a"
+		appendFields(versionedConfigField("web.vhosts[].hosts", "Option<Vec<String>>", "string_list", "null", "web", "normal", "runtime reload"))
+	}
 	if update.CompareVersions(version, "3.5.16") >= 0 {
 		catalog.Version = "3.5.16"
 		catalog.SourceCommit = "84e5b827a6619fb2e09ad3d09f253cdffe04bc2f"

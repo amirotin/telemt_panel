@@ -3036,7 +3036,8 @@ components:
       type: object
       required: [host, public_addr, profiles]
       properties:
-        host: { type: string }
+        host: { type: string, description: "Representative domain used to identify this vhost in access updates; the first domain for a hosts group." }
+        hosts: { type: array, minItems: 1, items: { type: string }, description: "All domains when Telemt config uses hosts. Access profiles apply to the whole group." }
         base_path: { type: string, maxLength: 128, description: "Telemt WEB prefix without surrounding slashes; case-sensitive, available since 3.5.8." }
         public_addr: { type: string }
         profiles: { type: array, items: { $ref: "#/components/schemas/WebAccessProfile" } }

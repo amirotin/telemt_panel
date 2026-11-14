@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/amirotin/telemt_panel/internal/telemt"
@@ -46,6 +48,77 @@ func TestProjectWebAccess(t *testing.T) {
 	}
 	if got := view.Vhosts[0].Profiles[0]; got.User != "alice" || got.SecretMode != "plain" || got.MaxSessions == nil || *got.MaxSessions != 10 {
 		t.Fatalf("profile = %+v", got)
+	}
+}
+
+func TestProjectWebAccessGroupedDomains(t *testing.T) {
+	raw := strings.Replace(webAccessFixture, `"host": "one.example.com"`, `"hosts": ["one.example.com", "alias.example.com"]`, 1)
+	view, err := projectWebAccess(json.RawMessage(raw), "rev-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(view.Vhosts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var group struct {
+		Host  string   `json:"host"`
+		Hosts []string `json:"hosts"`
+	}
+	if err := json.Unmarshal(encoded, &group); err != nil {
+		t.Fatal(err)
+	}
+	if group.Host != "one.example.com" || !reflect.DeepEqual(group.Hosts, []string{"one.example.com", "alias.example.com"}) {
+		t.Fatalf("group identity or domains lost: %s", encoded)
+	}
+	if len(view.Vhosts) != 2 || len(view.Vhosts[0].Profiles) != 2 {
+		t.Fatalf("group profiles must not be expanded per domain: %+v", view)
+	}
+}
+
+func TestReplaceWebUserProfilesGroupedDomains(t *testing.T) {
+	raw := strings.Replace(webAccessFixture, `"host": "one.example.com"`, `"hosts": ["one.example.com", "alias.example.com"]`, 1)
+	raw = strings.Replace(raw, `"host": "two.example.com"`, `"hosts": ["two.example.com", "other.example.com"]`, 1)
+	patch, err := replaceWebUserProfiles(json.RawMessage(raw), "alice", []webUserAccessProfile{
+		{Vhost: "one.example.com", SecretMode: "plain"},
+		{Vhost: "two.example.com", SecretMode: "dd"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Vhosts []map[string]json.RawMessage `json:"vhosts"`
+	}
+	if err := json.Unmarshal(encoded, &result); err != nil {
+		t.Fatal(err)
+	}
+	for i, first := range []string{"one.example.com", "two.example.com"} {
+		group := result.Vhosts[i]
+		if _, ok := group["host"]; ok {
+			t.Fatalf("synthetic host must not be persisted: %s", encoded)
+		}
+		var hosts []string
+		if err := json.Unmarshal(group["hosts"], &hosts); err != nil || len(hosts) != 2 || hosts[0] != first {
+			t.Fatalf("source domains changed: %s", encoded)
+		}
+		var profiles []map[string]json.RawMessage
+		if err := json.Unmarshal(group["profiles"], &profiles); err != nil {
+			t.Fatal(err)
+		}
+		mode := "plain"
+		if i == 1 {
+			mode = "dd"
+		}
+		if profileForTest(profiles, "alice", mode) == nil || len(profiles) != 2 {
+			t.Fatalf("shared profile missing or unrelated user lost: %s", encoded)
+		}
+	}
+	if !bytes.Contains(encoded, []byte(`9007199254740993`)) || !bytes.Contains(encoded, []byte(`"future_profile":"kept"`)) {
+		t.Fatalf("unknown fields lost: %s", encoded)
 	}
 }
 

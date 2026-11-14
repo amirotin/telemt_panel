@@ -13,6 +13,9 @@ import { configFieldDescription, configFieldLabel } from "./configFieldPresentat
 import { RouteChoice, SectionHeading, AddRecordButton, RecordListEmpty, RecordIconButton } from "./ConfigEditorControls";
 import { GenericFields, ConfigFieldRow } from "./ConfigFieldControls";
 import { asRecordArray } from "./configRecords";
+import { WebDomainsField } from "./WebDomainsField";
+import { webVhostDomains } from "./webVhost.helpers";
+import { WebProfilesField, type WebUserChoices } from "./WebProfilesField";
 
 const WEB_CARRIERS = ["https", "https-lanes", "websocket", "websocket-lanes"] as const;
 
@@ -27,7 +30,7 @@ const WEB_STRUCTURE_PATHS = new Set([
 
 export type DecoyModeDrafts = Array<Record<string, Record<string, unknown>>>;
 
-export function WebEditor({ fields, sections, advanced, onChange, decoyDrafts, onDecoyDraftsChange }: {
+export function WebEditor({ fields, sections, advanced, onChange, decoyDrafts, onDecoyDraftsChange, ...webUsers }: WebUserChoices & {
   fields: TelemtConfigField[];
   sections: Record<string, unknown>;
   advanced: boolean;
@@ -190,7 +193,7 @@ export function WebEditor({ fields, sections, advanced, onChange, decoyDrafts, o
                 <header className="grid min-h-[74px] grid-cols-[38px_minmax(0,1fr)_auto] items-center gap-2.5 py-2.5">
                   <span className={cn("grid size-9 place-items-center rounded-lg border text-sm font-bold", complete ? "border-ok/25 bg-ok/8 text-ok" : "border-warn/25 bg-warn/8 text-warn")} aria-hidden="true">W</span>
                   <span className="min-w-0">
-                    <strong className="block truncate text-sm font-semibold text-text">{String(vhost["host"] || copy.webNewVhost)}</strong>
+                    <strong className="block truncate text-sm font-semibold text-text">{webVhostDomains(vhost).filter(Boolean).join(", ") || copy.webNewVhost}</strong>
                     <small className="mt-1 block truncate text-micro text-text-faint">
                       {String(vhost["public_addr"] || copy.webPublicAddressMissing)} · {copy.webProfileCount.replace("{count}", String(profiles.length))}
                     </small>
@@ -213,6 +216,7 @@ export function WebEditor({ fields, sections, advanced, onChange, decoyDrafts, o
                       vhostIndex={index}
                       vhost={vhost}
                       profiles={profiles}
+                      webUsers={webUsers}
                       advanced={advanced}
                       onChange={onChange}
                       onDecoyModeChange={(mode) => {
@@ -272,12 +276,13 @@ function WebRequirement({ ready, title, hint }: { ready: boolean; title: string;
   );
 }
 
-function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, advanced, onChange, onDecoyModeChange }: {
+function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, advanced, onChange, onDecoyModeChange, webUsers }: {
   fieldsByPath: Map<string, TelemtConfigField>;
   sections: Record<string, unknown>;
   vhostIndex: number;
   vhost: Record<string, unknown>;
   profiles: Array<Record<string, unknown>>;
+  webUsers: WebUserChoices;
   advanced: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onDecoyModeChange: (mode: string) => void;
@@ -307,7 +312,9 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
 
   return (
     <div className="min-w-0">
-      {textFieldRow("web.vhosts[].host", vhostPath("host"), "proxy.example.com")}
+      {fieldsByPath.has("web.vhosts[].hosts") || Array.isArray(vhost["hosts"])
+        ? <WebDomainsField vhost={vhost} advanced={advanced} path={`web.vhosts[${vhostIndex}]`} onChange={(next) => onChange(setConfigValue(sections, `web.vhosts[${vhostIndex}]`, next))} />
+        : textFieldRow("web.vhosts[].host", vhostPath("host"), "proxy.example.com")}
       {textFieldRow("web.vhosts[].base_path", vhostPath("base_path"), "telegram/relay")}
       {textFieldRow("web.vhosts[].public_addr", vhostPath("public_addr"), "203.0.113.10:443")}
 
@@ -348,19 +355,12 @@ function WebVhostFields({ fieldsByPath, sections, vhostIndex, vhost, profiles, a
       </div>
 
       <div className="pt-1">
-        <div className="flex items-end justify-between gap-3">
-          <SectionHeading title={copy.webProfilesTitle} hint={copy.webProfilesHint} />
+        <div className="flex items-start justify-between gap-3">
+          <SectionHeading title={copy.webProfilesTitle} hint="" />
           <span className="mb-0.5 shrink-0 rounded-full bg-surface-2 px-2 py-1 text-micro font-semibold text-text-faint">{profiles.length}</span>
         </div>
-        <div className="mt-3 flex flex-col gap-3 rounded-xl border border-border bg-bg/25 p-3.5 sm:flex-row sm:items-center">
-          <span className="min-w-0 flex-1">
-            <strong className="block text-sm font-semibold text-text">{copy.webProfileCount.replace("{count}", String(profiles.length))}</strong>
-            <small className="mt-1 block text-meta leading-relaxed text-text-muted">{profiles.length === 0 ? copy.webNoProfiles : copy.webProfilesManagedInPeople}</small>
-          </span>
-          <a href={withBasePath("/people")} className="flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 px-4 text-meta font-semibold text-accent hover:border-accent/40 hover:bg-accent/[0.05]">
-            {copy.webManageProfiles}
-          </a>
-        </div>
+        <WebProfilesField {...webUsers} enabled={getConfigValue(sections, "web.enabled") === true} profiles={profiles} onChange={(next) => onChange(setConfigValue(sections, vhostPath("profiles"), next))} />
+        <a href={withBasePath("/people")} className="mt-1 inline-flex min-h-11 items-center text-meta font-semibold text-accent hover:underline">{copy.webManageProfiles}</a>
       </div>
     </div>
   );
@@ -394,7 +394,8 @@ function webVhostReady(vhost: Record<string, unknown>): boolean {
     ? String(decoy["upstream"] ?? "").trim() !== ""
     : mode === "static_directory" && String(decoy["directory"] ?? "").trim() !== "";
   const profiles = asRecordArray(vhost["profiles"]);
-  return String(vhost["host"] ?? "").trim() !== ""
+  const domains = webVhostDomains(vhost);
+  return domains.length > 0 && domains.every((host) => host.trim() !== "")
     && isWebBasePath(String(vhost["base_path"]??""))
     && String(vhost["public_addr"] ?? "").trim() !== ""
     && decoyReady

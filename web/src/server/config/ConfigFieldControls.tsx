@@ -5,10 +5,11 @@ import { cn } from "../../lib/cn";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { Toggle } from "../../ui/Toggle";
-import { fieldInstances, setConfigValue, type ConfigFieldInstance } from "./configCatalog.helpers";
+import { fieldInstances, getConfigValue, setConfigValue, type ConfigFieldInstance } from "./configCatalog.helpers";
 import { configFieldDescription, configFieldLabel } from "./configFieldPresentation";
 import { formatConfigNumber } from "./configNumber.helpers";
 import { HelpHint } from "../../ui/HelpHint";
+import { WebDomainsField } from "./WebDomainsField";
 
 export function GenericFields({ fields, sections, advanced, catalog, onChange }: {
   fields: TelemtConfigField[];
@@ -17,18 +18,31 @@ export function GenericFields({ fields, sections, advanced, catalog, onChange }:
   catalog?: TelemtConfigCatalog;
   onChange: (next: Record<string, unknown>) => void;
 }) {
+  const domainRows = new Set<string>();
+  const supportsHosts = (catalog?.fields ?? fields).some((field) => field.path === "web.vhosts[].hosts");
   return (
     <div>
       {fields.flatMap((field) =>
-        fieldInstances(sections, field).map((instance) => (
-          <ConfigFieldRow
-            key={instance.concretePath}
-            instance={instance}
-            advanced={advanced}
-            groupName={catalog?.groups.find((item) => item.id === field.group)?.short}
-            onChange={(value) => onChange(setConfigValue(sections, instance.concretePath, value))}
-          />
-        )),
+        fieldInstances(sections, field).map((instance) => {
+          if (field.path === "web.vhosts[].host" || field.path === "web.vhosts[].hosts") {
+            const path = instance.concretePath.replace(/\.(host|hosts)$/, "");
+            const vhost = getConfigValue(sections, path) as Record<string, unknown>;
+            if (supportsHosts || Array.isArray(vhost?.["hosts"])) {
+              if (domainRows.has(path)) return null;
+              domainRows.add(path);
+              return <WebDomainsField key={path} vhost={vhost} path={path} advanced={advanced} onChange={(next) => onChange(setConfigValue(sections, path, next))} />;
+            }
+          }
+          return (
+            <ConfigFieldRow
+              key={instance.concretePath}
+              instance={instance}
+              advanced={advanced}
+              groupName={catalog?.groups.find((item) => item.id === field.group)?.short}
+              onChange={(value) => onChange(setConfigValue(sections, instance.concretePath, value))}
+            />
+          );
+        }),
       )}
     </div>
   );

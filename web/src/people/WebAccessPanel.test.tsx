@@ -29,6 +29,22 @@ async function changeMode(value: string) {
 }
 afterEach(() => { if (root) act(() => root.unmount()); container?.remove(); cache?.clear(); apiClient.setConfig(originalConfig); vi.clearAllMocks(); });
 
+it("shows all group domains while submitting one shared profile identity", async () => {
+  let submitted: unknown;
+  const grouped = { ...config, vhosts: [{ ...config.vhosts[0], hosts: ["example.com", "alias.example.com"] }] };
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    const req = request as Request;
+    if (req.method === "PUT") { submitted = await req.json(); return Response.json({ revision: "r2", changed: ["web"] }); }
+    return Response.json({ ...grouped, revision: "r2" });
+  } });
+  await setup();
+  await act(async () => { cache.setQueryData(getTelemtWebAccessQueryKey(), grouped); await settle(); });
+  expect(document.querySelector("select")?.selectedOptions[0]?.textContent).toContain("example.com, alias.example.com");
+  await changeMode("dd");
+  await act(async () => { button("Сохранить").click(); await settle(); });
+  expect(submitted).toEqual({ profiles: [{ vhost: "example.com", secret_mode: "dd" }] });
+});
+
 it("keeps an unsaved WEB profile and focus on an unrelated config revision (A05)", async () => {
   await setup(); await changeMode("dd");
   const mode = document.querySelectorAll("select")[1]!; mode.focus();

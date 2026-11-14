@@ -3,6 +3,7 @@ package subpage
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,18 @@ func TestWebLinksForUserMatchesTelemt358(t *testing.T) {
 		if len(links) != 1 || links[0] != want {
 			t.Fatalf("%s links=%v, want one reference URL", tc.mode, links)
 		}
+	}
+}
+
+func TestWebLinksForUserGroupedDomains(t *testing.T) {
+	raw := json.RawMessage(`{"enabled":true,"vhosts":[{"hosts":["one.example.com","two.example.com","bad.example/path"],"base_path":"MixedCase/relay","profiles":[{"user":"bob","secret_mode":"plain"},{"user":"alice","secret_mode":"dd"}]}]}`)
+	links := WebLinksForUser(raw, "alice", "000102030405060708090a0b0c0d0e0f")
+	want := []string{
+		"tg://webproxy?server=one.example.com%2FMixedCase%2Frelay&secret=cN0AAQIDBAUGBwgJCgsMDQ4P",
+		"tg://webproxy?server=two.example.com%2FMixedCase%2Frelay&secret=cN0AAQIDBAUGBwgJCgsMDQ4P",
+	}
+	if !reflect.DeepEqual(links, want) {
+		t.Fatalf("grouped links = %v, want %v", links, want)
 	}
 }
 

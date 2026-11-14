@@ -703,7 +703,14 @@ export type WebAccessProfile = {
 };
 
 export type WebAccessVhost = {
+    /**
+     * Representative domain used to identify this vhost in access updates; the first domain for a hosts group.
+     */
     host: string;
+    /**
+     * All domains when Telemt config uses hosts. Access profiles apply to the whole group.
+     */
+    hosts?: Array<string>;
     /**
      * Telemt WEB prefix without surrounding slashes; case-sensitive, available since 3.5.8.
      */

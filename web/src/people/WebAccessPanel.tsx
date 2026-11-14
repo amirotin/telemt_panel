@@ -83,7 +83,7 @@ export function WebAccessPanel({ username, readOnly = false }: { username: strin
             {profiles.map((profile, index) => (
               <div key={`${profile.vhost}:${profile.secret_mode}:${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-3">
                 <span className="min-w-0">
-                  <strong className="block truncate text-meta font-semibold text-text">{profile.vhost}</strong>
+                  <strong className="block truncate text-meta font-semibold text-text">{vhosts.find((vhost) => vhost.host === profile.vhost)?.hosts?.join(", ") || profile.vhost}</strong>
                   <small className="mt-0.5 block text-micro text-text-faint">{limitsSummary(profile, s.people.webAccess)}</small>
                 </span>
                 <span className="rounded-full bg-accent/10 px-2 py-1 font-mono text-micro font-bold uppercase text-accent">{profile.secret_mode}</span>
@@ -103,7 +103,7 @@ export function WebAccessPanel({ username, readOnly = false }: { username: strin
         readOnly={readOnly}
         username={username}
         revision={query.data.revision}
-        vhosts={vhosts.map(({ host, public_addr }) => ({ host, publicAddr: public_addr }))}
+        vhosts={vhosts.map(({ host, hosts, public_addr }) => ({ host, label: hosts?.join(", ") || host, publicAddr: public_addr }))}
         initialProfiles={profiles}
         onClose={() => setEditing(false)}
         onReloadAccepted={setReloadId}
@@ -117,7 +117,7 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
   readOnly: boolean;
   username: string;
   revision: string;
-  vhosts: Array<{ host: string; publicAddr: string }>;
+  vhosts: Array<{ host: string; label: string; publicAddr: string }>;
   initialProfiles: WebUserAccessProfile[];
   onClose: () => void;
   onReloadAccepted: (id: number) => void;
@@ -224,7 +224,7 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
               <header className="mb-3 flex items-center justify-between gap-3">
                 <span>
                   <span className="block text-micro font-semibold uppercase tracking-wide text-text-faint">{s.people.webAccess.profile} {index + 1}</span>
-                  <strong className="mt-0.5 block text-sm text-text">{profile.vhost || s.people.webAccess.chooseVhost}</strong>
+                  <strong className="mt-0.5 block break-words text-sm text-text">{vhosts.find((vhost) => vhost.host === profile.vhost)?.label || profile.vhost || s.people.webAccess.chooseVhost}</strong>
                 </span>
                 <button type="button" className="grid size-11 place-items-center rounded-lg text-text-faint hover:bg-bad/8 hover:text-bad" aria-label={s.people.webAccess.remove} onClick={() => setProfiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                   <IconTrash className="size-4" />
@@ -235,7 +235,7 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
                 <label>
                   <span className="mb-1.5 block text-micro font-semibold text-text-muted">{s.people.webAccess.vhost}</span>
                   <Select value={profile.vhost} onChange={(event) => updateProfile(index, { vhost: event.target.value })}>
-                    {vhosts.map((vhost) => <option key={vhost.host} value={vhost.host}>{vhost.host}{vhost.publicAddr ? ` · ${vhost.publicAddr}` : ""}</option>)}
+                    {vhosts.map((vhost) => <option key={vhost.host} value={vhost.host}>{vhost.label}{vhost.publicAddr ? ` · ${vhost.publicAddr}` : ""}</option>)}
                   </Select>
                 </label>
                 <label>

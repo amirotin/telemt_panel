@@ -77,6 +77,17 @@ describe("connection link projection",()=>{
     expect(webProfileIndex(view).get("alice")).toEqual([{host:"a.example",mode:"plain"},{host:"b.example",mode:"dd"}]);expect(webProfileIndex({...view,enabled:false}).size).toBe(0);
   });
 
+  it("makes a WEB link for every grouped domain using one shared profile set",()=>{
+    const view={revision:"r",enabled:true,vhosts:[{host:"one.example.com",hosts:["one.example.com","two.example.com"],base_path:"MixedCase/relay",public_addr:"203.0.113.1:443",profiles:[{user:"alice",secret_mode:"dd" as const},{user:"bob",secret_mode:"plain" as const}]}]};
+    const profiles=webProfileIndex(view).get("alice")!;
+    expect(profiles).toEqual([
+      {host:"one.example.com",basePath:"MixedCase/relay",mode:"dd"},
+      {host:"two.example.com",basePath:"MixedCase/relay",mode:"dd"},
+    ]);
+    const result=collectConnectionLinks(links({classic:[link()]}),profiles).filter(item=>item.kind==="web");
+    expect(result.map(item=>item.endpoint)).toEqual(["one.example.com/MixedCase/relay","two.example.com/MixedCase/relay"]);
+  });
+
   it("preserves a WEB vhost's exact case-sensitive path in the account projection",()=>{
     const view={revision:"r",enabled:true,vhosts:[{host:"web.example.org",base_path:"MixedCase/relay",public_addr:"203.0.113.1:443",profiles:[{user:"alice",secret_mode:"dd" as const}]}]};
     expect(webProfileIndex(view).get("alice")).toEqual([{host:"web.example.org",basePath:"MixedCase/relay",mode:"dd"}]);

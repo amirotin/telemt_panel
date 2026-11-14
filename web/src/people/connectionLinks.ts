@@ -17,7 +17,9 @@ export function webProfileIndex(view: WebAccessView | undefined): Map<string, We
   for (const vhost of view.vhosts) for (const profile of vhost.profiles) {
     if (profile.secret_mode !== "plain" && profile.secret_mode !== "dd") continue;
     const entries = index.get(profile.user) ?? [];
-    entries.push({host: vhost.host, ...(vhost.base_path!==undefined?{basePath:vhost.base_path}:{}), mode: profile.secret_mode});
+    for (const host of vhost.hosts?.length ? vhost.hosts : [vhost.host]) {
+      entries.push({host, ...(vhost.base_path!==undefined?{basePath:vhost.base_path}:{}), mode: profile.secret_mode});
+    }
     index.set(profile.user, entries);
   }
   return index;

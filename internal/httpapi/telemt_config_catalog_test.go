@@ -136,9 +136,10 @@ func TestTelemtConfigCatalogReleaseMilestones(t *testing.T) {
 		{"3.5.12", "3.5.12", "c4555e25f39dd5be200ccf6353f7d82bfcf89131", 350},
 		{"3.5.13", "3.5.13", "d3de9865cf5d088809fdf728059bcb2b0841db67", 351},
 		{"3.5.14", "3.5.14", "9d5b896bb695c55e2905b82f276da84e45a0a2ec", 353},
-		{"3.5.16", "3.5.16", "84e5b827a6619fb2e09ad3d09f253cdffe04bc2f", 358},
-		{"3.5.17", "3.5.17", "66708d2866f3f3a4541c4fa67984d408e71a8af4", 364},
-		{"3.6.0", "3.5.17", "66708d2866f3f3a4541c4fa67984d408e71a8af4", 364},
+		{"3.5.15", "3.5.15", "61afd6c7024b9c4b48497b53109f3eebb899320a", 354},
+		{"3.5.16", "3.5.16", "84e5b827a6619fb2e09ad3d09f253cdffe04bc2f", 359},
+		{"3.5.17", "3.5.17", "66708d2866f3f3a4541c4fa67984d408e71a8af4", 365},
+		{"3.6.0", "3.5.17", "66708d2866f3f3a4541c4fa67984d408e71a8af4", 365},
 	} {
 		t.Run(tt.version, func(t *testing.T) {
 			catalog := telemtConfigCatalogForVersion(tt.version)

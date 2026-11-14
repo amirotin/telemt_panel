@@ -34,6 +34,17 @@ func TestRetryJitterOptionalPeakVersionGuard(t *testing.T) {
 	}
 }
 
+func TestWebHostListVersionGuard(t *testing.T) {
+	patch := map[string]json.RawMessage{"web": json.RawMessage(`{"vhosts":[{"hosts":["one.example.com","two.example.com"]}]}`)}
+	for _, version := range []string{"", "unknown", "3.5.5", "3.5.14", "3.5.15", "3.5.16", "3.5.17"} {
+		err := validateTelemtConfigPatch(patch, nil, version)
+		want := version == "3.5.15" || version == "3.5.16" || version == "3.5.17"
+		if (err == nil) != want {
+			t.Errorf("%s: accepted=%v want=%v (%v)", version, err == nil, want, err)
+		}
+	}
+}
+
 func TestNewDNSAndAPICatalogPaths(t *testing.T) {
 	patch := map[string]json.RawMessage{"network": json.RawMessage(`{"dns_overrides":[]}`), "server": json.RawMessage(`{"api":{"minimal_runtime_enabled":false,"minimal_runtime_cache_ttl_ms":100,"runtime_edge_enabled":true,"runtime_edge_cache_ttl_ms":50,"runtime_edge_top_n":20}}`)}
 	for _, version := range []string{"unknown", "3.5.16", "3.5.17"} {

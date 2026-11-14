@@ -20,8 +20,9 @@ func WebLinksForUser(raw json.RawMessage, username, secret string) []string {
 	var cfg struct {
 		Enabled bool `json:"enabled"`
 		Vhosts  []struct {
-			Host     string `json:"host"`
-			BasePath string `json:"base_path"`
+			Host     string   `json:"host"`
+			Hosts    []string `json:"hosts"`
+			BasePath string   `json:"base_path"`
 			Profiles []struct {
 				User string `json:"user"`
 				Mode string `json:"secret_mode"`
@@ -34,27 +35,38 @@ func WebLinksForUser(raw json.RawMessage, username, secret string) []string {
 	var links []string
 	seen := make(map[string]bool)
 	for _, vhost := range cfg.Vhosts {
-		if vhost.Host == "" || strings.ContainsAny(vhost.Host, " /:?#@%\\\t\r\n") || len(vhost.BasePath) > 128 || vhost.BasePath != "" && !webBasePathPattern.MatchString(vhost.BasePath) {
+		if len(vhost.BasePath) > 128 || vhost.BasePath != "" && !webBasePathPattern.MatchString(vhost.BasePath) {
 			continue
+		}
+		hosts := vhost.Hosts
+		if len(hosts) == 0 {
+			hosts = []string{vhost.Host}
 		}
 		for _, profile := range vhost.Profiles {
 			if profile.User != username || profile.Mode != "plain" && profile.Mode != "dd" {
 				continue
 			}
-			server := vhost.Host
 			clientSecret := secret
 			if profile.Mode == "dd" {
 				clientSecret = "dd" + secret
 			}
 			if vhost.BasePath != "" {
-				server += "/" + vhost.BasePath
 				rawSecret, _ := hex.DecodeString(clientSecret)
 				clientSecret = base64.RawURLEncoding.EncodeToString(append([]byte{0x70}, rawSecret...))
 			}
-			link := "tg://webproxy?server=" + url.QueryEscape(server) + "&secret=" + clientSecret
-			if !seen[link] {
-				links = append(links, link)
-				seen[link] = true
+			for _, host := range hosts {
+				if host == "" || strings.ContainsAny(host, " /:?#@%\\\t\r\n") {
+					continue
+				}
+				server := host
+				if vhost.BasePath != "" {
+					server += "/" + vhost.BasePath
+				}
+				link := "tg://webproxy?server=" + url.QueryEscape(server) + "&secret=" + clientSecret
+				if !seen[link] {
+					links = append(links, link)
+					seen[link] = true
+				}
 			}
 		}
 	}

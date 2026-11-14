@@ -23,6 +23,7 @@ type webAccessView struct {
 
 type webAccessVhostView struct {
 	Host       string                 `json:"host"`
+	Hosts      []string               `json:"hosts,omitempty"`
 	BasePath   string                 `json:"base_path,omitempty"`
 	PublicAddr string                 `json:"public_addr"`
 	Profiles   []webAccessProfileView `json:"profiles"`
@@ -201,6 +202,7 @@ func projectWebAccess(raw json.RawMessage, revision string) (webAccessView, erro
 		Enabled bool `json:"enabled"`
 		Vhosts  []struct {
 			Host       string                 `json:"host"`
+			Hosts      []string               `json:"hosts"`
 			BasePath   string                 `json:"base_path"`
 			PublicAddr string                 `json:"public_addr"`
 			Profiles   []webAccessProfileView `json:"profiles"`
@@ -215,7 +217,11 @@ func projectWebAccess(raw json.RawMessage, revision string) (webAccessView, erro
 		if profiles == nil {
 			profiles = []webAccessProfileView{}
 		}
-		view.Vhosts = append(view.Vhosts, webAccessVhostView{Host: vhost.Host, BasePath: vhost.BasePath, PublicAddr: vhost.PublicAddr, Profiles: profiles})
+		host := vhost.Host
+		if len(vhost.Hosts) > 0 {
+			host = vhost.Hosts[0]
+		}
+		view.Vhosts = append(view.Vhosts, webAccessVhostView{Host: host, Hosts: vhost.Hosts, BasePath: vhost.BasePath, PublicAddr: vhost.PublicAddr, Profiles: profiles})
 	}
 	return view, nil
 }
@@ -289,6 +295,15 @@ func replaceWebUserProfiles(raw json.RawMessage, username string, requested []we
 	webEnabled := rawJSONBool(doc["enabled"])
 	for _, vhost := range vhosts {
 		host := rawJSONString(vhost["host"])
+		var hosts []string
+		if rawHosts := vhost["hosts"]; len(rawHosts) > 0 {
+			if err := json.Unmarshal(rawHosts, &hosts); err != nil {
+				return nil, err
+			}
+			if len(hosts) > 0 {
+				host = hosts[0]
+			}
+		}
 		seenVhosts[host] = true
 		var profiles []map[string]json.RawMessage
 		if rawProfiles := vhost["profiles"]; len(rawProfiles) > 0 {

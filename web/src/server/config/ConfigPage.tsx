@@ -32,6 +32,8 @@ import { buildConfigPatch } from "./configPatch.helpers";
 import { diffChangedSectionKeys } from "./configConflict.helpers";
 import { rebaseEdits } from "./rebaseEdits";
 import { preserveLateConfigEdits } from "./configSave.helpers";
+import { asRecordArray } from "./configRecords";
+import { getConfigValue } from "./configCatalog.helpers";
 import { ConfigSavePreview } from "./ConfigSavePreview";
 import {
   DEFAULT_RELOAD_POLICY,
@@ -46,6 +48,7 @@ import {
   getTelemtInfoQueryKey,
   getTelemtConfigCatalogOptions,
   getHostOptions,
+  listUsersOptions,
   patchTelemtConfigMutation,
   reloadTelemtMutation,
   restartTelemtServiceMutation,
@@ -90,6 +93,10 @@ export function ConfigPage() {
   const editor = useConfigEditor(configQuery.data);
 
   const [tab, setTab] = useState<Tab>("normal");
+  const [webUsersRequested, setWebUsersRequested] = useState(false);
+  const emptyWebVhosts = asRecordArray(getConfigValue(editor.edited ?? {}, "web.vhosts")).some((vhost) => asRecordArray(vhost["profiles"]).length === 0);
+  const missingWebProfiles = getConfigValue(editor.edited ?? {}, "web.enabled") === true && emptyWebVhosts;
+  const usersQuery = useQuery({ ...listUsersOptions(), enabled: tab !== "toml" && webUsersRequested, staleTime: 30_000 });
   const [reloadPolicy, setReloadPolicyState] = useState<ReloadPolicyState>(
     DEFAULT_RELOAD_POLICY,
   );
@@ -331,7 +338,7 @@ export function ConfigPage() {
   const currentRebase = conflict ? rebaseEdits(conflict.fresh.sections, patch, conflictChangedKeys) : null;
 
   function save() {
-    if (!editor.baseline || !editor.edited || !hasChanges) return;
+    if (!editor.baseline || !editor.edited || !hasChanges || missingWebProfiles) return;
     setSavePreviewOpen(true);
   }
 
@@ -473,6 +480,7 @@ export function ConfigPage() {
             mode={tab}
             changedCount={changedCount}
             documentVersion={editor.documentVersion}
+            webUsers={{ usernames: usersQuery.data?.map((user) => user.username) ?? [], usersPending: usersQuery.isPending, usersError: usersQuery.isError, onRetryUsers: () => { void usersQuery.refetch(); }, onRequestUsers: () => setWebUsersRequested(true) }}
             onChange={(next) => {
               setPatchResult(null);
               if (patchErrorCode !== "telemt_config_outcome_unknown") setPatchErrorCode(null);
@@ -493,6 +501,7 @@ export function ConfigPage() {
 
         {tab !== "toml" && !toml.blocked && (
           <div data-testid="config-save-bar" className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-t border-border-strong bg-surface/95 px-3 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:items-end lg:gap-3 sm:px-4">
+            {missingWebProfiles && <p role="status" className="w-full text-micro text-warn">{s.server.config.catalog.webFirstProfileRequired}</p>}
             <div className="flex min-h-11 items-center gap-2.5">
               <span className={cn("size-2 rounded-full", hasChanges ? "bg-warn" : "bg-ok")} />
               <span>
@@ -522,7 +531,7 @@ export function ConfigPage() {
                   <span className="hidden sm:inline">{s.server.config.discardDraft}</span>
                 </Button>
               )}
-              <Button size="sm" onClick={save} disabled={!hasChanges || patchMutation.isPending || rebaseChecking}>
+              <Button size="sm" onClick={save} disabled={!hasChanges || missingWebProfiles || patchMutation.isPending || rebaseChecking}>
                 {patchMutation.isPending ? s.server.config.saving : s.server.config.save}
               </Button>
             </div>
