@@ -28,7 +28,9 @@ export function webProfileIndex(view: WebAccessView | undefined): Map<string, We
 function proxyURL(raw: string): URL | null {
   try {
     const u = new URL(raw);
-    if (!(u.protocol === "tg:" && u.hostname === "proxy" && !u.pathname || u.protocol === "https:" && u.hostname === "t.me" && u.pathname === "/proxy")) return null;
+    // Some browsers expose tg://proxy as an opaque //proxy pathname.
+    const telegramProxy = u.protocol === "tg:" && ((u.hostname === "proxy" && !u.pathname) || (u.hostname === "" && u.pathname === "//proxy"));
+    if (!(telegramProxy || u.protocol === "https:" && u.hostname === "t.me" && u.pathname === "/proxy")) return null;
     if (u.username || u.password || u.hash || (u.protocol === "https:" && u.port)) return null;
     if (["server", "port", "secret"].some(key => u.searchParams.getAll(key).length !== 1)) return null;
     const host = u.searchParams.get("server"), port = u.searchParams.get("port");
