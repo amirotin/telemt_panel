@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/adhocore/gronx v1.20.5
+	github.com/adhocore/gronx v1.20.7
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/ncruces/go-sqlite3 v0.35.6
 	github.com/oschwald/maxminddb-golang/v2 v2.8.0
