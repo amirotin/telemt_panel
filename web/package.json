@@ -57,7 +57,7 @@
     "globals": "17.13.0",
     "js-yaml": "5.4.2",
     "jsdom": "30.0.1",
-    "knip": "6.40.0",
+    "knip": "6.45.1",
     "tailwindcss": "4.3.3",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.68.0",
