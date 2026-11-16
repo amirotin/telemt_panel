@@ -24,8 +24,8 @@
     "@tanstack/react-virtual": "3.14.13",
     "d3-geo": "3.1.1",
     "qrcode": "1.5.4",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "three": "0.185.1",
     "topojson-client": "3.1.0",
     "world-atlas": "2.0.2"
