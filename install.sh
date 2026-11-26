@@ -21,6 +21,7 @@ SERVICE_NAME="telemt-panel"
 SYSTEM_USER="telemt-panel"
 CONFIG_DIR="/etc/telemt-panel"
 CONFIG_FILE="$CONFIG_DIR/config.toml"
+REINSTALL_DIR="/etc/telemt-panel-reinstall"
 SUDOERS_FILE="/etc/sudoers.d/telemt-panel"
 POLICY_FILE="/etc/telemt-panel-privileged/policy.json"
 HELPER_FILE="/usr/local/libexec/telemt-panel-privileged"
@@ -43,6 +44,10 @@ WORKER_PREVIOUS_STATE_DIR=""
 WORKER_GUARD_PIDS=""
 PANEL_LAUNCH_BIN=""
 REPAIR_USER=""
+REINSTALL_PENDING=0
+REINSTALL_ENABLE_ATTEMPTED=0
+REINSTALL_START_ATTEMPTED=0
+REINSTALL_STATE_CREATED=0
 TELEMT_CONFIG="/etc/telemt/telemt.toml"
 LOG_FILE="/var/log/telemt-panel.log"
 PID_FILE="/run/telemt-panel.pid"
@@ -114,6 +119,7 @@ STORE_DRIVER=""
 
 SUDO=""
 TEMP_DIR=""
+TTY_SETTINGS=""
 HTTP_BODY=""
 UPDATE_PENDING=0
 UPDATE_STAGED=""
@@ -145,8 +151,20 @@ t() {
     en:remove_privileges_retained) _f='Helper and policy retained: ownership by this installation could not be verified. Review manually: %s; %s' ;;
     ru:uninstall_privileges_retained) _f='Helper и защищённая policy сохраняются для повторной установки.' ;;
     en:uninstall_privileges_retained) _f='Helper and protected policy are retained for reinstallation.' ;;
+    ru:reinstall_receipt_invalid) _f='Не удалось проверить сохранённые файлы установки в %s. Проверьте владельца, права доступа и соответствие путей конфигурации.' ;;
+    en:reinstall_receipt_invalid) _f='Could not verify the retained installation in %s. Check its ownership, permissions and configuration paths.' ;;
+    ru:reinstall_receipt_failed) _f='Не удалось сохранить сервис для повторной установки в %s. Удаление остановлено.' ;;
+    en:reinstall_receipt_failed) _f='Could not retain the service for reinstallation in %s. Removal stopped.' ;;
     ru:update_preflight_failed) _f='Проверка существующей установки или нового бинарника не пройдена; обновление не применено.' ;;
     en:update_preflight_failed) _f='Existing installation or candidate validation failed; update not applied.' ;;
+    ru:reinstall_plan) _f='Будут восстановлены бинарник и служба панели с сохранённой конфигурацией.' ;;
+    en:reinstall_plan) _f='The panel binary and service will be restored with the retained configuration.' ;;
+    ru:reinstall_unsafe) _f='Не удалось подтвердить параметры прежней установки или один из путей уже занят. Проверьте TOML, файлы службы и каталог восстановления.' ;;
+    en:reinstall_unsafe) _f='Could not verify the prior installation or a destination is already occupied. Check the TOML, service files and recovery directory.' ;;
+    ru:reinstall_rollback_failed) _f='Не удалось полностью отменить восстановление службы. Проверьте её состояние и файлы перед повтором.' ;;
+    en:reinstall_rollback_failed) _f='Could not fully roll back service restoration. Inspect the service and its files before retrying.' ;;
+    ru:reinstall_done) _f='Бинарник и служба панели восстановлены с сохранённой конфигурацией.' ;;
+    en:reinstall_done) _f='Restored the panel binary and service with the retained configuration.' ;;
     ru:update_preserve) _f='Будет обновлён бинарник. Сервис и firewall сохраняются; необходимые изменения путей и прав перечислены выше.' ;;
     en:update_preserve) _f='The binary will be updated. Service and firewall are retained; required path and privilege changes are listed above.' ;;
     ru:update_legacy) _f='Конфиг 0.6 останется без изменений. При первом запуске совместимые настройки переносятся один раз; проверки версий — без автоустановки, каждые 6 часов. JWT требует нового входа.' ;;
@@ -189,6 +207,8 @@ t() {
     en:q_proxy_path) _f='Panel path (for example /panel)' ;;
     ru:bad_proxy_path) _f='Путь: только ASCII-буквы, цифры и . _ ~ / -; без пробелов, URL, пустых сегментов и сегментов «.» или «..».' ;;
     en:bad_proxy_path) _f='Path: ASCII letters, digits and . _ ~ / - only; no spaces, URLs, empty segments, . or .. segments.' ;;
+    ru:secret_generation_failed) _f='Не удалось сгенерировать случайный секрет. Проверьте доступ к /dev/urandom.' ;;
+    en:secret_generation_failed) _f='Could not generate a random secret. Check access to /dev/urandom.' ;;
     ru:proxy_path_env) _f='TP_BASE_PATH используется только с TP_TLS_MODE=proxy.' ;;
     en:proxy_path_env) _f='TP_BASE_PATH requires TP_TLS_MODE=proxy.' ;;
     ru:s_base_path) _f='Путь панели' ;;
@@ -247,9 +267,29 @@ t() {
     ru:invalid_choice) _f='Введите одну из цифр: %s' ;;
     en:invalid_choice) _f='Enter one of: %s' ;;
     ru:missing_env) _f='Режим --yes: не задана обязательная переменная %s.' ;;
+    ru:input_closed) _f='Ввод с терминала прерван. Установка остановлена.' ;;
+    en:input_closed) _f='Terminal input ended. Setup stopped.' ;;
+    ru:secret_input_failed) _f='Не удалось прочитать скрытый ввод. Используйте ash или установите stty.' ;;
+    en:secret_input_failed) _f='Could not read hidden input. Use ash or install stty.' ;;
+    ru:missing_argument) _f='Укажите значение параметра %s.' ;;
+    en:missing_argument) _f='Supply a value for %s.' ;;
+    ru:fresh_config_failed) _f='Бинарник не прошёл проверку с подготовленной конфигурацией. Проверьте выбранную сборку и параметры установки.' ;;
+    en:fresh_config_failed) _f='The binary could not validate the proposed configuration. Check the build and installation settings.' ;;
     en:missing_env) _f='--yes mode: required variable %s is not set.' ;;
     ru:unknown_option) _f='Неизвестный параметр: %s (см. --help)' ;;
     en:unknown_option) _f='Unknown option: %s (see --help)' ;;
+    ru:config_path_invalid) _f='%s: недопустимый путь %s. Укажите абсолютный путь без пробелов, специальных символов и компонентов . или ..' ;;
+    en:config_path_invalid) _f='%s: invalid path %s. Use an absolute path without spaces, special characters, or . or .. components.' ;;
+    ru:config_parent_missing) _f='Родительский каталог TP_CONFIG_FILE не существует: %s' ;;
+    en:config_parent_missing) _f='The parent directory of TP_CONFIG_FILE does not exist: %s' ;;
+    ru:config_path_conflict) _f='Выбранный путь к конфигу панели уже предназначен для другого файла или каталога: %s' ;;
+    en:config_path_conflict) _f='The selected panel config path is reserved for another file or directory: %s' ;;
+    ru:install_role_conflict) _f='Пути бинарников и имена служб Telemt и панели должны различаться. Проверьте TP_TELEMT_BINARY и TP_TELEMT_SERVICE.' ;;
+    en:install_role_conflict) _f='Panel and Telemt binaries and services must be distinct. Check TP_TELEMT_BINARY and TP_TELEMT_SERVICE.' ;;
+    ru:install_file_exists) _f='Файл %s уже существует, а выбранного конфига панели %s нет. Проверьте пути существующей установки.' ;;
+    en:install_file_exists) _f='File %s already exists, and the selected panel config %s is missing. Check the existing installation paths.' ;;
+    ru:config_service_exists) _f='Служба %s уже существует, а выбранного конфига %s нет. Для обновления укажите путь из команды --config существующей службы.' ;;
+    en:config_service_exists) _f='Service %s already exists, and the selected config %s is missing. To update, use the path from the existing service command after --config.' ;;
     ru:lang_prompt) _f='Язык / Language:  1) Русский  2) English' ;;
     en:lang_prompt) _f='Язык / Language:  1) Русский  2) English' ;;
 
@@ -259,7 +299,7 @@ t() {
 Использование: sh install.sh [параметры] [команда]
 
 Команды:
-  install        установить, обновить или мигрировать с 0.x (по умолчанию)
+  install        установить, восстановить после uninstall, обновить или мигрировать с 0.x (по умолчанию)
   uninstall      удалить бинарь, сервис и sudoers; конфиг и данные остаются
   repair-privileges --user USER  заменить root policy/sudoers при остановленной панели
   purge          удалить панель, её конфиг и настроенный каталог данных
@@ -285,6 +325,12 @@ t() {
   TP_TLS_DOMAIN, TP_TLS_CERT_FILE, TP_TLS_KEY_FILE, TP_TLS_CACHE_DIR,
   TP_OPEN_FIREWALL=yes|no (отдельное явное согласие; --yes недостаточно)
 
+Пути установки и обновления:
+  TP_CONFIG_DIR    отдельный каталог панели, в нём по умолчанию config.toml
+  TP_CONFIG_FILE   абсолютный путь к TOML панели. Для файла вне TP_CONFIG_DIR
+                   родительский каталог должен уже существовать.
+  TP_TELEMT_CONFIG абсолютный путь к TOML Telemt для обнаружения адреса и авторизации API
+
 Пути: бинарь %s, конфиг %s, данные %s
 ' ;;
     en:help) _f='Telemt Panel 1.x installer
@@ -292,7 +338,7 @@ t() {
 Usage: sh install.sh [options] [command]
 
 Commands:
-  install        install, update, or migrate from 0.x (default)
+  install        install, restore after uninstall, update, or migrate from 0.x (default)
   uninstall      remove binary, service and sudoers; keep config and data
   repair-privileges --user USER  replace root policy/sudoers with the panel stopped
   purge          remove panel, configuration and configured data directory
@@ -317,6 +363,12 @@ Variables for --yes (they pre-fill defaults in interactive mode):
   TP_BASE_PATH=/|/custom-path|random (proxy only; defaults to root /),
   TP_TLS_DOMAIN, TP_TLS_CERT_FILE, TP_TLS_KEY_FILE, TP_TLS_CACHE_DIR,
   TP_OPEN_FIREWALL=yes|no (separate explicit consent; --yes is insufficient)
+
+Paths for installation and update:
+  TP_CONFIG_DIR    dedicated panel directory, containing config.toml by default
+  TP_CONFIG_FILE   absolute path to the panel TOML file. Outside TP_CONFIG_DIR,
+                   the parent directory must already exist.
+  TP_TELEMT_CONFIG absolute path to Telemt TOML for API address and auth detection
 
 Paths: binary %s, config %s, data %s
 ' ;;
@@ -538,6 +590,8 @@ Paths: binary %s, config %s, data %s
     en:a_resolve) _f='Looking up the latest release…' ;;
     ru:a_resolve_fail) _f='Не удалось узнать последний релиз (нет сети или GitHub недоступен).\nМожно указать версию явно: --version vX.Y.Z' ;;
     en:a_resolve_fail) _f='Could not determine the latest release (no network or GitHub unreachable).\nYou can pass a version explicitly: --version vX.Y.Z' ;;
+    ru:a_release_version) _f='Для этого установщика нужен релиз панели 1.x. Выберите опубликованный тег на %s и передайте его через --version.' ;;
+    en:a_release_version) _f='This installer needs a 1.x panel release. Choose a published tag from %s and pass it with --version.' ;;
     ru:a_download) _f='Скачиваю %s…' ;;
     en:a_download) _f='Downloading %s…' ;;
     ru:a_download_fail) _f='Не удалось скачать %s. Проверьте, что релиз %s существует и есть доступ к github.com.' ;;
@@ -694,6 +748,17 @@ cleanup() {
 }
 installer_exit() {
   _exit_code=$?
+  if [ -n "$TTY_SETTINGS" ]; then stty "$TTY_SETTINGS" </dev/tty || true; fi
+  if [ "$REINSTALL_PENDING" = 1 ]; then
+    _exit_code=1
+    if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ] && ! $SUDO test -d "$REINSTALL_DIR"; then
+      # The receipt was atomically retired after verification. A signal here
+      # must leave the committed installation in place.
+      finish_reinstall_files commit || warn "$(t reinstall_rollback_failed)"
+    else
+      rollback_reinstall || warn "$(t reinstall_rollback_failed)"
+    fi
+  fi
   _priv_restore_failed=0
   if [ "$WORKER_PENDING" = 1 ]; then
     _exit_code=1
@@ -767,9 +832,9 @@ write_root_file() {
     return 0
   fi
   if [ -n "$_owner" ]; then
-    $SUDO install -m "$_mode" -o "$_owner" -g "$(owner_group "$_owner")" "$_tmp" "$_path"
+    $SUDO install -m "$_mode" -o "$_owner" -g "$(owner_group "$_owner")" "$_tmp" "$_path" || return 1
   else
-    $SUDO install -m "$_mode" "$_tmp" "$_path"
+    $SUDO install -m "$_mode" "$_tmp" "$_path" || return 1
   fi
   rm -f "$_tmp"
 }
@@ -791,15 +856,23 @@ require_tty() {
 
 # read_tty VAR — one line from the terminal into VAR.
 read_tty() {
-  IFS= read -r _line </dev/tty || _line=""
+  IFS= read -r _line </dev/tty || die "$(t input_closed)"
   eval "$1=\"\$_line\""
 }
 
 # read_tty_secret VAR — like read_tty with echo disabled.
 read_tty_secret() {
-  stty -echo </dev/tty 2>/dev/null || true
-  IFS= read -r _line </dev/tty || _line=""
-  stty echo </dev/tty 2>/dev/null || true
+  if has stty; then
+    TTY_SETTINGS=$(stty -g </dev/tty) || die "$(t secret_input_failed)"
+    stty -echo </dev/tty || die "$(t secret_input_failed)"
+    IFS= read -r _line </dev/tty || die "$(t input_closed)"
+    stty "$TTY_SETTINGS" </dev/tty || die "$(t secret_input_failed)"
+    TTY_SETTINGS=""
+  else
+    # BusyBox ash implements silent read on stock OpenWrt.
+    # shellcheck disable=SC3045
+    IFS= read -rs _line </dev/tty || die "$(t secret_input_failed)"
+  fi
   printf '\n'
   eval "$1=\"\$_line\""
 }
@@ -944,15 +1017,21 @@ toml_escape() {
 # gen_secret — 64 hex chars from openssl or /dev/urandom.
 gen_secret() {
   if has openssl; then
-    openssl rand -hex 32
+    _hex_secret=$(openssl rand -hex 32) || return 1
   else
-    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+    # A bounded sample lets both commands finish without closing the pipe early.
+    _hex_secret=$(head -c 4096 /dev/urandom | LC_ALL=C tr -dc '0123456789abcdef') || return 1
   fi
+  [ "${#_hex_secret}" -ge 64 ] || return 1
+  case "$_hex_secret" in *[!0-9a-f]*) return 1 ;; esac
+  printf '%.64s\n' "$_hex_secret"
 }
 
 # gen_password — 16 alphanumerics from /dev/urandom.
 gen_password() {
-  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16
+  _random_password=$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9') || return 1
+  [ "${#_random_password}" -ge 16 ] || return 1
+  printf '%.16s\n' "$_random_password"
 }
 
 # http_get URL [AUTH_HEADER] — body → $HTTP_BODY, prints the HTTP status
@@ -978,23 +1057,32 @@ http_get() {
     return 0
   fi
   _err="$TEMP_DIR/http.err"
-  wget -q -T 8 -O "$HTTP_BODY" -S "$_url" >"$_err" 2>&1 && _rc=0 || _rc=$?
-  _code=$(grep -o 'HTTP/[0-9.]* [0-9][0-9][0-9]' "$_err" | tail -n 1 | awk '{print $2}')
-  if [ -n "$_code" ]; then
-    printf '%s' "$_code"
-  elif [ "$_rc" = 0 ]; then
-    printf '200'
-  else
-    printf '000'
+  set -- -T 8 -O "$HTTP_BODY"
+  # OpenWrt's uclient-fetch supplies wget but has no -S. It reports HTTP
+  # errors on stderr and signals a successful download through its exit code.
+  if LC_ALL=C wget --help 2>&1 | grep -Eq '(^|[[:space:]])-S([,[:space:]]|$)'; then
+    set -- -S "$@"
   fi
+  LC_ALL=C wget "$@" "$_url" >"$_err" 2>&1 && _rc=0 || _rc=$?
+  _code=$(awk '
+    $1 ~ /^HTTP\/[0-9.]+$/ && $2 ~ /^[0-9][0-9][0-9]$/ {code=$2}
+    $1=="HTTP" && $2=="error" && $3 ~ /^[0-9][0-9][0-9]$/ {code=$3}
+    END {print code}
+  ' "$_err")
+  case "$_rc:$_code" in
+    0:*) printf '%s' "${_code:-200}" ;;
+    *:4??|*:5??) printf '%s' "$_code" ;;
+    *) printf '000' ;;
+  esac
 }
 
-# download URL DEST — file download with a progress bar where supported.
+# download URL DEST [OPTIONS] — file download with a progress bar where supported.
 download() {
+  _download_url="$1"; _download_dest="$2"; shift 2
   if has curl; then
-    curl -fL --progress-bar -o "$2" "$1"
+    curl -fL --progress-bar -o "$_download_dest" "$@" "$_download_url"
   else
-    wget -O "$2" "$1"
+    wget -O "$_download_dest" "$@" "$_download_url"
   fi
 }
 
@@ -1116,6 +1204,7 @@ apply_layout() {
     TELEMT_SVC="S99telemt"
     CONFIG_DIR="/opt/etc/telemt-panel"
     CONFIG_FILE="$CONFIG_DIR/config.toml"
+    REINSTALL_DIR="/opt/etc/telemt-panel-reinstall"
     SUDOERS_FILE="/opt/etc/sudoers.d/telemt-panel"
     POLICY_FILE="/opt/etc/telemt-panel-privileged/policy.json"
     HELPER_FILE="/opt/libexec/telemt-panel-privileged"
@@ -1132,10 +1221,51 @@ apply_layout() {
     DATA_DIR="$TP_DATA_DIR"
   fi
   case "$INIT" in
-    systemd) SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service" ;;
+    systemd) SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME%.service}.service" ;;
     entware) SERVICE_FILE="/opt/etc/init.d/$SERVICE_NAME" ;;
     *) SERVICE_FILE="/etc/init.d/$SERVICE_NAME" ;;
   esac
+  if [ "$CMD" != help ]; then apply_config_paths; fi
+}
+
+config_path_ok() {
+  sudoers_path_ok "$1" || return 1
+  case "$1" in */|*//*|*/./*|*/../*|*/.|*/..) return 1 ;; esac
+}
+
+apply_config_paths() {
+  if [ -n "${TP_CONFIG_DIR:-}" ]; then
+    CONFIG_DIR="${TP_CONFIG_DIR%/}"
+    config_path_ok "$CONFIG_DIR" || die "$(t config_path_invalid TP_CONFIG_DIR "$CONFIG_DIR")"
+    if $SUDO test -d "$CONFIG_DIR"; then
+      CONFIG_DIR=$($SUDO readlink -f "$CONFIG_DIR") || die "$(t unsafe_directory "$CONFIG_DIR")"
+    fi
+    config_path_ok "$CONFIG_DIR" || die "$(t config_path_invalid TP_CONFIG_DIR "$CONFIG_DIR")"
+    validate_panel_directory "$CONFIG_DIR"
+    CONFIG_FILE="$CONFIG_DIR/config.toml"
+  fi
+  if [ -n "${TP_CONFIG_FILE:-}" ]; then
+    CONFIG_FILE="$TP_CONFIG_FILE"
+    config_path_ok "$CONFIG_FILE" || die "$(t config_path_invalid TP_CONFIG_FILE "$CONFIG_FILE")"
+    config_file_parent=$(dirname "$CONFIG_FILE")
+    if $SUDO test -d "$config_file_parent"; then
+      config_file_parent=$($SUDO readlink -f "$config_file_parent") || die "$(t unsafe_directory "$config_file_parent")"
+      CONFIG_FILE="${config_file_parent%/}/$(basename "$CONFIG_FILE")"
+      config_path_ok "$CONFIG_FILE" || die "$(t config_path_invalid TP_CONFIG_FILE "$CONFIG_FILE")"
+    elif [ "$config_file_parent" != "$CONFIG_DIR" ]; then
+      die "$(t config_parent_missing "$config_file_parent")"
+    fi
+  fi
+  if [ -n "${TP_TELEMT_CONFIG:-}" ]; then
+    TELEMT_CONFIG="$TP_TELEMT_CONFIG"
+    config_path_ok "$TELEMT_CONFIG" || die "$(t config_path_invalid TP_TELEMT_CONFIG "$TELEMT_CONFIG")"
+  fi
+  if [ -n "${TP_CONFIG_DIR:-}${TP_TELEMT_CONFIG:-}" ] && privilege_directory_contains "$CONFIG_DIR" "$TELEMT_CONFIG"; then
+    die "$(t unsafe_directory "$CONFIG_DIR")"
+  fi
+  if [ -n "${TP_CONFIG_FILE:-}${TP_TELEMT_CONFIG:-}" ] && privilege_paths_alias "$CONFIG_FILE" "$TELEMT_CONFIG"; then
+    die "$(t config_path_conflict "$CONFIG_FILE")"
+  fi
 }
 
 detect_tools() {
@@ -1160,6 +1290,10 @@ telemt_binary_usable() {
 
 # install_hint CMD — the package-manager one-liner for a missing tool.
 install_hint() {
+  case "$1" in
+    install|timeout|readlink|sha256sum|stat)
+      if [ "$PKG" = opkg ] || [ -f "$OPENWRT_RELEASE" ]; then set -- "coreutils-$1"; else set -- coreutils; fi ;;
+  esac
   case "$PKG" in
     apt) printf 'apt-get install -y %s' "$1" ;;
     apk) printf 'apk add %s' "$1" ;;
@@ -1199,7 +1333,7 @@ detect_telemt() {
   TELEMT_URL_DETECTED=""
   TELEMT_AUTH_DETECTED=""
   TELEMT_API_ENABLED=""
-  if [ -r "$TELEMT_CONFIG" ] || { [ -n "$SUDO" ] && [ -f "$TELEMT_CONFIG" ]; }; then
+  if $SUDO test -f "$TELEMT_CONFIG" && { [ -r "$TELEMT_CONFIG" ] || [ -n "$SUDO" ]; }; then
     ensure_temp_dir
     _copy="$TEMP_DIR/telemt.toml"
     if [ -r "$TELEMT_CONFIG" ]; then
@@ -1227,7 +1361,7 @@ detect_all() {
   detect_libc
   detect_init
   apply_layout
-  detect_tools
+  use_reinstall_layout || die "$(t reinstall_receipt_invalid "$REINSTALL_DIR")"
   # Installation/update defers schema recognition to the verified Go parser.
   EXISTING="none"
   # The service owns a 0750 config directory; the invoking sudo user may not
@@ -1240,6 +1374,9 @@ detect_all() {
 choose_build_variant() {
   _requested="${BUILD_VARIANT:-${TP_VARIANT:-}}"
   if [ -n "$_requested" ]; then VARIANT_EXPLICIT=1; fi
+  if [ -z "$_requested" ] && [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ] && $SUDO test -f "$REINSTALL_DIR/variant"; then
+    _requested=$($SUDO cat "$REINSTALL_DIR/variant") || return 1
+  fi
   # Never execute an unverified installed binary; 0.6 treats 'version' as startup.
   if [ -z "$_requested" ]; then
     case "$INIT:$ARCH" in
@@ -1327,9 +1464,6 @@ gen_config() {
     _sub="true"
   fi
   _store_driver="${STORE_DRIVER:-sqlite}"
-  if [ "$INIT" = "procd" ]; then
-    _store_driver="memory"
-  fi
   _store_detail_line=""
   case "$_store_driver" in
     sqlite) _store_detail_line="path = \"$(toml_escape "$DATA_DIR/panel.db")\"" ;;
@@ -1772,6 +1906,7 @@ start_service() {
 EOF
       if [ "$RUN_AS" = user ]; then printf '  procd_set_param user %s\n' "$SYSTEM_USER"; fi
       cat <<'EOF'
+  procd_set_param term_timeout 185
   procd_set_param stdout 1
   procd_set_param stderr 1
   procd_close_instance
@@ -1840,13 +1975,16 @@ acquire_worker_guard() {
   ensure_temp_dir
   WORKER_GUARD_RELEASE="$TEMP_DIR/worker-guard.release"
   rm -f "$WORKER_GUARD_RELEASE"
-  worker_prepare_directory || return 1
   WORKER_GUARD_DIRS="$WORKER_STATE_DIR"
-  if [ -n "$WORKER_PREVIOUS_STATE_DIR" ] && [ "$WORKER_PREVIOUS_STATE_DIR" != "$WORKER_STATE_DIR" ] && $SUDO test -d "$WORKER_PREVIOUS_STATE_DIR"; then
+  if [ -n "$WORKER_PREVIOUS_STATE_DIR" ] && [ "$WORKER_PREVIOUS_STATE_DIR" != "$WORKER_STATE_DIR" ] &&
+    $SUDO test -d "$WORKER_PREVIOUS_STATE_DIR" && ! $SUDO test "$WORKER_PREVIOUS_STATE_DIR" -ef "$WORKER_STATE_DIR"; then
     WORKER_GUARD_DIRS="$WORKER_PREVIOUS_STATE_DIR $WORKER_GUARD_DIRS"
   fi
   WORKER_GUARD_INDEX=0
   for WORKER_GUARD_DIR in $WORKER_GUARD_DIRS; do
+    if [ "$WORKER_GUARD_DIR" = "$WORKER_STATE_DIR" ] && ! $SUDO test -d "$WORKER_STATE_DIR"; then
+      worker_prepare_directory || { release_worker_guard; return 1; }
+    fi
     if ! acquire_worker_directory_guard "$WORKER_GUARD_DIR"; then
       release_worker_guard
       warn "An update is running or queued; let it finish before rerunning the installer."
@@ -1874,7 +2012,7 @@ acquire_worker_directory_guard() {
   $SUDO flock -n "$WORKER_GUARD_DIR/operation.lock" sh -c '
     trap "exit 0" INT TERM
     : >"$2"
-    while [ ! -f "$3" ] && kill -0 "$1" 2>/dev/null; do sleep 0.1; done
+    while [ ! -f "$3" ] && kill -0 "$1" 2>/dev/null; do sleep 1; done
   ' worker-guard "$$" "$WORKER_GUARD_READY" "$WORKER_GUARD_RELEASE" &
   WORKER_GUARD_PID=$!
   WORKER_GUARD_PIDS="$WORKER_GUARD_PIDS $WORKER_GUARD_PID"
@@ -1882,8 +2020,8 @@ acquire_worker_directory_guard() {
   while [ ! -f "$WORKER_GUARD_READY" ]; do
     kill -0 "$WORKER_GUARD_PID" 2>/dev/null || return 1
     WORKER_GUARD_WAIT=$((WORKER_GUARD_WAIT + 1))
-    [ "$WORKER_GUARD_WAIT" -lt 100 ] || return 1
-    sleep 0.05
+    [ "$WORKER_GUARD_WAIT" -le 5 ] || return 1
+    sleep 1
   done
   $SUDO timeout 15 "$STAGED_BIN" update-worker --check-idle --state-dir "$WORKER_GUARD_DIR"
 }
@@ -1923,6 +2061,11 @@ install_update_worker() {
       init=="entware" && /nohup "\$DAEMON"/ { sub(/nohup "\$DAEMON"/, "nohup \"" launcher "\"") }
       {print}
     ' "$SERVICE_FILE" >"$WORKER_BACKUPS/service.new" || return 1
+    if [ "$INIT" = procd ] &&
+      grep -qFx '# Telemt Panel (generated by install.sh)' "$WORKER_BACKUPS/service.new" &&
+      ! grep -Eq '^[[:space:]]*(function[[:space:]]+)?service_stopped[[:space:]]*[({]' "$WORKER_BACKUPS/service.new"; then
+      gen_procd_stop_wait >>"$WORKER_BACKUPS/service.new" || return 1
+    fi
   else
     gen_service >"$WORKER_BACKUPS/service.new" || return 1
   fi
@@ -2099,6 +2242,25 @@ start_service() {
 	procd_set_param stderr 1
 	procd_close_instance
 }
+EOF
+  gen_procd_stop_wait
+}
+
+gen_procd_stop_wait() {
+  cat <<EOF
+
+# rc.common acknowledges a stop request before the panel releases its data lock.
+if ! type service_stopped >/dev/null 2>&1; then
+  service_stopped() {
+    elapsed=0
+    while procd_running "$SERVICE_NAME"; do
+      [ "\$elapsed" -lt 30 ] || return 1
+      sleep 1
+      elapsed=\$((elapsed + 1))
+    done
+    return 0
+  }
+fi
 EOF
 }
 
@@ -2310,7 +2472,19 @@ cmd_logs()    { case "$INIT" in systemd) printf 'journalctl -u %s -f' "$SERVICE_
 #  Prerequisites
 # ═════════════════════════════════════════════════════════════════════════════
 
+require_tools() {
+  _tools_missing=0
+  for _required_tool do
+    if ! has "$_required_tool"; then
+      warn "$(t missing_cmd "$_required_tool" "$(install_hint "$_required_tool")")"
+      _tools_missing=1
+    fi
+  done
+  [ "$_tools_missing" = 0 ] || exit 1
+}
+
 check_prereqs() {
+  detect_tools
   if [ "$(id -u)" -ne 0 ]; then
     has sudo || die "$(t need_root)"
     SUDO="sudo"
@@ -2319,14 +2493,13 @@ check_prereqs() {
       sudo -v || die "$(t need_root)"
     fi
   fi
-  if ! has curl && ! has wget; then
-    die "$(t missing_cmd curl "$(install_hint curl)")"
+  set -- install timeout readlink stat
+  if ! has curl && ! has wget; then set -- "$@" curl; fi
+  if [ -z "$BINARY_FILE" ]; then
+    set -- "$@" tar
+    if ! has sha256sum && ! has sha256 && ! has openssl; then set -- "$@" sha256sum; fi
   fi
-  has tar || die "$(t missing_cmd tar "$(install_hint tar)")"
-  has timeout || die "$(t missing_cmd timeout "$(install_hint coreutils)")"
-  if [ -z "$BINARY_FILE" ] && ! has sha256sum && ! has sha256 && ! has openssl; then
-    die "$(t no_sha)"
-  fi
+  require_tools "$@"
   ok "$(t prereq_ok)"
 }
 
@@ -2452,7 +2625,7 @@ ask_proxy_path() {
         warn "$(t bad_proxy_path)"
       done ;;
     3)
-      _path_secret=$(gen_secret) || die "$(t bad_proxy_path)"
+      _path_secret=$(gen_secret) || die "$(t secret_generation_failed)"
       BASE_PATH="/$(printf '%s' "$_path_secret" | cut -c 1-24)"
       [ "${#BASE_PATH}" = 25 ] || die "$(t bad_proxy_path)" ;;
   esac
@@ -2478,7 +2651,7 @@ ask_transport() {
       explain tls_acme_notice
       ask TLS_DOMAIN q_tls_domain "${TP_TLS_DOMAIN:-}"
       tls_domain_ok "$TLS_DOMAIN" || die "$(t tls_bad_domain)"
-      TLS_DOMAIN=$(printf '%s' "$TLS_DOMAIN" | tr '[:upper:]' '[:lower:]') ;;
+      TLS_DOMAIN=$(printf '%s\n' "$TLS_DOMAIN" | LC_ALL=C awk '{print tolower($0)}') ;;
     2)
       TLS_MODE=certificate; LISTEN="0.0.0.0:8443"
       ask TLS_CERT q_tls_cert "${TP_TLS_CERT_FILE:-}"
@@ -2540,7 +2713,7 @@ ask_admin() {
   while :; do
     ask_secret _p1 q_password
     if [ "$_p1" = "g" ]; then
-      ADMIN_PASS=$(gen_password)
+      ADMIN_PASS=$(gen_password) || die "$(t secret_generation_failed)"
       printf '  %s%s%s\n' "$C_BOLD" "$(t pass_generated "$ADMIN_PASS")" "$C_RESET"
       return 0
     fi
@@ -2568,10 +2741,15 @@ ask_subpage() {
 ask_telemt_paths() {
   blank
   explain x_telemt_bin
-  ask TELEMT_BIN q_telemt_bin "${TP_TELEMT_BINARY:-${TELEMT_BIN_DETECTED:-/bin/telemt}}"
+  case "$INIT" in
+    procd) _default_binary=/usr/bin/telemt ;;
+    entware) _default_binary=/opt/bin/telemt ;;
+    *) _default_binary=/bin/telemt ;;
+  esac
+  ask TELEMT_BIN q_telemt_bin "${TP_TELEMT_BINARY:-${TELEMT_BIN_DETECTED:-$_default_binary}}"
   blank
   explain x_telemt_svc "$(restart_display telemt)"
-  ask TELEMT_SVC q_telemt_svc "${TP_TELEMT_SERVICE:-${TELEMT_SVC_DETECTED:-telemt}}"
+  ask TELEMT_SVC q_telemt_svc "${TP_TELEMT_SERVICE:-${TELEMT_SVC_DETECTED:-$TELEMT_SVC}}"
 }
 
 ask_run_as() {
@@ -2603,13 +2781,20 @@ ask_run_as() {
 ask_storage() {
   blank
   if [ "$BUILD_VARIANT" = "lite" ]; then
+    case "${TP_STORE_DRIVER:-memory}" in
+      memory) ;;
+      sqlite) die "$(t store_lite_only)" ;;
+      *) die "$(t unknown_option "TP_STORE_DRIVER=$TP_STORE_DRIVER")" ;;
+    esac
     STORE_DRIVER="memory"
     explain store_lite_only
     return 0
   fi
   explain x_storage
   _default=1
-  case "${TP_STORE_DRIVER:-sqlite}" in
+  _default_store=sqlite
+  if [ "$INIT" = procd ]; then _default_store=memory; fi
+  case "${TP_STORE_DRIVER:-$_default_store}" in
     sqlite) _default=1 ;;
     memory) _default=2 ;;
     *) die "$(t unknown_option "TP_STORE_DRIVER=${TP_STORE_DRIVER:-}")" ;;
@@ -2635,7 +2820,7 @@ collect_answers() {
   ask_telemt_paths
   ask_run_as
   validate_transport_rights
-  SUBPAGE_SECRET=$(gen_secret)
+  SUBPAGE_SECRET=$(gen_secret) || die "$(t secret_generation_failed)"
 }
 
 print_summary() {
@@ -2973,7 +3158,7 @@ validate_panel_directory() {
   case "$_checked_dir" in
     */../*|*/..|*/./*|*/.) die "$(t unsafe_directory "$1")" ;;
   esac
-  if [ -d "$_checked_dir" ]; then
+  if $SUDO test -d "$_checked_dir"; then
     if [ -n "$SUDO" ]; then
       _checked_dir=$($SUDO readlink -f "$_checked_dir") || die "$(t unsafe_directory "$1")"
     else
@@ -2983,7 +3168,7 @@ validate_panel_directory() {
     while [ "${_checked_dir%/}" != "$_checked_dir" ]; do _checked_dir=${_checked_dir%/}; done
   fi
   case "$_checked_dir" in
-    ''|/|/bin|/sbin|/lib|/lib64|/etc|/usr|/usr/bin|/usr/sbin|/usr/lib|/usr/local|/usr/local/bin|/var|/var/lib|/var/log|/tmp|/var/tmp|/run|/home|/root|/opt|/srv|/mnt|/media|/dev|/proc|/sys)
+    ''|/|/bin|/sbin|/lib|/lib64|/etc|/etc/config|/etc/init.d|/etc/rc.d|/etc/hotplug.d|/etc/ssl|/www|/overlay|/overlay/upper|/overlay/work|/rom|/rom/*|/usr|/usr/bin|/usr/sbin|/usr/lib|/usr/share|/usr/libexec|/usr/local|/usr/local/bin|/var|/var/lib|/var/log|/tmp|/var/tmp|/run|/home|/root|/opt|/opt/bin|/opt/sbin|/opt/lib|/opt/libexec|/opt/var|/opt/var/lib|/opt/var/log|/opt/etc|/opt/etc/init.d|/srv|/mnt|/media|/dev|/dev/*|/proc|/proc/*|/sys|/sys/*)
       die "$(t unsafe_directory "$1")" ;;
     /home/*)
       case "${_checked_dir#/home/}" in */*) ;; *) die "$(t unsafe_directory "$1")" ;; esac ;;
@@ -2995,8 +3180,7 @@ validate_panel_directory() {
 
 setup_dirs() {
   validate_privilege_placement || return 1
-  validate_panel_directory "$CONFIG_DIR"
-  validate_panel_directory "$DATA_DIR"
+  validate_runtime_directories
   _owner="root"
   if [ "$RUN_AS" = "user" ]; then
     _owner="$SYSTEM_USER"
@@ -3015,10 +3199,12 @@ setup_dirs() {
   if [ "$DRY_RUN" != 1 ]; then
     BIN_DIR=$($SUDO readlink -f "$BIN_DIR") || return 1
     PANEL_BIN="$BIN_DIR/$(basename "$PANEL_BIN")"
-    TELEMT_BIN="$($SUDO readlink -f "$(dirname "$TELEMT_BIN")")/$(basename "$TELEMT_BIN")"
+    telemt_binary_parent=$(privilege_canonical_path "$(dirname "$TELEMT_BIN")") || return 1
+    TELEMT_BIN="${telemt_binary_parent%/}/$(basename "$TELEMT_BIN")"
     DATA_DIR=$($SUDO readlink -f "$DATA_DIR") || return 1
     CONFIG_DIR=$($SUDO readlink -f "$CONFIG_DIR") || return 1
-    CONFIG_FILE="$CONFIG_DIR/$(basename "$CONFIG_FILE")"
+    config_file_parent=$($SUDO readlink -f "$(dirname "$CONFIG_FILE")") || return 1
+    CONFIG_FILE="${config_file_parent%/}/$(basename "$CONFIG_FILE")"
     if [ "$RUN_AS" = user ] && [ "$WORKER_PROTOCOL" != 1 ]; then
       POLICY_FILE="$($SUDO readlink -f "$(dirname "$POLICY_FILE")")/$(basename "$POLICY_FILE")"
       HELPER_FILE="$($SUDO readlink -f "$(dirname "$HELPER_FILE")")/$(basename "$HELPER_FILE")"
@@ -3036,13 +3222,28 @@ setup_dirs() {
 resolve_tag() {
   if [ -n "$REQ_VERSION" ]; then
     INSTALLED_TAG="$REQ_VERSION"
-    return 0
+  else
+    say "$(t a_resolve)"
+    _code=$(http_get "https://api.github.com/repos/$REPO/releases/latest")
+    [ "$_code" = 200 ] || die "$(t a_resolve_fail)"
+    INSTALLED_TAG=$(json_field "$HTTP_BODY" tag_name)
+    [ -n "$INSTALLED_TAG" ] || die "$(t a_resolve_fail)"
   fi
-  say "$(t a_resolve)"
-  _code=$(http_get "https://api.github.com/repos/$REPO/releases/latest")
-  [ "$_code" = 200 ] || die "$(t a_resolve_fail)"
-  INSTALLED_TAG=$(json_field "$HTTP_BODY" tag_name)
-  [ -n "$INSTALLED_TAG" ] || die "$(t a_resolve_fail)"
+  # Match the release workflow's v1.MINOR.PATCH tags. GitHub's latest stable
+  # can still point to 0.6 while new releases are marked as prereleases.
+  printf '%s\n' "$INSTALLED_TAG" | LC_ALL=C awk '
+    BEGIN {
+      number = "(0|[1-9][0-9]*)"
+      ids = "[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*"
+      tag = "^v1[.]" number "[.]" number "(-" ids ")?([+]" ids ")?$"
+    }
+    NR != 1 || $0 !~ tag { exit 1 }
+    {
+      sub(/[+].*/, "")
+      sub(/^[^-]*-?/, "")
+      if (/(^|\.)0[0-9]+(\.|$)/) exit 1
+    }
+  ' || die "$(t a_release_version "https://github.com/$REPO/releases")"
 }
 
 # fetch_release — puts the panel binary at $STAGED_BIN.
@@ -3052,6 +3253,21 @@ release_asset_name() {
     _asset_prefix="$BINARY_NAME-lite"
   fi
   printf '%s-%s-linux-%s.tar.gz' "$_asset_prefix" "$ARCH" "$LIBC"
+}
+
+download_release_asset() {
+  _metadata="$TEMP_DIR/release-$INSTALLED_TAG.json"
+  _direct="https://github.com/$REPO/releases/download/$INSTALLED_TAG/$1"
+  if [ ! -s "$_metadata" ]; then
+    download "$_direct" "$2" && return 0
+    [ "$INIT" = procd ] && has jsonfilter || return 1
+    [ "$(http_get "https://api.github.com/repos/$REPO/releases/tags/$INSTALLED_TAG")" = 200 ] || return 1
+    cp "$HTTP_BODY" "$_metadata" || return 1
+  fi
+  # Asset names come from release_asset_name. Require one numeric GitHub asset ID.
+  _asset_id=$(jsonfilter -i "$_metadata" -e "@.assets[@.name=\"$1\"].id") || return 1
+  case "$_asset_id" in ''|*[!0-9]*) return 1 ;; esac
+  download "https://api.github.com/repos/$REPO/releases/assets/$_asset_id" "$2" --header 'Accept: application/octet-stream'
 }
 
 fetch_release() {
@@ -3066,16 +3282,15 @@ fetch_release() {
   fi
   resolve_tag
   _asset=$(release_asset_name)
-  _base="https://github.com/$REPO/releases/download/$INSTALLED_TAG"
   _tar="$TEMP_DIR/$_asset"
   say "$(t a_download "$_asset ($INSTALLED_TAG)")"
-  download "$_base/$_asset" "$_tar" || die "$(t a_download_fail "$_asset" "$INSTALLED_TAG")"
+  download_release_asset "$_asset" "$_tar" || die "$(t a_download_fail "$_asset" "$INSTALLED_TAG")"
 
   _sum="$TEMP_DIR/$_asset.sha256"
   _actual=$(sha256_of "$_tar")
   if [ -z "$_actual" ]; then
     die "$(t no_sha)"
-  elif download "$_base/$_asset.sha256" "$_sum" 2>/dev/null; then
+  elif download_release_asset "$_asset.sha256" "$_sum" 2>/dev/null; then
     _expected=$(awk '{print $1}' "$_sum" | head -n 1 | tr 'A-F' 'a-f')
     if [ "$_expected" = "$_actual" ]; then
       ok "$(t a_checksum_ok)"
@@ -3086,16 +3301,24 @@ fetch_release() {
     die "$(t a_checksum_missing)"
   fi
 
-  _entries=$(tar -tzf "$_tar") || die "$(t a_extract_fail "$BINARY_NAME")"
-  case "$_entries" in "$BINARY_NAME"|"./$BINARY_NAME") ;; *) die "$(t a_extract_fail "$BINARY_NAME")" ;; esac
-  _listing=$(tar -tvzf "$_tar") || die "$(t a_extract_fail "$BINARY_NAME")"
-  case "$_listing" in -*) ;; *) die "$(t a_extract_fail "$BINARY_NAME")" ;; esac
-  _size=$(printf '%s\n' "$_listing" | awk '{print $3}')
-  case "$_size" in ''|*[!0-9]*) die "$(t a_extract_fail "$BINARY_NAME")" ;; esac
-  [ "$_size" -le 67108864 ] || die "$(t a_extract_fail "$BINARY_NAME")"
+  # GNU and BusyBox tar in the C locale put size and name in fields 3 and 6.
+  # The final marker distinguishes complete listings from failed tar pipelines.
+  _member=$(
+    { LC_ALL=C tar -tvzf "$_tar" && printf 'complete\n'; } | LC_ALL=C awk -v binary="$BINARY_NAME" '
+      NR == 1 {
+        if (NF != 6 || $1 !~ /^-/ || $3 !~ /^[0-9]+$/ || $3 < 1 || $3 > 67108864) exit 1
+        if ($6 != binary && $6 != "./" binary) exit 1
+        member = $6
+        next
+      }
+      NR != 2 || $0 != "complete" { exit 1 }
+      END { if (NR != 2 || member == "") exit 1; print member }
+    '
+  ) || die "$(t a_extract_fail "$BINARY_NAME")"
   STAGED_BIN="$TEMP_DIR/$BINARY_NAME"
-  tar -xOzf "$_tar" "$_entries" >"$STAGED_BIN" || die "$(t a_extract_fail "$BINARY_NAME")"
-  [ -f "$STAGED_BIN" ] || die "$(t a_extract_fail "$BINARY_NAME")"
+  tar -xOzf "$_tar" "$_member" >"$STAGED_BIN" || die "$(t a_extract_fail "$BINARY_NAME")"
+  [ -s "$STAGED_BIN" ] || die "$(t a_extract_fail "$BINARY_NAME")"
+  rm -f "$_tar" "$_sum"
   chmod 0755 "$STAGED_BIN"
 }
 
@@ -3117,15 +3340,8 @@ install_binary() {
 
 # hash_password — bcrypt via the staged binary (works before it is installed).
 hash_password() {
-  PASS_HASH=$(printf '%s\n' "$ADMIN_PASS" | "$STAGED_BIN" hash-password 2>/dev/null) || PASS_HASH=""
-  if [ -z "$PASS_HASH" ]; then
-    if [ "$DRY_RUN" = 1 ]; then
-      # shellcheck disable=SC2016
-      PASS_HASH='$2a$10$DRY-RUN-PLACEHOLDER'
-    else
-      die "$(t a_hash_fail)"
-    fi
-  fi
+  PASS_HASH=$(printf '%s\n' "$ADMIN_PASS" | (cd "$TEMP_DIR" && timeout 15 "$STAGED_BIN" hash-password)) || die "$(t a_hash_fail)"
+  [ -n "$PASS_HASH" ] || die "$(t a_hash_fail)"
 }
 
 write_config() {
@@ -3133,8 +3349,18 @@ write_config() {
   if [ "$RUN_AS" = "user" ]; then
     _owner="$SYSTEM_USER"
   fi
-  gen_config | write_root_file "$CONFIG_FILE" 0600 "$_owner"
+  gen_config >"$TEMP_DIR/install.toml" || return 1
+  if ! cmp -s "$TEMP_DIR/fresh.toml" "$TEMP_DIR/install.toml"; then
+    (cd "$TEMP_DIR" && timeout 15 "$STAGED_BIN" config check --format current --config "$TEMP_DIR/install.toml") || die "$(t fresh_config_failed)"
+  fi
+  write_root_file "$CONFIG_FILE" 0600 "$_owner" <"$TEMP_DIR/install.toml" || return 1
   ok "$(t a_config_written "$CONFIG_FILE")"
+}
+
+check_fresh_config() {
+  hash_password
+  gen_config >"$TEMP_DIR/fresh.toml" || return 1
+  (cd "$TEMP_DIR" && timeout 15 "$STAGED_BIN" config check --format current --config "$TEMP_DIR/fresh.toml") || die "$(t fresh_config_failed)"
 }
 
 # Only root-owned parent directories are used for these publication paths.
@@ -3251,24 +3477,25 @@ install_sudoers() {
 }
 
 install_service() {
+  if [ "$INIT" = entware ] && { [ -e "$SERVICE_FILE" ] || [ -L "$SERVICE_FILE" ]; }; then die "$(t entware_service_exists "$SERVICE_FILE")"; fi
+  _mode=0755
+  if [ "$INIT" = systemd ]; then _mode=0644; fi
+  gen_service | write_root_file "$SERVICE_FILE" "$_mode" || return 1
+  worker_reload_services || return 1
+  enable_panel_service || return 1
+  ok "$(t a_service "$SERVICE_NAME" "$SERVICE_FILE")"
+}
+
+enable_panel_service() {
   case "$INIT" in
     systemd)
-      gen_service | write_root_file "$SERVICE_FILE" 0644
-      run systemctl daemon-reload
       run_try systemctl enable "$SERVICE_NAME" ;;
     openrc)
-      gen_service | write_root_file "$SERVICE_FILE" 0755
       run rc-update add "$SERVICE_NAME" default || return 1 ;;
     procd)
-      gen_service | write_root_file "$SERVICE_FILE" 0755
       run "$SERVICE_FILE" enable ;;
-    entware)
-      if [ -e "$SERVICE_FILE" ] || [ -L "$SERVICE_FILE" ]; then
-        die "$(t entware_service_exists "$SERVICE_FILE")"
-      fi
-      gen_service | write_root_file "$SERVICE_FILE" 0755 ;;
+    entware) : ;;
     sysvinit)
-      gen_service | write_root_file "$SERVICE_FILE" 0755
       if has update-rc.d; then
         run_try update-rc.d "$SERVICE_NAME" defaults
       elif has chkconfig; then
@@ -3277,16 +3504,77 @@ install_service() {
         warn "$(t a_service_manual "$SERVICE_NAME")"
       fi ;;
   esac
-  ok "$(t a_service "$SERVICE_NAME" "$SERVICE_FILE")"
 }
 
 entware_service_managed() {
   [ -f "$1" ] && [ ! -L "$1" ] && grep -qFx '# telemt-panel managed Entware service' "$1"
 }
 
+# The installer changes ownership of these directories and purge removes their
+# contents. Neither may contain Telemt, service definitions or installed binaries.
+validate_runtime_directories() {
+  [ "$#" -gt 0 ] || set -- "$CONFIG_DIR" "$DATA_DIR"
+  for _runtime_dir in "$@"; do
+    [ -n "$_runtime_dir" ] || continue
+    config_path_ok "$_runtime_dir" || die "$(t unsafe_directory "$_runtime_dir")"
+    validate_panel_directory "$_runtime_dir"
+    if privilege_directory_contains "$_runtime_dir" "$REINSTALL_DIR" || privilege_directory_contains "$REINSTALL_DIR" "$_runtime_dir"; then
+      die "$(t unsafe_directory "$_runtime_dir")"
+    fi
+    for _reserved in "$TELEMT_CONFIG" "$TELEMT_BIN" "$PANEL_BIN" "$SERVICE_FILE" "$SUDOERS_FILE"; do
+      [ -n "$_reserved" ] || continue
+      if privilege_directory_contains "$_runtime_dir" "$_reserved"; then
+        die "$(t unsafe_directory "$_runtime_dir")"
+      fi
+    done
+  done
+}
+
 validate_fresh_service_target() {
-  if [ "$INIT" = entware ] && { [ -e "$SERVICE_FILE" ] || [ -L "$SERVICE_FILE" ]; }; then
-    die "$(t entware_service_exists "$SERVICE_FILE")"
+  if $SUDO test -e "$SERVICE_FILE" || $SUDO test -L "$SERVICE_FILE"; then
+    die "$(t config_service_exists "$SERVICE_FILE" "$CONFIG_FILE")"
+  fi
+  _fresh_worker_name="$SERVICE_NAME-updater"
+  _fresh_telemt_name="$TELEMT_SVC"
+  if [ "$INIT" = systemd ]; then
+    _fresh_worker_name="${SERVICE_NAME%.service}-updater.service"
+    _fresh_telemt_name="${TELEMT_SVC%.service}.service"
+  fi
+  _fresh_worker_service="$(dirname "$SERVICE_FILE")/$_fresh_worker_name"
+  for _fresh_target in "$PANEL_BIN" "$PANEL_BIN.start" "$SUDOERS_FILE" "$_fresh_worker_service" "$HELPER_FILE" "$POLICY_FILE"; do
+    if $SUDO test -e "$_fresh_target" || $SUDO test -L "$_fresh_target"; then
+      die "$(t install_file_exists "$_fresh_target" "$CONFIG_FILE")"
+    fi
+  done
+  validate_runtime_directories
+  _fresh_worker_state="$DATA_DIR/updater"
+  if [ "$INIT" = procd ]; then _fresh_worker_state="$CONFIG_DIR/updater"; fi
+  for _fresh_dir in "$DATA_DIR/staging" "$_fresh_worker_state"; do
+    if $SUDO test -L "$_fresh_dir" || { $SUDO test -e "$_fresh_dir" && ! $SUDO test -d "$_fresh_dir"; }; then
+      die "$(t unsafe_directory "$_fresh_dir")"
+    fi
+  done
+  if [ "$_fresh_telemt_name" = "$(basename "$SERVICE_FILE")" ] || [ "$_fresh_telemt_name" = "$_fresh_worker_name" ]; then
+    die "$(t install_role_conflict)"
+  fi
+  if [ -n "$TELEMT_BIN" ]; then
+    config_path_ok "$TELEMT_BIN" || die "$(t unsafe_sudoers_path "$TELEMT_BIN")"
+    if $SUDO test -d "$TELEMT_BIN"; then die "$(t install_role_conflict)"; fi
+    for _panel_role in "$PANEL_BIN" "$PANEL_BIN.start" "$PANEL_BIN.bak" "$SERVICE_FILE" "$_fresh_worker_service" "$HELPER_FILE" "$POLICY_FILE" "$SUDOERS_FILE"; do
+      if privilege_paths_alias "$_panel_role" "$TELEMT_BIN"; then die "$(t install_role_conflict)"; fi
+    done
+  fi
+  if [ -n "${TP_CONFIG_DIR:-}${TP_CONFIG_FILE:-}" ]; then
+    for _config_conflict in "$PANEL_BIN" "$PANEL_BIN.start" "$PANEL_BIN.bak" "$TELEMT_BIN" "$TELEMT_CONFIG" \
+      "$CONFIG_DIR" "$DATA_DIR" "$SERVICE_FILE" "$_fresh_worker_service" "$SUDOERS_FILE" "$POLICY_FILE" "$HELPER_FILE" "$LOG_FILE" "$PID_FILE"; do
+      [ -n "$_config_conflict" ] || continue
+      if privilege_paths_alias "$CONFIG_FILE" "$_config_conflict"; then
+        die "$(t config_path_conflict "$CONFIG_FILE")"
+      fi
+    done
+    for _reserved_tree in "$CONFIG_DIR/updater" "$DATA_DIR/updater" "$DATA_DIR/staging"; do
+      if privilege_directory_contains "$_reserved_tree" "$CONFIG_FILE"; then die "$(t config_path_conflict "$CONFIG_FILE")"; fi
+    done
   fi
 }
 
@@ -3389,6 +3677,7 @@ print_done() {
   if [ "$INIT" = "procd" ]; then
     blank
     warn "$(t a_sysupgrade "$CONFIG_DIR")"
+    case "$CONFIG_FILE" in "$CONFIG_DIR"/*) ;; *) warn "$(t a_sysupgrade "$CONFIG_FILE")" ;; esac
   fi
   blank
 }
@@ -3417,12 +3706,59 @@ apply_layout_from_answers() {
     SERVICE_FILE="$PANEL_SERVICE_SCRIPT"
   else
     case "$INIT" in
-      systemd) SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service" ;;
+      systemd) SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME%.service}.service" ;;
       entware) SERVICE_FILE="/opt/etc/init.d/$SERVICE_NAME" ;;
       *) SERVICE_FILE="/etc/init.d/$SERVICE_NAME" ;;
     esac
   fi
   if [ "$INIT" = entware ]; then PID_FILE="/opt/var/run/$SERVICE_NAME.pid"; fi
+}
+
+# Recognize literal command arguments from the service definitions we install.
+# Administrator-written commands are inspected as text and never executed here.
+retained_service_uses_config() {
+  requested_config_dir=${TP_CONFIG_DIR:-$CONFIG_DIR}
+  requested_config_file=${TP_CONFIG_FILE:-${requested_config_dir%/}/config.toml}
+  if [ -z "${TP_CONFIG_DIR:-}${TP_CONFIG_FILE:-}" ]; then requested_config_file=$CONFIG_FILE; fi
+  # shellcheck disable=SC2016
+  $SUDO awk -v init="$INIT" -v binary="$PANEL_BIN" -v config="$CONFIG_FILE" -v requested="$requested_config_file" '
+    function unquote(s) { gsub(/^["\047]|["\047]$/, "", s); return s }
+    function executable(s) { s=unquote(s); return s == binary || s == binary ".start" }
+    function config_path(s) { s=unquote(s); return s == config || s == requested }
+    function arguments(line, start,   n,i,a,arg,path,matched) {
+      n=split(line,a,/[ \t]+/)
+      for (i=start; i<=n; i++) {
+        arg=unquote(a[i])
+        if (arg ~ /^#/ || arg == "--") break
+        if (arg == "--config" || arg == "-config") path=a[++i]
+        else if (sub(/^--?config=/, "", arg)) path=arg
+        else continue
+        if (!config_path(path)) return 0
+        matched=1
+      }
+      return matched
+    }
+    { sub(/^[ \t]+/, "") }
+    init == "systemd" && sub(/^ExecStart=[ \t]*/, "") {
+      if (!$0) { count=0; invalid=0; next }
+      count++
+      if (!executable($1) || !arguments($0,2)) invalid=1
+    }
+    init == "procd" && $1 == "procd_set_param" && $2 == "command" {
+      count++
+      if (!executable($3) || !arguments($0,4)) invalid=1
+    }
+    init == "openrc" && sub(/^command=/, "") { bin_ok=executable($0) }
+    init == "openrc" && sub(/^command_args=/, "") { config_ok=arguments(unquote($0),1) }
+    (init == "sysvinit" || init == "entware") && sub(/^DAEMON=/, "") { bin_ok=executable($0) }
+    init == "sysvinit" && sub(/^DAEMON_ARGS=/, "") { config_ok=arguments(unquote($0),1) }
+    init == "entware" && sub(/^CONFIG=/, "") { config_ok=config_path($0) }
+    init == "entware" && sub(/^LAUNCHER=/, "") { if (!executable($0)) invalid=1 }
+    END {
+      if (init == "procd" || init == "systemd") exit !(count && !invalid)
+      exit !(bin_ok && config_ok && !invalid)
+    }
+  ' "$SERVICE_FILE"
 }
 
 validate_retained_service() {
@@ -3434,10 +3770,10 @@ validate_retained_service() {
       PANEL_SERVICE_SCRIPT=""
       SERVICE_FILE=""
     fi
-    return 0
+    [ -n "$PANEL_SERVICE_SCRIPT" ] || return 0
   fi
   if [ -z "$SERVICE_FILE" ] || [ ! -f "$SERVICE_FILE" ]; then die "$(t update_preflight_failed)"; fi
-  if ! $SUDO grep -qF "$PANEL_BIN" "$SERVICE_FILE" || ! $SUDO grep -qF "$CONFIG_FILE" "$SERVICE_FILE"; then
+  if ! retained_service_uses_config; then
     die "$(t update_preflight_failed)"
   fi
 }
@@ -3450,6 +3786,16 @@ stop_retained_panel() {
   case "$INIT" in
     systemd) run systemctl stop "$SERVICE_NAME" ;;
     openrc) run rc-service "$SERVICE_NAME" stop ;;
+    procd)
+      run "$SERVICE_FILE" stop || return 1
+      [ "$DRY_RUN" != 1 ] || return 0
+      # rc.common returns after submitting the stop request to procd.
+      _stop_wait=0
+      while run "$SERVICE_FILE" running >/dev/null 2>&1; do
+        [ "$_stop_wait" -lt 30 ] || return 1
+        sleep 1
+        _stop_wait=$((_stop_wait + 1))
+      done ;;
     *) run "$SERVICE_FILE" stop ;;
   esac
 }
@@ -3792,6 +4138,18 @@ prepare_worker_upgrade() {
   esac
   if [ "$RUN_AS" = user ] && [ "$WORKER_MODE" = direct ]; then WORKER_PROTOCOL=0; return 0; fi
   worker_layout || return 1
+  validate_runtime_directories "$WORKER_STATE_DIR"
+  for WORKER_PATH in "$CONFIG_DIR" "$DATA_DIR" "$CONFIG_FILE" "$HELPER_FILE" "$POLICY_FILE" "$PANEL_LAUNCH_BIN" "$WORKER_SERVICE_FILE" "$DATA_DIR/staging"; do
+    [ -n "$WORKER_PATH" ] || continue
+    if privilege_directory_contains "$WORKER_STATE_DIR" "$WORKER_PATH"; then
+      warn "$(t unsafe_directory "$WORKER_STATE_DIR")"
+      return 1
+    fi
+  done
+  if privilege_directory_contains "$DATA_DIR/staging" "$WORKER_STATE_DIR"; then
+    warn "$(t unsafe_directory "$WORKER_STATE_DIR")"
+    return 1
+  fi
   for WORKER_PATH in "$PANEL_BIN" "$TELEMT_BIN" "$CONFIG_FILE" "$DATA_DIR"; do
     sudoers_path_ok "$WORKER_PATH" || return 1
   done
@@ -3905,18 +4263,183 @@ prepare_systemd_privilege_upgrade() {
   kv "stable helper" "$HELPER_FILE"
 }
 
-do_update_existing() {
-  step 3 step_update
-  if ! has timeout || ! has sha256sum || ! has readlink; then die "$(t update_preflight_failed)"; fi
-  ensure_temp_dir
-  UPDATE_SOURCE="$TEMP_DIR/existing.toml"
-  # Snapshot once with privileges; never treat unreadable config as defaults.
-  $SUDO test -f "$CONFIG_FILE" || die "$(t update_preflight_failed)"
-  $SUDO cat "$CONFIG_FILE" >"$UPDATE_SOURCE" || die "$(t update_preflight_failed)"
-  chmod 0600 "$UPDATE_SOURCE"
+# Restore registration as its runtime owner. All service and executable files
+# come from protected directories and are published as root.
+reinstall_as_owner() {
+  if [ "$1" = 0 ]; then
+    shift 2
+    $SUDO "$@"
+  else
+    _restore_uid="$1"; _restore_gid="$2"; shift 2
+    $SUDO sudo -u "#$_restore_uid" -g "#$_restore_gid" -- "$@"
+  fi
+}
+
+# Keep a staging link until commit. Its inode identifies exactly which files
+# this invocation published, even if a concurrent publication wins the race.
+publish_reinstall_file() {
+  _src="$1"; _dst="$2"; _uid="$3"; _gid="$4"; _mode="$5"
+  _tmp=$(reinstall_as_owner "$_uid" "$_gid" mktemp "$(dirname "$_dst")/.telemt-panel-restore.XXXXXX") || return 1
+  printf '%s %s %s %s\n' "$_uid" "$_gid" "$_tmp" "$_dst" >>"$TEMP_DIR/reinstall-files" || return 1
+  if [ "$_uid" = 0 ]; then
+    $SUDO install -o 0 -g "$_gid" -m "$_mode" "$_src" "$_tmp" || return 1
+  else
+    $SUDO cat "$_src" >"$TEMP_DIR/registration.copy" || return 1
+    # shellcheck disable=SC2016
+    reinstall_as_owner "$_uid" "$_gid" sh -ec 'cat >"$1"; chmod "$2" "$1"' restore "$_tmp" "$_mode" <"$TEMP_DIR/registration.copy" || return 1
+  fi
+  reinstall_as_owner "$_uid" "$_gid" ln -T "$_tmp" "$_dst"
+}
+
+finish_reinstall_files() {
+  _cleanup_failed=0
+  while read -r _uid _gid _tmp _dst; do
+    if [ "$1" = rollback ] && reinstall_as_owner "$_uid" "$_gid" test "$_tmp" -ef "$_dst"; then
+      reinstall_as_owner "$_uid" "$_gid" rm -f "$_dst" || _cleanup_failed=1
+    fi
+    reinstall_as_owner "$_uid" "$_gid" rm -f "$_tmp" || _cleanup_failed=1
+  done <"$TEMP_DIR/reinstall-files"
+  return "$_cleanup_failed"
+}
+
+rollback_reinstall() {
+  if [ "$REINSTALL_ENABLE_ATTEMPTED" = 1 ]; then
+    stop_and_disable_service || return 1
+  elif [ "$REINSTALL_START_ATTEMPTED" = 1 ]; then
+    stop_retained_panel || return 1
+  fi
+  finish_reinstall_files rollback || return 1
+  if [ "$REINSTALL_STATE_CREATED" = 1 ]; then
+    reinstall_as_owner "$REINSTALL_STATE_UID" "$REINSTALL_STATE_GID" rmdir "$WORKER_STATE_DIR" || return 1
+  fi
+  worker_reload_services
+}
+
+prepare_reinstall_files() {
+  DATA_DIR=$(json_field "$TEMP_DIR/inspect.json" data_dir)
+  TELEMT_BIN=$(json_field "$TEMP_DIR/inspect.json" telemt_binary_path)
+  WORKER_STATE_OVERRIDE=$(json_field "$TEMP_DIR/inspect.json" worker_state_dir)
+  config_path_ok "$PANEL_BIN" && config_path_ok "$SERVICE_FILE" || return 1
+  worker_layout || return 1
+  REINSTALL_ENABLED=1
+  if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ]; then
+    REINSTALL_SOURCE="$REINSTALL_DIR"
+    reinstall_receipt_matches || return 1
+    [ "$($SUDO cat "$REINSTALL_DIR/init")" = "$INIT" ] &&
+      [ "$($SUDO cat "$REINSTALL_DIR/panel_path")" = "$PANEL_BIN" ] &&
+      [ "$($SUDO cat "$REINSTALL_DIR/service_path")" = "$SERVICE_FILE" ] || return 1
+    _saved_worker=$($SUDO cat "$REINSTALL_DIR/worker_protocol") || return 1
+    if [ "$_saved_worker" = 1 ]; then
+      [ "$WORKER_PROTOCOL" = 1 ] && [ "$($SUDO cat "$REINSTALL_DIR/state_dir")" = "$WORKER_STATE_DIR" ] || return 1
+    fi
+    WORKER_PROTOCOL="$_saved_worker"
+    if $SUDO test -f "$REINSTALL_DIR/enabled"; then REINSTALL_ENABLED=$($SUDO cat "$REINSTALL_DIR/enabled") || return 1; fi
+  else
+    # Older uninstallers retained no service definition. Only the standard
+    # root-run OpenWrt profile can be reconstructed from a trusted TOML alone.
+    [ "$INIT" = procd ] && [ "$PANEL_BIN" = /usr/bin/telemt-panel ] && [ "$SERVICE_NAME" = telemt-panel ] || return 1
+    case "$SERVICE_MANAGER" in auto|procd) ;; *) return 1 ;; esac
+    [ "$(json_field "$TEMP_DIR/inspect.json" format)" = current ] &&
+      [ "$(json_field "$TEMP_DIR/inspect.json" privileges_mode)" = direct ] &&
+      reinstall_trusted_file "$CONFIG_FILE" || return 1
+    [ "$TELEMT_SVC" != "$SERVICE_NAME" ] && [ "$TELEMT_SVC" != "$WORKER_SERVICE_NAME" ] || return 1
+    for _role_file in "$PANEL_BIN" "$SERVICE_FILE" "$PANEL_LAUNCH_BIN" "$WORKER_SERVICE_FILE"; do
+      if privilege_paths_alias "$_role_file" "$TELEMT_BIN" || privilege_paths_alias "$_role_file" "$CONFIG_FILE"; then return 1; fi
+    done
+    RUN_AS=root
+    REINSTALL_SOURCE="$TEMP_DIR/reinstall"
+    mkdir "$REINSTALL_SOURCE" || return 1
+    if [ "$WORKER_PROTOCOL" = 1 ]; then
+      gen_panel_launcher >"$REINSTALL_SOURCE/launcher" && gen_updater_service >"$REINSTALL_SOURCE/updater" &&
+        gen_worker_registration >"$REINSTALL_SOURCE/registration" || return 1
+    else
+      PANEL_LAUNCH_BIN=""
+    fi
+    gen_service_procd >"$REINSTALL_SOURCE/service" || return 1
+  fi
+  for _dst in "$PANEL_BIN" "$PANEL_BIN.start" "$WORKER_SERVICE_FILE" "$SERVICE_FILE" "$SUDOERS_FILE"; do
+    if $SUDO test -e "$_dst" || $SUDO test -L "$_dst"; then return 1; fi
+  done
+  reinstall_trusted_parent "$PANEL_BIN" && reinstall_trusted_parent "$SERVICE_FILE" || return 1
+  if $SUDO test -f "$REINSTALL_SOURCE/sudoers"; then
+    reinstall_trusted_parent "$SUDOERS_FILE" || return 1
+    if has visudo; then $SUDO visudo -cf "$REINSTALL_SOURCE/sudoers" >/dev/null || return 1; fi
+  fi
+  if [ "$WORKER_PROTOCOL" = 1 ]; then
+    validate_runtime_directories "$WORKER_STATE_DIR"
+    [ "$(privilege_canonical_path "$WORKER_STATE_DIR")" = "$WORKER_STATE_DIR" ] || return 1
+    if $SUDO test -e "$WORKER_STATE_DIR"; then
+      $SUDO test -d "$WORKER_STATE_DIR" && ! $SUDO test -e "$WORKER_STATE_DIR/registration.json" &&
+        ! $SUDO test -L "$WORKER_STATE_DIR/registration.json" || return 1
+      $SUDO timeout 15 "$STAGED_BIN" update-worker --check-idle --state-dir "$WORKER_STATE_DIR" || return 1
+    fi
+    # A retained worker can have been intentionally unregistered. Restore its
+    # original files without provisioning a registration that wasn't retained.
+    if ! $SUDO test -f "$REINSTALL_SOURCE/registration"; then return 0; fi
+    REINSTALL_STATE_UID=0; REINSTALL_STATE_GID=0
+    if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ]; then
+      REINSTALL_STATE_UID=$($SUDO stat -c %u "$REINSTALL_SOURCE/registration") || return 1
+      REINSTALL_STATE_GID=$($SUDO stat -c %g "$REINSTALL_SOURCE/registration") || return 1
+    fi
+    if $SUDO test -e "$WORKER_STATE_DIR"; then
+      if [ "$REINSTALL_STATE_UID" = 0 ]; then reinstall_trusted_parent "$WORKER_STATE_DIR/registration.json" || return 1; fi
+    elif [ "$REINSTALL_STATE_UID" = 0 ]; then
+      reinstall_trusted_parent "$WORKER_STATE_DIR" || return 1
+    fi
+  fi
+}
+
+do_reinstall() {
+  prepare_reinstall_files || die "$(t reinstall_unsafe)"
+  say "$(t reinstall_plan)"
+  kv "$(t s_paths)" "$PANEL_BIN"
+  kv "" "$CONFIG_FILE"
+  kv "$(t s_service)" "$SERVICE_FILE"
+  confirm continue_q || { say "$(t aborted)"; return 0; }
+  [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$(sha256_of "$UPDATE_SOURCE")" ] || die "$(t reinstall_unsafe)"
+  if [ "$DRY_RUN" = 1 ]; then say "$(t update_dry)"; return 0; fi
+  : >"$TEMP_DIR/reinstall-files"
+  REINSTALL_PENDING=1
+  publish_reinstall_file "$STAGED_BIN" "$PANEL_BIN" 0 0 0755 || die "$(t update_apply_failed)"
+  if $SUDO test -f "$REINSTALL_SOURCE/registration" && ! $SUDO test -d "$WORKER_STATE_DIR"; then
+    reinstall_as_owner "$REINSTALL_STATE_UID" "$REINSTALL_STATE_GID" mkdir -m 0700 "$WORKER_STATE_DIR" || die "$(t update_apply_failed)"
+    REINSTALL_STATE_CREATED=1
+  fi
+  for WORKER_ROLE in launcher updater registration sudoers service; do
+    _restore_file="$REINSTALL_SOURCE/$WORKER_ROLE"
+    $SUDO test -f "$_restore_file" || continue
+    worker_role_path
+    if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ]; then
+      _restore_mode=$($SUDO stat -c %a "$_restore_file") || die "$(t reinstall_unsafe)"
+      _restore_gid=$($SUDO stat -c %g "$_restore_file") || die "$(t reinstall_unsafe)"
+      _restore_owner=$($SUDO stat -c %u "$_restore_file") || die "$(t reinstall_unsafe)"
+    else
+      _restore_owner=0; _restore_gid=0; _restore_mode=0755
+      if [ "$WORKER_ROLE" = registration ]; then _restore_mode=0600; fi
+    fi
+    if [ "$WORKER_ROLE" = registration ] && [ "$_restore_owner" = 0 ]; then
+      reinstall_trusted_parent "$WORKER_ROLE_PATH" || die "$(t reinstall_unsafe)"
+    fi
+    publish_reinstall_file "$_restore_file" "$WORKER_ROLE_PATH" "$_restore_owner" "$_restore_gid" "$_restore_mode" || die "$(t update_apply_failed)"
+  done
+  worker_reload_services || die "$(t update_apply_failed)"
+  if [ "$REINSTALL_ENABLED" = 1 ]; then
+    REINSTALL_ENABLE_ATTEMPTED=1
+    enable_panel_service || die "$(t update_apply_failed)"
+  fi
+  if [ "$NO_START" != 1 ]; then
+    REINSTALL_START_ATTEMPTED=1
+    restart_retained_panel || die "$(t update_apply_failed)"
+    $SUDO "$STAGED_BIN" tls check --config "$UPDATE_SOURCE" --timeout 120s || die "$(t update_apply_failed)"
+  fi
+  if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ]; then discard_reinstall_receipt || die "$(t reinstall_unsafe)"; fi
+  REINSTALL_PENDING=0
+  finish_reinstall_files commit || warn "$(t reinstall_rollback_failed)"
+  ok "$(t reinstall_done)"
+}
+
+inspect_install_candidate() {
   fetch_release
-  UPDATE_PROBE_DIR="$TEMP_DIR/probe"
-  mkdir "$UPDATE_PROBE_DIR" || die "$(t update_preflight_failed)"
   UPDATE_VERSION=$(staged_inspect version) || die "$(t update_preflight_failed)"
   detect_update_worker
   if [ -n "$BINARY_FILE" ] && [ "$VARIANT_EXPLICIT" = 0 ]; then
@@ -3928,28 +4451,54 @@ do_update_existing() {
   case "$UPDATE_VERSION" in "telemt-panel "*" ($BUILD_VARIANT:"*) ;; *) die "$(t update_preflight_failed)" ;; esac
   staged_inspect config inspect --config "$UPDATE_SOURCE" >"$TEMP_DIR/inspect.json" || die "$(t update_preflight_failed)"
   PANEL_BIN=$(json_field "$TEMP_DIR/inspect.json" panel_binary_path)
+  STORE_DRIVER=$(json_field "$TEMP_DIR/inspect.json" store_driver)
+  if [ "$INSTALLED_TAG" != local ]; then
+    UPDATE_CANDIDATE_VERSION=$(printf '%s\n' "$UPDATE_VERSION" | awk '{print $2}')
+    [ "${UPDATE_CANDIDATE_VERSION#v}" = "${INSTALLED_TAG#v}" ] || die "$(t update_preflight_failed)"
+  fi
+}
+
+do_update_existing() {
+  step 3 step_update
+  require_tools timeout sha256sum readlink
+  ensure_temp_dir
+  UPDATE_SOURCE="$TEMP_DIR/existing.toml"
+  # Snapshot once with privileges; never treat unreadable config as defaults.
+  if ! $SUDO test -f "$CONFIG_FILE" || $SUDO test -L "$CONFIG_FILE"; then die "$(t update_preflight_failed)"; fi
+  $SUDO cat "$CONFIG_FILE" >"$UPDATE_SOURCE" || die "$(t update_preflight_failed)"
+  chmod 0600 "$UPDATE_SOURCE"
+  UPDATE_PROBE_DIR="$TEMP_DIR/probe"
+  mkdir "$UPDATE_PROBE_DIR" || die "$(t update_preflight_failed)"
+  inspect_install_candidate
+  # A router defaults to lite. Its retained SQL store needs the full asset
+  # from the same release when the operator hasn't supplied a build.
+  if [ "$VARIANT_EXPLICIT" = 0 ] && [ -z "$BINARY_FILE" ] && [ "$BUILD_VARIANT" = lite ] && [ "$STORE_DRIVER" = sqlite ] &&
+    ! $SUDO test -e "$PANEL_BIN" && ! $SUDO test -L "$PANEL_BIN"; then
+    BUILD_VARIANT=full
+    REQ_VERSION="$INSTALLED_TAG"
+    inspect_install_candidate
+  fi
   SERVICE_NAME=$(json_field "$TEMP_DIR/inspect.json" panel_service)
   TELEMT_SVC=$(json_field "$TEMP_DIR/inspect.json" telemt_service)
   SERVICE_MANAGER=$(json_field "$TEMP_DIR/inspect.json" service_manager)
   PANEL_SERVICE_SCRIPT=$(json_field "$TEMP_DIR/inspect.json" panel_service_script)
   TELEMT_SERVICE_SCRIPT=$(json_field "$TEMP_DIR/inspect.json" telemt_service_script)
   resolve_report_service_scripts || die "$(t update_preflight_failed)"
-  STORE_DRIVER=$(json_field "$TEMP_DIR/inspect.json" store_driver)
   LISTEN=$(json_field "$TEMP_DIR/inspect.json" listen)
   TLS_MODE=$(json_field "$TEMP_DIR/inspect.json" tls_mode)
   sudoers_path_ok "$PANEL_BIN" || die "$(t update_preflight_failed)"
   validate_existing_store_variant
   apply_layout_from_answers
+  if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ] || { ! $SUDO test -e "$PANEL_BIN" && ! $SUDO test -L "$PANEL_BIN"; }; then
+    do_reinstall
+    return
+  fi
   if [ ! -f "$PANEL_BIN" ] || [ -L "$PANEL_BIN" ]; then die "$(t update_preflight_failed)"; fi
   validate_retained_service
   [ "$(readlink -f "$PANEL_BIN")" = "$PANEL_BIN" ] || die "$(t update_preflight_failed)"
   prepare_worker_upgrade || die "Worker upgrade preflight failed; installation was not changed."
   if [ "$WORKER_MIGRATE" != 1 ]; then
     prepare_systemd_privilege_upgrade || die "Privilege upgrade preflight failed; installation was not changed."
-  fi
-  if [ "$INSTALLED_TAG" != local ]; then
-    UPDATE_CANDIDATE_VERSION=$(printf '%s\n' "$UPDATE_VERSION" | awk '{print $2}')
-    [ "${UPDATE_CANDIDATE_VERSION#v}" = "${INSTALLED_TAG#v}" ] || die "$(t update_preflight_failed)"
   fi
   UPDATE_CONFIG_HASH=$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')
   [ "$UPDATE_CONFIG_HASH" = "$(sha256_of "$UPDATE_SOURCE")" ] || die "$(t update_preflight_failed)"
@@ -4028,8 +4577,12 @@ restore_update() {
   # A failed copy/rename may leave the old binary intact (including on ENOSPC).
   # Restart it without demanding enough free space for another complete copy.
   if [ "$($SUDO sha256sum "$PANEL_BIN" 2>/dev/null | awk '{print $1}')" != "$UPDATE_BINARY_HASH" ]; then
-    UPDATE_RESTORE=$($SUDO mktemp "$BIN_DIR/.telemt-panel-restore.XXXXXX") || return 1
-    $SUDO cp "$UPDATE_COPY_MODE" "$UPDATE_BACKUP/binary" "$UPDATE_RESTORE" || return 1
+    # The private backup directory is on the destination filesystem. Linking
+    # its verified inode lets even a full router flash roll back atomically.
+    UPDATE_RESTORE="$UPDATE_BACKUP/restore"
+    if ! $SUDO ln "$UPDATE_BACKUP/binary" "$UPDATE_RESTORE" 2>/dev/null; then
+      $SUDO cp "$UPDATE_COPY_MODE" "$UPDATE_BACKUP/binary" "$UPDATE_RESTORE" || return 1
+    fi
     [ "$($SUDO sha256sum "$UPDATE_RESTORE" | awk '{print $1}')" = "$UPDATE_BINARY_HASH" ] || return 1
     $SUDO mv -f "$UPDATE_RESTORE" "$PANEL_BIN" || return 1
     UPDATE_RESTORE=""
@@ -4084,6 +4637,17 @@ do_install() {
     present) do_update_existing; return 0 ;;
   esac
 
+  if [ -n "$BINARY_FILE" ]; then
+    fetch_release
+    _local_version=$(cd "$TEMP_DIR" && timeout 5 "$STAGED_BIN" version) || die "$(t fresh_config_failed)"
+    case "$_local_version" in
+      "telemt-panel "*" (lite:"*) _local_variant=lite ;;
+      "telemt-panel "*" (full:"*) _local_variant=full ;;
+      *) die "$(t fresh_config_failed)" ;;
+    esac
+    if [ "$VARIANT_EXPLICIT" = 1 ] && [ "$_local_variant" != "$BUILD_VARIANT" ]; then die "$(t fresh_config_failed)"; fi
+    BUILD_VARIANT="$_local_variant"
+  fi
   step 3 step_questions
   collect_answers
   apply_layout_from_answers
@@ -4095,11 +4659,11 @@ do_install() {
   confirm apply_q || { say "$(t aborted)"; exit 0; }
 
   step 5 step_apply
-  fetch_release
+  if [ -z "$BINARY_FILE" ]; then fetch_release; fi
   detect_update_worker
+  check_fresh_config
   create_user
   setup_dirs
-  hash_password
   install_binary
   write_config
   if [ "$WORKER_PROTOCOL" = 1 ]; then
@@ -4124,13 +4688,25 @@ prepare_removal() {
   require_tty
   check_prereqs_quiet
   detect_init
+  detect_tools
+  if [ -n "${TP_CONFIG_DIR:-}${TP_CONFIG_FILE:-}${TP_TELEMT_CONFIG:-}" ]; then
+    require_tools readlink stat
+  fi
   apply_layout
+  use_reinstall_layout || die "$(t reinstall_receipt_invalid "$REINSTALL_DIR")"
+  if [ "$CMD" = uninstall ] && [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ] &&
+    ! $SUDO test -e "$($SUDO cat "$REINSTALL_DIR/panel_path")" &&
+    ! $SUDO test -e "$($SUDO cat "$REINSTALL_DIR/service_path")" && ! $SUDO test -e "$SUDOERS_FILE"; then
+    say "$(t u_nothing)"
+    exit 0
+  fi
   ensure_temp_dir
+  if $SUDO test -L "$CONFIG_FILE"; then die "$(t remove_unsafe)"; fi
   if ! $SUDO test -f "$CONFIG_FILE"; then
     if [ "$CMD" = uninstall ] && [ ! -e "$PANEL_BIN" ] && [ ! -e "$SERVICE_FILE" ] && [ ! -e "$SUDOERS_FILE" ]; then say "$(t u_nothing)"; exit 0; fi
     die "$(t remove_parser)"
   fi
-  if ! has timeout || ! has sha256sum || ! has readlink; then die "$(t remove_parser)"; fi
+  require_tools install timeout sha256sum readlink stat
   UPDATE_SOURCE="$TEMP_DIR/removal.toml"
   $SUDO cat "$CONFIG_FILE" >"$UPDATE_SOURCE" || die "$(t remove_unsafe)"
   chmod 0600 "$UPDATE_SOURCE"
@@ -4158,11 +4734,18 @@ prepare_removal() {
   sudoers_path_ok "$TELEMT_BIN" || die "$(t remove_unsafe)"
   apply_layout_from_answers
   if [ "$SERVICE_MANAGER" = custom ] && [ -z "$PANEL_SERVICE_SCRIPT" ]; then die "$(t remove_unsafe)"; fi
+  if [ "$REINSTALL_LAYOUT_FOUND" = 1 ]; then
+    worker_layout || die "$(t remove_unsafe)"
+    if [ "$($SUDO cat "$REINSTALL_DIR/panel_path")" != "$PANEL_BIN" ] ||
+      [ "$($SUDO cat "$REINSTALL_DIR/service_path")" != "$SERVICE_FILE" ] ||
+      [ "$($SUDO cat "$REINSTALL_DIR/state_dir")" != "$WORKER_STATE_DIR" ] ||
+      [ "$($SUDO cat "$REINSTALL_DIR/init")" != "$INIT" ]; then die "$(t remove_unsafe)"; fi
+  fi
   [ "$SERVICE_NAME" != "$TELEMT_SVC" ] || die "$(t remove_unsafe)"
-  [ "$($SUDO readlink -f "$PANEL_BIN")" != "$($SUDO readlink -f "$TELEMT_BIN")" ] || die "$(t remove_unsafe)"
-  for REMOVE_PROTECTED_FILE in "$CONFIG_FILE" "$TELEMT_CONFIG" "$SERVICE_FILE" "$SUDOERS_FILE"; do
-    [ "$($SUDO readlink -f "$PANEL_BIN")" != "$($SUDO readlink -f "$REMOVE_PROTECTED_FILE")" ] || die "$(t remove_unsafe)"
+  for REMOVE_PROTECTED_FILE in "$CONFIG_FILE" "$TELEMT_CONFIG" "$SERVICE_FILE" "$SUDOERS_FILE" "$TELEMT_BIN"; do
+    if privilege_paths_alias "$PANEL_BIN" "$REMOVE_PROTECTED_FILE"; then die "$(t remove_unsafe)"; fi
   done
+  if privilege_paths_alias "$CONFIG_FILE" "$TELEMT_CONFIG"; then die "$(t remove_unsafe)"; fi
   for REMOVE_FILE in "$PANEL_BIN" "$SERVICE_FILE" "$SUDOERS_FILE"; do
     [ ! -L "$REMOVE_FILE" ] || die "$(t remove_unsafe)"
     if [ -e "$REMOVE_FILE" ] && [ ! -f "$REMOVE_FILE" ]; then die "$(t remove_unsafe)"; fi
@@ -4171,10 +4754,13 @@ prepare_removal() {
     if [ "$SERVICE_MANAGER" = custom ] || [ "$INIT" = entware ]; then
       entware_service_managed "$SERVICE_FILE" || die "$(t remove_unsafe)"
     fi
-    if ! $SUDO grep -qF "$PANEL_BIN" "$SERVICE_FILE" || ! $SUDO grep -qF "$CONFIG_FILE" "$SERVICE_FILE"; then die "$(t remove_unsafe)"; fi
+    if ! retained_service_uses_config; then die "$(t remove_unsafe)"; fi
   elif [ -f "$PANEL_BIN" ]; then
-    # Without a matching service definition, do not unlink a possibly running daemon.
-    die "$(t remove_unsafe)"
+    # A failed removal may have unlinked the service after stopping it. Bind
+    # that retry to the same binary at the same path.
+    if [ "$REINSTALL_LAYOUT_FOUND" != 1 ] || ! $SUDO test -f "$REINSTALL_DIR/stopped_binary"; then die "$(t remove_unsafe)"; fi
+    _live_binary=$($SUDO sha256sum "$PANEL_BIN") || die "$(t remove_unsafe)"
+    [ "$($SUDO cat "$REINSTALL_DIR/stopped_binary")" = "$_live_binary" ] || die "$(t remove_unsafe)"
   fi
   validate_removal_data
   REMOVE_PRIVILEGES=0
@@ -4186,6 +4772,11 @@ prepare_removal() {
   fi
   kv "$(t s_service)" "$SERVICE_FILE"
   kv "$(t s_paths)" "$PANEL_BIN"
+  if [ "$CMD" = purge ]; then
+    kv "$(t d_existing)" "$CONFIG_FILE"
+    case "$CONFIG_FILE" in "$CONFIG_DIR"/*) kv "config dir" "$CONFIG_DIR" ;; esac
+    if [ -n "$DATA_DIR" ]; then kv "data_dir" "$DATA_DIR"; fi
+  fi
   kv "sudoers" "$SUDOERS_FILE"
   if [ "$REMOVE_PRIVILEGES" = 1 ]; then
     kv "root policy" "$POLICY_FILE"
@@ -4271,23 +4862,15 @@ do_repair_privileges() {
 
 validate_removal_data() {
   if [ "$CMD" != purge ]; then return 0; fi
-  validate_panel_directory "$CONFIG_DIR"
-  sudoers_path_ok "$CONFIG_DIR" || die "$(t remove_unsafe)"
-  if [ -n "$DATA_DIR" ]; then
-    validate_panel_directory "$DATA_DIR"
-    sudoers_path_ok "$DATA_DIR" || die "$(t remove_unsafe)"
-  fi
-  for REMOVE_DIR in "$CONFIG_DIR" "${DATA_DIR:-$CONFIG_DIR}"; do
-    [ ! -L "$REMOVE_DIR" ] || die "$(t remove_unsafe)"
-    REMOVE_CANON=$($SUDO readlink -f "$REMOVE_DIR") || die "$(t remove_unsafe)"
+  validate_runtime_directories
+  for REMOVE_DIR in "$CONFIG_DIR" "$DATA_DIR"; do
+    [ -n "$REMOVE_DIR" ] || continue
+    if $SUDO test -L "$REMOVE_DIR"; then die "$(t remove_unsafe)"; fi
+    if privilege_directory_contains "$REMOVE_DIR" "$REINSTALL_DIR" || privilege_directory_contains "$REINSTALL_DIR" "$REMOVE_DIR"; then die "$(t remove_unsafe)"; fi
     # Ambiguous protected files must not disappear with recursive runtime cleanup.
     for REMOVE_PRIVILEGE_FILE in "$HELPER_FILE" "$POLICY_FILE"; do
       sudoers_path_ok "$REMOVE_PRIVILEGE_FILE" || die "$(t remove_unsafe)"
       if privilege_directory_contains "$REMOVE_DIR" "$REMOVE_PRIVILEGE_FILE"; then die "$(t remove_unsafe)"; fi
-    done
-    for REMOVE_PROTECTED in "$TELEMT_BIN" "$TELEMT_CONFIG" "$BIN_DIR" "$(dirname "$SERVICE_FILE")" "$(dirname "$SUDOERS_FILE")"; do
-      REMOVE_PROTECTED=$($SUDO readlink -f "$REMOVE_PROTECTED") || die "$(t remove_unsafe)"
-      case "$REMOVE_PROTECTED" in "$REMOVE_CANON"|"$REMOVE_CANON"/*) die "$(t remove_unsafe)" ;; esac
     done
   done
 }
@@ -4317,14 +4900,203 @@ stop_and_disable_service() {
   esac
 }
 
+# The parent itself must be protected. A higher sticky directory such as /tmp
+# can safely contain a root-owned child.
+reinstall_trusted_parent() {
+  _receipt_parent=$(dirname "$1")
+  [ "$($SUDO readlink -f "$_receipt_parent")" = "$_receipt_parent" ] || return 1
+  _receipt_ancestor="$_receipt_parent"
+  while :; do
+    $SUDO test -d "$_receipt_ancestor" && [ "$($SUDO stat -c %u "$_receipt_ancestor")" = 0 ] || return 1
+    _receipt_mode=$($SUDO stat -c %a "$_receipt_ancestor") || return 1
+    case "$_receipt_mode" in ''|*[!0-7]*) return 1 ;; esac
+    if [ "$((0$_receipt_mode & 022))" != 0 ]; then
+      [ "$_receipt_ancestor" != "$_receipt_parent" ] && [ "$((0$_receipt_mode & 01000))" != 0 ] || return 1
+    fi
+    [ "$_receipt_ancestor" != / ] || break
+    _receipt_ancestor=$(dirname "$_receipt_ancestor")
+  done
+}
+
+reinstall_trusted_file() {
+  reinstall_trusted_parent "$1" && ! $SUDO test -L "$1" && $SUDO test -f "$1" || return 1
+  [ "$($SUDO stat -c %u "$1")" = 0 ] || return 1
+  _receipt_mode=$($SUDO stat -c %a "$1") || return 1
+  case "$_receipt_mode" in ''|*[!0-7]*) return 1 ;; esac
+  [ "$((0$_receipt_mode & 022))" = 0 ]
+}
+
+reinstall_receipt_valid() {
+  _receipt_dir="${1:-$REINSTALL_DIR}"
+  reinstall_trusted_parent "$_receipt_dir" || return 1
+  ! $SUDO test -L "$_receipt_dir" && $SUDO test -d "$_receipt_dir" || return 1
+  [ "$($SUDO stat -c %u "$_receipt_dir")" = 0 ] && [ "$($SUDO stat -c %a "$_receipt_dir")" = 700 ] || return 1
+  # Inspect the private directory as root even when invoked through sudo.
+  # shellcheck disable=SC2016
+  $SUDO sh -c '
+    cd "$1" || exit 1
+    for file in * .[!.]* ..?*; do
+      [ ! -L "$file" ] || exit 1
+      [ -e "$file" ] || continue
+      [ -f "$file" ] && [ "$(stat -c %h "$file")" = 1 ] || exit 1
+      case "$file" in
+        registration) continue ;;
+        format|config_path|config_dir|telemt_config_path|panel_path|service_path|state_dir|init|worker_protocol|enabled|variant|stopped_binary|service|sudoers|launcher|updater) ;;
+        *) exit 1 ;;
+      esac
+      [ "$(stat -c %u "$file")" = 0 ] || exit 1
+      mode=$(stat -c %a "$file") || exit 1
+      [ "$((0$mode & 022))" = 0 ] || exit 1
+    done
+    [ "$(cat format)" = telemt-panel-reinstall-v1 ] && [ -f service ] || exit 1
+    if [ -f variant ]; then case "$(cat variant)" in lite|full) ;; *) exit 1 ;; esac; fi
+    case "$(cat worker_protocol)" in 1) [ -f launcher ] && [ -f updater ] ;; 0) : ;; *) exit 1 ;; esac || exit 1
+    case "$(cat init)" in systemd|openrc|procd|entware|sysvinit) ;; *) exit 1 ;; esac
+  ' reinstall-check "$_receipt_dir" || return 1
+  for _receipt_key in config_path config_dir telemt_config_path panel_path service_path state_dir; do
+    _receipt_value=$($SUDO cat "$_receipt_dir/$_receipt_key") && config_path_ok "$_receipt_value" || return 1
+  done
+}
+
+reinstall_receipt_matches() {
+  reinstall_receipt_valid && [ "$($SUDO cat "$REINSTALL_DIR/config_path")" = "$CONFIG_FILE" ] &&
+    [ "$($SUDO cat "$REINSTALL_DIR/config_dir")" = "$CONFIG_DIR" ]
+}
+
+use_reinstall_layout() {
+  REINSTALL_LAYOUT_FOUND=0
+  if ! $SUDO test -e "$REINSTALL_DIR" && ! $SUDO test -L "$REINSTALL_DIR"; then return 0; fi
+  reinstall_receipt_valid || return 1
+  _saved_config=$($SUDO cat "$REINSTALL_DIR/config_path") || return 1
+  _saved_dir=$($SUDO cat "$REINSTALL_DIR/config_dir") || return 1
+  _saved_telemt=$($SUDO cat "$REINSTALL_DIR/telemt_config_path") || return 1
+  [ -z "${TP_CONFIG_FILE:-}" ] || [ "$CONFIG_FILE" = "$_saved_config" ] || return 1
+  [ -z "${TP_CONFIG_DIR:-}" ] || [ "$CONFIG_DIR" = "$_saved_dir" ] || return 1
+  [ -z "${TP_TELEMT_CONFIG:-}" ] || [ "$TELEMT_CONFIG" = "$_saved_telemt" ] || return 1
+  $SUDO test -f "$_saved_config" && ! $SUDO test -L "$_saved_config" || return 1
+  CONFIG_FILE="$_saved_config"; CONFIG_DIR="$_saved_dir"; TELEMT_CONFIG="$_saved_telemt"
+  REINSTALL_LAYOUT_FOUND=1
+}
+
+write_reinstall_receipt() {
+  _receipt_stage="$1"
+  _receipt_worker=0
+  worker_layout || return 1
+  if worker_installation_present; then
+    _receipt_worker=1
+  elif $SUDO grep -qF "$PANEL_LAUNCH_BIN" "$SERVICE_FILE"; then
+    return 1
+  fi
+  for WORKER_ROLE in service sudoers launcher updater registration; do
+    case "$WORKER_ROLE" in launcher|updater|registration) [ "$_receipt_worker" = 1 ] || continue ;; esac
+    worker_role_path
+    ! $SUDO test -L "$WORKER_ROLE_PATH" || return 1
+    if ! $SUDO test -e "$WORKER_ROLE_PATH"; then continue; fi
+    $SUDO test -f "$WORKER_ROLE_PATH" && [ "$($SUDO stat -c %h "$WORKER_ROLE_PATH")" = 1 ] || return 1
+    for _receipt_reserved in "$CONFIG_FILE" "$PANEL_BIN" "$TELEMT_CONFIG" "$TELEMT_BIN"; do
+      [ "$WORKER_ROLE_PATH" != "$_receipt_reserved" ] || return 1
+    done
+    if [ "$WORKER_ROLE" = registration ]; then
+      # Pin the physical state directory for the copy. Only registration is
+      # runtime-owned; do not follow a leaf symlink swapped in by the service.
+      # shellcheck disable=SC2016
+      $SUDO sh -c '
+        cd -P "$1" && [ "$(pwd -P)" = "$1" ] && [ "$(stat -c %u .)" = "$(stat -c %u registration.json)" ] &&
+          timeout 10 cp -pP registration.json "$2" && [ ! -L "$2" ] && [ -f "$2" ]
+      ' reinstall-registration "$WORKER_STATE_DIR" "$_receipt_stage/registration" || return 1
+    else
+      reinstall_trusted_file "$WORKER_ROLE_PATH" || return 1
+      $SUDO cp -p "$WORKER_ROLE_PATH" "$_receipt_stage/$WORKER_ROLE" || return 1
+    fi
+  done
+  $SUDO test -f "$_receipt_stage/service" || return 1
+  _receipt_variant=""
+  if $SUDO cmp -s "$STAGED_BIN" "$PANEL_BIN"; then
+    case "$(staged_inspect version)" in
+      "telemt-panel "*" (full:"*) _receipt_variant=full ;;
+      "telemt-panel "*" (lite:"*) _receipt_variant=lite ;;
+    esac
+  elif [ "$(json_field "$TEMP_DIR/removal.json" store_driver)" = sqlite ]; then
+    _receipt_variant=full
+  fi
+  _receipt_enabled=""
+  if [ "$INIT" = systemd ] && [ "$SERVICE_MANAGER" != custom ]; then
+    case "$($SUDO systemctl is-enabled "$SERVICE_NAME" 2>/dev/null || :)" in
+      enabled) _receipt_enabled=1 ;; disabled) _receipt_enabled=0 ;;
+    esac
+  elif [ "$INIT" = procd ] && [ "$SERVICE_MANAGER" != custom ]; then
+    if $SUDO "$SERVICE_FILE" enabled >/dev/null 2>&1; then _receipt_enabled=1; else
+      [ "$?" != 1 ] || _receipt_enabled=0
+    fi
+  fi
+  # Keep each value as data. Receipt contents are never sourced as shell code.
+  # shellcheck disable=SC2016
+  $SUDO sh -c '
+    set -eu
+    umask 077
+    cd "$1"
+    shift
+    for key in config_path config_dir telemt_config_path panel_path service_path state_dir init worker_protocol; do
+      printf "%s\n" "$1" >"$key"
+      shift
+    done
+    if [ -n "$1" ]; then printf "%s\n" "$1" >enabled; fi
+    if [ -n "$2" ]; then printf "%s\n" "$2" >variant; fi
+    printf "%s\n" telemt-panel-reinstall-v1 >format
+  ' reinstall-save "$_receipt_stage" "$CONFIG_FILE" "$CONFIG_DIR" "$TELEMT_CONFIG" "$PANEL_BIN" "$SERVICE_FILE" "$WORKER_STATE_DIR" "$INIT" "$_receipt_worker" "$_receipt_enabled" "$_receipt_variant"
+}
+
+save_reinstall_receipt() {
+  if $SUDO test -e "$REINSTALL_DIR" || $SUDO test -L "$REINSTALL_DIR"; then
+    reinstall_receipt_matches || return 1
+    # A retry retains already removed roles and checks for operator edits to
+    # live roles before deleting another file.
+    worker_layout || return 1
+    for WORKER_ROLE in service sudoers launcher updater registration; do
+      case "$WORKER_ROLE" in launcher|updater|registration) [ "$($SUDO cat "$REINSTALL_DIR/worker_protocol")" = 1 ] || continue ;; esac
+      worker_role_path
+      ! $SUDO test -L "$WORKER_ROLE_PATH" || return 1
+      $SUDO test -e "$WORKER_ROLE_PATH" || continue
+      $SUDO test -f "$WORKER_ROLE_PATH" && $SUDO test -f "$REINSTALL_DIR/$WORKER_ROLE" || return 1
+      [ "$($SUDO stat -c '%u:%g:%a' "$WORKER_ROLE_PATH")" = "$($SUDO stat -c '%u:%g:%a' "$REINSTALL_DIR/$WORKER_ROLE")" ] || return 1
+      _receipt_live_hash=$($SUDO sha256sum "$WORKER_ROLE_PATH") || return 1
+      _receipt_saved_hash=$($SUDO sha256sum "$REINSTALL_DIR/$WORKER_ROLE") || return 1
+      [ "${_receipt_live_hash%% *}" = "${_receipt_saved_hash%% *}" ] || return 1
+    done
+    return 0
+  fi
+  reinstall_trusted_parent "$REINSTALL_DIR" || return 1
+  _receipt_stage=$($SUDO mktemp -d "$REINSTALL_DIR.tmp.XXXXXX") || return 1
+  if write_reinstall_receipt "$_receipt_stage" && reinstall_receipt_valid "$_receipt_stage" && $SUDO mv -T "$_receipt_stage" "$REINSTALL_DIR"; then return 0; fi
+  $SUDO rm -rf "$_receipt_stage"
+  return 1
+}
+
+discard_reinstall_receipt() {
+  reinstall_receipt_matches || return 1
+  [ "$DRY_RUN" != 1 ] || return 0
+  _retired_receipt=$($SUDO mktemp -d "$REINSTALL_DIR.discard.XXXXXX") || return 1
+  if ! $SUDO mv -T "$REINSTALL_DIR" "$_retired_receipt"; then
+    $SUDO rmdir "$_retired_receipt"
+    return 1
+  fi
+  $SUDO rm -rf "$_retired_receipt" || warn "$(t remove_failed)"
+}
+
 remove_panel_files() {
   [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
   verify_removal_privileges
   stop_registered_worker || die "$(t remove_failed)"
   if [ -f "$SERVICE_FILE" ]; then
     stop_and_disable_service || die "$(t remove_failed)"
+    if [ "$DRY_RUN" != 1 ] && [ "$REINSTALL_LAYOUT_FOUND" = 1 ] && $SUDO test -f "$PANEL_BIN"; then
+      # shellcheck disable=SC2016
+      $SUDO sh -c 'umask 077; sha256sum "$1" >"$2/stopped_binary"' reinstall-stopped "$PANEL_BIN" "$REINSTALL_DIR" || die "$(t remove_failed)"
+    fi
     run rm -f "$SERVICE_FILE" || die "$(t remove_failed)"
     if [ "$INIT" = systemd ]; then run systemctl daemon-reload || die "$(t remove_failed)"; fi
+  elif [ "$INIT" = systemd ] && [ "$REINSTALL_LAYOUT_FOUND" = 1 ] && $SUDO test -e "$PANEL_BIN"; then
+    run systemctl daemon-reload || die "$(t remove_failed)"
   fi
   remove_worker_files || die "$(t remove_failed)"
   run rm -f "$PANEL_BIN" || die "$(t remove_failed)"
@@ -4334,14 +5106,31 @@ remove_panel_files() {
 do_uninstall() {
   prepare_removal
   confirm_danger uninstall_q || { say "$(t aborted)"; exit 0; }
+  if [ "$DRY_RUN" != 1 ]; then
+    [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
+    if worker_installation_present && $SUDO test -d "$WORKER_STATE_DIR"; then
+      # Bind the configured state directory to the installed root-owned launcher
+      # before acquiring the same operation lock used by the running worker.
+      if ! reinstall_trusted_file "$PANEL_LAUNCH_BIN" ||
+        ! $SUDO grep -qF -- "--state-dir \"$WORKER_STATE_DIR\"" "$PANEL_LAUNCH_BIN"; then die "$(t remove_unsafe)"; fi
+      validate_runtime_directories "$WORKER_STATE_DIR"
+      [ "$(privilege_canonical_path "$WORKER_STATE_DIR")" = "$WORKER_STATE_DIR" ] || die "$(t remove_unsafe)"
+      SYSTEM_USER=$($SUDO stat -c %U "$WORKER_STATE_DIR") || die "$(t remove_unsafe)"
+      case "$SYSTEM_USER" in root|0) RUN_AS=root; reinstall_trusted_parent "$WORKER_STATE_DIR/operation.lock" || die "$(t remove_unsafe)" ;; *) RUN_AS=user ;; esac
+      acquire_worker_guard || die "$(t remove_unsafe)"
+    fi
+    save_reinstall_receipt || die "$(t reinstall_receipt_failed "$REINSTALL_DIR")"
+    if ! $SUDO sync -f "$REINSTALL_DIR" 2>/dev/null && ! $SUDO sync; then die "$(t reinstall_receipt_failed "$REINSTALL_DIR")"; fi
+    REINSTALL_LAYOUT_FOUND=1
+  fi
   remove_panel_files
-  say "$(t u_kept "$CONFIG_DIR" "$DATA_DIR")"
+  say "$(t u_kept "$CONFIG_FILE" "$DATA_DIR")"
   say "$(t uninstall_privileges_retained)"
 }
 
 do_purge() {
   prepare_removal
-  confirm_danger purge_q "$CONFIG_DIR" "$DATA_DIR" "$SYSTEM_USER" || { say "$(t aborted)"; exit 0; }
+  confirm_danger purge_q "$CONFIG_FILE" "$DATA_DIR" "$SYSTEM_USER" || { say "$(t aborted)"; exit 0; }
   remove_panel_files
   verify_removal_privileges
   if [ "$REMOVE_PRIVILEGES" = 1 ]; then
@@ -4350,13 +5139,26 @@ do_purge() {
   fi
   validate_removal_data
   [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
-  run rm -rf "$CONFIG_DIR" || die "$(t remove_failed)"
-  if [ -n "$DATA_DIR" ] && [ "$DATA_DIR" != "$CONFIG_DIR" ]; then run rm -rf "$DATA_DIR" || die "$(t remove_failed)"; fi
+  case "$CONFIG_FILE" in
+    "$CONFIG_DIR"/*) run rm -rf "$CONFIG_DIR" || die "$(t remove_failed)" ;;
+    *)
+      # With an external TOML, the CLI directory override alone does not prove
+      # which directory belongs to this installation. Trust the parsed paths.
+      run rm -f "$CONFIG_FILE" || die "$(t remove_failed)"
+      if [ "$WORKER_STATE_OVERRIDE" = "$CONFIG_DIR/updater" ]; then
+        run rm -rf "$WORKER_STATE_OVERRIDE" || die "$(t remove_failed)"
+        if $SUDO test -d "$CONFIG_DIR" && [ -z "$($SUDO ls -A "$CONFIG_DIR")" ]; then
+          run rmdir "$CONFIG_DIR" || die "$(t remove_failed)"
+        fi
+      fi ;;
+  esac
+  if [ -n "$DATA_DIR" ]; then run rm -rf "$DATA_DIR" || die "$(t remove_failed)"; fi
+  if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ]; then discard_reinstall_receipt || die "$(t remove_failed)"; fi
   # Do not remove an OS account or an external logfile based on a guessed name.
   ok "$(t u_purged)"
 }
 
-# check_prereqs_quiet — root/sudo only (uninstall needs nothing else).
+# check_prereqs_quiet — obtain root access before inspecting a removal target.
 check_prereqs_quiet() {
   if [ "$(id -u)" -ne 0 ]; then
     has sudo || die "$(t need_root)"
@@ -4377,6 +5179,11 @@ usage() {
 
 parse_args() {
   while [ $# -gt 0 ]; do
+    case "$1" in
+      --lang|--version|--binary|--variant|--user)
+        case "${2:-}" in ''|--*) die "$(t missing_argument "$1")" ;; esac ;;
+      --lang=|--version=|--binary=|--variant=|--user=) die "$(t missing_argument "${1%=}")" ;;
+    esac
     case "$1" in
       --lang) shift; L="${1:-}" ;;
       --lang=*) L="${1#--lang=}" ;;
@@ -4432,13 +5239,16 @@ main() {
   L=""
   parse_args "$@"
   setup_colors
-  ensure_temp_dir
   if [ "$CMD" = "help" ]; then
     [ -n "$L" ] || L="${TP_LANG:-en}"
     case "$L" in ru|en) ;; *) L="en" ;; esac
+    detect_init
+    apply_layout
+    CONFIG_FILE="${TP_CONFIG_FILE:-${TP_CONFIG_DIR:-$CONFIG_DIR}/config.toml}"
     usage
     exit 0
   fi
+  ensure_temp_dir
   choose_language
   case "$CMD" in
     install) do_install ;;

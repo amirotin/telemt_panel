@@ -17,7 +17,7 @@ set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$(cd "$HERE/.." && pwd)
-SCENARIOS="${1:-systemd openrc procd sysvinit migrate}"
+SCENARIOS="${1:-systemd openrc procd procd-custom sysvinit migrate}"
 
 # ── Outer driver ─────────────────────────────────────────────────────────────
 if [ "${E2E_INNER:-}" = "" ]; then
@@ -58,7 +58,11 @@ if [ "${E2E_INNER:-}" = "" ]; then
     ROOTFS=$(mktemp -d)
     mkdir -p "$ROOTFS/bin" "$ROOTFS/usr/bin" "$ROOTFS/usr/local/bin" "$ROOTFS/etc" "$ROOTFS/var/lib" "$ROOTFS/var/log" "$ROOTFS/run" "$ROOTFS/tmp" "$ROOTFS/dev" "$ROOTFS/src/scripts"
     chmod 1777 "$ROOTFS/tmp"
-    for tool in dirname basename openssl od dd tty stty expr du sh bash cp chmod chown mkdir mktemp cat grep awk sed tr sort cut head tail rm mv ln touch rmdir readlink stat sleep kill timeout flock tar install sha256sum id uname date wc find cmp ls sync curl wget getent sudo visudo; do copy_tool "$tool"; done
+    for tool in dirname basename dd tty stty expr du sh bash cp chmod chown mkdir mktemp cat grep awk sed tr sort cut head tail rm mv ln touch rmdir readlink stat sleep kill timeout flock tar install sha256sum id uname date wc find cmp ls sync curl wget getent sudo visudo; do copy_tool "$tool"; done
+    case "$sc" in
+      procd|procd-custom) head -c 4096 /dev/urandom >"$ROOTFS/dev/urandom" ;;
+      *) copy_tool openssl ;;
+    esac
     cp "$SRC/install.sh" "$ROOTFS/src/install.sh"
     cp "$0" "$ROOTFS/src/scripts/install-e2e.sh"
     cp "$BIN" "$ROOTFS/tmp/test-panel"
@@ -82,6 +86,8 @@ fi
 
 # ── Inner: runs as uid 0 inside the namespace ────────────────────────────────
 SC="$E2E_INNER"
+CUSTOM_CONFIG=0
+if [ "$SC" = procd-custom ]; then SC=procd; CUSTOM_CONFIG=1; fi
 BIN="$E2E_BIN"
 WORK=$(mktemp -d)
 FAILED=0
@@ -217,10 +223,29 @@ case "$SC" in
   procd)
     rm -rf /run/systemd /run/openrc
     printf 'DISTRIB_ID=OpenWrt\n' >/etc/openwrt_release
-    # /etc/rc.common is what procd init scripts source; enable/restart are no-ops here.
+    # In the live restore case, run the command from the actual generated service.
     cat >/etc/rc.common <<'EOF'
 #!/bin/sh
 echo "rc.common $1 $2" >>"$E2E_CALLS"
+state="/tmp/fixture-running-${1##*/}"
+case "$2" in
+  start|restart)
+    if [ -n "${E2E_PANEL_PIDFILE:-}" ] && [ "$1" = /etc/init.d/telemt-panel ]; then
+      procd_open_instance() { :; }
+      procd_close_instance() { :; }
+      procd_set_param() {
+        [ "$1" = command ] || return 0
+        shift
+        "$@" >"$E2E_PANEL_PIDFILE.log" 2>&1 &
+        echo "$!" >"$E2E_PANEL_PIDFILE"
+      }
+      . "$1"
+      start_service || exit 1
+    fi
+    touch "$state" ;;
+  stop) rm -f "$state" ;;
+  running) test -e "$state" ;;
+esac
 EOF
     export E2E_CALLS="$CALLS" ;;
   sysvinit)
@@ -241,6 +266,23 @@ EOF
 
 case "$SC" in systemd) PORT=18081 ;; openrc) PORT=18082 ;; procd) PORT=18083 ;; sysvinit) PORT=18084 ;; migrate) PORT=18085 ;; esac
 CONFIG=/etc/telemt-panel/config.toml
+PANEL_CONFIG_DIR=/etc/telemt-panel
+PANEL_DATA_DIR=/var/lib/telemt-panel
+if [ "$SC" = procd ]; then PANEL_DATA_DIR=/tmp/telemt-panel; fi
+if [ "$CUSTOM_CONFIG" = 1 ]; then
+  PANEL_CONFIG_DIR=/etc/router-panel
+  PANEL_DATA_DIR=/var/lib/router-panel
+  CONFIG=/etc/config/panel.toml
+  mkdir -p /etc/config /tmp/etc
+  chmod 0755 /etc/config
+  printf 'keep\n' >/etc/config/unrelated
+  mv /etc/telemt/telemt.toml /tmp/etc/telemt.toml
+  TP_CONFIG_DIR="$PANEL_CONFIG_DIR"
+  TP_CONFIG_FILE="$CONFIG"
+  TP_DATA_DIR="$PANEL_DATA_DIR"
+  TP_TELEMT_CONFIG=/tmp/etc/telemt.toml
+  export TP_CONFIG_DIR TP_CONFIG_FILE TP_DATA_DIR TP_TELEMT_CONFIG
+fi
 case "$SC" in procd) PANEL_BIN=/usr/bin/telemt-panel ;; *) PANEL_BIN=/usr/local/bin/telemt-panel ;; esac
 
 run_installer() {
@@ -296,8 +338,8 @@ if [ "$SC" != migrate ]; then
     check test ! -e /etc/telemt-panel-privileged
     check test -x "$PANEL_BIN.start"
     if [ "$SC" = procd ]; then
-      check test -f /etc/telemt-panel/updater/registration.json
-      check grep -q '^worker_state_dir = "/etc/telemt-panel/updater"' "$CONFIG"
+      check test -f "$PANEL_CONFIG_DIR/updater/registration.json"
+      check grep -qFx "worker_state_dir = \"$PANEL_CONFIG_DIR/updater\"" "$CONFIG"
     else
       check test -f /var/lib/telemt-panel/updater/registration.json
     fi
@@ -316,7 +358,6 @@ if [ "$SC" != migrate ]; then
     check "$HELPER_PATH" privileged --policy /etc/telemt-panel-privileged/policy.json inspect
   fi
 fi
-check test -f /etc/telemt-panel/../telemt-panel/config.toml
 case "$SC" in
   systemd)
     check test -f /etc/systemd/system/telemt-panel.service
@@ -343,7 +384,9 @@ case "$SC" in
     check test -x /etc/init.d/telemt-panel
     check grep -q 'rc.common /etc/init.d/telemt-panel enable' "$CALLS"
     check grep -q '^mode = "direct"' "$CONFIG"
-    check grep -q '^data_dir = "/tmp/telemt-panel"' "$CONFIG"
+    check grep -qFx "data_dir = \"$PANEL_DATA_DIR\"" "$CONFIG"
+    check grep -Eq '^secret = "[a-f0-9]{64}"$' "$CONFIG"
+    check grep -qF -- "--config $CONFIG" /etc/init.d/telemt-panel
     check test ! -f /etc/sudoers.d/telemt-panel ;;
   sysvinit)
     check test -x /etc/init.d/telemt-panel
@@ -362,31 +405,63 @@ case "$SC" in
     check grep -q '^old$' /etc/sudoers.d/telemt-panel ;;
 esac
 
+BASE_URL="http://127.0.0.1:$PORT"
+start_panel() {
+  "$1" --config "$CONFIG" >"$WORK/panel.log" 2>&1 &
+  PANEL_PID=$!
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if kill -0 "$PANEL_PID" 2>/dev/null && curl -fsS "$BASE_URL/api/health" >/dev/null 2>&1; then
+      echo "panel answered /api/health"
+      return 0
+    fi
+    if [ "$attempt" != 10 ]; then sleep 1; fi
+  done
+  cat "$WORK/panel.log"; fail "panel did not come up"; return 1
+}
+stop_panel() {
+  kill "$PANEL_PID" 2>/dev/null || true
+  wait "$PANEL_PID" || true
+}
+login_panel() {
+  curl -fsS -H 'Content-Type: application/json' --data-binary '{"username":"admin","password":"e2e-password"}' \
+    -c "$WORK/cookies" "$BASE_URL/api/auth/login" >"$WORK/login-response.json"
+}
+
 echo "--- start the installed binary with the generated config"
 if [ "${WORKER_INSTALL:-0}" != 1 ]; then
   sed -i 's#^data_dir = .*#data_dir = "/var/lib/telemt-panel"#' "$CONFIG"
+  PANEL_DATA_DIR=/var/lib/telemt-panel
 fi
-"$PANEL_BIN" --config "$CONFIG" >"$WORK/panel.log" 2>&1 &
-PANEL_PID=$!
-i=0; up=0
-while [ "$i" -lt 10 ]; do
-  if curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/health" 2>/dev/null | grep -q 200; then up=1; break; fi
-  sleep 1; i=$((i + 1))
-done
-if [ "$up" = 1 ]; then echo "panel answered /api/health"; else cat "$WORK/panel.log"; fail "panel did not come up"; fi
-if [ "$SC" = procd ] && [ "$up" = 1 ]; then
-  printf '%s' '{"username":"admin","password":"e2e-password"}' >"$WORK/login.json"
-  check curl -fsS -H 'Content-Type: application/json' --data-binary "@$WORK/login.json" \
-    -c "$WORK/cookies" "http://127.0.0.1:$PORT/api/auth/login" >"$WORK/login-response.json"
-  check curl -fsS -b "$WORK/cookies" "http://127.0.0.1:$PORT/api/host" >"$WORK/host.json"
-  check grep -Eq '"privileges_mode"[[:space:]]*:[[:space:]]*"direct"' "$WORK/host.json"
-  check grep -Eq '"self_update"[[:space:]]*:[[:space:]]*true' "$WORK/host.json"
+if start_panel "$PANEL_BIN" && [ "$SC" != migrate ]; then
+  login_panel || fail "initial login failed"
+  check curl -fsS -X PUT -H "Origin: $BASE_URL" -H 'Content-Type: application/json' \
+    -b "$WORK/cookies" --data-binary '{"allow_address_override":true}' "$BASE_URL/api/settings/links" >/dev/null
+  if [ "$SC" = procd ]; then
+    check curl -fsS -b "$WORK/cookies" "$BASE_URL/api/host" >"$WORK/host.json"
+    check grep -Eq '"privileges_mode"[[:space:]]*:[[:space:]]*"direct"' "$WORK/host.json"
+    check grep -Eq '"self_update"[[:space:]]*:[[:space:]]*true' "$WORK/host.json"
+  fi
 fi
-kill "$PANEL_PID" 2>/dev/null || true
+stop_panel
 
 if [ "$SC" != "migrate" ]; then
   echo "--- second run = update path (config untouched)"
   before=$(cat "$CONFIG")
+  if [ "$CUSTOM_CONFIG" = 1 ]; then
+    if TP_CONFIG_FILE=/etc/config/incorrect.toml run_installer install >"$WORK/wrong-config.log" 2>&1; then
+      fail 'an alternate missing config was treated as a fresh installation'
+    fi
+    check grep -qF 'from the existing service command' "$WORK/wrong-config.log"
+    if TP_CONFIG_DIR='' TP_CONFIG_FILE='' run_installer install >"$WORK/no-overrides.log" 2>&1; then
+      fail 'omitting the config overrides allowed replacing an existing OpenWrt service'
+    fi
+    check grep -qF 'from the existing service command' "$WORK/no-overrides.log"
+    check test ! -e /etc/config/incorrect.toml
+    check test ! -e /etc/telemt-panel/config.toml
+    check grep -qF 'OpenWrt: to keep the config across sysupgrade, add /etc/config/panel.toml' "$WORK/install.log"
+    check grep -qFx 'url = "http://127.0.0.1:19091"' "$CONFIG"
+    check grep -qFx 'auth_header = "e2e-secret-header"' "$CONFIG"
+  fi
   if [ "$SC" != procd ] && [ "$WORKER_INSTALL" != 1 ]; then
     helper_before=$(sha256sum "$HELPER_PATH" | awk '{print $1}')
     helper_inode_before=$(stat -c '%d:%i:%Y:%a' "$HELPER_PATH")
@@ -415,25 +490,161 @@ if [ "$SC" != "migrate" ]; then
   fi
 fi
 
+RECEIPT=/etc/telemt-panel-reinstall
+SERVICE=/etc/init.d/telemt-panel
+UPDATER=/etc/init.d/telemt-panel-updater
+REGISTRATION="$PANEL_DATA_DIR/updater/registration.json"
+case "$SC" in
+  systemd|migrate)
+    SERVICE=/etc/systemd/system/telemt-panel.service
+    UPDATER=/etc/systemd/system/telemt-panel-updater.service ;;
+  procd) REGISTRATION="$PANEL_CONFIG_DIR/updater/registration.json" ;;
+esac
+if [ "$SC" != migrate ]; then
+  cp "$CONFIG" "$WORK/original.toml"
+  printf 'retained data\n' >"$PANEL_DATA_DIR/retained-data"
+  if [ "$SC" != procd ]; then cp /etc/sudoers.d/telemt-panel "$WORK/original.sudoers"; fi
+  if [ "$SC" = systemd ]; then
+    printf '\n[Service]\nEnvironment=PANEL_OPERATOR_SETTING=kept\n' >>"$SERVICE"
+  fi
+fi
+
 echo "--- uninstall keeps config"
+if [ "$SC" = procd ] && [ "$CUSTOM_CONFIG" = 0 ] && [ "$WORKER_INSTALL" = 1 ]; then
+  exec 8>"${REGISTRATION%/*}/operation.lock"
+  flock -n 8 || exit 1
+  if run_installer uninstall >"$WORK/busy-uninstall.log" 2>&1; then fail "uninstall interrupted an active worker"; fi
+  check test -x "$PANEL_BIN"
+  check test -x "$SERVICE"
+  check test ! -e "$RECEIPT"
+  exec 8>&-
+fi
 run_installer uninstall >"$WORK/uninstall.log" 2>&1 || { cat "$WORK/uninstall.log"; fail "uninstall exited non-zero"; }
 check test ! -e "$PANEL_BIN"
 check test ! -e "$PANEL_BIN.start"
 check test ! -e /etc/sudoers.d/telemt-panel
-case "$SC" in
-  systemd|migrate)
-    check test ! -e /etc/systemd/system/telemt-panel.service
-    check test ! -e /etc/systemd/system/telemt-panel-updater.service ;;
-  *)
-    check test ! -e /etc/init.d/telemt-panel
-    check test ! -e /etc/init.d/telemt-panel-updater ;;
-esac
+check test ! -e "$SERVICE"
+check test ! -e "$UPDATER"
 check test -f "$CONFIG"
+
+restore_installer() {
+  # Simulate a new shell, with no answers or paths from the original setup.
+  restore_file=${1:-}; restore_dir=${2:-}
+  if [ -n "${E2E_PANEL_PIDFILE:-}" ]; then set --; else set -- --no-start; fi
+  TP_CONFIG_FILE="$restore_file" TP_CONFIG_DIR="$restore_dir" TP_TELEMT_CONFIG='' TP_DATA_DIR='' TP_LANG=en \
+    sh "$SRC/install.sh" --yes --binary "$BIN" "$@"
+}
+check_restored_login() {
+  login_panel || fail "original password no longer works"
+  check curl -fsS -b "$WORK/cookies" "$BASE_URL/api/settings/links" >"$WORK/restored-setting"
+  check grep -Eq '"allow_address_override"[[:space:]]*:[[:space:]]*true' "$WORK/restored-setting"
+}
+check_restored_panel() {
+  check cmp "$WORK/original.toml" "$CONFIG"
+  check grep -qx 'retained data' "$PANEL_DATA_DIR/retained-data"
+  check test -x "$PANEL_BIN"
+  check grep -qF -- "--config $CONFIG" "$SERVICE"
+  if [ "$SC" = systemd ]; then
+    check grep -qx 'Environment=PANEL_OPERATOR_SETTING=kept' "$SERVICE"
+    check grep -qx 'User=telemt-panel' "$SERVICE"
+  fi
+  if [ "$SC" != procd ]; then
+    check cmp "$WORK/original.sudoers" /etc/sudoers.d/telemt-panel
+    check test "$(stat -c %a /etc/sudoers.d/telemt-panel)" = 440
+  else
+    check test ! -e /etc/sudoers.d/telemt-panel
+  fi
+  installed_command="$PANEL_BIN"
+  if [ "$WORKER_INSTALL" = 1 ]; then
+    installed_command="$PANEL_BIN.start"
+    check test -x "$installed_command"
+    check grep -qF "$installed_command" "$SERVICE"
+    check grep -qF "$installed_command" "$UPDATER"
+    check grep -qF 'telemt-panel-updater' "$REGISTRATION"
+    check timeout 15 "$installed_command" --worker
+  fi
+  if [ -n "${E2E_PANEL_PIDFILE:-}" ]; then
+    check grep -Eq '^rc.common /etc/init.d/telemt-panel (start|restart)$' "$CALLS"
+    check_restored_login
+  else
+    if grep -Eq '(^|[[:space:]])(--start|start|restart)([[:space:]]|$)' "$CALLS"; then
+      fail "--no-start started a service during reinstall"
+    fi
+    if start_panel "$installed_command"; then check_restored_login; fi
+    stop_panel
+  fi
+}
+
+if [ "$SC" != migrate ]; then
+  if [ "$SC" = procd ] && [ "$CUSTOM_CONFIG" = 0 ]; then
+    echo "--- corrupt retained config and incomplete uninstall are refused"
+    printf '[broken\n' >"$CONFIG"
+    if restore_installer >"$WORK/broken.log" 2>&1; then fail "accepted a corrupt retained config"; fi
+    check grep -qFx '[broken' "$CONFIG"
+    check test ! -e "$PANEL_BIN"
+    cp "$WORK/original.toml" "$CONFIG"
+    printf 'operator service\n' >"$SERVICE"
+    if restore_installer >"$WORK/partial.log" 2>&1; then fail "overwrote a remaining service"; fi
+    check grep -qx 'operator service' "$SERVICE"
+    check test ! -e "$PANEL_BIN"
+    rm "$SERVICE"
+    mkdir "$WORK/fail-link"
+    cat >"$WORK/fail-link/ln" <<'EOF'
+#!/bin/sh
+if [ "${3:-}" = /etc/init.d/telemt-panel ]; then exit 1; fi
+exec /bin/ln "$@"
+EOF
+    chmod 0755 "$WORK/fail-link/ln"
+    if PATH="$WORK/fail-link:$PATH" restore_installer >"$WORK/interrupted.log" 2>&1; then fail "accepted failed service publication"; fi
+    check test -d "$RECEIPT"
+    check test ! -e "$PANEL_BIN"
+    check test ! -e "$REGISTRATION"
+    check test ! -e "$PANEL_BIN.start"
+    check test ! -e "$UPDATER"
+    check cmp "$CONFIG" "$WORK/original.toml"
+  fi
+  echo "--- plain install restores the uninstalled panel"
+  check test -d "$RECEIPT"
+  check grep -qx "${TP_TEST_VARIANT:-full}" "$RECEIPT/variant"
+  : >"$CALLS"
+  restore_installer >"$WORK/reinstall.log" 2>&1 || { cat "$WORK/reinstall.log"; exit 1; }
+  check_restored_panel
+  if [ "$CUSTOM_CONFIG" = 1 ]; then check test ! -e /etc/telemt-panel/config.toml; fi
+  if [ "$SC" = procd ]; then
+    echo "--- reinstall after an older OpenWrt uninstall without a receipt"
+    run_installer uninstall >"$WORK/uninstall-again.log" 2>&1 || { cat "$WORK/uninstall-again.log"; exit 1; }
+    mv "$RECEIPT" "$WORK/previous-uninstall"
+    : >"$CALLS"
+    if [ "$CUSTOM_CONFIG" = 1 ]; then
+      restore_installer "$CONFIG" "$PANEL_CONFIG_DIR" >"$WORK/legacy-reinstall.log" 2>&1 || { cat "$WORK/legacy-reinstall.log"; exit 1; }
+    else
+      E2E_PANEL_PIDFILE="$WORK/restored.pid"
+      export E2E_PANEL_PIDFILE
+      trap 'if [ -s "$E2E_PANEL_PIDFILE" ]; then kill "$(cat "$E2E_PANEL_PIDFILE")" 2>/dev/null || :; fi' EXIT
+      restore_installer >"$WORK/legacy-reinstall.log" 2>&1 || { cat "$WORK/legacy-reinstall.log"; exit 1; }
+    fi
+    check_restored_panel
+    if [ -n "${E2E_PANEL_PIDFILE:-}" ]; then
+      kill "$(cat "$E2E_PANEL_PIDFILE")"
+      trap - EXIT
+      unset E2E_PANEL_PIDFILE
+    fi
+  fi
+  run_installer uninstall >"$WORK/before-purge.log" 2>&1 || { cat "$WORK/before-purge.log"; exit 1; }
+  check test -d "$RECEIPT"
+fi
 
 echo "--- purge removes everything"
 run_installer purge >"$WORK/purge.log" 2>&1 || { cat "$WORK/purge.log"; fail "purge exited non-zero"; }
 check test ! -e "$CONFIG"
-check test -z "$(ls -A /etc/telemt-panel 2>/dev/null)"
+check test ! -e "$RECEIPT"
+check test ! -e "$PANEL_DATA_DIR"
+check test -z "$(ls -A "$PANEL_CONFIG_DIR" 2>/dev/null)"
+if [ "$CUSTOM_CONFIG" = 1 ]; then
+  check test "$(stat -c %a /etc/config)" = 755
+  check grep -qFx keep /etc/config/unrelated
+  check test -f /tmp/etc/telemt.toml
+fi
 check test ! -e /var/lib/telemt-panel
 # Account ownership beyond this installation is not guessed during purge.
 

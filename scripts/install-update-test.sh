@@ -6,8 +6,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 REAL_INSTALL=$(command -v install)
-export REAL_INSTALL
-for scenario in success custom entware-custom entware-auto archived-settings fail rollback-fail copy-fail old-candidate fifo-config dry no-start; do
+REAL_CP=$(command -v cp)
+export REAL_INSTALL REAL_CP
+for scenario in success custom entware-custom entware-auto archived-settings fail rollback-fail rollback-low-space copy-fail old-candidate fifo-config dry no-start; do
   dir="$TMP/$scenario"
   mkdir -p "$dir/bin" "$dir/tools"
   printf 'original binary\n' >"$dir/bin/telemt-panel"
@@ -37,7 +38,7 @@ case "$1 $2" in
   "tls check")
     case "$*" in
       *--expect-fingerprint*) [ "$TEST_SCENARIO" != rollback-fail ] ;;
-      *) [ "$TEST_SCENARIO" != fail ] && [ "$TEST_SCENARIO" != rollback-fail ] ;;
+      *) [ "$TEST_SCENARIO" != fail ] && [ "$TEST_SCENARIO" != rollback-fail ] && [ "$TEST_SCENARIO" != rollback-low-space ] ;;
     esac ;;
   "service restart") printf '%s\n' "$*" >>"$TEST_DIR/service-calls" ;;
   *) exit 1 ;;
@@ -53,7 +54,14 @@ EOF
 [ "$TEST_SCENARIO" != copy-fail ] || exit 1
 exec "$REAL_INSTALL" "$@"
 EOF
-  chmod 0755 "$dir/candidate" "$dir/tools/systemctl" "$dir/tools/install"
+  cat >"$dir/tools/cp" <<'EOF'
+#!/bin/sh
+case "$TEST_SCENARIO:$*" in
+  rollback-low-space:*".telemt-panel-restore."*|rollback-low-space:*"/restore") exit 1 ;;
+esac
+exec "$REAL_CP" "$@"
+EOF
+  chmod 0755 "$dir/candidate" "$dir/tools/systemctl" "$dir/tools/install" "$dir/tools/cp"
   export TEST_DIR="$dir" TEST_SCENARIO="$scenario"
   if (
     # shellcheck disable=SC2034
@@ -77,12 +85,14 @@ EOF
     do_update_existing
   ) >"$dir/output" 2>&1; then result=0; else result=$?; fi
   case "$scenario" in
-    fail|rollback-fail|copy-fail|old-candidate|fifo-config|entware-auto)
+    fail|rollback-fail|rollback-low-space|copy-fail|old-candidate|fifo-config|entware-auto)
       [ "$result" != 0 ] || { cat "$dir/output"; exit 1; }
       [ "$(cat "$dir/bin/telemt-panel")" = "original binary" ]
       [ "$(stat -c %a "$dir/bin/telemt-panel")" = 751 ]
       case "$scenario" in
-        fail|copy-fail) grep -q 'Previous panel response restored' "$dir/output" ;;
+        fail|copy-fail|rollback-low-space)
+          grep -q 'Previous panel response restored' "$dir/output"
+          cmp "$dir/bin/telemt-panel" "$dir"/bin/.telemt-panel-backup.*/binary ;;
         rollback-fail) grep -q 'Automatic recovery failed' "$dir/output" ;;
         old-candidate|fifo-config) [ ! -e "$dir/unintended-start" ] && [ ! -e "$dir/service-calls" ] ;;
         entware-auto)
@@ -148,7 +158,8 @@ for scenario in valid symlink extra; do
       esac
     }
     fetch_release
-    [ "$(cat "$STAGED_BIN")" = "candidate bytes" ]
+    [ "$(cat "$STAGED_BIN")" = "candidate bytes" ] &&
+      [ ! -e "${STAGED_BIN%/*}/$(release_asset_name)" ]
   ) >"$dir/output" 2>&1; then result=0; else result=$?; fi
   if [ "$scenario" = valid ]; then
     [ "$result" = 0 ] || { cat "$dir/output"; exit 1; }
@@ -157,4 +168,44 @@ for scenario in valid symlink extra; do
   fi
   [ "$(cat "$TMP/outside")" = unchanged ]
   printf 'PASS archive %s\n' "$scenario"
+done
+
+# A failed browser URL can still yield the same published assets through the API.
+for scenario in valid wrong-checksum; do
+  if (
+    TP_SOURCED=1
+    # shellcheck disable=SC1091
+    . "$HERE/../install.sh"
+    INIT=procd; BUILD_VARIANT=lite; ARCH=x86_64; LIBC=musl; REQ_VERSION=v1.0.0-rc.4
+    http_get() {
+      [ "$1" = "https://api.github.com/repos/$REPO/releases/tags/$REQ_VERSION" ] || return 1
+      printf '{}\n' >"$HTTP_BODY"; printf 200
+    }
+    jsonfilter() {
+      case "$4" in
+        *'linux-musl.tar.gz"].id') printf 101 ;;
+        *'linux-musl.tar.gz.sha256"].id') printf 102 ;;
+        *) return 1 ;;
+      esac
+    }
+    download() {
+      case "$1" in
+        "https://github.com/"*) return 1 ;;
+        "https://api.github.com/repos/$REPO/releases/assets/101")
+          [ "$3 $4" = '--header Accept: application/octet-stream' ] || return 1
+          cp "$TMP/archive-valid/archive.tar.gz" "$2" ;;
+        "https://api.github.com/repos/$REPO/releases/assets/102")
+          if [ "$scenario" = valid ]; then cp "$TMP/archive-valid/archive.sha256" "$2"; else printf 'bad\n' >"$2"; fi ;;
+        *) return 1 ;;
+      esac
+    }
+    fetch_release
+    cmp "$STAGED_BIN" "$TMP/archive-valid/payload/telemt-panel"
+  ) >"$TMP/api-fetch.log" 2>&1; then result=0; else result=$?; fi
+  if [ "$scenario" = valid ]; then
+    [ "$result" = 0 ] || { cat "$TMP/api-fetch.log"; exit 1; }
+  else
+    [ "$result" != 0 ] || exit 1
+  fi
+  printf 'PASS GitHub API download %s\n' "$scenario"
 done

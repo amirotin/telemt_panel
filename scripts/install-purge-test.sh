@@ -14,7 +14,7 @@ if [ "${PURGE_INNER:-}" != 1 ]; then
   trap 'rm -rf "$ROOTFS"' EXIT INT TERM
   mkdir -p "$ROOTFS/bin" "$ROOTFS/src/scripts" "$ROOTFS/tmp" "$ROOTFS/dev"
   chmod 1777 "$ROOTFS/tmp"
-  for tool in sh bash dirname basename cp chmod mkdir mktemp cat grep awk sed tr head rm mv ln readlink stat timeout install sha256sum id wc; do
+  for tool in sh bash dirname basename cp chmod mkdir mktemp cat grep awk sed tr head rm mv ln readlink stat timeout install sha256sum id wc sync; do
     TOOL=$(command -v "$tool")
     cp -L "$TOOL" "$ROOTFS/bin/$tool"
     ldd "$TOOL" 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i ~ /^\//) print $i}' | while IFS= read -r dep; do
@@ -81,6 +81,7 @@ EOF
     if [ "$SCENARIO" = uninstall ]; then CMD=uninstall; fi
     CONFIG_DIR="$CASE/config"; CONFIG_FILE="$CONFIG_DIR/config.toml"
     SUDOERS_FILE="$CASE/sudoers"; TELEMT_CONFIG="$CASE/telemt/telemt.toml"
+    REINSTALL_DIR="$CASE/receipt"
     BINARY_FILE="$PARSER"; ASSUME_YES=1
     if [ "$SCENARIO" = dry ]; then DRY_RUN=1; fi
     PATH="$CASE/tools:$PATH"

@@ -140,6 +140,18 @@ assert_eq "no base_path in tls table" '' "$(toml_value "$TMP/proxy-custom.toml" 
   printf '%s\n' "$BASE_PATH"
 ) >"$TMP/proxy-random"
 if grep -Eq '^/[0-9a-f]{24}$' "$TMP/proxy-random"; then pass; else fail "random path format"; fi
+if (
+  has() { [ "$1" != openssl ] && command -v "$1" >/dev/null 2>&1; }
+  od() { return 127; }
+  secret=$(gen_secret) || exit 1
+  [ "${#secret}" -eq 64 ] || exit 1
+  case "$secret" in *[!0-9a-f]*) exit 1 ;; esac
+); then pass; else fail 'secret generation requires openssl or od'; fi
+if (
+  has() { return 1; }
+  tr() { cat >/dev/null; printf '0123'; }
+  gen_secret
+) >/dev/null 2>&1; then fail 'secret generation accepted a short result'; else pass; fi
 if (TP_TLS_MODE=proxy; TP_BASE_PATH='/../x'; ask_transport) >/dev/null 2>&1; then fail "invalid unattended path accepted"; else pass; fi
 if (TP_TLS_MODE=http; TP_BASE_PATH=/panel; ask_transport) >/dev/null 2>&1; then fail "path silently ignored outside proxy mode"; else pass; fi
 (
@@ -212,9 +224,18 @@ assert_eq "config sqlite path" "/var/lib/telemt-panel/panel.db" "$(toml_value "$
 STORE_DRIVER="sqlite"
 INIT="procd"
 gen_config >"$TMP/cfg-procd.toml"
+assert_eq "explicit procd sqlite store" sqlite "$(toml_value "$TMP/cfg-procd.toml" store driver)"
+BUILD_VARIANT=full
+ask_storage >/dev/null
+gen_config >"$TMP/cfg-procd.toml"
 assert_eq "config procd memory store" "memory" "$(toml_value "$TMP/cfg-procd.toml" store driver)"
 assert_not_contains "config procd no sqlite path" 'path = "/var/lib/telemt-panel/panel.db"' "$TMP/cfg-procd.toml"
+if (BUILD_VARIANT=lite; TP_STORE_DRIVER=sqlite; ask_storage) >/dev/null 2>&1; then fail "lite accepted explicit sqlite"; else pass; fi
+for _option in --version --binary --lang --variant --user; do
+  if (parse_args "$_option" --yes) >/dev/null 2>&1; then fail "missing argument accepted: $_option"; else pass; fi
+done
 INIT="systemd"
+STORE_DRIVER=sqlite
 RUN_AS="root"; SUBPAGE_ENABLED="no"
 gen_config >"$TMP/cfg2.toml"
 assert_eq "config privileges direct" "direct" "$(toml_value "$TMP/cfg2.toml" privileges mode)"
@@ -333,6 +354,150 @@ TP_VARIANT=""; BUILD_VARIANT=""; INIT="procd"
 choose_build_variant
 assert_eq "procd defaults lite" "lite" "$BUILD_VARIANT"
 
+(
+  INIT=procd; TP_CONFIG_DIR="$TMP/router-panel"; TP_CONFIG_FILE=""
+  apply_layout
+  [ "$CONFIG_DIR" = "$TMP/router-panel" ] && [ "$CONFIG_FILE" = "$CONFIG_DIR/config.toml" ]
+) || fail 'OpenWrt config directory override was ignored'
+
+mkdir -p "$TMP/router-config"
+(
+  INIT=procd; TP_CONFIG_DIR=""; TP_CONFIG_FILE="$TMP/router-config/panel.toml"
+  apply_layout
+  [ "$CONFIG_DIR" = /etc/telemt-panel ] && [ "$CONFIG_FILE" = "$TP_CONFIG_FILE" ]
+) || fail 'an external config file must not become the managed directory'
+
+(
+  INIT=entware; TP_CONFIG_DIR="$TMP/entware-panel"; TP_CONFIG_FILE="$TMP/router-config/entware.toml"
+  apply_layout
+  [ "$CONFIG_DIR" = "$TP_CONFIG_DIR" ] && [ "$CONFIG_FILE" = "$TP_CONFIG_FILE" ]
+) || fail 'Entware defaults overrode the explicit paths'
+
+for _file in relative.toml "$TMP/router-config/" "$TMP/router-config/../panel.toml" "$TMP/router-config/panel;id" "$TMP/missing-parent/panel.toml"; do
+  if (INIT=procd; TP_CONFIG_FILE="$_file"; apply_layout) >/dev/null 2>&1; then
+    fail "config path accepted $_file"
+  fi
+done
+
+if (INIT=procd; TP_CONFIG_DIR=/etc/config; apply_layout) >/dev/null 2>&1; then
+  fail 'accepted the shared UCI directory as the managed panel directory'
+fi
+if (INIT=procd; TP_CONFIG_DIR=/etc/telemt; apply_layout) >/dev/null 2>&1; then
+  fail 'accepted the Telemt configuration directory as the managed panel directory'
+fi
+
+touch "$TMP/existing-procd-service"
+if (
+  INIT=procd; TP_CONFIG_FILE="$TMP/router-config/panel.toml"
+  SERVICE_FILE="$TMP/existing-procd-service" validate_fresh_service_target
+) >/dev/null 2>&1; then fail 'custom config path allowed replacing an existing procd service'; fi
+
+printf '  procd_set_param command /usr/bin/telemt-panel --config "%s"\n' "$TMP/router-config/panel.toml" >"$TMP/existing-procd-service"
+if (
+  INIT=procd; PANEL_BIN=/usr/bin/telemt-panel; TP_CONFIG_FILE="$TMP/router-config/panel.toml"
+  CONFIG_FILE="$TP_CONFIG_FILE" SERVICE_FILE="$TMP/existing-procd-service" retained_service_uses_config
+); then pass; else fail 'retained procd service did not match a quoted config path'; fi
+if (
+  INIT=procd; PANEL_BIN=/usr/bin/telemt-panel; TP_CONFIG_FILE="$TMP/router-config/panel"
+  CONFIG_FILE="$TP_CONFIG_FILE" SERVICE_FILE="$TMP/existing-procd-service" retained_service_uses_config
+); then fail 'retained procd service accepted a config path prefix'; else pass; fi
+
+ln -s "$TMP/router-config" "$TMP/router-config-alias"
+printf '  procd_set_param command /usr/bin/telemt-panel --config %s\n' "$TMP/router-config-alias/panel.toml" >"$TMP/existing-procd-service"
+if (
+  INIT=procd; TP_CONFIG_FILE="$TMP/router-config-alias/panel.toml"
+  apply_layout
+  [ "$CONFIG_FILE" = "$TMP/router-config/panel.toml" ] &&
+    SERVICE_FILE="$TMP/existing-procd-service" retained_service_uses_config
+); then pass; else fail 'retained procd service did not recognize the requested config directory alias'; fi
+
+# A retained service must bind the requested binary and config as complete
+# arguments. A matching comment, path prefix or different instance is ambiguous.
+for _init in systemd procd openrc sysvinit entware; do
+  if (
+    INIT="$_init"; PANEL_BIN="$TMP/managed-bin"; CONFIG_FILE="$TMP/selected.toml"
+    SERVICE_FILE="$TMP/retained-service"; PANEL_LAUNCH_BIN="$PANEL_BIN.start"
+    gen_service >"$SERVICE_FILE"
+    retained_service_uses_config || exit 1
+    sed "s|$CONFIG_FILE|$CONFIG_FILE.old|g" "$SERVICE_FILE" >"$SERVICE_FILE.new"
+    mv "$SERVICE_FILE.new" "$SERVICE_FILE"
+    printf '# --config %s\n' "$CONFIG_FILE" >>"$SERVICE_FILE"
+    ! retained_service_uses_config
+  ); then pass; else fail "$_init retained service config argument"; fi
+done
+if (
+  INIT=procd; PANEL_BIN=/usr/bin/panel; CONFIG_FILE="$TMP/selected.toml"
+  SERVICE_FILE="$TMP/retained-service"
+  printf 'procd_set_param command %s --config %s\n' "$PANEL_BIN.old" "$CONFIG_FILE" >"$SERVICE_FILE"
+  ! retained_service_uses_config
+); then pass; else fail 'retained service accepted a binary prefix'; fi
+
+if (
+  PANEL_BIN=/usr/bin/panel; CONFIG_FILE="$TMP/selected.toml"
+  cat >"$TMP/retained-service" <<EOF
+procd_set_param command $PANEL_BIN --config $CONFIG_FILE
+procd_set_param command $PANEL_BIN --config $CONFIG_FILE.other
+EOF
+  ! INIT=procd SERVICE_FILE="$TMP/retained-service" retained_service_uses_config
+); then pass; else fail 'retained service accepted conflicting instances'; fi
+
+# A missing --config cannot turn an existing installation into a fresh write.
+if (
+  : >"$TMP/occupied-unit"
+  INIT=systemd SERVICE_FILE="$TMP/occupied-unit" validate_fresh_service_target
+) >/dev/null 2>&1; then fail 'fresh systemd install accepted an occupied service'; else pass; fi
+
+if (
+  INIT=procd; TP_DATA_DIR="$TMP/router-config"; TP_TELEMT_CONFIG="$TMP/router-config/telemt.toml"
+  apply_layout; TELEMT_BIN=/usr/bin/telemt
+  validate_fresh_service_target
+) >/dev/null 2>&1; then fail 'fresh installation accepted Telemt config directory as panel data'; else pass; fi
+
+mkdir -p "$TMP/staged-panel-data" "$TMP/staged-other-app"
+ln -s "$TMP/staged-other-app" "$TMP/staged-panel-data/staging"
+if (
+  INIT=procd; DATA_DIR="$TMP/staged-panel-data"; CONFIG_DIR="$TMP/fresh-config"
+  PANEL_BIN="$TMP/fresh-panel"; SERVICE_FILE="$TMP/fresh-unit"; SUDOERS_FILE="$TMP/fresh-sudoers"
+  validate_fresh_service_target
+) >/dev/null 2>&1; then fail 'fresh install accepted a staging directory linked to another application'; else pass; fi
+
+if (
+  INIT=procd; TP_TELEMT_CONFIG="$TMP/router-config/telemt.toml"
+  printf '[server.api]\nenabled = true\nlisten = "127.0.0.1:19092"\n' >"$TP_TELEMT_CONFIG"
+  apply_layout
+  detect_telemt
+  [ "$TELEMT_URL_DETECTED" = http://127.0.0.1:19092 ]
+); then pass; else fail 'Telemt TOML override was ignored'; fi
+
+(
+  OPENWRT_RELEASE="$TMP/openwrt_release"
+  touch "$OPENWRT_RELEASE"
+  PKG=opkg
+  [ "$(install_hint install)" = 'opkg update && opkg install coreutils-install' ] || exit 1
+  PKG=apk
+  [ "$(install_hint timeout)" = 'apk add coreutils-timeout' ]
+) || fail 'OpenWrt package hints do not name the required applets'
+
+if (
+  OPENWRT_RELEASE="$TMP/openwrt_release"
+  id() { printf '0\n'; }
+  has() {
+    case "$1" in opkg|wget|tar|sha256sum|readlink) return 0 ;; *) return 1 ;; esac
+  }
+  check_prereqs
+) >"$TMP/router-prereqs" 2>&1; then fail 'missing OpenWrt prerequisites accepted'; else pass; fi
+for _package in coreutils-install coreutils-timeout coreutils-stat; do
+  assert_contains 'missing router package reported' "$_package" "$TMP/router-prereqs"
+done
+
+if (
+  TP_TLS_MODE=acme; TP_TLS_DOMAIN=UpPeR.ExAmPlE
+  tr() {
+    case "$1" in *'[:upper:]'*) return 1 ;; *) command tr "$@" ;; esac
+  }
+  ask_transport >/dev/null && [ "$TLS_DOMAIN" = upper.example ]
+); then pass; else fail 'ACME domain needs optional BusyBox tr character classes'; fi
+
 # An update keeps config.toml intact, so a full -> lite switch must be refused
 # before installing a binary that cannot open the configured SQL store.
 # TOML defaults are covered by the Go decoder; shell enforces profile policy.
@@ -343,7 +508,7 @@ STORE_DRIVER=memory
 if (validate_existing_store_variant) >/dev/null 2>&1; then pass; else fail "lite rejected memory"; fi
 
 # Destructive operations must refuse broad targets before any host mutation.
-for _dir in / /etc /var /var/lib /tmp /home /home/admin /usr/local /root relative /var/lib/../..; do
+for _dir in / /etc /var /var/lib /tmp /home /home/admin /usr/local /www /overlay /rom /opt/var/lib /root relative /var/lib/../..; do
   if (validate_panel_directory "$_dir") >/dev/null 2>&1; then
     fail "directory guard accepted $_dir"
   else
@@ -379,6 +544,7 @@ if service_name_ok telemt@main.service; then pass; else fail "service rejected n
 
 SERVICE_NAME=panel-custom
 INIT=systemd
+SERVICE_FILE=""
 apply_layout_from_answers
 assert_eq "custom service file" "/etc/systemd/system/panel-custom.service" "$SERVICE_FILE"
 
@@ -447,7 +613,44 @@ if (
   [ ! -e "$TMP/unsafe-wget" ]
 ) >/dev/null 2>&1; then pass; else fail "wget exposed authenticated header"; fi
 
+if (
+  has() { [ "$1" != curl ]; }
+  wget() {
+    case "$1" in --help) printf 'Usage: wget [-q] [-T sec] [-O file] URL\n'; return 1 ;; esac
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        -S|-q) return 1 ;;
+        -T) shift ;;
+        -O) shift; probe_output=$1 ;;
+        *) break ;;
+      esac
+      shift
+    done
+    case "$1" in
+      */ok) printf '{"version":"fixture"}\n' >"$probe_output" ;;
+      */unauthorized) printf 'HTTP error 401\n' >&2; return 8 ;;
+      *) printf 'Connection failed\n' >&2; return 4 ;;
+    esac
+  }
+  [ "$(http_get http://router/ok)" = 200 ] && grep -q fixture "$HTTP_BODY" &&
+    [ "$(http_get http://router/unauthorized)" = 401 ] &&
+    [ "$(http_get http://router/offline)" = 000 ]
+); then pass; else fail 'wget probes failed with OpenWrt uclient-fetch options'; fi
+
 # Remote releases require a verified checksum before extraction/installation.
+for _tag in v1.0.0 v1.2.3-rc.4 v1.2.3-alpha-1+test.42; do
+  if (REQ_VERSION="$_tag"; resolve_tag && [ "$INSTALLED_TAG" = "$_tag" ]); then pass; else fail "release tag rejected: $_tag"; fi
+done
+for _tag in v0.6.2 v2.0.0 v1.02.0 v1.0.0-01 v1.0.0/path; do
+  if (REQ_VERSION="$_tag"; resolve_tag) >/dev/null 2>&1; then fail "unsupported release accepted: $_tag"; else pass; fi
+done
+if (
+  REQ_VERSION=""
+  http_get() { printf '{"tag_name":"v0.6.2"}\n' >"$HTTP_BODY"; printf 200; }
+  resolve_tag
+) >"$TMP/legacy-latest" 2>&1; then fail 'latest release resolved to a legacy binary'; else pass; fi
+assert_contains 'legacy latest explains how to select a 1.x release' '--version' "$TMP/legacy-latest"
+
 for _scenario in missing no-tool mismatch; do
   if (
     BINARY_FILE=""; BUILD_VARIANT=full; ARCH=x86_64; LIBC=gnu

@@ -349,7 +349,7 @@ if (
   print_detection() { :; }; print_telemt_detection() { :; }
   collect_answers() { :; }; apply_layout_from_answers() { :; }
   print_summary() { :; }; step() { :; }; fetch_release() { :; }
-  create_user() { :; }; setup_dirs() { :; }; hash_password() { :; }
+  create_user() { :; }; setup_dirs() { :; }; check_fresh_config() { :; }
   install_binary() { :; }; write_config() { :; }; install_sudoers() { :; }
   install_service() { :; }
   configure_firewall() { printf 'firewall\n' >>"$FLOW_LOG"; }
