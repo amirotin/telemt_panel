@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -139,46 +141,54 @@ func TestDownloaderValidatesURLAndRedirects(t *testing.T) {
 	}
 }
 
-func TestDownloaderBoundsResponseAndUsesPerFileDeadline(t *testing.T) {
+func TestDownloaderStreamsLargeResponseAndUsesPerFileDeadline(t *testing.T) {
+	source := writeLargeTestFile(t)
 	tests := []struct {
 		name          string
 		contentLength int64
-		body          string
-		wantCode      string
 	}{
-		{name: "declared", contentLength: maxDatabaseBytes + 1, wantCode: ErrorDownloadTooLarge},
-		{name: "streamed", contentLength: -1, body: strings.Repeat("x", int(maxDatabaseBytesForTest+1)), wantCode: ErrorDownloadTooLarge},
+		{name: "declared", contentLength: largeGeoIPTestFileSize},
+		{name: "streamed", contentLength: -1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			d := &secureDownloader{maxBytes: maxDatabaseBytesForTest, client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				if deadline, ok := request.Context().Deadline(); !ok || deadline.Sub(nowForDeadlineTest()) > downloadDeadline {
+			d := newSecureDownloader().(*secureDownloader)
+			d.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if deadline, ok := request.Context().Deadline(); !ok || time.Until(deadline) > downloadDeadline {
 					t.Fatal("per-file deadline missing")
+				}
+				body, err := os.Open(source)
+				if err != nil {
+					return nil, err
 				}
 				return &http.Response{
 					StatusCode: http.StatusOK, ContentLength: test.contentLength,
-					Body: io.NopCloser(strings.NewReader(test.body)), Header: make(http.Header),
+					Body: body, Header: make(http.Header),
 				}, nil
-			})}}
-			_, err := d.download(context.Background(), "https://example.test/db.mmdb", t.TempDir()+"/db.mmdb")
-			if errorCode(err) != test.wantCode {
-				t.Fatalf("error = %v code=%q", err, errorCode(err))
+			})
+			path := filepath.Join(t.TempDir(), "db.mmdb")
+			if _, err := d.download(context.Background(), "https://example.test/db.mmdb", path); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Size() != largeGeoIPTestFileSize {
+				t.Fatalf("downloaded file size = %d, want %d", info.Size(), largeGeoIPTestFileSize)
 			}
 		})
 	}
 }
 
-const maxDatabaseBytesForTest = int64(32)
-
-func nowForDeadlineTest() time.Time { return time.Now() }
-
 func TestDownloaderRemovesPartialFileOnFailure(t *testing.T) {
-	d := &secureDownloader{maxBytes: 4, client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 200, ContentLength: -1, Body: io.NopCloser(strings.NewReader("too long"))}, nil
+	d := &secureDownloader{client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := io.NopCloser(io.MultiReader(strings.NewReader("partial"), iotest.ErrReader(io.ErrUnexpectedEOF)))
+		return &http.Response{StatusCode: http.StatusOK, ContentLength: -1, Body: body}, nil
 	})}}
 	path := t.TempDir() + "/db.mmdb"
-	if _, err := d.download(context.Background(), "https://example.test/db.mmdb", path); err == nil {
-		t.Fatal("oversized response accepted")
+	if _, err := d.download(context.Background(), "https://example.test/db.mmdb", path); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("interrupted download error = %v, want unexpected EOF", err)
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("partial file retained: %v", err)

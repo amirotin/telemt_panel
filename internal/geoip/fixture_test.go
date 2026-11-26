@@ -57,3 +57,17 @@ func writeFixture(t *testing.T, name string) string {
 	}
 	return path
 }
+
+const largeGeoIPTestFileSize = (128 << 20) + 1
+
+func writeLargeTestFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "large.mmdb")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, largeGeoIPTestFileSize); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}

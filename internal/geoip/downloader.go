@@ -27,14 +27,13 @@ type ipResolver interface {
 }
 
 type secureDownloader struct {
-	client   *http.Client
-	maxBytes int64
+	client *http.Client
 }
 
 func newSecureDownloader() downloader {
 	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	transport := newPinnedTransport(net.DefaultResolver, dialer.DialContext)
-	return &secureDownloader{maxBytes: maxDatabaseBytes, client: &http.Client{
+	return &secureDownloader{client: &http.Client{
 		Transport: transport,
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
 			if len(via) > maxRedirects {
@@ -143,13 +142,6 @@ func (d *secureDownloader) download(ctx context.Context, rawURL, destination str
 	if response.StatusCode != http.StatusOK {
 		return "", coded(ErrorDownloadFailed, nil)
 	}
-	limit := d.maxBytes
-	if limit <= 0 {
-		limit = maxDatabaseBytes
-	}
-	if response.ContentLength > limit {
-		return "", coded(ErrorDownloadTooLarge, nil)
-	}
 	out, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o400)
 	if err != nil {
 		return "", coded(ErrorActivationFailed, err)
@@ -160,16 +152,13 @@ func (d *secureDownloader) download(ctx context.Context, rawURL, destination str
 			_ = os.Remove(destination)
 		}
 	}()
-	written, copyErr := io.Copy(out, io.LimitReader(response.Body, limit+1))
+	_, copyErr := io.Copy(out, response.Body)
 	closeErr := out.Close()
 	if copyErr != nil {
 		return "", coded(ErrorDownloadFailed, copyErr)
 	}
 	if closeErr != nil {
 		return "", coded(ErrorActivationFailed, closeErr)
-	}
-	if written > limit {
-		return "", coded(ErrorDownloadTooLarge, nil)
 	}
 	complete = true
 	finalURL := request.URL.String()

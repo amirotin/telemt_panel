@@ -20,16 +20,13 @@ import (
 const (
 	configSettingKey = "geoip.config"
 	cacheCapacity    = 4096
-	maxDatabaseBytes = int64(128 << 20)
 
 	// ErrorDataDirRequired through ErrorActivationFailed are stable status error codes.
 	ErrorDataDirRequired   = "data_dir_required"
 	ErrorSourceUnavailable = "source_unavailable"
 	ErrorSourceUnconfirmed = "source_unconfirmed"
 	ErrorSourceNotRegular  = "source_not_regular"
-	ErrorSourceTooLarge    = "source_too_large"
 	ErrorDownloadFailed    = "download_failed"
-	ErrorDownloadTooLarge  = "download_too_large"
 	ErrorDatabaseInvalid   = "database_invalid"
 	ErrorDatabaseType      = "database_type_mismatch"
 	ErrorActivationFailed  = "activation_failed"
@@ -439,9 +436,6 @@ func copyRegularFile(ctx context.Context, src, dst string) error {
 	if !info.Mode().IsRegular() {
 		return coded(ErrorSourceNotRegular, nil)
 	}
-	if info.Size() > maxDatabaseBytes {
-		return coded(ErrorSourceTooLarge, nil)
-	}
 	fd, err := unix.Open(src, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return coded(ErrorSourceUnavailable, err)
@@ -456,16 +450,13 @@ func copyRegularFile(ctx context.Context, src, dst string) error {
 	if err != nil {
 		return coded(ErrorActivationFailed, err)
 	}
-	n, copyErr := copyWithContext(ctx, out, io.LimitReader(in, maxDatabaseBytes+1))
+	copyErr := copyWithContext(ctx, out, in)
 	closeErr := out.Close()
 	if copyErr != nil {
 		return coded(ErrorSourceUnavailable, copyErr)
 	}
 	if closeErr != nil {
 		return coded(ErrorActivationFailed, closeErr)
-	}
-	if n > maxDatabaseBytes {
-		return coded(ErrorSourceTooLarge, nil)
 	}
 	return nil
 }
@@ -483,29 +474,27 @@ func syncDatabaseFile(path string) error {
 	return closeErr
 }
 
-func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader) (int64, error) {
+func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader) error {
 	buffer := make([]byte, 64<<10)
-	var total int64
 	for {
 		if err := ctx.Err(); err != nil {
-			return total, err
+			return err
 		}
 		n, readErr := src.Read(buffer)
 		if n > 0 {
 			written, writeErr := dst.Write(buffer[:n])
-			total += int64(written)
 			if writeErr != nil {
-				return total, writeErr
+				return writeErr
 			}
 			if written != n {
-				return total, io.ErrShortWrite
+				return io.ErrShortWrite
 			}
 		}
 		if readErr == io.EOF {
-			return total, nil
+			return nil
 		}
 		if readErr != nil {
-			return total, readErr
+			return readErr
 		}
 	}
 }

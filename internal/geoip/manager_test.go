@@ -204,7 +204,7 @@ func TestConcurrentCloseCancelsAndWaitsForOperation(t *testing.T) {
 	}
 }
 
-func TestCopyRegularFileRejectsSpecialOversizedAndCancelledSources(t *testing.T) {
+func TestCopyRegularFileRejectsSpecialAndCancelledSources(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target.mmdb")
 	symlink := filepath.Join(dir, "symlink.mmdb")
@@ -221,20 +221,25 @@ func TestCopyRegularFileRejectsSpecialOversizedAndCancelledSources(t *testing.T)
 	if code := errorCode(copyRegularFile(context.Background(), fifo, target)); code != ErrorSourceNotRegular {
 		t.Fatalf("fifo code = %q", code)
 	}
-	oversized := filepath.Join(dir, "oversized.mmdb")
-	if err := os.WriteFile(oversized, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Truncate(oversized, maxDatabaseBytes+1); err != nil {
-		t.Fatal(err)
-	}
-	if code := errorCode(copyRegularFile(context.Background(), oversized, target)); code != ErrorSourceTooLarge {
-		t.Fatalf("oversized code = %q", code)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if code := errorCode(copyRegularFile(ctx, writeFixture(t, "country"), target)); code != ErrorSourceUnavailable {
 		t.Fatalf("cancelled copy code = %q", code)
+	}
+}
+
+func TestCopyRegularFileCopiesLargeSource(t *testing.T) {
+	source := writeLargeTestFile(t)
+	target := filepath.Join(t.TempDir(), "copied.mmdb")
+	if err := copyRegularFile(context.Background(), source, target); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != largeGeoIPTestFileSize {
+		t.Fatalf("copied file size = %d, want %d", info.Size(), largeGeoIPTestFileSize)
 	}
 }
 

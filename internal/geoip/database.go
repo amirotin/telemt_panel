@@ -18,10 +18,7 @@ type database struct {
 	status DatabaseStatus
 }
 
-var (
-	errDatabaseTooLarge     = errors.New("geoip: database exceeds size limit")
-	errDatabaseTypeMismatch = errors.New("geoip: database type mismatch")
-)
+var errDatabaseTypeMismatch = errors.New("geoip: database type mismatch")
 
 type bundle struct {
 	databases map[Kind]*database
@@ -60,9 +57,6 @@ func openDatabase(kind Kind, path string, loadedAt int64, verify func(*maxminddb
 	}
 	if !info.Mode().IsRegular() {
 		return nil, errors.New("geoip: database is not a regular file")
-	}
-	if info.Size() > maxDatabaseBytes {
-		return nil, errDatabaseTooLarge
 	}
 	reader, err := maxminddb.Open(path)
 	if err != nil {

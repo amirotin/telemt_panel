@@ -1645,7 +1645,7 @@ export type GeoIpStatus = {
     /**
      * Stable safe GeoIP error code; never a URL, filesystem path, query, or exception text.
      */
-    last_error: 'data_dir_required' | 'source_unavailable' | 'source_unconfirmed' | 'source_not_regular' | 'source_too_large' | 'download_failed' | 'download_too_large' | 'database_invalid' | 'database_type_mismatch' | 'activation_failed' | null;
+    last_error: 'data_dir_required' | 'source_unavailable' | 'source_unconfirmed' | 'source_not_regular' | 'download_failed' | 'database_invalid' | 'database_type_mismatch' | 'activation_failed' | null;
 };
 
 export type GeoIpSettings = {

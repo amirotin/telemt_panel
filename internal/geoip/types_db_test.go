@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/oschwald/maxminddb-golang/v2"
 )
 
 func TestDefaultConfigAndValidation(t *testing.T) {
@@ -50,16 +52,13 @@ func TestDefaultConfigAndValidation(t *testing.T) {
 	}
 }
 
-func TestOpenBundleRejectsOversizedFileBeforeMmap(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "oversized.mmdb")
-	if err := os.WriteFile(path, []byte("placeholder"), 0o600); err != nil {
-		t.Fatal(err)
+func TestOpenBundleValidatesLargeDatabase(t *testing.T) {
+	bundle, err := openBundle(map[Kind]string{KindCountry: writeLargeTestFile(t)}, 1)
+	if bundle != nil {
+		bundle.close()
 	}
-	if err := os.Truncate(path, maxDatabaseBytes+1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := openBundle(map[Kind]string{KindCountry: path}, 1); !errors.Is(err, errDatabaseTooLarge) {
-		t.Fatalf("oversized database error = %v", err)
+	if _, ok := errors.AsType[maxminddb.InvalidDatabaseError](err); !ok {
+		t.Fatalf("large malformed database error = %v, want MMDB validation error", err)
 	}
 }
 
