@@ -11,7 +11,7 @@
 // draw counts these fixtures need. Chosen for being four lines of arithmetic
 // with no dependency, not for cryptographic quality: these are display
 // fixtures, and repeatability is the only property that matters.
-export function mulberry32(seed: number): () => number {
+function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;

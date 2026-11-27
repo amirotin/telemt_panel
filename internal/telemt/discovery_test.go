@@ -37,7 +37,9 @@ func TestDiscoveryCapabilitiesRecoverWithoutMutationProbes(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	})
-	for i := 0; i < 3; i++ {
+	now := time.Now()
+	c.now = func() time.Time { return now }
+	for i := 0; i < 4; i++ {
 		caps, err := c.Capabilities(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -45,7 +47,10 @@ func TestDiscoveryCapabilitiesRecoverWithoutMutationProbes(t *testing.T) {
 		raw, _ := json.Marshal(caps)
 		var values map[string]bool
 		json.Unmarshal(raw, &values)
-		if i > 0 {
+		if i == 1 && !caps.OptionalMetadataUnavailable {
+			t.Fatal("immediate caller retried discovery during its transient cooldown")
+		}
+		if i > 1 {
 			for _, name := range []string{"config_schema", "config_state", "config_validation", "access_policy", "user_source_deny", "read_only"} {
 				if !values[name] {
 					t.Errorf("%s missing after transient failure: %s", name, raw)
@@ -53,6 +58,9 @@ func TestDiscoveryCapabilitiesRecoverWithoutMutationProbes(t *testing.T) {
 			}
 		}
 		transient.Store(false)
+		if i == 1 {
+			now = now.Add(30 * time.Second)
+		}
 	}
 	if n := schemaReads.Load(); n != 1 {
 		t.Errorf("schema reads=%d want 1", n)

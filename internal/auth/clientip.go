@@ -65,12 +65,13 @@ func ClientIP(r *http.Request, trusted []netip.Prefix) string {
 		return peer.String()
 	}
 
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		parts := strings.Split(fwd, ",")
+	fields := r.Header.Values("X-Forwarded-For")
+	for field := len(fields) - 1; field >= 0; field-- {
+		parts := strings.Split(fields[field], ",")
 		for i := len(parts) - 1; i >= 0; i-- {
 			addr, err := netip.ParseAddr(strings.TrimSpace(parts[i]))
 			if err != nil {
-				break
+				return peer.String()
 			}
 			addr = addr.Unmap()
 			if !addrInPrefixes(addr, trusted) {
@@ -90,5 +91,6 @@ func RequestIsSecure(r *http.Request, trusted []netip.Prefix) bool {
 	if !PeerTrusted(r, trusted) {
 		return false
 	}
-	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	values := r.Header.Values("X-Forwarded-Proto")
+	return len(values) == 1 && strings.EqualFold(values[0], "https")
 }

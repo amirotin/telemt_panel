@@ -34,6 +34,7 @@ func TestDefaultConfigAndValidation(t *testing.T) {
 		{Source: SourceURLs, Schedule: ScheduleWeekly, Country: DatabaseConfig{Enabled: true, Location: "http://example.test/country.mmdb"}},
 		{Source: SourceURLs, Schedule: ScheduleWeekly, Country: DatabaseConfig{Enabled: true, Location: "https://user@example.test/country.mmdb"}},
 		{Source: SourceURLs, Schedule: ScheduleWeekly, Country: DatabaseConfig{Enabled: true, Location: "https://example.test/country.mmdb#fragment"}},
+		{Source: SourceURLs, Schedule: ScheduleWeekly, Country: DatabaseConfig{Enabled: true, Location: "https://example.test:65536/country.mmdb"}},
 		{Source: SourceFiles, Schedule: ScheduleWeekly, Country: DatabaseConfig{Enabled: true, Location: "relative.mmdb"}},
 	}
 	for i, cfg := range tests {
@@ -53,7 +54,7 @@ func TestDefaultConfigAndValidation(t *testing.T) {
 }
 
 func TestOpenBundleValidatesLargeDatabase(t *testing.T) {
-	bundle, err := openBundle(map[Kind]string{KindCountry: writeLargeTestFile(t)}, 1)
+	bundle, err := openBundle(t.Context(), map[Kind]string{KindCountry: writeLargeTestFile(t)}, 1)
 	if bundle != nil {
 		bundle.close()
 	}
@@ -75,7 +76,7 @@ func TestBuildEpochMustBeSane(t *testing.T) {
 }
 
 func TestOpenBundleLooksUpCountryASNAndCity(t *testing.T) {
-	b, err := openBundle(map[Kind]string{
+	b, err := openBundle(t.Context(), map[Kind]string{
 		KindCountry: writeFixture(t, "country"),
 		KindASN:     writeFixture(t, "asn"),
 		KindCity:    writeFixture(t, "city"),
@@ -124,18 +125,18 @@ func TestOpenBundleLooksUpCountryASNAndCity(t *testing.T) {
 }
 
 func TestOpenBundleRejectsWrongTypeCorruptAndNonRegular(t *testing.T) {
-	if _, err := openBundle(map[Kind]string{KindCountry: writeFixture(t, "asn")}, 1); err == nil {
+	if _, err := openBundle(t.Context(), map[Kind]string{KindCountry: writeFixture(t, "asn")}, 1); err == nil {
 		t.Fatal("ASN database accepted as Country")
 	}
 	corrupt := filepath.Join(t.TempDir(), "corrupt.mmdb")
 	if err := os.WriteFile(corrupt, []byte("not an mmdb"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := openBundle(map[Kind]string{KindCountry: corrupt}, 1); err == nil {
+	if _, err := openBundle(t.Context(), map[Kind]string{KindCountry: corrupt}, 1); err == nil {
 		t.Fatal("corrupt database accepted")
 	}
 	dir := t.TempDir()
-	if _, err := openBundle(map[Kind]string{KindCountry: dir}, 1); err == nil {
+	if _, err := openBundle(t.Context(), map[Kind]string{KindCountry: dir}, 1); err == nil {
 		t.Fatal("directory accepted")
 	}
 }

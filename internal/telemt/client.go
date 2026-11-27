@@ -63,7 +63,7 @@ type Client struct {
 
 	capsMu    sync.Mutex
 	caps      Caps
-	capsAt    time.Time
+	capsUntil time.Time
 	capsValid bool
 	// Version changes invalidate both probed flags and negative observations.
 	// The generation prevents requests started before an upgrade from
@@ -354,13 +354,29 @@ func (c *Client) SystemInfo(ctx context.Context) (SystemInfoData, error) {
 
 // Users calls GET /v1/users.
 func (c *Client) Users(ctx context.Context) ([]UserInfo, error) {
+	return c.UsersObserved(ctx, nil)
+}
+
+// UsersObserved lets a collector distinguish omitted IP lists from empty lists
+// before the returned view normalizes optional arrays for downstream consumers.
+func (c *Client) UsersObserved(ctx context.Context, observe func([]UserInfo)) ([]UserInfo, error) {
 	users, _, err := c.usersWithRevision(ctx)
+	if err == nil {
+		if observe != nil {
+			observe(users)
+		}
+		normalizeUsers(&users)
+	}
 	return users, err
 }
 
 // UsersWithRevision binds an explicit bulk operation to the displayed config.
 func (c *Client) UsersWithRevision(ctx context.Context) ([]UserInfo, string, error) {
-	return c.usersWithRevision(ctx)
+	users, revision, err := c.usersWithRevision(ctx)
+	if err == nil {
+		normalizeUsers(&users)
+	}
+	return users, revision, err
 }
 
 // usersWithRevision decodes the large success payload in the envelope pass.
@@ -378,7 +394,6 @@ func (c *Client) usersWithRevision(ctx context.Context) ([]UserInfo, string, err
 		RequestID uint64         `json:"request_id"`
 	}
 	if err := json.Unmarshal(raw, &success); err == nil && success.OK && success.Data != nil {
-		normalizeUsers(&success.Data)
 		return success.Data, success.Revision, nil
 	}
 	data, _, revision, err := decodeEnvelope(raw, status)
@@ -389,7 +404,6 @@ func (c *Client) usersWithRevision(ctx context.Context) ([]UserInfo, string, err
 	if err := json.Unmarshal(data, &users); err != nil {
 		return users, "", fmt.Errorf("telemt: decode /v1/users: %w", err)
 	}
-	normalizeUsers(&users)
 	return users, revision, nil
 }
 

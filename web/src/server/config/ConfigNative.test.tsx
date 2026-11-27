@@ -1,3 +1,4 @@
+import { waitForEnabled } from "../../testing/waitForEnabled";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,7 +21,10 @@ let container: HTMLDivElement;
 let cache: QueryClient;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 const button = (text: string) => [...document.querySelectorAll("button")].find((item) => item.textContent === text)!;
-async function click(text: string) { await act(async () => { button(text).click(); await settle(); }); }
+async function click(text: string) {
+  await waitForEnabled(() => button(text));
+  await act(async () => { button(text).click(); await settle(); });
+}
 async function edit(value = "debug") { await act(async () => { const input = container.querySelector<HTMLInputElement>("input")!; input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); await settle(); }); }
 async function render(fetch: (request: Request) => Promise<Response>, readOnly = false, brokenConfig = false) {
   client.setConfig({ baseUrl: "http://localhost", fetch: (request) => {
@@ -67,10 +71,16 @@ it.each(["capability_absent", "config_preflight_busy", "read_only"])("only falls
     return optional(request);
   });
   await edit(); await click(copy.save);
-  const apply = button(copy.savePreview.apply.replace("{count}", "1"));
-  expect(apply.disabled).toBe(code !== "capability_absent");
-  if (code !== "capability_absent") expect(document.body.textContent).toContain("general.log_level");
-  else await click(copy.savePreview.apply.replace("{count}", "1"));
+  const applyLabel = copy.savePreview.apply.replace("{count}", "1");
+  if (code === "capability_absent") {
+    await click(applyLabel);
+  } else {
+    await vi.waitFor(async () => {
+      await act(async () => { await Promise.resolve(); });
+      expect(button(applyLabel)?.disabled).toBe(true);
+      expect(document.body.textContent).toContain("general.log_level");
+    });
+  }
   expect(writes).toBe(code === "capability_absent" ? 1 : 0);
 });
 

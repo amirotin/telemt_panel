@@ -15,6 +15,13 @@ export const THEMES = ["system", "light", "dark", "mocha", "parchment"] as const
 export type Theme = (typeof THEMES)[number];
 
 const STORAGE_KEY = "telemt-panel:theme";
+let volatileTheme: Theme | undefined;
+const listeners = new Set<() => void>();
+
+export function subscribeTheme(listener: () => void) {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 // isTheme is the single validator for anything read back from storage or a
 // URL — a name the build no longer ships must fall back, never be written
@@ -25,6 +32,7 @@ export function isTheme(value: unknown): value is Theme {
 
 export function getStoredTheme(): Theme {
   try {
+    if (volatileTheme) return volatileTheme;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (isTheme(raw)) return raw;
   } catch {
@@ -37,9 +45,12 @@ export function getStoredTheme(): Theme {
 export function setStoredTheme(theme: Theme): void {
   try {
     localStorage.setItem(STORAGE_KEY, theme);
+    volatileTheme = undefined;
   } catch {
-    // Best-effort — see getStoredTheme.
+    volatileTheme = theme;
   }
+  applyTheme(theme);
+  listeners.forEach(notify => notify());
 }
 
 // The light/dark half of each theme: what the browser is told through
@@ -55,7 +66,7 @@ const COLOR_SCHEME: Record<Exclude<Theme, "system">, "dark" | "light"> = {
 // the OS preference at call time.
 export function resolvedColorScheme(theme: Theme): "dark" | "light" {
   if (theme === "system") {
-    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
   }
   return COLOR_SCHEME[theme];
 }
@@ -93,4 +104,17 @@ export function applyTheme(theme: Theme): void {
   if (meta) {
     meta.setAttribute("content", themeColor(theme));
   }
+}
+
+export function initializeTheme(): void {
+  applyTheme(getStoredTheme());
+  window.matchMedia?.("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if (getStoredTheme() === "system") applyTheme("system");
+  });
+  window.addEventListener("storage", event => {
+    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    volatileTheme = undefined;
+    applyTheme(getStoredTheme());
+    listeners.forEach(notify => notify());
+  });
 }

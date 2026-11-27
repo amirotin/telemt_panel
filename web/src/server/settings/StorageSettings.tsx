@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage, useStrings } from "../../i18n";
+import { errorMessage, formatNumber, useStrings } from "../../i18n";
 import { formatBytes } from "../../lib/format";
 import { apiErrorMessage } from "../../people/apiError";
 import { Button } from "../../ui/Button";
@@ -194,7 +194,7 @@ export function StorageSettings() {
             className={
               query.data.stats.durable
                 ? "rounded-full bg-ok/12 px-2.5 py-1.5 text-[10px] font-bold text-ok"
-                : "rounded-full bg-warning/12 px-2.5 py-1.5 text-[10px] font-bold text-warning-text"
+                : "rounded-full bg-warn/12 px-2.5 py-1.5 text-[10px] font-bold text-warn"
             }
           >
             {query.data.stats.driver === "sqlite" ? "SQLite" : "RAM"}
@@ -212,8 +212,8 @@ export function StorageSettings() {
       </header>
 
       {(!query.data.stats.durable || !query.data.state_durable) && (
-        <div className="flex gap-3 border-b border-warning/25 bg-warning/8 px-4 py-3 text-[11px] leading-relaxed text-text-muted sm:px-5">
-          <IconWarning className="mt-0.5 shrink-0 text-warning-text" aria-hidden="true" />
+        <div className="flex gap-3 border-b border-warn/25 bg-warn/8 px-4 py-3 text-[11px] leading-relaxed text-text-muted sm:px-5">
+          <IconWarning className="mt-0.5 shrink-0 text-warn" aria-hidden="true" />
           <span className="space-y-1">
             {!query.data.stats.durable && (
               <span className="block">{s.server.settings.storageMemoryWarning}</span>
@@ -247,7 +247,7 @@ export function StorageSettings() {
             {s.server.settings.storageRecords}
           </dt>
           <dd className="mt-1 truncate font-mono text-[16px] font-bold text-text">
-            {new Intl.NumberFormat().format(totalRecords)}
+            {formatNumber(s, totalRecords)}
           </dd>
         </div>
       </dl>
@@ -276,7 +276,7 @@ export function StorageSettings() {
                     <div>
                       <h3 id={`storage-${policy.category}-title`} className="text-[13px] font-bold text-text">{copy.title}</h3>
                       <span className="mt-0.5 block text-[10px] text-text-faint">
-                        {new Intl.NumberFormat().format(count)}{" "}
+                        {formatNumber(s, count)}{" "}
                         {s.server.settings.storageRecordsShort}
                       </span>
                     </div>
@@ -347,7 +347,7 @@ export function StorageSettings() {
                       aria-label={s.server.settings.storageIPUnlimited}
                       className="after:absolute after:-inset-2.5"
                       onChange={(unlimited) => {
-                        setIPLimitDraft(ipLimitInput);
+                        setIPLimitDraft(unlimited ? ipLimitInput : String(parseIPHistoryLimit(ipLimitInput) ?? 256));
                         updatePolicy(policy.category, {
                           max_ips_per_user: unlimited ? 0 : (parseIPHistoryLimit(ipLimitInput) ?? 256),
                         });
@@ -384,7 +384,7 @@ export function StorageSettings() {
                 </div>
               )}
               {!policy.enabled && count > 0 && (
-                <small className="mt-2 block text-[10px] text-warning-text">
+                <small className="mt-2 block text-[10px] text-warn">
                   {s.server.settings.storageKept}
                 </small>
               )}

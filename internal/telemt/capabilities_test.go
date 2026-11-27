@@ -188,6 +188,35 @@ func TestCapabilitiesCachedUntilTTLExpires(t *testing.T) {
 	}
 }
 
+func TestLegacyQuotaRecoversAfterShortProbeCooldown(t *testing.T) {
+	requests := 0
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/stats/users/quota" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		if requests == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, `{"ok":true,"data":{"users":[]}}`)
+	})
+	now := time.Now()
+	c.now = func() time.Time { return now }
+	for range 2 {
+		caps, err := c.Capabilities(t.Context())
+		if err != nil || caps.Quota || requests != 1 {
+			t.Fatalf("initial quota=%v requests=%d err=%v", caps.Quota, requests, err)
+		}
+	}
+	now = now.Add(30 * time.Second)
+	caps, err := c.Capabilities(t.Context())
+	if err != nil || !caps.Quota || requests != 2 {
+		t.Fatalf("recovered quota=%v requests=%d err=%v", caps.Quota, requests, err)
+	}
+}
+
 // TestCapabilitiesRotateSecretFlipsLazilyOnRealNotFound covers the
 // "flip lazily when a real call 404s" rule: rotate_secret starts true
 // (never probed ahead of time), and a genuine route-absent 404 from

@@ -151,14 +151,15 @@ func (w *challengeResponse) Write(p []byte) (int, error) {
 
 func (m *ChallengeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	candidate, domain, active := m.candidate, m.domain, m.active
+	m.mu.RUnlock()
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	if m.candidate != nil && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") && strings.EqualFold(strings.TrimSuffix(host, "."), m.domain) {
+	if candidate != nil && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge/") && strings.EqualFold(strings.TrimSuffix(host, "."), domain) {
 		response := &challengeResponse{header: make(http.Header)}
-		m.candidate.ServeHTTP(response, r)
+		candidate.ServeHTTP(response, r)
 		if response.status == 200 {
 			for name, values := range response.header {
 				w.Header()[name] = values
@@ -168,8 +169,8 @@ func (m *ChallengeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if m.active != nil {
-		m.active.ServeHTTP(w, r)
+	if active != nil {
+		active.ServeHTTP(w, r)
 	} else {
 		http.NotFound(w, r)
 	}

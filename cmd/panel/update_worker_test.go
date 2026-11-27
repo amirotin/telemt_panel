@@ -2,16 +2,51 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
 	"github.com/amirotin/telemt_panel/internal/update"
 )
+
+func TestWorkerACMEHealthSendsConfiguredSNIToLocalListener(t *testing.T) {
+	const domain = "panel.example.test"
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/panel/api/health" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `{"status":"ok","version":"1.0.0"}`)
+	}))
+	server.TLS = &tls.Config{GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		if hello.ServerName != domain {
+			return nil, fmt.Errorf("unexpected SNI %q", hello.ServerName)
+		}
+		return nil, nil
+	}}
+	server.StartTLS()
+	defer server.Close()
+	cfg := &config.Config{Listen: server.Listener.Addr().String(), BasePath: "/panel", TLS: config.TLSConfig{Mode: "acme", AcmeDomain: domain}, Privileges: config.PrivilegesConfig{Mode: host.PrivilegesModeDirect}}
+	worker, err := makeUpdateWorkerConfig(cfg, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Second)
+	defer cancel()
+	if err := worker.Health(ctx, update.TargetPanel, "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestUpdateWorkerProtocolAndRecoveryWithoutCurrentConfig(t *testing.T) {
 	var output bytes.Buffer
@@ -41,6 +76,35 @@ func TestUpdateWorkerPanelURLUsesLocalListenerAndBasePath(t *testing.T) {
 	}
 }
 
+func TestWorkerRecoveryConfigOnlyPersistsRestorationInputs(t *testing.T) {
+	cfg := &config.Config{
+		Listen: "0.0.0.0:8443", BasePath: "/admin", DataDir: t.TempDir(),
+		Auth:       config.AuthConfig{PasswordHash: "test-password-hash"},
+		Subpage:    config.SubpageConfig{Secret: "test-subpage-secret"},
+		TLS:        config.TLSConfig{Mode: "acme", AcmeDomain: "panel.example.test"},
+		Telemt:     config.TelemtConfig{URL: "http://127.0.0.1:9091", AuthHeader: "Bearer test-required-for-health"},
+		Updates:    config.UpdatesConfig{GithubToken: "test-catalog-token", PanelBinaryPath: "/opt/bin/panel", TelemtBinaryPath: "/opt/bin/telemt"},
+		Host:       config.HostConfig{PanelService: "panel", TelemtService: "telemt"},
+		Privileges: config.PrivilegesConfig{Mode: host.PrivilegesModeDirect},
+	}
+	worker, err := makeUpdateWorkerConfig(cfg, cfg.WorkerStateDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unnecessary := range []string{"PasswordHash", "test-password-hash", "test-subpage-secret", "test-catalog-token"} {
+		if bytes.Contains(worker.RecoveryConfig, []byte(unnecessary)) {
+			t.Errorf("unneeded recovery data: %s", unnecessary)
+		}
+	}
+	var saved config.Config
+	if err := json.Unmarshal(worker.RecoveryConfig, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.WorkerStateDir() != cfg.WorkerStateDir() || saved.Telemt.AuthHeader != cfg.Telemt.AuthHeader || saved.Updates.PanelBinaryPath != cfg.Updates.PanelBinaryPath || saved.TLS.AcmeDomain != cfg.TLS.AcmeDomain || saved.Host.PanelService != cfg.Host.PanelService || saved.Privileges.Mode != cfg.Privileges.Mode {
+		t.Fatal("required worker inputs were lost")
+	}
+}
+
 func TestUpdateWorkerRecoveryUsesSavedConfigAndRestoresFileMetadata(t *testing.T) {
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "updater")
@@ -63,9 +127,14 @@ func TestUpdateWorkerRecoveryUsesSavedConfigAndRestoresFileMetadata(t *testing.T
 	if len(worker.SnapshotPaths) != 5 || worker.SnapshotPaths[3] != cfg.Store.Path+"-wal" || worker.SnapshotPaths[4] != cfg.Store.Path+"-shm" {
 		t.Fatalf("snapshot paths=%v", worker.SnapshotPaths)
 	}
+	// Earlier protocol-1 workers saved the full Config as their recovery input.
+	legacyConfig, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	state := map[string]any{"version": 1, "task": map[string]any{
 		"status":          update.RunStatus{RunID: "interrupted", Target: update.TargetPanel, Phase: update.PhaseRestarting, VersionFrom: "1.0.0", VersionTo: "1.1.0"},
-		"recovery_config": json.RawMessage(worker.RecoveryConfig), "backup_path": binary + ".bak", "stop_intent": true, "publish_intent": true, "snapshot_complete": true,
+		"recovery_config": json.RawMessage(legacyConfig), "backup_path": binary + ".bak", "stop_intent": true, "publish_intent": true, "snapshot_complete": true,
 		"snapshots": []map[string]any{{"path": configPath, "backup": backupConfig, "exists": true, "mode": 0o640, "uid": os.Geteuid(), "gid": os.Getegid()}},
 	}}
 	data, err := json.Marshal(state)

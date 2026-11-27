@@ -1,7 +1,6 @@
 package host
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -20,20 +19,8 @@ type CmdRunner func(ctx context.Context, name string, args ...string) (stdout, s
 // os/exec's *exec.ExitError, so callers have one exit-code type to check
 // regardless of whether the runner is real or faked in tests.
 func OSCmdRunner(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	// A forking init script may leave capture pipes open in its daemon.
-	// Bound their lifetime after the command exits or the context is cancelled.
-	cmd.WaitDelay = time.Second
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-
-	err = cmd.Run()
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		err = &ExitError{Code: exitErr.ExitCode()}
-	}
-	return outBuf.Bytes(), errBuf.Bytes(), err
+	const maxCapture = 16 << 20
+	return runWithBoundedOutput(ctx, nil, maxCapture, true, name, args...)
 }
 
 // ProcessStarter starts a long-running command (journalctl -f, logread -f,
@@ -55,20 +42,38 @@ type ProcessStarter func(ctx context.Context, name string, args ...string) (io.R
 // turns process exit (including a ctx-triggered kill) into EOF for the
 // reader.
 func OSProcessStarter(ctx context.Context, name string, args ...string) (io.ReadCloser, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	childCtx, cancel := context.WithCancel(ctx)
+	cmd := exec.CommandContext(childCtx, name, args...)
+	cmd.WaitDelay = time.Second
 	pr, pw := io.Pipe()
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 	if err := cmd.Start(); err != nil {
+		cancel()
+		pr.Close()
+		pw.Close()
 		return nil, err
 	}
+	stop := context.AfterFunc(childCtx, func() { _ = pw.CloseWithError(childCtx.Err()) })
 	go func() {
 		err := cmd.Wait()
+		stop()
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			err = &ExitError{Code: exitErr.ExitCode()}
 		}
 		pw.CloseWithError(err)
+		cancel()
 	}()
-	return pr, nil
+	return &commandStream{PipeReader: pr, cancel: cancel}, nil
+}
+
+type commandStream struct {
+	*io.PipeReader
+	cancel context.CancelFunc
+}
+
+func (r *commandStream) Close() error {
+	r.cancel()
+	return r.PipeReader.Close()
 }

@@ -85,3 +85,17 @@ func TestUsersTypedEnvelopePreservesResponseForms(t *testing.T) {
 		})
 	}
 }
+
+func TestUsersObservedSeesSourcePresenceBeforeNormalization(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true,"data":[{"username":"old","recent_unique_ips_list":[]}]}`))
+	}))
+	defer server.Close()
+	observed := false
+	users, err := New(server.URL, "").UsersObserved(t.Context(), func(raw []UserInfo) {
+		observed = len(raw) == 1 && raw[0].ActiveIPList == nil && raw[0].RecentIPList != nil
+	})
+	if err != nil || !observed || len(users) != 1 || users[0].ActiveIPList == nil {
+		t.Fatalf("observation and display contracts: observed=%t, users=%v, error=%v", observed, users, err)
+	}
+}

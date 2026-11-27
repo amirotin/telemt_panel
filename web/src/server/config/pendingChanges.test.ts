@@ -46,10 +46,11 @@ describe("recordPendingChanges", () => {
     expect(getPendingChanges()).toBeNull();
   });
 
-  it("clears an older record when a later PATCH leaves nothing pending", () => {
+  it("keeps an older restart requirement across an unrelated clean PATCH", () => {
     recordPendingChanges(result({ process_restart_required: true }), 1_000);
     recordPendingChanges(result(), 2_000);
-    expect(getPendingChanges()).toBeNull();
+    expect(getPendingChanges()?.processRestart).toBe(true);
+    expect(resolvePendingChanges(getPendingChanges(), stats({uptime_seconds: 60}), 62_000).processRestart).toBe(false);
   });
 });
 

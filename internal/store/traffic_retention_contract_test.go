@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"io"
 	"testing"
 	"time"
 )
@@ -88,6 +89,32 @@ func TestMemoryTrafficRetentionPreservesActiveAndRetainedDeleted(t *testing.T) {
 	}
 	if _, found := m.userTraffic["bucket"]; found {
 		t.Fatal("purge kept expired no-buckets summary")
+	}
+}
+
+func TestTrafficResetExposesFreshCollector(t *testing.T) {
+	m, err := NewMemoryHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	sample := UserTrafficSnapshot{ObservedAt: time.Now().Unix(), SourceStartedAt: time.Now().Add(-time.Hour).Unix(), TelemetryEnabled: true}
+	if _, err := m.ApplyUserTrafficSnapshot(sample); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ResetUserTraffic(); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ExportJSON(io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	sample.ObservedAt++
+	if _, err := m.ApplyUserTrafficSnapshot(sample); err != nil {
+		t.Fatal(err)
+	}
+	state, err := m.UserTrafficCollectorState()
+	if err != nil || state.Continuity != UserTrafficNormal {
+		t.Fatalf("collector after reset=%+v, %v", state, err)
 	}
 }
 

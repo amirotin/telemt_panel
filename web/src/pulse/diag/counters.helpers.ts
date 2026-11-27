@@ -43,7 +43,7 @@ export function counterLeaves(data: ZeroAllData | null | undefined): CounterLeaf
 // decision, not a caching one. Ten seconds is short enough that a reader who
 // opens the page sees a rate within one breath, and long enough that a
 // 4 KB dump every ten seconds costs the proxy nothing.
-export const countersRefetchMs = 10_000;
+const countersRefetchMs = 10_000;
 
 // countersRefetchInterval ties the poll to the section it exists for.
 //
@@ -89,7 +89,7 @@ export function readCounterValues(data: ZeroAllData | undefined): CounterSnapsho
  * Telemt is restarted, which makes it the only honest way to tell "this
  * counter went down" from "every counter went back to zero".
  */
-export const COUNTER_UPTIME_PATH = "core.uptime_seconds";
+const COUNTER_UPTIME_PATH = "core.uptime_seconds";
 
 // countersRestarted answers "did Telemt restart between these two readings".
 //

@@ -572,13 +572,15 @@ func (s *Server) Handler() http.Handler {
 
 // acceptBasePath requires the configured prefix. Proxies must preserve it.
 func acceptBasePath(base string, next http.Handler) http.Handler {
-	if base == "" {
-		return next
+	if base != "" {
+		next = http.StripPrefix(base, next)
 	}
-	stripped := http.StripPrefix(base, next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if pathIsOrUnder(r.URL.Path, base) {
-			stripped.ServeHTTP(w, r)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'")
+		if base == "" || pathIsOrUnder(r.URL.Path, base) {
+			next.ServeHTTP(w, r)
 		} else {
 			http.NotFound(w, r)
 		}

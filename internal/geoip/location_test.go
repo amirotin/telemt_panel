@@ -36,7 +36,7 @@ func TestLocationPresenceAndBounds(t *testing.T) {
 			}
 		})
 	}
-	b, err := openBundle(map[Kind]string{KindCity: writeFixture(t, "city")}, 1)
+	b, err := openBundle(t.Context(), map[Kind]string{KindCity: writeFixture(t, "city")}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestCountryCityConflict(t *testing.T) {
 func TestLocationMMDBPresenceAndInvalidActivation(t *testing.T) {
 	for _, name := range []string{"zero", "absent", "latitude-only", "longitude-only"} {
 		t.Run(name, func(t *testing.T) {
-			b, err := openBundle(map[Kind]string{KindCity: writeFixture(t, "location:"+name)}, 1)
+			b, err := openBundle(t.Context(), map[Kind]string{KindCity: writeFixture(t, "location:"+name)}, 1)
 			if err != nil {
 				t.Fatal(err)
 			}

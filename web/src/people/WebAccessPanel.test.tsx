@@ -1,3 +1,4 @@
+import { waitForEnabled } from "../testing/waitForEnabled";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -66,9 +67,14 @@ it("recovers an unrelated revision conflict without discarding the WEB draft", a
   } });
   await setup(); await changeMode("dd");
   await act(async () => { button("Сохранить").click(); await settle(); });
-  expect(document.body.textContent).not.toContain("Настройки изменились на сервере");
+  await vi.waitFor(async () => {
+    await act(async () => { await Promise.resolve(); });
+    expect(cache.getQueryData<{revision:string}>(getTelemtWebAccessQueryKey())?.revision).toBe("r2");
+    expect(document.body.textContent).not.toContain("Настройки изменились на сервере");
+  });
   expect(document.querySelectorAll("select")[1]!.value).toBe("dd");
   expect(revisions).toEqual(["r1"]);
+  await waitForEnabled(() => button("Сохранить"));
   await act(async () => { button("Сохранить").click(); await settle(); });
   expect(revisions).toEqual(["r1", "r2"]);
 });
@@ -187,4 +193,23 @@ it("keeps reload progress visible after the WEB editor closes", async () => {
   await act(async () => { button("Сохранить").click(); await settle(); });
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(document.querySelector('[data-testid="web-access-reload"]')?.textContent).toContain("Статус перезагрузки");
+});
+
+it("refreshes saved WEB profiles and tracks the reload after dismissing the editor during a write", async () => {
+  let finish!:()=>void;
+  apiClient.setConfig({baseUrl:"http://localhost",fetch: async request=>{
+    const req=request as Request;
+    if(req.method==="PUT") {
+      await new Promise<void>(resolve=>{finish=resolve;});
+      return Response.json({revision:"r2",changed:["web"],reload:{reload_id:42,state:"accepted",mode:"drain"}});
+    }
+    if(new URL(req.url).pathname.includes("/reload/")) return Response.json({reload_id:42,state:"succeeded"});
+    return Response.json({...config,revision:"r2"});
+  }});
+  await setup();await changeMode("dd");
+  await act(async()=>{button("Сохранить").click();await settle();});
+  await act(async()=>{button("Отмена").click();await settle();});
+  await act(async()=>{finish();await settle();});
+  expect(cache.getQueryData<{revision:string}>(getTelemtWebAccessQueryKey())?.revision).toBe("r2");
+  expect(document.querySelector('[data-testid="web-access-reload"]')).not.toBeNull();
 });

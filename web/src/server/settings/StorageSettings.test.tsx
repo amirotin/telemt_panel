@@ -251,11 +251,11 @@ describe("StorageSettings record counts", () => {
     expect(view.querySelectorAll("select")).toHaveLength(8);
     expect(cards[0]?.querySelector("h3 + span")?.textContent).toContain("0");
     expect(view.textContent).toContain(
-      new Intl.NumberFormat().format(largeCount),
+      new Intl.NumberFormat("ru-RU").format(largeCount),
     );
     const summaryValues = [...view.querySelectorAll("dl dd")].map((node) => node.textContent);
     expect(summaryValues).toContain(formatBytes(8_589_934_592, ru));
-    expect(summaryValues).toContain(new Intl.NumberFormat().format(largeCount));
+    expect(summaryValues).toContain(new Intl.NumberFormat("ru-RU").format(largeCount));
   });
 
   it("warns separately when panel state is not durable", async () => {

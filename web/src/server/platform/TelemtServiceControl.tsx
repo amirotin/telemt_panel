@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { withBasePath } from "../../lib/base-path";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getTelemtServiceOptions,
@@ -85,9 +85,9 @@ export function TelemtServiceControl() {
         <>
           <p className="mt-3 text-meta leading-relaxed text-text-muted">{t.separate}</p>
           {nativeState === "failed" && (
-            <a href={withBasePath("/journal")} className="mt-3 inline-flex min-h-11 items-center text-meta text-accent">
+            <Link to="/journal" className="mt-3 inline-flex min-h-11 items-center text-meta text-accent">
               {t.logs}
-            </a>
+            </Link>
           )}
           {status === "unknown" && !["activating", "deactivating", "reloading"].includes(nativeState ?? "") && (
             <p className="mt-3 rounded-lg border border-border bg-surface-2 p-3 text-meta leading-relaxed text-text-muted">

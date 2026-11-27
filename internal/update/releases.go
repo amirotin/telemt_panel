@@ -3,9 +3,12 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -40,13 +43,21 @@ type Client struct {
 	// defaultBaseURL; tests point it at an httptest fake.
 	BaseURL string
 
-	mu    sync.Mutex
-	cache map[string]cacheEntry
+	mu      sync.Mutex
+	cache   map[string]cacheEntry
+	pending map[string]*releaseFetch
 }
 
 type cacheEntry struct {
 	releases []Release
+	err      error
 	expires  time.Time
+}
+
+type releaseFetch struct {
+	done           chan struct{}
+	result         cacheEntry
+	leaderCanceled bool
 }
 
 // NewClient returns a Client with a 30s-timeout HTTP client and the real
@@ -65,28 +76,50 @@ func NewClient() *Client {
 // rate limit; the cache key ignores it since a repo's release list is the
 // same regardless of which caller's token fetched it.
 func (c *Client) ListReleases(ctx context.Context, repo, token string) ([]Release, error) {
-	now := c.now()
-
-	c.mu.Lock()
-	if c.cache == nil {
-		c.cache = make(map[string]cacheEntry)
-	}
-	if entry, ok := c.cache[repo]; ok && now.Before(entry.expires) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		if c.cache == nil {
+			c.cache = make(map[string]cacheEntry)
+		}
+		if entry, ok := c.cache[repo]; ok && c.now().Before(entry.expires) {
+			c.mu.Unlock()
+			return entry.releases, entry.err
+		}
+		if running := c.pending[repo]; running != nil {
+			c.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-running.done:
+				// A canceled leader does not spend a waiter's live request.
+				if running.leaderCanceled {
+					continue
+				}
+				return running.result.releases, running.result.err
+			}
+		}
+		if c.pending == nil {
+			c.pending = make(map[string]*releaseFetch)
+		}
+		running := &releaseFetch{done: make(chan struct{})}
+		c.pending[repo] = running
 		c.mu.Unlock()
-		return entry.releases, nil
+
+		result := c.fetch(ctx, repo, token)
+		c.mu.Lock()
+		running.result = result
+		running.leaderCanceled = result.err != nil && ctx.Err() != nil
+		if !result.expires.IsZero() {
+			c.cache[repo] = result
+		}
+		delete(c.pending, repo)
+		close(running.done)
+		c.mu.Unlock()
+		return result.releases, result.err
 	}
-	c.mu.Unlock()
-
-	releases, err := c.fetch(ctx, repo, token)
-	if err != nil {
-		return nil, err
-	}
-
-	c.mu.Lock()
-	c.cache[repo] = cacheEntry{releases: releases, expires: now.Add(cacheTTL)}
-	c.mu.Unlock()
-
-	return releases, nil
 }
 
 func (c *Client) now() time.Time {
@@ -103,11 +136,11 @@ func (c *Client) baseURL() string {
 	return defaultBaseURL
 }
 
-func (c *Client) fetch(ctx context.Context, repo, token string) ([]Release, error) {
+func (c *Client) fetch(ctx context.Context, repo, token string) cacheEntry {
 	url := fmt.Sprintf("%s/repos/%s/releases?per_page=30", c.baseURL(), repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return cacheEntry{err: fmt.Errorf("create request: %w", err)}
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	if token != "" {
@@ -121,17 +154,28 @@ func (c *Client) fetch(ctx context.Context, repo, token string) ([]Release, erro
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch releases: %w", err)
+		return cacheEntry{err: fmt.Errorf("fetch releases: %w", err)}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github API returned %d for %s", resp.StatusCode, repo)
+		entry := cacheEntry{err: fmt.Errorf("github API returned %d for %s", resp.StatusCode, repo)}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden {
+			entry.expires = releaseRetryAt(resp, c.now())
+		}
+		return entry
 	}
-
+	const maxCatalogBytes = 4 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxCatalogBytes+1))
+	if err != nil {
+		return cacheEntry{err: fmt.Errorf("read releases: %w", err)}
+	}
+	if len(data) > maxCatalogBytes {
+		return cacheEntry{err: errors.New("release catalog exceeds size limit")}
+	}
 	var all []Release
-	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
-		return nil, fmt.Errorf("decode releases: %w", err)
+	if err := json.Unmarshal(data, &all); err != nil {
+		return cacheEntry{err: fmt.Errorf("decode releases: %w", err)}
 	}
 
 	releases := make([]Release, 0, len(all))
@@ -141,7 +185,27 @@ func (c *Client) fetch(ctx context.Context, repo, token string) ([]Release, erro
 		}
 		releases = append(releases, r)
 	}
-	return releases, nil
+	return cacheEntry{releases: releases, expires: c.now().Add(cacheTTL)}
+}
+
+func releaseRetryAt(resp *http.Response, now time.Time) time.Time {
+	retry := resp.Header.Get("Retry-After")
+	if seconds, err := strconv.ParseInt(retry, 10, 32); err == nil && seconds >= 0 {
+		return now.Add(time.Duration(seconds) * time.Second)
+	}
+	if date, err := http.ParseTime(retry); err == nil && date.After(now) {
+		return date
+	}
+	if resp.Header.Get("X-RateLimit-Remaining") == "0" {
+		if seconds, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil && seconds > now.Unix() {
+			return time.Unix(seconds, 0)
+		}
+		return now.Add(time.Minute)
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return now.Add(time.Minute)
+	}
+	return time.Time{}
 }
 
 // ReleaseView is one release as presented to callers, with the

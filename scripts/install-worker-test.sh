@@ -1,6 +1,6 @@
 #!/bin/sh
 # Worker installer fixtures use temporary files only; never control host services.
-# shellcheck disable=SC2034,SC2317,SC1091,SC2015
+# shellcheck disable=SC2034,SC2317,SC2329,SC1091,SC2015
 set -eu
 HERE=$(CDPATH="" cd -- "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
@@ -135,6 +135,28 @@ chmod 0644 "$PANEL_BIN"
 grep -qFx "update-worker --recover --state-dir $DATA_DIR/updater" "$WORK/backup-calls" || fail 'broken main skipped backup recovery'
 printf 'PASS executable wrapper recovery and backup fallback\n'
 
+# Exercise the generated SysV controls with an inert, private process. Keep
+# the fixture's effective UID and PID file independent of the host service.
+if command -v start-stop-daemon >/dev/null && [ -d /proc/self/fd ]; then
+  (
+    sysv_bin="$WORK/sysv-sleep"; cp "$(command -v sleep)" "$sysv_bin"
+    sysv_user=$(id -un); SYSV_PIDFILE="$WORK/sysv.pid"
+    PANEL_BIN="$sysv_bin" PANEL_LAUNCH_BIN="" SERVICE_NAME=fixture-sysv RUN_AS=root LOG_FILE="$WORK/sysv.log" gen_service_sysvinit | sed -e "s@^PIDFILE=.*@PIDFILE=\"$SYSV_PIDFILE\"@" \
+      -e "s@^PANEL_USER=.*@PANEL_USER=\"$sysv_user\"@" -e 's/^DAEMON_ARGS=.*/DAEMON_ARGS="60"/' >"$WORK/sysv-service"
+    sh "$WORK/sysv-service" start
+    for _attempt in 1 2 3 4 5; do [ -s "$SYSV_PIDFILE" ] && break; sleep 1; done
+    sysv_pid=$(cat "$SYSV_PIDFILE") || exit 1
+    trap 'kill "$sysv_pid" 2>/dev/null || true' EXIT
+    sh "$WORK/sysv-service" status
+    sh "$WORK/sysv-service" start
+    [ "$(cat "$SYSV_PIDFILE")" = "$sysv_pid" ] || exit 1
+    cp "$(command -v sleep)" "$sysv_bin.new"; mv -f "$sysv_bin.new" "$sysv_bin"
+    sh "$WORK/sysv-service" stop
+    [ ! -e "$SYSV_PIDFILE" ] && [ ! -e "/proc/$sysv_pid/exe" ] || exit 1
+  ) || fail 'generated SysV control did not retain process identity through replacement'
+  printf 'PASS SysV process identity and repeated start\n'
+fi
+
 # The worker branch retries the failed child without invoking startup recovery.
 rm -f "$PANEL_BIN.bak"
 cat >"$PANEL_BIN" <<EOF
@@ -203,6 +225,24 @@ while [ ! -f "$WORK/other-worker-locked" ]; do sleep 0.05; done
 if acquire_worker_guard; then fail 'installer accepted an executing worker'; fi
 wait "$other_worker"
 printf 'PASS installer excludes executing and queued workers\n'
+(
+  fixture_owner() {
+    if [ "$1" = stat ] && [ "$2" = -c ] && [ "$3" = %u ]; then printf '0\n'; else "$@"; fi
+  }
+  RUN_AS=root; SUDO=fixture_owner
+  layout="$WORK/openwrt-layout"; physical="$layout/tmp/lib/panel/updater"
+  mkdir -p "$physical" "$layout/etc/updater"
+  ln -s tmp "$layout/var"
+  previous="$layout/var/lib/panel/updater"
+  WORKER_PREVIOUS_STATE_DIR=$(openwrt_previous_journal "$previous" "$layout/var" "$layout/tmp") || exit 1
+  [ "$WORKER_PREVIOUS_STATE_DIR" = "$physical" ] || exit 1
+  WORKER_STATE_DIR="$layout/etc/updater" acquire_worker_guard || exit 1
+  if flock -n "$previous/operation.lock" true; then exit 1; fi
+  release_worker_guard
+  chmod 0777 "$layout/tmp/lib"
+  if openwrt_previous_journal "$previous" "$layout/var" "$layout/tmp"; then exit 1; fi
+) || fail 'OpenWrt migration did not retain the protected physical journal lock'
+printf 'PASS OpenWrt legacy journal under the system var alias\n'
 cat >"$WORK/guard-holder.sh" <<EOF
 #!/bin/sh
 set -eu
@@ -228,6 +268,25 @@ until flock -n "$WORK/orphan-state/operation.lock" true; do
   sleep 0.05
 done
 printf 'PASS killed installer releases operation lock\n'
+
+# The account owns registration and the lock. Keep the previous inode open
+# across a normal publication to verify atomic replacement and file mode.
+(
+  umask 022
+  worker_prepare_directory
+  printf 'first\n' >"$WORK/registration-first"
+  printf 'second\n' >"$WORK/registration-second"
+  worker_write_registration "$WORK/registration-first"
+  exec 8<"$WORKER_STATE_DIR/registration.json"
+  worker_write_registration "$WORK/registration-second"
+  IFS= read -r previous <&8
+  exec 8<&-
+  [ "$previous" = first ] && [ "$(cat "$WORKER_STATE_DIR/registration.json")" = second ]
+  [ "$(stat -c %a "$WORKER_STATE_DIR/registration.json")" = 600 ]
+  worker_copy_optional "$WORKER_STATE_DIR" registration.json "$WORK/registration-saved" 65536
+  cmp "$WORK/registration-second" "$WORK/registration-saved"
+) || fail 'registration update changed the open inode or failed to preserve owner access'
+printf 'PASS owner-only atomic registration\n'
 
 # Mock root ownership/publication while retaining the real transaction filesystem.
 publish_root_file() { cp -p "$1" "$2"; chmod "$3" "$2"; }
@@ -268,10 +327,17 @@ done
 
 # Full installer migration: root file rollback must finish before old runtime
 # restart, and successful migration must retain the service's custom settings.
-for scenario in migrate-user migrate-root migrate-procd migrate-procd-hook fail-health fail-publication no-start old-protocol old-protocol-worker queued-worker shared-state-dir; do
+# Exercise the policy writers shipped in release tags whenever history is
+# available. Source archives can still exercise the current writers offline.
+for n in 1 2 3 4; do
+  if ! git -C "$HERE/.." show "refs/tags/v1.0.0-rc.$n:install.sh" >"$WORK/rc$n.sh" 2>/dev/null; then
+    rm -f "$WORK/rc$n.sh"
+  fi
+done
+for scenario in historical-rc1-systemd historical-rc1-openrc historical-rc1-sysvinit historical-rc2-systemd historical-rc2-openrc historical-rc2-sysvinit retained-rc1 migrate-user migrate-root migrate-procd migrate-procd-hook repeat-worker changed-worker-manual changed-worker-state changed-worker-grants changed-helper-service changed-helper-state fail-health fail-publication no-start old-protocol old-protocol-worker queued-worker shared-state-dir; do
   MIGRATION="$WORK/$scenario"
   MIGRATION_INIT=systemd
-  case "$scenario" in migrate-procd*) MIGRATION_INIT=procd ;; esac
+  case "$scenario" in migrate-procd*) MIGRATION_INIT=procd ;; historical-*-openrc) MIGRATION_INIT=openrc ;; historical-*-sysvinit) MIGRATION_INIT=sysvinit ;; esac
   export MIGRATION MIGRATION_INIT
   mkdir -p "$MIGRATION/bin" "$MIGRATION/data" "$MIGRATION/config" "$MIGRATION/services" "$MIGRATION/sudoers" "$MIGRATION/libexec" "$MIGRATION/tools"
   printf 'old-binary\n' >"$MIGRATION/bin/panel"; chmod 0751 "$MIGRATION/bin/panel"
@@ -294,11 +360,22 @@ ExecStart=$MIGRATION/bin/panel --config $MIGRATION/config/config.toml
 Environment=KEEP_THIS=unchanged
 LimitNOFILE=12345
 EOF
+  if [ "$scenario" = changed-worker-manual ]; then
+    sed 's/^mode = "auto"$/mode = "manual"/' "$MIGRATION/config/config.toml" >"$MIGRATION/manual.toml"
+    mv "$MIGRATION/manual.toml" "$MIGRATION/config/config.toml"
+    mkdir -p "$MIGRATION/data/updater"
+    printf '%s\n' '{"version":1,"phase":"preparing"}' >"$MIGRATION/data/updater/state.json"
+  fi
   if [ "$scenario" = shared-state-dir ]; then
     sed "/^\[updates\]/a worker_state_dir = \"$MIGRATION/config\"" "$MIGRATION/config/config.toml" >"$MIGRATION/shared-state.toml"
     mv "$MIGRATION/shared-state.toml" "$MIGRATION/config/config.toml"
     chmod 0750 "$MIGRATION/config"
   fi
+  case "$scenario" in
+    changed-worker-state|changed-helper-state)
+      sed "/^\[updates\]/a worker_state_dir = \"$MIGRATION/other-state\"" "$MIGRATION/config/config.toml" >"$MIGRATION/proposed.toml"
+      mv "$MIGRATION/proposed.toml" "$MIGRATION/config/config.toml" ;;
+  esac
   cp -p "$MIGRATION/services/panel.service" "$MIGRATION/old-service"
   cp -p "$MIGRATION/config/config.toml" "$MIGRATION/old-config"
   if [ "$MIGRATION_INIT" = procd ]; then
@@ -348,7 +425,7 @@ printf '%s\n' "$*" >>"$MIGRATION/service-calls"
 case "$*" in
   'show --property=FragmentPath '*) printf '%s\n' "$MIGRATION/services/panel.service" ;;
   'show --property=DynamicUser '*) printf 'no\n' ;;
-  'show --property=User '*) if [ "$SCENARIO" = migrate-user ]; then printf nobody; else printf root; fi ;;
+  'show --property=User '*) case "$SCENARIO" in migrate-user|repeat-worker|changed-*|historical-*|retained-rc1) printf nobody ;; *) printf root ;; esac ;;
   'restart '* )
     case "$SCENARIO" in
       fail-health|fail-publication)
@@ -361,7 +438,8 @@ case "$*" in
     esac ;;
 esac
 EOF
-  chmod 0755 "$MIGRATION/candidate" "$MIGRATION/tools/systemctl"
+  printf '#!/bin/sh\nexit 0\n' >"$MIGRATION/tools/rc-service"
+  chmod 0755 "$MIGRATION/candidate" "$MIGRATION/tools/systemctl" "$MIGRATION/tools/rc-service"
   SCENARIO="$scenario"; export SCENARIO
   if (
     TP_SOURCED=1
@@ -376,7 +454,13 @@ EOF
     # Legacy behavior has its own dedicated authority/migration fixtures.
     prepare_systemd_privilege_upgrade() { return 0; }
     fixture_root() {
+      case "$1:${2:-}:${3:-}" in
+        sudo:-n:-ll) printf 'Sudoers entry:\n    RunAsUsers: root\n    Options: !authenticate\n    Commands:\n        /fixture\n'; return ;;
+        sudo:-n:-l) shift 6; grep -Fxq "nobody ALL=(root) NOPASSWD: $*" "$SUDOERS_FILE"; return ;;
+      esac
+      if [ "$1" = "$HELPER_FILE" ] && [ "${2:-}" = privileged ]; then cat "$POLICY_FILE"; return; fi
       if [ "$1" = stat ] && [ "$2" = -c ] && [ "$3" = %u ]; then printf '0\n'; return; fi
+      if [ "$1" = sudo ] && [ "$2" = -n ] && [ "$3" = -u ] && [ "$4" = nobody ] && [ "$5" = -- ]; then shift 5; "$@"; return; fi
       if [ "$1" = chown ] || [ "$1" = visudo ]; then return 0; fi
       if [ "$1" = install ] && [ "${4:-}" = -o ]; then
         fixture_mode="$3"; shift 7
@@ -389,9 +473,71 @@ EOF
       cp -p "$1" "$2"; chmod "$3" "$2"
     }
     if [ "$SCENARIO" = no-start ]; then NO_START=1; fi
+    case "$SCENARIO" in
+      migrate-user|repeat-worker|changed-*|historical-*|retained-rc1)
+        (
+          case "$SCENARIO" in
+            historical-rc1-*) historic_generation=1; historical_installer="${TP_TEST_RC1_INSTALLER:-$WORK/rc1.sh}" ;;
+            historical-rc2-*) historic_generation=2; historical_installer="${TP_TEST_RC2_INSTALLER:-$WORK/rc2.sh}" ;;
+            repeat-worker|changed-worker-*) historic_generation=4; historical_installer="${TP_TEST_RC4_INSTALLER:-$WORK/rc4.sh}" ;;
+            retained-rc1) historic_generation=3; historical_installer="" ;;
+            *) historic_generation=3; historical_installer="${TP_TEST_RC3_INSTALLER:-$WORK/rc3.sh}" ;;
+          esac
+          # Historical sources can be supplied from the release tags. The
+          # ordinary offline run uses the matching local policy generators.
+          # shellcheck disable=SC1090
+          if [ -f "$historical_installer" ]; then TP_SOURCED=1 . "$historical_installer"; fi
+          INIT="$MIGRATION_INIT"; RUN_AS=user; SYSTEM_USER=nobody; PANEL_BIN="$MIGRATION/bin/panel"; TELEMT_BIN="$MIGRATION/bin/telemt"
+          SUDOERS_FILE="$MIGRATION/sudoers/panel"; CONFIG_DIR="$MIGRATION/config"; CONFIG_FILE="$CONFIG_DIR/config.toml"
+          SERVICE_FILE="$MIGRATION/services/panel.service"; SERVICE_NAME=fixture-panel; TELEMT_SVC=fixture-telemt
+          DATA_DIR="$MIGRATION/data"; HELPER_FILE="$MIGRATION/libexec/helper"; POLICY_FILE="$MIGRATION/libexec/policy.json"
+          case "$SCENARIO" in
+            repeat-worker|changed-worker-*)
+              WORKER_PROTOCOL=1
+              worker_layout
+              gen_panel_launcher >"$PANEL_LAUNCH_BIN"
+              gen_updater_service >"$WORKER_SERVICE_FILE"
+              rm -f "$HELPER_FILE" "$POLICY_FILE"
+              if [ "$SCENARIO" = changed-worker-grants ]; then TELEMT_BIN="$MIGRATION/bin/previous-telemt"; fi ;;
+            changed-helper-service) TELEMT_SVC='previous-telemt' ;;
+            retained-rc1) PRESERVE_RESTART_ONLY=1 ;;
+            historical-*)
+              rm -f "$HELPER_FILE" "$POLICY_FILE"
+              chmod 0700 "$MIGRATION/libexec"
+              LOG_FILE="$MIGRATION/panel.log"; TLS_MODE=http; LISTEN=127.0.0.1:8080
+              gen_service >"$SERVICE_FILE"
+              printf 'Environment=KEEP_THIS=unchanged\n' >>"$SERVICE_FILE" ;;
+          esac
+          if [ "$historic_generation" -le 2 ] && [ ! -f "$historical_installer" ]; then
+            legacy_grant_commands print_legacy_grant "rc$historic_generation" >"$SUDOERS_FILE"
+          else gen_sudoers >"$SUDOERS_FILE"; fi
+          if [ "$SCENARIO" = repeat-worker ]; then
+            { printf '\n# Local operator note\n'; sort -r "$SUDOERS_FILE"; } >"$MIGRATION/reordered"
+            cp "$MIGRATION/reordered" "$SUDOERS_FILE"
+          fi
+        ) ;;
+    esac
+    case "$SCENARIO" in historical-*|retained-rc1)
+      NO_START=1; HELPER_FILE="$MIGRATION/libexec/helper"; POLICY_FILE="$MIGRATION/libexec/policy.json"
+      stop_retained_panel() { printf 'stop\n' >>"$MIGRATION/service-calls"; } ;;
+    esac
     do_update_existing
   ) >"$MIGRATION/output" 2>&1; then migration_result=0; else migration_result=$?; fi
   case "$scenario" in
+    changed-worker-manual|changed-worker-state|changed-worker-grants|changed-helper-service|changed-helper-state)
+      [ "$migration_result" != 0 ] || fail "accepted mismatched administrative settings: $scenario"
+      [ "$(cat "$MIGRATION/bin/panel")" = old-binary ] && [ ! -d "$MIGRATION/other-state" ] || fail 'rejected plan changed installation'
+      if grep -Eq '^(stop|restart) ' "$MIGRATION/service-calls"; then fail 'rejected plan stopped the panel'; fi ;;
+    historical-rc1-*|retained-rc1)
+      [ "$migration_result" = 0 ] || { cat "$MIGRATION/output"; fail 'restart-only upgrade failed'; }
+      cmp "$MIGRATION/bin/panel" "$MIGRATION/candidate" || fail 'new binary was not installed'
+      [ -f "$MIGRATION/libexec/helper" ] && [ ! -e "$MIGRATION/bin/panel.start" ] || fail 'restart-only profile not retained'
+      [ "$(grep -c ' privileged --policy ' "$MIGRATION/sudoers/panel")" = 7 ] || fail 'incomplete helper grants'
+      [ "$(grep -c 'ALL=(root) NOPASSWD' "$MIGRATION/sudoers/panel")" = 9 ] || fail 'extra service controls published' ;;
+    historical-rc2-*)
+      [ "$migration_result" = 0 ] || { cat "$MIGRATION/output"; fail 'RC2 upgrade failed'; }
+      cmp "$MIGRATION/bin/panel" "$MIGRATION/candidate" || fail 'new binary was not installed'
+      [ -x "$MIGRATION/bin/panel.start" ] && [ -f "$MIGRATION/data/updater/registration.json" ] || fail 'RC2 worker not registered' ;;
     shared-state-dir)
       [ "$migration_result" != 0 ] || fail 'accepted the panel config directory as dedicated worker state'
       [ "$(stat -c %a "$MIGRATION/config")" = 750 ] || fail 'preflight changed config directory permissions'
@@ -431,6 +577,7 @@ EOF
         grep -qF "ExecStart=$MIGRATION/bin/panel.start --config" "$MIGRATION/services/panel.service" || fail 'retained service lacks recovery wrapper'
         [ -f "$MIGRATION/data/updater/registration.json" ] || fail 'registration missing'
       fi
+      if [ "$scenario" = repeat-worker ]; then cmp "$MIGRATION/reordered" "$MIGRATION/sudoers/panel" || fail 'worker refresh rewrote an equivalent local policy'; fi
       if [ "$scenario" = no-start ]; then
         [ -f "$MIGRATION/libexec/helper" ] || fail 'unverified candidate deleted legacy helper'
       else

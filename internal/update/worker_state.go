@@ -25,14 +25,15 @@ type workerRegistration struct {
 }
 
 type workerTask struct {
-	Status           RunStatus        `json:"status"`
-	RecoveryConfig   json.RawMessage  `json:"recovery_config,omitempty"`
-	BackupPath       string           `json:"backup_path,omitempty"`
-	StopIntent       bool             `json:"stop_intent,omitempty"`
-	PublishIntent    bool             `json:"publish_intent,omitempty"`
-	SnapshotComplete bool             `json:"snapshot_complete,omitempty"`
-	Snapshots        []workerSnapshot `json:"snapshots,omitempty"`
-	RecoveryReady    bool             `json:"recovery_ready,omitempty"`
+	Status               RunStatus        `json:"status"`
+	RecoveryConfig       json.RawMessage  `json:"recovery_config,omitempty"`
+	BackupPath           string           `json:"backup_path,omitempty"`
+	StopIntent           bool             `json:"stop_intent,omitempty"`
+	PublishIntent        bool             `json:"publish_intent,omitempty"`
+	SnapshotComplete     bool             `json:"snapshot_complete,omitempty"`
+	Snapshots            []workerSnapshot `json:"snapshots,omitempty"`
+	RecoveryReady        bool             `json:"recovery_ready,omitempty"`
+	RecoveryStartPending bool             `json:"recovery_start_pending,omitempty"`
 }
 
 type workerState struct {
@@ -73,6 +74,10 @@ func (c *WorkerClient) RegistrationCommand() []string {
 
 // ResumeRecovery retries init handoff after an offline restore whose launch failed.
 func (c *WorkerClient) ResumeRecovery(ctx context.Context) error {
+	s, err := loadWorkerState(c.stateDir)
+	if err != nil || !s.needsRecovery() {
+		return err
+	}
 	lock, err := workerLock(c.stateDir)
 	if errors.Is(err, ErrBusy) {
 		return nil
@@ -81,11 +86,11 @@ func (c *WorkerClient) ResumeRecovery(ctx context.Context) error {
 		return err
 	}
 	defer lock.Close()
-	s, err := loadWorkerState(c.stateDir)
+	s, err = loadWorkerState(c.stateDir)
 	if err != nil {
 		return err
 	}
-	if !s.active() || len(s.Task.RecoveryConfig) == 0 {
+	if !s.needsRecovery() {
 		return nil
 	}
 	return c.launch(ctx, c.RegistrationCommand())
@@ -195,6 +200,14 @@ func (s *workerState) active() bool {
 	return s.Task != nil && (!isTerminalPhase(s.Task.Status.Phase) || s.Task.StopIntent || s.Task.PublishIntent)
 }
 
+func (s *workerState) needsRecovery() bool {
+	return s.active() && len(s.Task.RecoveryConfig) != 0
+}
+
+func (s *workerState) unstarted(now time.Time) bool {
+	return s.Task != nil && s.Task.Status.Phase == PhaseChecking && len(s.Task.RecoveryConfig) == 0 && now.Sub(s.Task.Status.StartedAt) >= 30*time.Second
+}
+
 func (s *workerState) transition(dir, phase, detail string) error {
 	status := &s.Task.Status
 	status.Phase = phase
@@ -270,23 +283,26 @@ func (c *WorkerClient) Busy() bool {
 	return err != nil || s.active()
 }
 
-func (c *WorkerClient) failUnstarted(now time.Time) error {
+// pollStatus takes the operation lock only to expire a queue entry. An idle
+// status poll must not compete with a new submission or manual service action.
+func (c *WorkerClient) pollStatus(now time.Time) (*workerState, error) {
+	s, err := loadWorkerState(c.stateDir)
+	if err != nil || !s.unstarted(now) {
+		return s, err
+	}
 	lock, err := workerLock(c.stateDir)
 	if errors.Is(err, ErrBusy) {
-		return nil
+		return s, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer lock.Close()
-	s, err := loadWorkerState(c.stateDir)
-	if err != nil {
-		return err
+	s, err = loadWorkerState(c.stateDir)
+	if err != nil || !s.unstarted(now) {
+		return s, err
 	}
-	if !s.active() || s.Task.Status.Phase != PhaseChecking || len(s.Task.RecoveryConfig) != 0 || now.Sub(s.Task.Status.StartedAt) < 30*time.Second {
-		return nil
-	}
-	return s.transition(c.stateDir, PhaseFailed, "independent update worker did not start within 30 seconds; check the updater service")
+	return s, s.transition(c.stateDir, PhaseFailed, "independent update worker did not start within 30 seconds; check the updater service")
 }
 
 // ActiveRun returns the on-disk status while the requested target is unfinished.
@@ -362,9 +378,24 @@ func (e *Engine) pollWorker() {
 	defer ticker.Stop()
 	var previous RunStatus
 	var nextRecovery time.Time
+	var idleFile os.FileInfo
+	statePath := filepath.Join(e.worker.stateDir, "state.json")
 	for {
-		_ = e.worker.failUnstarted(time.Now())
-		if time.Now().After(nextRecovery) {
+		now := time.Now()
+		// Worker journals are published by rename. Avoid decoding hundreds of
+		// completed entries on every idle tick while retaining prompt updates.
+		info, err := os.Stat(statePath)
+		var s *workerState
+		unchanged := err == nil && idleFile != nil && os.SameFile(info, idleFile) &&
+			info.Size() == idleFile.Size() && info.ModTime().Equal(idleFile.ModTime())
+		if err == nil && !unchanged {
+			s, err = e.worker.pollStatus(now)
+			idleFile = nil
+			if err == nil && !s.active() {
+				idleFile = info
+			}
+		}
+		if s != nil && err == nil && s.needsRecovery() && now.After(nextRecovery) {
 			e.mu.Lock()
 			ready := e.ready && !e.closed
 			e.mu.Unlock()
@@ -375,8 +406,7 @@ func (e *Engine) pollWorker() {
 			}
 			nextRecovery = time.Now().Add(10 * time.Second)
 		}
-		s, err := loadWorkerState(e.worker.stateDir)
-		if err == nil && s.Task != nil && s.Task.Status != previous {
+		if s != nil && err == nil && s.Task != nil && s.Task.Status != previous {
 			previous = s.Task.Status
 			e.publish(previous)
 		}

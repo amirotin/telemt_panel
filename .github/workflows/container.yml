@@ -8,22 +8,27 @@ on:
         required: true
         type: string
       reuse_existing:
-        description: Verify and reuse both published platform images after a partial publication
+        description: Verify and reuse published platform images after a partial publication
         type: boolean
         default: false
 
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 concurrency:
   group: container-${{ inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  qualify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      image: ${{ steps.outputs.outputs.image }}
+      version: ${{ steps.outputs.outputs.version }}
+      amd64: ${{ steps.outputs.outputs.amd64 }}
+      arm64: ${{ steps.outputs.outputs.arm64 }}
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
       GH_TOKEN: ${{ github.token }}
@@ -72,7 +77,7 @@ jobs:
         if: ${{ inputs.reuse_existing }}
         run: |
           python3 - <<'PY'
-          import json, os, re, urllib.request
+          import json, os, re, urllib.error, urllib.request
           repo = os.environ['GITHUB_REPOSITORY'].lower()
           image = os.environ['IMAGE']
           version = os.environ['VERSION']
@@ -87,7 +92,12 @@ jobs:
                   return json.load(response), response.headers.get('Docker-Content-Digest', '')
           refs = {}
           for arch in ('amd64', 'arm64'):
-              manifest, digest = read('manifests/'+version+'-'+arch)
+              try:
+                  manifest, digest = read('manifests/'+version+'-'+arch)
+              except urllib.error.HTTPError as error:
+                  if error.code == 404:
+                      continue
+                  raise
               assert re.fullmatch(r'sha256:[0-9a-f]{64}', digest), 'invalid platform digest'
               config, _ = read('blobs/'+manifest['config']['digest'])
               assert config['os'] == 'linux' and config['architecture'] == arch, 'platform mismatch'
@@ -111,8 +121,8 @@ jobs:
           set -euo pipefail
           TELEMT_PANEL_IMAGE="$IMAGE:$VERSION" docker compose config --quiet
           for arch in amd64 arm64; do
-            if [ "$REUSE_EXISTING" = true ]; then
-              ref_name="EXISTING_${arch^^}_REF"
+            ref_name="EXISTING_${arch^^}_REF"
+            if [ "$REUSE_EXISTING" = true ] && [ -n "${!ref_name:-}" ]; then
               docker pull --platform "linux/$arch" "${!ref_name}"
               expected_hash="$(sha256sum ".container-bin/$arch/telemt-panel" | awk '{print $1}')"
               actual_hash="$(docker run --rm --platform "linux/$arch" --entrypoint /bin/sh "${!ref_name}" -c 'sha256sum /usr/local/bin/telemt-panel' | awk '{print $1}')"
@@ -127,22 +137,76 @@ jobs:
             python3 scripts/container-smoke.py --image "telemt-panel-container-test:$arch" --platform "linux/$arch" --version "$VERSION"
           done
 
-      - name: Refuse replacing an existing version tag
+      - name: Pass verified references to publication
+        id: outputs
+        run: |
+          {
+            echo "image=$IMAGE"
+            echo "version=$VERSION"
+            echo "amd64=${EXISTING_AMD64_REF:-}"
+            echo "arm64=${EXISTING_ARM64_REF:-}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Save tested platform images
+        if: steps.outputs.outputs.amd64 == '' || steps.outputs.outputs.arm64 == ''
+        run: docker save --output tested-images.tar telemt-panel-container-test:amd64 telemt-panel-container-test:arm64
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.outputs.outputs.amd64 == '' || steps.outputs.outputs.arm64 == ''
+        with:
+          name: tested-images
+          path: tested-images.tar
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: qualify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ${{ needs.qualify.outputs.image }}
+      VERSION: ${{ needs.qualify.outputs.version }}
+      EXISTING_AMD64_REF: ${{ needs.qualify.outputs.amd64 }}
+      EXISTING_ARM64_REF: ${{ needs.qualify.outputs.arm64 }}
+      REUSE_EXISTING: ${{ inputs.reuse_existing }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.qualify.outputs.amd64 == '' || needs.qualify.outputs.arm64 == ''
+        with:
+          name: tested-images
+
+      - name: Load tested platform images
+        if: needs.qualify.outputs.amd64 == '' || needs.qualify.outputs.arm64 == ''
+        run: docker load --input tested-images.tar
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Refuse replacing published tags
         run: |
           python3 - <<'PY'
           import json, os, urllib.error, urllib.request
           repo = os.environ['GITHUB_REPOSITORY'].lower()
           with urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:'+repo+':pull', timeout=20) as response:
               token = json.load(response)['token']
-          req = urllib.request.Request('https://ghcr.io/v2/'+repo+'/manifests/'+os.environ['VERSION'], headers={
-              'Authorization': 'Bearer '+token,
-              'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json'})
-          try:
-              with urllib.request.urlopen(req, timeout=20):
-                  raise SystemExit('Container version already exists; refusing to replace it')
-          except urllib.error.HTTPError as error:
-              if error.code != 404:
-                  raise
+          version = os.environ['VERSION']
+          tags = {version: ''}
+          for arch in ('amd64', 'arm64'):
+              tags[version+'-'+arch] = os.environ.get('EXISTING_'+arch.upper()+'_REF', '')
+          for tag, verified in tags.items():
+              req = urllib.request.Request('https://ghcr.io/v2/'+repo+'/manifests/'+tag, headers={
+                  'Authorization': 'Bearer '+token,
+                  'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      digest = response.headers.get('Docker-Content-Digest', '')
+                      if not verified or verified != os.environ['IMAGE']+'@'+digest:
+                          raise SystemExit('Tag already published or changed: '+tag)
+              except urllib.error.HTTPError as error:
+                  if error.code != 404 or verified:
+                      raise
           PY
 
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
@@ -152,15 +216,13 @@ jobs:
           password: ${{ github.token }}
 
       - name: Publish immutable prerelease and platform manifest
-        env:
-          REUSE_EXISTING: ${{ inputs.reuse_existing }}
         shell: bash
         run: |
           set -euo pipefail
           sources=()
           for arch in amd64 arm64; do
-            if [ "$REUSE_EXISTING" = true ]; then
-              ref_name="EXISTING_${arch^^}_REF"
+            ref_name="EXISTING_${arch^^}_REF"
+            if [ "$REUSE_EXISTING" = true ] && [ -n "${!ref_name:-}" ]; then
               sources+=("${!ref_name}")
             else
               tag="$IMAGE:$VERSION-$arch"

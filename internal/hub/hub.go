@@ -237,10 +237,7 @@ type topicState struct {
 	// non-blocking signal. Explicit flags preserve the two kinds of demand
 	// while redundant signals coalesce. nil for push-only topics.
 	wake chan struct{}
-	// lastForcedPollAt is touched only by runPoller's own goroutine (never
-	// read or written under Hub.mu, never from Poke) — safe without a lock
-	// by construction, the same way runPoller's local backoff/timer
-	// variables are. Zero value means "never forced yet".
+	// Hub.mu protects the poke floor across poller restarts.
 	lastForcedPollAt time.Time
 }
 
@@ -417,7 +414,7 @@ func fetchUsers(ctx context.Context, tc *telemt.Client, st store.HistoryStore) (
 	}
 	var traffic map[string]store.UserTrafficSummary
 	if st != nil {
-		traffic, err = trafficSummariesContext(ctx, st)
+		traffic, err = st.UserTrafficSummariesContext(ctx)
 		if err != nil {
 			slog.Warn("hub: users topic: traffic summaries", "err", err)
 			traffic = nil
@@ -922,6 +919,9 @@ func (h *Hub) HistoryRetention() time.Duration {
 func (h *Hub) StartPersistentCollectors() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.ctx.Err() != nil {
+		return
+	}
 	if h.tc != nil && h.st != nil {
 		h.topics["users"].persistent = true
 	}
@@ -937,7 +937,7 @@ func (h *Hub) StartPersistentCollectors() {
 		topic.running = true
 		topic.stop = make(chan struct{})
 		h.wg.Add(1)
-		go h.runPoller(topic)
+		go h.runPoller(topic, topic.stop)
 	}
 }
 
@@ -965,7 +965,10 @@ func (h *Hub) runTrafficCollector() {
 }
 
 func (h *Hub) collectUserTraffic(ctx context.Context) bool {
-	snapshot, err := h.tc.TrafficSnapshot(ctx)
+	// The four sequential calls form one coherent sample, independent of UI poll deadlines.
+	fetchCtx, cancel := context.WithTimeout(ctx, defaultTrafficInterval)
+	defer cancel()
+	snapshot, err := h.tc.TrafficSnapshot(fetchCtx)
 	if err != nil {
 		slog.Warn("hub: collect user traffic snapshot", "err", err)
 		return false
@@ -987,7 +990,7 @@ func (h *Hub) collectUserTraffic(ctx context.Context) bool {
 
 	// Keep the existing aggregate chart compatible while exact per-user
 	// accounting remains integer-only in the dedicated store tables.
-	summaries, err := trafficSummariesContext(ctx, h.st)
+	summaries, err := h.st.UserTrafficSummariesContext(ctx)
 	if err != nil {
 		slog.Warn("hub: read user traffic totals", "err", err)
 		return true
@@ -1023,6 +1026,10 @@ func (h *Hub) Subscribe(topics []string) (ch <-chan Event, snapshots []Event, ca
 	}
 
 	h.mu.Lock()
+	if err := h.ctx.Err(); err != nil {
+		h.mu.Unlock()
+		return nil, nil, nil, err
+	}
 	for _, name := range topics {
 		if _, ok := h.topics[name]; !ok {
 			h.mu.Unlock()
@@ -1059,7 +1066,7 @@ func (h *Hub) Subscribe(topics []string) (ch <-chan Event, snapshots []Event, ca
 			t.running = true
 			t.stop = make(chan struct{})
 			h.wg.Add(1)
-			go h.runPoller(t)
+			go h.runPoller(t, t.stop)
 		}
 		if firstSubscriber && t.historyFetch != nil {
 			t.fullFresh = false
@@ -1138,10 +1145,9 @@ func (h *Hub) stopIfIdle(t *topicState) {
 // see topicState's doc comment), while first-subscriber hydration bypasses it.
 // Direct Snapshot/Poke callers share the topic's context-aware gate with this
 // goroutine, so observation and publication for one topic remain serialized.
-func (h *Hub) runPoller(t *topicState) {
+func (h *Hub) runPoller(t *topicState, stop <-chan struct{}) {
 	defer h.wg.Done()
 
-	stop := t.stop
 	backoff := t.interval
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -1162,6 +1168,8 @@ func (h *Hub) runPoller(t *topicState) {
 
 	for {
 		select {
+		case <-h.ctx.Done():
+			return
 		case <-stop:
 			return
 		case <-timer.C:
@@ -1191,10 +1199,10 @@ func (h *Hub) runPoller(t *topicState) {
 			if poke {
 				t.pokePending = false
 			}
-			h.mu.Unlock()
 			if !hydration {
 				t.lastForcedPollAt = h.now()
 			}
+			h.mu.Unlock()
 			recheck := recheckNone
 			if hydration && !poke {
 				recheck = recheckHydration
@@ -1292,7 +1300,11 @@ func (h *Hub) pollWithProfile(ctx context.Context, t *topicState, profile pollPr
 		return false
 	}
 	if t.name == "stats" {
-		h.recordTelemtAvailability(true)
+		if _, typed := snapshot.(statsSnapshot); typed {
+			h.observeTelemtAvailability(true)
+		} else {
+			h.recordTelemtAvailability(true)
+		}
 	}
 	var gauges *usersLiveGauges
 	// Typed history projection happens before the single publication marshal;
@@ -1417,7 +1429,9 @@ func diffKey(topic string, data json.RawMessage) json.RawMessage {
 		return data
 	}
 	var v any
-	if err := json.Unmarshal(data, &v); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&v); err != nil {
 		// data just came from this package's own json.Marshal a moment
 		// earlier (fetchFunc's return value) — this should be unreachable.
 		// Falling back to the raw bytes keeps diffing correct (just not
@@ -1679,37 +1693,37 @@ func (h *Hub) PokeAfter(topic string, delay time.Duration) {
 // *ErrUnknownTopic and performs no upstream requests at all, even for the
 // other, valid topics in the same call.
 func (h *Hub) Snapshot(ctx context.Context, topics []string) (map[string]json.RawMessage, error) {
+	out := make(map[string]json.RawMessage, len(topics))
+	group := newBoundedFetchGroup(ctx)
 	h.mu.Lock()
 	for _, name := range topics {
-		if _, ok := h.topics[name]; !ok {
+		if _, seen := out[name]; seen {
+			continue
+		}
+		t, ok := h.topics[name]
+		if !ok {
 			h.mu.Unlock()
 			return nil, &ErrUnknownTopic{Topic: name}
 		}
+		out[name] = nil
+		if t.fetch == nil || (t.running && t.hasData && t.fullFresh && !t.fullPending) {
+			continue
+		}
+		version := t.fullVersion
+		group.jobs = append(group.jobs, func(ctx context.Context) {
+			h.pollWithProfile(ctx, t, pollFull, recheckSnapshot, version)
+		})
 	}
 	h.mu.Unlock()
-
-	out := make(map[string]json.RawMessage, len(topics))
-	for _, name := range topics {
-		h.mu.Lock()
-		t := h.topics[name]
-		// A push-only topic (nil fetch) has nothing to fetch on demand —
-		// its cached value (possibly still empty) is always "fresh".
-		version := t.fullVersion
-		fresh := t.fetch == nil || (t.running && t.hasData && t.fullFresh && !t.fullPending)
-		h.mu.Unlock()
-
-		if !fresh {
-			h.pollWithProfile(ctx, t, pollFull, recheckSnapshot, version)
-		}
-
-		h.mu.Lock()
-		if t.hasData {
+	// Each topic may already fetch several SDK resources in parallel.
+	group.run(2)
+	h.mu.Lock()
+	for name := range out {
+		if t := h.topics[name]; t.hasData {
 			out[name] = t.lastData
-		} else {
-			out[name] = nil
 		}
-		h.mu.Unlock()
 	}
+	h.mu.Unlock()
 	return out, nil
 }
 

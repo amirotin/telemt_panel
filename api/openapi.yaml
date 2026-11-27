@@ -264,7 +264,7 @@ paths:
                 username: { type: string }
                 password: { type: string }
       responses:
-        "403": { description: "Authentication disabled, unapproved anonymous host, or cross-site request", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Authentication is disabled in the panel configuration", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "204": { description: Logged in; session cookie set }
         "400": { description: bad_request — malformed request body, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401":
@@ -386,7 +386,7 @@ paths:
       security: []
       operationId: webauthnLoginBegin
       responses:
-        "403": { description: "Authentication disabled, unapproved anonymous host, or cross-site request", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Authentication is disabled in the panel configuration", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "200": { description: CredentialRequestOptions and one-time flow ID, content: { application/json: { schema: { $ref: "#/components/schemas/WebAuthnBeginResponse" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -398,7 +398,7 @@ paths:
       operationId: webauthnLoginFinish
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WebAuthnFinishRequest" } } } }
       responses:
-        "403": { description: "Authentication disabled, unapproved anonymous host, or cross-site request", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Authentication is disabled in the panel configuration", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "204": { description: Logged in; session cookie set }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1381,6 +1381,7 @@ paths:
       operationId: getStorageSettings
       description: Returns optional history policies and the active store footprint. Mandatory panel state is not configurable here.
       responses:
+        "500": { $ref: "#/components/responses/InternalError" }
         "504": { $ref: "#/components/responses/HistoryTimeout" }
         "200": { description: Storage settings, content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettings" } } } }
     put:
@@ -1391,6 +1392,7 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/StorageSettingsUpdate" } } }
       responses:
+        "500": { $ref: "#/components/responses/InternalError" }
         "504": { $ref: "#/components/responses/HistoryTimeout" }
         "204": { description: Saved }
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -1404,6 +1406,7 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/StoragePurgeRequest" } } }
       responses:
+        "500": { $ref: "#/components/responses/InternalError" }
         "504": { $ref: "#/components/responses/HistoryTimeout" }
         "204": { description: History deleted }
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -2059,6 +2062,16 @@ paths:
                     type: array
                     items: { type: string, enum: [memory, sqlite] }
                   state_durable: { type: boolean, description: Whether local panel state survives a restart. }
+        "503":
+          description: Panel is starting and its runtime is not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { type: string, enum: [starting] }
+                  version: { type: string }
 
   /api/logs/tail:
     get:
@@ -2127,7 +2140,7 @@ paths:
       responses:
         "200": { description: Page, content: { text/html: { schema: { type: string } } } }
         "404": { description: Unknown token (uniform, no details) }
-        "429": { $ref: "#/components/responses/RateLimited" }
+        "429": { description: Too many requests, content: { text/plain: { schema: { type: string } } } }
 
 components:
   securitySchemes:
@@ -2371,7 +2384,7 @@ components:
         prepared: { $ref: "#/components/schemas/PanelTlsPrepared" }
         restart_required: { type: boolean }
         new_url: { type: string, format: uri }
-        error: { type: string, enum: [tls_restart_failed] }
+        error: { type: string, enum: [tls_restart_failed, tls_save_unconfirmed] }
     PanelTlsStatus:
       type: object
       required: [mode, state]
@@ -2406,6 +2419,7 @@ components:
             - tls_config_changed
             - tls_receipt_invalid
             - tls_save_failed
+            - tls_save_unconfirmed
             - tls_restart_not_pending
             - tls_restart_failed
             - conflict

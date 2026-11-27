@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "../lib/cn";
 import { errorMessage, useStrings } from "../i18n";
@@ -38,7 +38,10 @@ export function WebAccessPanel({ username, readOnly = false }: { username: strin
   const s = useStrings();
   const query = useQuery(getTelemtWebAccessOptions());
   const [editing, setEditing] = useState(false);
-  const [reloadId, setReloadId] = useState<number | null>(null);
+  const [reload, setReload] = useState<{ username: string; id: number } | null>(null);
+  const currentUser = useRef(username);
+  useLayoutEffect(() => { currentUser.current = username; }, [username]);
+  const reloadId = reload?.username === username ? reload.id : null;
   const reloadStatus = useReloadPolling(reloadId);
 
   if (query.isPending) return <Skeleton className="h-28 w-full rounded-xl" />;
@@ -106,7 +109,7 @@ export function WebAccessPanel({ username, readOnly = false }: { username: strin
         vhosts={vhosts.map(({ host, hosts, public_addr }) => ({ host, label: hosts?.join(", ") || host, publicAddr: public_addr }))}
         initialProfiles={profiles}
         onClose={() => setEditing(false)}
-        onReloadAccepted={setReloadId}
+        onReloadAccepted={(id) => { if (currentUser.current === username) setReload({username, id}); }}
       />
     </>
   );
@@ -144,11 +147,14 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
       return data;
     },
     onSuccess: async (next, submitted) => {
-      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+      if (next.reload) onReloadAccepted(next.reload.reload_id);
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) {
+        await invalidateTelemtConfigCaches(queryClient);
+        return;
+      }
       update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: next.revision }, equalProfiles));
       setWritePending(false);
       setUnknownOutcome(false);
-      if (next.reload) onReloadAccepted(next.reload.reload_id);
       setRejectedRevision(null);
       await invalidateTelemtConfigCaches(queryClient);
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
@@ -226,7 +232,7 @@ function WebAccessEditor({ open, readOnly, username, revision, vhosts, initialPr
                   <span className="block text-micro font-semibold uppercase tracking-wide text-text-faint">{s.people.webAccess.profile} {index + 1}</span>
                   <strong className="mt-0.5 block break-words text-sm text-text">{vhosts.find((vhost) => vhost.host === profile.vhost)?.label || profile.vhost || s.people.webAccess.chooseVhost}</strong>
                 </span>
-                <button type="button" className="grid size-11 place-items-center rounded-lg text-text-faint hover:bg-bad/8 hover:text-bad" aria-label={s.people.webAccess.remove} onClick={() => setProfiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                <button type="button" className="grid size-11 place-items-center rounded-lg text-text-faint hover:bg-error/8 hover:text-error" aria-label={s.people.webAccess.remove} onClick={() => setProfiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                   <IconTrash className="size-4" />
                 </button>
               </header>

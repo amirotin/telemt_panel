@@ -53,10 +53,10 @@ func (s *SQLite) PruneUserIPHistory(now int64) error {
 }
 
 // A bounded transaction also bounds shutdown when a final batch is flushed.
-func (s *SQLite) withUserIPTxContext(parent context.Context, fn func(*sql.Tx) error) error {
+func (s *SQLite) withUserIPTxContext(parent context.Context, options *sql.TxOptions, fn func(*sql.Tx) error) error {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, options)
 	if err != nil {
 		return historySQLContextError(ctx, err)
 	}
@@ -80,7 +80,7 @@ func (s *SQLite) withUserIPWriteTxContext(parent context.Context, fn func(*sql.T
 	defer s.userIPMu.RUnlock()
 	s.userIPWriters.Add(1)
 	defer s.userIPWriters.Add(-1)
-	err := s.withUserIPTxContext(ctx, fn)
+	err := s.withUserIPTxContext(ctx, nil, fn)
 	if err == nil {
 		s.userIPRevision.Add(1)
 	}
@@ -221,7 +221,7 @@ func (s *SQLite) UserIPHistoryContext(parent context.Context, q UserIPQuery) (Us
 	if err := validateUserIPQuery(q); err != nil {
 		return page, err
 	}
-	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error {
+	err := s.withUserIPTxContext(ctx, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
 		from := max(q.From, q.Now-int64(s.UserIPRetention()/time.Second))
 		where := "username=? AND last_ts>=?"
 		args := []any{q.Username, from}
@@ -274,7 +274,7 @@ func (s *SQLite) UserIPSummariesContext(parent context.Context, from, now int64)
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	result := make(map[string]int64)
-	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error {
+	err := s.withUserIPTxContext(ctx, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(ctx, "SELECT username,count(*) FROM user_ip_history WHERE last_ts>=? GROUP BY username", max(from, now-int64(s.UserIPRetention()/time.Second)))
 		if err != nil {
 			return err
@@ -302,7 +302,7 @@ func (s *SQLite) UserIPCollectionStateContext(parent context.Context) (UserIPCol
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	var c UserIPCollection
-	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error { var err error; c, err = readUserIPCollectionContext(ctx, tx); return err })
+	err := s.withUserIPTxContext(ctx, &sql.TxOptions{ReadOnly: true}, func(tx *sql.Tx) error { var err error; c, err = readUserIPCollectionContext(ctx, tx); return err })
 	return c, err
 }
 
@@ -317,7 +317,7 @@ func (s *SQLite) ResetUserIPHistoryContext(parent context.Context, username stri
 		return err
 	}
 	defer s.userIPMu.Unlock()
-	err := s.withUserIPTxContext(ctx, func(tx *sql.Tx) error {
+	err := s.withUserIPTxContext(ctx, nil, func(tx *sql.Tx) error {
 		if username != "" {
 			_, err := tx.ExecContext(ctx, "DELETE FROM user_ip_history WHERE username=?", username)
 			return err

@@ -98,19 +98,9 @@ func (s *Server) buildUserResponse(r *http.Request, u telemt.UserInfo, quota map
 }
 
 func (s *Server) userTrafficOrDegrade(ctx context.Context) map[string]store.UserTrafficSummary {
-	read, err := s.st.BeginTrafficRead(ctx)
+	summaries, err := s.st.UserTrafficSummariesContext(ctx)
 	if err != nil {
 		slog.Warn("users: traffic summaries", "err", err)
-		return nil
-	}
-	summaries, err := read.Summaries()
-	closeErr := read.Close()
-	if err != nil {
-		slog.Warn("users: traffic summaries", "err", err)
-		return nil
-	}
-	if closeErr != nil {
-		slog.Warn("users: traffic summaries", "err", closeErr)
 		return nil
 	}
 	return summaries

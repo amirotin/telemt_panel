@@ -1,5 +1,5 @@
 import { client } from "./generated/client.gen";
-import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
+import { resetSSEClient } from "../../realtime/context";
 import { getBasePath, withBasePath } from "../base-path";
 import { getRouterInstance } from "../router-instance";
 import { queryClient } from "../query-client";
@@ -53,11 +53,12 @@ client.interceptors.response.use((response, request) => {
 
   if (!redirecting) {
     redirecting = true;
-    queryClient.removeQueries({ queryKey: getMeQueryKey() });
+    resetSSEClient();
+    queryClient.clear();
     const router = getRouterInstance();
     if (router) {
       const redirectTarget = window.location.pathname + window.location.search;
-      void router.navigate({ to: "/login", search: { redirect: redirectTarget } });
+      void router.navigate({ to: "/login", search: { redirect: redirectTarget }, ignoreBlocker: true });
     }
   }
   return response;

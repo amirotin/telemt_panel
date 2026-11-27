@@ -100,3 +100,19 @@ describe("PersonIPHistory",()=>{
     expect(container.textContent).not.toContain("2001:db8");
   });
 });
+
+it("waits for the search text to settle before requesting IP history", async () => {
+  await mount();
+  const input=container.querySelector<HTMLInputElement>("input[type=search]")!;
+  const nextKey=getUserIpHistoryQueryKey({path:{username:"alice"},query:{range:"30d",family:"all",q:"192",limit:10,cursor:""}});
+  vi.useFakeTimers();
+  try {
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,"192");
+      input.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    expect(client.getQueryState(nextKey)).toBeUndefined();
+    await act(async()=>{await vi.advanceTimersByTimeAsync(250);});
+    expect(client.getQueryState(nextKey)).toBeDefined();
+  } finally {vi.useRealTimers();}
+});

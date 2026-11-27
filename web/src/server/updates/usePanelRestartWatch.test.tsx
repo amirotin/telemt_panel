@@ -104,3 +104,15 @@ describe("usePanelRestartWatch", () => {
     expect(container.textContent).toBe("reload");
   });
 });
+
+it("stops issuing health and journal probes after a watch times out", async () => {
+  const fetch = vi.fn(async (req: RequestInfo | URL) => Response.json(new URL((req as Request).url).pathname === "/api/health"
+    ? {version:"old"} : updates(journal("previous", "done"))));
+  apiClient.setConfig({baseUrl:"http://localhost",fetch});
+  await render();
+  for (let i=0; i<60; i++) await act(async()=>{await vi.advanceTimersByTimeAsync(2000);});
+  expect(container.textContent).toBe("timeout");
+  const count=fetch.mock.calls.length;
+  await act(async()=>{await vi.advanceTimersByTimeAsync(10_000);});
+  expect(fetch).toHaveBeenCalledTimes(count);
+});

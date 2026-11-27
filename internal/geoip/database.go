@@ -1,6 +1,7 @@
 package geoip
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -26,18 +27,18 @@ type bundle struct {
 	source    Source
 }
 
-func openBundle(paths map[Kind]string, loadedAt int64) (*bundle, error) {
-	return openBundleWithVerifier(paths, loadedAt, (*maxminddb.Reader).Verify)
+func openBundle(ctx context.Context, paths map[Kind]string, loadedAt int64) (*bundle, error) {
+	return openBundleWithVerifier(ctx, paths, loadedAt, (*maxminddb.Reader).Verify)
 }
 
-func openBundleWithVerifier(paths map[Kind]string, loadedAt int64, verify func(*maxminddb.Reader) error) (*bundle, error) {
+func openBundleWithVerifier(ctx context.Context, paths map[Kind]string, loadedAt int64, verify func(*maxminddb.Reader) error) (*bundle, error) {
 	out := &bundle{databases: make(map[Kind]*database, len(paths))}
 	for _, kind := range []Kind{KindCountry, KindASN, KindCity} {
 		path, ok := paths[kind]
 		if !ok {
 			continue
 		}
-		db, err := openDatabase(kind, path, loadedAt, verify)
+		db, err := openDatabase(ctx, kind, path, loadedAt, verify)
 		if err != nil {
 			out.close()
 			return nil, err
@@ -50,7 +51,10 @@ func openBundleWithVerifier(paths map[Kind]string, loadedAt int64, verify func(*
 	return out, nil
 }
 
-func openDatabase(kind Kind, path string, loadedAt int64, verify func(*maxminddb.Reader) error) (*database, error) {
+func openDatabase(ctx context.Context, kind Kind, path string, loadedAt int64, verify func(*maxminddb.Reader) error) (*database, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("geoip: inspect database: %w", err)
@@ -74,7 +78,7 @@ func openDatabase(kind Kind, path string, loadedAt int64, verify func(*maxminddb
 		reader.Close()
 		return nil, errors.New("geoip: database build epoch is invalid")
 	}
-	if err := verifyRecordSchema(reader, kind); err != nil {
+	if err := verifyRecordSchema(ctx, reader, kind); err != nil {
 		reader.Close()
 		return nil, fmt.Errorf("geoip: invalid database record: %w", err)
 	}
@@ -84,12 +88,18 @@ func openDatabase(kind Kind, path string, loadedAt int64, verify func(*maxminddb
 	}, nil
 }
 
-func verifyRecordSchema(reader *maxminddb.Reader, kind Kind) error {
+func verifyRecordSchema(ctx context.Context, reader *maxminddb.Reader, kind Kind) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// Verify checks the MMDB encoding. Networks can share a data record;
 	// its offset identifies identical decoded fields within this reader.
 	// Check every distinct record, not the same record once per IP range.
 	seen := make(map[uintptr]struct{})
 	for result := range reader.Networks() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := result.Err(); err != nil {
 			return err
 		}
@@ -113,6 +123,11 @@ func verifyRecordSchema(reader *maxminddb.Reader, kind Kind) error {
 			if _, err := city.location(); err != nil {
 				return err
 			}
+		}
+		// The table is only a decode cache. Clearing it may repeat validation
+		// but preserves coverage even for databases with many distinct records.
+		if len(seen) == 64<<10 {
+			clear(seen)
 		}
 		seen[offset] = struct{}{}
 	}

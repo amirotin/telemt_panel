@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { useStrings } from "../i18n";
 import { IconButton } from "./IconButton";
@@ -30,6 +30,9 @@ export function CopyField({ value, label, className, "data-testid": testId }: Co
   const [copied, setCopied] = useState(false);
   const valueRef = useRef<HTMLSpanElement>(null);
 
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
   async function copy() {
     const result = await copyText(value);
     if (result === "failed") {
@@ -38,7 +41,8 @@ export function CopyField({ value, label, className, "data-testid": testId }: Co
       return;
     }
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1500);
   }
 
   function selectValueText() {

@@ -78,3 +78,18 @@ describe("Sheet focus lifecycle", () => {
     }
   });
 });
+
+it("dismisses only the top sheet and releases the scroll lock after out-of-order closing", () => {
+  const host=document.createElement("div");document.body.append(host);
+  const root=createRoot(host), lower=vi.fn(), upper=vi.fn(), initial=document.body.style.overflow;
+  const show=(a:boolean,b:boolean)=>act(()=>root.render(<>
+    <Sheet open={a} onClose={lower} title="Lower">A</Sheet><Sheet open={b} onClose={upper} title="Upper">B</Sheet>
+  </>));
+  try {
+    show(true,false);show(true,true);
+    act(()=>document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
+    expect(upper).toHaveBeenCalledOnce();expect(lower).not.toHaveBeenCalled();
+    show(false,true);expect(document.body.style.overflow).toBe("hidden");
+    show(false,false);expect(document.body.style.overflow).toBe(initial);
+  } finally {act(()=>root.unmount());host.remove();document.body.style.overflow=initial;}
+});

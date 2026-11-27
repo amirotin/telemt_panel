@@ -347,7 +347,7 @@ func (s *SQLite) PurgeHistoryContext(parent context.Context, category StorageCat
 	if category == StorageUserIPHistory {
 		return s.ResetUserIPHistoryContext(ctx, "")
 	}
-	if _, ok := defaultPolicyMap()[category]; !ok {
+	if !category.Valid() {
 		return fmt.Errorf("unknown storage category %q", category)
 	}
 	if category == StorageAudit {
@@ -406,6 +406,10 @@ func (s *SQLite) StorageStatsContext(parent context.Context) (StorageStats, erro
 		}
 		counts[category] += count
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return StorageStats{}, fmt.Errorf("count metric history: %w", err)
+	}
 	if err := rows.Close(); err != nil {
 		return StorageStats{}, fmt.Errorf("close metric history count: %w", err)
 	}
@@ -428,7 +432,7 @@ func (s *SQLite) StorageStatsContext(parent context.Context) (StorageStats, erro
 	if err := s.queryRowContext(ctx, `SELECT count(*) FROM user_traffic_users`).Scan(&userTrafficUsers); err != nil {
 		return StorageStats{}, fmt.Errorf("count user traffic users: %w", err)
 	}
-	collector, err := s.UserTrafficCollectorState()
+	collector, err := s.userTrafficCollectorStateContext(ctx)
 	if err != nil {
 		return StorageStats{}, err
 	}

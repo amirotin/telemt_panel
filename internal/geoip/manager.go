@@ -51,7 +51,7 @@ type Manager struct {
 	now        func() time.Time
 	syncFile   func(string) error
 	syncDir    func(string) error
-	openBundle func(map[Kind]string, int64) (*bundle, error)
+	openBundle func(context.Context, map[Kind]string, int64) (*bundle, error)
 
 	mu          sync.RWMutex
 	config      Config
@@ -450,8 +450,11 @@ func copyRegularFile(ctx context.Context, src, dst string) error {
 	if err != nil {
 		return coded(ErrorActivationFailed, err)
 	}
-	copyErr := copyWithContext(ctx, out, in)
+	copyErr := stageDatabase(ctx, out, in, current.Size())
 	closeErr := out.Close()
+	if errors.Is(copyErr, unix.ENOSPC) {
+		return coded(ErrorActivationFailed, copyErr)
+	}
 	if copyErr != nil {
 		return coded(ErrorSourceUnavailable, copyErr)
 	}
@@ -580,13 +583,13 @@ func (m *Manager) buildBundle(ctx context.Context, cfg Config) (*bundle, string,
 		}
 	}
 	loadedAt := m.now().Unix()
-	next, err := m.openBundle(paths, loadedAt)
+	next, err := m.openBundle(ctx, paths, loadedAt)
 	if err != nil {
 		return nil, "", databaseError(err)
 	}
 	for kind, db := range next.databases {
 		metadata := provenance[kind]
-		metadata.SHA256, err = databaseSHA256(paths[kind])
+		metadata.SHA256, err = databaseSHA256(ctx, paths[kind])
 		if err != nil {
 			next.close()
 			return nil, "", coded(ErrorActivationFailed, err)

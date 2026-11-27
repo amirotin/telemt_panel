@@ -243,7 +243,7 @@ export function StatRow() {
         attemptsWindow?.state !== "ready" ? attemptsWindow : refusalsWindow,
         qualityCaption(quality, s),
       ),
-      series: qualitySparklineValues(attemptsWindow, refusalsWindow),
+      series: qualitySparklineValues(attemptsHistory.data, refusalsHistory.data),
       domain: "counters",
     },
   ];

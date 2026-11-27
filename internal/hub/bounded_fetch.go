@@ -37,7 +37,17 @@ func (g *boundedFetchGroup) add(attempt *fetchAttempt, fetch func(context.Contex
 // wait executes jobs in enqueue order with at most three active SDK calls.
 // Jobs that cannot start before ctx expires remain explicitly unattempted.
 func (g *boundedFetchGroup) wait() {
-	workers := min(maxConcurrentSDKFetches, len(g.jobs))
+	g.run(maxConcurrentSDKFetches)
+}
+
+func (g *boundedFetchGroup) run(limit int) {
+	if len(g.jobs) == 1 {
+		if g.ctx.Err() == nil {
+			g.jobs[0](g.ctx)
+		}
+		return
+	}
+	workers := min(limit, len(g.jobs))
 	var mu sync.Mutex
 	next := 0
 	var wg sync.WaitGroup

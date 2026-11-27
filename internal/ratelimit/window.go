@@ -11,6 +11,10 @@ type entry struct {
 	inflight int
 }
 
+// Admission for new keys resumes as reservations complete or timestamps
+// expire. Never evict live keys and thereby reset their failure counts.
+const maxTrackedKeys = 8192
+
 // Window counts recent failures or requests together with active reservations.
 type Window struct {
 	mu        sync.Mutex
@@ -59,7 +63,13 @@ func (w *Window) pruneLocked(key string) *entry {
 
 func (w *Window) availableLocked(key string) bool {
 	e := w.pruneLocked(key)
-	return !w.closed && (e == nil || len(e.counts)+e.inflight < w.limit)
+	if w.closed {
+		return false
+	}
+	if e == nil {
+		return len(w.entries) < maxTrackedKeys
+	}
+	return len(e.counts)+e.inflight < w.limit
 }
 
 func (w *Window) entryLocked(key string) *entry {

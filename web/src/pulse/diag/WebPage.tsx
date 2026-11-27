@@ -117,7 +117,7 @@ export function WebPage({ backTo = "/pulse" }: { backTo?: "/pulse" | "/server" }
   const s = useStrings();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const nowMs = useNow(1_000);
+  const nowMs = useNow();
   const topic = useSnapshot<WebTopic>("web");
   const status = topic.data?.status?.data ?? null;
   const unsupported = topic.data?.status?.reason === "capability_absent";

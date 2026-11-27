@@ -107,7 +107,7 @@ func restoreActiveBundle(root string, cfg Config) (*bundle, bool, error) {
 	for _, kind := range manifest.Databases {
 		paths[kind] = filepath.Join(directory, string(kind)+".mmdb")
 	}
-	b, err := openBundle(paths, manifest.LoadedEpochSecs)
+	b, err := openBundle(context.Background(), paths, manifest.LoadedEpochSecs)
 	if err != nil {
 		return nil, false, err
 	}
@@ -115,7 +115,7 @@ func restoreActiveBundle(root string, cfg Config) (*bundle, bool, error) {
 	b.source = manifest.Source
 	for kind, provenance := range manifest.Provenance {
 		db := b.databases[kind]
-		hash, err := databaseSHA256(paths[kind])
+		hash, err := databaseSHA256(context.Background(), paths[kind])
 		if err != nil || hash != provenance.SHA256 || db.reader.Metadata.DatabaseType != provenance.DatabaseType {
 			b.close()
 			return nil, false, errors.New("geoip: saved database provenance does not match file")

@@ -2,9 +2,25 @@ package host
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"io"
+	"iter"
 )
+
+// capturedLogLines skips an oversized record without losing the rest of the tail.
+func capturedLogLines(data []byte) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
+		for len(data) != 0 {
+			var line []byte
+			line, data, _ = bytes.Cut(data, []byte{'\n'})
+			line = bytes.TrimSuffix(line, []byte{'\r'})
+			if len(line) <= 1<<20 && !yield(line) {
+				return
+			}
+		}
+	}
+}
 
 func streamCommandLogs(ctx context.Context, reader io.ReadCloser, parse func([]byte) (LogLine, bool)) <-chan LogEvent {
 	events := make(chan LogEvent)

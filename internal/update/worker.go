@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/host"
@@ -53,7 +54,10 @@ func RunWorker(ctx context.Context, cfg WorkerConfig) error {
 		return err
 	}
 	defer w.e.Close()
-	if s.Task.RecoveryReady {
+	if s.Task.RecoveryReady || w.legacyRestored() {
+		if err := w.prepareRestoredService(ctx, false); err != nil {
+			return err
+		}
 		return w.finishRecovery(ctx)
 	}
 	if len(s.Task.RecoveryConfig) != 0 {
@@ -266,8 +270,55 @@ func (w *independentWorker) restore(ctx context.Context, offline bool) error {
 			return fmt.Errorf("restore previous data: %w", err)
 		}
 	}
-	if offline && task.Status.Target != TargetPanel {
-		return w.service(ctx, host.OpStartService)
+	return nil
+}
+
+const (
+	oldStartFailed  = "old service start failed: "
+	oldHealthFailed = "old version readiness unconfirmed: "
+)
+
+// Earlier protocol-1 workers recorded these errors only after restoring
+// every file. Retrying such a task must preserve subsequent live writes.
+func (w *independentWorker) legacyRestored() bool {
+	status := w.s.Task.Status
+	return status.Phase == PhaseFailed && (strings.HasPrefix(status.Detail, oldStartFailed) || strings.HasPrefix(status.Detail, oldHealthFailed))
+}
+
+func (w *independentWorker) prepareRestoredService(ctx context.Context, offline bool) error {
+	task := w.s.Task
+	wrapperStartsPanel := offline && task.Status.Target == TargetPanel
+	if !task.RecoveryReady {
+		startNeeded := true
+		if w.legacyRestored() {
+			startNeeded = strings.HasPrefix(task.Status.Detail, oldStartFailed)
+		} else if err := w.restore(ctx, offline); err != nil {
+			return errors.Join(err, w.phase(PhaseFailed, "rollback incomplete: "+err.Error()))
+		}
+		task.RecoveryReady = true
+		task.RecoveryStartPending = startNeeded && !wrapperStartsPanel
+		// Starting the restored panel permits new writes. First make durable
+		// the promise that no subsequent attempt will replay its snapshots.
+		if err := saveWorkerState(w.cfg.StateDir, w.s); err != nil && len(task.Snapshots) != 0 {
+			return fmt.Errorf("checkpoint restored data before startup: %w", err)
+		}
+	} else if len(task.Snapshots) != 0 {
+		// A previous rename may have published the checkpoint but failed to
+		// sync the directory. Confirm durability before a retry allows writes.
+		if err := syncWorkerDir(w.cfg.StateDir); err != nil {
+			return err
+		}
+	}
+	if task.RecoveryStartPending {
+		if !wrapperStartsPanel {
+			if err := w.service(ctx, host.OpStartService); err != nil {
+				return errors.Join(err, w.phase(PhaseFailed, oldStartFailed+err.Error()))
+			}
+		}
+		task.RecoveryStartPending = false
+		if err := saveWorkerState(w.cfg.StateDir, w.s); err != nil && len(task.Snapshots) != 0 {
+			return err
+		}
 	}
 	return nil
 }
@@ -279,11 +330,8 @@ func (w *independentWorker) rollback(cause error) error {
 	// Publication intent and immutable snapshots already authorize recovery.
 	// A full/read-only journal must not prevent restoration of the old service.
 	journalErr := w.phase(PhaseRollingBack, cause.Error())
-	if err := w.restore(ctx, false); err != nil {
-		return errors.Join(cause, journalErr, err, w.phase(PhaseFailed, "rollback incomplete: "+err.Error()))
-	}
-	if err := w.service(ctx, host.OpStartService); err != nil {
-		return errors.Join(cause, journalErr, err, w.phase(PhaseFailed, "old service start failed: "+err.Error()))
+	if err := w.prepareRestoredService(ctx, false); err != nil {
+		return errors.Join(cause, journalErr, err)
 	}
 	if err := w.finishRecovery(ctx); err != nil {
 		return errors.Join(cause, journalErr, err)
@@ -294,7 +342,7 @@ func (w *independentWorker) rollback(cause error) error {
 func (w *independentWorker) finishRecovery(ctx context.Context) error {
 	task := w.s.Task
 	if err := w.cfg.Health(ctx, task.Status.Target, task.Status.VersionFrom); err != nil {
-		return errors.Join(err, w.phase(PhaseFailed, "old version readiness unconfirmed: "+err.Error()))
+		return errors.Join(err, w.phase(PhaseFailed, oldHealthFailed+err.Error()))
 	}
 	task.StopIntent = false
 	task.PublishIntent = false
@@ -367,15 +415,11 @@ func RecoverWorker(ctx context.Context, cfg WorkerConfig) error {
 		}
 		return w.cleanup()
 	}
-	if !s.Task.RecoveryReady {
+	if !s.Task.RecoveryReady && !w.legacyRestored() {
 		_ = w.phase(PhaseRollingBack, "recovering interrupted update")
-		if err := w.restore(ctx, true); err != nil {
-			return err
-		}
-		s.Task.RecoveryReady = true
-		// Restoration succeeded. Let the old runtime start even when recording
-		// that fact fails; the previous durable intent retains all backup data.
-		_ = saveWorkerState(cfg.StateDir, s)
+	}
+	if err := w.prepareRestoredService(ctx, true); err != nil {
+		return err
 	}
 	client, err := NewWorkerClient(cfg.StateDir, cfg.Launch)
 	if err == nil {

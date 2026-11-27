@@ -12,7 +12,7 @@ import {
 } from "../../lib/api/generated/sdk.gen";
 import { webauthnDeleteCredentialMutation } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { PasskeyInfo } from "../../lib/api/generated/types.gen";
-import { useStrings } from "../../i18n";
+import { localeOf, useStrings } from "../../i18n";
 import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { Button } from "../../ui/Button";
 import { ConfirmView } from "../../ui/ConfirmView";
@@ -25,8 +25,8 @@ interface PasskeySettingsProps {
   passkeys: PasskeyInfo[];
 }
 
-function formatPasskeyDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+function formatPasskeyDate(value: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(
     new Date(value),
   );
 }
@@ -116,7 +116,7 @@ export function PasskeySettings({ passkeys }: PasskeySettingsProps) {
         </div>
 
         {passkeys.length > 0 && (
-          <div className="divide-y divide-border-subtle border-t border-border-subtle">
+          <div className="divide-y divide-border border-t border-border">
             {passkeys.map((passkey) => (
               <div key={passkey.id} className="flex min-h-14 items-center gap-3 px-3 py-2.5">
                 <div className="min-w-0 flex-1">
@@ -125,7 +125,7 @@ export function PasskeySettings({ passkeys }: PasskeySettingsProps) {
                     {passkey.last_used
                       ? s.server.settings.passkeyLastUsed.replace(
                           "{date}",
-                          formatPasskeyDate(passkey.last_used),
+                          formatPasskeyDate(passkey.last_used, localeOf(s)),
                         )
                       : s.server.settings.passkeyNeverUsed}
                   </small>

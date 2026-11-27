@@ -165,11 +165,11 @@ type historySummaryCounter struct {
 	ipStateReads     int
 }
 
-func (s *historySummaryCounter) UserTrafficSummaries() (map[string]store.UserTrafficSummary, error) {
+func (s *historySummaryCounter) UserTrafficSummariesContext(ctx context.Context) (map[string]store.UserTrafficSummary, error) {
 	s.mu.Lock()
 	s.trafficSummaries++
 	s.mu.Unlock()
-	return s.HistoryStore.UserTrafficSummaries()
+	return s.HistoryStore.UserTrafficSummariesContext(ctx)
 }
 
 func (s *historySummaryCounter) UserIPSummaries(from, now int64) (map[string]int64, error) {
@@ -232,8 +232,8 @@ func startTopicPoller(h *Hub, topic string) {
 	state.running = true
 	state.stop = make(chan struct{})
 	h.wg.Add(1)
+	go h.runPoller(state, state.stop)
 	h.mu.Unlock()
-	go h.runPoller(state)
 }
 
 func TestSubscriberDuringMinimalPollReceivesOnlyFullProjection(t *testing.T) {

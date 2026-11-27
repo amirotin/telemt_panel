@@ -31,7 +31,7 @@ func (c *Client) TrafficSnapshot(ctx context.Context) (TrafficSnapshot, error) {
 	if err != nil {
 		return TrafficSnapshot{}, err
 	}
-	users, usersRevision, err := getRevision[[]UserInfo](ctx, c, "/v1/users")
+	users, usersRevision, err := c.UsersWithRevision(ctx)
 	if err != nil {
 		return TrafficSnapshot{}, err
 	}

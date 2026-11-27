@@ -53,7 +53,7 @@ export function TrafficAnalytics() {
           <Skeleton className="h-44 rounded-lg" />
         </div>
       ) : report.isError || month.isError || !report.data || !month.data ? (
-        <p className="m-3.5 rounded-lg bg-warn-soft/30 px-3 py-4 text-[11px] text-warn">{s.hub.userTraffic.unavailable}</p>
+        <p className="m-3.5 rounded-lg bg-warn/10 px-3 py-4 text-[11px] text-warn">{s.hub.userTraffic.unavailable}</p>
       ) : (
         <TrafficReport report={report.data} monthBytes={month.data.total_bytes} />
       )}
@@ -153,7 +153,7 @@ function TrafficChart({ points, from, to }: { points: UserTrafficPoint[]; from: 
   const height = 112;
   const max = Math.max(0, ...points.map((point) => point.v));
   const span = Math.max(1, to - from);
-  if (points.length === 0 || max === 0) {
+  if (!points.length || max <= 0 || !Number.isFinite(max) || !Number.isFinite(span) || !points.every(point => Number.isFinite(point.ts))) {
     return <div className="mt-3 flex h-28 items-center justify-center rounded-lg bg-bg text-[10px] text-text-muted">{s.hub.userTraffic.empty}</div>;
   }
   return (

@@ -7,6 +7,16 @@ const link=(prefix="",host="proxy.example.org",domain="")=>`tg://proxy?${new URL
 const links=(override:Partial<UserLinksWire>={}):UserLinksWire=>({classic:[],secure:[],tls:[],tls_domains:[],...override});
 
 describe("connection link projection",()=>{
+  it("chooses a primary TLS, secure, then classic link as each becomes unavailable",()=>{
+    const sources=links({tls:[link("ee","proxy.example","mask.example")],secure:[link("dd")],classic:[link()]});
+    expect(selectPrimaryConnectionLink(collectConnectionLinks(sources))?.kind).toBe("tls");
+    expect(selectPrimaryConnectionLink(collectConnectionLinks({...sources,tls:[]}))?.kind).toBe("secure");
+    expect(selectPrimaryConnectionLink(collectConnectionLinks({...sources,tls:[],secure:[]}))?.kind).toBe("classic");
+    expect(selectPrimaryConnectionLink(collectConnectionLinks(links()))).toBeNull();
+  });
+  it.each(["javascript:alert(1)","https://external.example/proxy","https://t.me.external.example/proxy","http://t.me/proxy","bad URL","//external.example"])("omits unsafe Telegram destination %s",url=>{
+    expect(collectConnectionLinks(links({classic:[url]}))).toEqual([]);
+  });
   it("hides absent MTProto only after extracting the WEB secret from raw links",()=>{
     const source=links({tls:[link("ee","127.0.0.1","mask.example.org")]});
     const profiles=[{host:"web.example.org",mode:"plain" as const},{host:"web.example.org",mode:"dd" as const,basePath:"Relay"}];

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -82,7 +83,9 @@ func (h *Hub) pollPeriodic(t *topicState) bool {
 	}
 	h.ips.mu.Unlock()
 	if refresh && h.tc != nil {
-		limits, err := h.tc.EffectiveLimits(h.ctx)
+		ctx, cancel := context.WithTimeout(h.ctx, h.cfg.PollTimeout)
+		limits, err := h.tc.EffectiveLimits(ctx)
+		cancel()
 		h.ips.mu.Lock()
 		h.ips.window = nil
 		if err == nil && limits.UserIPPolicy.WindowSecs > 0 {
@@ -168,28 +171,32 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 		c.liveKnown = c.liveKnown || user.ActiveIPList != nil
 		var active []string
 		if user.ActiveIPList != nil {
-			active = append([]string{}, user.ActiveIPList...)
-		}
-		for i, raw := range active {
-			if ip, _, err := store.NormalizeUserIP(raw); err == nil {
-				active[i] = ip
+			active = make([]string, 0, len(user.ActiveIPList))
+			for _, raw := range user.ActiveIPList {
+				ip, _, err := store.NormalizeUserIP(raw)
+				if err != nil {
+					live.valid = false
+					c.gap = true
+					continue
+				}
+				active = append(active, ip)
 			}
+			sort.Strings(active)
 		}
-		sort.Strings(active)
 		union := make(map[string]int)
 		for index, list := range [][]string{active, user.RecentIPList} {
 			if list == nil {
 				c.gap = true
 			}
 			for _, raw := range list {
-				ip, _, err := store.NormalizeUserIP(raw)
-				if err != nil {
-					c.gap = true
-					if index == 0 {
-						live.valid = false
-						c.livePartial = true
+				ip := raw
+				if index != 0 {
+					var err error
+					ip, _, err = store.NormalizeUserIP(raw)
+					if err != nil {
+						c.gap = true
+						continue
 					}
-					continue
 				}
 				// Retained history limits must not reduce the current active overlay.
 				if index == 0 {
@@ -221,7 +228,10 @@ func (h *Hub) observeUserIPs(users []telemt.UserInfo, generation uint64) {
 				c.limited = true
 				continue
 			}
-			_, family, _ := store.NormalizeUserIP(ip)
+			family := 4
+			if strings.Contains(ip, ":") {
+				family = 6
+			}
 			r := store.UserIPRecord{Username: user.Username, IP: ip, Family: family, First: now, Last: now, Observations: 1, Source: source}
 			if source&1 != 0 {
 				r.LastActive = now

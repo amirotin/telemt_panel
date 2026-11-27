@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiErrorMessage } from "../../people/apiError";
+import { apiErrorCode, apiErrorMessage } from "../../people/apiError";
 import { localeOf, useStrings } from "../../i18n";
 import {
   getPanelTlsConfigOptions,
@@ -45,10 +45,6 @@ interface FormError {
   technical?: string;
 }
 
-function candidateMode(candidate: PanelTlsCandidate, protocol: string, labels: Record<PanelAccessMode, string>) {
-  return labels[panelAccessMode(candidate, protocol)];
-}
-
 function mutationError(error: unknown, strings: ReturnType<typeof useStrings>): FormError {
   const typed = error && typeof error === "object" ? error as Partial<ApiError> : undefined;
   const summary = apiErrorMessage(typed, strings);
@@ -60,7 +56,7 @@ function mutationError(error: unknown, strings: ReturnType<typeof useStrings>): 
 
 function FormErrorBlock({ error }: { error: FormError }) {
   return (
-    <div role="alert" className="rounded-xl border border-error/25 bg-error/8 px-3 py-2.5 text-sm text-error-text">
+    <div role="alert" className="rounded-xl border border-error/25 bg-error/8 px-3 py-2.5 text-sm text-error">
       <p className="font-semibold">{error.summary}</p>
       {error.technical && <p className="mt-1 break-words font-mono text-xs opacity-90">{error.technical}</p>}
     </div>
@@ -72,6 +68,10 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
   const copy = strings.server.settings.transport;
   const endpoint = copy.endpoints;
   const subscription = target === "subscription";
+  function modeLabel(candidate: PanelTlsCandidate) {
+    if (subscription && !candidate.enabled) return endpoint.disabled;
+    return copy.accessModes[panelAccessMode(candidate, subscription ? "http:" : window.location.protocol)];
+  }
   const options = subscription ? { query: { target: "subscription" as const } } : undefined;
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -88,6 +88,9 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
     ? { new_url: settings.new_url, restart_required: true }
     : savedState ?? null;
   const [formError, setFormError] = useState<FormError | null>(null);
+  const [publishedSave, setPublishedSave] = useState<"checking" | "unavailable" | "checked" | null>(null);
+  const saveReadFailed = publishedSave === "unavailable" || (query.isError && settings?.error === "tls_save_unconfirmed");
+  const awaitingSaveState = publishedSave === "checking" || saveReadFailed;
   const [restartUnconfirmed, setRestartUnconfirmed] = useState(false);
   const [restartRequestedState, setRestartRequested] = useState(false);
   const preparation = useRef<AbortController | null>(null);
@@ -96,6 +99,8 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
   const restartFinished = (restartRequestedState || restartUnconfirmed)
     && settings?.state === "idle" && !settings.restart_required;
   const saved = restartFinished ? null : pendingSaved;
+  const disablingPrepared = subscription && !!prepared && !prepared.candidate.enabled;
+  const disablingSaved = subscription && !!settings?.configured && !settings.configured.enabled;
   const restartFailed = settings?.state === "restart_failed" || settings?.error === "tls_restart_failed";
 
   const prepare = useMutation(preparePanelTlsMutation());
@@ -119,7 +124,7 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
   }, [activePort, copy.acmePort80, copy.firewallWarning, copy.publicBindWarning, draft, settings]);
 
   const validationError = useMemo(() => {
-    if (!draft) return undefined;
+    if (!draft || (subscription && !draft.enabled)) return undefined;
     const port = Number(draft.port);
     if (subscription && draft.enabled && draft.mode === "proxy" && !draft.publicURL?.trim()) return endpoint.proxyURL;
     if (subscription && !splitAccessURL(draft.publicURL ?? "", draft.basePath ?? "").basePath.replace(/\//g, "")) return endpoint.pathRequired;
@@ -138,6 +143,7 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
   }, [copy.validation, draft, requiresHttpConfirmation, endpoint.invalidURL, endpoint.pathRequired, endpoint.proxyURL, subscription]);
 
   function edit(change: Partial<PanelAccessDraft>) {
+    setPublishedSave(null);
     setDraft((current) => current || draft ? { ...(current ?? draft!), ...change } : null);
     setPrepared(null);
     setFormError(null);
@@ -169,7 +175,11 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
     const controller = new AbortController();
     preparation.current = controller;
     try {
-      const result = await prepare.mutateAsync({ ...options, body: buildPanelTlsPrepareBody(draft), signal: controller.signal });
+      const previous = settings?.configured ?? settings?.active;
+      const body = subscription && !draft.enabled && previous
+        ? { ...previous, enabled: false }
+        : buildPanelTlsPrepareBody(draft);
+      const result = await prepare.mutateAsync({ ...options, body, signal: controller.signal });
       if (!controller.signal.aborted) setPrepared(result);
     } catch (error) {
       if (!controller.signal.aborted) setFormError(mutationError(error, strings));
@@ -178,22 +188,42 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
     }
   }
 
+  async function checkPublishedSave() {
+    setPublishedSave("checking");
+    const result = await query.refetch();
+    setPublishedSave(result.isSuccess ? "checked" : "unavailable");
+  }
+
   async function onApply() {
     if (!prepared) return;
     setFormError(null);
+    let result: PanelTlsSaved;
+    let unconfirmed = false;
     try {
-      const result = await apply.mutateAsync({ ...options, body: { receipt: prepared.receipt, candidate: prepared.candidate } });
-      setSaved(result);
-      setPrepared(null);
-      queryClient.setQueryData<PanelTlsSettings>(getPanelTlsConfigQueryKey(options), (current) => current ? {
-        ...current,
-        configured: prepared.candidate,
-        state: "saved",
-        restart_required: true,
-        new_url: result.new_url,
-      } : current);
+      result = await apply.mutateAsync({ ...options, body: { receipt: prepared.receipt, candidate: prepared.candidate } });
     } catch (error) {
-      setFormError(mutationError(error, strings));
+      if (apiErrorCode(error) !== "tls_save_unconfirmed") {
+        setFormError(mutationError(error, strings));
+        return;
+      }
+      // The file was published and the receipt consumed before disk synchronization failed.
+      unconfirmed = true;
+      result = { new_url: prepared.new_url, restart_required: true };
+    }
+    setPrepared(null);
+    setSaved(unconfirmed ? undefined : result);
+    queryClient.setQueryData<PanelTlsSettings>(getPanelTlsConfigQueryKey(options), current => current ? {
+      ...current,
+      prepared: undefined,
+      configured: prepared.candidate,
+      state: "saved",
+      restart_required: result.restart_required,
+      new_url: result.new_url,
+      error: unconfirmed ? "tls_save_unconfirmed" : undefined,
+    } : current);
+    if (unconfirmed) {
+      setDraft(null);
+      await checkPublishedSave();
     }
   }
 
@@ -230,20 +260,30 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
   return (
     <Sheet open onClose={close} title={subscription ? endpoint.subscriptionTitle : copy.formTitle} eyebrow={copy.formEyebrow} subtitle={subscription ? endpoint.subscriptionNote : copy.formSubtitle} placement="form" bodyClassName="px-4 py-4 sm:px-5">
       {query.isError && !settings ? (
-        <p role="alert" className="text-sm text-error-text">{copy.unavailable}</p>
+        <p role="alert" className="text-sm text-error">{copy.unavailable}</p>
       ) : query.isPending || !draft || !settings ? <Skeleton className="h-40" /> : (
         <div className="space-y-4">
           <section className="rounded-xl border border-border bg-surface-2/70 p-3 text-sm">
-            <p className="font-semibold text-text">{copy.activeNow}: {subscription && !settings.active.enabled ? endpoint.disabled : candidateMode(settings.active, subscription ? "http:" : window.location.protocol, copy.accessModes)}</p>
-            <p className="mt-1 break-all font-mono text-xs text-text-muted">{settings.active.listen}</p>
+            <p className="font-semibold text-text">{copy.activeNow}: {modeLabel(settings.active)}</p>
+            {(!subscription || settings.active.enabled) && <p className="mt-1 break-all font-mono text-xs text-text-muted">{settings.active.listen}</p>}
             {settings.configured && JSON.stringify(settings.configured) !== JSON.stringify(settings.active) && (
-              <p className="mt-2 text-text-muted">{copy.configured}: {candidateMode(settings.configured, window.location.protocol, copy.accessModes)} · {settings.configured.listen}</p>
+              <p className="mt-2 text-text-muted">{copy.configured}: {modeLabel(settings.configured)}{(!subscription || settings.configured.enabled) && ` · ${settings.configured.listen}`}</p>
             )}
-            {(settings.state === "restart_failed" || settings.error === "tls_restart_failed") && <p className="mt-2 text-error-text">{copy.restartFailedState}</p>}
+            {(settings.state === "restart_failed" || settings.error === "tls_restart_failed") && <p className="mt-2 text-error">{copy.restartFailedState}</p>}
           </section>
 
-          {!settings.capabilities.prepare ? (
-            <section className="rounded-xl border border-warning/30 bg-warning/8 p-3 text-sm text-text-muted">
+          {(publishedSave || settings.error === "tls_save_unconfirmed") && (
+            <div className="space-y-2">
+              <p role="alert" className="rounded-xl border border-warn/30 bg-warn/8 p-3 text-sm text-warn">{strings.errors.tls_save_unconfirmed}</p>
+              {publishedSave === "checking" && <p role="status" className="text-meta text-text-muted">{strings.common.loading}</p>}
+              {saveReadFailed && publishedSave !== "checking" && <>
+                <p role="alert" className="text-sm text-error">{copy.unavailable}</p>
+                <Button variant="secondary" onClick={() => void checkPublishedSave()}>{strings.server.config.checkWrite}</Button>
+              </>}
+            </div>
+          )}
+          {awaitingSaveState ? null : !settings.capabilities.prepare ? (
+            <section className="rounded-xl border border-warn/30 bg-warn/8 p-3 text-sm text-text-muted">
               <h3 className="font-semibold text-text">{copy.manualTitle}</h3>
               <p className="mt-1">{copy.manualDescription}</p>
               {settings.manual_hints.includes("edit_startup_config_manually") && (
@@ -261,6 +301,7 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
             <form className="space-y-4" onSubmit={onPrepare} noValidate>
               <fieldset disabled={prepare.isPending} className="min-w-0 space-y-4">
               {subscription && <label className="flex min-h-11 items-center gap-3 rounded-xl bg-surface-2 p-3 text-sm font-semibold"><input type="checkbox" checked={draft.enabled ?? false} onChange={(event) => edit({ enabled: event.target.checked })} className="h-5 w-5 accent-accent" />{endpoint.enable}</label>}
+              {(!subscription || draft.enabled) && <>
               <div className="space-y-3 rounded-xl border border-border p-3">
                 <label className="block text-sm font-medium">{endpoint.publicURL}<Input className="mt-1.5" value={draft.publicURL ?? ""} placeholder={subscription ? "https://links.example.com/access-7k2/" : "https://admin.example.com/admin-9r4/"} autoCapitalize="none" autoCorrect="off" onChange={(event) => edit({ publicURL: event.target.value })} onBlur={() => {
                   edit(splitAccessURL(draft.publicURL ?? "", draft.basePath ?? ""));
@@ -299,11 +340,12 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
                 </details>
               </div>
 
-              {networkWarnings.length > 0 && <section className="rounded-xl border border-warning/30 bg-warning/8 px-3 py-2.5 text-sm text-warning-text" data-network-warnings><h3 className="font-semibold text-text">{copy.networkWarnings}</h3><ul className="mt-1.5 space-y-1">{networkWarnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul></section>}
+              {networkWarnings.length > 0 && <section className="rounded-xl border border-warn/30 bg-warn/8 px-3 py-2.5 text-sm text-warn" data-network-warnings><h3 className="font-semibold text-text">{copy.networkWarnings}</h3><ul className="mt-1.5 space-y-1">{networkWarnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul></section>}
               {draft.mode === "acme" && <div className="rounded-xl border border-accent/20 bg-accent/8 px-3 py-2.5 text-sm text-text-muted"><p>{copy.acmeActionNotice}</p><a className="mt-2 inline-block font-semibold text-accent underline underline-offset-2" href="https://letsencrypt.org/repository/" target="_blank" rel="noreferrer">{copy.acmeTerms}</a></div>}
-              {requiresHttpConfirmation && <label className="flex min-h-11 items-start gap-3 rounded-xl border border-warning/30 bg-warning/8 px-3 py-2.5 text-sm text-warning-text"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-accent" checked={draft.httpConfirmed} onChange={(event) => edit({ httpConfirmed: event.target.checked })} /><span>{subscription ? endpoint.httpWarning : copy.httpConfirmation}</span></label>}
+              {requiresHttpConfirmation && <label className="flex min-h-11 items-start gap-3 rounded-xl border border-warn/30 bg-warn/8 px-3 py-2.5 text-sm text-warn"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-accent" checked={draft.httpConfirmed} onChange={(event) => edit({ httpConfirmed: event.target.checked })} /><span>{subscription ? endpoint.httpWarning : copy.httpConfirmation}</span></label>}
               {draft.mode === "proxy" && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-text-muted">{copy.proxyConfigurationNote}</p>}
               {(draft.mode === "acme" || draft.mode === "certificate") && isLoopbackHost(draft.host) && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-text-muted">{copy.loopbackHttpsNote}</p>}
+              </>}
               {formError && <FormErrorBlock error={formError} />}
               <Button className="w-full" type="submit" disabled={prepare.isPending}>{prepare.isPending ? copy.preparing : draft.mode === "acme" && (!subscription || draft.enabled) ? copy.prepareAcme : copy.prepare}</Button>
               </fieldset>
@@ -311,9 +353,14 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
           )}
 
           {prepared && !saved && (
-            <section className="space-y-3 rounded-xl border border-success/25 bg-success/6 p-3 text-sm text-text-muted">
-              <div><h3 className="font-semibold text-text">{copy.preparedTitle}</h3><p className="mt-1">{copy.preparedNote}</p></div>
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-text-faint">{copy.newAddress}</p>{!subscription && safePanelDestination(prepared.new_url, draft.mode) ? <a className="mt-1 block break-all font-mono text-sm text-accent underline underline-offset-2" href={safePanelDestination(prepared.new_url, draft.mode)}>{prepared.new_url}</a> : <p className="mt-1 break-all font-mono text-sm text-text">{subscription ? prepared.new_url + "<token>" : draft.mode === "proxy" ? copy.externalProxyOwned : prepared.new_url}</p>}</div>
+            <section className="space-y-3 rounded-xl border border-ok/25 bg-ok/6 p-3 text-sm text-text-muted">
+              <div><h3 className="font-semibold text-text">{copy.preparedTitle}</h3><p className="mt-1">{disablingPrepared ? endpoint.prepareDisable : copy.preparedNote}</p></div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-faint">{disablingPrepared ? endpoint.retainedAddress : copy.newAddress}</p>
+                {!subscription && safePanelDestination(prepared.new_url, draft.mode)
+                  ? <a className="mt-1 block break-all font-mono text-sm text-accent underline underline-offset-2" href={safePanelDestination(prepared.new_url, draft.mode)}>{prepared.new_url}</a>
+                  : <p className="mt-1 break-all font-mono text-sm text-text">{subscription ? prepared.new_url + (disablingPrepared ? "" : "<token>") : draft.mode === "proxy" ? copy.externalProxyOwned : prepared.new_url}</p>}
+              </div>
               {prepared.certificate && (
                 <div className="rounded-lg bg-surface-2 p-2.5">
                   <p className="font-semibold text-text">{copy.certificateVerified}</p>
@@ -323,7 +370,7 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
                 </div>
               )}
               <ul className="space-y-1.5">{prepared.warnings.map((warning) => <li key={warning}>• {warningLabels[warning]}</li>)}</ul>
-              {!prepared.warnings.includes("public_reachability_unverified") && <p>{copy.certificateCheckNote}</p>}
+              {!disablingPrepared && !prepared.warnings.includes("public_reachability_unverified") && <p>{copy.certificateCheckNote}</p>}
               {prepared.warnings.includes("toml_formatting") ? <p>{copy.restartSeparate}</p> : <p>{copy.saveDisclosure}</p>}
               {formError && <FormErrorBlock error={formError} />}
               <div className="grid gap-2 sm:grid-cols-2">
@@ -333,14 +380,18 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
             </section>
           )}
 
-          {saved && (
+          {saved && !awaitingSaveState && (
             <section className="space-y-3 rounded-xl border border-accent/25 bg-accent/8 p-3 text-sm text-text-muted">
-              <div><h3 className="font-semibold text-text">{copy.savedPending}</h3><p className="mt-1">{copy.savedPendingNote}</p></div>
-              <p className="font-medium text-text">{copy.activeNow}: {candidateMode(settings.active, window.location.protocol, copy.accessModes)}</p>
-              {destination && !subscription ? <a className="block break-all font-mono text-sm text-accent underline underline-offset-2" href={destination}>{saved.new_url}</a> : <p>{subscription ? saved.new_url + "<token>" : draft.mode === "proxy" ? copy.externalProxyOwned : saved.new_url}</p>}
-              {restartUnconfirmed && <p role="status" className="rounded-lg border border-warning/30 bg-warning/8 p-2.5 text-warning-text">{copy.restartDisconnect}</p>}
+              <div><h3 className="font-semibold text-text">{copy.savedPending}</h3><p className="mt-1">{disablingSaved ? endpoint.savedDisable : copy.savedPendingNote}</p></div>
+              <p className="font-medium text-text">{copy.activeNow}: {modeLabel(settings.active)}</p>
+              {disablingSaved ? <div>
+                <p className="text-xs font-semibold text-text-faint">{endpoint.retainedAddress}</p>
+                <p className="break-all font-mono text-sm text-text">{saved.new_url}</p>
+              </div> : destination && !subscription ? <a className="block break-all font-mono text-sm text-accent underline underline-offset-2" href={destination}>{saved.new_url}</a>
+                : (!subscription || settings.configured) && <p>{subscription ? saved.new_url + "<token>" : draft.mode === "proxy" ? copy.externalProxyOwned : saved.new_url}</p>}
+              {restartUnconfirmed && <p role="status" className="rounded-lg border border-warn/30 bg-warn/8 p-2.5 text-warn">{disablingSaved ? endpoint.checkDisable : copy.restartDisconnect}</p>}
               {formError && <FormErrorBlock error={formError} />}
-              {restartRequested ? <p role="status" className="rounded-lg bg-surface-2 p-2.5 text-text">{copy.restartRequested}</p> : settings.capabilities.restart ? <Button className="w-full" type="button" onClick={onRestart} disabled={restart.isPending}>{restart.isPending ? copy.restarting : copy.restart}</Button> : <div><p>{copy.restartManually}</p><p className="mt-1 break-all rounded-lg bg-bg/60 p-2 font-mono text-xs text-text">{settings.manual_restart_command}</p></div>}
+              {restartRequested ? <p role="status" className="rounded-lg bg-surface-2 p-2.5 text-text">{disablingSaved ? endpoint.checkDisable : copy.restartRequested}</p> : settings.capabilities.restart ? <Button className="w-full" type="button" onClick={onRestart} disabled={restart.isPending}>{restart.isPending ? copy.restarting : copy.restart}</Button> : <div><p>{copy.restartManually}</p><p className="mt-1 break-all rounded-lg bg-bg/60 p-2 font-mono text-xs text-text">{settings.manual_restart_command}</p></div>}
             </section>
           )}
         </div>

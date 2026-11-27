@@ -20,7 +20,7 @@ export type FilterValue = string | boolean | string[];
 
 export const WEB_FILTER_CARRIER = "web.carrier";
 export const WEB_FILTER_STATE = "web.state";
-export const WEB_FILTER_USER = "web.user";
+const WEB_FILTER_USER = "web.user";
 
 // The WEB Details page's payload adapter (M4 task 8b).
 //
@@ -97,27 +97,6 @@ export interface WebPagePayload extends Pick<WebStatus,
   effective_config_enabled: boolean;
   runtime?: WebPageRuntime | null;
   sessions?: WebPageSessions;
-}
-
-/** The six planes, in Telemt's own `partial[]` order. */
-export const WEB_PLANES = [
-  "manager",
-  "streams",
-  "budget",
-  "websockets",
-  "learning",
-  "debug",
-] as const;
-
-export type WebPlane = (typeof WEB_PLANES)[number];
-
-/**
- * True when this plane's lock was contended for the poll on screen. Read off
- * `partial[]` rather than off the plane being null, because those are two
- * halves of the same signal and only the list is authoritative about WHY.
- */
-export function isWebPlaneBusy(payload: WebPagePayload | null, plane: WebPlane): boolean {
-  return payload?.runtime?.partial?.includes(plane) ?? false;
 }
 
 function permitRows(
@@ -225,7 +204,7 @@ export type CloseIntent =
  * a filter selector exists at all before it can decide that the filter and
  * the visible set are the same thing.
  */
-export function webFilterSelector(filters: Record<string, FilterValue>): WebCloseSelector | null {
+function webFilterSelector(filters: Record<string, FilterValue>): WebCloseSelector | null {
   const carrier = filters[WEB_FILTER_CARRIER];
   const state = filters[WEB_FILTER_STATE];
   const user = filters[WEB_FILTER_USER];

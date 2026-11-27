@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getUserIpHistoryOptions } from "../lib/api/generated/@tanstack/react-query.gen";
 import type { UserIpHistory } from "../lib/api/generated/types.gen";
@@ -6,6 +6,7 @@ import { fill, localeOf, useStrings } from "../i18n";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
+import { useDebouncedValue } from "./useDebouncedValue";
 import { useNow } from "./useNow";
 import { withBasePath } from "../lib/base-path";
 import { IPGeography } from "./IPGeography";
@@ -42,10 +43,16 @@ function HistoryContent({ username }: { username: string }) {
   const client = useQueryClient();
   const now = useNow(1000);
   const [filters, setFilters] = useState({ range: "30d" as Range, family: "all" as Family, q: "" });
+  const search = useDebouncedValue(filters.q, 250);
+  const dates = useMemo(() => ({
+    date: new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }),
+    time: new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }),
+    full: new Intl.DateTimeFormat(locale, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }),
+  }), [locale]);
   const [cursors, setCursors] = useState([""]);
   const cursor = cursors[cursors.length - 1];
   const query = useQuery({
-    ...getUserIpHistoryOptions({ path: { username }, query: { ...filters, limit: PAGE_SIZE, cursor } }),
+    ...getUserIpHistoryOptions({ path: { username }, query: { ...filters, q: search, limit: PAGE_SIZE, cursor } }),
     // Do not shuffle later pages under the reader while they inspect history.
     refetchInterval: cursor ? false : 15_000,
     staleTime: 10_000,
@@ -64,7 +71,7 @@ function HistoryContent({ username }: { username: string }) {
   function refresh() {
     setCursors([""]);
     void client.invalidateQueries({
-      queryKey: getUserIpHistoryOptions({ path: { username }, query: { ...filters, limit: PAGE_SIZE, cursor: "" } }).queryKey,
+      queryKey: getUserIpHistoryOptions({ path: { username }, query: { ...filters, q: search, limit: PAGE_SIZE, cursor: "" } }).queryKey,
       exact: true,
     });
   }
@@ -72,9 +79,9 @@ function HistoryContent({ username }: { username: string }) {
   const date = (timestamp: number, label: string) => {
     const value = new Date(timestamp * 1000);
     return <div className="person-ip-date"><span className="person-ip-mobile-label">{label}</span>
-      <time dateTime={value.toISOString()} title={value.toLocaleString(locale)}>
-        {new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(value)}
-        <small>{new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(value)}</small>
+      <time dateTime={value.toISOString()} title={dates.full.format(value)}>
+        {dates.date.format(value)}
+        <small>{dates.time.format(value)}</small>
       </time></div>;
   };
   const notes: string[] = [];

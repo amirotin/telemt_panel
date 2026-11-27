@@ -140,6 +140,45 @@ type forwardingRunner struct {
 	runner host.Runner
 }
 
+type recoveryContextRunner struct{ workerFixtureRunner }
+
+func (r recoveryContextRunner) Run(ctx context.Context, op host.Op) (host.Output, error) {
+	if err := ctx.Err(); err != nil {
+		return host.Output{}, err
+	}
+	if op.Kind == host.OpRestoreBinary {
+		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 3*time.Minute {
+			return host.Output{}, errors.New("rollback has no bounded deadline")
+		}
+	}
+	return r.workerFixtureRunner.Run(ctx, op)
+}
+
+func TestInProcessRollbackRestoresAfterCancellation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "telemt")
+	if err := os.WriteFile(path, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := newFakeReleaseServer(t)
+	setupHappyRelease(fixture, TargetTelemt, buildTarGz(t, "telemt", []byte("candidate")))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	target := &fakeTarget{name: TargetTelemt, repo: "owner/repo", binaryPath: path, serviceName: "telemt", version: "v1.0.0",
+		postRestart: func(ctx context.Context) error { cancel(); return ctx.Err() }}
+	engine, st := newTestEngine(t, fixture, recoveryContextRunner{}, map[string]Target{TargetTelemt: target}, nil)
+	if err := engine.Apply(ctx, TargetTelemt, "v2.0.0"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("apply returned %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "old" {
+		t.Fatalf("installed binary after rollback: %q, %v", content, err)
+	}
+	entries, err := st.ListUpdateJournal(TargetTelemt, 1)
+	if err != nil || len(entries) != 1 || entries[0].Phase != PhaseRolledBack {
+		t.Fatalf("rollback journal=%v, %v", entries, err)
+	}
+}
+
 func (r *forwardingRunner) Run(ctx context.Context, op host.Op) (host.Output, error) {
 	if r.runner == nil {
 		return host.Output{}, errors.New("forwarding runner is not initialized")
@@ -147,35 +186,7 @@ func (r *forwardingRunner) Run(ctx context.Context, op host.Op) (host.Output, er
 	return r.runner.Run(ctx, op)
 }
 
-func filesystemCmdRunner(restarts *[]string) host.CmdRunner {
-	return func(_ context.Context, name string, args ...string) ([]byte, []byte, error) {
-		switch name {
-		case "cp":
-			data, err := os.ReadFile(args[1])
-			if err != nil {
-				return nil, nil, err
-			}
-			return nil, nil, os.WriteFile(args[2], data, 0o755)
-		case "chmod":
-			return nil, nil, os.Chmod(args[1], 0o755)
-		case "mv":
-			return nil, nil, os.Rename(args[1], args[2])
-		case "rm":
-			err := os.Remove(args[1])
-			if os.IsNotExist(err) {
-				err = nil
-			}
-			return nil, nil, err
-		case "systemctl":
-			*restarts = append(*restarts, args[1])
-			return nil, nil, nil
-		default:
-			return nil, nil, errors.New("unexpected command: " + name)
-		}
-	}
-}
-
-func TestApply_LegacySudoersMigrationBridgePreservesRollback(t *testing.T) {
+func TestApply_CommandSudoRunnerPreservesRollback(t *testing.T) {
 	dir := t.TempDir()
 	binaryPath := filepath.Join(dir, "bin", "telemt")
 	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
@@ -200,8 +211,15 @@ func TestApply_LegacySudoersMigrationBridgePreservesRollback(t *testing.T) {
 		Services:      []string{"telemt"},
 	}
 	var restarts []string
-	cmdRun := filesystemCmdRunner(&restarts)
-	forward.runner = host.NewLegacySudoRunner(allow, host.NewServiceManager(host.KindSystemd, host.Probe{}, cmdRun), nil, cmdRun)
+	cmdRun := func(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+		if name == "systemctl" {
+			restarts = append(restarts, args[1])
+			return nil, nil, nil
+		}
+		return host.OSCmdRunner(ctx, name, args...)
+	}
+	allow.TargetBinaries = map[string]string{TargetTelemt: binaryPath}
+	forward.runner = host.NewCommandSudoRunner(allow, host.NewServiceManager(host.KindSystemd, host.Probe{}, cmdRun), nil, cmdRun, host.OSStdinCmdRunner)
 
 	err := e.Apply(context.Background(), TargetTelemt, "v2.0.0")
 	if err == nil || !strings.Contains(err.Error(), "rolled back") {
@@ -224,8 +242,8 @@ func TestApply_LegacySudoersMigrationBridgePreservesRollback(t *testing.T) {
 	if _, statErr := os.Stat(StagingRunDir(e.stagingDir, TargetTelemt)); !os.IsNotExist(statErr) {
 		t.Fatalf("run staging was not cleaned: %v", statErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(e.stagingDir, "telemt")); !os.IsNotExist(statErr) {
-		t.Fatalf("legacy install source was not cleaned: %v", statErr)
+	if _, statErr := os.Stat(binaryPath + ".tmp"); !os.IsNotExist(statErr) {
+		t.Fatalf("temporary executable was not cleaned: %v", statErr)
 	}
 }
 

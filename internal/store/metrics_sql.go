@@ -133,10 +133,9 @@ func (s *SQLite) pruneUserTrafficBatch(now time.Time, limit int) (int, error) {
 	}
 	policy := s.policy(StorageUserTraffic)
 	retention := retentionDuration(policy)
-	rows, err := s.queryContext(ctx, `SELECT user_id, tier, ts FROM user_traffic_buckets
-		WHERE (tier = 0 AND ts < ?)
-		   OR (tier = 1 AND ts < ?)
-		   OR (tier = 2 AND ts < ?)
+	rows, err := s.queryContext(ctx, `SELECT user_id, tier, ts FROM user_traffic_buckets WHERE tier = 0 AND ts < ?
+        UNION ALL SELECT user_id, tier, ts FROM user_traffic_buckets WHERE tier = 1 AND ts < ?
+        UNION ALL SELECT user_id, tier, ts FROM user_traffic_buckets WHERE tier = 2 AND ts < ?
 		ORDER BY ts LIMIT ?`,
 		now.Add(-min(userTrafficFineRetention, retention)).Unix(),
 		now.Add(-min(30*24*time.Hour, retention)).Unix(),
@@ -188,24 +187,34 @@ func (s *SQLite) pruneMetricBatch(now time.Time, limit int) (int, error) {
 	if limit <= 0 {
 		return 0, nil
 	}
-	conditions := []string{"(tier = ? AND ts < ?)", "(tier = ? AND ts < ?)", "(tier = ? AND ts < ?)"}
-	args := []any{
-		metricTierRawSQL, now.Add(-metricRawRetention).Unix(),
-		string(MetricTierMinute), now.Add(-metricMinuteRetention).Unix(),
-		string(MetricTierFive), now.Add(-7 * 24 * time.Hour).Unix(),
+	// Each index range is ordered by timestamp. SQLite merges their heads
+	// and stops at the batch limit, including when no range has stale rows.
+	tiers := []struct {
+		tier   MetricTier
+		maxAge time.Duration
+	}{
+		{MetricTierRaw, metricRawRetention}, {MetricTierMinute, metricMinuteRetention},
+		{MetricTierFive, 7 * 24 * time.Hour}, {MetricTierQuarter, 0}, {MetricTierHour, 0},
 	}
+	var queries []string
+	var args []any
 	s.policyMu.RLock()
 	for _, category := range storageCategoryOrder {
 		policy := s.policies[category]
-		if !policy.Enabled {
-			continue
+		for _, tier := range tiers {
+			age := tier.maxAge
+			if policy.Enabled && (age == 0 || retentionDuration(policy) < age) {
+				age = retentionDuration(policy)
+			}
+			if age == 0 {
+				continue
+			}
+			queries = append(queries, "SELECT name, tier, ts FROM metric_points WHERE category = ? AND tier = ? AND ts < ?")
+			args = append(args, category, metricTierSQL(tier.tier), now.Add(-age).Unix())
 		}
-		conditions = append(conditions, "(category = ? AND ts < ?)")
-		args = append(args, category, now.Add(-retentionDuration(policy)).Unix())
 	}
 	s.policyMu.RUnlock()
-	args = append(args, limit)
-	rows, err := s.query(`SELECT name, tier, ts FROM metric_points WHERE `+strings.Join(conditions, " OR ")+` ORDER BY ts LIMIT ?`, args...)
+	rows, err := s.query(strings.Join(queries, " UNION ALL ")+" ORDER BY ts LIMIT ?", append(args, limit)...)
 	if err != nil {
 		return 0, fmt.Errorf("select stale metric history: %w", err)
 	}

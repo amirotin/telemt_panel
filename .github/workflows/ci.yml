@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [ main ]
     paths-ignore: [ 'docs/**' ]
@@ -219,6 +220,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -228,8 +231,8 @@ jobs:
 
       - name: Lint installer
         run: |
-          shellcheck -s sh install.sh scripts/install-test.sh scripts/install-e2e.sh scripts/install-entware-test.sh scripts/install-purge-test.sh scripts/install-migration-test.sh scripts/install-systemd-migration-test.sh scripts/install-legacy-authority-test.sh
-          shellcheck scripts/install-native-upgrade-test.sh
+          shellcheck -s sh install.sh docker/entrypoint.sh scripts/privileged-rehearsal.sh
+          shellcheck scripts/install*.sh
           dash -n install.sh
           bash -n install.sh
 
@@ -244,6 +247,8 @@ jobs:
           TP_TEST_BINARY=$PWD/telemt-panel bash scripts/install-migration-test.sh
           TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-systemd-migration-test.sh
           TP_TEST_BINARY=$PWD/telemt-panel bash scripts/install-systemd-migration-test.sh
+          sh scripts/install-placement-test.sh
+          sh scripts/install-privileged-test.sh
           sh scripts/install-legacy-authority-test.sh
           bash scripts/install-legacy-authority-test.sh
 
@@ -252,6 +257,7 @@ jobs:
       - name: Installer e2e (user namespace)
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sh scripts/privileged-rehearsal.sh "$PWD/telemt-panel"
           TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-e2e.sh
           TP_TEST_BINARY=$PWD/telemt-panel sh scripts/install-purge-test.sh
           TP_TEST_BINARY=$PWD/telemt-panel TP_TEST_SHELL=bash bash scripts/install-purge-test.sh

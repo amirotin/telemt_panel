@@ -287,6 +287,21 @@ func decode(data []byte, path string) (*Config, error) {
 		return nil, fmt.Errorf("host.log_source: unknown value %q (auto | journald | logread | syslog | docker | file)", cfg.Host.LogSource)
 	}
 
+	if cfg.Host.ServiceManager != host.KindCustom && cfg.Host.ServiceManager != host.KindDocker && cfg.Host.ServiceManager != host.KindNone {
+		for _, target := range []struct{ key, name string }{{"telemt_service", cfg.Host.TelemtService}, {"panel_service", cfg.Host.PanelService}} {
+			if target.name != "" && !host.ValidServiceTarget(target.name) {
+				return nil, fmt.Errorf("host.%s: invalid service name", target.key)
+			}
+		}
+	}
+	if cfg.Host.ServiceManager == host.KindDocker || cfg.Host.LogSource == host.LogKindDocker {
+		for _, target := range []struct{ key, name string }{{"telemt_container", cfg.Host.TelemtContainer}, {"panel_container", cfg.Host.PanelContainer}} {
+			if target.name != "" && !host.ValidContainerTarget(target.name) {
+				return nil, fmt.Errorf("host.%s: invalid container name", target.key)
+			}
+		}
+	}
+
 	switch cfg.Privileges.Mode {
 	case "":
 		cfg.Privileges.Mode = "auto"

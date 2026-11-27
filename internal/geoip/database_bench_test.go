@@ -41,7 +41,7 @@ func BenchmarkRecordSchema(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
-				if err := verifyRecordSchema(reader, kind); err != nil {
+				if err := verifyRecordSchema(b.Context(), reader, kind); err != nil {
 					b.Fatal(err)
 				}
 			}

@@ -187,7 +187,7 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 			t.Fatalf("expired challenge error = %v", err)
 		}
 		var firstCapacityChallenge WebAuthnChallenge
-		for i := range webAuthnChallengeLimit {
+		for i := range webAuthnChallengeLimit - 1 {
 			flowHash := fmt.Sprintf("%x", sha256.Sum256([]byte(prefix+"-capacity-"+strconv.Itoa(i))))
 			item := WebAuthnChallenge{
 				FlowHash: flowHash, Kind: "login", SessionData: []byte(`{}`),
@@ -209,6 +209,11 @@ func runStoreContract(t *testing.T, factory storeFactory) Store {
 		}
 		if err := st.PutWebAuthnChallenge(firstCapacityChallenge); err != nil {
 			t.Fatalf("replace challenge at capacity: %v", err)
+		}
+		reserved := firstCapacityChallenge
+		reserved.FlowHash, reserved.Kind = overflowHash, "register"
+		if err := st.PutWebAuthnChallenge(reserved); err != nil {
+			t.Fatalf("registration lost its reserved slot: %v", err)
 		}
 		if err := st.DeleteWebAuthnCredential(credential.ID); err != nil {
 			t.Fatal(err)

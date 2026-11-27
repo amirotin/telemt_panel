@@ -37,8 +37,12 @@ export function BulkQuotaProvider({children}:{children:ReactNode}){
   const status=useQuery({
     ...getBulkQuotaResetOptions({query:{id:tracked,offset}}),retry:false,enabled:!start.isPending,
     refetchInterval:query=>{
-      if(apiErrorCode(query.state.error)==="quota_operation_unavailable")return false;
-      if(query.state.data?.operation?.state==="running"||tracked&&query.state.error)return 2000;
+      if (query.state.error) {
+        const code = apiErrorCode(query.state.error);
+        if ((!tracked && query.state.data?.operation?.state !== "running") || ["quota_operation_unavailable", "bad_request", "session_expired"].includes(code ?? "") || query.state.errorUpdateCount >= 6) return false;
+        return Math.min(30_000, 2_000 * 2 ** query.state.errorUpdateCount);
+      }
+      if(query.state.data?.operation?.state==="running")return 2000;
       return false;
     },
   });

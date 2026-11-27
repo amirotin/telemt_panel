@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { cn } from "../lib/cn";
 import { Skeleton } from "./Skeleton";
 
@@ -22,7 +21,7 @@ export function QR({ value, size = 200, className }: QRProps) {
     // rarely change on a live screen), and this component isn't the
     // place to decide "regenerating" UI — keeping the last frame visible
     // until the new one is ready reads better than a flash to skeleton.
-    QRCode.toString(value, { type: "svg", margin: 1, width: size })
+    import("qrcode").then(({ default: qr }) => qr.toString(value, { type: "svg", margin: 1, width: size }))
       .then((markup) => {
         if (!cancelled) setSvg(markup);
       })

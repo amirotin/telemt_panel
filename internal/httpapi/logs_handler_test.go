@@ -313,6 +313,9 @@ func TestHandleEventsLogs_StreamsAndEndsOnDisconnect(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("content-type = %q, want text/event-stream", ct)
 	}
+	if got := resp.Header.Get("X-Accel-Buffering"); got != "no" {
+		t.Errorf("log SSE buffering header = %q", got)
+	}
 
 	frames := readSSEFrames(resp.Body)
 

@@ -152,6 +152,13 @@ SERVICE_NAME=S99telemt-panel
 SERVICE_FILE="$TMP/S99telemt-panel"
 PID_FILE="$TMP/run/S99telemt-panel.pid"
 LOG_FILE="$TMP/log/telemt-panel.log"
+PANEL_LAUNCH_BIN="$TMP/slow-launcher"
+cat >"$PANEL_LAUNCH_BIN" <<'EOF'
+#!/bin/sh
+sleep 2
+[ "$1" = --recover-only ]
+EOF
+chmod 0755 "$PANEL_LAUNCH_BIN"
 gen_service >"$SERVICE_FILE"
 chmod 0755 "$SERVICE_FILE"
 assert_contains "managed ownership marker" '# telemt-panel managed Entware service' "$SERVICE_FILE"
@@ -291,6 +298,7 @@ INIT=systemd
 SERVICE_MANAGER=custom
 PANEL_SERVICE_SCRIPT="$SERVICE_FILE"
 printf '#!/bin/sh\necho user-owned\n' >"$SERVICE_FILE"
+reinstall_trusted_file() { [ "$1" = "$CONFIG_FILE" ]; }
 validate_retained_service
 assert_eq "generic unmanaged script is not invoked directly" '' "$PANEL_SERVICE_SCRIPT"
 : >"$CALLS"

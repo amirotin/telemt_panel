@@ -238,3 +238,17 @@ it("updates marker sizes for OrbitControls wheel zoom inside the existing schedu
   expect(host.querySelectorAll("canvas")).toHaveLength(0);
   expect(pending.size).toBe(0);
 });
+
+it("keeps existing arc geometry when zooming and skips texture work for unrelated root styles", async () => {
+  const {model, renderer, texture} = start();
+  globe!.update({...model, server:{...model.server, location:{latitude:10,longitude:20,accuracy_radius_km:null}},arcs:[model.points[0]]});
+  const arc = renderer.scene!.children.flatMap(child=>child.children).find(child=>child.type==="Line");
+  expect(arc).toBeDefined();
+  globe!.zoom(1.2);
+  expect(renderer.scene!.children.flatMap(child=>child.children)).toContain(arc);
+  const version = texture.version;
+  document.documentElement.style.setProperty("--unused-style","1");
+  await Promise.resolve();
+  document.documentElement.style.removeProperty("--unused-style");
+  expect(texture.version).toBe(version);
+});

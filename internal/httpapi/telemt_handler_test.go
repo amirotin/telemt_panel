@@ -101,7 +101,7 @@ func TestHandleTelemtInfo_ReachableShapeMatchesOpenapi(t *testing.T) {
 	if got.ConfigEditMode != "file" {
 		t.Errorf("config_edit_mode = %q, want file (from config)", got.ConfigEditMode)
 	}
-	want := telemtCapabilitiesView{Quota: true, RuntimeEdge: true, ReloadAPI: true, ConfigAPI: true, UserEnableDisable: true, RotateSecret: true}
+	want := telemt.Caps{Quota: true, RuntimeEdge: true, ReloadAPI: true, ConfigAPI: true, UserEnableDisable: true, RotateSecret: true}
 	if got.Capabilities != want {
 		t.Errorf("capabilities = %+v, want %+v", got.Capabilities, want)
 	}
@@ -202,7 +202,7 @@ func TestHandleTelemtInfo_UnreachableHintNamesAPI(t *testing.T) {
 			t.Errorf("hint = %q, must not mention files/config paths (that's GET /api/host's territory)", got.Hint)
 		}
 	}
-	if got.Capabilities != (telemtCapabilitiesView{}) {
+	if got.Capabilities != (telemt.Caps{}) {
 		t.Errorf("capabilities = %+v, want the zero value when unreachable", got.Capabilities)
 	}
 }

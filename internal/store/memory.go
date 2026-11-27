@@ -631,13 +631,31 @@ func (m *Memory) ApplyUserTrafficSnapshotContext(parent context.Context, snapsho
 	for username, current := range m.userTraffic {
 		traffic[username] = current
 	}
-	buckets := make(map[memoryUserTrafficBucketKey]int64, len(m.userTrafficBuckets)+len(snapshot.Users))
-	for key, bytes := range m.userTrafficBuckets {
-		buckets[key] = bytes
+	retention := min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic]))
+	cutoff := snapshot.ObservedAt - int64(userTrafficMemoryRetention/time.Second)
+	// A returning name only needs its previous baseline if it still has retained history.
+	var expired map[string]bool
+	for _, user := range snapshot.Users {
+		if expiredTrafficSummary(traffic[user.Username].summary, false, snapshot.ObservedAt, retention) {
+			if expired == nil {
+				expired = make(map[string]bool)
+			}
+			expired[user.Username] = true
+		}
 	}
-	// Expired tombstones must be removed before reappearing names are matched.
-	pruneMemoryUserTrafficBuckets(buckets, snapshot.ObservedAt)
-	pruneMemoryTrafficSummaries(traffic, buckets, snapshot.ObservedAt, min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic])))
+	if len(expired) != 0 {
+		for key := range m.userTrafficBuckets {
+			if key.ts >= cutoff {
+				delete(expired, key.username)
+			}
+		}
+		for username := range expired {
+			delete(traffic, username)
+		}
+	}
+	// Each validated observation updates at most one bucket. Stage those
+	// writes and apply them only after all overflow and cancellation checks.
+	var changedBuckets map[memoryUserTrafficBucketKey]int64
 
 	continuity := nextUserTrafficContinuity(m.userTrafficCollector, m.hasTrafficCollector, snapshot)
 	seen := make(map[string]struct{}, len(snapshot.Users))
@@ -709,10 +727,13 @@ func (m *Memory) ApplyUserTrafficSnapshotContext(parent context.Context, snapsho
 					username: observation.Username,
 					ts:       snapshot.ObservedAt - snapshot.ObservedAt%int64((15*time.Minute)/time.Second),
 				}
-				if delta > math.MaxInt64-buckets[key] {
+				if delta > math.MaxInt64-m.userTrafficBuckets[key] {
 					return UserTrafficApplyResult{}, fmt.Errorf("user %q bucket exceeds int64", observation.Username)
 				}
-				buckets[key] += delta
+				if changedBuckets == nil {
+					changedBuckets = make(map[memoryUserTrafficBucketKey]int64)
+				}
+				changedBuckets[key] = m.userTrafficBuckets[key] + delta
 			}
 		}
 		current.lastRaw = raw
@@ -727,13 +748,15 @@ func (m *Memory) ApplyUserTrafficSnapshotContext(parent context.Context, snapsho
 		current.summary.DeletedEpochSecs = snapshot.ObservedAt
 		traffic[username] = current
 	}
-	pruneMemoryUserTrafficBuckets(buckets, snapshot.ObservedAt)
-	pruneMemoryTrafficSummaries(traffic, buckets, snapshot.ObservedAt, min(userTrafficMemoryRetention, retentionDuration(m.policies[StorageUserTraffic])))
 	if err := ctx.Err(); err != nil {
 		return UserTrafficApplyResult{}, err
 	}
+	for key, value := range changedBuckets {
+		m.userTrafficBuckets[key] = value
+	}
+	pruneMemoryUserTrafficBuckets(m.userTrafficBuckets, snapshot.ObservedAt)
+	pruneMemoryTrafficSummaries(traffic, m.userTrafficBuckets, snapshot.ObservedAt, retention)
 	m.userTraffic = traffic
-	m.userTrafficBuckets = buckets
 	m.userTrafficCollector = UserTrafficCollectorState{
 		LastSuccessTS:   snapshot.ObservedAt,
 		SourceStartedAt: snapshot.SourceStartedAt,
@@ -750,14 +773,23 @@ func (m *Memory) pruneUserTrafficBucketsLocked(now int64) {
 }
 
 func pruneMemoryTrafficSummaries(traffic map[string]memoryUserTraffic, buckets map[memoryUserTrafficBucketKey]int64, now int64, retention time.Duration) {
-	hasBuckets := make(map[string]bool)
-	for key := range buckets {
-		hasBuckets[key.username] = true
-	}
+	var expired map[string]bool
 	for username, current := range traffic {
-		if expiredTrafficSummary(current.summary, hasBuckets[username], now, retention) {
-			delete(traffic, username)
+		if expiredTrafficSummary(current.summary, false, now, retention) {
+			if expired == nil {
+				expired = make(map[string]bool)
+			}
+			expired[username] = true
 		}
+	}
+	if len(expired) == 0 {
+		return
+	}
+	for key := range buckets {
+		delete(expired, key.username)
+	}
+	for username := range expired {
+		delete(traffic, username)
 	}
 }
 
@@ -791,12 +823,22 @@ func pruneMemoryUserTrafficBuckets(buckets map[memoryUserTrafficBucketKey]int64,
 
 // UserTrafficSummaries returns a copy of every process-local account total.
 func (m *Memory) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
-	read, err := m.BeginTrafficRead(context.Background())
-	if err != nil {
+	return m.UserTrafficSummariesContext(context.Background())
+}
+
+// UserTrafficSummariesContext copies only the account totals needed by the users view.
+func (m *Memory) UserTrafficSummariesContext(parent context.Context) (map[string]UserTrafficSummary, error) {
+	ctx, cancel := historyOperationContext(parent)
+	defer cancel()
+	if err := lockHistoryMutex(ctx, &m.mu); err != nil {
 		return nil, err
 	}
-	defer read.Close()
-	return read.Summaries()
+	defer m.mu.Unlock()
+	totals := m.trafficSummariesLocked(time.Now().Unix())
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return totals, nil
 }
 
 // UserTrafficCollectorState returns the last process-local source observation.
@@ -897,6 +939,7 @@ func (m *Memory) ResetUserTrafficContext(parent context.Context) error {
 	clear(m.userTraffic)
 	clear(m.userTrafficBuckets)
 	m.userTrafficCollector = UserTrafficCollectorState{}
+	m.hasTrafficCollector = false
 	return nil
 }
 
@@ -1019,7 +1062,7 @@ func (m *Memory) PurgeHistoryContext(parent context.Context, category StorageCat
 	if category == StorageUserIPHistory {
 		return m.ResetUserIPHistoryContext(ctx, "")
 	}
-	if _, ok := defaultPolicyMap()[category]; !ok {
+	if !category.Valid() {
 		return fmt.Errorf("unknown storage category %q", category)
 	}
 	if category == StorageAudit {

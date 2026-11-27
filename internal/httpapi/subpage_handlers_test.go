@@ -233,6 +233,9 @@ func TestHandleSubpageServesPageForValidToken(t *testing.T) {
 	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
 		t.Errorf("Cache-Control = %q, want private, no-store", got)
 	}
+	if w.Header().Get("X-Frame-Options") != "DENY" || w.Header().Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+		t.Fatal("subscription response lacks document security headers")
+	}
 	if !strings.Contains(w.Body.String(), "alice") {
 		t.Error("expected the page to mention the username")
 	}

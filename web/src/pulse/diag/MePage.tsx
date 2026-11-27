@@ -578,8 +578,8 @@ function WritersPanel({ writers, s }: { writers: MeWriterStatus[]; s: Dict }) {
                 className={cn(
                   "justify-self-end rounded px-1.5 py-0.5 text-micro font-semibold md:justify-self-start",
                   writer.dc !== null && writer.dc < 0
-                    ? "bg-[#9c7fe8]/15 text-[#b9a5f2]"
-                    : "bg-[#58aee8]/15 text-[#7dc5f3]",
+                    ? "bg-[#9c7fe8]/15 text-text"
+                    : "bg-[#58aee8]/15 text-text",
                 )}
               >
                 {writer.dc !== null && writer.dc < 0 ? "Media" : "RPC"} {signedDc(writer.dc)}
@@ -714,10 +714,10 @@ function RttChart({ rows, s }: { rows: RuntimeMeQualityDcRtt[]; s: Dict }) {
       </div>
       <div className="ml-9 mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-micro text-text-muted">
         <span>
-          <b className="text-[#58aee8]">RPC</b> +N
+          <b className="border-l-4 border-[#58aee8] pl-1 text-text">RPC</b> +N
         </span>
         <span>
-          <b className="text-[#9c7fe8]">Media</b> −N
+          <b className="border-l-4 border-[#9c7fe8] pl-1 text-text">Media</b> −N
         </span>
         <span>{v.rttEma}</span>
       </div>
@@ -843,7 +843,7 @@ export function MePage() {
   const runtime = useSnapshot<RuntimeTopic>("runtime");
   const navigate = useNavigate();
   const s = useStrings();
-  const nowMs = useNow(1_000);
+  const nowMs = useNow();
   const [tab, setTab] = useState<MeTab>("overview");
 
   const meWriters = upstreams.data?.me_writers ?? null;
@@ -996,7 +996,7 @@ export function MePage() {
                 />
               )}
               {tab === "initialization" && (
-                <InitializationPanel initialization={initialization} nowMs={nowMs} s={s} />
+                <InitializationPanel initialization={initialization} s={s} />
               )}
               {tab === "runtime" && (
                 <RuntimePanel

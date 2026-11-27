@@ -10,7 +10,7 @@ if [ "${1:-}" = --check ]; then
   exit 0
 fi
 BIN=${1:?provide a current static release binary}
-BIN=$(CDPATH= cd -- "$(dirname "$BIN")" && pwd)/$(basename "$BIN")
+BIN=$(CDPATH="" cd -- "$(dirname "$BIN")" && pwd)/$(basename "$BIN")
 "$BIN" version
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT INT TERM

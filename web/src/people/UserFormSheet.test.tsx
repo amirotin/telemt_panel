@@ -341,3 +341,12 @@ it.each(["retained orphan rules", "new deny rules", "legacy"] as const)("shows r
   expect(link?.textContent).toBe(ru.accessPolicy.reloadLink);
  }
 });
+
+it("releases the dirty blocker when the rendered user disappears", async () => {
+  const onDirtyChange=vi.fn();
+  await render("3.5.8", {}, "edit", {onDirtyChange});
+  await enter(formInput(ru.people.form.maxConnections), "41");
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  act(()=>root.render(null));
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+});

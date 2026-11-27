@@ -1,9 +1,13 @@
 package host
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -52,5 +56,36 @@ func TestOSCmdRunner_DoesNotWaitForInheritedDaemonPipes(t *testing.T) {
 	_, _, err := OSCmdRunner(ctx, "/bin/sh", "-c", "sleep 3 &")
 	if !errors.Is(err, exec.ErrWaitDelay) && !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected a bounded output-wait error, got %v", err)
+	}
+}
+
+func TestCommandStreamCloseStopsQuietProcess(t *testing.T) {
+	stream, err := OSProcessStarter(t.Context(), "/bin/sh", "-c", "echo $$; exec sleep 30")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	var pid int
+	if _, err := fmt.Fscan(bufio.NewReader(stream), &pid); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+			return
+		}
+		time.Sleep(time.Millisecond * 5)
+	}
+	t.Fatal("quiet streaming process survived reader Close")
+}
+
+func TestLogTailKeepsRowsAfterOversizedRecord(t *testing.T) {
+	raw := []byte(strings.Repeat("x", 1<<20+1) + "\n" + `{"MESSAGE":"after"}` + "\n")
+	lines := parseJournaldLines(raw)
+	if len(lines) != 1 || lines[0].Msg != "after" {
+		t.Fatalf("tail lost following record: %v", lines)
 	}
 }

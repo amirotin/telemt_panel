@@ -120,6 +120,9 @@ mode = "http"
 # stop = ["/opt/etc/init.d/S99telemt", "stop"]
 # restart = ["/opt/etc/init.d/S99telemt", "restart"]
 # [host.commands.panel]
+# An independent worker also uses start and stop when updating the panel.
+# start = ["/opt/etc/init.d/S99telemt-panel", "start"]
+# stop = ["/opt/etc/init.d/S99telemt-panel", "stop"]
 # restart = ["/opt/etc/init.d/S99telemt-panel", "restart"]
 
 [privileges]
@@ -146,3 +149,6 @@ mode = "http"
 # Installed binary paths that updates replace.
 # telemt_binary_path = "/bin/telemt"
 # panel_binary_path = "/usr/local/bin/telemt-panel"
+# Durable update journal and recovery data. Defaults to data_dir/updater.
+# Managed OpenWrt installations use the updater directory inside TP_CONFIG_DIR.
+# worker_state_dir = ""

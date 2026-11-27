@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getHealth, getUpdates } from "../../lib/api/generated/sdk.gen";
 import { getUpdatesQueryKey } from "../../lib/api/generated/@tanstack/react-query.gen";
 import type { UpdateRun } from "../../lib/api/generated/types.gen";
-import { restartWatchDecision, type RestartWatchStatus } from "./restartWatch.helpers";
+import { RESTART_WATCH_TIMEOUT_MS, restartWatchDecision, type RestartWatchStatus } from "./restartWatch.helpers";
 
 const HEALTH_POLL_MS = 2000;
 const JOURNAL_POLL_MS = 3000;
@@ -26,33 +26,35 @@ interface Watch {
 // must also be refreshed after activation before they affect the decision.
 export function usePanelRestartWatch(active: boolean, runID: string, expectedVersion: string): PanelRestartWatchResult {
   const queryClient = useQueryClient();
+  const key = active ? `${runID}\0${expectedVersion}` : null;
+  const [watch, setWatch] = useState<Watch | null>(null);
+  const timedOut = watch !== null && watch.key === key && watch.ticks * HEALTH_POLL_MS >= RESTART_WATCH_TIMEOUT_MS;
+  const polling = active && !timedOut;
   const healthQuery = useQuery({
     queryKey: ["panel-restart-health", runID, expectedVersion],
     queryFn: async ({ signal }) => (await getHealth({ signal, throwOnError: true, cache: "no-store" })).data,
-    enabled: active,
+    enabled: polling,
     retry: false,
     staleTime: 0,
-    refetchInterval: active ? HEALTH_POLL_MS : false,
+    refetchInterval: polling ? HEALTH_POLL_MS : false,
   });
   const updatesQuery = useQuery({
     queryKey: ["panel-restart-updates", runID, expectedVersion],
     queryFn: async ({ signal }) => (await getUpdates({ signal, throwOnError: true, cache: "no-store" })).data,
-    enabled: active,
+    enabled: polling,
     retry: false,
     staleTime: 0,
-    refetchInterval: active ? JOURNAL_POLL_MS : false,
+    refetchInterval: polling ? JOURNAL_POLL_MS : false,
   });
-  const key = active ? `${runID}\0${expectedVersion}` : null;
-  const [watch, setWatch] = useState<Watch | null>(null);
   if (watch?.key !== key && (watch !== null || key !== null)) {
     setWatch(key === null ? null : { key, ticks: 0, healthUpdatedAt: healthQuery.dataUpdatedAt, updatesUpdatedAt: updatesQuery.dataUpdatedAt });
   }
 
   useEffect(() => {
-    if (key === null) return;
+    if (key === null || !polling) return;
     const id = setInterval(() => setWatch((current) => current?.key === key ? { ...current, ticks: current.ticks + 1 } : current), HEALTH_POLL_MS);
     return () => clearInterval(id);
-  }, [key]);
+  }, [key, polling]);
 
   const updatesFresh = watch?.key === key && updatesQuery.isSuccess && updatesQuery.dataUpdatedAt > watch.updatesUpdatedAt;
   useEffect(() => {

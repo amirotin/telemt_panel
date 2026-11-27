@@ -51,7 +51,7 @@ export function PersonDetail({username,tab="overview"}:{username:string;tab?:Per
           {tab==="access"&&<div className="user-detail-grid"><div className="user-detail-main"><ConnectionLinks user={user}/><section className="user-section"><h2>{t.subscription}</h2><SublinkPanel username={username}/></section></div><section className="user-section"><WebAccessPanel username={username} readOnly={access.readOnly||topic.stale}/></section></div>}
           {tab==="ips"&&<section className="user-section"><PersonIPHistory username={username}/></section>}
           {tab==="settings"&&<><p className="user-note">{access.readOnly?t.readOnly:""}</p><UserFormSheet inline open mode="edit" user={user} disabled={access.readOnly||topic.stale} onDirtyChange={setDirty} onClose={()=>select("overview")}/></>}
-          <UserActionSheet key={intent??"closed"} open={intent!==null} intent={intent??"menu"} user={user} readOnly={access.readOnly||topic.stale} onClose={()=>setIntent(null)} onEdit={()=>select("settings")} onOpenPerson={()=>select("overview")} onOpenAccess={()=>select("access")} onDeleted={()=>void navigate({to:"/people"})}/>
+          <UserActionSheet key={intent??"closed"} open={intent!==null} intent={intent??"menu"} user={user} readOnly={access.readOnly||topic.stale} onClose={()=>setIntent(null)} onEdit={()=>select("settings")} onOpenPerson={()=>select("overview")} onOpenAccess={()=>select("access")} onDeleted={()=>{setDirty(false);void navigate({to:"/people"});}}/>
         </>;
       }}
     </AsyncState>

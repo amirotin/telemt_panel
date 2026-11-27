@@ -18,12 +18,8 @@ import type {
   Gated,
   MeWriterStatus,
   RuntimeMeSelftest,
-  RuntimeNatStun,
 } from "../../realtime/topics";
-import type { TlsFingerprintRow } from "../../lib/api/generated/types.gen";
 import { dcs, meWriters } from "./stats";
-import { natStunLive0, natStunLive10 } from "./runtime";
-import { tlsFingerprints } from "./security";
 
 /** The four states any optional array can arrive in. */
 export type ArrayVariant = "absent" | "empty" | "one" | "many";
@@ -33,7 +29,7 @@ export const arrayVariants: readonly ArrayVariant[] = ["absent", "empty", "one",
 // arrayVariant projects a full list onto one variant. `absent` is
 // `undefined` — the caller deletes the key rather than assigning it, which
 // is the only way to reproduce Go's omitempty on the wire.
-export function arrayVariant<T>(items: readonly T[], variant: ArrayVariant): T[] | undefined {
+function arrayVariant<T>(items: readonly T[], variant: ArrayVariant): T[] | undefined {
   switch (variant) {
     case "absent":
       return undefined;
@@ -48,7 +44,7 @@ export function arrayVariant<T>(items: readonly T[], variant: ArrayVariant): T[]
 
 // withArrayVariant returns a copy of `base` with one array-valued key set
 // to the requested variant, deleting the key outright for `absent`.
-export function withArrayVariant<T extends object, K extends keyof T>(
+function withArrayVariant<T extends object, K extends keyof T>(
   base: T,
   key: K,
   variant: ArrayVariant,
@@ -69,7 +65,7 @@ export function withArrayVariant<T extends object, K extends keyof T>(
 
 // allArrayVariants builds the whole four-way matrix for one key in one
 // call — how a test enumerates the cases instead of naming them.
-export function allArrayVariants<T extends object, K extends keyof T>(
+function allArrayVariants<T extends object, K extends keyof T>(
   base: T,
   key: K,
   items: readonly unknown[],
@@ -98,30 +94,6 @@ export function gatedUnavailable<T>(): Gated<T> {
 
 /** `endpoints[]` on a DC — 1..10 in production, all four variants here. */
 export const dcEndpointVariants = allArrayVariants(dcs.dcs[0], "endpoints", dcs.dcs[11].endpoints);
-
-/** `endpoint_writers[]` on a DC. */
-export const dcEndpointWriterVariants = allArrayVariants(
-  dcs.dcs[0],
-  "endpoint_writers",
-  dcs.dcs[0].endpoint_writers,
-);
-
-/** `writers[]` on the ME writers payload — empty pool vs 46. */
-export const meWriterVariants = allArrayVariants(meWriters, "writers", meWriters.writers);
-
-/** `by_fingerprint[]` on the TLS payload — 0, 1 and 50 records. */
-export const tlsByFingerprintVariants = allArrayVariants(
-  tlsFingerprints,
-  "by_fingerprint",
-  tlsFingerprints.by_fingerprint,
-);
-
-/** `live[]` STUN servers — the 0-live production case is the `empty` one. */
-export const stunLiveVariants = allArrayVariants(
-  natStunLive10.servers,
-  "live",
-  natStunLive10.servers.live,
-);
 
 // --- scalar edges -------------------------------------------------------
 
@@ -176,9 +148,6 @@ export const selftestAllNullable: RuntimeMeSelftest = {
   bnd: null,
 };
 
-/** NAT/STUN with nothing live and no reflection at all (the node-c case). */
-export const natStunNoReflection: RuntimeNatStun = natStunLive0;
-
 // --- very long identifiers ---------------------------------------------
 
 // A 145-character endpoint: an IPv6 literal with a long path-ish suffix.
@@ -196,19 +165,3 @@ export const longFingerprintRaw =
 // fallback renderer has to describe keys it has never seen (§8.2 step 5).
 export const longCounterKey =
   "middle_proxy_adaptive_floor_recover_after_single_endpoint_outage_with_quarantine_disabled_attempts_total";
-
-// A description long enough to force the two-column DescribedRow into its
-// wrapped form on a 360 px viewport.
-export const longDescription =
-  "Количество попыток восстановления пула писателей после отключения единственного эндпоинта, " +
-  "когда карантин эндпоинтов выключен настройкой и адаптивный пол вынужден пересчитывать цель " +
-  "по числу ядер, а не по числу живых эндпоинтов.";
-
-// tlsRowLongIdentifiers — one TLS record where every identifier is at its
-// long edge at once, for the RankingSection's row and detail surface.
-export const tlsRowLongIdentifiers: TlsFingerprintRow = {
-  ...tlsFingerprints.by_ip[0],
-  scope: longEndpoint,
-  ja3_raw: longFingerprintRaw,
-  ja4_raw: `${longFingerprintRaw}_${longFingerprintRaw}`,
-};

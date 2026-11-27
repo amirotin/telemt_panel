@@ -1,13 +1,16 @@
 package host
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
 )
+
+// ValidContainerTarget accepts the canonical leading slash returned by docker inspect.
+func ValidContainerTarget(name string) bool {
+	return ValidServiceTarget(strings.TrimPrefix(name, "/"))
+}
 
 // Docker manages a Telemt (or panel) instance running in a container: the
 // `service` argument passed to Status/Restart is the container name, not
@@ -28,11 +31,17 @@ func (d *Docker) Kind() string { return KindDocker }
 
 // Start starts an existing configured container; it does not create one.
 func (d *Docker) Start(ctx context.Context, container string) error {
+	if !ValidContainerTarget(container) {
+		return fmt.Errorf("invalid container name %q", container)
+	}
 	return serviceCommand(ctx, d.run, "docker", "start", container)
 }
 
 // Stop stops the configured container without removing it or its volumes.
 func (d *Docker) Stop(ctx context.Context, container string) error {
+	if !ValidContainerTarget(container) {
+		return fmt.Errorf("invalid container name %q", container)
+	}
 	return serviceCommand(ctx, d.run, "docker", "stop", container)
 }
 
@@ -43,6 +52,9 @@ func (d *Docker) Stop(ctx context.Context, container string) error {
 // activating/deactivating/reloading, rather than being lumped in with the
 // container's settled-down states.
 func (d *Docker) Status(ctx context.Context, container string) (ServiceStatus, error) {
+	if !ValidContainerTarget(container) {
+		return StatusUnknown, fmt.Errorf("invalid container name %q", container)
+	}
 	out, _, runErr := d.run(ctx, "docker", "inspect", "-f", "{{.State.Status}}", container)
 	switch strings.TrimSpace(string(out)) {
 	case "running":
@@ -61,6 +73,9 @@ func (d *Docker) Status(ctx context.Context, container string) (ServiceStatus, e
 
 // Restart implements ServiceManager via `docker restart <container>`.
 func (d *Docker) Restart(ctx context.Context, container string) error {
+	if !ValidContainerTarget(container) {
+		return fmt.Errorf("invalid container name %q", container)
+	}
 	_, stderr, err := d.run(ctx, "docker", "restart", container)
 	if err != nil {
 		return fmt.Errorf("docker restart %s: %s: %w", container, strings.TrimSpace(string(stderr)), err)
@@ -99,6 +114,9 @@ func (d *DockerLog) Kind() string { return LogKindDocker }
 // interleaving isn't recoverable here — both are parsed as log lines and
 // concatenated (stdout first).
 func (d *DockerLog) Tail(ctx context.Context, container string, lines int) ([]LogLine, error) {
+	if !ValidContainerTarget(container) {
+		return nil, fmt.Errorf("invalid container name %q", container)
+	}
 	stdout, stderr, err := d.run(ctx, "docker", "logs", "--tail", strconv.Itoa(lines), container)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -115,6 +133,9 @@ func (d *DockerLog) Tail(ctx context.Context, container string, lines int) ([]Lo
 // ProcessStarter runs with stdout and stderr merged into one stream (see
 // ProcessStarter's doc comment in exec.go).
 func (d *DockerLog) Stream(ctx context.Context, container string) (<-chan LogEvent, error) {
+	if !ValidContainerTarget(container) {
+		return nil, fmt.Errorf("invalid container name %q", container)
+	}
 	rc, err := d.start(ctx, "docker", "logs", "-f", container)
 	if err != nil {
 		return nil, newLogSourceError(err, "")
@@ -131,10 +152,8 @@ func (d *DockerLog) Caps() LogCaps {
 
 func splitDockerLines(out []byte, container string) []LogLine {
 	var lines []LogLine
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	scanner.Buffer(make([]byte, 64*1024), 1<<20)
-	for scanner.Scan() {
-		lines = append(lines, LogLine{Level: "unknown", Unit: container, Msg: scanner.Text()})
+	for raw := range capturedLogLines(out) {
+		lines = append(lines, LogLine{Level: "unknown", Unit: container, Msg: string(raw)})
 	}
 	return lines
 }

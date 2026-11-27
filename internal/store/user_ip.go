@@ -90,11 +90,6 @@ type UserIPSummary struct {
 	Gap     bool  `json:"collection_gap"`
 }
 
-// UserIPSummaryMap retains the context-free compatibility read.
-func UserIPSummaryMap(st HistoryStore, now int64) (map[string]UserIPSummary, error) {
-	return UserIPSummaryMapContext(context.Background(), st, now)
-}
-
 // UserIPSummaryMapContext reads count and collection metadata under the caller's deadline.
 func UserIPSummaryMapContext(ctx context.Context, st HistoryStore, now int64) (map[string]UserIPSummary, error) {
 	c, err := st.UserIPCollectionStateContext(ctx)

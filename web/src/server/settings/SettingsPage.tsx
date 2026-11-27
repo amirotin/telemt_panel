@@ -116,7 +116,7 @@ export function SettingsPage() {
         className="overflow-hidden rounded-2xl border border-accent/30 bg-surface"
       >
         <div className="grid lg:grid-cols-[1fr_0.92fr]">
-          <div className="flex min-h-[174px] flex-col justify-center bg-[linear-gradient(135deg,color-mix(in_srgb,var(--accent)_10%,transparent),transparent_58%)] px-5 py-6 sm:px-6">
+          <div className="flex min-h-[174px] flex-col justify-center bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),transparent_58%)] px-5 py-6 sm:px-6">
             <span className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-accent">
               {s.server.settings.heroEyebrow}
             </span>

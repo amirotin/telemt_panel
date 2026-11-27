@@ -419,13 +419,9 @@ farthest extent is a 22px radius inside a 32px half-size square, well under
 the 80%-diameter safe circle), so one raster per size covers both purposes
 without a separately-cropped maskable variant.
 
-`public/sw.js`'s whole routing policy (bypass `/api`+`/sub`, cache-first for
-`assets/`, network-first for everything else — i.e. the shell) is one pure
-function, `classifyRequest`. It's mirrored (not shared — a classic service
-worker script can't `import` a Vite/TypeScript module, only
-`importScripts()` another classic script) as `src/pwa/swRouting.ts`, unit
-tested in `src/pwa/swRouting.test.ts`; see that file's own comment for the
-duplication tradeoff.
+Each panel keeps a versioned shell cache for its registration scope. Activation
+removes older versions for that scope. Tests in `src/pwa/swCache.test.ts`
+exercise install, activate, and fetch against the shipped `public/sw.js`.
 
 **Hand-written SW, not vite-plugin-pwa**: the whole caching policy is three
 rules, which is simpler to read, audit, and keep in sync with

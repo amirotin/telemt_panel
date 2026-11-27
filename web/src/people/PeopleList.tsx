@@ -62,7 +62,9 @@ export function PeopleList() {
   const debouncedSearch = search.trim() === "" ? "" : delayedSearch;
   const [filter, setFilter] = useState<UserFilter>(savedView.filter);
   const [sort, setSort] = useState(() => getStoredUserSort());
-  const [actionUser, setActionUser] = useState<UsersTopicUser | null>(null);
+  const [actionUsername, setActionUsername] = useState<string | null>(null);
+  const actionUser = actionUsername ? topic.users.find(user => user.username === actionUsername) ?? null : null;
+  if (actionUsername && !actionUser && !topic.isPending) setActionUsername(null);
   const [actionIntent,setActionIntent] = useState<ActionSheetIntent>("menu");
   const [actionAnchor,setActionAnchor]=useState<DOMRect|undefined>();
   const [swiped, setSwiped] = useState<{username:string;side:SwipeSide}|null>(null);
@@ -200,7 +202,7 @@ export function PeopleList() {
   }
 
   function openActions(user:UsersTopicUser,intent:ActionSheetIntent="menu",anchor?:DOMRect) {
-    setSwiped(null);setActionIntent(intent);setActionUser(user);setActionAnchor(anchor);
+    setSwiped(null);setActionIntent(intent);setActionUsername(user.username);setActionAnchor(anchor);
   }
   const create = ()=>void navigate({to:"/people",search:{create:true}});
   const edit = (user:UsersTopicUser)=>void navigate({to:"/people/$username",params:{username:user.username},search:{tab:"settings"}});
@@ -293,7 +295,7 @@ export function PeopleList() {
 
       </div>
 
-      <UserActionSheet key={`${actionUser?.username}:${actionIntent}`} open={actionUser !== null} user={actionUser} anchor={actionAnchor} intent={actionIntent} readOnly={access.readOnly||topic.stale} onClose={() => setActionUser(null)} onEdit={edit} onOpenPerson={openPerson} onOpenAccess={user=>void navigate({to:"/people/$username",params:{username:user.username},search:{tab:"access"}})} />
+      <UserActionSheet key={`${actionUser?.username}:${actionIntent}`} open={actionUser !== null} user={actionUser} anchor={actionAnchor} intent={actionIntent} readOnly={access.readOnly||topic.stale} onClose={() => setActionUsername(null)} onEdit={edit} onOpenPerson={openPerson} onOpenAccess={user=>void navigate({to:"/people/$username",params:{username:user.username},search:{tab:"access"}})} />
       <Sheet open={sortSheetOpen} onClose={() => setSortSheetOpen(false)} title={s.people.sortLabel}>
         <CardList>
           {SORT_PRESET_ORDER.map((preset) => {

@@ -1,3 +1,4 @@
+import { waitForEnabled } from "../../testing/waitForEnabled";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -50,16 +51,19 @@ it.each([false, true])("saves a new WEB vhost atomically with the required first
   if (enabled) {
     await act(async () => { container.querySelector<HTMLInputElement>('input[role="combobox"]')!.focus(); await settle(); });
     input(copy.catalog.webProfilesTitle, "bob");
+    await waitForEnabled(() => document.querySelector<HTMLElement>('[role="option"][aria-label="bob · plain"]'));
     act(() => document.querySelector<HTMLElement>('[role="option"][aria-label="bob · plain"]')!.click());
     expect(button(copy.save).disabled).toBe(false);
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Удалить профиль bob · plain"]')!.click());
     expect(button(copy.save).disabled).toBe(true);
     input(copy.catalog.webProfilesTitle, "bob");
+    await waitForEnabled(() => document.querySelector<HTMLElement>('[role="option"][aria-label="bob · plain"]'));
     act(() => document.querySelector<HTMLElement>('[role="option"][aria-label="bob · plain"]')!.click());
   }
   await click(copy.save);
   await act(async () => { await settle(); });
   const apply = [...document.querySelectorAll("button")].find((item) => item.textContent === copy.savePreview.apply.replace("{count}", "1"))!;
+  await waitForEnabled(() => apply);
   await act(async () => { apply.click(); await settle(); });
   expect(submitted?.sections.web.vhosts).toHaveLength(2);
   expect(submitted?.sections.web.vhosts[0]).toEqual(existing);

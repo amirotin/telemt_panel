@@ -13,6 +13,8 @@ import (
 // Capabilities re-probes Telemt (07-telemt-sdk.md §SDK-3: "кешируется").
 const capabilityCacheTTL = 5 * time.Minute
 
+const capabilityRetryInterval = 15 * time.Second
+
 type negativeCapabilityObservation struct {
 	ObservedAt time.Time
 	Version    string
@@ -95,18 +97,12 @@ func (c *Client) probeCapsSingleFlight(ctx context.Context) (Caps, error) {
 			return caps, nil
 		}
 		generation := c.capabilityGeneration()
-		caps, cacheable := c.probeCaps(ctx)
+		caps, ttl := c.probeCaps(ctx)
 		if err := ctx.Err(); err != nil {
 			// Context failures are not five-minute capability observations.
 			return Caps{}, err
 		}
-		if !cacheable {
-			if generation != c.capabilityGeneration() {
-				continue
-			}
-			return caps, nil
-		}
-		if c.storeCaps(caps, generation) {
+		if c.storeCaps(caps, generation, ttl) {
 			return caps, nil
 		}
 		// An upgrade happened during this round. Retry the read-only probes
@@ -117,20 +113,20 @@ func (c *Client) probeCapsSingleFlight(ctx context.Context) (Caps, error) {
 func (c *Client) cachedCaps() (Caps, bool) {
 	c.capsMu.Lock()
 	defer c.capsMu.Unlock()
-	if c.capsValid && c.now().Before(c.capsAt.Add(capabilityCacheTTL)) {
+	if c.capsValid && c.now().Before(c.capsUntil) {
 		return c.caps, true
 	}
 	return Caps{}, false
 }
 
-func (c *Client) storeCaps(caps Caps, generation uint64) bool {
+func (c *Client) storeCaps(caps Caps, generation uint64, ttl time.Duration) bool {
 	c.capsMu.Lock()
 	defer c.capsMu.Unlock()
 	if generation != c.capsGeneration {
 		return false
 	}
 	c.caps = caps
-	c.capsAt = c.now()
+	c.capsUntil = c.now().Add(ttl)
 	c.capsValid = true
 	return true
 }
@@ -220,7 +216,7 @@ func (c *Client) negativeObservationActive(observation *negativeCapabilityObserv
 // user_enable_disable/rotate_secret fields of the result are meaningless
 // zero values — Capabilities overwrites them from mutation observations
 // after calling this.
-func (c *Client) probeCaps(ctx context.Context) (Caps, bool) {
+func (c *Client) probeCaps(ctx context.Context) (Caps, time.Duration) {
 	var caps Caps
 
 	_, hasQuota, err := c.QuotaList(ctx)
@@ -230,11 +226,15 @@ func (c *Client) probeCaps(ctx context.Context) (Caps, bool) {
 		caps.Quota = hasQuota
 	}
 
-	caps.RuntimeEdge = c.probeRuntimeEdge(ctx)
+	edge, edgeKnown := c.probeRuntimeEdge(ctx)
+	caps.RuntimeEdge = edge
 	caps.ReloadAPI = c.probeReloadAPI(ctx)
 	caps.ConfigAPI = c.probeConfigAPI(ctx)
-	cacheable := c.probeDiscoveryCaps(ctx, &caps)
-	return caps, cacheable
+	ttl := c.probeDiscoveryCaps(ctx, &caps)
+	if !edgeKnown || (err != nil && !optionalRouteAbsent(err)) {
+		ttl = min(ttl, capabilityRetryInterval)
+	}
+	return caps, ttl
 }
 
 // probeRuntimeEdge detects the runtime_edge capability from the gate
@@ -243,18 +243,18 @@ func (c *Client) probeCaps(ctx context.Context) (Caps, bool) {
 // false), so any probe failure degrades to false rather than optimistically
 // true — the opposite default from probeReloadAPI/probeConfigAPI, which are
 // always-on groups where an ambiguous error shouldn't hide a real feature.
-func (c *Client) probeRuntimeEdge(ctx context.Context) bool {
+func (c *Client) probeRuntimeEdge(ctx context.Context) (enabled, known bool) {
 	data, _, err := c.call(ctx, http.MethodGet, "/v1/runtime/connections/summary", nil)
 	if err != nil {
 		slog.Warn("telemt: capability probe: runtime_edge", "err", err)
-		return false
+		return false, optionalRouteAbsent(err)
 	}
 	var gate runtimeEdgeGate
 	if err := json.Unmarshal(data, &gate); err != nil {
 		slog.Warn("telemt: capability probe: runtime_edge decode", "err", err)
-		return false
+		return false, false
 	}
-	return gate.Enabled
+	return gate.Enabled, true
 }
 
 // probeReloadAPI judges the reload_api capability by GET /v1/system/reload/0
@@ -298,12 +298,12 @@ func (c *Client) probeConfigAPI(ctx context.Context) bool {
 
 // probeDiscoveryCaps keeps unsupported routes distinct from transient failures.
 // A transient result is returned conservatively but is not cached for five minutes.
-func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) bool {
+func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) time.Duration {
 	discovery, err := c.Discovery(ctx)
 	if err != nil {
 		if !optionalRouteAbsent(err) {
 			caps.OptionalMetadataUnavailable = true
-			return false
+			return discoveryRetryInterval(err)
 		}
 		// Legacy servers keep the existing six capability decisions. Health can
 		// still report read-only without requiring the discovery extension.
@@ -311,7 +311,7 @@ func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) bool {
 		if healthErr == nil {
 			caps.ReadOnly = health.ReadOnly
 		}
-		return true
+		return capabilityCacheTTL
 	}
 	caps.ReadOnly = discovery.ReadOnly
 	has := func(method, path string) bool {
@@ -329,7 +329,10 @@ func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) bool {
 	schema, err := c.ConfigSchema(ctx)
 	if err != nil {
 		caps.OptionalMetadataUnavailable = !optionalRouteAbsent(err)
-		return optionalRouteAbsent(err)
+		if optionalRouteAbsent(err) {
+			return capabilityCacheTTL
+		}
+		return discoveryRetryInterval(err)
 	}
 	for _, field := range schema.Fields {
 		if field.Path != "access.user_source_deny" || field.API.RequestField != "source_deny" {
@@ -342,5 +345,15 @@ func (c *Client) probeDiscoveryCaps(ctx context.Context, caps *Caps) bool {
 		}
 		caps.UserSourceDeny = create && patch
 	}
-	return true
+	return capabilityCacheTTL
+}
+
+// A malformed successful response is deliberately revalidated on the next
+// read. Network failures and server errors share a short retry cooldown.
+func discoveryRetryInterval(err error) time.Duration {
+	var apiErr *APIError
+	if errors.Is(err, ErrInvalidResponse) || (errors.As(err, &apiErr) && apiErr.Status < 500 && apiErr.Status != http.StatusTooManyRequests) {
+		return 0
+	}
+	return capabilityRetryInterval
 }

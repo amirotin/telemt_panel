@@ -969,3 +969,19 @@ func TestWebDiffKeyIgnoresTheClockDerivedAges(t *testing.T) {
 		t.Error("the web-only volatile keys leaked into another topic")
 	}
 }
+
+func TestDiffKeyKeepsExactIntegerChanges(t *testing.T) {
+	a := diffKey("stats", json.RawMessage(`{"bytes":9007199254740992}`))
+	b := diffKey("stats", json.RawMessage(`{"bytes":9007199254740993}`))
+	if bytes.Equal(a, b) {
+		t.Fatal("adjacent counter values collapsed to one SSE event")
+	}
+}
+
+func TestClosedHubRejectsNewSubscribers(t *testing.T) {
+	h := New(Config{}, nil, nil)
+	h.Close()
+	if _, _, _, err := h.Subscribe([]string{"update"}); err == nil {
+		t.Fatal("subscription succeeded after shutdown")
+	}
+}

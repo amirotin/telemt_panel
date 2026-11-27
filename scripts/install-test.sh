@@ -300,9 +300,9 @@ RUN_AS="root"
 gen_service >"$TMP/unit-root"
 assert_not_contains "unit root has no User=" "User=" "$TMP/unit-root"
 INIT="openrc"; RUN_AS="user"
-gen_service >"$TMP/openrc"
+(owner_group() { printf '%s' nogroup; }; gen_service) >"$TMP/openrc"
 assert_contains "openrc shebang" "#!/sbin/openrc-run" "$TMP/openrc"
-assert_contains "openrc user" 'command_user="telemt-panel:telemt-panel"' "$TMP/openrc"
+assert_contains "openrc primary group" 'command_user="telemt-panel:nogroup"' "$TMP/openrc"
 INIT="procd"; RUN_AS="root"
 gen_service >"$TMP/procd"
 assert_contains "procd rc.common" "#!/bin/sh /etc/rc.common" "$TMP/procd"
@@ -695,19 +695,22 @@ case "$1" in
 esac
 EOF
 chmod 0755 "$TMP/bin/start-stop-daemon"
-printf '12345\n' >"$TMP/sysv.pid"
+# A stale PID now held by a different live process cannot identify this panel.
+printf '%s\n' "$$" >"$TMP/sysv.pid"
 if SYSV_STOP_STATUS=2 SYSV_STARTS="$TMP/sysv-starts" sh "$TMP/sysv-service" restart >"$TMP/sysv-output" 2>&1; then
   fail "SysV restart hid stop failure"
 else
   pass
 fi
 if [ -f "$TMP/sysv.pid" ] && [ ! -e "$TMP/sysv-starts" ]; then pass; else fail "SysV stop failure lost PID or started another daemon"; fi
+rm "$TMP/sysv.pid"
 if SYSV_STOP_STATUS=0 SYSV_STARTS="$TMP/sysv-starts" sh "$TMP/sysv-service" restart >"$TMP/sysv-output" 2>&1; then
   pass
 else
   fail "SysV successful restart failed"
 fi
 if [ ! -e "$TMP/sysv.pid" ] && [ -s "$TMP/sysv-starts" ]; then pass; else fail "SysV successful stop/start was not completed"; fi
+rm "$TMP/bin/start-stop-daemon"
 
 # Installing an OpenRC service is not successful if enabling autostart fails.
 if (

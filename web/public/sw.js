@@ -9,17 +9,11 @@
 // web/README.md for the tradeoff written out. Registered by
 // src/pwa/registerSW.ts, production builds only.
 //
-// CACHE_NAME is the version to bump on any change to this file's caching
-// policy or SHELL_URLS — the `activate` handler below deletes every cache
-// that doesn't match the current name, so a bump is what makes a deployed
-// update actually replace a previously-cached shell rather than serving it
-// forever. v2 (Task 9): added the PNG icons generated for the manifest/
-// apple-touch-icon. v3 (design pass D1/D2): icon.svg and every generated
-// PNG were redrawn for the new brand mark, and the manifest gained separate
-// `any`/`maskable` icon entries — without a bump the precache keeps serving
-// the OLD artwork to anyone who installed the app before.
-const CACHE_NAME = "telemt-panel-shell-v3";
+// Cache Storage is shared by all applications on an origin. Encode the scope
+// and delimit it so a nested panel can never match another panel's versions.
 const SCOPE_PATH = new URL(self.registration.scope).pathname;
+const CACHE_PREFIX = "telemt-panel-shell:" + encodeURIComponent(SCOPE_PATH) + ":";
+const CACHE_NAME = CACHE_PREFIX + "v4";
 const SHELL_URLS = [
   "./",
   "./index.html",
@@ -30,17 +24,6 @@ const SHELL_URLS = [
   "./apple-touch-icon.png",
 ];
 
-// classifyRequest is the SW's whole routing policy as one pure function —
-// no `self`/`caches`/`fetch` reference, so it's a plain function this
-// file's own `fetch` handler below calls directly, AND (duplicated
-// verbatim, see that file's own comment on why) what
-// src/pwa/swRouting.ts's vitest coverage exercises. A classic service
-// worker script (this file — registerSW.ts registers it with no `{type:
-// "module"}`) can't use an ES `import` to share one real copy with
-// src/pwa/ (only `importScripts()`, which can't pull from a
-// Vite/TypeScript-built module without adding a bundler step to
-// public/sw.js itself) — see task-9-report.md's PWA section for why a
-// small kept-in-sync duplicate was chosen over that.
 function classifyRequest(pathname, scopePath) {
   if (pathname.startsWith(scopePath + "api/") || pathname.startsWith(scopePath + "sub/")) {
     return "bypass";
@@ -64,7 +47,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
@@ -74,35 +57,39 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(SCOPE_PATH)) return;
 
   const decision = classifyRequest(url.pathname, SCOPE_PATH);
   if (decision === "bypass") return;
-  event.respondWith(decision === "cache-first" ? cacheFirst(request) : networkFirst(request));
+  event.respondWith(decision === "cache-first" ? cacheFirst(event) : networkFirst(event));
 });
 
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  const response = await fetch(request);
+async function cachedResponse(request) {
+  const cache = await caches.open(CACHE_NAME);
+  return cache.match(request);
+}
+
+function remember(event, response) {
   if (response.ok) {
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, response.clone());
+    const copy = response.clone();
+    const write = caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+    event.waitUntil(write.catch(() => {}));
   }
   return response;
 }
 
-async function networkFirst(request) {
+async function cacheFirst(event) {
+  const cached = await cachedResponse(event.request).catch(() => undefined);
+  if (cached) return cached;
+  return remember(event, await fetch(event.request));
+}
+
+async function networkFirst(event) {
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (err) {
-    const cached = await caches.match(request);
+    return remember(event, await fetch(event.request));
+  } catch (error) {
+    const cached = await cachedResponse(event.request).catch(() => undefined);
     if (cached) return cached;
-    throw err;
+    throw error;
   }
 }

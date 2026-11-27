@@ -1,12 +1,14 @@
 package subpage
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/telemt"
@@ -15,6 +17,15 @@ import (
 
 // qrSize is the QR code's pixel width/height (spec: 256px).
 const qrSize = 256
+
+var pageCSP = func() string {
+	hash := sha256.Sum256([]byte(clipboardScript))
+	return "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'sha256-" + base64.StdEncoding.EncodeToString(hash[:]) + "'"
+}()
+
+// ContentSecurityPolicy allows the subscription page's local styles, QR
+// images and clipboard helper while preventing external resource loads.
+func ContentSecurityPolicy() string { return pageCSP }
 
 // pageData is the subscription page's root data model.
 type pageData struct {
@@ -335,13 +346,13 @@ func buildSimpleGroup(username, kind string, links []string, title string) (*lin
 // (url.Error, in particular, echoes the raw unparseable input verbatim).
 func buildVariant(username, kind string, index int, tgLink, domain string) (linkVariantView, bool, error) {
 	u, err := url.Parse(tgLink)
-	if err != nil {
+	if err != nil || u.Scheme != "tg" || u.Host != "proxy" || u.Path != "" || u.User != nil || u.Fragment != "" {
 		slog.Warn("subpage: unparseable link", "username", username, "kind", kind, "index", index)
 		return linkVariantView{}, false, nil
 	}
 	q := u.Query()
 	server, port, secret := q.Get("server"), q.Get("port"), q.Get("secret")
-	if server == "" || port == "" || secret == "" {
+	if server == "" || port == "" || secret == "" || len(q["server"]) != 1 || len(q["port"]) != 1 || len(q["secret"]) != 1 {
 		slog.Warn("subpage: link missing server/port/secret", "username", username, "kind", kind, "index", index)
 		return linkVariantView{}, false, nil
 	}
@@ -362,12 +373,45 @@ func buildVariant(username, kind string, index int, tgLink, domain string) (link
 	}, true, nil
 }
 
-// qrDataURI renders content as a PNG QR code and returns it as a data:
-// URI suitable for an <img src>.
-func qrDataURI(content string) (string, error) {
+var subscriptionQRs qrCache
+
+type qrCache struct {
+	mu     sync.Mutex
+	images map[[sha256.Size]byte]string
+}
+
+// qrDataURI returns a PNG data URI suitable for an image source.
+func qrDataURI(content string) (string, error) { return subscriptionQRs.render(content) }
+
+func (c *qrCache) render(content string) (string, error) {
+	key := sha256.Sum256([]byte(content))
+	c.mu.Lock()
+	image := c.images[key]
+	c.mu.Unlock()
+	if image != "" {
+		return image, nil
+	}
 	png, err := qrcode.Encode(content, qrcode.Medium, qrSize)
 	if err != nil {
 		return "", err
 	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), nil
+	image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+	// The image carries the connection secret too. Keep at most 1 MiB and
+	// release every entry within a minute even when no more requests arrive.
+	if len(image) <= 16<<10 {
+		c.mu.Lock()
+		if c.images == nil {
+			c.images = make(map[[sha256.Size]byte]string)
+			time.AfterFunc(time.Minute, func() {
+				c.mu.Lock()
+				c.images = nil
+				c.mu.Unlock()
+			})
+		}
+		if len(c.images) < 64 {
+			c.images[key] = image
+		}
+		c.mu.Unlock()
+	}
+	return image, nil
 }

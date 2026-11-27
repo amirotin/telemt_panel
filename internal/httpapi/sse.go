@@ -203,6 +203,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	rc := stream.rc
 
 	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Cache-Control", "no-store")
 	extendSSEWriteDeadline(rc)
 	w.WriteHeader(http.StatusOK)

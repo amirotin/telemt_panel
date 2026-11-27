@@ -73,7 +73,7 @@ if [ "${E2E_INNER:-}" = "" ]; then
     chmod 0440 "$ROOTFS/etc/sudoers"
     : >"$ROOTFS/etc/sudo.conf"
     : >"$ROOTFS/dev/null"
-    if E2E_ROOTFS=1 E2E_INNER="$sc" E2E_BIN=/tmp/test-panel unshare -Urm chroot "$ROOTFS" /bin/sh /src/scripts/install-e2e.sh; then
+    if E2E_ROOTFS=1 E2E_SINGLE_UID=1 E2E_INNER="$sc" E2E_BIN=/tmp/test-panel unshare -Urm chroot "$ROOTFS" /bin/sh /src/scripts/install-e2e.sh; then
       echo "=== $sc: PASS"
     else
       echo "=== $sc: FAIL"
@@ -196,6 +196,15 @@ cat >"$STUB/chown" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
+if [ "${E2E_SINGLE_UID:-}" = 1 ]; then
+  # This disposable chroot maps only UID 0. Its account and file-ownership
+  # fixtures model the service UID; native systemd coverage exercises real sudo.
+  cat >"$STUB/sudo" <<'EOF'
+#!/bin/sh
+if [ "${1:-} ${2:-} ${3:-} ${4:-}" = '-n -u telemt-panel --' ]; then shift 4; exec "$@"; fi
+exec /usr/bin/sudo "$@"
+EOF
+fi
 cat >"$STUB/install" <<'EOF'
 #!/bin/sh
 args=""
@@ -322,6 +331,12 @@ EOF
 fi
 
 echo "--- install"
+if [ "$SC" = systemd ] && [ "$(timeout 5 "$BIN" update-worker --protocol 2>/dev/null)" = 1 ]; then
+  if TP_OPEN_FIREWALL=invalid run_installer install >"$WORK/firewall-fail.log" 2>&1; then fail "installer accepted invalid firewall mode"; fi
+  check test -f /etc/systemd/system/telemt-panel.service
+  check test -f /etc/systemd/system/telemt-panel-updater.service
+  check test -x "$PANEL_BIN.start"
+fi
 run_installer install >"$WORK/install.log" 2>&1 || { cat "$WORK/install.log"; fail "install exited non-zero"; }
 grep -q '^\[fail\]' "$WORK/install.log" && { cat "$WORK/install.log"; fail "install reported a failure"; }
 
@@ -510,10 +525,16 @@ if [ "$SC" != migrate ]; then
 fi
 
 echo "--- uninstall keeps config"
+if [ "$SC" = sysvinit ]; then
+  mkdir -p /etc/rc2.d /etc/rc5.d
+  ln -s "$SERVICE" /etc/rc2.d/S42telemt-panel
+  ln -s "$SERVICE" /etc/rc5.d/K17telemt-panel
+fi
 if [ "$SC" = procd ] && [ "$CUSTOM_CONFIG" = 0 ] && [ "$WORKER_INSTALL" = 1 ]; then
   exec 8>"${REGISTRATION%/*}/operation.lock"
   flock -n 8 || exit 1
   if run_installer uninstall >"$WORK/busy-uninstall.log" 2>&1; then fail "uninstall interrupted an active worker"; fi
+  if run_installer purge >"$WORK/busy-purge.log" 2>&1; then fail "purge interrupted an active worker"; fi
   check test -x "$PANEL_BIN"
   check test -x "$SERVICE"
   check test ! -e "$RECEIPT"
@@ -526,6 +547,15 @@ check test ! -e /etc/sudoers.d/telemt-panel
 check test ! -e "$SERVICE"
 check test ! -e "$UPDATER"
 check test -f "$CONFIG"
+if [ "$SC" = sysvinit ]; then
+  check grep -qx /etc/rc2.d/S42telemt-panel "$RECEIPT/runlevel_links"
+  check grep -qx /etc/rc5.d/K17telemt-panel "$RECEIPT/runlevel_links"
+  # The namespace's init command stub records requests and leaves links in place.
+  rm -f /etc/rc2.d/S42telemt-panel /etc/rc5.d/K17telemt-panel
+elif [ "$SC" = openrc ]; then
+  check test -f "$RECEIPT/runlevel_links"
+  check test ! -s "$RECEIPT/runlevel_links"
+fi
 
 restore_installer() {
   # Simulate a new shell, with no answers or paths from the original setup.
@@ -608,6 +638,12 @@ EOF
   check grep -qx "${TP_TEST_VARIANT:-full}" "$RECEIPT/variant"
   : >"$CALLS"
   restore_installer >"$WORK/reinstall.log" 2>&1 || { cat "$WORK/reinstall.log"; exit 1; }
+  if [ "$SC" = sysvinit ]; then
+    check test /etc/rc2.d/S42telemt-panel -ef "$SERVICE"
+    check test /etc/rc5.d/K17telemt-panel -ef "$SERVICE"
+  elif [ "$SC" = openrc ] && grep -q '^rc-update add ' "$CALLS"; then
+    fail 'reinstall enabled a previously disabled OpenRC service'
+  fi
   check_restored_panel
   if [ "$CUSTOM_CONFIG" = 1 ]; then check test ! -e /etc/telemt-panel/config.toml; fi
   if [ "$SC" = procd ]; then

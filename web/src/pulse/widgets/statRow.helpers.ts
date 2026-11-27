@@ -33,7 +33,7 @@ export function sparklineValues(series: HistorySeries | undefined): number[] {
 }
 
 /** The window every «за 15 мин» figure on Сводка is measured over. */
-export const HISTORY_WINDOW_SECS = 15 * 60;
+const HISTORY_WINDOW_SECS = 15 * 60;
 
 // useHistorySeries requests thirty minutes of the two-hour live buffer,
 // because a caption like «−0,3 % за 15
@@ -55,10 +55,11 @@ export const HISTORY_WINDOW_SECS = 15 * 60;
 export function windowSeries(
   series: HistorySeries | undefined,
   secs: number = HISTORY_WINDOW_SECS,
+  commonEnd?: number,
 ): HistorySeries | undefined {
   const points = series?.points;
   if (!series || !points || points.length === 0) return series;
-  const end = historyPointEnd(points[points.length - 1]);
+  const end = commonEnd ?? historyPointEnd(points[points.length - 1]);
   return sliceHistory(series, end - secs, end);
 }
 
@@ -69,10 +70,11 @@ export function windowSeries(
 export function previousWindowSeries(
   series: HistorySeries | undefined,
   secs: number = HISTORY_WINDOW_SECS,
+  commonEnd?: number,
 ): HistorySeries | undefined {
   const points = series?.points;
   if (!series || !points || points.length === 0) return undefined;
-  const seam = historyPointEnd(points[points.length - 1]) - secs;
+  const seam = (commonEnd ?? historyPointEnd(points[points.length - 1])) - secs;
   const prior = sliceHistory(series, seam - secs, seam);
   return prior.points.length === 0 ? undefined : prior;
 }
@@ -132,13 +134,23 @@ export interface ConnectionQuality {
 // exist — until they do not, in the first quarter-hour after a panel start,
 // where changePoints is null and the tile falls back to naming the refusals
 // instead of inventing a comparison.
+function commonQualityEnd(attempts: HistorySeries | undefined, refusals: HistorySeries | undefined) {
+  const a = attempts?.points.at(-1), r = refusals?.points.at(-1);
+  if (!a || !r) return undefined;
+  const tA = historyPointEnd(a), tR = historyPointEnd(r);
+  // The requests are independent. Align a normal poll skew, but keep
+  // stale or disjoint series ineligible for a current quality estimate.
+  return Math.abs(tA - tR) <= 30 ? Math.min(tA, tR) : undefined;
+}
+
 export function connectionQuality(
   attempts: HistorySeries | undefined,
   refusals: HistorySeries | undefined,
   windowSecs: number = HISTORY_WINDOW_SECS,
 ): ConnectionQuality {
-  const windows = [windowSeries(attempts, windowSecs), windowSeries(refusals, windowSecs),
-    previousWindowSeries(attempts, windowSecs), previousWindowSeries(refusals, windowSecs)];
+  const end = commonQualityEnd(attempts, refusals);
+  const windows = [windowSeries(attempts, windowSecs, end), windowSeries(refusals, windowSecs, end),
+    previousWindowSeries(attempts, windowSecs, end), previousWindowSeries(refusals, windowSecs, end)];
   const current = windowRatio(
     windows[0], windows[1],
   );
@@ -179,6 +191,9 @@ export function qualitySparklineValues(
   attempts: HistorySeries | undefined,
   refusals: HistorySeries | undefined,
 ): number[] {
+  const commonEnd = commonQualityEnd(attempts, refusals);
+  attempts = windowSeries(attempts, HISTORY_WINDOW_SECS, commonEnd);
+  refusals = windowSeries(refusals, HISTORY_WINDOW_SECS, commonEnd);
   let out: number[] = [], last: number | undefined, end: number | undefined;
   for (const step of matchingCounterSteps(attempts, refusals) ?? []) {
     if (end !== step.from) { out = []; last = undefined; }

@@ -104,7 +104,7 @@ export function TlsPanel({
                 "shrink-0 rounded-lg px-3 py-2 text-meta font-semibold",
                 scope === id
                   ? "bg-accent/15 text-accent"
-                  : "text-text-muted hover:bg-surface-hover",
+                  : "text-text-muted hover:bg-surface-3",
               )}
             >
               {label}

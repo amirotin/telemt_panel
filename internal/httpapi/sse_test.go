@@ -195,6 +195,9 @@ func TestHandleEventsWritesInitialSnapshot(t *testing.T) {
 	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
 		t.Fatalf("cache-control = %q, want no-store", cc)
 	}
+	if got := w.Header().Get("X-Accel-Buffering"); got != "no" {
+		t.Errorf("SSE buffering header = %q", got)
+	}
 
 	body := w.Body.String()
 	if !strings.Contains(body, "event: users") {

@@ -2,11 +2,10 @@
 // take a `Dict` parameter (or read getStrings() when they have no component
 // to thread it from). ru.ts stays the source of truth for the dictionary
 // SHAPE; en.ts is typed against it.
-export type { Dict, Locale, LocalePreference } from "./dict";
+export type { Dict, LocalePreference } from "./dict";
 export {
   applyDocumentLocale,
 } from "./locale";
-export type { PluralForms } from "./plural";
 export {
   countLabel,
   fill,

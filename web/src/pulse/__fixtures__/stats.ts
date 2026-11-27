@@ -133,13 +133,13 @@ export const meWriters: MeWritersData = (() => {
 
 // summary — GET /v1/stats/summary (§6): both *_by_class breakdowns carried
 // three entries on every VPS, with the exact class names observed.
-export const connectionsBadByClass: ClassCount[] = [
+const connectionsBadByClass: ClassCount[] = [
   { class: "direct_modes_disabled", total: 412 },
   { class: "tls_handshake_bad_client", total: 87 },
   { class: "tls_mtproto_bad_client", total: 23 },
 ];
 
-export const handshakeFailuresByClass: ClassCount[] = [
+const handshakeFailuresByClass: ClassCount[] = [
   { class: "expected_64_got_0_connection_reset", total: 156 },
   { class: "expected_64_got_0_unexpected_eof", total: 64 },
   { class: "timeout", total: 19 },

@@ -283,6 +283,32 @@ func TestWebAuthnMalformedLoginFinishCountsTowardRateLimit(t *testing.T) {
 	}
 }
 
+func TestPasskeyBeginsPreservePasswordAndFinishAdmission(t *testing.T) {
+	srv := newTestServer(t)
+	fixture := newSignedPasskeyFixture(t, srv, 0, 1)
+	h := srv.Handler()
+	for n := range 6 {
+		r := httptest.NewRequest(http.MethodPost, "https://example.org/api/auth/webauthn/login/begin", nil)
+		r.RemoteAddr = "192.0.2.44:44000"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if (n < 5 && w.Code != http.StatusOK) || (n == 5 && w.Code != http.StatusTooManyRequests) {
+			t.Fatalf("begin %d returned %d", n, w.Code)
+		}
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", loginRequestJSON(t, "admin", testPassword))
+	request.Header.Set("Content-Type", "application/json")
+	request.RemoteAddr = "192.0.2.44:44000"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, request)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("password login after passkey begins: %d", w.Code)
+	}
+	if w := finishSignedPasskey(t, h, fixture.requestBody(t, fixture.credentialID, fixture.userHandle)); w.Code != http.StatusNoContent {
+		t.Fatalf("passkey finish after begin quota: %d", w.Code)
+	}
+}
+
 func TestSignedPasskeyLoginIssuesSessionAfterCredentialUpdate(t *testing.T) {
 	srv := newTestServer(t)
 	fixture := newSignedPasskeyFixture(t, srv, 7, 8)

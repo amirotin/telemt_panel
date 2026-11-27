@@ -23,11 +23,17 @@ func (s *Sysvinit) Kind() string { return KindSysvinit }
 
 // Start invokes the configured init script's start action.
 func (s *Sysvinit) Start(ctx context.Context, service string) error {
+	if !ValidServiceTarget(service) {
+		return fmt.Errorf("invalid service name %q", service)
+	}
 	return serviceCommand(ctx, s.run, "/etc/init.d/"+service, "start")
 }
 
 // Stop invokes the configured init script's stop action.
 func (s *Sysvinit) Stop(ctx context.Context, service string) error {
+	if !ValidServiceTarget(service) {
+		return fmt.Errorf("invalid service name %q", service)
+	}
 	return serviceCommand(ctx, s.run, "/etc/init.d/"+service, "stop")
 }
 
@@ -42,6 +48,9 @@ func (s *Sysvinit) Status(ctx context.Context, service string) (ServiceStatus, e
 // Restart implements ServiceManager via `/etc/init.d/<svc> restart`,
 // which SysV init scripts are required to support.
 func (s *Sysvinit) Restart(ctx context.Context, service string) error {
+	if !ValidServiceTarget(service) {
+		return fmt.Errorf("invalid service name %q", service)
+	}
 	_, stderr, err := s.run(ctx, "/etc/init.d/"+service, "restart")
 	if err != nil {
 		return fmt.Errorf("/etc/init.d/%s restart: %s: %w", service, strings.TrimSpace(string(stderr)), err)

@@ -14,23 +14,6 @@ import (
 // plus the Capabilities probe that follows it on success.
 const telemtInfoRequestTimeout = 10 * time.Second
 
-// telemtCapabilitiesView mirrors api/openapi.yaml TelemtInfo.capabilities.
-type telemtCapabilitiesView struct {
-	OptionalMetadataUnavailable bool `json:"optional_metadata_unavailable,omitempty"`
-	ConfigSchema                bool `json:"config_schema"`
-	ConfigState                 bool `json:"config_state"`
-	ConfigValidation            bool `json:"config_validation"`
-	AccessPolicy                bool `json:"access_policy"`
-	UserSourceDeny              bool `json:"user_source_deny"`
-	ReadOnly                    bool `json:"read_only"`
-	Quota                       bool `json:"quota"`
-	RuntimeEdge                 bool `json:"runtime_edge"`
-	ReloadAPI                   bool `json:"reload_api"`
-	ConfigAPI                   bool `json:"config_api"`
-	UserEnableDisable           bool `json:"user_enable_disable"`
-	RotateSecret                bool `json:"rotate_secret"`
-}
-
 // telemtInfoView mirrors api/openapi.yaml schema TelemtInfo.
 type telemtInfoView struct {
 	Reachable bool   `json:"reachable"`
@@ -39,11 +22,11 @@ type telemtInfoView struct {
 	OS        string `json:"os,omitempty"`
 	// UptimeSeconds has no omitempty: a fresh-restart 0.0 is a legitimate
 	// value and must not be dropped the way omitempty would drop it.
-	UptimeSeconds  float64                `json:"uptime_seconds"`
-	ConfigPath     string                 `json:"config_path,omitempty"`
-	ConfigEditMode string                 `json:"config_edit_mode,omitempty"`
-	Capabilities   telemtCapabilitiesView `json:"capabilities"`
-	Hint           string                 `json:"hint,omitempty"`
+	UptimeSeconds  float64     `json:"uptime_seconds"`
+	ConfigPath     string      `json:"config_path,omitempty"`
+	ConfigEditMode string      `json:"config_edit_mode,omitempty"`
+	Capabilities   telemt.Caps `json:"capabilities"`
+	Hint           string      `json:"hint,omitempty"`
 }
 
 // handleTelemtInfo implements GET /api/telemt/info: connectivity, version,
@@ -90,14 +73,6 @@ func (s *Server) handleTelemtInfo(w http.ResponseWriter, r *http.Request) {
 		UptimeSeconds:  sysInfo.UptimeSeconds,
 		ConfigPath:     sysInfo.ConfigPath,
 		ConfigEditMode: s.cfg.Telemt.ConfigEditMode,
-		Capabilities: telemtCapabilitiesView{
-			OptionalMetadataUnavailable: caps.OptionalMetadataUnavailable, ConfigSchema: caps.ConfigSchema, ConfigState: caps.ConfigState, ConfigValidation: caps.ConfigValidation, AccessPolicy: caps.AccessPolicy, UserSourceDeny: caps.UserSourceDeny, ReadOnly: caps.ReadOnly,
-			Quota:             caps.Quota,
-			RuntimeEdge:       caps.RuntimeEdge,
-			ReloadAPI:         caps.ReloadAPI,
-			ConfigAPI:         caps.ConfigAPI,
-			UserEnableDisable: caps.UserEnableDisable,
-			RotateSecret:      caps.RotateSecret,
-		},
+		Capabilities:   caps,
 	})
 }

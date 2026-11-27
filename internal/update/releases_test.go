@@ -121,6 +121,34 @@ func TestListReleases_NonOKStatusIsError(t *testing.T) {
 	}
 }
 
+func TestReleaseCatalogHonorsRetryAfter(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			w.Header().Set("Retry-After", "23")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		json.NewEncoder(w).Encode([]Release{{Tag: "v1.0.0"}})
+	}))
+	defer srv.Close()
+	c := NewClient()
+	now := time.Now()
+	c.Now = func() time.Time { return now }
+	c.BaseURL = srv.URL
+	for range 2 {
+		if _, err := c.ListReleases(t.Context(), "owner/repo", ""); err == nil {
+			t.Fatal("missing rate limit error")
+		}
+	}
+	now = now.Add(23 * time.Second)
+	releases, err := c.ListReleases(t.Context(), "owner/repo", "")
+	if err != nil || len(releases) != 1 || requests != 2 {
+		t.Fatalf("after retry window releases=%v requests=%d err=%v", releases, requests, err)
+	}
+}
+
 func telemtMatcher() AssetMatcher {
 	return NewAssetMatcher("telemt", "x86_64", "gnu")
 }

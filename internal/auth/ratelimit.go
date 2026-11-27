@@ -11,17 +11,26 @@ const (
 )
 
 // Limiter counts failed login checks and checks still in flight per IP.
-type Limiter struct{ window *ratelimit.Window }
+type Limiter struct{ window, begins *ratelimit.Window }
 
 // NewLimiter starts the login admission window.
 func NewLimiter() *Limiter { return newLimiter(time.Now) }
 
 func newLimiter(now func() time.Time) *Limiter {
-	return &Limiter{window: ratelimit.New(loginFailureLimit, loginFailureWindow, now)}
+	return &Limiter{
+		window: ratelimit.New(loginFailureLimit, loginFailureWindow, now),
+		begins: ratelimit.New(loginFailureLimit, loginFailureWindow, now),
+	}
 }
 
-// Allow checks capacity without consuming it, for WebAuthn begin.
+// Allow reports whether credential verification is currently available.
 func (l *Limiter) Allow(ip string) bool { return l.window.Available(ip) }
+
+// AllowPasskeyBegin charges a separate quota so beginning a ceremony does
+// not consume the attempts needed to finish it or use password login.
+func (l *Limiter) AllowPasskeyBegin(ip string) bool {
+	return l.begins.AllowAndCount(ip)
+}
 
 // Acquire reserves capacity until the credential check finishes.
 func (l *Limiter) Acquire(ip string) (func(bool), bool) { return l.window.TryReserve(ip) }
@@ -30,4 +39,7 @@ func (l *Limiter) Acquire(ip string) (func(bool), bool) { return l.window.TryRes
 func (l *Limiter) RecordFailure(ip string) { l.window.AllowAndCount(ip) }
 
 // Stop stops admission and synchronously releases the cleanup loop.
-func (l *Limiter) Stop() { l.window.Close() }
+func (l *Limiter) Stop() {
+	l.begins.Close()
+	l.window.Close()
+}

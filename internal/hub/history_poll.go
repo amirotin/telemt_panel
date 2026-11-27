@@ -28,12 +28,10 @@ type usersHistoryObservation struct {
 }
 
 func fetchUsersObservation(ctx context.Context, tc *telemt.Client) ([]telemt.UserInfo, usersLiveGauges, error) {
-	users, err := tc.Users(ctx)
+	observe, _ := ctx.Value(ipObserverKey{}).(func([]telemt.UserInfo))
+	users, err := tc.UsersObserved(ctx, observe)
 	if err != nil {
 		return nil, usersLiveGauges{}, err
-	}
-	if observe, ok := ctx.Value(ipObserverKey{}).(func([]telemt.UserInfo)); ok {
-		observe(users)
 	}
 	var gauges usersLiveGauges
 	for _, user := range users {

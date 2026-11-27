@@ -2,7 +2,7 @@
 # Behavioral tests for install.sh firewall assistance. All firewall executables
 # are PATH-local stubs; this script never reads or changes the host firewall.
 # shellcheck disable=SC2034,SC2016  # sourced globals and literal stub scripts
-# shellcheck disable=SC2317  # test stubs are called indirectly by installer flows
+# shellcheck disable=SC2317,SC2329  # test stubs are called indirectly by installer flows
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)

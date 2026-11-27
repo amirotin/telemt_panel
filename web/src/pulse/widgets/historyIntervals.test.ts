@@ -88,6 +88,12 @@ describe("mixed-resolution KPI history", () => {
     expect(connectionQuality(series("attempts", [{ ts: 0, v: 0 }, { ts: 5, v: 100 }]), undefined).percent).toBeNull();
   });
 
+  it("uses the most recent common observation when one counter request reaches a later poll", () => {
+    const attempts = series("attempts", [{ts: 0,v:0}, {ts:5,v:100}, {ts:10,v:200}, {ts:15,v:350}]);
+    const refusals = series("refusals", [{ts:0,v:0}, {ts:5,v:1}, {ts:10,v:5}]);
+    expect(connectionQuality(attempts, refusals).percent).toBe(97.5);
+    expect(qualitySparklineValues(attempts, refusals)).toEqual([99,96]);
+  });
   it("does not pair counters from different observation intervals", () => {
     const attempts = series("attempts", [{ ts: 0, v: 0 }, { ts: 5, v: 100 }]);
     const refusals = series("refusals", [{ ts: 5, v: 0 }, { ts: 10, v: 10 }]);

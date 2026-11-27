@@ -117,7 +117,7 @@ export function ListenersEditor({ fields, sections, advanced, onChange }: {
                     <button
                       type="button"
                       disabled={!canDelete}
-                      className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-bad/8 px-3 text-meta font-semibold text-bad disabled:cursor-not-allowed disabled:opacity-35"
+                      className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-error/8 px-3 text-meta font-semibold text-error disabled:cursor-not-allowed disabled:opacity-35"
                       onClick={deleteRecord}
                     >
                       <IconTrash className="size-4" />

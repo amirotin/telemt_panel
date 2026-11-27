@@ -234,7 +234,7 @@ export function WebEditor({ fields, sections, advanced, onChange, decoyDrafts, o
                       <button type="button" className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-surface-2 px-3 text-meta font-semibold text-text-muted" onClick={duplicate}>
                         <IconCopy className="size-4" />{copy.duplicateRecord}
                       </button>
-                      <button type="button" className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-bad/8 px-3 text-meta font-semibold text-bad" onClick={remove}>
+                      <button type="button" className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-error/8 px-3 text-meta font-semibold text-error" onClick={remove}>
                         <IconTrash className="size-4" />{copy.deleteRecord}
                       </button>
                     </div>

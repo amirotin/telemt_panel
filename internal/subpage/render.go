@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const clipboardScript = "\ndocument.addEventListener('click', async function (e) {\n  var btn = e.target.closest('[data-copy]');\n  if (!btn) return;\n  var code = btn.previousElementSibling;\n  if (!code) return;\n  var feedback = btn.closest('details').querySelector('[data-copy-feedback]');\n  var copied = false;\n  try {\n    await navigator.clipboard.writeText(code.textContent);\n    copied = true;\n  } catch (_) {\n    \n    var selection = window.getSelection();\n    if (selection) {\n      var range = document.createRange();\n      range.selectNodeContents(code);\n      selection.removeAllRanges();\n      selection.addRange(range);\n      try { copied = document.execCommand('copy'); } catch (_) {}\n    }\n  }\n  feedback.textContent = copied ? '' : feedback.getAttribute('data-manual');\n  if (copied) {\n    var prev = btn.textContent;\n    btn.textContent = btn.getAttribute('data-copied') || prev;\n    setTimeout(function () { btn.textContent = prev; }, 1200);\n  }\n});\n"
+
 var pageHTMLEscaper = strings.NewReplacer("\x00", "\uFFFD", "\"", "&#34;", "&", "&amp;", "'", "&#39;", "+", "&#43;", "<", "&lt;", ">", "&gt;")
 
 func renderPageData(w io.Writer, data pageData) error {
@@ -168,7 +170,7 @@ func renderPageData(w io.Writer, data pageData) error {
 	b.writeString(pageHTMLEscaper.Replace(data.InstructionsEN.Android))
 	b.writeString("</p>\n    <p><strong>Desktop:</strong> ")
 	b.writeString(pageHTMLEscaper.Replace(data.InstructionsEN.Desktop))
-	b.writeString("</p>\n  </details>\n</main>\n<script>\ndocument.addEventListener('click', async function (e) {\n  var btn = e.target.closest('[data-copy]');\n  if (!btn) return;\n  var code = btn.previousElementSibling;\n  if (!code) return;\n  var feedback = btn.closest('details').querySelector('[data-copy-feedback]');\n  var copied = false;\n  try {\n    await navigator.clipboard.writeText(code.textContent);\n    copied = true;\n  } catch (_) {\n    \n    var selection = window.getSelection();\n    if (selection) {\n      var range = document.createRange();\n      range.selectNodeContents(code);\n      selection.removeAllRanges();\n      selection.addRange(range);\n      try { copied = document.execCommand('copy'); } catch (_) {}\n    }\n  }\n  feedback.textContent = copied ? '' : feedback.getAttribute('data-manual');\n  if (copied) {\n    var prev = btn.textContent;\n    btn.textContent = btn.getAttribute('data-copied') || prev;\n    setTimeout(function () { btn.textContent = prev; }, 1200);\n  }\n});\n</script>\n</body>\n</html>\n")
+	b.writeString("</p>\n  </details>\n</main>\n<script>" + clipboardScript + "</script>\n</body>\n</html>\n")
 	return b.err
 }
 

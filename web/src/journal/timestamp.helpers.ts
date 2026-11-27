@@ -1,5 +1,7 @@
 import { localeOf, type Dict } from "../i18n";
 
+const clockFormatters = new Map<string, Intl.DateTimeFormat>();
+
 // formatLogClock renders a LogLine's `ts` as a tabular HH:MM:SS clock —
 // live log lines are almost always "just now", so the date is noise; the
 // caller applies the `tabular-nums` utility class (design system rule: all
@@ -11,7 +13,13 @@ import { localeOf, type Dict } from "../i18n";
 export function formatLogClock(ts: string, s: Dict): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
-  return d.toLocaleTimeString(localeOf(s), { hour12: false });
+  const locale = localeOf(s);
+  let formatter = clockFormatters.get(locale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    clockFormatters.set(locale, formatter);
+  }
+  return formatter.format(d);
 }
 
 // formatAuditTimestamp renders an AuditEntry's `ts` as date + clock — audit

@@ -50,6 +50,11 @@ export default defineConfig({
         strictExecutionOrder: true,
         codeSplitting: {
           groups: [{
+            // Keep the projection and its local atlas adapter together on map routes.
+            name: "world-map",
+            test: /(?:[/\\]src[/\\]geography[/\\]world(?:-country-codes)?\.(?:ts|json)$|[/\\]node_modules[/\\](?:world-atlas|topojson-client|d3-geo)[/\\])/,
+            priority: 10,
+          }, {
             name: "shared",
             minShareCount: 2,
             entriesAware: true,

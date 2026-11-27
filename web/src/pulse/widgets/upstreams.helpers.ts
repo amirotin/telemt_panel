@@ -84,7 +84,7 @@ const KIND_FIELDS: Array<readonly [keyof UpstreamSummary, string]> = [
  * array may omit — and the route rows are the fallback for a payload that
  * carried no summary.
  */
-export function upstreamKinds(
+function upstreamKinds(
   summary: UpstreamSummary | undefined,
   upstreams: readonly UpstreamStatus[],
 ): UpstreamKindCount[] {

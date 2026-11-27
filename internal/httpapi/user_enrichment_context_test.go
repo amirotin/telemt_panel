@@ -23,12 +23,8 @@ type ipOnlyEnrichmentStore struct {
 	traffic store.HistoryStore
 }
 
-func (s *ipOnlyEnrichmentStore) UserTrafficSummaries() (map[string]store.UserTrafficSummary, error) {
-	return s.traffic.UserTrafficSummaries()
-}
-
-func (s *ipOnlyEnrichmentStore) BeginTrafficRead(ctx context.Context) (store.TrafficReadSnapshot, error) {
-	return s.traffic.BeginTrafficRead(ctx)
+func (s *ipOnlyEnrichmentStore) UserTrafficSummariesContext(ctx context.Context) (map[string]store.UserTrafficSummary, error) {
+	return s.traffic.UserTrafficSummariesContext(ctx)
 }
 
 func TestUserEnrichmentCancellationReleasesHeldConnectionWait(t *testing.T) {
