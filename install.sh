@@ -36,6 +36,7 @@ PRIV_CONFIG_FINGERPRINT=""
 UPDATE_PRIVILEGES=0
 WORKER_PROTOCOL=0
 WORKER_PENDING=0
+FRESH_FILE_ACTION=""
 WORKER_MIGRATE=0
 WORKER_REMOVE_LEGACY=0
 WORKER_KEEP_SUDOERS=0
@@ -743,7 +744,7 @@ cleanup() {
   if [ -n "$UPDATE_STAGED" ]; then $SUDO rm -f "$UPDATE_STAGED" || true; fi
   if [ -n "$UPDATE_RESTORE" ]; then $SUDO rm -f "$UPDATE_RESTORE" || true; fi
   if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-    if [ "$PRIV_PENDING" = 1 ] || [ "$PRIV_CONFIG_PENDING" = 1 ] || [ "$WORKER_PENDING" = 1 ]; then
+    if [ "$PRIV_PENDING" = 1 ] || [ "$PRIV_CONFIG_PENDING" = 1 ] || [ "$WORKER_PENDING" = 1 ] || [ -n "$FRESH_FILE_ACTION" ]; then
       warn "Recovery files retained in $TEMP_DIR; keep the panel stopped until config and root files are restored."
     else
       rm -rf -- "$TEMP_DIR"
@@ -758,7 +759,7 @@ installer_exit() {
     if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ] && ! $SUDO test -d "$REINSTALL_DIR"; then
       # The receipt was atomically retired after verification. A signal here
       # must leave the committed installation in place.
-      finish_reinstall_files commit || warn "$(t reinstall_rollback_failed)"
+      finish_new_install_files commit || warn "$(t reinstall_rollback_failed)"
     else
       rollback_reinstall || warn "$(t reinstall_rollback_failed)"
     fi
@@ -768,6 +769,10 @@ installer_exit() {
     _exit_code=1
     stop_retained_panel || true
     restore_worker_files || _priv_restore_failed=1
+  fi
+  if [ -n "$FRESH_FILE_ACTION" ]; then
+    if finish_new_install_files "$FRESH_FILE_ACTION"; then FRESH_FILE_ACTION=""
+    else warn "$(t reinstall_rollback_failed)"; _exit_code=1; fi
   fi
   if [ "$PRIV_CONFIG_PENDING" = 1 ] || [ "$PRIV_PENDING" = 1 ]; then
     _exit_code=1
@@ -2273,7 +2278,11 @@ stop_registered_worker() {
 }
 
 remove_worker_files() {
-  worker_installation_present || return 0
+  if [ "${REMOVE_PARTIAL_WORKER:-0}" = 1 ]; then
+    partial_worker_matches_receipt || return 1
+  else
+    worker_installation_present || return 0
+  fi
   if [ "$DRY_RUN" != 1 ]; then worker_as_owner rm -f "$WORKER_STATE_DIR/registration.json" || return 1; fi
   run rm -f "$PANEL_LAUNCH_BIN" "$WORKER_SERVICE_FILE" || return 1
   worker_reload_services
@@ -3484,6 +3493,9 @@ fetch_release() {
 install_binary() {
   if [ "$DRY_RUN" = 1 ]; then
     run install -m 0755 "$STAGED_BIN" "$PANEL_BIN"
+  elif [ "$FRESH_FILE_ACTION" = rollback ]; then
+    reinstall_trusted_parent "$PANEL_BIN" || return 1
+    publish_new_install_file "$STAGED_BIN" "$PANEL_BIN" 0 0 0755 || return 1
   else
     UPDATE_STAGED=$($SUDO mktemp "$BIN_DIR/.telemt-panel-new.XXXXXX") || return 1
     $SUDO install -m 0755 "$STAGED_BIN" "$UPDATE_STAGED" || return 1
@@ -3512,7 +3524,16 @@ write_config() {
   if ! cmp -s "$TEMP_DIR/fresh.toml" "$TEMP_DIR/install.toml"; then
     (cd "$TEMP_DIR" && timeout 15 "$STAGED_BIN" config check --format current --config "$TEMP_DIR/install.toml") || die "$(t fresh_config_failed)"
   fi
-  write_root_file "$CONFIG_FILE" 0600 "$_owner" <"$TEMP_DIR/install.toml" || return 1
+  if [ "$FRESH_FILE_ACTION" = rollback ]; then
+    _config_owner=$(id -u "$_owner") && _config_group=$(id -g "$_owner") || return 1
+    _config_writer="$_config_owner"
+    # An external TOML may live in a protected administrator-owned directory.
+    if reinstall_trusted_parent "$CONFIG_FILE"; then _config_writer=0
+    elif [ "$_config_owner" = 0 ]; then return 1; fi
+    publish_new_install_file "$TEMP_DIR/install.toml" "$CONFIG_FILE" "$_config_writer" "$_config_group" 0600 "$_config_owner" || return 1
+  else
+    write_root_file "$CONFIG_FILE" 0600 "$_owner" <"$TEMP_DIR/install.toml" || return 1
+  fi
   ok "$(t a_config_written "$CONFIG_FILE")"
 }
 
@@ -3649,7 +3670,14 @@ install_service() {
   write_root_file "$SERVICE_FILE" "$_mode" <"$_fresh_service" || return 1
   # The complete fresh installation can now be retried or removed even if
   # enablement, firewall configuration or the readiness check subsequently fails.
-  if [ "$WORKER_PROTOCOL" = 1 ]; then commit_worker_files || return 1; fi
+  if [ "$FRESH_FILE_ACTION" = rollback ]; then
+    # Commit both sets together even when a signal arrives before staging cleanup.
+    WORKER_PENDING=0 FRESH_FILE_ACTION=commit
+    finish_new_install_files commit || return 1
+    FRESH_FILE_ACTION=""
+  elif [ "$WORKER_PROTOCOL" = 1 ]; then
+    commit_worker_files || return 1
+  fi
   worker_reload_services || return 1
   enable_panel_service || return 1
   ok "$(t a_service "$SERVICE_NAME" "$SERVICE_FILE")"
@@ -4731,28 +4759,28 @@ reinstall_as_owner() {
 
 # Keep a staging link until commit. Its inode identifies exactly which files
 # this invocation published, even if a concurrent publication wins the race.
-publish_reinstall_file() {
+publish_new_install_file() {
   _src="$1"; _dst="$2"; _uid="$3"; _gid="$4"; _mode="$5"
   _tmp=$(reinstall_as_owner "$_uid" "$_gid" mktemp "$(dirname "$_dst")/.telemt-panel-restore.XXXXXX") || return 1
-  printf '%s %s %s %s\n' "$_uid" "$_gid" "$_tmp" "$_dst" >>"$TEMP_DIR/reinstall-files" || return 1
+  printf '%s %s %s %s\n' "$_uid" "$_gid" "$_tmp" "$_dst" >>"$TEMP_DIR/new-install-files" || return 1
   if [ "$_uid" = 0 ]; then
-    $SUDO install -o 0 -g "$_gid" -m "$_mode" "$_src" "$_tmp" || return 1
+    $SUDO install -o "${6:-0}" -g "$_gid" -m "$_mode" "$_src" "$_tmp" || return 1
   else
-    $SUDO cat "$_src" >"$TEMP_DIR/registration.copy" || return 1
+    $SUDO cat "$_src" >"$TEMP_DIR/install-file.copy" || return 1
     # shellcheck disable=SC2016
-    reinstall_as_owner "$_uid" "$_gid" sh -ec 'cat >"$1"; chmod "$2" "$1"' restore "$_tmp" "$_mode" <"$TEMP_DIR/registration.copy" || return 1
+    reinstall_as_owner "$_uid" "$_gid" sh -ec 'cat >"$1"; chmod "$2" "$1"' restore "$_tmp" "$_mode" <"$TEMP_DIR/install-file.copy" || return 1
   fi
   reinstall_as_owner "$_uid" "$_gid" ln -T "$_tmp" "$_dst"
 }
 
-finish_reinstall_files() {
+finish_new_install_files() {
   _cleanup_failed=0
   while read -r _uid _gid _tmp _dst; do
     if [ "$1" = rollback ] && reinstall_as_owner "$_uid" "$_gid" test "$_tmp" -ef "$_dst"; then
       reinstall_as_owner "$_uid" "$_gid" rm -f "$_dst" || _cleanup_failed=1
     fi
     reinstall_as_owner "$_uid" "$_gid" rm -f "$_tmp" || _cleanup_failed=1
-  done <"$TEMP_DIR/reinstall-files"
+  done <"$TEMP_DIR/new-install-files"
   return "$_cleanup_failed"
 }
 
@@ -4769,7 +4797,7 @@ rollback_reinstall() {
   elif [ "$REINSTALL_START_ATTEMPTED" = 1 ]; then
     stop_retained_panel || return 1
   fi
-  finish_reinstall_files rollback || return 1
+  finish_new_install_files rollback || return 1
   if [ "$REINSTALL_STATE_CREATED" = 1 ]; then
     reinstall_as_owner "$REINSTALL_STATE_UID" "$REINSTALL_STATE_GID" rmdir "$WORKER_STATE_DIR" || return 1
   fi
@@ -4880,9 +4908,9 @@ do_reinstall() {
   confirm continue_q || { say "$(t aborted)"; return 0; }
   [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$(sha256_of "$UPDATE_SOURCE")" ] || die "$(t reinstall_unsafe)"
   if [ "$DRY_RUN" = 1 ]; then say "$(t update_dry)"; return 0; fi
-  : >"$TEMP_DIR/reinstall-files"
+  : >"$TEMP_DIR/new-install-files"
   REINSTALL_PENDING=1
-  publish_reinstall_file "$STAGED_BIN" "$PANEL_BIN" 0 0 0755 || die "$(t update_apply_failed)"
+  publish_new_install_file "$STAGED_BIN" "$PANEL_BIN" 0 0 0755 || die "$(t update_apply_failed)"
   if $SUDO test -f "$REINSTALL_SOURCE/registration" && ! $SUDO test -d "$WORKER_STATE_DIR"; then
     reinstall_as_owner "$REINSTALL_STATE_UID" "$REINSTALL_STATE_GID" mkdir -m 0700 "$WORKER_STATE_DIR" || die "$(t update_apply_failed)"
     REINSTALL_STATE_CREATED=1
@@ -4902,7 +4930,7 @@ do_reinstall() {
     if [ "$WORKER_ROLE" = registration ] && [ "$_restore_owner" = 0 ]; then
       reinstall_trusted_parent "$WORKER_ROLE_PATH" || die "$(t reinstall_unsafe)"
     fi
-    publish_reinstall_file "$_restore_file" "$WORKER_ROLE_PATH" "$_restore_owner" "$_restore_gid" "$_restore_mode" || die "$(t update_apply_failed)"
+    publish_new_install_file "$_restore_file" "$WORKER_ROLE_PATH" "$_restore_owner" "$_restore_gid" "$_restore_mode" || die "$(t update_apply_failed)"
   done
   worker_reload_services || die "$(t update_apply_failed)"
   if [ "$REINSTALL_ENABLED" = 1 ]; then
@@ -4916,7 +4944,7 @@ do_reinstall() {
   fi
   if [ "${REINSTALL_LAYOUT_FOUND:-0}" = 1 ]; then discard_reinstall_receipt || die "$(t reinstall_unsafe)"; fi
   REINSTALL_PENDING=0
-  finish_reinstall_files commit || warn "$(t reinstall_rollback_failed)"
+  finish_new_install_files commit || warn "$(t reinstall_rollback_failed)"
   ok "$(t reinstall_done)"
 }
 
@@ -5158,6 +5186,10 @@ do_install() {
     done
   fi
   setup_dirs
+  if [ "$WORKER_PROTOCOL" = 1 ] && [ "$DRY_RUN" != 1 ]; then
+    : >"$TEMP_DIR/new-install-files"
+    FRESH_FILE_ACTION=rollback
+  fi
   install_binary
   write_config
   if [ "$WORKER_PROTOCOL" = 1 ]; then
@@ -5659,12 +5691,35 @@ remove_panel_files() {
   run rm -f "$SUDOERS_FILE" || die "$(t remove_failed)"
 }
 
+# The worker and panel were stopped before the receipt recorded the binary and
+# the panel unit was removed. Verify the remaining worker file before unlinking it.
+partial_worker_matches_receipt() {
+  [ "$REINSTALL_LAYOUT_FOUND" = 1 ] && reinstall_receipt_matches &&
+    $SUDO test -f "$REINSTALL_DIR/stopped_binary" && [ "$($SUDO cat "$REINSTALL_DIR/worker_protocol")" = 1 ] &&
+    ! $SUDO test -e "$SERVICE_FILE" && ! $SUDO test -L "$SERVICE_FILE" &&
+    [ "$(worker_launcher_state "$REINSTALL_DIR/launcher")" = "$WORKER_STATE_DIR" ] || return 1
+  for WORKER_ROLE in launcher updater; do
+    worker_role_path
+    ! $SUDO test -L "$WORKER_ROLE_PATH" || return 1
+    $SUDO test -e "$WORKER_ROLE_PATH" || continue
+    reinstall_trusted_file "$WORKER_ROLE_PATH" &&
+      [ "$($SUDO stat -c '%u:%g:%a' "$WORKER_ROLE_PATH")" = "$($SUDO stat -c '%u:%g:%a' "$REINSTALL_DIR/$WORKER_ROLE")" ] &&
+      $SUDO cmp -s "$WORKER_ROLE_PATH" "$REINSTALL_DIR/$WORKER_ROLE" || return 1
+  done
+}
+
 guard_worker_removal() {
+  REMOVE_PARTIAL_WORKER=0
   worker_layout || return 1
   if ! $SUDO test -e "$PANEL_LAUNCH_BIN" && ! $SUDO test -L "$PANEL_LAUNCH_BIN" &&
     ! $SUDO test -e "$WORKER_SERVICE_FILE" && ! $SUDO test -L "$WORKER_SERVICE_FILE"; then return 0; fi
-  worker_installation_present && reinstall_trusted_file "$WORKER_SERVICE_FILE" &&
-    worker_launcher_binds_state "$WORKER_STATE_DIR" || return 1
+  if $SUDO test -e "$PANEL_LAUNCH_BIN" && $SUDO test -e "$WORKER_SERVICE_FILE"; then
+    worker_installation_present && reinstall_trusted_file "$WORKER_SERVICE_FILE" &&
+      worker_launcher_binds_state "$WORKER_STATE_DIR" || return 1
+  else
+    partial_worker_matches_receipt || return 1
+    REMOVE_PARTIAL_WORKER=1
+  fi
   if $SUDO test -f "$SERVICE_FILE"; then
     retained_worker_identity || return 1
   else
@@ -5691,19 +5746,28 @@ do_uninstall() {
   if [ "$DRY_RUN" != 1 ]; then
     [ "$($SUDO sha256sum "$CONFIG_FILE" | awk '{print $1}')" = "$REMOVE_CONFIG_HASH" ] || die "$(t remove_unsafe)"
     guard_worker_removal || die "$(t remove_unsafe)"
-    save_reinstall_receipt || die "$(t reinstall_receipt_failed "$REINSTALL_DIR")"
-    if ! $SUDO sync -f "$REINSTALL_DIR" 2>/dev/null && ! $SUDO sync; then die "$(t reinstall_receipt_failed "$REINSTALL_DIR")"; fi
-    REINSTALL_LAYOUT_FOUND=1
+    persist_removal_receipt
   fi
   remove_panel_files
   say "$(t u_kept "$CONFIG_FILE" "$DATA_DIR")"
   say "$(t uninstall_privileges_retained)"
 }
 
+persist_removal_receipt() {
+  save_reinstall_receipt || die "$(t reinstall_receipt_failed "$REINSTALL_DIR")"
+  if ! $SUDO sync -f "$REINSTALL_DIR" 2>/dev/null && ! $SUDO sync; then die "$(t reinstall_receipt_failed "$REINSTALL_DIR")"; fi
+  REINSTALL_LAYOUT_FOUND=1
+}
+
 do_purge() {
   prepare_removal
   confirm_danger purge_q "$CONFIG_FILE" "${REMOVE_DATA_DIR:-—}" "$SYSTEM_USER" || { say "$(t aborted)"; exit 0; }
-  if [ "$DRY_RUN" != 1 ]; then guard_worker_removal || die "$(t remove_unsafe)"; fi
+  if [ "$DRY_RUN" != 1 ]; then
+    guard_worker_removal || die "$(t remove_unsafe)"
+    if worker_installation_present || { [ "$REINSTALL_LAYOUT_FOUND" = 1 ] && [ "$($SUDO cat "$REINSTALL_DIR/worker_protocol")" = 1 ]; }; then
+      persist_removal_receipt
+    fi
+  fi
   remove_panel_files
   verify_removal_privileges
   if [ "$REMOVE_PRIVILEGES" = 1 ]; then

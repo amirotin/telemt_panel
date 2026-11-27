@@ -9,7 +9,7 @@ if [ ! -x "$PARSER" ]; then echo "SKIP removal fixtures: set TP_TEST_BINARY"; ex
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 HASH=$(printf 'fixture-password\n' | "$PARSER" hash-password)
-for scenario in uninstall retained-purge interrupted-purge replaced-binary unsafe-receipt unsafe-service purge remote-telemt external-config legacy unsafe overlap binary-overlap symlink stop-fails service-mismatch changed dry after-uninstall worker-data worker-unbound-data worker-retained-data worker-unregistered-retry; do
+for scenario in uninstall retained-purge interrupted-purge replaced-binary unsafe-receipt unsafe-service purge remote-telemt external-config legacy unsafe overlap binary-overlap symlink stop-fails service-mismatch changed dry after-uninstall worker-data worker-unbound-data worker-retained-data worker-unregistered-retry worker-partial-launcher worker-partial-updater worker-partial-purge worker-partial-replaced; do
   CASE="$TMP/$scenario"
   mkdir -p "$CASE/config" "$CASE/data" "$CASE/bin" "$CASE/telemt" "$CASE/tools" "$CASE/external"
   printf 'panel binary\n' >"$CASE/bin/panel"
@@ -67,6 +67,28 @@ case "$SCENARIO:$*" in
 esac
 EOF
   chmod 0755 "$CASE/tools/systemctl"
+  case "$scenario" in worker-partial-*)
+    REAL_RM=$(command -v rm); export REAL_RM
+    cat >"$CASE/tools/rm" <<'EOF'
+#!/bin/sh
+if [ ! -e "$CASE/failed" ]; then
+  for target do
+    case "$SCENARIO:$target" in
+      worker-partial-launcher:"$CASE/bin/panel.start"|worker-partial-updater:"$CASE/custom-panel-updater.service"|worker-partial-purge:"$CASE/custom-panel-updater.service"|worker-partial-replaced:"$CASE/custom-panel-updater.service")
+        : >"$CASE/failed"
+        for other do
+          case "$other" in "$CASE/bin/panel.start"|"$CASE/custom-panel-updater.service")
+            [ "$other" = "$target" ] || "$REAL_RM" -f "$other" ;;
+          esac
+        done
+        exit 1 ;;
+    esac
+  done
+fi
+exec "$REAL_RM" "$@"
+EOF
+    chmod 0755 "$CASE/tools/rm" ;;
+  esac
   # Model namespace uid 0 for this unprivileged fixture. All modes and all
   # other ownership queries come from the filesystem.
   REAL_STAT=$(command -v stat)
@@ -88,7 +110,7 @@ EOF
     . "$HERE/../install.sh"
     L=en; COLOR=0; setup_colors
     CMD=purge
-    case "$SCENARIO" in uninstall|retained-purge|interrupted-purge|replaced-binary|unsafe-receipt|unsafe-service|binary-overlap|worker-retained-data|worker-unregistered-retry) CMD=uninstall ;; esac
+    case "$SCENARIO" in uninstall|retained-purge|interrupted-purge|replaced-binary|unsafe-receipt|unsafe-service|binary-overlap|worker-retained-data|worker-unregistered-retry|worker-partial-*) CMD=uninstall ;; esac
     CONFIG_DIR="$CASE/config"; CONFIG_FILE="$CONFIG_DIR/config.toml"
     SUDOERS_FILE="$CASE/sudoers"; TELEMT_CONFIG="$CASE/telemt/telemt.toml"
     REINSTALL_DIR="$CASE/receipt"
@@ -114,6 +136,21 @@ EOF
       INIT=systemd; RUN_AS=user; SYSTEM_USER=$(id -un); PANEL_BIN="$CASE/bin/panel"
       SERVICE_NAME=custom-panel; SERVICE_FILE="$CASE/unit"; WORKER_STATE_OVERRIDE="$CASE/config/updater"; DATA_DIR="$CASE/data"
       worker_layout; gen_panel_launcher >"$PANEL_LAUNCH_BIN"; gen_updater_service >"$WORKER_SERVICE_FILE" ;;
+    esac
+    case "$SCENARIO" in worker-partial-*)
+      if [ "$SCENARIO" = worker-partial-purge ]; then
+        if (trap installer_exit EXIT; CMD=purge; do_purge); then exit 1; fi
+      elif (trap installer_exit EXIT; do_uninstall); then exit 1; fi
+      [ -e "$CASE/failed" ] && [ ! -e "$CASE/unit" ] && [ -f "$CASE/receipt/stopped_binary" ] || exit 1
+      if [ "$SCENARIO" = worker-partial-launcher ]; then
+        [ -f "$PANEL_LAUNCH_BIN" ] && [ ! -e "$WORKER_SERVICE_FILE" ] || exit 1
+        do_uninstall
+      else
+        [ ! -e "$PANEL_LAUNCH_BIN" ] && [ -f "$WORKER_SERVICE_FILE" ] || exit 1
+        if [ "$SCENARIO" = worker-partial-replaced ]; then printf 'operator replacement\n' >"$WORKER_SERVICE_FILE"; fi
+        CMD=purge; do_purge
+      fi
+      exit 0 ;;
     esac
     if [ "$SCENARIO" = interrupted-purge ] || [ "$SCENARIO" = replaced-binary ] || [ "$SCENARIO" = worker-unregistered-retry ]; then
       if (trap installer_exit EXIT; do_uninstall); then exit 1; fi
@@ -149,8 +186,13 @@ EOF
     worker-unbound-data|worker-retained-data)
       if [ "$result" != 0 ] || [ -e "$CASE/config" ] || [ -e "$CASE/receipt" ] || [ -e "$CASE/bin/panel" ] ||
         [ ! -f "$CASE/external/cert" ] || ! grep -q 'will be retained' "$CASE/output"; then cat "$CASE/output"; exit 1; fi ;;
-    retained-purge|interrupted-purge|worker-unregistered-retry)
-      if [ "$result" != 0 ] || [ -e "$CASE/receipt" ] || [ -e "$CASE/config" ] || [ -e "$CASE/data" ]; then cat "$CASE/output"; exit 1; fi ;;
+    worker-partial-launcher)
+      if [ "$result" != 0 ] || [ -e "$CASE/bin/panel.start" ] || [ -e "$CASE/bin/panel" ] || [ ! -f "$CASE/data/history" ]; then cat "$CASE/output"; exit 1; fi ;;
+    worker-partial-replaced)
+      if [ "$result" = 0 ] || [ "$(cat "$CASE/custom-panel-updater.service")" != 'operator replacement' ] || [ ! -f "$CASE/data/history" ]; then cat "$CASE/output"; exit 1; fi ;;
+    retained-purge|interrupted-purge|worker-unregistered-retry|worker-partial-updater|worker-partial-purge)
+      if [ "$result" != 0 ] || [ -e "$CASE/receipt" ] || [ -e "$CASE/config" ] || [ -e "$CASE/data" ] ||
+        [ -e "$CASE/custom-panel-updater.service" ]; then cat "$CASE/output"; exit 1; fi ;;
     replaced-binary)
       if [ "$result" = 0 ] || [ "$(cat "$CASE/bin/panel")" != 'different binary' ] || [ ! -d "$CASE/receipt" ] || [ ! -f "$CASE/data/history" ]; then cat "$CASE/output"; exit 1; fi ;;
     *) if [ "$result" != 0 ] || [ -e "$CASE/config" ] || [ -e "$CASE/data" ]; then cat "$CASE/output"; exit 1; fi ;;

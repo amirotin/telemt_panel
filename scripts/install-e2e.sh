@@ -207,6 +207,9 @@ EOF
 fi
 cat >"$STUB/install" <<'EOF'
 #!/bin/sh
+for destination do
+  if [ -n "${FAIL_SERVICE_WRITE:-}" ] && [ "$destination" = "$FAIL_SERVICE_WRITE" ]; then exit 1; fi
+done
 args=""
 skip=0
 for a in "$@"; do
@@ -332,6 +335,12 @@ fi
 
 echo "--- install"
 if [ "$SC" = systemd ] && [ "$(timeout 5 "$BIN" update-worker --protocol 2>/dev/null)" = 1 ]; then
+  if FAIL_SERVICE_WRITE=/etc/systemd/system/telemt-panel.service run_installer install >"$WORK/service-fail.log" 2>&1; then
+    fail "installer ignored failed service publication"
+  fi
+  for target in "$CONFIG" "$PANEL_BIN" "$PANEL_BIN.start" /etc/systemd/system/telemt-panel-updater.service /etc/sudoers.d/telemt-panel; do
+    if [ -e "$target" ]; then cat "$WORK/service-fail.log"; echo "FAIL incomplete fresh installation left $target"; exit 1; fi
+  done
   if TP_OPEN_FIREWALL=invalid run_installer install >"$WORK/firewall-fail.log" 2>&1; then fail "installer accepted invalid firewall mode"; fi
   check test -f /etc/systemd/system/telemt-panel.service
   check test -f /etc/systemd/system/telemt-panel-updater.service
