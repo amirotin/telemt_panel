@@ -54,32 +54,50 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
   const requestSequence = useRef(0);
   const activeSave = useRef<number | null>(null);
   useEffect(() => () => { activeSave.current = null; }, []);
+  const [readback, setReadback] = useState<{ submitted: SubmittedDraft<AutoUpdateFormState>; retrying: boolean } | null>(null);
+
+  async function readSavedSettings(submitted: SubmittedDraft<AutoUpdateFormState>) {
+    const isCurrent = () => activeSave.current === submitted.requestId && current.current.sessionKey === submitted.sessionKey;
+    const queryKey = getAutoUpdateQueryKey();
+    const remoteBeforeRefresh = current.current.remote;
+    const cacheRevision = queryClient.getQueryState(queryKey)?.dataUpdateCount;
+    let fresh: AutoUpdateSettings;
+    try {
+      await queryClient.cancelQueries({ queryKey }, { revert: false });
+      if (!isCurrent()) return;
+      const response = await getAutoUpdate({ throwOnError: true });
+      fresh = response.data;
+    } catch {
+      if (isCurrent()) {
+        activeSave.current = null;
+        setReadback({ submitted, retrying: false });
+        void queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+      }
+      return;
+    }
+    if (!isCurrent()) return;
+    activeSave.current = null;
+    setReadback(null);
+    const latest = queryClient.getQueryData<AutoUpdateSettings>(queryKey);
+    if (queryClient.getQueryState(queryKey)?.dataUpdateCount !== cacheRevision && (!latest || !equalForm(toAutoUpdateFormState(latest), toAutoUpdateFormState(fresh)))) return;
+    update((state) => {
+      const confirmed = acknowledgeSubmitted(state, submitted, { value: toAutoUpdateFormState(fresh), revision: null }, equalForm);
+      // A post-save GET supersedes the snapshot retained before it started.
+      // A different remote arriving during that GET remains a conflict.
+      return state.remote === remoteBeforeRefresh && confirmed.remote ? { ...confirmed, remote: null } : confirmed;
+    });
+    queryClient.setQueryData(queryKey, fresh);
+    const confirmed = current.current;
+    if (equalForm(confirmed.draft, confirmed.baseline.value) && !confirmed.remote) pushToast(s.server.updates.autoUpdate.saved, "ok");
+  }
+
   const saveMutation = useMutation({
     mutationFn: (submitted: SubmittedDraft<AutoUpdateFormState>) => putAutoUpdate({ body: serializeAutoUpdateForm(submitted.value), throwOnError: true }),
     onSuccess: async (_next, submitted) => {
       if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
       update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: null }, equalForm));
-      const remoteBeforeRefresh = current.current.remote;
-      const cacheRevision = queryClient.getQueryState(getAutoUpdateQueryKey())?.dataUpdateCount;
-      await queryClient.cancelQueries({ queryKey: getAutoUpdateQueryKey() }, { revert: false });
-      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
-      const { data: fresh } = await getAutoUpdate({ throwOnError: true });
-      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
-      const latest = queryClient.getQueryData<AutoUpdateSettings>(getAutoUpdateQueryKey());
-      if (queryClient.getQueryState(getAutoUpdateQueryKey())?.dataUpdateCount !== cacheRevision && (!latest || !equalForm(toAutoUpdateFormState(latest), toAutoUpdateFormState(fresh)))) {
-        activeSave.current = null;
-        return;
-      }
-      update((state) => {
-        const confirmed = acknowledgeSubmitted(state, submitted, { value: toAutoUpdateFormState(fresh), revision: null }, equalForm);
-        // A post-save GET supersedes the snapshot retained before it started.
-        // A different remote arriving during that GET remains a conflict.
-        return state.remote === remoteBeforeRefresh && confirmed.remote ? { ...confirmed, remote: null } : confirmed;
-      });
-      queryClient.setQueryData(getAutoUpdateQueryKey(), fresh);
-      activeSave.current = null;
-      const confirmed = current.current;
-      if (equalForm(confirmed.draft, confirmed.baseline.value) && !confirmed.remote) pushToast(s.server.updates.autoUpdate.saved, "ok");
+      setReadback(null);
+      await readSavedSettings(submitted);
     },
     onError: (err: PutAutoUpdateError, submitted) => {
       if (activeSave.current !== submitted.requestId) return;
@@ -120,7 +138,7 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
         </div>
 
         <div className="px-4 py-3">
-          {session.remote && <DraftSessionActions conflict onDiscard={() => update(discardToRemote)} disabled={saveMutation.isPending} />}
+          {session.remote && <DraftSessionActions conflict onDiscard={() => update(discardToRemote)} disabled={saveMutation.isPending || readback?.retrying} />}
           <p className="mb-3 text-micro leading-relaxed text-text-muted">{intro}</p>
           <ModeRow
             label={s.server.updates.targetNames.telemt}
@@ -163,6 +181,26 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
             </div>
           )}
 
+          {readback && (
+            <div className="mt-3 rounded-xl border border-warn/25 bg-warn/[0.06] p-3">
+              <p role="alert" className="text-meta text-text">{s.server.updates.autoUpdate.savedReadFailed}</p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-2"
+                disabled={readback.retrying || saveMutation.isPending}
+                onClick={() => {
+                  if (activeSave.current !== null) return;
+                  activeSave.current = readback.submitted.requestId;
+                  setReadback({ ...readback, retrying: true });
+                  void readSavedSettings(readback.submitted);
+                }}
+              >
+                {s.server.updates.autoUpdate.retryRead}
+              </Button>
+            </div>
+          )}
+
           <Button
             variant={dirty ? "primary" : "secondary"}
             onClick={() => {
@@ -171,7 +209,7 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
               activeSave.current = submitted.requestId;
               saveMutation.mutate(submitted);
             }}
-            disabled={!dirty || saveMutation.isPending}
+            disabled={!dirty || saveMutation.isPending || readback?.retrying}
             className="mt-3"
           >
             {dirty || session.remote ? s.server.updates.autoUpdate.save : s.server.updates.autoUpdate.savedShort}

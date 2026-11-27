@@ -3192,6 +3192,8 @@ export const en: Dict = {
         save: "Save",
         savedShort: "Saved",
         saved: "Auto-update settings saved",
+        savedReadFailed: "Settings saved. The panel could not read them back from the server.",
+        retryRead: "Retry reading settings",
       },
       sseStale: "Live progress is unavailable — the status is polled instead.",
     },

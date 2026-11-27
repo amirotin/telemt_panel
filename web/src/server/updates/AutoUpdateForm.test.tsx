@@ -161,8 +161,8 @@ it("keeps submitted state, late edits and the known conflict when the post-save 
   expect(container.textContent).toContain("Настройки изменились на сервере");
   expect(save().disabled).toBe(false);
   expect(save().textContent).toBe("Сохранить");
-  expect(pushToast).toHaveBeenCalledWith(expect.any(String), "error");
-  expect(vi.mocked(pushToast).mock.calls.some(([, tone]) => tone === "ok")).toBe(false);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Настройки сохранены");
+  expect(pushToast).not.toHaveBeenCalled();
 });
 
 it.each([false, true])("reconciles a matching baseline cache publication during the post-save GET with late edits=%s", async (lateEdit) => {
@@ -196,4 +196,52 @@ it.each([false, true])("reconciles a matching baseline cache publication during 
   expect(save().disabled).toBe(!lateEdit);
   expect(save().textContent).toBe(lateEdit ? "Сохранить" : "Сохранено");
   if (lateEdit) expect(pushToast).not.toHaveBeenCalled();
+});
+
+it("retries only the confirmation GET after a successful PUT and preserves subsequent edits", async () => {
+  const methods: string[] = [];
+  let allowRead = false;
+  const canonical: AutoUpdateSettings = { ...initial, telemt: "check", interval: "12h0m0s" };
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    const method = (request as Request).method;
+    methods.push(method);
+    if (method === "PUT") return new Response(null, { status: 204 });
+    if (!allowRead) throw new Error("offline");
+    return Response.json(canonical);
+  } });
+  await setup();
+  const retry = () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Повторить чтение");
+  await act(async () => radio(1).click());
+  await act(async () => save().click());
+  expect(methods).toEqual(["PUT", "GET"]);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Настройки сохранены");
+  expect(save().disabled).toBe(true);
+  expect(retry()).toBeDefined();
+  await act(async () => retry()!.click());
+  expect(methods).toEqual(["PUT", "GET", "GET"]);
+  expect(retry()).toBeDefined();
+  await act(async () => radio(2).click());
+  allowRead = true;
+  await act(async () => { retry()!.click(); retry()!.click(); });
+  expect(methods).toEqual(["PUT", "GET", "GET", "GET"]);
+  expect(cache.getQueryData(getAutoUpdateQueryKey())).toEqual(canonical);
+  expect(radio(2).getAttribute("aria-checked")).toBe("true");
+  expect(save().disabled).toBe(false);
+  expect(retry()).toBeUndefined();
+  expect(pushToast).not.toHaveBeenCalled();
+});
+
+it("keeps a rejected PUT retryable as a save without offering a confirmation read", async () => {
+  const methods: string[] = [];
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async (request) => {
+    methods.push((request as Request).method);
+    return Response.json({ code: "internal_error" }, { status: 500 });
+  } });
+  await setup();
+  await act(async () => radio(1).click());
+  await act(async () => save().click());
+  expect(methods).toEqual(["PUT"]);
+  expect(container.textContent).not.toContain("Повторить чтение");
+  expect(save().disabled).toBe(false);
+  expect(pushToast).toHaveBeenCalledWith(expect.any(String), "error");
 });
