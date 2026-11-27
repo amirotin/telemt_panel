@@ -148,6 +148,19 @@ func TestWorkerRecoveryKeepsDataWrittenAfterOldServiceStarts(t *testing.T) {
 					restores++
 				case host.OpStartService:
 					starts++
+					if starts == 2 {
+						// A crash here hands the journal to the restored protocol-1
+						// executable. It checks readiness, intent and snapshots in
+						// that order and cannot read a separate pending-start flag.
+						checkpoint, err := loadWorkerState(client.stateDir)
+						if err != nil {
+							t.Fatal(err)
+						}
+						task := checkpoint.Task
+						if task.RecoveryReady || !task.StopIntent || task.PublishIntent || task.SnapshotComplete {
+							t.Fatalf("previous worker cannot retry the start without restoring files: %+v", task)
+						}
+					}
 					if starts == 2 && (failure == "start" || failure == "offline_after_start_error") {
 						return errors.New("init did not confirm start")
 					}
@@ -167,6 +180,8 @@ func TestWorkerRecoveryKeepsDataWrittenAfterOldServiceStarts(t *testing.T) {
 				}
 				state.Task.RecoveryReady = false
 				state.Task.RecoveryStartPending = false
+				state.Task.PublishIntent = true
+				state.Task.SnapshotComplete = true
 				if err := saveWorkerState(client.stateDir, state); err != nil {
 					t.Fatal(err)
 				}

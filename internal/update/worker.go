@@ -54,7 +54,7 @@ func RunWorker(ctx context.Context, cfg WorkerConfig) error {
 		return err
 	}
 	defer w.e.Close()
-	if s.Task.RecoveryReady || w.legacyRestored() {
+	if w.restored() {
 		if err := w.prepareRestoredService(ctx, false); err != nil {
 			return err
 		}
@@ -285,18 +285,28 @@ func (w *independentWorker) legacyRestored() bool {
 	return status.Phase == PhaseFailed && (strings.HasPrefix(status.Detail, oldStartFailed) || strings.HasPrefix(status.Detail, oldHealthFailed))
 }
 
+func (w *independentWorker) restored() bool {
+	return w.s.Task.RecoveryReady || w.s.Task.RecoveryStartPending || w.legacyRestored()
+}
+
 func (w *independentWorker) prepareRestoredService(ctx context.Context, offline bool) error {
 	task := w.s.Task
 	wrapperStartsPanel := offline && task.Status.Target == TargetPanel
-	if !task.RecoveryReady {
+	if !task.RecoveryReady && !task.RecoveryStartPending {
 		startNeeded := true
 		if w.legacyRestored() {
 			startNeeded = strings.HasPrefix(task.Status.Detail, oldStartFailed)
 		} else if err := w.restore(ctx, offline); err != nil {
 			return errors.Join(err, w.phase(PhaseFailed, "rollback incomplete: "+err.Error()))
 		}
-		task.RecoveryReady = true
+		// A restored protocol-1 executable may take over at any point. Its
+		// start retry requires outstanding intent, and RecoveryReady tells
+		// it to skip directly to health. Retire both restore operations now.
+		task.StopIntent = true
+		task.PublishIntent = false
+		task.SnapshotComplete = false
 		task.RecoveryStartPending = startNeeded && !wrapperStartsPanel
+		task.RecoveryReady = !task.RecoveryStartPending
 		// Starting the restored panel permits new writes. First make durable
 		// the promise that no subsequent attempt will replay its snapshots.
 		if err := saveWorkerState(w.cfg.StateDir, w.s); err != nil && len(task.Snapshots) != 0 {
@@ -316,6 +326,7 @@ func (w *independentWorker) prepareRestoredService(ctx context.Context, offline 
 			}
 		}
 		task.RecoveryStartPending = false
+		task.RecoveryReady = true
 		if err := saveWorkerState(w.cfg.StateDir, w.s); err != nil && len(task.Snapshots) != 0 {
 			return err
 		}
@@ -415,7 +426,7 @@ func RecoverWorker(ctx context.Context, cfg WorkerConfig) error {
 		}
 		return w.cleanup()
 	}
-	if !s.Task.RecoveryReady && !w.legacyRestored() {
+	if !w.restored() {
 		_ = w.phase(PhaseRollingBack, "recovering interrupted update")
 	}
 	if err := w.prepareRestoredService(ctx, true); err != nil {
