@@ -330,7 +330,7 @@ it("disables a subscription with its saved listener even after an unfinished edi
   expect(api.prepare.mock.calls[0]?.[0].body).toMatchObject({...saved,enabled:false});
 });
 
-it.each([false, true])("reconciles a published 503 without reusing its receipt (first read fails: %s)", async firstReadFails => {
+it.each(["confirmed", "network failure", "unreadable file"])("reconciles a published 503 without reusing its receipt (first read: %s)", async firstRead => {
   const initial = editable();
   const candidate = { listen: "127.0.0.1:8081", base_path: "/clients", enabled: false, tls: { mode: "http" as const } };
   const checked = prepared({ candidate, new_url: "https://links.example.org/clients/" });
@@ -349,7 +349,10 @@ it.each([false, true])("reconciles a published 503 without reusing its receipt (
     return result.data;
   });
   api.load.mockReset();
-  if (firstReadFails) api.load.mockRejectedValueOnce(new Error("offline"));
+  if (firstRead === "network failure") api.load.mockRejectedValueOnce(new Error("offline"));
+  if (firstRead === "unreadable file") api.load.mockResolvedValueOnce({
+    ...serverSaved, configured: undefined, error: "tls_save_unconfirmed",
+  });
   api.load.mockResolvedValue(serverSaved);
   const dialog = await mount({...initial, active, configured: active, prepared:checked, state:"prepared"}, true, "subscription");
   await click(button("Сохранить настройки"));
@@ -357,7 +360,7 @@ it.each([false, true])("reconciles a published 503 without reusing its receipt (
   expect(dialog.textContent).toContain("диск не подтвердил");
   expect(button("Сохранить настройки")).toBeUndefined();
   expect(api.load).toHaveBeenCalledTimes(1);
-  if (firstReadFails) {
+  if (firstRead !== "confirmed") {
     expect(client!.getQueryData<PanelTlsSettings>(["panel-tls-config"])?.prepared).toBeUndefined();
     expect(button("Перезапустить панель")).toBeUndefined();
     await click(button("Проверить серверную конфигурацию"));
@@ -369,6 +372,16 @@ it.each([false, true])("reconciles a published 503 without reusing its receipt (
   });
   expect(dialog.textContent).toContain("диск не подтвердил");
   expect(api.save).toHaveBeenCalledTimes(1);
+});
+
+it("offers to reread an unconfirmed save when the reopened form has no file snapshot", async () => {
+  const dialog = await mount({
+    ...editable(), configured: undefined, state: "saved", restart_required: true,
+    new_url: "https://example.org/", error: "tls_save_unconfirmed",
+  });
+  expect(dialog.textContent).toContain("диск не подтвердил");
+  expect(button("Перезапустить панель")).toBeUndefined();
+  expect(button("Проверить серверную конфигурацию")).toBeDefined();
 });
 
 it.each([

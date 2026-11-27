@@ -116,6 +116,43 @@ describe("Journal source states", () => {
     expect(container.textContent).not.toContain("paused file content");
   });
 
+  it.each([true, false])("follows visible buffered rows on resume with autoscroll=%s", atBottom => {
+    const source = JournalSource.instances[0];
+    const emit = (level: string, msg: string) =>
+      source.emit("log", { ts: "2026-10-03T12:00:00Z", level, msg });
+    const button = (label: string) => [...container.querySelectorAll("button")].find(item => item.textContent === label);
+    const infoFilter = container.querySelector<HTMLButtonElement>("button.tone-info")!;
+    act(() => infoFilter.click());
+    act(() => emit("warn", "already displayed"));
+    const scroll = container.querySelector<HTMLDivElement>('[data-testid="log-list-scroll"]')!;
+    Object.defineProperties(scroll, {
+      clientHeight: { value: 100 },
+      scrollHeight: { value: 300, configurable: true },
+    });
+    scroll.scrollTop = atBottom ? 200 : 0;
+    act(() => scroll.dispatchEvent(new Event("scroll")));
+    act(() => button(ru.journal.pause)!.click());
+    act(() => {
+      emit("warn", "buffered warning");
+      emit("error", "buffered error");
+      emit("info", "hidden by filter");
+    });
+    expect(scroll.textContent).not.toContain("buffered warning");
+    Object.defineProperty(scroll, "scrollHeight", { value: 500 });
+    const jumpLabel = ru.journal.jumpToNewTemplate.replace("{n}", "2");
+    act(() => button(ru.journal.resume)!.click());
+    expect(scroll.textContent).toContain("buffered warning");
+    expect(scroll.textContent).toContain("buffered error");
+    expect(scroll.textContent).not.toContain("hidden by filter");
+    if (atBottom) {
+      expect(scroll.scrollTop).toBe(scroll.scrollHeight);
+      expect(button(jumpLabel)).toBeUndefined();
+    } else {
+      expect(scroll.scrollTop).toBe(0);
+      expect(button(jumpLabel)).toBeDefined();
+    }
+  });
+
   it("does not claim the source is connected while it is still connecting", () => {
     expect(container.textContent).not.toContain(ru.journal.emptyDescription);
   });

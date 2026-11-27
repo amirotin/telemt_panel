@@ -89,7 +89,8 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
     : savedState ?? null;
   const [formError, setFormError] = useState<FormError | null>(null);
   const [publishedSave, setPublishedSave] = useState<"checking" | "unavailable" | "checked" | null>(null);
-  const saveReadFailed = publishedSave === "unavailable" || (query.isError && settings?.error === "tls_save_unconfirmed");
+  const saveReadFailed = publishedSave === "unavailable"
+    || (settings?.error === "tls_save_unconfirmed" && (query.isError || !settings.configured));
   const awaitingSaveState = publishedSave === "checking" || saveReadFailed;
   const [restartUnconfirmed, setRestartUnconfirmed] = useState(false);
   const [restartRequestedState, setRestartRequested] = useState(false);
@@ -191,7 +192,7 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
   async function checkPublishedSave() {
     setPublishedSave("checking");
     const result = await query.refetch();
-    setPublishedSave(result.isSuccess ? "checked" : "unavailable");
+    setPublishedSave(result.isSuccess && result.data.configured ? "checked" : "unavailable");
   }
 
   async function onApply() {
@@ -215,7 +216,7 @@ export function PanelAccessForm({ onClose, target = "panel" }: PanelAccessFormPr
     queryClient.setQueryData<PanelTlsSettings>(getPanelTlsConfigQueryKey(options), current => current ? {
       ...current,
       prepared: undefined,
-      configured: prepared.candidate,
+      configured: unconfirmed ? undefined : prepared.candidate,
       state: "saved",
       restart_required: result.restart_required,
       new_url: result.new_url,

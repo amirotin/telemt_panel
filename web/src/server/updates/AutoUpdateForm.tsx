@@ -41,10 +41,19 @@ export function AutoUpdateForm({ canApply }: { canApply: boolean }) {
     );
   }
   if (!query.data) return null;
-  return <AutoUpdateSession initial={query.data} canApply={canApply} />;
+  const refreshError = query.isRefetchError ? {
+    message: apiErrorMessage(query.error, s),
+    retry: () => { void query.refetch({ cancelRefetch: false }); },
+    fetching: query.isFetching,
+  } : null;
+  return <AutoUpdateSession initial={query.data} canApply={canApply} refreshError={refreshError} />;
 }
 
-function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings; canApply: boolean }) {
+function AutoUpdateSession({ initial, canApply, refreshError }: {
+  initial: AutoUpdateSettings;
+  canApply: boolean;
+  refreshError: { message: string; retry: () => void; fetching: boolean } | null;
+}) {
   const s = useStrings();
   const queryClient = useQueryClient();
   const { session, update, current } = useDraftSession("auto-update", { value: toAutoUpdateFormState(initial), revision: null }, equalForm);
@@ -93,8 +102,23 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
 
   const saveMutation = useMutation({
     mutationFn: (submitted: SubmittedDraft<AutoUpdateFormState>) => putAutoUpdate({ body: serializeAutoUpdateForm(submitted.value), throwOnError: true }),
-    onSuccess: async (_next, submitted) => {
-      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) return;
+    onMutate: () => {
+      const query = queryClient.getQueryCache().find({ queryKey: getAutoUpdateQueryKey(), exact: true });
+      return { query, revision: query?.state.dataUpdateCount };
+    },
+    onSuccess: async (_next, submitted, beforeSave) => {
+      const queryKey = getAutoUpdateQueryKey();
+      const query = beforeSave?.query;
+      // A logout clears the old session's query even if a PUT is still in flight.
+      if (!query || queryClient.getQueryCache().get(query.queryHash) !== query) return;
+      if (query.state.dataUpdateCount === beforeSave.revision) {
+        queryClient.setQueryData(queryKey, serializeAutoUpdateForm(submitted.value));
+      }
+      if (activeSave.current !== submitted.requestId || current.current.sessionKey !== submitted.sessionKey) {
+        await queryClient.invalidateQueries({ queryKey });
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey, refetchType: "none" });
       update((state) => acknowledgeSubmitted(state, submitted, { value: submitted.value, revision: null }, equalForm));
       setReadback(null);
       await readSavedSettings(submitted);
@@ -181,16 +205,20 @@ function AutoUpdateSession({ initial, canApply }: { initial: AutoUpdateSettings;
             </div>
           )}
 
-          {readback && (
+          {(readback || refreshError) && (
             <div className="mt-3 rounded-xl border border-warn/25 bg-warn/[0.06] p-3">
-              <p role="alert" className="text-meta text-text">{s.server.updates.autoUpdate.savedReadFailed}</p>
+              <p role="alert" className="text-meta text-text">{readback ? s.server.updates.autoUpdate.savedReadFailed : refreshError?.message}</p>
               <Button
                 type="button"
                 variant="secondary"
                 className="mt-2"
-                disabled={readback.retrying || saveMutation.isPending}
+                disabled={readback?.retrying || refreshError?.fetching || saveMutation.isPending}
                 onClick={() => {
                   if (activeSave.current !== null) return;
+                  if (!readback) {
+                    refreshError?.retry();
+                    return;
+                  }
                   activeSave.current = readback.submitted.requestId;
                   setReadback({ ...readback, retrying: true });
                   void readSavedSettings(readback.submitted);

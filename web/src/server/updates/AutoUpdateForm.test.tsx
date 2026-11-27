@@ -245,3 +245,65 @@ it("keeps a rejected PUT retryable as a save without offering a confirmation rea
   expect(save().disabled).toBe(false);
   expect(pushToast).toHaveBeenCalledWith(expect.any(String), "error");
 });
+
+it.each(["no external change", "during PUT", "during GET"])("retains the last known settings and retries only GET after reopening: %s", async change => {
+  const methods: string[] = [];
+  const external: AutoUpdateSettings = { ...initial, telemt: "apply" };
+  const submitted: AutoUpdateSettings = { ...initial, telemt: "check" };
+  const expected = change === "no external change" ? submitted : external;
+  let readable = false;
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async request => {
+    const method = (request as Request).method;
+    methods.push(method);
+    if ((method === "PUT" && change === "during PUT") || (methods.length === 2 && change === "during GET")) {
+      cache.setQueryData(getAutoUpdateQueryKey(), external);
+    }
+    if (method === "PUT") return new Response(null, { status: 204 });
+    if (!readable) throw new Error("offline");
+    return Response.json({ ...expected, interval: "12h0m0s" });
+  } });
+  await setup();
+  await act(async () => radio(1).click());
+  await act(async () => save().click());
+  expect(methods).toEqual(["PUT", "GET"]);
+  await act(async () => root.render(null));
+  await act(async () => root.render(<QueryClientProvider client={cache}><AutoUpdateForm canApply /></QueryClientProvider>));
+  await act(async () => { await settle(); });
+  expect(methods).toEqual(["PUT", "GET", "GET"]);
+  expect(cache.getQueryData(getAutoUpdateQueryKey())).toEqual(expected);
+  expect(radio(expected.telemt === "check" ? 1 : 2).getAttribute("aria-checked")).toBe("true");
+  expect(save().disabled).toBe(true);
+  const retry = () => [...container.querySelectorAll("button")].find(button => button.textContent === "Повторить чтение");
+  expect(retry()).toBeDefined();
+  readable = true;
+  await act(async () => { retry()!.click(); await settle(); });
+  expect(methods).toEqual(["PUT", "GET", "GET", "GET"]);
+  expect(container.querySelector("select")!.value).toBe("12");
+  expect(retry()).toBeUndefined();
+});
+
+it.each([false, true])("applies a late PUT to the session that submitted it (new session: %s)", async newSession => {
+  let finishPut!: () => void;
+  const methods: string[] = [];
+  apiClient.setConfig({ baseUrl: "http://localhost", fetch: async request => {
+    const method = (request as Request).method;
+    methods.push(method);
+    if (method !== "PUT") throw new Error("offline");
+    await new Promise<void>(resolve => { finishPut = resolve; });
+    return new Response(null, { status: 204 });
+  } });
+  await setup();
+  await act(async () => radio(1).click());
+  await act(async () => save().click());
+  await act(async () => root.render(null));
+  if (newSession) {
+    cache.clear();
+    cache.setQueryData(getAutoUpdateQueryKey(), { ...initial, telemt: "apply" });
+  }
+  await act(async () => finishPut());
+  await act(async () => root.render(<QueryClientProvider client={cache}><AutoUpdateForm canApply /></QueryClientProvider>));
+  await act(async () => { await settle(); });
+  expect(methods).toEqual(newSession ? ["PUT"] : ["PUT", "GET"]);
+  expect(radio(newSession ? 2 : 1).getAttribute("aria-checked")).toBe("true");
+  expect(save().disabled).toBe(true);
+});
