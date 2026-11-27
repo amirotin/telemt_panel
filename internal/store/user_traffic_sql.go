@@ -184,7 +184,7 @@ func (s *SQLite) ApplyUserTrafficSnapshotContext(parent context.Context, snapsho
 			continuity = excluded.continuity`, snapshot.ObservedAt, snapshot.SourceStartedAt, sourceState, continuity); err != nil {
 			return fmt.Errorf("update user traffic collector: %w", err)
 		}
-		return pruneTrafficSummariesTx(ctx, tx, snapshot.ObservedAt, retention)
+		return nil
 	})
 	if err != nil {
 		return UserTrafficApplyResult{}, fmt.Errorf("apply user traffic snapshot: %w", err)
@@ -317,7 +317,12 @@ func (s *SQLite) upsertUserTrafficBucketsTx(ctx context.Context, tx *sql.Tx, row
 
 // UserTrafficSummaries returns every retained account summary keyed by username.
 func (s *SQLite) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
-	rows, err := s.query(`SELECT username, total_bytes, since_ts, updated_ts,
+	return s.UserTrafficSummariesContext(context.Background())
+}
+
+// UserTrafficSummariesContext reads account totals without opening a report snapshot.
+func (s *SQLite) UserTrafficSummariesContext(ctx context.Context) (map[string]UserTrafficSummary, error) {
+	rows, err := s.queryContext(ctx, `SELECT username, total_bytes, since_ts, updated_ts,
 		month_key, month_bytes, deleted_ts, continuity FROM user_traffic_users`)
 	if err != nil {
 		return nil, fmt.Errorf("read user traffic summaries: %w", err)
@@ -356,8 +361,12 @@ func (s *SQLite) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
 
 // UserTrafficCollectorState returns the last committed coherent observation.
 func (s *SQLite) UserTrafficCollectorState() (UserTrafficCollectorState, error) {
+	return s.userTrafficCollectorStateContext(context.Background())
+}
+
+func (s *SQLite) userTrafficCollectorStateContext(ctx context.Context) (UserTrafficCollectorState, error) {
 	var state UserTrafficCollectorState
-	err := s.queryRow(`SELECT last_success_ts, source_started_at, source_state, continuity
+	err := s.queryRowContext(ctx, `SELECT last_success_ts, source_started_at, source_state, continuity
 		FROM user_traffic_collector WHERE singleton = 1`).Scan(
 		&state.LastSuccessTS, &state.SourceStartedAt, &state.SourceState, &state.Continuity,
 	)

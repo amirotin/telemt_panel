@@ -295,7 +295,7 @@ const AGENTS = [
 const RUNTIME_INSTANCE = "0123456789abcdef0123456789abcdef";
 
 /** The canonical `ws1.<instance>.<16 hex>` reference Telemt hands out. */
-export function webSessionRef(id: number): string {
+function webSessionRef(id: number): string {
   return `ws1.${RUNTIME_INSTANCE}.${id.toString(16).padStart(16, "0")}`;
 }
 
@@ -367,28 +367,6 @@ export const webSessionsAll: WebSessionPage = {
   scan_truncated: false,
   partial_sessions: 0,
   partial: [],
-};
-
-/**
- * A contended manager lock: 200 OK with an EMPTY page and `partial:
- * ["manager"]`. It means "busy", not "no sessions", and the page must not
- * say the latter.
- */
-export const webSessionsManagerBusy: WebSessionPage = {
-  sessions: [],
-  next_cursor: null,
-  scanned: 0,
-  scan_truncated: false,
-  partial_sessions: 0,
-  partial: ["manager"],
-};
-
-/** A scan that hit Telemt's 1000-candidate ceiling. */
-export const webSessionsTruncated: WebSessionPage = {
-  ...webSessionsFirstPage,
-  scanned: 1000,
-  scan_truncated: true,
-  partial_sessions: 3,
 };
 
 export const webOperationQueued: WebControlOperationStatus = {

@@ -1,10 +1,13 @@
 #!/bin/sh
 # Privileged policy generators and migration use disposable fixtures only.
+# Installer fixture globals are read by the sourced functions.
+# shellcheck disable=SC2034
 set -eu
-HERE=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+HERE=$(CDPATH="" cd -- "$(dirname "$0")" && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 TP_SOURCED=1
+# shellcheck disable=SC1091
 . "$HERE/../install.sh"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 L=en

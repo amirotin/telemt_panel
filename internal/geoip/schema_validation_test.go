@@ -1,11 +1,26 @@
 package geoip
 
 import (
+	"context"
+	"errors"
 	"net/netip"
 	"testing"
 
 	"github.com/oschwald/maxminddb-golang/v2"
 )
+
+func TestBundleCancellationAfterStructuralVerification(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	paths := map[Kind]string{KindCountry: writeFixture(t, "country")}
+	b, err := openBundleWithVerifier(ctx, paths, 1, func(reader *maxminddb.Reader) error {
+		cancel()
+		return reader.Verify()
+	})
+	if b != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled bundle = %v, %v", b, err)
+	}
+}
 
 func TestManagerWrongRecordSchemaKeepsPreviousBundle(t *testing.T) {
 	dataDir := t.TempDir()
@@ -79,7 +94,7 @@ func TestRecordSchemaOffsetsAreScopedToEachDatabase(t *testing.T) {
 			reader.Close()
 			t.Fatal("fixtures must reuse the same offset")
 		}
-		err = verifyRecordSchema(reader, KindCountry)
+		err = verifyRecordSchema(t.Context(), reader, KindCountry)
 		reader.Close()
 		if (err != nil) != (kind == "wrong-country") {
 			t.Fatalf("record schema %s: %v", kind, err)

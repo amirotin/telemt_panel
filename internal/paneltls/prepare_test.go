@@ -64,6 +64,28 @@ func TestPreparationListenerConflictAndCancellation(t *testing.T) {
 	}
 }
 
+func TestChallengeMuxCanInstallDuringSlowActiveResponse(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	mux := NewChallengeMux(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { close(entered); <-release }))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
+	}()
+	<-entered
+	installed := make(chan error, 1)
+	go func() { _, err := mux.Install("panel.example", http.NotFoundHandler()); installed <- err }()
+	defer func() { close(release); <-done }()
+	select {
+	case err := <-installed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("response holds challenge routing lock")
+	}
+}
+
 func assertListenerFailure(t *testing.T, err error, code, address string) {
 	t.Helper()
 	var preparation *PrepareError

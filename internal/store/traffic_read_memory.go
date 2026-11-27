@@ -35,18 +35,11 @@ func (m *Memory) BeginTrafficRead(parent context.Context) (TrafficReadSnapshot, 
 		return nil, err
 	}
 	defer m.mu.Unlock()
-	r := &memoryTrafficReadSnapshot{ctx: ctx, cancel: cancel, asOf: time.Now().Unix(), collector: m.userTrafficCollector,
-		summaries: make(map[string]UserTrafficSummary, len(m.userTraffic)), buckets: maps.Clone(m.userTrafficBuckets)}
+	asOf := time.Now().Unix()
+	r := &memoryTrafficReadSnapshot{ctx: ctx, cancel: cancel, asOf: asOf, collector: m.userTrafficCollector,
+		summaries: m.trafficSummariesLocked(asOf), buckets: maps.Clone(m.userTrafficBuckets)}
 	if !m.hasTrafficCollector {
 		r.collector = UserTrafficCollectorState{SourceState: UserTrafficUnavailable, Continuity: UserTrafficNormal}
-	}
-	monthKey := utcMonthKey(r.asOf)
-	for username, current := range m.userTraffic {
-		summary := current.summary
-		if summary.MonthKey != monthKey {
-			summary.CurrentMonthBytes = 0
-		}
-		r.summaries[username] = summary
 	}
 	if m.policies[StorageUserTraffic].Enabled {
 		r.tiers = []TrafficTierPolicy{{Tier: MetricTierQuarter, WidthSecs: 900, RetentionSecs: int64(userTrafficMemoryRetention / time.Second)}}
@@ -56,6 +49,19 @@ func (m *Memory) BeginTrafficRead(parent context.Context) (TrafficReadSnapshot, 
 		return nil, err
 	}
 	return r, nil
+}
+
+func (m *Memory) trafficSummariesLocked(asOf int64) map[string]UserTrafficSummary {
+	summaries := make(map[string]UserTrafficSummary, len(m.userTraffic))
+	monthKey := utcMonthKey(asOf)
+	for username, current := range m.userTraffic {
+		summary := current.summary
+		if summary.MonthKey != monthKey {
+			summary.CurrentMonthBytes = 0
+		}
+		summaries[username] = summary
+	}
+	return summaries
 }
 
 func (r *memoryTrafficReadSnapshot) AsOf() int64 { return r.asOf }

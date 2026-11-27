@@ -19,7 +19,7 @@ function niceScaleTicks(value: number): number[] {
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
   const normalized = rawStep / magnitude;
   const factor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  const step = factor * magnitude;
+  const step = Math.max(1, factor * magnitude);
   const maximum = Math.ceil(value / step) * step;
   const intervals = Math.round(maximum / step);
   return Array.from({ length: intervals + 1 }, (_, index) => maximum - index * step);
@@ -136,11 +136,9 @@ export function LoadChart({
               strokeWidth="1"
               vectorEffect="non-scaling-stroke"
             />
-            <circle
-              cx={event.x}
-              cy="18"
-              r="2.75"
-              fill={event.severity === "critical" ? "rgb(var(--error))" : event.severity === "warning" ? "rgb(var(--warn))" : "rgb(var(--text-muted))"}
+            <line x1={event.x} x2={event.x} y1="18" y2="18"
+              strokeWidth="5.5" strokeLinecap="round" vectorEffect="non-scaling-stroke"
+              stroke={event.severity === "critical" ? "rgb(var(--error))" : event.severity === "warning" ? "rgb(var(--warn))" : "rgb(var(--text-muted))"}
             />
           </g>
         ))}
@@ -174,19 +172,17 @@ export function LoadChart({
           />
         )}
         {connectionPoints.length >= 2 && (
-          <circle
-            cx={connectionPoints.at(-1)?.x}
-            cy={connectionPoints.at(-1)?.y}
-            r="3.5"
-            fill="rgb(var(--accent))"
+          <line
+            x1={connectionPoints.at(-1)?.x} x2={connectionPoints.at(-1)?.x}
+            y1={connectionPoints.at(-1)?.y} y2={connectionPoints.at(-1)?.y}
+            stroke="rgb(var(--accent))" strokeWidth="7" strokeLinecap="round" vectorEffect="non-scaling-stroke"
           />
         )}
         {userPoints.length >= 2 && (
-          <circle
-            cx={userPoints.at(-1)?.x}
-            cy={userPoints.at(-1)?.y}
-            r="3"
-            fill="rgb(var(--ok))"
+          <line
+            x1={userPoints.at(-1)?.x} x2={userPoints.at(-1)?.x}
+            y1={userPoints.at(-1)?.y} y2={userPoints.at(-1)?.y}
+            stroke="rgb(var(--ok))" strokeWidth="6" strokeLinecap="round" vectorEffect="non-scaling-stroke"
           />
         )}
       </svg>

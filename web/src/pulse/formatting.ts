@@ -181,7 +181,7 @@ export function absenceText(kind: AbsenceKind, s: Dict): string {
 }
 
 /** absent builds a FormattedValue for one of the absence kinds. */
-export function absent(kind: AbsenceKind, s: Dict): FormattedValue {
+function absent(kind: AbsenceKind, s: Dict): FormattedValue {
   return { text: absenceText(kind, s), absence: kind };
 }
 
@@ -200,7 +200,7 @@ export function formatMilliseconds(ms: number, s: Dict): string {
 
 // formatAbsoluteTimestamp — the absolute rendering §13 requires to stay
 // reachable from every relative age.
-export function formatAbsoluteTimestamp(epochMs: number, s: Dict): string {
+function formatAbsoluteTimestamp(epochMs: number, s: Dict): string {
   return new Date(epochMs).toLocaleString(localeOf(s));
 }
 

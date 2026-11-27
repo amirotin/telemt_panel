@@ -64,8 +64,9 @@ export function journalReducer(state: JournalState, action: JournalAction): Jour
       return state.paused ? state : { ...state, paused: true };
     case "resume": {
       if (!state.paused) return state;
-      let lines = state.pendingSnapshot ? [] : state.lines;
-      for (const line of state.pending) lines = capPush(lines, line, LOG_RING_CAP);
+      const lines = state.pendingSnapshot
+        ? state.pending
+        : state.lines.concat(state.pending).slice(-LOG_RING_CAP);
       return { ...state, paused: false, lines, pending: [], pendingSnapshot: false };
     }
     case "reset":

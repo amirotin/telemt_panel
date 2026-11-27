@@ -77,7 +77,7 @@ export function ConfigPage() {
   const readOnly = infoQuery.data?.capabilities?.read_only === true;
   const configQuery = useQuery(getTelemtConfigOptions());
   const catalogQuery = useQuery(getTelemtConfigCatalogOptions());
-  const stateQuery = useQuery({ ...getTelemtConfigStateOptions(), retry: false, refetchInterval: (query) => query.state.error?.code === "capability_absent" ? false : 5000 });
+  const stateQuery = useQuery({ ...getTelemtConfigStateOptions(), retry: false, refetchInterval: (query) => ["capability_absent", "capability_unavailable"].includes(query.state.error?.code ?? "") ? false : 5000 });
   const schemaQuery = useQuery({ ...getTelemtConfigSchemaOptions(), retry: false });
   const refetchCatalog = catalogQuery.refetch;
   const refetchSchema = schemaQuery.refetch;
@@ -331,7 +331,7 @@ export function ConfigPage() {
     );
   }
 
-  const patch = buildConfigPatch(editor.baseline.sections, editor.edited);
+  const patch = currentPatch;
   const hasChanges = Object.keys(patch).length > 0;
   const changedCount = countPatchChanges(patch);
   const conflictChangedKeys = conflict ? diffChangedSectionKeys(editor.baseline.sections, conflict.fresh.sections) : [];
@@ -394,7 +394,11 @@ export function ConfigPage() {
                 const currentReadOnly = queryClient.getQueryData<TelemtInfo>(getTelemtInfoQueryKey())?.capabilities?.read_only === true;
                 if (currentReadOnly || identity !== currentRebaseIdentity()) return;
                 submitPatch(conflict.fresh.revision, retryPatch, latestRebase.edited, checked);
-              } catch (error) { setPatchErrorCode(apiErrorCode(error) ?? "telemt_api_error"); }
+              } catch (error) {
+                const code = apiErrorCode(error) ?? "telemt_api_error";
+                if (code === "revision_conflict") await inspectConfigConflict();
+                else setPatchErrorCode(code);
+              }
               finally { setRebaseChecking(false); }
             }
           }}
@@ -412,7 +416,7 @@ export function ConfigPage() {
         </Notice>
       )}
 
-      {patchResult && (
+      {patchResult && !(tab === "toml" && patchResultOrigin === "toml") && (
         <PatchResultNotice
           result={resolvePublishedPatchResult(patchResult, publication, patchResultOrigin === "toml" ? toml.patchMutation.submittedAt : patchMutation.submittedAt)}
           canRestartTelemt={canRestartTelemt}

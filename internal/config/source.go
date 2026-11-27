@@ -165,13 +165,22 @@ func sourceParseError(err error) error {
 func sourceValidationError(err error) error {
 	// Existing validator errors may quote values. Only trusted field labels are
 	// exposed here; raw diagnostics must not leak credentials through inspect.
-	message := err.Error()
-	for _, field := range []string{"telemt.url", "telemt.config_edit_mode", "auth.username", "auth.password_hash",
-		"auth.session_ttl", "base_path", "trusted_proxies", "store.driver", "store.path", "subpage.secret",
-		"host.commands.telemt.start", "host.commands.telemt.stop", "host.commands.telemt.restart", "host.commands.panel.start", "host.commands.panel.stop", "host.commands.panel.restart",
-		"host.commands", "host.panel_service", "host.service_manager", "host.log_source", "privileges.mode", "updates.worker_state_dir", "tls.mode", "tls.acme_domain", "tls.acme_cache_dir", "tls", "listen"} {
-		if strings.HasPrefix(message, field+":") || strings.HasPrefix(message, field+" ") {
-			return fmt.Errorf("invalid configuration field: %s", field)
+	message := strings.TrimPrefix(err.Error(), "panel address: ")
+	prefix := ""
+	if inner, ok := strings.CutPrefix(message, "subscription: "); ok {
+		prefix, message = "subpage.", inner
+	}
+	for _, field := range []string{
+		"telemt.url", "telemt.config_edit_mode", "auth.username", "auth.password_hash", "auth.session_ttl",
+		"public_url", "base_path", "trusted_proxies", "store.driver", "store.path", "subpage.secret",
+		"host.commands.telemt.start", "host.commands.telemt.stop", "host.commands.telemt.restart",
+		"host.commands.panel.start", "host.commands.panel.stop", "host.commands.panel.restart", "host.commands",
+		"host.panel_service", "host.telemt_service", "host.panel_container", "host.telemt_container", "host.service_manager", "host.log_source",
+		"privileges.mode", "privileges.policy_path", "privileges.helper_path", "privileges", "geography.build_timeout_secs",
+		"updates.worker_state_dir", "tls.mode", "tls.acme_domain", "tls.acme_cache_dir", "tls", "listen",
+	} {
+		if strings.HasPrefix(message, field+":") || strings.HasPrefix(message, field+" ") || strings.HasPrefix(message, field+"=") {
+			return fmt.Errorf("invalid configuration field: %s%s", prefix, field)
 		}
 	}
 	if strings.HasPrefix(message, "unknown config keys:") {

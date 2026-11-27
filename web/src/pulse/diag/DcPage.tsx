@@ -175,8 +175,8 @@ function RouteLane({ dc, s }: { dc: DcStatus; s: Dict }) {
               className={cn(
                 "grid h-9 w-9 place-items-center rounded-lg border text-micro font-bold",
                 dc.dc < 0
-                  ? "border-[#9c7fe8]/40 bg-[#9c7fe8]/15 text-[#b9a5f2]"
-                  : "border-[#58aee8]/40 bg-[#58aee8]/15 text-[#7dc5f3]",
+                  ? "border-[#9c7fe8]/40 bg-[#9c7fe8]/15 text-text"
+                  : "border-[#58aee8]/40 bg-[#58aee8]/15 text-text",
               )}
             >
               {dc.dc < 0 ? "M" : "R"}
@@ -439,16 +439,17 @@ export function DcPage() {
         )
       : [];
 
+  const selectedPairId = selected?.id;
   useEffect(() => {
     const list = pairListRef.current;
-    if (!list || !selected) return;
-    const button = list.querySelector<HTMLElement>(`[data-dc-pair="${selected.id}"]`);
+    if (!list || selectedPairId === undefined) return;
+    const button = list.querySelector<HTMLElement>(`[data-dc-pair="${selectedPairId}"]`);
     if (!button || list.scrollWidth <= list.clientWidth) return;
     list.scrollTo({
       left: button.offsetLeft - (list.clientWidth - button.offsetWidth) / 2,
       behavior: selectedId === null ? "auto" : scrollBehavior(),
     });
-  }, [selected, selectedId]);
+  }, [selectedPairId, selectedId]);
 
   return (
     <div className="w-full" data-testid="dc-detail">

@@ -356,3 +356,11 @@ describe.each(THEMES)("Показатели tiles keep their text over the area 
     }
   }
 });
+
+it("uses the on-error foreground only over a solid error fill", () => {
+  const code = import.meta.glob("../**/*.tsx", { eager:true, import:"default", query:"?raw" });
+  const violations = Object.entries(code).flatMap(([filename, content]) =>
+    filename.endsWith(".test.tsx") ? [] : String(content).split("\n").flatMap((line, index) =>
+      line.includes("text-error-text") && !line.includes("bg-error-strong") ? [filename + ":" + (index + 1)] : []));
+  expect(violations).toEqual([]);
+});

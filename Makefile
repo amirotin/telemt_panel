@@ -72,6 +72,7 @@ lint:
 		exit 1; \
 	fi
 	@go vet ./...
+	@GOEXPERIMENT=nojsonv2 go vet -tags lite ./...
 
 # Static binaries for Telemt's supported x86_64/aarch64 hosts, packaged
 # for internal/update's AssetMatcher (+ <asset>.sha256, one file named

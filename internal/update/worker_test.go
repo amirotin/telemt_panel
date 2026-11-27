@@ -132,6 +132,177 @@ func TestWorkerUpdatesWithoutChecksumAndCleansArtifacts(t *testing.T) {
 	}
 }
 
+func TestWorkerRecoveryKeepsDataWrittenAfterOldServiceStarts(t *testing.T) {
+	for _, failure := range []string{"health", "start", "offline_after_start_error", "legacy_health"} {
+		t.Run(failure, func(t *testing.T) {
+			client, cfg, _ := workerFixture(t)
+			dataPath := filepath.Join(cfg.DataDir, "panel-state.json")
+			if err := os.WriteFile(dataPath, []byte("before"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg.SnapshotPaths = []string{dataPath}
+			starts, restores := 0, 0
+			cfg.Engine.Runner = workerFixtureRunner{before: func(op host.Op) error {
+				switch op.Kind {
+				case host.OpRestoreBinary:
+					restores++
+				case host.OpStartService:
+					starts++
+					if starts == 2 {
+						// A crash here hands the journal to the restored protocol-1
+						// executable. It checks readiness, intent and snapshots in
+						// that order and cannot read a separate pending-start flag.
+						checkpoint, err := loadWorkerState(client.stateDir)
+						if err != nil {
+							t.Fatal(err)
+						}
+						task := checkpoint.Task
+						if task.RecoveryReady || !task.StopIntent || task.PublishIntent || task.SnapshotComplete {
+							t.Fatalf("previous worker cannot retry the start without restoring files: %+v", task)
+						}
+					}
+					if starts == 2 && (failure == "start" || failure == "offline_after_start_error") {
+						return errors.New("init did not confirm start")
+					}
+				}
+				return nil
+			}}
+			cfg.Health = func(context.Context, string, string) error { return errors.New("readiness unavailable") }
+			if err := RunWorker(t.Context(), cfg); err == nil || !client.Busy() {
+				t.Fatalf("unconfirmed recovery err=%v busy=%t", err, client.Busy())
+			}
+			if failure == "legacy_health" {
+				// Protocol-1 workers previously persisted the old-version health
+				// failure without setting the restored checkpoint.
+				state, err := loadWorkerState(client.stateDir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				state.Task.RecoveryReady = false
+				state.Task.RecoveryStartPending = false
+				state.Task.PublishIntent = true
+				state.Task.SnapshotComplete = true
+				if err := saveWorkerState(client.stateDir, state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(dataPath, []byte("new activity"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if failure == "offline_after_start_error" {
+				cfg.Launch = func(context.Context, []string) error { return nil }
+				if err := RecoverWorker(t.Context(), cfg); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cfg.Health = func(context.Context, string, string) error { return nil }
+			if err := RunWorker(t.Context(), cfg); err != nil {
+				t.Fatal(err)
+			}
+			content, err := os.ReadFile(dataPath)
+			if err != nil || string(content) != "new activity" || restores != 1 || client.Busy() {
+				t.Fatalf("resumed recovery data=%q err=%v restores=%d busy=%t", content, err, restores, client.Busy())
+			}
+			wantStarts := 2
+			if failure == "start" {
+				wantStarts++
+			}
+			if starts != wantStarts {
+				t.Fatalf("start commands=%d, want %d", starts, wantStarts)
+			}
+		})
+	}
+}
+
+func TestWorkerWaitsForDurableCheckpointBeforeRestartingPanelWithSnapshots(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission fault requires nonroot fixture")
+	}
+	client, cfg, _ := workerFixture(t)
+	path := filepath.Join(cfg.DataDir, "panel-state.json")
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SnapshotPaths = []string{path}
+	starts := 0
+	cfg.Engine.Runner = workerFixtureRunner{before: func(op host.Op) error {
+		if op.Kind == host.OpStartService {
+			starts++
+		}
+		return nil
+	}}
+	t.Cleanup(func() { _ = os.Chmod(client.stateDir, 0o700) })
+	cfg.Health = func(context.Context, string, string) error {
+		if err := os.Chmod(client.stateDir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		return errors.New("candidate unhealthy")
+	}
+	if err := RunWorker(t.Context(), cfg); err == nil || starts != 1 {
+		t.Fatalf("recovery allowed live writes without a checkpoint: starts=%d err=%v", starts, err)
+	}
+	if err := RecoverWorker(t.Context(), cfg); err == nil {
+		t.Fatal("startup wrapper allowed live writes without a checkpoint")
+	}
+	if err := os.Chmod(client.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Health = func(context.Context, string, string) error { return nil }
+	_ = RunWorker(t.Context(), cfg)
+	entries, err := client.Journal(TargetPanel, 1)
+	if err != nil || len(entries) != 1 || entries[0].Phase != PhaseRolledBack || starts != 2 {
+		t.Fatalf("recovery after restoring journal access: starts=%d journal=%v err=%v", starts, entries, err)
+	}
+}
+
+func TestWorkerRetriesIncompleteStopBeforeRestoringSnapshot(t *testing.T) {
+	client, cfg, _ := workerFixture(t)
+	path := filepath.Join(cfg.DataDir, "panel-state.json")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SnapshotPaths = []string{path}
+	stops := 0
+	cfg.Engine.Runner = workerFixtureRunner{before: func(op host.Op) error {
+		if op.Kind == host.OpStopService {
+			stops++
+			if stops == 2 {
+				return errors.New("candidate stop did not complete")
+			}
+		}
+		return nil
+	}}
+	cfg.Health = func(_ context.Context, _ string, version string) error {
+		if version == "v1.1.0" {
+			if err := os.WriteFile(path, []byte("incompatible"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return errors.New("candidate unhealthy")
+		}
+		return nil
+	}
+	_ = RunWorker(t.Context(), cfg)
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "incompatible" || !client.Busy() {
+		t.Fatalf("failed stop modified data=%q, busy=%t, err=%v", data, client.Busy(), err)
+	}
+	_ = RunWorker(t.Context(), cfg)
+	data, err = os.ReadFile(path)
+	if err != nil || string(data) != "old" || client.Busy() {
+		t.Fatalf("incomplete restoration did not resume: data=%q, busy=%t, err=%v", data, client.Busy(), err)
+	}
+}
+
+func TestIdleWorkerMaintenanceLeavesOperationLockUntouched(t *testing.T) {
+	client := newWorkerTestClient(t, nil)
+	engine := NewEngine(EngineConfig{Worker: client})
+	engine.MarkReady()
+	engine.Close()
+	if _, err := os.Stat(filepath.Join(client.stateDir, "operation.lock")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("idle polling opened the operation lock: %v", err)
+	}
+}
+
 func TestWorkerFailedCandidateRestoresStateAndConfirmsOldVersion(t *testing.T) {
 	client, cfg, binary := workerFixture(t)
 	state := filepath.Join(cfg.DataDir, "panel-state.json")
@@ -427,7 +598,7 @@ func TestWorkerQueuedStartTimeoutReleasesOnlyUnclaimedTask(t *testing.T) {
 	if err := client.Submit(context.Background(), TargetPanel, "v1.1.0", "v1.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.failUnstarted(time.Now()); err != nil {
+	if _, err := client.pollStatus(time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if !client.Busy() {
@@ -437,14 +608,14 @@ func TestWorkerQueuedStartTimeoutReleasesOnlyUnclaimedTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.failUnstarted(time.Now().Add(time.Minute)); err != nil {
+	if _, err := client.pollStatus(time.Now().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	lock.Close()
 	if !client.Busy() {
 		t.Fatal("active execution lock ignored")
 	}
-	if err := client.failUnstarted(time.Now().Add(time.Minute)); err != nil {
+	if _, err := client.pollStatus(time.Now().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if client.Busy() {

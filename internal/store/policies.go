@@ -65,6 +65,9 @@ var storageCategoryOrder = []StorageCategory{
 	StorageDiagnostics,
 }
 
+// Valid reports whether a category is part of the storage policy contract.
+func (category StorageCategory) Valid() bool { return slices.Contains(storageCategoryOrder, category) }
+
 // DefaultStoragePolicies returns a fresh copy of the recommended policy set.
 func DefaultStoragePolicies() []StoragePolicy {
 	ipLimit := UserIPPerUserLimit
@@ -95,7 +98,7 @@ func ValidateStoragePolicies(policies []StoragePolicy) error {
 	}
 	seen := make(map[StorageCategory]bool, len(policies))
 	for _, policy := range policies {
-		if _, ok := defaultPolicyMap()[policy.Category]; !ok {
+		if !policy.Category.Valid() {
 			return fmt.Errorf("storage policies: unknown category %q", policy.Category)
 		}
 		if seen[policy.Category] {

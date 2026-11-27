@@ -20,6 +20,8 @@ export interface PendingConfigChanges {
   revision?: string;
   /** Epoch ms at which the PATCH that produced these returned. */
   at: number;
+  reloadAt?: number;
+  restartAt?: number;
 }
 
 const STORAGE_KEY = "telemt-panel:pending-config:v1";
@@ -45,6 +47,8 @@ export function getPendingChanges(): PendingConfigChanges | null {
       runtimeReload: v["runtimeReload"] === true,
       processRestart: v["processRestart"] === true,
       at,
+      ...(typeof v["reloadAt"] === "number" ? { reloadAt: v["reloadAt"] } : {}),
+      ...(typeof v["restartAt"] === "number" ? { restartAt: v["restartAt"] } : {}),
       ...(typeof v["revision"] === "string" ? { revision: v["revision"] } : {}),
     };
   } catch {
@@ -69,14 +73,21 @@ export function recordPendingChanges(
   result: TelemtConfigPatchResult,
   now: number = Date.now(),
 ): void {
-  const runtimeReload = result.runtime_reload_required === true && !result.reload;
-  const processRestart = result.process_restart_required === true;
+  const previous = getPendingChanges();
+  const reloadAt = result.reload ? undefined : result.runtime_reload_required ? now
+    : previous?.runtimeReload ? previous.reloadAt ?? previous.at : undefined;
+  const restartAt = result.process_restart_required ? now
+    : previous?.processRestart ? previous.restartAt ?? previous.at : undefined;
+  const runtimeReload = reloadAt !== undefined;
+  const processRestart = restartAt !== undefined;
   if (!runtimeReload && !processRestart) {
     clearPendingChanges();
     return;
   }
   try {
     const payload: PendingConfigChanges = { runtimeReload, processRestart, at: now, revision: result.revision };
+    if (runtimeReload && reloadAt !== now) payload.reloadAt = reloadAt;
+    if (processRestart && restartAt !== now) payload.restartAt = restartAt;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // Best-effort — the banner simply won't mention it.
@@ -104,16 +115,16 @@ export function resolvePendingChanges(
   if (!pending) return NOTHING_PENDING;
 
   const reloadedAt = stats?.last_config_reload_epoch_secs;
-  const reloadedSince = typeof reloadedAt === "number" && reloadedAt * 1000 >= pending.at;
+  const reloadedSince = typeof reloadedAt === "number" && reloadedAt * 1000 >= (pending.reloadAt ?? pending.at);
 
   const uptime = stats?.uptime_seconds ?? stats?.summary?.uptime_seconds;
   const startedAt = typeof uptime === "number" ? now - uptime * 1000 : null;
-  const restartedSince = startedAt !== null && startedAt >= pending.at - START_TIME_SLACK_MS;
+  const restartedSince = (at: number) => startedAt !== null && startedAt >= at - START_TIME_SLACK_MS;
 
   return {
     // A process restart loads the config file from scratch, so it settles
     // the reload half too.
-    runtimeReload: pending.runtimeReload && !reloadedSince && !restartedSince,
-    processRestart: pending.processRestart && !restartedSince,
+    runtimeReload: pending.runtimeReload && !reloadedSince && !restartedSince(pending.reloadAt ?? pending.at),
+    processRestart: pending.processRestart && !restartedSince(pending.restartAt ?? pending.at),
   };
 }

@@ -42,7 +42,7 @@ export interface MeCardView {
 // Route mode as the ME card reads it: middle-proxy IS configured but the
 // relay is sending traffic direct. Same two gate fields healthHero's
 // routeModeValue reads — real operational state, not the config flag.
-export function isFallback(gates: RuntimeGates | null | undefined): boolean {
+function isFallback(gates: RuntimeGates | null | undefined): boolean {
   if (!gates || !gates.use_middle_proxy) return false;
   return gates.reroute_active || gates.route_mode === "direct";
 }

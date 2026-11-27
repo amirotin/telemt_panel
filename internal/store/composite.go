@@ -62,6 +62,7 @@ type HistoryStore interface {
 	ApplyUserTrafficSnapshot(UserTrafficSnapshot) (UserTrafficApplyResult, error)
 	ApplyUserTrafficSnapshotContext(context.Context, UserTrafficSnapshot) (UserTrafficApplyResult, error)
 	UserTrafficSummaries() (map[string]UserTrafficSummary, error)
+	UserTrafficSummariesContext(context.Context) (map[string]UserTrafficSummary, error)
 	UserTrafficCollectorState() (UserTrafficCollectorState, error)
 	UserTrafficRange(string, int64) ([]UserTrafficPoint, error)
 	UserTrafficAggregate(int64, int64) (int64, []UserTrafficPoint, error)
@@ -180,6 +181,9 @@ func (s *Composite) BeginTrafficRead(ctx context.Context) (TrafficReadSnapshot, 
 }
 func (s *Composite) UserTrafficSummaries() (map[string]UserTrafficSummary, error) {
 	return s.history.UserTrafficSummaries()
+}
+func (s *Composite) UserTrafficSummariesContext(ctx context.Context) (map[string]UserTrafficSummary, error) {
+	return s.history.UserTrafficSummariesContext(ctx)
 }
 func (s *Composite) UserTrafficCollectorState() (UserTrafficCollectorState, error) {
 	return s.history.UserTrafficCollectorState()

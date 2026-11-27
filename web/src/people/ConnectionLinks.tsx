@@ -38,7 +38,7 @@ export function QuickConnectionLinks({user}: {user: UsersTopicUser}) {
 export function ConnectionLinks({user}: {user:UsersTopicUser}) {
   const settings = useQuery({...getLinkSettingsOptions(), staleTime:0, refetchOnMount:"always"});
   const allowed = settings.data?.allow_address_override === true && !settings.isError && !settings.isFetching;
-  return <ConnectionLinksForm key={`${user.username}:${allowed}`} user={user} allowAddressOverride={allowed} settingsError={settings.isError} />;
+  return <ConnectionLinksForm key={user.username} user={user} allowAddressOverride={allowed} settingsError={settings.isError} />;
 }
 
 function ConnectionLinksForm({user, allowAddressOverride, settingsError}: {user:UsersTopicUser; allowAddressOverride:boolean; settingsError:boolean}) {

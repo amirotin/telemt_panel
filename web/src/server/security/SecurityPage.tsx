@@ -35,19 +35,19 @@ import { apiProtectionKind, type ApiProtectionKind } from "./access.helpers";
 
 const levelClasses: Record<SecurityLevel, { border: string; background: string; text: string }> = {
   ok: {
-    border: "border-success/35",
-    background: "from-success/15 via-surface to-surface",
-    text: "text-success-text",
+    border: "border-ok/35",
+    background: "from-ok/15 via-surface to-surface",
+    text: "text-ok",
   },
   warn: {
-    border: "border-warning/40",
-    background: "from-warning/15 via-surface to-surface",
-    text: "text-warning-text",
+    border: "border-warn/40",
+    background: "from-warn/15 via-surface to-surface",
+    text: "text-warn",
   },
   error: {
     border: "border-error/45",
     background: "from-error/15 via-surface to-surface",
-    text: "text-error-text",
+    text: "text-error",
   },
 };
 
@@ -167,8 +167,8 @@ function AccessCard({ posture, whitelist, kind }: { posture: SecurityPosture; wh
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-surface" data-testid="server-security-access">
       <SectionHeader kicker={copy.perimeter} title={copy.apiAccessTitle} state={<StatePill state={exposed ? "error" : "ok"}>{exposed ? copy.open : copy.restricted}</StatePill>} />
-      <div className={cn("mx-4 mt-4 flex gap-3 rounded-xl px-3 py-3", exposed ? "bg-error/10" : "bg-success/10")}>
-        <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", exposed ? "bg-error/15 text-error-text" : "bg-success/15 text-success-text")}>{exposed ? "!" : "✓"}</span>
+      <div className={cn("mx-4 mt-4 flex gap-3 rounded-xl px-3 py-3", exposed ? "bg-error/10" : "bg-ok/10")}>
+        <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", exposed ? "bg-error/15 text-error" : "bg-ok/15 text-ok")}>{exposed ? "!" : "✓"}</span>
         <div><strong className="block text-meta font-semibold text-text">{exposed ? copy.dangerousCombination : copy.safeCombination}</strong><span className="mt-0.5 block text-micro leading-relaxed text-text-muted">{exposed ? copy.dangerousCombinationDescription : copy.safeCombinationDescription}</span></div>
       </div>
       <dl className="divide-y divide-border px-4 py-2">
@@ -181,7 +181,7 @@ function AccessCard({ posture, whitelist, kind }: { posture: SecurityPosture; wh
         <div className="flex items-center justify-between border-b border-border px-3 py-2"><span className="text-micro font-semibold uppercase tracking-[0.1em] text-text-faint">{v.allowedNetworksTitle}</span><span className="text-micro tabular-nums text-text-faint">{fill(copy.entries, { count: formatNumber(s, count) })}</span></div>
         {whitelist?.entries.length ? <div className="grid gap-2 p-2 sm:grid-cols-2">{whitelist.entries.map((entry) => <CopyField key={entry} value={entry} />)}</div> : <p className="px-3 py-4 text-meta text-text-muted">{s.server.security.whitelistEmpty}</p>}
       </div>
-      <Link to="/server/config" className="group flex min-h-11 items-center justify-between border-t border-border px-4 text-meta font-semibold text-accent hover:bg-surface-hover">{copy.openConfig}<IconChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></Link>
+      <Link to="/server/config" className="group flex min-h-11 items-center justify-between border-t border-border px-4 text-meta font-semibold text-accent hover:bg-surface-3">{copy.openConfig}<IconChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></Link>
     </section>
   );
 }
@@ -220,11 +220,11 @@ function TlsCard({ tls }: { tls: ReturnType<typeof useTlsFingerprints> }) {
     <section className="overflow-hidden rounded-2xl border border-border bg-surface" data-testid="server-security-tls">
       <SectionHeader kicker={data ? fill(copy.lastWindow, { value: duration(s, data.retention_secs) }) : copy.tlsWindow} title={copy.tlsActivity} state={data ? <StatePill state={level}>{level === "ok" ? copy.calm : copy.review}</StatePill> : undefined} />
       {data ? <>
-        <div className="flex items-end gap-2 px-4 pt-4"><strong className={cn("text-[38px] font-bold leading-none tabular-nums", level === "ok" ? "text-text" : "text-warning-text")}>{formatNumber(s, totals.bad ?? 0)}</strong><span className="pb-0.5 text-micro leading-snug text-text-muted">{copy.suspiciousHandshakes}</span></div>
-        <div className="flex h-[76px] items-end gap-1 px-4 py-3" role="img" aria-label={copy.fingerprintDistribution}>{bars.map((row, index) => <span key={`${row.ja4}-${index}`} className={cn("min-h-1 flex-1 rounded-t-sm bg-gradient-to-t", row.bad_or_probe > 0 ? "from-warning/25 to-warning/80" : "from-accent/20 to-accent/75")} style={{ height: `${Math.max(8, row.total / max * 100)}%` }} />)}</div>
+        <div className="flex items-end gap-2 px-4 pt-4"><strong className={cn("text-[38px] font-bold leading-none tabular-nums", level === "ok" ? "text-text" : "text-warn")}>{formatNumber(s, totals.bad ?? 0)}</strong><span className="pb-0.5 text-micro leading-snug text-text-muted">{copy.suspiciousHandshakes}</span></div>
+        <div className="flex h-[76px] items-end gap-1 px-4 py-3" role="img" aria-label={copy.fingerprintDistribution}>{bars.map((row, index) => <span key={`${row.ja4}-${index}`} className={cn("min-h-1 flex-1 rounded-t-sm bg-gradient-to-t", row.bad_or_probe > 0 ? "from-warn/25 to-warn/80" : "from-accent/20 to-accent/75")} style={{ height: `${Math.max(8, row.total / max * 100)}%` }} />)}</div>
         <dl className="grid grid-cols-2 divide-x divide-border border-t border-border"><div className="px-4 py-2.5"><dt className="text-micro text-text-faint">{v.evicted}</dt><dd className="mt-0.5 text-meta font-semibold tabular-nums text-text">{formatNumber(s, data.dropped_total)}</dd></div><div className="px-4 py-2.5"><dt className="text-micro text-text-faint">{v.parseErrors}</dt><dd className="mt-0.5 text-meta font-semibold tabular-nums text-text">{formatNumber(s, data.parse_error_total)}</dd></div></dl>
       </> : tls.status === "loading" ? <div className="p-4"><Skeleton className="h-28 w-full" /></div> : <div className="p-4"><TlsSourceNotice state={tls} as="note" /></div>}
-      <Link to="/pulse/diag/$domain" params={{ domain: "security" }} className="group flex min-h-11 items-center justify-between border-t border-border px-4 text-meta font-semibold text-accent hover:bg-surface-hover">{copy.openDiagnostics}<IconChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></Link>
+      <Link to="/pulse/diag/$domain" params={{ domain: "security" }} className="group flex min-h-11 items-center justify-between border-t border-border px-4 text-meta font-semibold text-accent hover:bg-surface-3">{copy.openDiagnostics}<IconChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></Link>
     </section>
   );
 }
@@ -291,7 +291,7 @@ export function SecurityPage() {
         <AccessPolicyEditor />
         {posture ? <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(330px,.75fr)]">
           <div className="flex min-w-0 flex-col gap-3"><AccessCard posture={posture} whitelist={whitelist} kind={kind} /><LimitsCard limits={topic.data.effective_limits} /></div>
-          <aside className="grid min-w-0 content-start gap-3 md:grid-cols-2 xl:grid-cols-1"><TlsCard tls={tls} /><ProtocolCard posture={posture} /><button type="button" onClick={() => setTechnicalOpen(true)} className="group flex min-h-[64px] items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 text-left hover:border-border-strong hover:bg-surface-hover md:col-span-2 xl:col-span-1" data-testid="server-security-technical-trigger"><span><small className="block text-micro font-semibold uppercase tracking-[0.1em] text-text-faint">{s.server.security.view.effectiveConfig}</small><strong className="mt-1 block text-meta font-semibold text-text">{s.server.security.view.timeoutsAndLimits}</strong></span><IconChevronRight className="h-4 w-4 text-accent transition-transform group-hover:translate-x-0.5" /></button></aside>
+          <aside className="grid min-w-0 content-start gap-3 md:grid-cols-2 xl:grid-cols-1"><TlsCard tls={tls} /><ProtocolCard posture={posture} /><button type="button" onClick={() => setTechnicalOpen(true)} className="group flex min-h-[64px] items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 text-left hover:border-border-strong hover:bg-surface-3 md:col-span-2 xl:col-span-1" data-testid="server-security-technical-trigger"><span><small className="block text-micro font-semibold uppercase tracking-[0.1em] text-text-faint">{s.server.security.view.effectiveConfig}</small><strong className="mt-1 block text-meta font-semibold text-text">{s.server.security.view.timeoutsAndLimits}</strong></span><IconChevronRight className="h-4 w-4 text-accent transition-transform group-hover:translate-x-0.5" /></button></aside>
         </div> : <div className="rounded-2xl border border-dashed border-border px-5 py-10 text-center text-meta text-text-muted">{s.server.security.view.postureUnavailable}</div>}
       </div>
       <TechnicalSheet open={technicalOpen} onClose={() => setTechnicalOpen(false)} limits={topic.data.effective_limits} />

@@ -197,6 +197,7 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
 
   const dirty=JSON.stringify(state)!==JSON.stringify(baseline);
   useEffect(()=>{onDirtyChange?.(dirty);},[dirty,onDirtyChange]);
+  useEffect(()=>()=>onDirtyChange?.(false),[onDirtyChange]);
   const refreshTopic = useRefreshTopic();
   const queryClient = useQueryClient();
 
@@ -263,7 +264,15 @@ export function UserFormSheet({ open, onClose, mode, user, onSaved, onConfigureW
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit || pending) return;
-    if (rateMaxMbps !== undefined && (!rateUpInput.current?.reportValidity() || !rateDownInput.current?.reportValidity())) return;
+    if (rateMaxMbps !== undefined) {
+      const invalid = [rateUpInput.current, rateDownInput.current].find(input => input && !input.validity.valid);
+      if (invalid) {
+        const section = invalid.closest("details");
+        if (section) section.open = true;
+        invalid.reportValidity();
+        return;
+      }
+    }
 
     const quotaBytesField: FieldState<number> = {
       mode: state.quotaAmount.mode,

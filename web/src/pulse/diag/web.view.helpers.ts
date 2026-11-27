@@ -22,7 +22,7 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-export function webLimit(runtime: WebPageRuntime | null | undefined, name: string): number | null {
+function webLimit(runtime: WebPageRuntime | null | undefined, name: string): number | null {
   return finiteNumber(runtime?.limits[name]);
 }
 

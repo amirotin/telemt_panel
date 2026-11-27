@@ -146,7 +146,7 @@ export function LogStreamViewer({
           <p>{s.journal.emptyFilterDescription}</p>
         </div>
       ) : (
-        <LogList lines={filtered} showUnit={visibleFor("extended", mode)} />
+        <LogList lines={filtered} latestSourceId={state.lines.at(-1)?.id} showUnit={visibleFor("extended", mode)} />
       )}
     </div>
   );

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Dict, Locale } from "./dict";
 import { en } from "./en";
 import { ru } from "./ru";
-import { errorMessage } from "./messages";
+import { auditActionLabel, errorMessage } from "./messages";
 import { localeFromLanguages, resolveLocale } from "./locale";
 import { countLabel, fill, formatNumber, plural, pluralIndex, pluralTemplate } from "./plural";
 
@@ -281,4 +281,9 @@ describe("no hardcoded UI text", () => {
     }
     expect(offenders).toEqual([]);
   });
+});
+
+it("treats inherited property names as unknown codes", () => {
+  expect(errorMessage(ru,"constructor")).toBe(ru.errors.default);
+  expect(auditActionLabel(ru,"toString")).toBeUndefined();
 });

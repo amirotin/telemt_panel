@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getGeoIpSettingsOptions, getGeoIpSettingsQueryKey,
@@ -23,19 +23,23 @@ export function GeoIPSettings() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState(false);
   const previousStatus = useRef(query.data?.status);
-  useEffect(() => {
-    if (previousStatus.current !== query.data?.status) {
-      previousStatus.current = query.data?.status;
+  const observeStatus = useCallback((status: GeoIpSettings["status"]) => {
+    const previous = previousStatus.current;
+    previousStatus.current = status;
+    if (previous && (previous.available !== status.available || previous.active_source !== status.active_source
+      || previous.databases !== status.databases)) {
       void client.invalidateQueries({ queryKey: [{ _id: "getUserIpHistory" }] });
       void invalidateGeography(client);
     }
-  }, [query.data?.status, client]);
+  }, [client]);
+  useEffect(() => {
+    if (query.data?.status) observeStatus(query.data.status);
+  }, [query.data?.status, observeStatus]);
 
   function accepted(data: GeoIpSettings) {
-    client.setQueryData(getGeoIpSettingsQueryKey(), data);
+    const stored = client.setQueryData<GeoIpSettings>(getGeoIpSettingsQueryKey(), data);
+    if (stored) observeStatus(stored.status);
     setDraft(null); setError(""); setFeedback(true);
-    void client.invalidateQueries({ queryKey: [{ _id: "getUserIpHistory" }] });
-    void invalidateGeography(client);
   }
   const save = useMutation({ ...putGeoIpSettingsMutation(), onSuccess: accepted, onError: error => setError(apiErrorMessage(error, strings)) });
   const update = useMutation({ ...updateGeoIpMutation(), onSuccess: accepted, onError: error => setError(apiErrorMessage(error, strings)) });

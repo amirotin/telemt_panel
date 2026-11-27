@@ -19,14 +19,14 @@ function markScrolledUp(el: HTMLDivElement) {
 }
 
 describe("LogList — floating «к новым» button", () => {
-  it("positions itself relative to the lg: content column, not the full viewport", () => {
+  it("counts newly visible IDs when older lines leave a full window", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     let root: Root;
 
     act(() => {
       root = createRoot(container);
-      root.render(<LogList lines={[makeLine(1, "first")]} showUnit={false} />);
+      root.render(<LogList lines={[makeLine(1, "first"), makeLine(2, "second")]} showUnit={false} />);
     });
 
     const scroll = container.querySelector<HTMLDivElement>('[data-testid="log-list-scroll"]')!;
@@ -38,20 +38,13 @@ describe("LogList — floating «к новым» button", () => {
     // A new line arrives while scrolled up — this is what makes the
     // button appear (newSinceScrolledUp > 0).
     act(() => {
-      root.render(<LogList lines={[makeLine(1, "first"), makeLine(2, "second")]} showUnit={false} />);
+      root.render(<LogList lines={[makeLine(2, "second"), makeLine(5, "third")]} showUnit={false} />);
     });
 
     const button = Array.from(container.querySelectorAll("button")).find((b) =>
       b.textContent?.includes("1"),
     );
     expect(button).toBeDefined();
-    // Shell.tsx's sidebar is `w-56` at `lg:` — the button must narrow its
-    // centering box to `lg:left-56 lg:right-0` (the content column alone)
-    // instead of the viewport-wide `inset-x-0` it inherits below `lg:`, or
-    // it visibly centers under the sidebar+content combined.
-    expect(button!.className).toContain("lg:left-56");
-    expect(button!.className).toContain("lg:right-0");
-
     act(() => root.unmount());
     container.remove();
   });

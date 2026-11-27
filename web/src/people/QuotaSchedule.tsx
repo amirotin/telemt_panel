@@ -52,7 +52,14 @@ function ScheduleForm({initial,username,onCancel,onDirty}:{initial:QuotaSchedule
   const [baseline,setBaseline]=useState(initial),[global,setGlobal]=useState(initial.global);
   const userDraft=(view:QuotaScheduleView):UserQuotaSchedule=>({mode:view.policy?.mode??"inherit",rule:view.policy?.mode==="custom"?view.policy.rule:view.global.rule});
   const [policy,setPolicy]=useState(()=>userDraft(initial));
+  const [seenRevision, setSeenRevision] = useState(initial.revision);
   const dirty=username?JSON.stringify(policy)!==JSON.stringify(userDraft(baseline)):JSON.stringify(global)!==JSON.stringify(baseline.global);
+  if (!dirty && initial.revision !== seenRevision) {
+    setSeenRevision(initial.revision);
+    setBaseline(initial);
+    setGlobal(initial.global);
+    setPolicy(userDraft(initial));
+  }
   useEffect(()=>{onDirty(dirty);return()=>onDirty(false);},[dirty,onDirty]);
   const mode=policy.mode,rule=username&&mode==="custom"?policy.rule??global.rule:global.rule;
   const active=username?mode==="custom"||mode==="inherit"&&global.enabled:global.enabled;
@@ -66,9 +73,9 @@ function ScheduleForm({initial,username,onCancel,onDirty}:{initial:QuotaSchedule
   const mutation=useMutation({mutationFn:async()=>{
     const headers={"If-Match":baseline.revision};
     const {data}=username?await saveUserQuotaSchedule({path:{username},headers,body:policy,throwOnError:true}):await saveQuotaSchedule({headers,body:global,throwOnError:true});return data;
-  },retry:false,onSuccess:data=>{setBaseline(data);setGlobal(data.global);setPolicy(userDraft(data));onDirty(false);void cache.invalidateQueries({queryKey:["quota-schedule"]});}});
+  },retry:false,onSuccess:data=>{cache.setQueryData(queryKey(username),data);setBaseline(data);setGlobal(data.global);setPolicy(userDraft(data));onDirty(false);void cache.invalidateQueries({queryKey:["quota-schedule"]});}});
   const zones=useMemo(()=>[...new Set([baseline.server_timezone,global.timezone,"UTC",...Intl.supportedValuesOf("timeZone")])].filter(z=>z!=="server"),[baseline.server_timezone,global.timezone]);
-  async function reload(){const {data}=username?await getUserQuotaSchedule({path:{username},throwOnError:true}):await getQuotaSchedule({throwOnError:true});setBaseline(data);setGlobal(data.global);setPolicy(userDraft(data));mutation.reset();}
+  async function reload(){const {data}=username?await getUserQuotaSchedule({path:{username},throwOnError:true}):await getQuotaSchedule({throwOnError:true});cache.setQueryData(queryKey(username),data);setBaseline(data);setGlobal(data.global);setPolicy(userDraft(data));mutation.reset();}
   const reloadMutation=useMutation({mutationFn:reload,retry:false});
   const error=mutation.error??reloadMutation.error;
   const blocked=readonly||mutation.isPending;
@@ -94,8 +101,11 @@ function ScheduleForm({initial,username,onCancel,onDirty}:{initial:QuotaSchedule
 
 export function QuotaScheduleEditor({username,onCancel,onDirty}:{username?:string;onCancel:()=>void;onDirty:(dirty:boolean)=>void}){
   const s=useStrings(),query=useSchedule(username);
-  if(query.isPending||query.isError)return <>{!username&&<PageHeader title={s.quotaSchedule.title} description={s.quotaSchedule.subtitle} back={<Link to="/people" aria-label={s.people.workspace.back}><IconChevronLeft aria-hidden="true"/>{s.people.title}</Link>}/>}{query.isPending?<p role="status">{s.common.loading}</p>:<div role="alert"><p className="qs-warning">{errorMessage(s,apiErrorCode(query.error)??"network")}</p><Button variant="secondary" onClick={()=>void query.refetch()}>{s.common.retry}</Button></div>}</>;
-  return <ScheduleForm initial={query.data} username={username} onCancel={onCancel} onDirty={onDirty}/>;
+  if(!query.data)return <>{!username&&<PageHeader title={s.quotaSchedule.title} description={s.quotaSchedule.subtitle} back={<Link to="/people" aria-label={s.people.workspace.back}><IconChevronLeft aria-hidden="true"/>{s.people.title}</Link>}/>}{query.isPending?<p role="status">{s.common.loading}</p>:<div role="alert"><p className="qs-warning">{errorMessage(s,apiErrorCode(query.error)??"network")}</p><Button variant="secondary" onClick={()=>void query.refetch()}>{s.common.retry}</Button></div>}</>;
+  return <>
+    {query.isError && <div role="alert" className="qs-warning">{errorMessage(s,apiErrorCode(query.error)??"network")} <Button variant="secondary" onClick={()=>void query.refetch()}>{s.common.retry}</Button></div>}
+    <ScheduleForm key={username??""} initial={query.data} username={username} onCancel={onCancel} onDirty={onDirty}/>
+  </>;
 }
 
 export function QuotaSchedulePage(){const navigate=useNavigate(),{setDirty,confirmation}=useUserFormBlocker();return <div className="user-detail-page"><QuotaScheduleEditor onDirty={setDirty} onCancel={()=>void navigate({to:"/people"})}/>{confirmation}</div>;}

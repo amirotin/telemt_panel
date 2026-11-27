@@ -1,6 +1,6 @@
 #!/bin/sh
 # Isolated transaction tests: no host services, users, firewall or network.
-# shellcheck disable=SC2034,SC2317
+# shellcheck disable=SC2034,SC2317,SC2329
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 TMP=$(mktemp -d)
@@ -78,6 +78,10 @@ EOF
     PATH="$TEST_DIR/tools:$PATH"
     case "$TEST_SCENARIO" in dry) DRY_RUN=1 ;; no-start) NO_START=1 ;; esac
     apply_layout_from_answers() { BIN_DIR="$TEST_DIR/bin"; SERVICE_FILE="$TEST_DIR/service"; }
+    # The custom argv and destination come from the administrator's config.
+    if [ "$TEST_SCENARIO" = custom ] || [ "$TEST_SCENARIO" = entware-custom ]; then
+      reinstall_trusted_file() { [ "$1" = "$CONFIG_FILE" ] && [ -f "$1" ]; }
+    fi
     configure_firewall() { exit 91; }
     create_user() { exit 92; }
     install_service() { exit 93; }

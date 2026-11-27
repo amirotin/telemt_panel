@@ -1,3 +1,4 @@
+import { useNow } from "../../people/useNow";
 import { fill, formatNumber, type Dict } from "../../i18n";
 import { cn } from "../../lib/cn";
 import type { RuntimeInitialization, RuntimeInitializationComponent } from "../../realtime/topics";
@@ -65,14 +66,13 @@ function initializationGroupState(group: InitGroup): { tone: State; status: stri
 
 export function InitializationPanel({
   initialization,
-  nowMs,
   s,
 }: {
   initialization: RuntimeInitialization | null;
-  nowMs: number;
   s: Dict;
 }) {
   const v = s.details.pages.me.view;
+  const nowMs = useNow(1000);
   if (!initialization)
     return (
       <p className="px-5 py-12 text-center text-meta text-text-muted">{v.sourceUnavailable}</p>

@@ -37,7 +37,7 @@ export interface RecentEventsView {
  * context flips between open and closed, which is exactly the run the
  * timeline should state once, as a transition.
  */
-export function coalesceKey(event: Pick<RuntimeEdgeEventRecord, "event_type">): string {
+function coalesceKey(event: Pick<RuntimeEdgeEventRecord, "event_type">): string {
   return event.event_type.trim().toLowerCase();
 }
 
@@ -233,7 +233,7 @@ const EVENT_PHRASES: Array<readonly [RegExp, EventPhraseKey]> = [
   [/(^|\.)user\.(enable|enabled)(\.(ok|success|done))?$/, "userEnabled"],
 ];
 
-export const ADMISSION_EVENT_TYPE = "admission.state";
+const ADMISSION_EVENT_TYPE = "admission.state";
 
 /**
  * Whether `admission.state` is reporting an OPEN or a CLOSED door.
@@ -244,7 +244,7 @@ export const ADMISSION_EVENT_TYPE = "admission.state";
  * Anything else returns null and the row falls back to verbatim rather than
  * guessing which way the door is.
  */
-export function admissionPhrase(context: string): EventPhraseKey | null {
+function admissionPhrase(context: string): EventPhraseKey | null {
   const flag = /accepting_new_connections\s*=\s*(true|false)/i.exec(context);
   if (flag) return flag[1]!.toLowerCase() === "true" ? "admissionOpen" : "admissionClosed";
   const word = /^\s*(open|closed)\b/i.exec(context);

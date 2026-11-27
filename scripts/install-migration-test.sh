@@ -44,10 +44,35 @@ grep -qF "github_token = 'secret /bin/telemt # [updates]'" "$PRIV_CONFIG_CANDIDA
 grep -qF '# /bin/telemt is a comment that must survive' "$PRIV_CONFIG_CANDIDATE"
 publish_privilege_config
 [ "$(stat -c %a "$CONFIG_FILE")" = 640 ]
+printf 'edited operator copy\n' >"$PRIV_CONFIG_BACKUP"
 restore_privilege_config
 cmp "$CONFIG_FILE" "$TMP/original.toml"
 [ "$(stat -c %a "$CONFIG_FILE")" = 640 ]
 printf '%s\n' 'PASS: merged-/usr config migration and metadata rollback'
+
+# Use the current unprivileged identity as the service account. Privileged
+# reads and writes in this branch would fail the fixture immediately.
+test_runtime_config_publication() (
+  mkdir "$TMP/runtime"
+  cp -p "$UPDATE_SOURCE" "$CONFIG_FILE"
+  chmod 0440 "$CONFIG_FILE"
+  RUN_AS=user; SYSTEM_USER=$(id -un)
+  reinstall_trusted_parent() { return 1; }
+  no_privileged_config_io() { printf 'unexpected privileged config operation: %s\n' "$1" >&2; return 1; }
+  SUDO=no_privileged_config_io
+  PRIV_CONFIG_FINGERPRINT=$(privilege_config_fingerprint)
+  publish_privilege_config
+  [ "$(stat -c %u:%g:%a "$CONFIG_FILE")" = "$(id -u):$(id -g):440" ]
+  cmp "$CONFIG_FILE" "$PRIV_CONFIG_CANDIDATE"
+  rm -f "$PRIV_CONFIG_BACKUP"
+  restore_privilege_config
+  cmp "$UPDATE_SOURCE" "$CONFIG_FILE"
+  [ "$(stat -c %a "$CONFIG_FILE")" = 440 ]
+)
+if [ "$(id -u)" != 0 ]; then
+  CONFIG_FILE="$TMP/runtime/config.toml" test_runtime_config_publication
+  printf '%s\n' 'PASS: immutable original and owner-only publication in runtime config directory'
+fi
 
 for shape in absent-key absent-table multiline-array multiline-secret quoted-key dotted-key; do
   UPDATE_SOURCE="$TMP/shape-original.toml"

@@ -18,7 +18,7 @@ export function UserPolicySummary({ user }: { user: Pick<User, "limits" | "sourc
       <strong>{copy.sourceDeny}</strong>
       <p className="break-all font-mono text-micro">{copy.desired}: {user.source_deny?.join(", ") || copy.noDenies}</p>
       <p className="break-all font-mono text-micro text-text-muted">{copy.effective}: {status.effective === null ? copy.unknown : status.effective.join(", ") || copy.noDenies}</p>
-      <p className={status.runtime_reload_required ? "text-warning-text" : "text-text-muted"}>{status.runtime_reload_required === null ? copy.reloadUnknown : status.runtime_reload_required ? copy.reloadRequired : copy.reloadCurrent}</p>
+      <p className={status.runtime_reload_required ? "text-warn" : "text-text-muted"}>{status.runtime_reload_required === null ? copy.reloadUnknown : status.runtime_reload_required ? copy.reloadRequired : copy.reloadCurrent}</p>
       {status.runtime_reload_required !== false && <Link to="/server/config" className="inline-flex min-h-11 items-center text-accent underline">{copy.reloadLink}</Link>}
     </div>}
   </div>;

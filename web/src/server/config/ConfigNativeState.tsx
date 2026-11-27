@@ -24,11 +24,11 @@ export function ConfigNativeState({ state, error, pending, readOnly, canReload, 
   return <section data-testid="config-native-state"><Card className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-bold text-text">{copy.title}</h2><Button variant="ghost" size="sm" onClick={onRefresh}>{copy.refresh}</Button></div>
     <p className="text-meta text-text-muted">{matches ? copy.matches : copy.unknown}</p>
-    {error && <p role="alert" className="text-meta text-bad">{errorMessage(s, error.code ?? "telemt_api_error", error.message)}</p>}
+    {error && <p role="alert" className="text-meta text-error">{errorMessage(s, error.code ?? "telemt_api_error", error.message)}</p>}
     {state?.desired_status !== "valid" && state && <p className="text-meta text-warn">{copy.sourceUnavailable}</p>}
-    {failure && <p role="alert" className="break-words text-meta text-bad">{failure.path}: {failure.message}</p>}
-    {watcher?.error_code && <p role="alert" className="text-meta text-bad">{copy.publicationFailed}</p>}
-    {reload?.error_present && <p role="alert" className="text-meta text-bad">{copy.reloadFailed}</p>}
+    {failure && <p role="alert" className="break-words text-meta text-error">{failure.path}: {failure.message}</p>}
+    {watcher?.error_code && <p role="alert" className="text-meta text-error">{copy.publicationFailed}</p>}
+    {reload?.error_present && <p role="alert" className="text-meta text-error">{copy.reloadFailed}</p>}
     {groups.map(({ label, paths }) => paths.length > 0 && <div key={label} className="rounded-lg border border-border bg-bg/25 p-3"><strong className="text-meta text-text">{label}</strong><p className="mt-1 break-words font-mono text-micro text-text-muted">{paths.join(", ")}</p></div>)}
     <p className="text-micro text-text-faint">{copy.scope}</p>
     {groups[1].paths.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3"><p className="max-w-xl text-meta text-text-muted">{copy.savedOnly}</p><Button variant="secondary" onClick={onReload} disabled={readOnly || !canReload || pending}>{s.server.config.reloadNow}</Button></div>}

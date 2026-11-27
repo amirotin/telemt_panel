@@ -275,7 +275,7 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
       return;
     }
 
-    if (force || lastTopicsKey !== null) {
+    if (force || (lastTopicsKey !== null && (topicsKey !== lastTopicsKey || connection.status !== "polling"))) {
       generation++;
       pollInFlight = null;
     }
@@ -340,8 +340,11 @@ export function createSSEClient(options: SSEClientOptions = {}): SSEClient {
         // skip doesn't mistake it for a still-live connection — and
         // schedule our own backoff.
         if (es === next) es = null;
-        generation++;
-        pollInFlight = null;
+        // The live fallback remains valid while SSE retries these same topics.
+        if (connection.status !== "polling") {
+          generation++;
+          pollInFlight = null;
+        }
         if (consecutiveFailures === 1) {
           // First failure of this streak: probe once via the plain GET
           // /api/snapshot fetch path (same one refreshTopic/the polling

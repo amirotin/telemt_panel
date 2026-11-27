@@ -33,8 +33,8 @@ const levelStyles: Record<SecurityLevel, { border: string; mark: string; text: s
   },
   error: {
     border: "border-error/45",
-    mark: "border-error/45 bg-gradient-to-br from-error/30 to-error/10 text-error-text",
-    text: "text-error-text",
+    mark: "border-error/45 bg-gradient-to-br from-error/30 to-error/10 text-error",
+    text: "text-error",
   },
 };
 
@@ -178,7 +178,7 @@ function HeroVital({
         className={cn(
           "mt-1 block break-words text-lg font-bold tabular-nums text-text",
           tone === "warn" && "text-warn",
-          tone === "error" && "text-error-text",
+          tone === "error" && "text-error",
         )}
       >
         {value}
@@ -443,7 +443,7 @@ export function SecurityPage() {
   const topic = useSnapshot<SecurityTopic>("security");
   const tlsQuery = useTlsFingerprintsQuery();
   const navigate = useNavigate();
-  const nowMs = useNow(1_000);
+  const nowMs = useNow();
   const search = useSearch({ from: "/_authed/pulse/diag/$domain" });
   const tab: SecurityTab = search.tab === "tls" || search.tab === "limits" ? search.tab : "posture";
   const scope = search.tlsScope ?? "by_fingerprint";
@@ -514,7 +514,7 @@ export function SecurityPage() {
               onClick={() => void navigate({ to: "/pulse/diag/$domain", params: { domain: "security" }, search: (prev) => ({ ...prev, tab: id }), resetScroll: false })}
               className={cn(
                 "min-w-0 rounded-lg px-1.5 py-2 text-micro font-semibold sm:shrink-0 sm:px-3 sm:text-meta",
-                tab === id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-surface-hover",
+                tab === id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-surface-3",
               )}
             >
               <span className="sm:hidden">{shortLabel}</span>

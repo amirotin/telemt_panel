@@ -58,8 +58,9 @@ func (h *Handler) serveBrandedManifest(w http.ResponseWriter, r *http.Request) {
 	body, _ := json.Marshal(map[string]any{"name": p.Title, "short_name": p.Title, "id": ".", "start_url": ".", "scope": ".", "display": "standalone", "theme_color": "#12171d", "background_color": "#12171d", "icons": icons})
 	w.Header().Set("Content-Type", "application/manifest+json")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("ETag", etagOf(body))
-	if r.Header.Get("If-None-Match") == etagOf(body) {
+	etag := etagOf(body)
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}

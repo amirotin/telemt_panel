@@ -105,6 +105,28 @@ func TestExtractSingleBinary_ExtractsTheOneFile(t *testing.T) {
 	}
 }
 
+func TestArchiveCountsDirectoryEntriesAgainstBudget(t *testing.T) {
+	original := maxArchiveEntries
+	maxArchiveEntries = 1
+	defer func() { maxArchiveEntries = original }()
+	data := buildTarGzRaw(t, []struct {
+		name    string
+		content []byte
+		typ     byte
+	}{
+		{name: "release/", typ: tar.TypeDir},
+		{name: "release/panel", content: []byte("panel")},
+	})
+	dir := t.TempDir()
+	path := filepath.Join(dir, "release.tar.gz")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extractSingleBinary(path, dir); err == nil || !strings.Contains(err.Error(), "too many entries") {
+		t.Fatalf("two regular release entries with budget of one: %v", err)
+	}
+}
+
 // TestDownload_ContentLengthOverLimitFailsEarly covers P2.4: a declared
 // Content-Length above the limit must be rejected before any body bytes are
 // read, without needing to actually transfer an oversized payload.
@@ -329,5 +351,24 @@ func TestReleasesView_StillListsPrereleasesForManualApply(t *testing.T) {
 	}
 	if !found {
 		t.Error("ReleasesView dropped the prerelease — manual apply's release list must still show it")
+	}
+}
+
+func TestDownloadKeepsTLSAcrossRedirects(t *testing.T) {
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("download followed an insecure redirect")
+	}))
+	defer plain.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL, http.StatusFound)
+	}))
+	defer secure.Close()
+	e := &Engine{httpClient: secure.Client(), github: NewClient()}
+	dest := filepath.Join(t.TempDir(), "asset")
+	if err := e.download(t.Context(), secure.URL, dest); err == nil || !strings.Contains(err.Error(), "preserve HTTPS") {
+		t.Fatalf("expected TLS redirect policy error, got %v", err)
+	}
+	if err := e.download(t.Context(), plain.URL, dest); err == nil {
+		t.Fatal("accepted plain HTTP asset from secure release catalog")
 	}
 }

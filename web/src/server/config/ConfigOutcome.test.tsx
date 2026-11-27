@@ -1,3 +1,4 @@
+import { waitForEnabled } from "../../testing/waitForEnabled";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -46,6 +47,7 @@ it.each(["envelope", "network", "html", "repeat", "recovery"])("checks an unconf
     await act(async () => { root.render(<QueryClientProvider client={cache}><ConfigPage />{failure === "recovery" && <ToastViewport />}</QueryClientProvider>); await settle(); });
     await act(async () => { const select = container.querySelector("select")!; select.value = "debug"; select.dispatchEvent(new Event("change", { bubbles: true })); });
     await act(async () => { button(copy.save)!.click(); await settle(); });
+    await waitForEnabled(() => button(copy.savePreview.apply.replace("{count}", "1")));
     await act(async () => { button(copy.savePreview.apply.replace("{count}", "1"))!.click(); await settle(); });
     expect(writes).toBe(1);
     const check = button("Проверить серверную конфигурацию");

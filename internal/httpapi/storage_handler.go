@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -118,11 +117,7 @@ func (s *Server) handlePutStorageSettings(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if err := s.st.ReplaceStoragePoliciesContext(ctx, req.Policies); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrHistoryTimeout) {
-			writeHistoryError(w, err, "could not save storage settings")
-		} else {
-			auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
-		}
+		writeHistoryError(w, err, "could not save storage settings")
 		return
 	}
 	s.appendAudit(r, "storage.policy_change", "storage", "")
@@ -140,6 +135,10 @@ func (s *Server) handlePurgeStorageHistory(w http.ResponseWriter, r *http.Reques
 		auth.WriteError(w, http.StatusBadRequest, "confirmation_required", "history purge requires explicit confirmation")
 		return
 	}
+	if !req.Category.Valid() {
+		auth.WriteError(w, http.StatusBadRequest, "bad_request", "unknown storage category")
+		return
+	}
 	var err error
 	if req.Category == store.StorageUserIPHistory {
 		err = s.resetUserIPHistoryContext(r.Context(), "")
@@ -147,11 +146,7 @@ func (s *Server) handlePurgeStorageHistory(w http.ResponseWriter, r *http.Reques
 		err = s.st.PurgeHistoryContext(r.Context(), req.Category)
 	}
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, store.ErrHistoryTimeout) {
-			writeHistoryError(w, err, "could not purge history")
-		} else {
-			auth.WriteError(w, http.StatusBadRequest, "bad_request", err.Error())
-		}
+		writeHistoryError(w, err, "could not purge history")
 		return
 	}
 	s.appendAudit(r, "storage.history_purge", string(req.Category), "")

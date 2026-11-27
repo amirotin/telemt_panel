@@ -15,6 +15,8 @@ export interface LogListProps {
   /** Already filtered by level + search (LogsTab's job); newest last. */
   lines: RingLine[];
   showUnit: boolean;
+  /** Last ID in the unfiltered stream, including lines hidden by the current filter. */
+  latestSourceId?: number;
 }
 
 // LogList — Task 7 deliverable A's log feed: a "keep it simple"
@@ -29,20 +31,15 @@ export interface LogListProps {
 // right in one browser/device drifts out from under the tab bar's actual
 // (safe-area-dependent) height on another.
 //
-// At `lg:` the frame adds a fixed `w-56` sidebar (Shell.tsx) to the left
-// of the content column, so a viewport-wide `inset-x-0` centers the
-// button under the sidebar+content combined, visibly off-center from the
-// content the user is actually reading. `lg:left-56 lg:right-0` narrows
-// the centering box to the content column alone (viewport minus the
-// sidebar's own width, matching Shell's `w-56`), so `mx-auto` centers
-// against the same column instead.
-export function LogList({ lines, showUnit }: LogListProps) {
+export function LogList({ lines, showUnit, latestSourceId }: LogListProps) {
   const s = useStrings();
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState(INITIAL_WINDOW);
   const [atBottom, setAtBottom] = useState(true);
   const [newSinceScrolledUp, setNewSinceScrolledUp] = useState(0);
-  const prevCountRef = useRef(lines.length);
+  const newestId = lines.at(-1)?.id ?? 0;
+  const watermark = latestSourceId ?? newestId;
+  const previousId = useRef(watermark);
   const atBottomRef = useRef(true);
 
   const { visible, hiddenCount } = useMemo(
@@ -51,16 +48,18 @@ export function LogList({ lines, showUnit }: LogListProps) {
   );
 
   useEffect(() => {
-    const grew = lines.length - prevCountRef.current;
-    prevCountRef.current = lines.length;
-    if (grew <= 0) return;
+    const last = previousId.current;
+    previousId.current = watermark;
+    if (newestId <= last) return;
     if (atBottomRef.current) {
       const el = containerRef.current;
       if (el) el.scrollTop = el.scrollHeight;
     } else {
-      setNewSinceScrolledUp((n) => n + grew);
+      let added = 0;
+      for (let i = lines.length - 1; i >= 0 && lines[i].id > last; i--) added++;
+      setNewSinceScrolledUp((n) => n + added);
     }
-  }, [lines.length]);
+  }, [lines, newestId, watermark]);
 
   function handleScroll() {
     const el = containerRef.current;
@@ -161,7 +160,7 @@ export function LogList({ lines, showUnit }: LogListProps) {
             "bg-accent-strong px-4 py-2.5 text-xs font-semibold text-accent-text",
             "transition-colors hover:bg-accent",
             "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-6",
-            "lg:left-56 lg:right-0",
+            "min-[600px]:left-16 min-[1180px]:left-[240px]",
           )}
         >
           <IconArrowDown aria-hidden="true" />

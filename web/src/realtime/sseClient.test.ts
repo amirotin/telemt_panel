@@ -405,6 +405,8 @@ describe("first-failure probe (F3)", () => {
     const previousFetch = globalThis.fetch;
     const previousConfig = apiClient.getConfig();
 
+    const { queryClient } = await import("../lib/query-client");
+    queryClient.setQueryData(["private-person"], "alice");
     const navigate = vi.fn();
     setRouterInstance({ navigate } as unknown as Parameters<typeof setRouterInstance>[0]);
     // buildUrl needs an absolute base to construct a real Request in this
@@ -432,7 +434,8 @@ describe("first-failure probe (F3)", () => {
       }
 
       expect(navigate).toHaveBeenCalledTimes(1);
-      expect(navigate.mock.calls[0][0]).toMatchObject({ to: "/login" });
+      expect(navigate.mock.calls[0][0]).toMatchObject({ to: "/login", ignoreBlocker: true });
+      expect(queryClient.getQueryData(["private-person"])).toBeUndefined();
     } finally {
       globalThis.fetch = previousFetch;
       apiClient.setConfig(previousConfig);
@@ -677,6 +680,19 @@ describe("local REST/SSE freshness barriers", () => {
     pending[1]({ users: { v: "fresh recovery", ts: 3 } }); await recovery;
     expect(client.getConnectionSnapshot().stale).toBe(false);
     expect(client.getTopicSnapshot("users")).toEqual({ data: "fresh recovery", ts: 3, stale: false, error: null });
+  });
+
+  it("keeps a useful fallback poll while SSE retries the same disconnected transport", async () => {
+    const {pending, fetchSnapshot} = deferredSnapshots();
+    client = makeClient({fetchSnapshot, failureThreshold:0});
+    client.subscribeTopic("users");
+    await vi.advanceTimersByTimeAsync(20);
+    latestInstance().emitError(2);
+    await vi.advanceTimersByTimeAsync(2_000);
+    latestInstance().emitError(2);
+    pending[0]({users:{v:"still current", ts:1}});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getTopicSnapshot("users").data).toBe("still current");
   });
 
   it("invalidates retained-topic REST when a changed topic set replaces the transport", async () => {

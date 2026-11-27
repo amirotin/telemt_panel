@@ -25,19 +25,19 @@ func commandRecorder(calls *[]recordedCommand, failAt int) CmdRunner {
 }
 
 func TestSudoRunnersRejectRetiredConfigWriter(t *testing.T) {
-	for _, legacy := range []bool{false, true} {
+	for _, commandWorker := range []bool{false, true} {
 		var calls []recordedCommand
 		run := commandRecorder(&calls, 0)
 		allow := AllowLists{BinaryPaths: []string{"/bin/telemt"}}
 		var runner Runner = NewSudoRunner(allow, nil, nil, run)
-		if legacy {
-			runner = NewLegacySudoRunner(allow, nil, nil, run)
+		if commandWorker {
+			runner = NewCommandSudoRunner(allow, nil, nil, run, nil)
 		}
 		_, err := runner.Run(context.Background(), Op{Kind: "write-config", Args: map[string]string{
 			"path": "/bin/telemt", "content": "malicious",
 		}})
 		if err == nil || !strings.Contains(err.Error(), "unknown op kind") || len(calls) != 0 {
-			t.Fatalf("legacy=%v: error=%v, commands=%v", legacy, err, calls)
+			t.Fatalf("command worker=%v: error=%v, commands=%v", commandWorker, err, calls)
 		}
 	}
 }

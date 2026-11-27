@@ -106,8 +106,11 @@ func (s *Server) handlePutTelemtUserWebAccess(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), telemtConfigRequestTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), telemt.ConfigMutationTimeout)
 	defer cancel()
+	if !allowTelemtConfigMutationResponse(w, ctx) {
+		return
+	}
 	sections, currentRevision, err := s.tc.GetConfig(ctx)
 	if err != nil {
 		writeTelemtConfigError(w, err)
@@ -167,11 +170,7 @@ func (s *Server) detachWebAccessForUser(ctx context.Context, username string) (f
 		updatedRevision = responseRevision
 	}
 	rollback := func(rollbackCtx context.Context) error {
-		var original any
-		if err := json.Unmarshal(raw, &original); err != nil {
-			return err
-		}
-		_, _, _, err := s.tc.PatchConfig(rollbackCtx, map[string]any{"web": original}, updatedRevision, telemt.ReloadQuery{Mode: "instant"})
+		_, _, _, err := s.tc.PatchConfig(rollbackCtx, map[string]any{"web": raw}, updatedRevision, telemt.ReloadQuery{Mode: "instant"})
 		return err
 	}
 	return rollback, true, nil

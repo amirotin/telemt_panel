@@ -29,6 +29,12 @@ var maxDownloadSize int64 = 512 << 20
 // as maxDownloadSize.
 var maxExtractedBinarySize int64 = 512 << 20
 
+// A release contains one executable. Allow surrounding directories and tar
+// metadata without spending an unbounded decompression budget on them.
+const maxArchiveOverhead = 1 << 20
+
+var maxArchiveEntries = 1024
+
 // download fetches url into dest, bound to ctx. Any non-200 response is an
 // error — a release asset URL redirecting to a 404 or GitHub rate-limit
 // page must not be silently accepted as a valid tarball.
@@ -37,7 +43,24 @@ func (e *Engine) download(ctx context.Context, url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("update: build download request for %q: %w", url, err)
 	}
-	resp, err := e.httpClient.Do(req)
+	if e.github != nil && strings.HasPrefix(e.github.baseURL(), "https://") && req.URL.Scheme != "https" {
+		return errors.New("update: HTTPS release catalog requires an HTTPS asset")
+	}
+	client := *e.httpClient
+	prior := client.CheckRedirect
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("update: too many asset redirects")
+		}
+		if via[len(via)-1].URL.Scheme == "https" && next.URL.Scheme != "https" {
+			return errors.New("update: asset redirect must preserve HTTPS")
+		}
+		if prior != nil {
+			return prior(next, via)
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("update: download %q: %w", url, err)
 	}
@@ -134,17 +157,26 @@ func extractSingleBinary(tarGzPath, destDir string) (string, error) {
 	}
 	defer gz.Close()
 
-	tr := tar.NewReader(gz)
+	// Metadata and skipped entries consume the same decompression budget as
+	// the executable, even when archive/tar drains their contents internally.
+	decoded := &io.LimitedReader{R: gz, N: maxExtractedBinarySize + maxArchiveOverhead + 1}
+	tr := tar.NewReader(decoded)
 	destPath := filepath.Join(destDir, "bin")
 	found := false
 
-	for {
+	for entries := 0; ; entries++ {
 		hdr, err := tr.Next()
+		if decoded.N == 0 {
+			return "", errors.New("update: decompressed archive exceeds size limit")
+		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return "", fmt.Errorf("update: read tar %q: %w", tarGzPath, err)
+		}
+		if entries >= maxArchiveEntries {
+			return "", errors.New("update: archive contains too many entries")
 		}
 		if strings.HasPrefix(hdr.Name, "/") || strings.Contains(hdr.Name, "..") {
 			return "", fmt.Errorf("update: tar entry %q escapes the archive", hdr.Name)

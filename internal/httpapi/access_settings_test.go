@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/amirotin/telemt_panel/internal/config"
@@ -64,5 +65,42 @@ func TestSubscriptionSettingsRejectPortConflictAndUnconfirmedHTTP(t *testing.T) 
 	w := accessRequest(t, s, cookie, "POST", "/api/settings/tls/prepare?target=subscription", candidate)
 	if w.Code != 400 {
 		t.Fatalf("external HTTP without confirmation returned %d", w.Code)
+	}
+}
+
+func TestDisableSubscriptionPreservesSavedEndpoint(t *testing.T) {
+	s, cookie, path := accessServer(t)
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original = append(original, []byte(`
+[subpage]
+enabled = true
+listen = "127.0.0.1:8083"
+base_path = "/clients"
+secret = "fixture-secret"
+`)...)
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "/api/settings/tls/"
+	request := map[string]any{"enabled": false, "listen": "", "tls": map[string]string{"mode": "certificate"}}
+	response := accessRequest(t, s, cookie, "POST", endpoint+"prepare?target=subscription", request)
+	var prepared tlsPrepared
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &prepared) != nil || prepared.Receipt == "" ||
+		prepared.Candidate.Enabled || prepared.Candidate.Listen != "127.0.0.1:8083" || prepared.Candidate.BasePath != "/clients" {
+		t.Fatalf("disable preparation %d: %s", response.Code, response.Body)
+	}
+	response = accessRequest(t, s, cookie, "PUT", endpoint+"config?target=subscription", map[string]any{"receipt": prepared.Receipt, "candidate": prepared.Candidate})
+	if response.Code != 200 {
+		t.Fatalf("disable: %d %s", response.Code, response.Body)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Subpage.Enabled || cfg.Subpage.Listen != "127.0.0.1:8083" || cfg.Subpage.Secret != "fixture-secret" {
+		t.Fatal("disable discarded the existing settings")
 	}
 }

@@ -40,8 +40,8 @@ RC2_VERSION=$(timeout 15 "$TP_TEST_RC2_BINARY" version)
 [[ $CANDIDATE_VERSION == 'telemt-panel '* ]] || fail 'candidate version command is invalid'
 [[ $CANDIDATE_VERSION != "$RC2_VERSION" ]] || fail 'candidate must differ from RC2'
 
-# /run avoids writable binary/helper ancestry while keeping all created data ephemeral.
-ROOT=$(mktemp -d /run/telemt-panel-native.XXXXXXXX)
+# Keep executable fixtures under root-owned ancestors on a filesystem that allows execution.
+ROOT=$(mktemp -d /var/lib/telemt-panel-native.XXXXXXXX)
 chmod 0755 "$ROOT"
 TOKEN=${ROOT##*.}
 ACCOUNT="tpnative${TOKEN,,}"

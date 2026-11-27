@@ -13,7 +13,7 @@ export interface CounterStep {
   complete: boolean;
 }
 
-export function historyPointStart(point: Point): number {
+function historyPointStart(point: Point): number {
   return point.first_observed_epoch_secs ?? point.ts;
 }
 

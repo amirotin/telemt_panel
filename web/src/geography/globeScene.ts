@@ -141,9 +141,9 @@ export function createGlobeScene(
       text: new Color(token("--text", "#ffffff")),
     };
   }
+  let colors = palette();
   function paintTexture() {
-    const colors = palette(),
-      maximum = Math.max(0, ...model.countries.map((c) => c.unique_ips)),
+    const maximum = Math.max(0, ...model.countries.map((c) => c.unique_ips)),
       countries = new Map(model.countries.map((c) => [c.country_code, c]));
     context!.clearRect(0, 0, 2048, 1024);
     context!.fillStyle = colors.ocean.getStyle();
@@ -183,7 +183,6 @@ export function createGlobeScene(
     texture.needsUpdate = true;
   }
   function updateMarkers() {
-    const colors = palette();
     arcMaterial.color.copy(colors.accent);
     serverMaterial.color.copy(colors.text);
     atmosphereMaterial.color.copy(colors.accent);
@@ -210,6 +209,8 @@ export function createGlobeScene(
       server.position.copy(
         position(model.server.location.latitude, model.server.location.longitude, 1.02),
       );
+  }
+  function updateArcs() {
     for (const child of [...arcGroup.children]) {
       arcGroup.remove(child);
       (child as Line).geometry.dispose();
@@ -281,11 +282,18 @@ export function createGlobeScene(
   };
   const sizeObserver = new ResizeObserver(resize);
   sizeObserver.observe(host);
-  const themeObserver = new MutationObserver(() => {
+  const scheme = matchMedia("(prefers-color-scheme: light)");
+  const updatePalette = () => {
+    const next = palette();
+    if (next.accent.equals(colors.accent) && next.ocean.equals(colors.ocean) && next.land.equals(colors.land)
+      && next.text.equals(colors.text) && next.border === colors.border && next.grid === colors.grid) return;
+    colors = next;
     paintTexture();
     updateMarkers();
     scheduler.request();
-  });
+  };
+  scheme.addEventListener("change", updatePalette);
+  const themeObserver = new MutationObserver(updatePalette);
   themeObserver.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["data-theme", "class", "style"],
@@ -303,6 +311,7 @@ export function createGlobeScene(
     }
     down = null;
     const box = renderer.domElement.getBoundingClientRect();
+    if (!box.width || !box.height) return;
     pointer.set(
       ((event.clientX - box.left) / box.width) * 2 - 1,
       (-(event.clientY - box.top) / box.height) * 2 + 1,
@@ -324,37 +333,48 @@ export function createGlobeScene(
     }
   };
   renderer.domElement.addEventListener("webglcontextlost", lost);
-  try {
-    paintTexture();
-    resize();
-    activity();
-  } catch (error) {
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
     scheduler.dispose();
+    controls.removeEventListener("change", request);
     controls.dispose();
     intersection.disconnect();
     sizeObserver.disconnect();
     themeObserver.disconnect();
+    scheme.removeEventListener("change", updatePalette);
     document.removeEventListener("visibilitychange", visibility);
     media.removeEventListener("change", activity);
     renderer.domElement.removeEventListener("pointerdown", pointerDown);
     renderer.domElement.removeEventListener("pointerup", pointerUp);
     renderer.domElement.removeEventListener("webglcontextlost", lost);
-    texture.dispose();
-    sphereGeometry.dispose();
-    sphereMaterial.dispose();
-    atmosphereMaterial.dispose();
+    for (const child of arcGroup.children) (child as Line).geometry.dispose();
+    arcMaterial.dispose();
+    markers.dispose();
     markerGeometry.dispose();
     markerMaterial.dispose();
     serverGeometry.dispose();
     serverMaterial.dispose();
-    arcMaterial.dispose();
+    sphereGeometry.dispose();
+    sphereMaterial.dispose();
+    atmosphereMaterial.dispose();
+    texture.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
     renderer.domElement.remove();
+  }
+  try {
+    paintTexture();
+    updateArcs();
+    resize();
+    activity();
+  } catch (error) {
+    dispose();
     throw error;
   }
   return {
     update: (next: MapModel) => {
+      if (next === model) return;
       const nextKey = countryTextureKey(next);
       model = next;
       if (nextKey !== textureKey) {
@@ -362,6 +382,7 @@ export function createGlobeScene(
         paintTexture();
       }
       updateMarkers();
+      updateArcs();
       scheduler.request();
     },
     resize,
@@ -397,33 +418,6 @@ export function createGlobeScene(
         scheduler.request();
       }
     },
-    dispose: () => {
-      if (disposed) return;
-      disposed = true;
-      scheduler.dispose();
-      controls.removeEventListener("change", request);
-      controls.dispose();
-      intersection.disconnect();
-      sizeObserver.disconnect();
-      themeObserver.disconnect();
-      document.removeEventListener("visibilitychange", visibility);
-      media.removeEventListener("change", activity);
-      renderer.domElement.removeEventListener("pointerdown", pointerDown);
-      renderer.domElement.removeEventListener("pointerup", pointerUp);
-      renderer.domElement.removeEventListener("webglcontextlost", lost);
-      for (const child of arcGroup.children) (child as Line).geometry.dispose();
-      arcMaterial.dispose();
-      markerGeometry.dispose();
-      markerMaterial.dispose();
-      serverGeometry.dispose();
-      serverMaterial.dispose();
-      sphereGeometry.dispose();
-      sphereMaterial.dispose();
-      atmosphereMaterial.dispose();
-      texture.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-      renderer.domElement.remove();
-    },
+    dispose,
   };
 }

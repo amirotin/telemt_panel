@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { pushWindowEntry, readWindow, type WindowEntry } from "./topicWindow";
 
-const MINUTE = 60_000;
+const WINDOW_MS = 900_000;
+const MINUTE_SECONDS = 60;
 
 function entry(ts: number, data: string): WindowEntry<string> {
   return { ts, data };
@@ -10,32 +11,32 @@ function entry(ts: number, data: string): WindowEntry<string> {
 describe("pushWindowEntry", () => {
   it("appends in arrival order, oldest first", () => {
     let ring: WindowEntry<string>[] = [];
-    ring = pushWindowEntry(ring, entry(1, "a"), 15 * MINUTE);
-    ring = pushWindowEntry(ring, entry(2, "b"), 15 * MINUTE);
-    ring = pushWindowEntry(ring, entry(3, "c"), 15 * MINUTE);
+    ring = pushWindowEntry(ring, entry(1, "a"), WINDOW_MS);
+    ring = pushWindowEntry(ring, entry(2, "b"), WINDOW_MS);
+    ring = pushWindowEntry(ring, entry(3, "c"), WINDOW_MS);
     expect(ring.map((e) => e.data)).toEqual(["a", "b", "c"]);
   });
 
   it("evicts entries older than the window relative to the newest one", () => {
-    const base = 1_000_000;
+    const base = 1_800_000_000;
     let ring: WindowEntry<string>[] = [];
-    ring = pushWindowEntry(ring, entry(base, "old"), 15 * MINUTE);
-    ring = pushWindowEntry(ring, entry(base + 10 * MINUTE, "mid"), 15 * MINUTE);
-    ring = pushWindowEntry(ring, entry(base + 20 * MINUTE, "new"), 15 * MINUTE);
+    ring = pushWindowEntry(ring, entry(base, "old"), WINDOW_MS);
+    ring = pushWindowEntry(ring, entry(base + 10 * MINUTE_SECONDS, "mid"), WINDOW_MS);
+    ring = pushWindowEntry(ring, entry(base + 20 * MINUTE_SECONDS, "new"), WINDOW_MS);
     expect(ring.map((e) => e.data)).toEqual(["mid", "new"]);
   });
 
   it("keeps an entry exactly on the window boundary", () => {
-    const base = 1_000_000;
+    const base = 1_800_000_000;
     let ring: WindowEntry<string>[] = [];
-    ring = pushWindowEntry(ring, entry(base, "edge"), 15 * MINUTE);
-    ring = pushWindowEntry(ring, entry(base + 15 * MINUTE, "new"), 15 * MINUTE);
+    ring = pushWindowEntry(ring, entry(base, "edge"), WINDOW_MS);
+    ring = pushWindowEntry(ring, entry(base + 15 * MINUTE_SECONDS, "new"), WINDOW_MS);
     expect(ring.map((e) => e.data)).toEqual(["edge", "new"]);
   });
 
   it("ignores a duplicate timestamp and returns the same array reference", () => {
-    const ring = pushWindowEntry([], entry(7, "a"), 15 * MINUTE);
-    const again = pushWindowEntry(ring, entry(7, "a"), 15 * MINUTE);
+    const ring = pushWindowEntry([], entry(7, "a"), WINDOW_MS);
+    const again = pushWindowEntry(ring, entry(7, "a"), WINDOW_MS);
     expect(again).toBe(ring);
     expect(again).toHaveLength(1);
   });
@@ -43,7 +44,7 @@ describe("pushWindowEntry", () => {
   it("caps the ring even when every entry is inside the window", () => {
     let ring: WindowEntry<number>[] = [];
     for (let i = 0; i < 400; i++) {
-      ring = pushWindowEntry(ring, { ts: i, data: i }, 15 * MINUTE);
+      ring = pushWindowEntry(ring, { ts: i, data: i }, WINDOW_MS);
     }
     expect(ring).toHaveLength(256);
     expect(ring[ring.length - 1].data).toBe(399);

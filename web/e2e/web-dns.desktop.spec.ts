@@ -31,6 +31,10 @@ for (const locale of ["ru", "en"] as const) {
         await mode.selectOption("http_upstream");
         await expect(policy).toHaveValue("startup");
         await expect(page.getByLabel("HTTP upstream", { exact: true })).toHaveValue("http://backend.internal:8080");
+        const profiles = page.getByRole("combobox", { name: locale === "ru" ? "Профили доступа" : "Access profiles" });
+        await profiles.click();
+        await page.getByRole("listbox").getByRole("option", { name: / · plain$/ }).first().click();
+        await profiles.press("Escape");
         let writes = 0;
         await page.route("**/api/telemt/config**", async (route) => {
           if (route.request().method() !== "PATCH") { await route.continue(); return; }

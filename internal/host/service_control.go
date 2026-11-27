@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// ValidServiceTarget checks an argument used as an init-script leaf or CLI target.
+func ValidServiceTarget(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, "-") &&
+		!strings.ContainsAny(name, "/\x00\r\n")
+}
+
 // ServiceController extends managers that support explicit start and stop.
 // Restart-only implementations retain the existing ServiceManager contract.
 type ServiceController interface {

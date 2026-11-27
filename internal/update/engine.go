@@ -598,6 +598,8 @@ func (e *Engine) fail(rc *runCtx, phase, detail string) error {
 // run"; for this branch specifically it means "rollback correctly
 // declined to run".
 func (e *Engine) rollback(ctx context.Context, rc *runCtx, target Target, backupPath, failedPhase string, cause error) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+	defer cancel()
 	e.transition(rc, PhaseRollingBack, fmt.Sprintf("%s failed: %v", failedPhase, cause))
 
 	if backupPath == "" {

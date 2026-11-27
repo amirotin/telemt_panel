@@ -197,7 +197,8 @@ func TestNativeWorkerLifecycle(t *testing.T) {
 
 func newNativeWorkerFixture(t *testing.T, scenario string) nativeWorkerFixture {
 	t.Helper()
-	root, err := os.MkdirTemp("/run", "tp-update-native-")
+	// The harness and both panel executables must be runnable by systemd.
+	root, err := os.MkdirTemp("/var/lib", "tp-update-native-")
 	if err != nil {
 		t.Fatal(err)
 	}

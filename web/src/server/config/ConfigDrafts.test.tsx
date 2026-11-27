@@ -1,3 +1,4 @@
+import { waitForEnabled } from "../../testing/waitForEnabled";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -25,8 +26,16 @@ let container: HTMLDivElement;
 let cache: QueryClient;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 40));
 const button = (text: string) => [...document.querySelectorAll("button")].find((item) => item.textContent === text)!;
-async function click(text: string) { await act(async () => { button(text).click(); await settle(); }); }
-async function type(selector: string, value: string) { await act(async () => { const input = container.querySelector<HTMLInputElement>(selector)!; input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); }); }
+async function click(text: string) { await waitForEnabled(() => button(text)); await act(async () => { button(text).click(); await settle(); }); }
+async function type(selector: string, value: string) {
+  const field = () => container.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
+  await waitForEnabled(field);
+  await act(async () => {
+    const input = field()!;
+    input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
 async function render(fetch: (request: Request) => Promise<Response>) {
   client.setConfig({ baseUrl: "http://localhost", fetch: (request) => (request as Request).url.endsWith("/catalog") ? Promise.resolve(Response.json(cache.getQueryData(getTelemtConfigCatalogQueryKey()))) : /\/(validate|state|schema|info)$/.test((request as Request).url) ? Promise.resolve(Response.json({ code: "capability_absent" }, { status: 501 })) : fetch(request as Request) });
   cache = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });

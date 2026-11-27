@@ -23,6 +23,12 @@ const projection = geoNaturalEarth1().fitExtent(
   { type: "Sphere" },
 );
 const path = geoPath(projection);
+const countriesGeometry = features.map((feature, index) => ({
+  key: `${feature.id}-${index}`,
+  code: alpha2ForNumeric(feature.id),
+  name: feature.properties?.["name"],
+  outline: path(feature) ?? undefined,
+}));
 const graticule = path(geoGraticule10()) ?? undefined;
 const outline = path({ type: "Sphere" }) ?? undefined;
 
@@ -68,7 +74,13 @@ export function VectorMap({ model, expanded, onSelect, cameraRef, controlsRef }:
   );
   useEffect(() => {
     const element = svg.current;
-    if (!expanded || !element) return;
+    if (!expanded) {
+      pointers.current.clear();
+      gesture.current = null;
+      dragged.current = false;
+      return;
+    }
+    if (!element) return;
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
       const current = poseRef.current;
@@ -206,14 +218,13 @@ export function VectorMap({ model, expanded, onSelect, cameraRef, controlsRef }:
           strokeWidth=".7"
           vectorEffect="non-scaling-stroke"
         />
-        {features.map((f, i) => {
-          const code = alpha2ForNumeric(f.id),
-            country = code ? countries.get(code) : undefined,
+        {countriesGeometry.map(({ key, code, name, outline }) => {
+          const country = code ? countries.get(code) : undefined,
             selected = !!code && code === model.selection.country;
           return (
             <path
-              key={`${f.id}-${i}`}
-              d={path(f) ?? undefined}
+              key={key}
+              d={outline}
               fill={
                 country
                   ? `color-mix(in srgb, rgb(var(--geo-data)) ${40 + weight(country.unique_ips, max) * 56}%, rgb(var(--geo-land)))`
@@ -249,7 +260,7 @@ export function VectorMap({ model, expanded, onSelect, cameraRef, controlsRef }:
               <title>
                 {country
                   ? (s.locale === "ru" ? country.name_ru || country.name : country.name) || code
-                  : f.properties?.["name"]}
+                  : name}
               </title>
             </path>
           );

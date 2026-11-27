@@ -25,7 +25,8 @@ done
 [[ $(timeout 15 "$TP_TEST_BINARY" update-worker --protocol) == 1 ]] || fail 'candidate does not support worker protocol 1'
 HERE=$(cd -- "$(dirname -- "$0")" && pwd)
 INSTALLER="$HERE/../install.sh"
-ROOT=$(mktemp -d /run/telemt-panel-worker-native.XXXXXXXX)
+# Keep executable fixtures under root-owned ancestors on a filesystem that allows execution.
+ROOT=$(mktemp -d /var/lib/telemt-panel-worker-native.XXXXXXXX)
 chmod 0755 "$ROOT"
 TOKEN=${ROOT##*.}
 ACCOUNT="tpworker${TOKEN,,}"

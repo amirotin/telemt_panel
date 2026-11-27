@@ -411,7 +411,7 @@ export function ConnectionsPage() {
                         className={cn(
                           "min-h-8 rounded-full px-2.5 py-1 font-semibold transition-colors",
                           rankingMode === mode
-                            ? "bg-accent-soft text-accent"
+                            ? "bg-accent/15 text-accent"
                             : "text-text-muted hover:text-text",
                         )}
                       >

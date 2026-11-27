@@ -143,10 +143,12 @@ func (m *Manager) Prepare() (*tls.Config, http.Handler, error) {
 				}
 				return nil, m.failure("issuance", err)
 			}
-			if len(cert.Certificate) != 0 {
-				if leaf, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
-					m.certificate(leaf)
-				}
+			leaf := cert.Leaf
+			if leaf == nil && len(cert.Certificate) != 0 {
+				leaf, _ = x509.ParseCertificate(cert.Certificate[0])
+			}
+			if leaf != nil {
+				m.certificate(leaf)
 			}
 			// A successful retry may clear its older issuance error, but a cached
 			// handshake must never erase an ongoing renewal/cache failure.

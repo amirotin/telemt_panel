@@ -3,7 +3,6 @@ package geoip
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -11,6 +10,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -88,6 +89,8 @@ var blockedDownloadPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("203.0.113.0/24"),
 	netip.MustParsePrefix("240.0.0.0/4"),
 	netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("::/96"),
+	netip.MustParsePrefix("fec0::/10"),
 	netip.MustParsePrefix("64:ff9b::/96"),
 	netip.MustParsePrefix("64:ff9b:1::/48"),
 	netip.MustParsePrefix("2001::/32"),
@@ -152,8 +155,11 @@ func (d *secureDownloader) download(ctx context.Context, rawURL, destination str
 			_ = os.Remove(destination)
 		}
 	}()
-	_, copyErr := io.Copy(out, response.Body)
+	copyErr := stageDatabase(ctx, out, response.Body, response.ContentLength)
 	closeErr := out.Close()
+	if errors.Is(copyErr, unix.ENOSPC) {
+		return "", coded(ErrorActivationFailed, copyErr)
+	}
 	if copyErr != nil {
 		return "", coded(ErrorDownloadFailed, copyErr)
 	}

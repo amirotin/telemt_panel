@@ -1,3 +1,4 @@
+import { GatedNote } from "../GatedNote";
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { fill, formatNumber, localeOf, useStrings, type Dict } from "../../i18n";
@@ -522,7 +523,7 @@ export function EventsPage() {
   const runtime = useSnapshot<RuntimeTopic>("runtime");
   const navigate = useNavigate();
   const s = useStrings();
-  const nowMs = useNow(1_000);
+  const nowMs = useNow();
   const gate = runtime.data?.recent_events ?? null;
   const resolved = gate ? resolveGated(gate) : null;
   const data = resolved?.status === "ok" ? resolved.data : null;
@@ -531,8 +532,8 @@ export function EventsPage() {
     events: { kind: "topic", snapshot: runtime, gated: gate },
   };
   const sources = useDetailSources(eventsSources, inputs);
-  const disabled = runtime.data !== null && data === null;
-  const status = disabled ? "disabled" : sources.status;
+  const status = sources.byId["events"]?.status ?? sources.status;
+  const disabled = status === "disabled";
 
   return (
     <div className="w-full" data-testid="events-detail">
@@ -556,6 +557,8 @@ export function EventsPage() {
               </p>
             </div>
           </div>
+        ) : status === "unsupported" ? (
+          <GatedNote variant="unsupported" reason={sources.byId["events"]?.reason} hint="telemt_outdated" />
         ) : disabled ? (
           <DisabledPanel
             reason={

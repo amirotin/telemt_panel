@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useStrings } from "../../i18n";
+import { localeOf, useStrings } from "../../i18n";
 import { getPanelTlsConfigOptions, getPanelTlsOptions } from "../../lib/api/generated/@tanstack/react-query.gen";
 import { Button } from "../../ui/Button";
 import { StatePill } from "../../ui/StatePill";
@@ -8,7 +8,8 @@ import { Skeleton } from "../../ui/Skeleton";
 import { PanelAccessForm } from "./PanelAccessForm";
 
 export function TransportStatus({ target = "panel" }: { target?: "panel" | "subscription" }) {
-  const copy = useStrings().server.settings.transport;
+  const strings = useStrings();
+  const copy = strings.server.settings.transport;
   const [formOpen, setFormOpen] = useState(false);
   const subscription = target === "subscription";
   const options = subscription ? { query: { target: "subscription" as const } } : undefined;
@@ -29,16 +30,16 @@ export function TransportStatus({ target = "panel" }: { target?: "panel" | "subs
         </StatePill>}
       </div>
       {query.isPending ? <Skeleton className="mt-3 h-8" /> : query.isError ? (
-        <p className="mt-2 text-meta text-error-text">{copy.unavailable}</p>
+        <p className="mt-2 text-meta text-error">{copy.unavailable}</p>
       ) : data && (
         <div className="mt-2 space-y-2 text-meta text-text-muted">
           {data.domain && <p className="break-all font-medium text-text">{data.domain}</p>}
-          {data.expires_at && <p>{copy.expires}: <time dateTime={data.expires_at}>{new Date(data.expires_at).toLocaleString()}</time></p>}
+          {data.expires_at && <p>{copy.expires}: <time dateTime={data.expires_at}>{new Date(data.expires_at).toLocaleString(localeOf(strings))}</time></p>}
           {state === "waiting" && !disabled && <p>{copy.waiting}</p>}
-          {state === "warning" && !disabled && <p className="text-warning-text">{copy.warning}</p>}
-          {state === "error" && !disabled && <p className="text-error-text">{copy.failed}</p>}
-          {data.error && <p className="break-words text-error-text">{data.stage ? `${stages[data.stage] ?? copy.title}: ` : ""}{data.error}</p>}
-          {plain && !disabled && <p className="text-warning-text">{subscription ? copy.endpoints.httpWarning : copy.httpWarning}</p>}
+          {state === "warning" && !disabled && <p className="text-warn">{copy.warning}</p>}
+          {state === "error" && !disabled && <p className="text-error">{copy.failed}</p>}
+          {data.error && <p className="break-words text-error">{data.stage ? `${stages[data.stage] ?? copy.title}: ` : ""}{data.error}</p>}
+          {plain && !disabled && <p className="text-warn">{subscription ? copy.endpoints.httpWarning : copy.httpWarning}</p>}
           {behindHttps && <p>{copy.proxyNote}</p>}
           {configQuery.data?.restart_required && (
             <div className="rounded-lg border border-accent/25 bg-accent/8 px-3 py-2.5 text-text-muted" data-panel-transport-pending>

@@ -5,7 +5,6 @@ package geoip
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"path/filepath"
 )
 
@@ -115,8 +114,7 @@ func (c Config) Validate() error {
 		}
 		switch c.Source {
 		case SourceURLs:
-			u, err := url.Parse(database.config.Location)
-			if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
+			if err := validateRemoteURL(database.config.Location); err != nil {
 				return fmt.Errorf("%w: %s must be an HTTPS URL without userinfo or fragment", ErrInvalidConfig, database.kind)
 			}
 		case SourceFiles:

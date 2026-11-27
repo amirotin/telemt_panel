@@ -4,12 +4,46 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/amirotin/telemt_panel/internal/telemt"
 )
 
 func uintPtr(n uint64) *uint64 { return &n }
+
+func TestSubscriptionVariantRequiresTelegramProxy(t *testing.T) {
+	for _, base := range []string{"https://example.com", "tg://different", "tg://proxy/path"} {
+		_, ok, err := buildVariant("alice", "classic", 0, base+"?server=host&port=443&secret=example", "")
+		if ok || err != nil {
+			t.Errorf("unexpected subscription variant for %s", base)
+		}
+	}
+}
+
+func TestQRCacheReleasesImagesWithoutFurtherRequests(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var cache qrCache
+		one, err := cache.render("tg://proxy?server=host&port=443&secret=first")
+		if err != nil {
+			t.Fatal(err)
+		}
+		two, err := cache.render("tg://proxy?server=host&port=443&secret=second")
+		cache.mu.Lock()
+		initial := len(cache.images)
+		cache.mu.Unlock()
+		if err != nil || one == two || initial != 2 {
+			t.Fatalf("distinct link images: %v", err)
+		}
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		cache.mu.Lock()
+		defer cache.mu.Unlock()
+		if len(cache.images) != 0 {
+			t.Fatal("expired QR images remain cached")
+		}
+	})
+}
 
 func TestBuildGroupsDeduplicatesTLSDomains(t *testing.T) {
 	const link = "tg://proxy?server=proxy.example&port=443&secret=ee0123456789abcdef0123456789abcdef6578616d706c652e636f6d"

@@ -15,7 +15,7 @@ const telemtDiagnostic = /^HTTP [1-5][0-9]{2}(?: · [a-z][a-z0-9_]{0,63})?(?: ·
 
 // errorMessage localizes an error code and optionally includes safe diagnostics.
 export function errorMessage(s: Dict, code: string, detail?: unknown): string {
-  const message = table(s.errors)[code] ?? s.errors.default;
+  const message = Object.hasOwn(s.errors, code) ? table(s.errors)[code] : s.errors.default;
   if (code.startsWith("telemt_") && typeof detail === "string" && detail.length <= 128 && telemtDiagnostic.test(detail)) {
     return `${message} (${detail})`;
   }
@@ -25,5 +25,5 @@ export function errorMessage(s: Dict, code: string, detail?: unknown): string {
 // auditActionLabel returns the label for an audit action, or undefined for
 // an action string this build doesn't know yet.
 export function auditActionLabel(s: Dict, action: string): string | undefined {
-  return table(s.auditActions)[action];
+  return Object.hasOwn(s.auditActions, action) ? table(s.auditActions)[action] : undefined;
 }

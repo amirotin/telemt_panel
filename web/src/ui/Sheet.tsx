@@ -15,6 +15,10 @@ import { IconClose } from "./icons";
  */
 export type SheetPlacement = "auto" | "bottom" | "side" | "modal" | "form" | "menu";
 
+const openPanels: HTMLElement[] = [];
+let unlockedOverflow = "";
+let firstOpener: HTMLElement | null = null;
+
 export interface SheetProps {
   open: boolean;
   onClose: () => void;
@@ -105,16 +109,22 @@ export function Sheet({
 
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
-    const firstFocusable = panel?.querySelector<HTMLElement>(FOCUSABLE);
+    if (!panel) return;
+    const firstFocusable = panel.querySelector<HTMLElement>(FOCUSABLE);
     const preferred = initialFocusRef?.current;
     (preferred && panel?.contains(preferred) && preferred.matches(FOCUSABLE)
       ? preferred
       : firstFocusable)?.focus();
 
-    const previousOverflow = document.body.style.overflow;
+    if (!openPanels.length) {
+      unlockedOverflow = document.body.style.overflow;
+      firstOpener = previouslyFocused.current;
+    }
+    openPanels.push(panel);
     document.body.style.overflow = "hidden";
 
     function onKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || openPanels.at(-1) !== panel) return;
       if (e.key === "Escape") {
         e.preventDefault();
         closeRef.current();
@@ -137,8 +147,16 @@ export function Sheet({
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previouslyFocused.current?.focus();
+      const wasTop = openPanels.at(-1) === panel;
+      openPanels.splice(openPanels.indexOf(panel), 1);
+      if (!openPanels.length) document.body.style.overflow = unlockedOverflow;
+      if (wasTop) {
+        const opener = previouslyFocused.current;
+        if (opener?.isConnected) opener.focus();
+        else if (openPanels.length) openPanels.at(-1)?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+        else if (firstOpener?.isConnected) firstOpener.focus();
+      }
+      if (!openPanels.length) firstOpener = null;
     };
   }, [open, initialFocusRef]);
 

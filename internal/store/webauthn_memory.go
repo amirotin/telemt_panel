@@ -190,10 +190,18 @@ func (m *Memory) PutWebAuthnChallenge(challenge WebAuthnChallenge) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	logins := 0
+	now := time.Now()
 	for hash, existing := range m.webauthnChallenges {
-		if !existing.Expires.After(time.Now()) {
+		if !existing.Expires.After(now) {
 			delete(m.webauthnChallenges, hash)
+		} else if existing.Kind == "login" && hash != challenge.FlowHash {
+			logins++
 		}
+	}
+	// Retain one slot for an authenticated registration even at peak login load.
+	if challenge.Kind == "login" && logins >= webAuthnChallengeLimit-1 {
+		return ErrWebAuthnChallengeLimit
 	}
 	if _, replacing := m.webauthnChallenges[challenge.FlowHash]; !replacing && len(m.webauthnChallenges) >= webAuthnChallengeLimit {
 		return ErrWebAuthnChallengeLimit

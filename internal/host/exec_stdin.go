@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"time"
@@ -18,10 +19,14 @@ const maxCommandOutputSize = 64 << 10
 // OSStdinCmdRunner streams stdin into a subprocess with bounded output capture.
 // Like OSCmdRunner, nonzero command exits are reported as *ExitError.
 func OSStdinCmdRunner(ctx context.Context, stdin io.Reader, name string, args ...string) (stdout, stderr []byte, err error) {
+	return runWithBoundedOutput(ctx, stdin, maxCommandOutputSize, false, name, args...)
+}
+
+func runWithBoundedOutput(ctx context.Context, stdin io.Reader, limit int, requireComplete bool, name string, args ...string) (stdout, stderr []byte, err error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = time.Second
 	cmd.Stdin = stdin
-	var outBuf, errBuf boundedCommandOutput
+	outBuf, errBuf := boundedCommandOutput{limit: limit}, boundedCommandOutput{limit: limit}
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 	err = cmd.Run()
@@ -29,16 +34,24 @@ func OSStdinCmdRunner(ctx context.Context, stdin io.Reader, name string, args ..
 	if errors.As(err, &exitErr) {
 		err = &ExitError{Code: exitErr.ExitCode()}
 	}
+	if err == nil && requireComplete && (outBuf.truncated || errBuf.truncated) {
+		err = fmt.Errorf("output of %s exceeds the capture limit of %d bytes", name, limit)
+	}
 	return outBuf.buffer.Bytes(), errBuf.buffer.Bytes(), err
 }
 
 type boundedCommandOutput struct {
-	buffer bytes.Buffer
+	buffer    bytes.Buffer
+	limit     int
+	truncated bool
 }
 
 func (b *boundedCommandOutput) Write(p []byte) (int, error) {
 	n := len(p)
-	if remaining := maxCommandOutputSize - b.buffer.Len(); remaining > 0 {
+	if n > b.limit-b.buffer.Len() {
+		b.truncated = true
+	}
+	if remaining := b.limit - b.buffer.Len(); remaining > 0 {
 		if len(p) > remaining {
 			p = p[:remaining]
 		}

@@ -1,3 +1,4 @@
+import { GatedNote } from "../GatedNote";
 import type { ComponentType } from "react";
 import { PageHeader } from "../../ui/PageHeader";
 import { Link } from "@tanstack/react-router";
@@ -226,7 +227,7 @@ function HubCardView({ card, nowMs }: { card: HubCard; nowMs: number }) {
             </div>
           )}
         </>
-      ) : card.notice?<div className="mt-4"><MeSourceNotice state={card.notice}/></div>:<p className="mt-4 text-[11px] leading-relaxed text-text-muted">{s.hub.unavailable}</p>}
+      ) : card.notice?<div className="mt-4"><MeSourceNotice state={card.notice}/></div>:card.gate?<GatedNote {...card.gate} className="mt-4"/>:<p className="mt-4 text-[11px] leading-relaxed text-text-muted">{s.hub.unavailable}</p>}
     </Link>
   );
 }
@@ -255,8 +256,8 @@ function AttentionBanner({ cards }: { cards: HubCard[] }) {
 
   if (!issue) {
     return (
-      <section className="grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl border border-ok/35 bg-ok-soft/20 px-3.5 py-2.5" data-testid="hub-attention">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-ok/40 bg-ok-soft/40 text-sm font-extrabold text-ok">✓</span>
+      <section className="grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl border border-ok/35 bg-ok/10 px-3.5 py-2.5" data-testid="hub-attention">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-ok/40 bg-ok/15 text-sm font-extrabold text-ok">✓</span>
         <span className="flex min-w-0 flex-col gap-1">
           <strong className="text-[13px] text-text">{s.hub.attention.healthy}</strong>
           <span className="text-[10px] text-text-muted">{s.hub.attention.healthyDescription}</span>
@@ -275,8 +276,8 @@ function AttentionBanner({ cards }: { cards: HubCard[] }) {
   const error = issue.health === "error";
 
   return (
-    <section className={cn("grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3.5 py-2.5", error ? "border-error/45 bg-error-soft/20" : "border-warn/45 bg-warn-soft/20")} data-testid="hub-attention">
-      <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-extrabold", error ? "border-error/45 bg-error-soft/40 text-error" : "border-warn/45 bg-warn-soft/40 text-warn")}>!</span>
+    <section className={cn("grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3.5 py-2.5", error ? "border-error/45 bg-error/10" : "border-warn/45 bg-warn/10")} data-testid="hub-attention">
+      <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-extrabold", error ? "border-error/45 bg-error/15 text-error" : "border-warn/45 bg-warn/15 text-warn")}>!</span>
       <span className="flex min-w-0 flex-col gap-1">
         <strong className="text-[13px] leading-snug text-text">{headline}</strong>
         <span className="text-[10px] leading-snug text-text-muted">{s.hub.attention.description}</span>

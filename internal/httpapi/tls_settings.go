@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 	"github.com/amirotin/telemt_panel/internal/auth"
 	"github.com/amirotin/telemt_panel/internal/config"
 	"github.com/amirotin/telemt_panel/internal/host"
@@ -111,12 +112,11 @@ func (s *Server) tlsRestartAvailable() bool {
 	return true
 }
 
-func (s *Server) tlsCapabilitiesLocked() (tlsCapabilities, []string) {
-	a := s.access
+func (s *Server) tlsCapabilities(file *config.TLSFile) (tlsCapabilities, []string) {
 	caps := tlsCapabilities{Restart: s.tlsRestartAvailable()}
 	hints := []string{}
-	if a.file != nil {
-		caps.ConfigWritable = a.file.Writable() == nil
+	if file != nil {
+		caps.ConfigWritable = file.Writable() == nil
 	}
 	if !caps.ConfigWritable {
 		hints = append(hints, "edit_startup_config_manually")
@@ -153,16 +153,17 @@ func (s *Server) handleGetTLSConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	a := s.access
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if a.pending != nil && time.Now().After(a.pending.ExpiresAt) {
 		a.pending = nil
 		a.state = "idle"
 	}
-	caps, hints := s.tlsCapabilitiesLocked()
-	state := tlsSettings{Active: accessCandidate(s.cfg, subscription), Capabilities: caps, ManualHints: hints, DefaultACMECacheDir: s.accessCache(subscription), State: a.state, RestartRequired: a.saved, NewURL: a.newURL, Error: a.err}
+	state := tlsSettings{Active: accessCandidate(s.cfg, subscription), DefaultACMECacheDir: s.accessCache(subscription), State: a.state, RestartRequired: a.saved, NewURL: a.newURL, Error: a.err}
 	state.CertificateStatus = s.tlsManager.Status()
 	if a.saved && a.savedSubscription != subscription {
 		state.NewURL = ""
+		if state.Error == "tls_save_unconfirmed" {
+			state.Error = ""
+		}
 	}
 	if subscription {
 		state.CertificateStatus = s.subTLSManager.Status()
@@ -171,6 +172,9 @@ func (s *Server) handleGetTLSConfig(w http.ResponseWriter, r *http.Request) {
 		state.Prepared = a.pending
 	}
 	state.ConfigPath = a.path
+	file := a.file
+	a.mu.Unlock()
+	state.Capabilities, state.ManualHints = s.tlsCapabilities(file)
 	service, _ := resolveLogicalService("panel", s.svcMgr.Kind(), s.cfg.Host)
 	state.ManualRestartCommand = serviceCommandHint(s.svcMgr, service, "restart")
 	if state.ManualRestartCommand == "" {
@@ -179,8 +183,8 @@ func (s *Server) handleGetTLSConfig(w http.ResponseWriter, r *http.Request) {
 	if state.Active.TLS.Mode == "" {
 		state.Active.TLS.Mode = "http"
 	}
-	if a.file != nil {
-		if snapshot, err := a.file.Read(); err == nil {
+	if file != nil {
+		if snapshot, err := file.Read(); err == nil {
 			configured := accessCandidate(snapshot.Config, subscription)
 			state.Configured = &configured
 		}
@@ -220,13 +224,23 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusConflict, "tls_prepare_busy", "a preparation or saved restart is already pending")
 		return
 	}
-	caps, _ := s.tlsCapabilitiesLocked()
+	caps, _ := s.tlsCapabilities(a.file)
 	if !caps.Prepare {
 		a.mu.Unlock()
 		auth.WriteError(w, http.StatusServiceUnavailable, "tls_manual_required", "configuration write and panel restart privileges are required; apply transport manually")
 		return
 	}
+	snapshot, err := a.file.Read()
+	if err != nil {
+		a.mu.Unlock()
+		auth.WriteError(w, http.StatusConflict, "tls_config_changed", "startup configuration is no longer readable and valid")
+		return
+	}
 	candidate := request.TLSCandidate
+	if subscription && !candidate.Enabled && snapshot.Config.Subpage.Enabled {
+		candidate = accessCandidate(snapshot.Config, true)
+		candidate.Enabled = false
+	}
 	peerTLS := s.cfg.TLS
 	if !subscription {
 		peerTLS = s.cfg.Subpage.TLS
@@ -242,12 +256,6 @@ func (s *Server) handlePrepareTLS(w http.ResponseWriter, r *http.Request) {
 	if (!subscription || candidate.Enabled) && candidate.TLS.Mode == "http" && (!loopbackListen(candidate.Listen) || strings.HasPrefix(candidate.PublicURL, "http://")) && !request.ConfirmHTTP {
 		a.mu.Unlock()
 		auth.WriteError(w, http.StatusBadRequest, "confirmation_required", "confirm unencrypted HTTP before preparation")
-		return
-	}
-	snapshot, err := a.file.Read()
-	if err != nil {
-		a.mu.Unlock()
-		auth.WriteError(w, http.StatusConflict, "tls_config_changed", "startup configuration is no longer readable and valid")
 		return
 	}
 	if err := validateAccessCandidate(snapshot.Config, candidate, subscription); err != nil {
@@ -403,7 +411,7 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, http.StatusConflict, "tls_receipt_invalid", "prepare this exact candidate again; receipt is stale, changed or already used")
 		return
 	}
-	caps, _ := s.tlsCapabilitiesLocked()
+	caps, _ := s.tlsCapabilities(a.file)
 	if !caps.Prepare {
 		auth.WriteError(w, http.StatusServiceUnavailable, "tls_manual_required", "write/restart permissions are unavailable; configuration was not saved")
 		return
@@ -426,7 +434,8 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.file.SaveAccess(p.revision, p.Candidate, subscription, true); err != nil {
+	saveErr := a.file.SaveAccess(p.revision, p.Candidate, subscription, true)
+	if err := saveErr; err != nil && !atomicfile.Published(err) {
 		if errors.Is(err, config.ErrTLSRevision) {
 			auth.WriteError(w, http.StatusConflict, "tls_config_changed", "configuration changed after preparation; prepare again")
 		} else {
@@ -448,6 +457,11 @@ func (s *Server) handlePutTLSConfig(w http.ResponseWriter, r *http.Request) {
 		auditTarget = "subscription"
 	}
 	s.appendAudit(r, "panel.tls.save", "", auditTarget+":"+p.Candidate.TLS.Mode)
+	if saveErr != nil {
+		a.err = "tls_save_unconfirmed"
+		auth.WriteError(w, http.StatusServiceUnavailable, "tls_save_unconfirmed", "configuration was replaced but disk synchronization failed; check storage before restarting")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"new_url": a.newURL, "restart_required": true})
 }
 

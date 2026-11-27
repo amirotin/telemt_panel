@@ -120,7 +120,7 @@ export const mePoolState: RuntimeMePoolState = {
 
 // meQualityDcRtt — 12 per-DC rows (§14), coverage 100%, RTT 4–342 ms.
 const dcRttValues = spread(dcIds.length, 4, 342);
-export const meQualityDcRtt: RuntimeMeQualityDcRtt[] = dcIds.map((dc, i) => ({
+const meQualityDcRtt: RuntimeMeQualityDcRtt[] = dcIds.map((dc, i) => ({
   dc,
   rtt_ema_ms: dcRttValues[i],
   alive_writers: 3 + (i % 9),

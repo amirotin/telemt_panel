@@ -15,8 +15,8 @@ import (
 
 func trackBundleOpens(m *Manager) *[]*bundle {
 	var opened []*bundle
-	m.openBundle = func(paths map[Kind]string, at int64) (*bundle, error) {
-		b, err := openBundle(paths, at)
+	m.openBundle = func(ctx context.Context, paths map[Kind]string, at int64) (*bundle, error) {
+		b, err := openBundle(ctx, paths, at)
 		if b != nil {
 			opened = append(opened, b)
 		}
@@ -59,8 +59,8 @@ func TestBuildBundleTransfersVerifiedReadersAcrossRename(t *testing.T) {
 	defer m.Close()
 	var opened []*bundle
 	verified := make(map[string]int)
-	m.openBundle = func(paths map[Kind]string, at int64) (*bundle, error) {
-		b, err := openBundleWithVerifier(paths, at, func(r *maxminddb.Reader) error {
+	m.openBundle = func(ctx context.Context, paths map[Kind]string, at int64) (*bundle, error) {
+		b, err := openBundleWithVerifier(ctx, paths, at, func(r *maxminddb.Reader) error {
 			verified[r.Metadata.DatabaseType]++
 			return r.Verify()
 		})
@@ -246,7 +246,7 @@ func TestVerifiedBundleFixtureTiming(t *testing.T) {
 		start := time.Now()
 		for range 50 {
 			for range passes {
-				b, err := openBundle(paths, time.Now().Unix())
+				b, err := openBundle(t.Context(), paths, time.Now().Unix())
 				if err != nil {
 					t.Fatal(err)
 				}

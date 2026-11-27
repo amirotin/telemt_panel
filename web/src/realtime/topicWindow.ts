@@ -19,6 +19,7 @@ import type { TopicName } from "./types";
 // the honest behaviour the rate rules want — no window, no delta, no alarm.
 
 export interface WindowEntry<T> {
+  /** Unix seconds from the topic frame. */
   ts: number;
   data: T;
 }
@@ -50,7 +51,7 @@ export function pushWindowEntry<T>(
 ): WindowEntry<T>[] {
   const last = entries[entries.length - 1];
   if (last && last.ts === entry.ts) return entries as WindowEntry<T>[];
-  const cutoff = entry.ts - windowMs;
+  const cutoff = entry.ts - windowMs / 1000;
   const kept = entries.filter((e) => e.ts >= cutoff);
   kept.push(entry);
   return kept.length > MAX_ENTRIES ? kept.slice(kept.length - MAX_ENTRIES) : kept;

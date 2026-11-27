@@ -89,7 +89,7 @@ export function RecordIconButton({ label, danger = false, disabled = false, onCl
     <button
       type="button"
       disabled={disabled}
-      className={cn("grid size-11 shrink-0 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-30", danger && "hover:bg-bad/10 hover:text-bad")}
+      className={cn("grid size-11 shrink-0 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-30", danger && "hover:bg-error/10 hover:text-error")}
       aria-label={label}
       title={label}
       onClick={onClick}

@@ -1,11 +1,33 @@
 package ratelimit
 
 import (
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestWindowBoundsDistinctKeysAndPreservesReservations(t *testing.T) {
+	w := New(1, time.Minute, time.Now)
+	t.Cleanup(w.Close)
+	finish, ok := w.TryReserve("active")
+	if !ok {
+		t.Fatal("first reservation denied")
+	}
+	for i := range 8191 {
+		if !w.AllowAndCount(strconv.Itoa(i)) {
+			t.Fatalf("entry %d denied", i)
+		}
+	}
+	if w.AllowAndCount("next") || w.Available("active") {
+		t.Fatal("full window discarded an in-flight reservation or grew past its cap")
+	}
+	finish(false)
+	if !w.AllowAndCount("next") {
+		t.Fatal("released slot was not reused")
+	}
+}
 
 func TestWindowRateLimitConcurrentReservations(t *testing.T) {
 	w := New(5, time.Minute, time.Now)

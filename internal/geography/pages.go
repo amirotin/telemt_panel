@@ -89,38 +89,42 @@ func (s *Service) Locations(ctx context.Context, q LocationsQuery) (LocationPage
 	}
 	out := LocationPage{SnapshotID: entry.id, Items: []any{}}
 	passed := q.Cursor == ""
-	foundCursor := passed
 	var last cursor
-	emit := func(id string, weight int64, item any) {
+	include := func(id string, weight int64) bool {
 		out.Total++
 		if !passed {
 			if id == after.ID && weight == after.Weight {
 				passed = true
-				foundCursor = true
 			}
-			return
+			return false
 		}
 		if len(out.Items) < limit {
-			out.Items = append(out.Items, item)
 			last = binding
 			last.ID, last.Weight = id, weight
-		} else if out.NextCursor == nil {
+			return true
+		}
+		if out.NextCursor == nil {
 			out.NextCursor = encodeCursor(last)
 		}
+		return false
 	}
 	if q.Kind == "country" {
 		for _, c := range entry.data.Countries {
-			emit(c.ID, c.UniqueIPs, c)
+			if include(c.ID, c.UniqueIPs) {
+				out.Items = append(out.Items, c)
+			}
 		}
 	} else {
 		for _, l := range entry.data.Locations {
 			if q.Country != "" && (l.CountryCode == nil || *l.CountryCode != q.Country) {
 				continue
 			}
-			emit(l.ID, l.UniqueIPs, cloneLocation(l))
+			if include(l.ID, l.UniqueIPs) {
+				out.Items = append(out.Items, cloneLocation(l))
+			}
 		}
 	}
-	if !foundCursor {
+	if !passed {
 		return LocationPage{}, ErrBadRequest
 	}
 	if entry.epochs != s.currentEpochs() {

@@ -1,7 +1,6 @@
 package host
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -60,10 +59,8 @@ func (j *Journald) Caps() LogCaps {
 // plain-text notices on stdout (e.g. "-- No entries --" for an empty unit).
 func parseJournaldLines(out []byte) []LogLine {
 	var lines []LogLine
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	scanner.Buffer(make([]byte, 64*1024), 1<<20)
-	for scanner.Scan() {
-		line, ok := parseJournaldLine(scanner.Bytes())
+	for raw := range capturedLogLines(out) {
+		line, ok := parseJournaldLine(raw)
 		if ok {
 			lines = append(lines, line)
 		}

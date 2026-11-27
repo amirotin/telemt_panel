@@ -70,7 +70,7 @@ func TestServiceControlPropagatesErrors(t *testing.T) {
 }
 
 func TestControlRunnersUseNarrowAllowlistAndPolicyOnlyProbe(t *testing.T) {
-	for _, mode := range []string{"direct", "sudo", "legacy"} {
+	for _, mode := range []string{"direct", "sudo", "command"} {
 		t.Run(mode, func(t *testing.T) {
 			var calls [][]string
 			base := func(_ context.Context, command string, args ...string) ([]byte, []byte, error) {
@@ -87,8 +87,8 @@ func TestControlRunnersUseNarrowAllowlistAndPolicyOnlyProbe(t *testing.T) {
 			if mode == "sudo" {
 				runner = NewSudoRunner(allow, mgr, nil, run)
 			}
-			if mode == "legacy" {
-				runner = NewLegacySudoRunner(allow, mgr, nil, run)
+			if mode == "command" {
+				runner = NewCommandSudoRunner(allow, mgr, nil, run, nil)
 			}
 			for _, kind := range []string{OpStartService, OpStopService} {
 				if _, err := runner.Run(context.Background(), Op{Kind: kind, Args: map[string]string{ArgService: "telemt"}}); err != nil {

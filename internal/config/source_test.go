@@ -189,3 +189,18 @@ func TestSourceRejectsInvalidListenerAndHash(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceValidationReportsOnlyTheField(t *testing.T) {
+	for _, tc := range []struct{ input, field string }{
+		{"geography.build_timeout_secs must be positive", "geography.build_timeout_secs"},
+		{"privileges.policy_path must be normalized and absolute", "privileges.policy_path"},
+		{"panel address: public_url must use HTTPS", "public_url"},
+		{"subscription: tls.mode=http: contradictory settings", "subpage.tls.mode"},
+		{"host.telemt_container: invalid service or container name", "host.telemt_container"},
+	} {
+		err := sourceValidationError(fmt.Errorf("%s: PRIVATE", tc.input))
+		if want := "invalid configuration field: " + tc.field; err.Error() != want {
+			t.Errorf("got %q, want %q", err, want)
+		}
+	}
+}

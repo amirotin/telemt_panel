@@ -216,3 +216,14 @@ func TestRenderPageWriterErrors(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkRepeatedSubscriptionPage(b *testing.B) {
+	user := fixtureUser()
+	now := time.Now()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := RenderPage(io.Discard, user, nil, "en", now); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

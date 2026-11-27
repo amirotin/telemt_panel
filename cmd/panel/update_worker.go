@@ -127,9 +127,13 @@ func makeUpdateWorkerConfig(cfg *config.Config, stateDir string) (update.WorkerC
 	}
 	// This probe connects directly to the configured local listener, which may
 	// serve a self-signed certificate. It sends no credentials or application data.
-	transport := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext}
+	probeTLS := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}
+	if cfg.TLS.Mode == "acme" {
+		probeTLS.ServerName = cfg.TLS.AcmeDomain
+	}
+	transport := &http.Transport{TLSClientConfig: probeTLS, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext}
 	health := &update.WorkerHealthProbe{PanelURL: panelURL, Telemt: tc, Client: &http.Client{Transport: transport, Timeout: 5 * time.Second}}
-	saved, err := json.Marshal(cfg)
+	saved, err := marshalWorkerRecoveryConfig(cfg)
 	if err != nil {
 		return update.WorkerConfig{}, err
 	}
@@ -155,6 +159,35 @@ func makeUpdateWorkerConfig(cfg *config.Config, stateDir string) (update.WorkerC
 			},
 		},
 	}, nil
+}
+
+// Recovery resumes a publication already described by the task. Preserve
+// the protocol-1 Config field names so older binaries can read this subset.
+func marshalWorkerRecoveryConfig(cfg *config.Config) ([]byte, error) {
+	manager := map[string]any{
+		"ServiceManager":  cfg.Host.ServiceManager,
+		"TelemtService":   cfg.Host.TelemtService,
+		"PanelService":    cfg.Host.PanelService,
+		"TelemtContainer": cfg.Host.TelemtContainer,
+		"PanelContainer":  cfg.Host.PanelContainer,
+	}
+	if cfg.Host.ServiceManager == host.KindCustom {
+		manager["Commands"] = cfg.Host.Commands
+	}
+	return json.Marshal(map[string]any{
+		"Listen":     cfg.Listen,
+		"BasePath":   cfg.BasePath,
+		"DataDir":    cfg.DataDir,
+		"Host":       manager,
+		"TLS":        config.TLSConfig{Mode: cfg.TLS.Mode, AcmeDomain: cfg.TLS.AcmeDomain},
+		"Telemt":     map[string]string{"URL": cfg.Telemt.URL, "AuthHeader": cfg.Telemt.AuthHeader},
+		"Privileges": map[string]string{"Mode": cfg.Privileges.Mode},
+		"Updates": map[string]string{
+			"PanelBinaryPath":  cfg.Updates.PanelBinaryPath,
+			"TelemtBinaryPath": cfg.Updates.TelemtBinaryPath,
+			"WorkerStateDir":   cfg.Updates.WorkerStateDir,
+		},
+	})
 }
 
 func updateWorkerPanelURL(cfg *config.Config) (string, error) {

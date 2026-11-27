@@ -1,8 +1,6 @@
 package host
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 )
 
@@ -61,10 +59,8 @@ func (l *Logread) Caps() LogCaps {
 // parseSyslogishLine (see syslogline.go).
 func parseLogreadLines(out []byte) []LogLine {
 	var lines []LogLine
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	scanner.Buffer(make([]byte, 64*1024), 1<<20)
-	for scanner.Scan() {
-		text := scanner.Text()
+	for raw := range capturedLogLines(out) {
+		text := string(raw)
 		if text == "" {
 			continue
 		}

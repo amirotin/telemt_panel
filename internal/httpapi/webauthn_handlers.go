@@ -310,6 +310,10 @@ func (s *Server) handleWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request
 		auth.WriteError(w, http.StatusBadRequest, "invalid_webauthn_origin", "the panel host cannot be used for passkeys")
 		return
 	}
+	if !s.limiter.AllowPasskeyBegin(ip) {
+		auth.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many passkey login requests")
+		return
+	}
 	assertion, session, err := instance.BeginDiscoverableLogin()
 	if err != nil {
 		auth.WriteError(w, http.StatusInternalServerError, "internal_error", "could not start passkey login")

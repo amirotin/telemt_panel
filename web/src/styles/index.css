@@ -68,6 +68,14 @@
   --text-meta--line-height: 1.35;
   --text-row: 13.5px;
   --text-row--line-height: 1.35;
+  --text-label: 12px;
+  --text-label--line-height: 1.35;
+  --text-body: 14px;
+  --text-body--line-height: 1.5;
+  --text-h3: 16px;
+  --text-h3--line-height: 1.3;
+  --text-h2: 22px;
+  --text-h2--line-height: 1.2;
   --text-title: 26px;
   --text-title--line-height: 1.15;
 

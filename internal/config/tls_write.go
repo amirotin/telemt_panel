@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
+	"github.com/amirotin/telemt_panel/internal/atomicfile"
 )
 
 // TLSCandidate is the complete transport proposal; omitted fields are cleared.
@@ -164,8 +165,12 @@ func (f *TLSFile) stage(data []byte) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		_, writeErr := file.Write(data)
-		syncErr := file.Sync()
+		var writeErr, syncErr error
+		// The permission probe only needs to create and remove a temporary name.
+		if data != nil {
+			_, writeErr = file.Write(data)
+			syncErr = file.Sync()
+		}
 		closeErr := file.Close()
 		if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
 			_ = f.root.Remove(name)
@@ -247,11 +252,22 @@ func (f *TLSFile) SaveAccess(revision [32]byte, candidate TLSCandidate, subscrip
 	if sha256.Sum256(latest) != revision {
 		return ErrTLSRevision
 	}
+	dir, err := f.root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
 	if err := f.root.Rename(backup, f.name+".bak"); err != nil {
 		return fmt.Errorf("save config backup: %w", err)
 	}
+	if err := dir.Sync(); err != nil {
+		return fmt.Errorf("sync config backup directory: %w", err)
+	}
 	if err := f.root.Rename(staged, f.name); err != nil {
 		return fmt.Errorf("replace config: %w", err)
+	}
+	if err := dir.Sync(); err != nil {
+		return &atomicfile.PublicationError{Err: err}
 	}
 	return nil
 }

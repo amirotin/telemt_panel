@@ -33,7 +33,7 @@ function Vital({
             : tone === "warn"
               ? "text-warn"
               : tone === "bad"
-                ? "text-error-text"
+                ? "text-error"
                 : "text-text",
         )}
       >
@@ -92,7 +92,7 @@ function ContextBanner({ payload, s }: { payload: WebPagePayload; s: Dict }) {
   const partial = [...new Set([...(runtime?.partial ?? []),...(payload.capacity?.partial ?? [])])];
   if (payload.lifecycle === "draining") {
     return (
-      <div className="border-b border-warn/40 bg-warn-soft/10 px-4 py-3 sm:px-5">
+      <div className="border-b border-warn/40 bg-warn/8 px-4 py-3 sm:px-5">
         <strong className="block text-meta text-warn">{v.drainingTitle}</strong>
         <span className="mt-1 block text-meta text-text-muted">
           {fill(v.drainingTextTemplate, { count: formatNumber(s, sessions) })}
@@ -112,7 +112,7 @@ function ContextBanner({ payload, s }: { payload: WebPagePayload; s: Dict }) {
   }
   if (payload.capacity && webHasCapacityPressure(webCapacityReadings(payload),payload)) {
     return (
-      <div className="border-b border-warn/40 bg-warn-soft/10 px-4 py-3 sm:px-5" data-testid="web-current-pressure">
+      <div className="border-b border-warn/40 bg-warn/8 px-4 py-3 sm:px-5" data-testid="web-current-pressure">
         <strong className="block text-meta text-warn">{v.pressureTitle}</strong>
         <span className="mt-1 block text-meta text-text-muted">
           {payload.capacity.saturated_resources.map(resource=>v.capacityResources[resource as keyof typeof v.capacityResources]??resource).join(" · ")}

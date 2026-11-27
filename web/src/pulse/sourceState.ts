@@ -92,14 +92,6 @@ export interface GatedLike<T = unknown> {
   data?: T | null;
 }
 
-export function isGatedLike(value: unknown): value is GatedLike {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    typeof (value as { enabled?: unknown }).enabled === "boolean"
-  );
-}
-
 /**
  * Reason tokens Telemt uses for "this build has no such thing", as opposed
  * to "the admin turned it off". Kept as a set rather than a regex so adding

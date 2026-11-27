@@ -87,3 +87,14 @@ func TestPeerTrusted(t *testing.T) {
 		t.Error("empty trust list must never trust")
 	}
 }
+
+func TestTrustedProxyMultipleHeaderLines(t *testing.T) {
+	trusted := mustPrefixes(t, "10.0.0.0/8")
+	r := newReq("10.0.0.1:9000", "192.0.2.2")
+	r.Header.Add("X-Forwarded-For", "192.0.2.3, 10.0.0.2")
+	r.Header.Add("X-Forwarded-Proto", "https")
+	r.Header.Add("X-Forwarded-Proto", "http")
+	if ClientIP(r, trusted) != "192.0.2.3" || RequestIsSecure(r, trusted) {
+		t.Fatal("duplicate proxy fields were interpreted inconsistently")
+	}
+}

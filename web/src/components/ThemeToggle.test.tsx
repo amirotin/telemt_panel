@@ -97,3 +97,10 @@ describe("ThemeToggle", () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBe("system");
   });
 });
+
+it("keeps two mounted theme controls in sync", () => {
+  const container = renderToggle();
+  act(()=>mounted!.root.render(<><ThemeToggle/><ThemeToggle/></>));
+  act(()=>chips(container)[3]!.click());
+  expect(chips(container)[8]!.getAttribute("aria-pressed")).toBe("true");
+});

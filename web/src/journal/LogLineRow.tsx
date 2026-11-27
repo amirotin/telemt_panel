@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useStrings, type Dict } from "../i18n";
 import { formatLogClock } from "./timestamp.helpers";
 import type { RingLine } from "./logRing";
@@ -24,7 +25,7 @@ export interface LogLineRowProps {
 
 // One DOM order supports both layouts: a compact table on wide screens and
 // a full-width message card with a secondary metadata row on phones.
-export function LogLineRow({ line, showUnit }: LogLineRowProps) {
+export const LogLineRow = memo(function LogLineRow({ line, showUnit }: LogLineRowProps) {
   const s = useStrings();
   const level = line.level ?? "unknown";
 
@@ -36,4 +37,4 @@ export function LogLineRow({ line, showUnit }: LogLineRowProps) {
       <span className="journal-log-message">{line.msg}</span>
     </div>
   );
-}
+});

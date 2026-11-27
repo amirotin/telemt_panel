@@ -50,7 +50,7 @@ export function Sparkline({
   decorative = false,
 }: SparklineProps) {
   const s = useStrings();
-  if (values.length < 2) {
+  if (values.length < 2 || !values.every(Number.isFinite)) {
     return <svg width={width} height={height} className={className} aria-hidden="true" />;
   }
 

@@ -40,8 +40,8 @@ export interface ClientAttentionView {
 }
 
 export const CLIENT_ATTENTION_LIMIT = 5;
-export const CLIENT_LIMIT_WARN_RATIO = 0.8;
-export const CLIENT_EXPIRY_WARN_MS = 7 * 24 * 60 * 60 * 1000;
+const CLIENT_LIMIT_WARN_RATIO = 0.8;
+const CLIENT_EXPIRY_WARN_MS = 7 * 24 * 60 * 60 * 1000;
 
 function ratioSignal(
   kind: "quota" | "connections" | "ips",

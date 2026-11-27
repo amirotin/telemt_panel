@@ -423,7 +423,7 @@ export function PlatformPage() {
               type="button"
               onClick={() => setTechnicalOpen(true)}
               className={cn(
-                "group flex min-h-[68px] scroll-mb-20 items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 text-left hover:border-border-strong hover:bg-surface-hover min-[600px]:scroll-mb-0 lg:col-span-1",
+                "group flex min-h-[68px] scroll-mb-20 items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 text-left hover:border-border-strong hover:bg-surface-3 min-[600px]:scroll-mb-0 lg:col-span-1",
                 manualEntries.length > 0 && "md:col-span-2",
               )}
               data-testid="platform-technical-trigger"

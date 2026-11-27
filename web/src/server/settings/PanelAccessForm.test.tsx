@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { putPanelTlsConfig } from "../../lib/api/generated/sdk.gen";
 import type { PanelTlsPrepared, PanelTlsSettings } from "../../lib/api/generated/types.gen";
 import { setLocalePreference } from "../../i18n";
 import { PanelAccessForm } from "./PanelAccessForm";
@@ -45,14 +46,14 @@ let root: Root | undefined;
 let host: HTMLDivElement | undefined;
 let client: QueryClient | undefined;
 
-async function mount(data = editable(), seed = true) {
+async function mount(data = editable(), seed = true, target: "panel" | "subscription" = "panel") {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
   if (seed) client.setQueryData(["panel-tls-config"], data);
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
   await act(async () => root!.render(
-    <QueryClientProvider client={client!}><PanelAccessForm onClose={vi.fn()} /></QueryClientProvider>,
+    <QueryClientProvider client={client!}><PanelAccessForm target={target} onClose={vi.fn()} /></QueryClientProvider>,
   ));
   return document.querySelector<HTMLElement>('[role="dialog"]')!;
 }
@@ -317,4 +318,97 @@ describe("PanelAccessForm", () => {
     expect(dialog.textContent).not.toContain("Настройки сохранены и ожидают перезапуска");
     expect(button("Сохранить настройки")).toBeUndefined();
   });
+});
+
+it("disables a subscription with its saved listener even after an unfinished edit", async () => {
+  const saved={listen:"127.0.0.1:8081",tls:{mode:"http" as const},base_path:"/clients",enabled:true};
+  const dialog=await mount({...editable(),active:saved,configured:saved},true,"subscription");
+  await click(input("Готовый сертификат"));
+  await click(dialog.querySelector('input[type="checkbox"]'));
+  api.prepare.mockResolvedValue(prepared());
+  await click(button("Проверить настройки"));
+  expect(api.prepare.mock.calls[0]?.[0].body).toMatchObject({...saved,enabled:false});
+});
+
+it.each(["confirmed", "network failure", "unreadable file"])("reconciles a published 503 without reusing its receipt (first read: %s)", async firstRead => {
+  const initial = editable();
+  const candidate = { listen: "127.0.0.1:8081", base_path: "/clients", enabled: false, tls: { mode: "http" as const } };
+  const checked = prepared({ candidate, new_url: "https://links.example.org/clients/" });
+  const active = { ...candidate, enabled: true };
+  const serverSaved: PanelTlsSettings = {
+    ...initial, active, configured: candidate, state: "saved", restart_required: true, new_url: checked.new_url,
+  };
+  let receipts = 0;
+  api.save.mockImplementation(async (options: Parameters<typeof putPanelTlsConfig>[0]) => {
+    const result = await putPanelTlsConfig({
+      ...options, baseUrl: "http://panel.test", throwOnError: true,
+      fetch: async () => receipts++ === 0
+        ? Response.json({code:"tls_save_unconfirmed",message:"configuration was replaced but disk synchronization failed"}, {status:503})
+        : Response.json({code:"tls_receipt_invalid",message:"receipt already used"}, {status:409}),
+    });
+    return result.data;
+  });
+  api.load.mockReset();
+  if (firstRead === "network failure") api.load.mockRejectedValueOnce(new Error("offline"));
+  if (firstRead === "unreadable file") api.load.mockResolvedValueOnce({
+    ...serverSaved, configured: undefined, error: "tls_save_unconfirmed",
+  });
+  api.load.mockResolvedValue(serverSaved);
+  const dialog = await mount({...initial, active, configured: active, prepared:checked, state:"prepared"}, true, "subscription");
+  await click(button("Сохранить настройки"));
+  expect(api.save.mock.calls[0]?.[0]).toEqual({query:{target:"subscription"},body:{receipt:checked.receipt,candidate}});
+  expect(dialog.textContent).toContain("диск не подтвердил");
+  expect(button("Сохранить настройки")).toBeUndefined();
+  expect(api.load).toHaveBeenCalledTimes(1);
+  if (firstRead !== "confirmed") {
+    expect(client!.getQueryData<PanelTlsSettings>(["panel-tls-config"])?.prepared).toBeUndefined();
+    expect(button("Перезапустить панель")).toBeUndefined();
+    await click(button("Проверить серверную конфигурацию"));
+    expect(api.load).toHaveBeenCalledTimes(2);
+  }
+  await vi.waitFor(async () => {
+    await act(async()=>{await Promise.resolve();});
+    expect(button("Перезапустить панель")).toBeDefined();
+  });
+  expect(dialog.textContent).toContain("диск не подтвердил");
+  expect(api.save).toHaveBeenCalledTimes(1);
+});
+
+it("offers to reread an unconfirmed save when the reopened form has no file snapshot", async () => {
+  const dialog = await mount({
+    ...editable(), configured: undefined, state: "saved", restart_required: true,
+    new_url: "https://example.org/", error: "tls_save_unconfirmed",
+  });
+  expect(dialog.textContent).toContain("диск не подтвердил");
+  expect(button("Перезапустить панель")).toBeUndefined();
+  expect(button("Проверить серверную конфигурацию")).toBeDefined();
+});
+
+it.each([
+  ["ru", "Адрес для повторного включения", "Сохранено в конфигурации: Отключена", "Новый адрес после перезапуска", "Проверка адреса и сертификата", "Сохранить настройки"],
+  ["en", "Address retained for reactivation", "Saved configuration: Disabled", "New address after restart", "Listener and certificate checks", "Save settings"],
+] as const)("describes a disabled subscription accurately before and after saving in %s", async (locale, retained, disabled, newAddress, certificateNote, saveLabel) => {
+  await setLocalePreference(locale);
+  const candidate = {listen:"127.0.0.1:8081",base_path:"/clients",tls:{mode:"http" as const}};
+  const active = {...candidate,enabled:true};
+  // An inactive Go TLSCandidate omits enabled from its receipt.
+  const receipt = prepared({candidate, new_url:"http://127.0.0.1:8081/clients/", warnings:["toml_formatting"], certificate:undefined});
+  api.save.mockResolvedValue({new_url:receipt.new_url,restart_required:true});
+  const dialog = await mount({...editable(),active,configured:active,prepared:receipt,state:"prepared"}, true, "subscription");
+  expect(dialog.textContent).toContain(retained);
+  expect(dialog.textContent).not.toContain(newAddress);
+  expect(dialog.textContent).not.toContain(certificateNote);
+  expect(dialog.textContent).not.toContain("<token>");
+  await click(button(saveLabel));
+  expect(api.save.mock.calls[0]?.[0]).toEqual({query:{target:"subscription"},body:{receipt:receipt.receipt,candidate}});
+  expect(dialog.textContent).toContain(disabled);
+  expect(dialog.textContent).toContain(retained);
+  expect(dialog.textContent).not.toContain("<token>");
+});
+
+it("keeps the disk warning visible when the published target is reopened", async () => {
+  const dialog = await mount({...editable(), state:"saved",restart_required:true,new_url:"https://example.org/",error:"tls_save_unconfirmed"});
+  expect(dialog.textContent).toContain("диск не подтвердил");
+  expect(button("Сохранить настройки")).toBeUndefined();
+  expect(button("Перезапустить панель")).toBeDefined();
 });

@@ -187,7 +187,7 @@ export function SessionDetails({
           type="button"
           disabled={!canClose || closePending}
           onClick={onClose}
-          className="min-h-10 rounded-lg border border-error/45 bg-error/10 px-4 py-2 text-meta font-semibold text-error-text disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-10 rounded-lg border border-error/45 bg-error/10 px-4 py-2 text-meta font-semibold text-error disabled:cursor-not-allowed disabled:opacity-40"
         >
           {web.closeSession}
         </button>
@@ -298,7 +298,7 @@ export function SessionsView({
             type="button"
             disabled={!bulkIntent || closePending || !canClose}
             onClick={() => bulkIntent && onIntent(bulkIntent)}
-            className="rounded-lg border border-error/45 bg-error/10 px-3 py-2 text-micro font-semibold text-error-text disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-error/45 bg-error/10 px-3 py-2 text-micro font-semibold text-error disabled:cursor-not-allowed disabled:opacity-40"
             title={
               filtered.length > WEB_CLOSE_MAX_REFS
                 ? fill(s.details.pages.web.closeTooManyTemplate, {
@@ -402,7 +402,7 @@ export function SessionsView({
           </div>
         ) : error && rows.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-meta text-error-text">{v.sessionsError}</p>
+            <p className="text-meta text-error">{v.sessionsError}</p>
             <button
               type="button"
               onClick={onRetry}

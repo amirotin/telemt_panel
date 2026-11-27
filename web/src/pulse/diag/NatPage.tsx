@@ -85,7 +85,7 @@ function RouteState({ mode, gates, s }: { mode: MeRouteMode; gates: RuntimeGates
       <div
         className={cn(
           "overflow-hidden rounded-xl border",
-          fallback ? "border-warn/50 bg-warn-soft/10" : "border-border bg-surface-2",
+          fallback ? "border-warn/50 bg-warn/8" : "border-border bg-surface-2",
         )}
       >
         <div className="grid gap-4 border-b border-border px-4 py-5 sm:grid-cols-[52px_minmax(0,1fr)] sm:px-5">
@@ -93,7 +93,7 @@ function RouteState({ mode, gates, s }: { mode: MeRouteMode; gates: RuntimeGates
             className={cn(
               "grid h-12 w-12 place-items-center rounded-xl border text-h2 font-bold",
               fallback
-                ? "border-warn/50 bg-warn-soft text-warn"
+                ? "border-warn/50 bg-warn/15 text-warn"
                 : "border-border-strong bg-surface-3 text-text-muted",
             )}
             aria-hidden="true"
@@ -166,9 +166,9 @@ function VerdictHero({ nat, s }: { nat: RuntimeNatStun; s: Dict }) {
         <span
           className={cn(
             "grid h-12 w-12 shrink-0 place-items-center rounded-xl border text-h2 font-bold",
-            tone === "ok" && "border-ok/45 bg-ok-soft text-ok",
-            tone === "warn" && "border-warn/45 bg-warn-soft text-warn",
-            tone === "error" && "border-error/45 bg-error-soft text-error",
+            tone === "ok" && "border-ok/45 bg-ok/15 text-ok",
+            tone === "warn" && "border-warn/45 bg-warn/15 text-warn",
+            tone === "error" && "border-error/45 bg-error/15 text-error",
             tone === "muted" && "border-border-strong bg-surface-2 text-text-muted",
           )}
         >
@@ -523,8 +523,8 @@ function ServersPanel({ nat, s }: { nat: RuntimeNatStun; s: Dict }) {
               key={server}
               className={cn(
                 "flex min-w-0 items-center justify-between gap-3 border-b border-r border-border px-3 py-3",
-                answered && "bg-ok-soft/15",
-                delayed && !answered && "bg-warn-soft/10",
+                answered && "bg-ok/8",
+                delayed && !answered && "bg-warn/8",
               )}
               data-nat-server={answered ? "live" : "absent"}
             >
@@ -602,7 +602,7 @@ export function NatPage() {
   const runtime = useSnapshot<RuntimeTopic>("runtime");
   const navigate = useNavigate();
   const s = useStrings();
-  const nowMs = useNow(1_000);
+  const nowMs = useNow();
   const [tab, setTab] = useState<NatTab>("overview");
 
   const gates = runtime.data?.gates ?? null;

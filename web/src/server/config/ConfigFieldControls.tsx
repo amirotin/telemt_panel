@@ -110,14 +110,14 @@ function JSONControl({ label, value, onChange, readOnly }: { label: string; valu
   return (
     <div>
       <textarea
-        className={cn("min-h-20 w-full resize-y rounded-lg border bg-surface-2 px-3 py-2 font-mono text-[13px] leading-relaxed text-text focus-visible:border-accent", invalid ? "border-bad" : "border-border")}
+        className={cn("min-h-20 w-full resize-y rounded-lg border bg-surface-2 px-3 py-2 font-mono text-[13px] leading-relaxed text-text focus-visible:border-accent", invalid ? "border-error" : "border-border")}
         value={text}
         readOnly={readOnly}
         aria-label={label}
         onChange={(event) => { setText(event.target.value); setInvalid(false); }}
         onBlur={(event) => { if (readOnly) return; try { onChange(JSON.parse(event.target.value)); setInvalid(false); } catch { setInvalid(true); } }}
       />
-      {invalid && <p className="mt-1 text-micro text-bad">{copy.invalidJson}</p>}
+      {invalid && <p className="mt-1 text-micro text-error">{copy.invalidJson}</p>}
       {readOnly && <p className="mt-1 text-micro text-text-faint">{copy.structureHint}</p>}
     </div>
   );
